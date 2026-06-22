@@ -21,6 +21,8 @@ const logger = log.scope("copy_file_utils");
 export interface CopyFileResult {
   /** Whether the destination is a shared server module */
   sharedModuleChanged: boolean;
+  /** Function deploy skipped because a shared server module changed first */
+  skippedFunctionDeploy?: string;
   /** Error from Supabase function deployment, if any */
   deployError?: unknown;
 }
@@ -124,26 +126,29 @@ export async function executeCopyFile({
     const effectiveSharedModulesChanged =
       isSharedModulesChanged || sharedModuleChanged;
     let deployError: unknown;
-    if (
-      supabaseProjectId &&
-      isServerFunction(to) &&
-      !effectiveSharedModulesChanged
-    ) {
-      try {
-        await deploySupabaseFunction({
-          supabaseProjectId,
-          functionName: extractFunctionNameFromPath(to),
-          appPath,
-          organizationSlug: supabaseOrganizationSlug ?? null,
-        });
-      } catch (error) {
-        logger.error("Failed to deploy Supabase function after copy:", error);
-        deployError = error;
+    let skippedFunctionDeploy: string | undefined;
+    if (supabaseProjectId && isServerFunction(to)) {
+      const functionName = extractFunctionNameFromPath(to);
+      if (!effectiveSharedModulesChanged) {
+        try {
+          await deploySupabaseFunction({
+            supabaseProjectId,
+            functionName,
+            appPath,
+            organizationSlug: supabaseOrganizationSlug ?? null,
+          });
+        } catch (error) {
+          logger.error("Failed to deploy Supabase function after copy:", error);
+          deployError = error;
+        }
+      } else {
+        skippedFunctionDeploy = functionName;
       }
     }
 
     return {
       sharedModuleChanged,
+      skippedFunctionDeploy,
       deployError,
     };
   });

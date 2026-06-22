@@ -80,6 +80,8 @@ describe("codeSearchTool", () => {
       frameworkType: null,
       messageId: 1,
       isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
       isDyadPro: true,
       todos: [],
       dyadRequestId: "test-request",

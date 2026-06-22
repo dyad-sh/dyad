@@ -10,16 +10,13 @@ import {
   deleteSupabaseFunction,
 } from "../../../../../../supabase_admin/supabase_management_client";
 import {
+  extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("rename_file");
-
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
 
 const renameFileSchema = z.object({
   from: z.string().describe("The current file path"),
@@ -48,6 +45,12 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       // Track if this involves shared modules
       if (isSharedServerModule(args.from) || isSharedServerModule(args.to)) {
         ctx.isSharedModulesChanged = true;
+        if (isSharedServerModule(args.from)) {
+          ctx.sharedServerModulePaths.push(args.from);
+        }
+        if (isSharedServerModule(args.to)) {
+          ctx.sharedServerModulePaths.push(args.to);
+        }
       }
 
       // Ensure target directory exists
@@ -74,7 +77,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             try {
               await deleteSupabaseFunction({
                 supabaseProjectId: ctx.supabaseProjectId,
-                functionName: getFunctionNameFromPath(args.from),
+                functionName: extractFunctionNameFromPath(args.from),
                 organizationSlug: ctx.supabaseOrganizationSlug ?? null,
               });
             } catch (error) {
@@ -84,16 +87,30 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
               );
             }
           }
-          if (isServerFunction(args.to) && !ctx.isSharedModulesChanged) {
-            try {
-              await deploySupabaseFunction({
-                supabaseProjectId: ctx.supabaseProjectId,
-                functionName: getFunctionNameFromPath(args.to),
-                appPath: ctx.appPath,
-                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-              });
-            } catch (error) {
-              return `File renamed, but failed to deploy Supabase function: ${error}`;
+          if (isServerFunction(args.to)) {
+            if (!ctx.isSharedModulesChanged) {
+              try {
+                const functionName = extractFunctionNameFromPath(args.to);
+                await deploySupabaseFunction({
+                  supabaseProjectId: ctx.supabaseProjectId,
+                  functionName,
+                  appPath: ctx.appPath,
+                  organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+                });
+              } catch (error) {
+                return `File renamed, but failed to deploy Supabase function: ${error}`;
+              }
+            } else {
+              try {
+                ctx.pendingFunctionDeploys.push(
+                  extractFunctionNameFromPath(args.to),
+                );
+              } catch (error) {
+                logger.warn(
+                  `File renamed, but failed to identify Supabase function name: ${args.to}`,
+                  error,
+                );
+              }
             }
           }
         }

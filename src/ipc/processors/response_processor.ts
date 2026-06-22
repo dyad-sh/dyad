@@ -19,7 +19,7 @@ import {
 import {
   isServerFunction,
   isSharedServerModule,
-  deployAllSupabaseFunctions,
+  deployAffectedSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
@@ -167,6 +167,8 @@ export async function processFullResponseActions(
   let hasChanges = false;
   // Track if any shared modules were modified
   let sharedModulesChanged = false;
+  const changedSharedModulePaths: string[] = [];
+  const pendingFunctionDeploys: string[] = [];
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
@@ -333,6 +335,7 @@ export async function processFullResponseActions(
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
         sharedModulesChanged = true;
+        changedSharedModulePaths.push(filePath);
       }
 
       // Delete the file if it exists
@@ -380,6 +383,12 @@ export async function processFullResponseActions(
       // Track if this involves shared modules
       if (isSharedServerModule(tag.from) || isSharedServerModule(tag.to)) {
         sharedModulesChanged = true;
+        if (isSharedServerModule(tag.from)) {
+          changedSharedModulePaths.push(tag.from);
+        }
+        if (isSharedServerModule(tag.to)) {
+          changedSharedModulePaths.push(tag.to);
+        }
       }
 
       // Ensure target directory exists
@@ -419,23 +428,25 @@ export async function processFullResponseActions(
         }
       }
       // Deploy renamed function (skip if shared modules changed - will be handled later)
-      if (
-        chatWithApp.app.supabaseProjectId &&
-        isServerFunction(tag.to) &&
-        !sharedModulesChanged
-      ) {
-        try {
-          await deploySupabaseFunction({
-            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: extractFunctionNameFromPath(tag.to),
-            appPath,
-            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
-          });
-        } catch (error) {
-          errors.push({
-            message: `Failed to deploy Supabase function: ${tag.to} as part of renaming ${tag.from} to ${tag.to}`,
-            error: error,
-          });
+      if (chatWithApp.app.supabaseProjectId && isServerFunction(tag.to)) {
+        const functionName = extractFunctionNameFromPath(tag.to);
+        if (!sharedModulesChanged) {
+          try {
+            await deploySupabaseFunction({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+              functionName,
+              appPath,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
+            });
+          } catch (error) {
+            errors.push({
+              message: `Failed to deploy Supabase function: ${tag.to} as part of renaming ${tag.from} to ${tag.to}`,
+              error: error,
+            });
+          }
+        } else {
+          pendingFunctionDeploys.push(functionName);
         }
       }
     }
@@ -449,6 +460,7 @@ export async function processFullResponseActions(
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
         sharedModulesChanged = true;
+        changedSharedModulePaths.push(filePath);
       }
 
       try {
@@ -471,20 +483,25 @@ export async function processFullResponseActions(
         writtenFiles.push(filePath);
 
         // If server function (not shared), redeploy (skip if shared modules changed)
-        if (isServerFunction(filePath) && !sharedModulesChanged) {
-          try {
-            await deploySupabaseFunction({
-              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-              functionName: extractFunctionNameFromPath(filePath),
-              appPath,
-              organizationSlug:
-                chatWithApp.app.supabaseOrganizationSlug ?? null,
-            });
-          } catch (error) {
-            errors.push({
-              message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
-              error: error,
-            });
+        if (chatWithApp.app.supabaseProjectId && isServerFunction(filePath)) {
+          const functionName = extractFunctionNameFromPath(filePath);
+          if (!sharedModulesChanged) {
+            try {
+              await deploySupabaseFunction({
+                supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+                functionName,
+                appPath,
+                organizationSlug:
+                  chatWithApp.app.supabaseOrganizationSlug ?? null,
+              });
+            } catch (error) {
+              errors.push({
+                message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
+                error: error,
+              });
+            }
+          } else {
+            pendingFunctionDeploys.push(functionName);
           }
         }
       } catch (error) {
@@ -513,6 +530,11 @@ export async function processFullResponseActions(
 
         if (result.sharedModuleChanged) {
           sharedModulesChanged = true;
+          changedSharedModulePaths.push(tag.to);
+        }
+
+        if (result.skippedFunctionDeploy) {
+          pendingFunctionDeploys.push(result.skippedFunctionDeploy);
         }
 
         if (result.deployError) {
@@ -538,6 +560,7 @@ export async function processFullResponseActions(
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
         sharedModulesChanged = true;
+        changedSharedModulePaths.push(filePath);
       }
 
       // Ensure directory exists
@@ -552,39 +575,48 @@ export async function processFullResponseActions(
       if (
         chatWithApp.app.supabaseProjectId &&
         isServerFunction(filePath) &&
-        typeof content === "string" &&
-        !sharedModulesChanged
+        typeof content === "string"
       ) {
-        try {
-          await deploySupabaseFunction({
-            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: extractFunctionNameFromPath(filePath),
-            appPath,
-            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
-          });
-        } catch (error) {
-          errors.push({
-            message: `Failed to deploy Supabase function: ${filePath}`,
-            error: error,
-          });
+        const functionName = extractFunctionNameFromPath(filePath);
+        if (!sharedModulesChanged) {
+          try {
+            await deploySupabaseFunction({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+              functionName,
+              appPath,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
+            });
+          } catch (error) {
+            errors.push({
+              message: `Failed to deploy Supabase function: ${filePath}`,
+              error: error,
+            });
+          }
+        } else {
+          pendingFunctionDeploys.push(functionName);
         }
       }
     }
 
-    // If shared modules changed, redeploy all functions
-    if (sharedModulesChanged && chatWithApp.app.supabaseProjectId) {
+    // If shared modules changed, redeploy affected functions or safely fall back.
+    if (
+      chatWithApp.app.supabaseProjectId &&
+      (sharedModulesChanged || pendingFunctionDeploys.length > 0)
+    ) {
       try {
-        logger.info(
-          "Shared modules changed, redeploying all Supabase functions",
-        );
         const settings = readSettings();
-        const deployErrors = await deployAllSupabaseFunctions({
+        const deployErrors = await deployAffectedSupabaseFunctions({
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug:
             chatWithApp.app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+          sharedModulesChanged,
+          changedSharedModulePaths,
+          pendingFunctionDeploys,
         });
+
         if (deployErrors.length > 0) {
           for (const err of deployErrors) {
             errors.push({
@@ -597,7 +629,7 @@ export async function processFullResponseActions(
       } catch (error) {
         errors.push({
           message:
-            "Failed to redeploy all Supabase functions after shared module change",
+            "Failed to redeploy Supabase functions after shared module change",
           error: error,
         });
       }

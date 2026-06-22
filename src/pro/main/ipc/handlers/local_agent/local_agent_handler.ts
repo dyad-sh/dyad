@@ -641,6 +641,8 @@ export async function handleLocalAgentStream(
       frameworkType: detectFrameworkType(appPath),
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,

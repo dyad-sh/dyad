@@ -44,6 +44,11 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
 
     if (result.sharedModuleChanged) {
       ctx.isSharedModulesChanged = true;
+      ctx.sharedServerModulePaths.push(args.to);
+    }
+
+    if (result.skippedFunctionDeploy) {
+      ctx.pendingFunctionDeploys.push(result.skippedFunctionDeploy);
     }
 
     queueCloudSandboxSnapshotSync({

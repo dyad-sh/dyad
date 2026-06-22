@@ -1,16 +1,22 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  deployAffectedSupabaseFunctions,
   deployAllSupabaseFunctions,
+  deploySupabaseFunctions,
   type SupabaseDeployProgress,
 } from "@/supabase_admin/supabase_utils";
 import {
   bulkUpdateFunctions,
+  deleteSupabaseFunction,
   deploySupabaseFunction,
   listSupabaseFunctions,
 } from "@/supabase_admin/supabase_management_client";
+
+const require = createRequire(import.meta.url);
 
 vi.mock("@/supabase_admin/supabase_management_client", async () => {
   const actual = await vi.importActual<
@@ -20,6 +26,7 @@ vi.mock("@/supabase_admin/supabase_management_client", async () => {
   return {
     ...actual,
     bulkUpdateFunctions: vi.fn(),
+    deleteSupabaseFunction: vi.fn(),
     deploySupabaseFunction: vi.fn(),
     listSupabaseFunctions: vi.fn(),
   };
@@ -126,5 +133,233 @@ describe("deployAllSupabaseFunctions progress", () => {
       "finished",
     );
     expect(progressEvents.at(-1)?.phase).toBe("failed");
+  });
+
+  it("bundles and activates only the requested subset with subset progress totals", async () => {
+    const progressEvents: SupabaseDeployProgress[] = [];
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        functionNames: ["alpha"],
+        onProgress: (progress) => progressEvents.push(progress),
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "alpha",
+        bundleOnly: true,
+      }),
+    );
+    expect(bulkUpdateFunctions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functions: [expect.objectContaining({ slug: "alpha" })],
+      }),
+    );
+    expect(progressEvents.every((event) => event.total === 1)).toBe(true);
+    expect(progressEvents.at(-1)?.phase).toBe("finished");
+  });
+
+  it("prunes against the complete local function set during partial deploys", async () => {
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "alpha" },
+      { slug: "beta" },
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: "org",
+        skipPruneEdgeFunctions: false,
+        functionNames: ["alpha"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deleteSupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-fn",
+      organizationSlug: "org",
+    });
+  });
+
+  it("runs pruning without bundling when the requested subset is empty", async () => {
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "alpha" },
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: "org",
+        skipPruneEdgeFunctions: false,
+        functionNames: [],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).not.toHaveBeenCalled();
+    expect(bulkUpdateFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-fn",
+      organizationSlug: "org",
+    });
+  });
+
+  it("returns an error when a non-empty requested subset has no valid local functions", async () => {
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        functionNames: ["missing"],
+      }),
+    ).resolves.toEqual([
+      "Requested Supabase functions do not exist locally or are missing index.ts: missing",
+    ]);
+
+    expect(deploySupabaseFunction).not.toHaveBeenCalled();
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+  });
+
+  it("returns an error for missing requested functions while deploying valid requested functions", async () => {
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        functionNames: ["alpha", "missing"],
+      }),
+    ).resolves.toEqual([
+      "Requested Supabase functions do not exist locally or are missing index.ts: missing",
+    ]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "alpha",
+        bundleOnly: true,
+      }),
+    );
+    expect(bulkUpdateFunctions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functions: [expect.objectContaining({ slug: "alpha" })],
+      }),
+    );
+  });
+
+  it("does not prune during partial deploys when pruning is skipped", async () => {
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deploySupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        functionNames: ["alpha"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
+  it("deploys pending functions when no shared modules changed", async () => {
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: false,
+        changedSharedModulePaths: [],
+        pendingFunctionDeploys: ["beta", "beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(1);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "beta",
+        bundleOnly: true,
+      }),
+    );
+  });
+
+  it("falls back to all functions when shared paths are missing", async () => {
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: [],
+        pendingFunctionDeploys: ["beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(2);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "alpha" }),
+    );
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "beta" }),
+    );
+  });
+
+  it("deploys the union of shared-affected functions and pending functions", async () => {
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    await fs.mkdir(nodeModulesPath, { recursive: true });
+    await fs.symlink(
+      path.dirname(require.resolve("typescript/package.json")),
+      path.join(nodeModulesPath, "typescript"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await fs.mkdir(path.join(appPath, "supabase", "functions", "_shared"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(appPath, "supabase", "functions", "_shared", "foo.ts"),
+      "export const foo = 1;",
+    );
+    await fs.writeFile(
+      path.join(appPath, "supabase", "functions", "alpha", "index.ts"),
+      "import '../_shared/foo.ts';",
+    );
+
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: ["beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(2);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "alpha" }),
+    );
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "beta" }),
+    );
   });
 });

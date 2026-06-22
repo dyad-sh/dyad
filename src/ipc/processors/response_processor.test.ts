@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   readSettingsMock: vi.fn(),
   executeSupabaseSqlMock: vi.fn(),
   writeMigrationFileMock: vi.fn(),
+  deployAffectedSupabaseFunctionsMock: vi.fn(),
 }));
 
 const {
@@ -19,6 +20,7 @@ const {
   readSettingsMock,
   executeSupabaseSqlMock,
   writeMigrationFileMock,
+  deployAffectedSupabaseFunctionsMock,
 } = mocks;
 
 const dbUpdates: Array<Record<string, unknown>> = [];
@@ -82,6 +84,17 @@ vi.mock("../../supabase_admin/supabase_management_client", () => ({
   deploySupabaseFunction: vi.fn(),
 }));
 
+vi.mock("../../supabase_admin/supabase_utils", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../supabase_admin/supabase_utils")
+  >("../../supabase_admin/supabase_utils");
+
+  return {
+    ...actual,
+    deployAffectedSupabaseFunctions: mocks.deployAffectedSupabaseFunctionsMock,
+  };
+});
+
 vi.mock("../utils/file_utils", () => ({
   writeMigrationFile: mocks.writeMigrationFileMock,
 }));
@@ -113,6 +126,7 @@ describe("processFullResponseActions add dependency errors", () => {
     writeMigrationFileMock.mockResolvedValue(
       "supabase/migrations/0000_test.sql",
     );
+    deployAffectedSupabaseFunctionsMock.mockResolvedValue([]);
 
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({
       id: 1,
@@ -279,5 +293,85 @@ describe("processFullResponseActions add dependency errors", () => {
       changedPaths: ["src/file1.js"],
       deletedPaths: ["src/missing.js"],
     });
+  });
+
+  it("delegates shared-affected and skipped direct Supabase functions to the shared deploy helper", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: null,
+      },
+    } as any);
+
+    const result = await processFullResponseActions(
+      `
+      <dyad-write path="supabase/functions/_shared/foo.ts">export const foo = 1;</dyad-write>
+      <dyad-write path="supabase/functions/beta/index.ts">Deno.serve(() => new Response("ok"));</dyad-write>
+      `,
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(result).toMatchObject({ updatedFiles: true });
+    expect(deployAffectedSupabaseFunctionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appPath: "/mock/apps/test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: ["beta"],
+      }),
+    );
+  });
+
+  it("surfaces shared deploy helper errors", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    deployAffectedSupabaseFunctionsMock.mockResolvedValueOnce([
+      "Failed to bundle alpha",
+    ]);
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({
+      id: 1,
+      appId: 1,
+      app: {
+        id: 1,
+        path: "test-app",
+        supabaseProjectId: "supabase-project",
+        supabaseOrganizationSlug: "org",
+      },
+    } as any);
+
+    await processFullResponseActions(
+      '<dyad-write path="supabase/functions/_shared/foo.ts">export const foo = 1;</dyad-write>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    const contentUpdate = dbUpdates.find(
+      (update) =>
+        typeof update.content === "string" &&
+        update.content.includes("Failed to bundle alpha"),
+    );
+    expect(contentUpdate?.content).toContain(
+      'message="Failed to deploy Supabase function after shared module change"',
+    );
+    expect(contentUpdate?.content).toContain("Failed to bundle alpha");
+    expect(deployAffectedSupabaseFunctionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supabaseOrganizationSlug: "org",
+      }),
+    );
   });
 });

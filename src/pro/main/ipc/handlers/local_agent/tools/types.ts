@@ -58,6 +58,10 @@ export interface AgentContext {
   frameworkType: AppFrameworkType | null;
   messageId: number;
   isSharedModulesChanged: boolean;
+  /** Turn-scoped _shared paths changed under supabase/functions/_shared. */
+  sharedServerModulePaths: string[];
+  /** Function deploys skipped because a shared module had already changed. */
+  pendingFunctionDeploys: string[];
   chatSummary?: string;
   /** Turn-scoped todo list for agent task tracking */
   todos: Todo[];

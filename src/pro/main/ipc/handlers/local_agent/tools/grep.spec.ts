@@ -111,6 +111,8 @@ function deepHello() {
       frameworkType: null,
       messageId: 1,
       isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
       isDyadPro: false,
       todos: [],
       dyadRequestId: "test-request",

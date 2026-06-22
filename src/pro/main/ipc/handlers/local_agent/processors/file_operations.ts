@@ -9,7 +9,7 @@ import {
   getGitUncommittedFiles,
 } from "@/ipc/utils/git_utils";
 import {
-  deployAllSupabaseFunctions,
+  deployAffectedSupabaseFunctions,
   type SupabaseDeployProgress,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
@@ -66,23 +66,30 @@ export async function deployAllFunctionsIfNeeded(
     | "supabaseProjectId"
     | "supabaseOrganizationSlug"
     | "isSharedModulesChanged"
+    | "sharedServerModulePaths"
+    | "pendingFunctionDeploys"
     | "onXmlStream"
     | "onXmlComplete"
   >,
 ): Promise<FileOperationResult> {
-  if (!ctx.supabaseProjectId || !ctx.isSharedModulesChanged) {
+  if (
+    !ctx.supabaseProjectId ||
+    (!ctx.isSharedModulesChanged && ctx.pendingFunctionDeploys.length === 0)
+  ) {
     return { success: true };
   }
 
   try {
-    logger.info("Shared modules changed, redeploying all Supabase functions");
     const settings = readSettings();
-    const deployErrors = await deployAllSupabaseFunctions({
+    const deployErrors = await deployAffectedSupabaseFunctions({
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
-      onProgress: (progress) => {
+      sharedModulesChanged: ctx.isSharedModulesChanged,
+      changedSharedModulePaths: ctx.sharedServerModulePaths,
+      pendingFunctionDeploys: ctx.pendingFunctionDeploys,
+      onProgress: (progress: SupabaseDeployProgress) => {
         const statusXml = renderSupabaseDeployStatus(progress);
         if (progress.phase === "finished" || progress.phase === "failed") {
           ctx.onXmlComplete(statusXml);

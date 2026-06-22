@@ -6,6 +6,7 @@ import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
+  extractFunctionNameFromPath,
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
@@ -47,6 +48,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
     // Track if this is a shared module
     if (isSharedServerModule(args.path)) {
       ctx.isSharedModulesChanged = true;
+      ctx.sharedServerModulePaths.push(args.path);
     }
 
     await withLock(getFileWriteKey(fullFilePath), async () => {
@@ -64,20 +66,26 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
     });
 
     // Deploy Supabase function if applicable
-    if (
-      ctx.supabaseProjectId &&
-      isServerFunction(args.path) &&
-      !ctx.isSharedModulesChanged
-    ) {
+    if (ctx.supabaseProjectId && isServerFunction(args.path)) {
+      let functionName: string;
       try {
-        await deploySupabaseFunction({
-          supabaseProjectId: ctx.supabaseProjectId,
-          functionName: path.basename(path.dirname(args.path)),
-          appPath: ctx.appPath,
-          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-        });
-      } catch (error) {
-        return `File written, but failed to deploy Supabase function: ${error}`;
+        functionName = extractFunctionNameFromPath(args.path);
+      } catch {
+        return `Successfully wrote ${args.path}`;
+      }
+      if (!ctx.isSharedModulesChanged) {
+        try {
+          await deploySupabaseFunction({
+            supabaseProjectId: ctx.supabaseProjectId,
+            functionName,
+            appPath: ctx.appPath,
+            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          });
+        } catch (error) {
+          return `File written, but failed to deploy Supabase function: ${error}`;
+        }
+      } else {
+        ctx.pendingFunctionDeploys.push(functionName);
       }
     }
 

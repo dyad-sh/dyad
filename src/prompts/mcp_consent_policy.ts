@@ -18,8 +18,15 @@ Trust rules:
 
 Default to "ask". Choose "allow" only when the call clearly meets an allow rule. But do not ask reflexively: if it clearly meets an allow rule, allow it.
 
-Output strictly this JSON, nothing else. Write the reason first (one short sentence of intrinsic risk), then the decision:
+Output strictly this JSON, nothing else. Write the reason first, then the decision:
 {"reason": <one short sentence>, "decision": "allow" | "ask"}
+
+The reason is shown to the user, so make it one plain, concrete sentence that names the effect: why it is safe (allow) or what the risk is (ask). No jargon.
+Example reasons:
+- "Reads a project file; no outside effect." (allow)
+- "Creates a database you just asked for." (allow)
+- "Sends an email to an external address; can't be undone." (ask)
+- "Permanently deletes a record." (ask)
 `.trim();
 
 export const MCP_CONSENT_POLICY = `

@@ -149,6 +149,8 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 
 If `npm run build` / Electron Forge packaging fails with `Failed to locate module "<package>"` but `package.json` and `package-lock.json` already declare that package, run `npm install` to restore `node_modules` before debugging app code.
 
+If a targeted E2E fails before launch with `ENOENT: no such file or directory, scandir '<repo>/out'`, verify `ls out` immediately after `npm run build`. If Forge logs end around `Finalizing package` and `electron-forge:plugin:vite handling process exit` but no `out/` directory exists, treat it as a packaging-environment issue and do not debug the spec assertions yet.
+
 ## Common flaky test patterns and fixes
 
 - **After `po.importApp(...)`**: Some imports trigger an initial assistant turn (for example `minimal` generating `AI_RULES.md`) that can leave a visible `Retry` button in the chat. If the test is about a later prompt, first wait for that import-time turn to finish, then start a new chat before calling `sendPrompt()`, or helper methods that wait on `Retry` visibility may return too early.

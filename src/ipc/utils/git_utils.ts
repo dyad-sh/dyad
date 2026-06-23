@@ -13,6 +13,7 @@ import { platform } from "node:os";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
+import { ensureLibcurlShim } from "./linux_libcurl_shim";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
@@ -108,7 +109,27 @@ async function execGit(
     return exec(args, path, execOptions);
   }
 
-  // On non-Windows, pass options through unchanged
+  // On Linux, the bundled git http helpers are linked against
+  // libcurl-gnutls.so.4, which RHEL-based distros don't ship. When needed,
+  // prepend a shim directory to LD_LIBRARY_PATH that exposes the system
+  // libcurl under that soname. No-op (returns undefined) on distros that
+  // already have libcurl-gnutls.so.4.
+  const shimDir = ensureLibcurlShim();
+  if (shimDir) {
+    const existingLdPath =
+      options?.env?.LD_LIBRARY_PATH ?? process.env.LD_LIBRARY_PATH;
+    const ldLibraryPath = [shimDir, existingLdPath].filter(Boolean).join(":");
+    return exec(args, path, {
+      ...options,
+      env: {
+        ...process.env,
+        ...options?.env,
+        LD_LIBRARY_PATH: ldLibraryPath,
+      },
+    });
+  }
+
+  // On non-Windows without a shim, pass options through unchanged
   return exec(args, path, options);
 }
 import type {

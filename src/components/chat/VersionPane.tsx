@@ -2,7 +2,7 @@ import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
-import { RotateCcw, X, Database, Loader2, Search } from "lucide-react";
+import { RotateCcw, X, Database, Loader2, Search, Star } from "lucide-react";
 import type { Version } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -54,6 +55,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     refreshVersions,
     revertVersion,
     isRevertingVersion,
+    setVersionFavorite,
+    setVersionNote,
   } = useVersions(appId);
 
   const [selectedVersionId, setSelectedVersionId] = useAtom(
@@ -63,7 +66,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const wasVisibleRef = useRef(false);
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const noteSaveTimeoutsRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -83,16 +90,17 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       // When pane becomes visible after being closed
       if (isVisible && !wasVisibleRef.current) {
         if (appId) {
-          await refreshVersions();
-          setCachedVersions(liveVersions);
+          const result = await refreshVersions();
+          setCachedVersions(result.data ?? liveVersions);
         }
       }
 
       // Reset when closing
-      if (!isVisible && selectedVersionId) {
-        setSelectedVersionId(null);
+      if (!isVisible && wasVisibleRef.current) {
         setSearchQuery("");
-        if (appId) {
+        setShowFavoritesOnly(false);
+        if (selectedVersionId && appId) {
+          setSelectedVersionId(null);
           await checkoutVersion({ appId, versionId: "main" });
           if (app?.neonProjectId) {
             await restartApp();
@@ -108,10 +116,21 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     selectedVersionId,
     setSelectedVersionId,
     appId,
+    app?.neonProjectId,
     checkoutVersion,
     refreshVersions,
     liveVersions,
+    restartApp,
   ]);
+
+  useEffect(() => {
+    return () => {
+      for (const timeout of noteSaveTimeoutsRef.current.values()) {
+        clearTimeout(timeout);
+      }
+      noteSaveTimeoutsRef.current.clear();
+    };
+  }, []);
 
   // Initial load of cached versions when live versions become available
   useEffect(() => {
@@ -142,17 +161,70 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
 
+  const favoriteFilteredVersions = showFavoritesOnly
+    ? versions.filter((version) => version.isFavorite)
+    : versions;
+
   const filteredVersions = searchQuery.trim()
-    ? versions.filter((v, index) => {
+    ? favoriteFilteredVersions.filter((v) => {
         const query = searchQuery.toLowerCase();
-        const versionNumber = String(versions.length - index);
+        const versionNumber = String(versions.length - versions.indexOf(v));
         return (
           v.oid.toLowerCase().includes(query) ||
           (v.message && v.message.toLowerCase().includes(query)) ||
+          (v.note && v.note.toLowerCase().includes(query)) ||
           versionNumber.includes(query)
         );
       })
-    : versions;
+    : favoriteFilteredVersions;
+
+  const updateCachedVersion = (
+    versionId: string,
+    updates: Partial<Pick<Version, "isFavorite" | "note">>,
+  ) => {
+    setCachedVersions((prevVersions) => {
+      const sourceVersions =
+        prevVersions.length > 0 ? prevVersions : liveVersions;
+      return sourceVersions.map((version) =>
+        version.oid === versionId ? { ...version, ...updates } : version,
+      );
+    });
+  };
+
+  const saveVersionNote = (versionId: string, note: string | null) => {
+    void setVersionNote({ versionId, note })
+      .then((result) => {
+        updateCachedVersion(result.oid, {
+          isFavorite: result.isFavorite,
+          note: result.note,
+        });
+      })
+      .catch(async () => {
+        const result = await refreshVersions();
+        setCachedVersions(result.data ?? liveVersions);
+      });
+  };
+
+  const queueVersionNoteSave = (versionId: string, note: string | null) => {
+    const existingTimeout = noteSaveTimeoutsRef.current.get(versionId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+    const timeout = setTimeout(() => {
+      noteSaveTimeoutsRef.current.delete(versionId);
+      saveVersionNote(versionId, note);
+    }, 600);
+    noteSaveTimeoutsRef.current.set(versionId, timeout);
+  };
+
+  const flushVersionNoteSave = (versionId: string, note: string | null) => {
+    const existingTimeout = noteSaveTimeoutsRef.current.get(versionId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      noteSaveTimeoutsRef.current.delete(versionId);
+      saveVersionNote(versionId, note);
+    }
+  };
 
   return (
     <div className="h-full border-t border-2 border-border w-full flex flex-col">
@@ -169,29 +241,56 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         </div>
       </div>
       <div className="px-3 py-2 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search versions..."
-            aria-label="Search versions"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-md border border-input bg-transparent pl-8 pr-8 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery("");
-                searchInputRef.current?.focus();
-              }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search versions..."
+              aria-label="Search versions"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-input bg-transparent pl-8 pr-8 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  searchInputRef.current?.focus();
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label={
+              showFavoritesOnly
+                ? "Show all versions"
+                : "Show favorite versions only"
+            }
+            aria-pressed={showFavoritesOnly}
+            title={
+              showFavoritesOnly
+                ? "Show all versions"
+                : "Show favorite versions only"
+            }
+            onClick={() => setShowFavoritesOnly((value) => !value)}
+            className={cn(
+              "h-8 w-8 inline-flex items-center justify-center rounded-md border border-input transition-colors",
+              showFavoritesOnly
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent",
+            )}
+          >
+            <Star
+              className={cn("h-3.5 w-3.5", showFavoritesOnly && "fill-current")}
+            />
+          </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
@@ -199,16 +298,19 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
           <div className="p-4">No versions available</div>
         ) : filteredVersions.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground">
-            No matching versions
+            {showFavoritesOnly && !searchQuery.trim()
+              ? "No favorite versions"
+              : "No matching versions"}
           </div>
         ) : (
           <div className="divide-y divide-border">
             {filteredVersions.map((version: Version) => {
               const thumbnailUrl = screenshotByHash.get(version.oid);
+              const versionNumber = versions.length - versions.indexOf(version);
               return (
                 <div
                   key={version.oid}
-                  data-testid="version-list-item"
+                  data-testid={`version-row-${versionNumber}`}
                   className={cn(
                     "px-4 py-2 hover:bg-(--background-lightest) cursor-pointer flex gap-3",
                     selectedVersionId === version.oid &&
@@ -224,6 +326,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                   }}
                 >
                   <div
+                    data-testid="version-list-item"
                     className="flex-shrink-0 w-16 h-10 rounded border border-border bg-muted overflow-hidden flex items-center justify-center"
                     aria-hidden="true"
                   >
@@ -243,12 +346,58 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          data-testid={`version-favorite-button-${versionNumber}`}
+                          aria-label={
+                            version.isFavorite
+                              ? "Remove version from favorites"
+                              : "Favorite version"
+                          }
+                          title={
+                            version.isFavorite
+                              ? "Remove version from favorites"
+                              : "Favorite version"
+                          }
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const nextIsFavorite = !version.isFavorite;
+                            updateCachedVersion(version.oid, {
+                              isFavorite: nextIsFavorite,
+                            });
+                            try {
+                              const result = await setVersionFavorite({
+                                versionId: version.oid,
+                                isFavorite: nextIsFavorite,
+                              });
+                              updateCachedVersion(result.oid, {
+                                isFavorite: result.isFavorite,
+                                note: result.note,
+                              });
+                            } catch {
+                              updateCachedVersion(version.oid, {
+                                isFavorite: version.isFavorite,
+                              });
+                            }
+                          }}
+                          className={cn(
+                            "rounded-sm p-0.5 transition-colors",
+                            version.isFavorite
+                              ? "text-[#6c55dc]"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <Star
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              version.isFavorite && "fill-[#6c55dc]",
+                            )}
+                          />
+                        </button>
                         <span className="font-medium text-xs">
                           Version{" "}
                           <HighlightMatch
-                            text={String(
-                              versions.length - versions.indexOf(version),
-                            )}
+                            text={String(versionNumber)}
                             query={searchQuery.trim()}
                           />{" "}
                           (
@@ -311,33 +460,52 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      {version.message && (
-                        <p className="mt-1 text-sm">
-                          <HighlightMatch
-                            text={
-                              version.message.startsWith(
-                                "Reverted all changes back to version ",
-                              )
-                                ? version.message.replace(
-                                    /Reverted all changes back to version ([a-f0-9]+)/,
-                                    (_, hash) => {
-                                      const targetIndex = versions.findIndex(
-                                        (v) => v.oid === hash,
-                                      );
-                                      return targetIndex !== -1
-                                        ? `Reverted all changes back to version ${
-                                            versions.length - targetIndex
-                                          }`
-                                        : version.message;
-                                    },
-                                  )
-                                : version.message
-                            }
-                            query={searchQuery.trim()}
-                          />
-                        </p>
-                      )}
+                    <div className="mt-1 flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        {version.message && (
+                          <p className="text-sm">
+                            <HighlightMatch
+                              text={
+                                version.message.startsWith(
+                                  "Reverted all changes back to version ",
+                                )
+                                  ? version.message.replace(
+                                      /Reverted all changes back to version ([a-f0-9]+)/,
+                                      (_, hash) => {
+                                        const targetIndex = versions.findIndex(
+                                          (v) => v.oid === hash,
+                                        );
+                                        return targetIndex !== -1
+                                          ? `Reverted all changes back to version ${
+                                              versions.length - targetIndex
+                                            }`
+                                          : version.message;
+                                      },
+                                    )
+                                  : version.message
+                              }
+                              query={searchQuery.trim()}
+                            />
+                          </p>
+                        )}
+
+                        <Textarea
+                          value={version.note ?? ""}
+                          placeholder="Add note..."
+                          aria-label={`Note for version ${versionNumber}`}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const note = e.target.value;
+                            updateCachedVersion(version.oid, { note });
+                            queueVersionNoteSave(version.oid, note);
+                          }}
+                          onBlur={(e) =>
+                            flushVersionNoteSave(version.oid, e.target.value)
+                          }
+                          className="mt-2 min-h-8 resize-none px-2 py-1 text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0"
+                        />
+                      </div>
 
                       <div className="flex items-center gap-1">
                         {/* Restore button */}

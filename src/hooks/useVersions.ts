@@ -89,6 +89,115 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
+  const setVersionFavoriteMutation = useMutation<
+    { oid: string; isFavorite: boolean; note: string | null },
+    Error,
+    { versionId: string; isFavorite: boolean },
+    { previousVersions?: Version[] }
+  >({
+    mutationFn: async ({ versionId, isFavorite }) => {
+      if (appId === null) {
+        throw new DyadError("App ID is null", DyadErrorKind.External);
+      }
+      return ipc.version.setVersionFavorite({
+        appId,
+        versionId,
+        isFavorite,
+      });
+    },
+    onMutate: async ({ versionId, isFavorite }) => {
+      const queryKey = queryKeys.versions.list({ appId });
+      await queryClient.cancelQueries({ queryKey });
+      const previousVersions = queryClient.getQueryData<Version[]>(queryKey);
+      queryClient.setQueryData<Version[]>(queryKey, (oldVersions) =>
+        oldVersions?.map((version) =>
+          version.oid === versionId ? { ...version, isFavorite } : version,
+        ),
+      );
+      return { previousVersions };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousVersions) {
+        queryClient.setQueryData(
+          queryKeys.versions.list({ appId }),
+          context.previousVersions,
+        );
+      }
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<Version[]>(
+        queryKeys.versions.list({ appId }),
+        (oldVersions) =>
+          oldVersions?.map((version) =>
+            version.oid === result.oid
+              ? {
+                  ...version,
+                  isFavorite: result.isFavorite,
+                  note: result.note,
+                }
+              : version,
+          ),
+      );
+    },
+    meta: { showErrorToast: true },
+  });
+
+  const setVersionNoteMutation = useMutation<
+    { oid: string; isFavorite: boolean; note: string | null },
+    Error,
+    { versionId: string; note: string | null },
+    { previousVersions?: Version[] }
+  >({
+    mutationFn: async ({ versionId, note }) => {
+      if (appId === null) {
+        throw new DyadError("App ID is null", DyadErrorKind.External);
+      }
+      return ipc.version.setVersionNote({
+        appId,
+        versionId,
+        note,
+      });
+    },
+    onMutate: async ({ versionId, note }) => {
+      const queryKey = queryKeys.versions.list({ appId });
+      await queryClient.cancelQueries({ queryKey });
+      const previousVersions = queryClient.getQueryData<Version[]>(queryKey);
+      const normalizedNote = note?.trim() || null;
+      queryClient.setQueryData<Version[]>(queryKey, (oldVersions) =>
+        oldVersions?.map((version) =>
+          version.oid === versionId
+            ? { ...version, note: normalizedNote }
+            : version,
+        ),
+      );
+      return { previousVersions };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousVersions) {
+        queryClient.setQueryData(
+          queryKeys.versions.list({ appId }),
+          context.previousVersions,
+        );
+      }
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<Version[]>(
+        queryKeys.versions.list({ appId }),
+        (oldVersions) =>
+          oldVersions?.map((version) =>
+            version.oid === result.oid
+              ? {
+                  ...version,
+                  isFavorite: result.isFavorite,
+                  note: result.note,
+                }
+              : version,
+          ),
+      );
+    },
+    meta: { showErrorToast: true },
+  });
+
   return {
     versions: versions || [],
     loading,
@@ -96,5 +205,9 @@ export function useVersions(appId: number | null) {
     refreshVersions,
     revertVersion: revertVersionMutation.mutateAsync,
     isRevertingVersion: revertVersionMutation.isPending,
+    setVersionFavorite: setVersionFavoriteMutation.mutateAsync,
+    isSettingVersionFavorite: setVersionFavoriteMutation.isPending,
+    setVersionNote: setVersionNoteMutation.mutateAsync,
+    isSettingVersionNote: setVersionNoteMutation.isPending,
   };
 }

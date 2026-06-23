@@ -10,6 +10,8 @@ export const VersionSchema = z.object({
   message: z.string(),
   timestamp: z.number(),
   dbTimestamp: z.string().nullable().optional(),
+  isFavorite: z.boolean(),
+  note: z.string().nullable(),
 });
 
 export type Version = z.infer<typeof VersionSchema>;
@@ -80,6 +82,24 @@ export type CheckoutVersionResponse = z.infer<
   typeof CheckoutVersionResponseSchema
 >;
 
+export const SetVersionFavoriteParamsSchema = z.object({
+  appId: z.number(),
+  versionId: z.string(),
+  isFavorite: z.boolean(),
+});
+
+export const SetVersionNoteParamsSchema = z.object({
+  appId: z.number(),
+  versionId: z.string(),
+  note: z.string().nullable(),
+});
+
+export const VersionMetadataResultSchema = z.object({
+  oid: z.string(),
+  isFavorite: z.boolean(),
+  note: z.string().nullable(),
+});
+
 // =============================================================================
 // Version Contracts
 // =============================================================================
@@ -107,6 +127,18 @@ export const versionContracts = {
     channel: "get-version-changes",
     input: GetVersionChangesParamsSchema,
     output: z.array(VersionChangedFileSchema),
+  }),
+
+  setVersionFavorite: defineContract({
+    channel: "set-version-favorite",
+    input: SetVersionFavoriteParamsSchema,
+    output: VersionMetadataResultSchema,
+  }),
+
+  setVersionNote: defineContract({
+    channel: "set-version-note",
+    input: SetVersionNoteParamsSchema,
+    output: VersionMetadataResultSchema,
   }),
 
   getCurrentBranch: defineContract({

@@ -100,6 +100,105 @@ async function syncCloudSandboxSnapshotBestEffort(appId: number) {
   }
 }
 
+function normalizeVersionNote(note: string | null): string | null {
+  const trimmed = note?.trim();
+  return trimmed ? trimmed : null;
+}
+
+async function getVersionAppPath(appId: number): Promise<string> {
+  const app = await db.query.apps.findFirst({
+    where: eq(apps.id, appId),
+  });
+
+  if (!app) {
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
+  }
+
+  const appPath = getDyadAppPath(app.path);
+  if (!fs.existsSync(path.join(appPath, ".git"))) {
+    throw new DyadError("Not a git repository", DyadErrorKind.External);
+  }
+
+  return appPath;
+}
+
+async function assertVersionExists({
+  appPath,
+  versionId,
+}: {
+  appPath: string;
+  versionId: string;
+}) {
+  const commits = await gitLog({
+    path: appPath,
+    depth: 100_000,
+  });
+  if (!commits.some((commit) => commit.oid === versionId)) {
+    throw new DyadError("Version not found", DyadErrorKind.NotFound);
+  }
+}
+
+async function upsertVersionMetadata({
+  appId,
+  versionId,
+  isFavorite,
+  note,
+}: {
+  appId: number;
+  versionId: string;
+  isFavorite?: boolean;
+  note?: string | null;
+}) {
+  const appPath = await getVersionAppPath(appId);
+  await assertVersionExists({ appPath, versionId });
+
+  const normalizedNote =
+    note === undefined ? undefined : normalizeVersionNote(note);
+  const existingVersion = await db.query.versions.findFirst({
+    where: and(eq(versions.appId, appId), eq(versions.commitHash, versionId)),
+  });
+
+  if (existingVersion) {
+    const [updatedVersion] = await db
+      .update(versions)
+      .set({
+        ...(isFavorite === undefined ? {} : { isFavorite }),
+        ...(normalizedNote === undefined ? {} : { note: normalizedNote }),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(versions.appId, appId), eq(versions.commitHash, versionId)))
+      .returning({
+        isFavorite: versions.isFavorite,
+        note: versions.note,
+      });
+
+    return {
+      oid: versionId,
+      isFavorite: updatedVersion.isFavorite,
+      note: updatedVersion.note,
+    };
+  }
+
+  const [createdVersion] = await db
+    .insert(versions)
+    .values({
+      appId,
+      commitHash: versionId,
+      isFavorite: isFavorite ?? false,
+      note: normalizedNote ?? null,
+    })
+    .returning({
+      isFavorite: versions.isFavorite,
+      note: versions.note,
+    });
+
+  return {
+    oid: versionId,
+    isFavorite: createdVersion.isFavorite,
+    note: createdVersion.note,
+  };
+}
+
 async function restoreBranchForPreview({
   appId,
   dbTimestamp,
@@ -148,32 +247,53 @@ export function registerVersionHandlers() {
       depth: 100_000, // KEEP UP TO DATE WITH ChatHeader.tsx
     });
 
-    // Get all snapshots for this app to match with commits
-    const appSnapshots = await db.query.versions.findMany({
+    // Get all stored version metadata for this app to match with commits.
+    const appVersionMetadata = await db.query.versions.findMany({
       where: eq(versions.appId, appId),
     });
 
-    // Create a map of commitHash -> snapshot info for quick lookup
-    const snapshotMap = new Map<
+    // Create a map of commitHash -> version metadata for quick lookup.
+    const metadataMap = new Map<
       string,
-      { neonDbTimestamp: string | null; createdAt: Date }
+      {
+        neonDbTimestamp: string | null;
+        isFavorite: boolean;
+        note: string | null;
+      }
     >();
-    for (const snapshot of appSnapshots) {
-      snapshotMap.set(snapshot.commitHash, {
-        neonDbTimestamp: snapshot.neonDbTimestamp,
-        createdAt: snapshot.createdAt,
+    for (const metadata of appVersionMetadata) {
+      metadataMap.set(metadata.commitHash, {
+        neonDbTimestamp: metadata.neonDbTimestamp,
+        isFavorite: metadata.isFavorite,
+        note: metadata.note,
       });
     }
 
     return commits.map((commit: GitCommit) => {
-      const snapshotInfo = snapshotMap.get(commit.oid);
+      const metadata = metadataMap.get(commit.oid);
       return {
         oid: commit.oid,
         message: commit.commit.message,
         timestamp: commit.commit.author.timestamp,
-        dbTimestamp: snapshotInfo?.neonDbTimestamp,
+        dbTimestamp: metadata?.neonDbTimestamp,
+        isFavorite: metadata?.isFavorite ?? false,
+        note: metadata?.note ?? null,
       };
     });
+  });
+
+  createTypedHandler(versionContracts.setVersionFavorite, async (_, params) => {
+    const { appId, versionId, isFavorite } = params;
+    return withLock(appId, async () =>
+      upsertVersionMetadata({ appId, versionId, isFavorite }),
+    );
+  });
+
+  createTypedHandler(versionContracts.setVersionNote, async (_, params) => {
+    const { appId, versionId, note } = params;
+    return withLock(appId, async () =>
+      upsertVersionMetadata({ appId, versionId, note }),
+    );
   });
 
   createTypedHandler(versionContracts.getCurrentBranch, async (_, params) => {

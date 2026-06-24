@@ -54,6 +54,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     refreshVersions,
     revertVersion,
     isRevertingVersion,
+    isAnyVersionMutationPending,
   } = useVersions(appId);
 
   const [selectedVersionId, setSelectedVersionId] = useAtom(
@@ -354,11 +355,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                               await restartApp();
                             }
                           }}
-                          disabled={isRevertingVersion}
+                          disabled={isAnyVersionMutationPending}
                           className={cn(
                             "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
                             selectedVersionId === version.oid && "visible",
-                            isRevertingVersion &&
+                            isAnyVersionMutationPending &&
                               "opacity-50 cursor-not-allowed",
                           )}
                           aria-label="Restore to this version"

@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=create-multiple-errors
 - paragraph: I will intentionally add multiple errors to test the Fix All Errors button
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add first error"'
@@ -9,6 +10,7 @@
 - button "Fix All Errors (3)"
 - button "Copy"
 - text: "[[Version 2: files changed]]"
+- button "Restore to this point"
 - paragraph: "Fix all of the following errors:"
 - list:
   - listitem: First error in Index

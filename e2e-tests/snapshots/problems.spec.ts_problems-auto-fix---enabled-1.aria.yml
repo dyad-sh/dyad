@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=create-ts-errors
 - paragraph: This will get a TypeScript error.
 - 'button "bad-file.ts src/bad-file.ts Edit Summary: This will get a TypeScript error."'

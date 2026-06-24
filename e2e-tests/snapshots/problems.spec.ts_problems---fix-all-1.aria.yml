@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=create-ts-errors
 - paragraph: This will get a TypeScript error.
 - 'button "bad-file.ts src/bad-file.ts Edit Summary: This will get a TypeScript error."'
@@ -11,6 +12,7 @@
 - paragraph: More EOM
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy"
+- button "Restore to this point"
 - paragraph: "Fix these 3 TypeScript compile-time errors:"
 - list:
   - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)

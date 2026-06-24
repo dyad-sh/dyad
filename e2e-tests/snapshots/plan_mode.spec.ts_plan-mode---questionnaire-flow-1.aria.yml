@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=local-agent/questionnaire
 - paragraph: Let me ask you a few questions to understand your requirements.
 - text: Questionnaire Responses 1 answered

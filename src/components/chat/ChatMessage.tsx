@@ -1,4 +1,4 @@
-import type { Message } from "@/ipc/types";
+import { ipc, type Message } from "@/ipc/types";
 import {
   DyadMarkdownParser,
   VanillaMarkdownParser,
@@ -16,9 +16,13 @@ import {
   Info,
   Bot,
   Ban,
+  Undo2,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
+import { useSelectChat } from "@/hooks/useSelectChat";
+import { showError } from "@/lib/toast";
 import { useAtomValue } from "jotai";
 import { selectAtom } from "jotai/utils";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -33,6 +37,16 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { unescapeXmlAttr } from "../../../shared/xmlEscape";
 import {
   isCancelledResponseContent,
@@ -96,7 +110,13 @@ const ChatMessage = ({
 }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions: liveVersions } = useVersions(appId);
+  const {
+    versions: liveVersions,
+    restoreToMessage,
+    isRestoringToMessage,
+    isAnyVersionMutationPending,
+  } = useVersions(appId);
+  const { selectChat } = useSelectChat();
   const assistantTextContent =
     message.role === "assistant"
       ? stripCancelledResponseNotice(message.content)
@@ -114,6 +134,7 @@ const ChatMessage = ({
     [selectedChatId],
   );
   const hasPreviewForChat = useAtomValue(hasPreviewForChatAtom);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const hasStreamingPreview =
     message.role === "assistant" &&
     isLastMessage &&
@@ -189,6 +210,36 @@ const ChatMessage = ({
   const attachmentSize: AttachmentSize =
     attachments.length === 1 ? "lg" : attachments.length <= 3 ? "md" : "sm";
 
+  // Exclude cancelled prompts: they render greyed out with a "Cancelled" label,
+  // and showing an undo arrow on a turn that never completed (and may have left
+  // partial file changes) is confusing.
+  const showRestoreButton =
+    message.role === "user" && hasUserText && !isCancelled;
+
+  const handleRestoreToMessage = async () => {
+    if (appId == null || selectedChatId == null) {
+      return;
+    }
+    setShowRestoreConfirm(false);
+    try {
+      if (isStreaming) {
+        await ipc.chat.cancelStream(selectedChatId);
+      }
+      const result = await restoreToMessage({
+        chatId: selectedChatId,
+        messageId: message.id,
+      });
+      // A `newChatId` is only returned when a new chat was actually created. If
+      // no version could be determined, we stay on the current chat (the user
+      // still sees the warning toast).
+      if ("newChatId" in result) {
+        selectChat({ chatId: result.newChatId, appId });
+      }
+    } catch (error) {
+      showError(error);
+    }
+  };
+
   return (
     <div
       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
@@ -200,9 +251,65 @@ const ChatMessage = ({
         {(message.role === "assistant" || hasUserText) && (
           <div
             className={`rounded-lg p-2 ${
-              message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
+              message.role === "assistant"
+                ? ""
+                : "relative ml-24 bg-(--sidebar-accent)"
             }`}
           >
+            {showRestoreButton && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        data-testid="restore-to-message-button"
+                        onClick={() => setShowRestoreConfirm(true)}
+                        disabled={isAnyVersionMutationPending}
+                        aria-label="Restore to this point"
+                        className={`absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200 ${
+                          isRestoringToMessage ? "opacity-100" : ""
+                        }`}
+                      />
+                    }
+                  >
+                    {isRestoringToMessage ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Undo2 className="h-3.5 w-3.5" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Restore to before this message in a new chat
+                  </TooltipContent>
+                </Tooltip>
+                <AlertDialog
+                  open={showRestoreConfirm}
+                  onOpenChange={setShowRestoreConfirm}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Restore to this point?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {isStreaming
+                          ? "This will stop the current response, then restore your app and chat to the state before this message in a new chat. Your current chat will not be changed."
+                          : "This will restore your app and chat to the state before this message in a new chat. Your current chat will not be changed."}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        data-testid="confirm-restore-to-message-button"
+                        onClick={handleRestoreToMessage}
+                      >
+                        Restore
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
             {message.role === "assistant" &&
             !hasAssistantText &&
             isStreaming &&

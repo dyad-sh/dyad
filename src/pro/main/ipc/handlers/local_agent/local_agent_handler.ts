@@ -724,6 +724,10 @@ export async function handleLocalAgentStream(
       mcpInSandboxEnabled &&
       !!settings.enableMcpToolSearch &&
       agentTools.search_mcp_tools != undefined;
+    // get_mcp_tool_schema can be filtered out by tool permissions even while
+    // search mode is on, so the description must only advertise it when it's
+    // actually registered this turn.
+    const hasGetSchemaTool = agentTools.get_mcp_tool_schema != undefined;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
@@ -736,6 +740,7 @@ export async function handleLocalAgentStream(
       agentTools.execute_sandbox_script.description =
         await buildExecuteSandboxScriptDescription([], {
           useSearch: useMcpToolSearch,
+          hasGetSchemaTool,
         });
       if (mcpInSandboxEnabled) {
         try {
@@ -748,6 +753,7 @@ export async function handleLocalAgentStream(
           agentTools.execute_sandbox_script.description =
             await buildExecuteSandboxScriptDescription(defs, {
               useSearch: useMcpToolSearch,
+              hasGetSchemaTool,
             });
         } catch (e) {
           logger.warn(

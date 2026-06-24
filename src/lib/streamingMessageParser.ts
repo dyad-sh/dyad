@@ -52,6 +52,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-mcp-tool-call",
   "dyad-mcp-tool-result",
   "dyad-mcp-tool-search",
+  "dyad-mcp-tool-schema",
   "dyad-list-files",
   "dyad-database-schema",
   "dyad-db-table-schema",

@@ -249,3 +249,73 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
 
   return sections.join("\n");
 }
+
+/**
+ * Build a names-only inventory of every MCP tool, grouped by server. Injected
+ * into the search-mode `execute_sandbox_script` description so the model sees
+ * which tools exist without paying for their descriptions or schemas. The
+ * model then pulls a tool's full signature with `get_mcp_tool_schema` (or
+ * finds one via `search_mcp_tools`). Names are the sandbox `jsName` (what the
+ * model actually calls). Returns "" when `defs` is empty.
+ */
+export function buildMcpToolNameInventory(defs: McpToolDef[]): string {
+  if (defs.length === 0) {
+    return "";
+  }
+
+  const byServer = new Map<string, McpToolDef[]>();
+  for (const d of defs) {
+    const list = byServer.get(d.serverName) ?? [];
+    list.push(d);
+    byServer.set(d.serverName, list);
+  }
+
+  const sections: string[] = [];
+  for (const [serverName, list] of byServer) {
+    sections.push(`// ${serverName}`);
+    for (const def of list) {
+      sections.push(`- ${def.jsName}`);
+    }
+  }
+
+  return sections.join("\n");
+}
+
+/**
+ * Resolve caller-supplied tool names to defs. Accepts either the sandbox
+ * `jsName` (unique, what the inventory lists) or the raw MCP `toolName` (not
+ * unique: two servers can expose the same `toolName`). A jsName resolves to
+ * exactly one def; a raw toolName resolves to every def that shares it, so an
+ * ambiguous name returns all candidates rather than silently picking one.
+ * Names matching nothing land in `missing`. Order follows the requested names;
+ * duplicate defs are collapsed by jsName.
+ */
+export function resolveMcpToolDefs(
+  defs: McpToolDef[],
+  names: string[],
+): { found: McpToolDef[]; missing: string[] } {
+  const byJsName = new Map(defs.map((d) => [d.jsName, d]));
+  const byToolName = new Map<string, McpToolDef[]>();
+  for (const d of defs) {
+    const list = byToolName.get(d.toolName) ?? [];
+    list.push(d);
+    byToolName.set(d.toolName, list);
+  }
+  const found: McpToolDef[] = [];
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const name of names) {
+    const jsMatch = byJsName.get(name);
+    const matches = jsMatch ? [jsMatch] : (byToolName.get(name) ?? []);
+    if (matches.length === 0) {
+      missing.push(name);
+      continue;
+    }
+    for (const def of matches) {
+      if (seen.has(def.jsName)) continue;
+      seen.add(def.jsName);
+      found.push(def);
+    }
+  }
+  return { found, missing };
+}

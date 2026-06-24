@@ -200,7 +200,7 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
     };
   }
 
-  it("lists connected servers with tool counts instead of inlining signatures", async () => {
+  it("lists tool names grouped by server, without inlining signatures", async () => {
     const desc = await buildExecuteSandboxScriptDescription(
       [
         def("Sentry", "get_issue"),
@@ -210,12 +210,28 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
       { useSearch: true },
     );
 
-    expect(desc).toContain("Connected MCP servers:");
-    expect(desc).toContain("Sentry (2 tools)");
-    expect(desc).toContain("Linear (1 tool)");
+    // Names are listed up front so the model sees what exists.
+    expect(desc).toContain("Sentry__get_issue");
+    expect(desc).toContain("Sentry__list_issues");
+    expect(desc).toContain("Linear__create_issue");
+    // Both discovery tools are referenced.
+    expect(desc).toContain("get_mcp_tool_schema");
     expect(desc).toContain("search_mcp_tools");
     // Search mode must NOT inline the per-tool MCP signatures (the whole
-    // point of search is to keep them out of context).
-    expect(desc).not.toContain("Sentry__get_issue");
+    // point is to keep schemas out of context until requested).
+    expect(desc).not.toContain("declare function Sentry__get_issue");
+  });
+
+  it("omits get_mcp_tool_schema wording when that tool is not registered", async () => {
+    const desc = await buildExecuteSandboxScriptDescription(
+      [def("Sentry", "get_issue"), def("Linear", "create_issue")],
+      { useSearch: true, hasGetSchemaTool: false },
+    );
+
+    // Names are still listed, and search is still offered.
+    expect(desc).toContain("Sentry__get_issue");
+    expect(desc).toContain("search_mcp_tools");
+    // But the model must not be told to call the filtered-out tool.
+    expect(desc).not.toContain("get_mcp_tool_schema");
   });
 });

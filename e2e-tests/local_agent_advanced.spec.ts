@@ -139,6 +139,59 @@ testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
   await expect(po.page.getByText("add numbers").first()).toBeVisible();
 
   await po.snapshotMessages();
+
+  // Capture the request payload so the search-mode prompt (tool name inventory
+  // + get_mcp_tool_schema / search_mcp_tools wording) is covered, not just the
+  // rendered card.
+  await po.sendPrompt("[dump] add two numbers");
+  await po.snapshotServerDump("request");
+});
+
+/**
+ * Test for get_mcp_tool_schema: in search mode the model sees tools listed by
+ * name, then fetches a tool's signature with get_mcp_tool_schema before
+ * calling it. Registered behind the same "Enable MCP tool search" flag.
+ */
+testSkipIfWindows("local-agent - get mcp tool schema", async ({ po }) => {
+  await po.setUpDyadPro({ localAgent: true });
+  await po.navigation.goToSettingsTab();
+
+  // Configure the test MCP server.
+  await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
+  await po.page
+    .getByRole("textbox", { name: "My MCP Server" })
+    .fill("testing-mcp-server");
+  await po.page.getByRole("textbox", { name: "node" }).fill("node");
+  const testMcpServerPath = path.join(
+    __dirname,
+    "..",
+    "testing",
+    "fake-stdio-mcp-server.mjs",
+  );
+  await po.page
+    .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
+    .fill(testMcpServerPath);
+  await po.page.getByRole("button", { name: "Add Server" }).click();
+  await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
+
+  // Same flag that lists tool names and registers get_mcp_tool_schema.
+  await po.page.getByRole("switch", { name: "Enable MCP tool search" }).click();
+
+  await po.navigation.goToAppsTab();
+  await po.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
+
+  // The model fetches a listed tool's signature; get_mcp_tool_schema auto-approves.
+  await po.sendPrompt("tc=local-agent/get-mcp-tool-schema", {
+    skipWaitForCompletion: true,
+  });
+  await po.chatActions.waitForChatCompletion();
+
+  // The schema card renders with the tool name the model requested.
+  await expect(po.page.getByText("MCP Tool Schema").first()).toBeVisible();
+  await expect(po.page.getByText("calculator_add").first()).toBeVisible();
+
+  await po.snapshotMessages();
 });
 
 /**

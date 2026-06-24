@@ -19,6 +19,7 @@ import { chats, messages, mcpServers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 
 import {
@@ -2008,6 +2009,17 @@ async function getMcpTools(
                     ? args.join(" ")
                     : JSON.stringify(args).slice(0, 500);
 
+              const autoApprove = buildMcpAutoApprove({
+                settings: readSettings(),
+                isDyadPro: ctx.isDyadPro,
+                chatId: ctx.chatId,
+                serverName: s.name,
+                toolName: name,
+                toolDescription: mcpTool.description,
+                inputSchema: mcpTool.inputSchema,
+                args,
+              });
+
               const ok = await requireMcpToolConsent(event, {
                 serverId: s.id,
                 serverName: s.name,
@@ -2015,6 +2027,7 @@ async function getMcpTools(
                 toolDescription: mcpTool.description,
                 inputPreview,
                 chatId: ctx.chatId,
+                autoApprove,
               });
 
               if (!ok) throw new Error(`User declined running tool ${key}`);
@@ -2023,7 +2036,7 @@ async function getMcpTools(
               const { serverName, toolName } = parseMcpToolKey(key);
               const content = JSON.stringify(args, null, 2);
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
+                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}">\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
               );
 
               const res = await mcpTool.execute(args, execCtx);
@@ -2031,7 +2044,7 @@ async function getMcpTools(
                 typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
               );
 
               return resultStr;

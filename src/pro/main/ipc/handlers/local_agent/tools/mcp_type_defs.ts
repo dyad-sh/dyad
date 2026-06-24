@@ -9,9 +9,11 @@ import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import { sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
+import { buildMcpAutoApprove } from "../mcp_auto_consent";
 
 const MCP_RESULT_TYPE = `type McpResult = {
   content: Array<
@@ -136,6 +138,17 @@ export function buildMcpCapabilityMap(params: {
             ? args.join(" ")
             : JSON.stringify(args).slice(0, 500);
 
+      const autoApprove = buildMcpAutoApprove({
+        settings: readSettings(),
+        isDyadPro: params.ctx.isDyadPro,
+        chatId: params.ctx.chatId,
+        serverName: def.serverName,
+        toolName: def.toolName,
+        toolDescription: def.description,
+        inputSchema: def.inputSchema,
+        args,
+      });
+
       const ok = await requireMcpToolConsent(params.event, {
         serverId: def.serverId,
         serverName: def.serverName,
@@ -143,6 +156,7 @@ export function buildMcpCapabilityMap(params: {
         toolDescription: def.description,
         inputPreview,
         chatId: params.ctx.chatId,
+        autoApprove,
       });
       if (!ok) {
         throw new DyadError(

@@ -162,6 +162,21 @@ export const createResponsesHandler =
       messageContent = generateDump(req);
     }
 
+    // The MCP auto-consent classifier payload (buildUserPayload) carries these
+    // labels. Detect it off the user text, then decide off the tool name so e2e
+    // can exercise both the allow and ask paths.
+    const isConsent =
+      lastUserText.includes("MCP server:") &&
+      lastUserText.includes("Tool:") &&
+      lastUserText.includes("Arguments:");
+    if (isConsent) {
+      const risky = /(delete|drop|danger|destroy|remove)/i.test(lastUserText);
+      messageContent = JSON.stringify({
+        reason: risky ? "destructive tool" : "safe tool",
+        decision: risky ? "ask" : "allow",
+      });
+    }
+
     const responseId = `resp_${Date.now()}`;
     const createdAt = Math.floor(Date.now() / 1000);
     const model = req.body?.model || "fake-model";

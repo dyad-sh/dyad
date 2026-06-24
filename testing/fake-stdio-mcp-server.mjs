@@ -40,5 +40,19 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  "delete_record",
+  {
+    title: "Delete Record",
+    description: "Permanently delete a record by id",
+    inputSchema: { id: z.string() },
+  },
+  async ({ id }) => {
+    return {
+      content: [{ type: "text", text: `Deleted ${id}` }],
+    };
+  },
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

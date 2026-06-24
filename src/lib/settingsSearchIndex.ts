@@ -39,6 +39,7 @@ export const SETTING_IDS = {
   nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
   autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
+  autoApproveSafeMcpTools: "setting-auto-approve-safe-mcp-tools",
   enableSandboxScriptExecution: "setting-enable-sandbox-script-execution",
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enablePnpmMinimumReleaseAgeWarning:
@@ -455,6 +456,25 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
 
   // Experiments
+  {
+    id: SETTING_IDS.autoApproveSafeMcpTools,
+    label: "Skip consent for safe MCP tools",
+    description:
+      "In Agent mode, use a fast model to judge each MCP tool call and skip the consent prompt for safe ones. Risky actions still require approval. Requires Dyad Pro",
+    keywords: [
+      "mcp",
+      "consent",
+      "approve",
+      "tool",
+      "agent",
+      "safe",
+      "pro",
+      "auto",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
   {
     id: SETTING_IDS.enableCloudSandbox,
     label: "Enable Cloud Sandbox (Pro)",

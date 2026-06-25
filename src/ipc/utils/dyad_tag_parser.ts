@@ -50,6 +50,52 @@ export function getDyadWriteTags(fullResponse: string): {
   return tags;
 }
 
+export function getDyadGenerateTestTags(fullResponse: string): {
+  path: string;
+  content: string;
+  description?: string;
+}[] {
+  const dyadGenerateTestRegex =
+    /<dyad-generate-test([^>]*)>([\s\S]*?)<\/dyad-generate-test>/gi;
+  const pathRegex = /path="([^"]+)"/;
+  const descriptionRegex = /description="([^"]+)"/;
+
+  let match;
+  const tags: { path: string; content: string; description?: string }[] = [];
+
+  while ((match = dyadGenerateTestRegex.exec(fullResponse)) !== null) {
+    const attributesString = match[1];
+    let content = unescapeXmlContent(match[2].trim());
+
+    const pathMatch = pathRegex.exec(attributesString);
+    const descriptionMatch = descriptionRegex.exec(attributesString);
+
+    if (pathMatch && pathMatch[1]) {
+      const path = unescapeXmlAttr(pathMatch[1]);
+      const description = descriptionMatch?.[1]
+        ? unescapeXmlAttr(descriptionMatch[1])
+        : undefined;
+
+      const contentLines = content.split("\n");
+      if (contentLines[0]?.startsWith("```")) {
+        contentLines.shift();
+      }
+      if (contentLines[contentLines.length - 1]?.startsWith("```")) {
+        contentLines.pop();
+      }
+      content = contentLines.join("\n");
+
+      tags.push({ path: normalizePath(path), content, description });
+    } else {
+      logger.warn(
+        "Found <dyad-generate-test> tag without a valid 'path' attribute:",
+        match[0],
+      );
+    }
+  }
+  return tags;
+}
+
 export function getDyadRenameTags(fullResponse: string): {
   from: string;
   to: string;

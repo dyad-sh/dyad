@@ -56,10 +56,10 @@ function setPlatform(platform: NodeJS.Platform, arch: NodeJS.Architecture) {
 // test to exercise it in isolation.
 async function loadEnsureLibcurlShim() {
   vi.resetModules();
-  return (await import("./linux_libcurl_shim")).ensureLibcurlShim;
+  return (await import("./linux_libcurl_shim")).ensureLibcurlShimOnLinux;
 }
 
-describe("ensureLibcurlShim", () => {
+describe("ensureLibcurlShimOnLinux", () => {
   const origPlatform = process.platform;
   const origArch = process.arch;
 
@@ -84,25 +84,25 @@ describe("ensureLibcurlShim", () => {
 
   it("returns undefined and touches nothing on non-Linux", async () => {
     setPlatform("darwin", "x64");
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShim()).toBeUndefined();
+    expect(ensureLibcurlShimOnLinux()).toBeUndefined();
     expect(execFileSyncMock).not.toHaveBeenCalled();
     expect(fsMock.symlinkSync).not.toHaveBeenCalled();
   });
 
   it("no-ops when libcurl-gnutls.so.4 is already present", async () => {
     execFileSyncMock.mockReturnValue([GNUTLS_LINE, LIBCURL_LINE].join("\n"));
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShim()).toBeUndefined();
+    expect(ensureLibcurlShimOnLinux()).toBeUndefined();
     expect(fsMock.symlinkSync).not.toHaveBeenCalled();
   });
 
   it("creates a symlink to libcurl.so.4 when the gnutls soname is missing", async () => {
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShim()).toBe("/userdata/native-shims");
+    expect(ensureLibcurlShimOnLinux()).toBe("/userdata/native-shims");
     expect(fsMock.symlinkSync).toHaveBeenCalledWith(
       LIBCURL_PATH,
       "/userdata/native-shims/libcurl-gnutls.so.4",
@@ -111,26 +111,26 @@ describe("ensureLibcurlShim", () => {
 
   it("returns undefined when no libcurl at all is found", async () => {
     execFileSyncMock.mockReturnValue("");
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShim()).toBeUndefined();
+    expect(ensureLibcurlShimOnLinux()).toBeUndefined();
     expect(fsMock.symlinkSync).not.toHaveBeenCalled();
   });
 
   it("does not recreate the symlink when it already points at the right target", async () => {
     fsMock.readlinkSync.mockReturnValue(LIBCURL_PATH);
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShim()).toBe("/userdata/native-shims");
+    expect(ensureLibcurlShimOnLinux()).toBe("/userdata/native-shims");
     expect(fsMock.rmSync).not.toHaveBeenCalled();
     expect(fsMock.symlinkSync).not.toHaveBeenCalled();
   });
 
   it("computes once and caches the result across calls", async () => {
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    ensureLibcurlShim();
-    ensureLibcurlShim();
+    ensureLibcurlShimOnLinux();
+    ensureLibcurlShimOnLinux();
 
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);
   });
@@ -140,9 +140,9 @@ describe("ensureLibcurlShim", () => {
       if (bin === "/usr/sbin/ldconfig") throw new Error("ENOENT");
       return LIBCURL_LINE;
     });
-    const ensureLibcurlShim = await loadEnsureLibcurlShim();
+    const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShim()).toBe("/userdata/native-shims");
+    expect(ensureLibcurlShimOnLinux()).toBe("/userdata/native-shims");
     expect(execFileSyncMock).toHaveBeenCalledWith("/sbin/ldconfig", ["-p"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],

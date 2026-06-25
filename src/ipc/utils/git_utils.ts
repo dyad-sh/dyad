@@ -13,7 +13,7 @@ import { platform } from "node:os";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
-import { ensureLibcurlShim } from "./linux_libcurl_shim";
+import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
@@ -114,7 +114,7 @@ async function execGit(
   // prepend a shim directory to LD_LIBRARY_PATH that exposes the system
   // libcurl under that soname. No-op (returns undefined) on distros that
   // already have libcurl-gnutls.so.4.
-  const shimDir = ensureLibcurlShim();
+  const shimDir = ensureLibcurlShimOnLinux();
   if (shimDir) {
     const existingLdPath =
       options?.env?.LD_LIBRARY_PATH ?? process.env.LD_LIBRARY_PATH;

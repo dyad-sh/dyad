@@ -24,8 +24,10 @@ const logger = log.scope("linux_libcurl_shim");
 
 const SONAME = "libcurl-gnutls.so.4";
 
-// Computed once per process. `undefined` means "no shim needed / possible".
-let cachedShimDir: string | undefined | "uncomputed" = "uncomputed";
+// Computed once per process. The outer `undefined` means "not computed yet";
+// once computed, `shimDir` is the directory (or `undefined` if no shim is
+// needed). Boxing lets us distinguish "uncached" from a cached no-shim result.
+let cachedShim: { shimDir: string | undefined } | undefined = undefined;
 
 /**
  * Returns the directory to prepend to LD_LIBRARY_PATH so the bundled git http
@@ -33,16 +35,15 @@ let cachedShimDir: string | undefined | "uncomputed" = "uncomputed";
  * `undefined` when no shim is needed (gnutls present, not Linux, or no usable
  * libcurl found).
  */
-export function ensureLibcurlShim(): string | undefined {
-  if (cachedShimDir !== "uncomputed") {
-    return cachedShimDir;
+export function ensureLibcurlShimOnLinux(): string | undefined {
+  if (cachedShim === undefined) {
+    cachedShim = { shimDir: computeShimDir() };
   }
-  cachedShimDir = computeShimDir();
-  return cachedShimDir;
+  return cachedShim.shimDir;
 }
 
 /**
- * Does the actual work behind ensureLibcurlShim (which caches the result).
+ * Does the actual work behind ensureLibcurlShimOnLinux (which caches the result).
  * Returns undefined when no shim is needed or possible: non-Linux, the gnutls
  * soname is already present, or no usable libcurl.so.4 was found. Otherwise
  * (re)creates the symlink and returns the directory containing it. Never

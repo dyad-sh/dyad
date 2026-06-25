@@ -23,6 +23,7 @@ vi.mock("@/main/settings", () => ({
 
 import { gitListFilesNative } from "@/ipc/utils/git_utils";
 import {
+  ensureGitLineEndingPolicy,
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
 } from "@/ipc/utils/git_utils";
@@ -33,6 +34,65 @@ const execFileAsync = promisify(execFile);
 async function runGit(repoDir: string, args: string[]): Promise<void> {
   await execFileAsync("git", args, { cwd: repoDir });
 }
+
+async function runGitOutput(repoDir: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd: repoDir });
+  return stdout.trim();
+}
+
+describe("ensureGitLineEndingPolicy", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  it("sets repo-local native git line ending config and creates gitattributes", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+
+    await ensureGitLineEndingPolicy({
+      path: repoDir,
+      writeGitattributes: true,
+    });
+
+    await expect(
+      fs.promises.readFile(path.join(repoDir, ".gitattributes"), "utf8"),
+    ).resolves.toContain("* text=auto eol=lf");
+    await expect(
+      runGitOutput(repoDir, ["config", "--local", "core.autocrlf"]),
+    ).resolves.toBe("false");
+    await expect(
+      runGitOutput(repoDir, ["config", "--local", "core.eol"]),
+    ).resolves.toBe("lf");
+    await expect(
+      runGitOutput(repoDir, ["config", "--local", "core.safecrlf"]),
+    ).resolves.toBe("warn");
+  });
+
+  it("does not overwrite an existing gitattributes file", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: false } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+    await fs.promises.writeFile(
+      path.join(repoDir, ".gitattributes"),
+      "*.png binary\n",
+    );
+
+    await ensureGitLineEndingPolicy({
+      path: repoDir,
+      writeGitattributes: true,
+    });
+
+    await expect(
+      fs.promises.readFile(path.join(repoDir, ".gitattributes"), "utf8"),
+    ).resolves.toBe("*.png binary\n");
+  });
+});
 
 describe("gitListFilesNative", () => {
   let repoDir: string | undefined;

@@ -36,7 +36,13 @@ export function AgentConsentBanner({
   queueTotal = 1,
 }: AgentConsentBannerProps) {
   const { t } = useTranslation("chat");
-  const { toolName, toolDescription, inputPreview } = consent;
+  const {
+    toolName,
+    toolDescription,
+    inputPreview,
+    serverName,
+    classifierReason,
+  } = consent;
   const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
 
   // Collapsible input preview state
@@ -80,7 +86,14 @@ export function AgentConsentBanner({
         <div className="flex items-center gap-2 mb-1">
           <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
-            Allow <span className="font-mono">{toolName}</span> to run?
+            Allow <span className="font-mono">{toolName}</span>
+            {serverName && (
+              <>
+                {" "}
+                from <span className="font-mono">{serverName}</span>
+              </>
+            )}{" "}
+            to run?
             {queueTotal > 1 && (
               <span className="ml-1.5 text-xs text-muted-foreground font-normal">
                 (1 of {queueTotal})
@@ -107,6 +120,11 @@ export function AgentConsentBanner({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+        {classifierReason && (
+          <div className="ml-6 mb-1.5 text-xs text-muted-foreground">
+            Flagged for review: {classifierReason}
+          </div>
+        )}
         {inputPreview && (
           <div className="ml-6 mb-1.5">
             {sqlMutatesSchema && (

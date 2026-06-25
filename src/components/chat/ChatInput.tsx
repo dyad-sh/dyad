@@ -30,6 +30,7 @@ import {
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
+  type PendingAgentConsent,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
@@ -195,6 +196,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     (c) => c.chatId === chatId,
   );
   const pendingAgentConsent = consentsForThisChat[0] ?? null;
+
+  // Route a consent decision back to the channel that requested it.
+  const respondToPendingConsent = (
+    consent: PendingAgentConsent,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) => {
+    if (consent.kind === "mcp") {
+      ipc.mcp.respondToConsent({ requestId: consent.requestId, decision });
+    } else {
+      ipc.agent.respondToConsent({ requestId: consent.requestId, decision });
+    }
+  };
 
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
@@ -775,16 +788,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
           {/* Show todo list if there are todos for this chat */}
           {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
-          {/* Show agent consent banner if there's a pending consent request */}
+          {/* Show consent banner if there's a pending consent request */}
           {pendingAgentConsent && (
             <AgentConsentBanner
               consent={pendingAgentConsent}
               queueTotal={consentsForThisChat.length}
               onDecision={(decision) => {
-                ipc.agent.respondToConsent({
-                  requestId: pendingAgentConsent.requestId,
-                  decision,
-                });
+                respondToPendingConsent(pendingAgentConsent, decision);
                 // Remove this consent from the queue by requestId
                 setPendingAgentConsents((prev) =>
                   prev.filter(
@@ -793,10 +803,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 );
               }}
               onClose={() => {
-                ipc.agent.respondToConsent({
-                  requestId: pendingAgentConsent.requestId,
-                  decision: "decline",
-                });
+                respondToPendingConsent(pendingAgentConsent, "decline");
                 // Remove this consent from the queue by requestId
                 setPendingAgentConsents((prev) =>
                   prev.filter(

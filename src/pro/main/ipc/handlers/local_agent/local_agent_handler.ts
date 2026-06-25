@@ -18,7 +18,10 @@ import { db } from "@/db";
 import { chats, messages, mcpServers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
-import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import {
+  requireMcpToolConsent,
+  clearPendingMcpConsentsForChat,
+} from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 
@@ -1155,6 +1158,7 @@ export async function handleLocalAgentStream(
                 logger.log(`Stream aborted for chat ${req.chatId}`);
                 // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
                 clearPendingConsentsForChat(req.chatId);
+                clearPendingMcpConsentsForChat(req.chatId);
                 questionnaireResolver.abortChat(req.chatId);
                 integrationResolver.abortChat(req.chatId);
                 deleteAppBlueprintForChat(req.chatId);
@@ -1629,6 +1633,7 @@ export async function handleLocalAgentStream(
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
+    clearPendingMcpConsentsForChat(req.chatId);
     questionnaireResolver.abortChat(req.chatId);
     integrationResolver.abortChat(req.chatId);
     // Only drop the app blueprint itself on explicit cancellation — a transient
@@ -2026,23 +2031,28 @@ async function getMcpTools(
                 args,
               });
 
-              const ok = await requireMcpToolConsent(event, {
-                serverId: s.id,
-                serverName: s.name,
-                toolName: name,
-                toolDescription: mcpTool.description,
-                inputPreview,
-                chatId: ctx.chatId,
-                autoApprove,
-              });
+              const { approved, autoApprovedReason } =
+                await requireMcpToolConsent(event, {
+                  serverId: s.id,
+                  serverName: s.name,
+                  toolName: name,
+                  toolDescription: mcpTool.description,
+                  inputPreview,
+                  chatId: ctx.chatId,
+                  autoApprove,
+                });
 
-              if (!ok) throw new Error(`User declined running tool ${key}`);
+              if (!approved)
+                throw new Error(`User declined running tool ${key}`);
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
               const { serverName, toolName } = parseMcpToolKey(key);
               const content = JSON.stringify(args, null, 2);
+              const autoApprovedAttr = autoApprovedReason
+                ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
+                : "";
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}">\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
+                `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}"${autoApprovedAttr}>\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
               );
 
               const res = await mcpTool.execute(args, execCtx);

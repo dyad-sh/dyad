@@ -19,7 +19,7 @@ import {
   MutationCache,
   useQueryClient,
 } from "@tanstack/react-query";
-import { showError, showMcpConsentToast } from "./lib/toast";
+import { showError } from "./lib/toast";
 import { ipc } from "./ipc/types";
 import { useSetAtom } from "jotai";
 import {
@@ -163,23 +163,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
-      showMcpConsentToast({
-        serverName: payload.serverName,
-        toolName: payload.toolName,
-        toolDescription: payload.toolDescription,
-        inputPreview: payload.inputPreview,
-        onDecision: (d) =>
-          ipc.mcp.respondToConsent({
-            requestId: payload.requestId,
-            decision: d,
-          }),
-      });
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     const unsubscribe = ipc.events.misc.onErrorToast(({ message, action }) => {
       showError(message, {
         action: action
@@ -231,12 +214,34 @@ function App() {
       setPendingAgentConsents((prev) => [
         ...prev,
         {
+          kind: "agent",
           requestId: payload.requestId,
           chatId: payload.chatId,
           toolName: payload.toolName,
           toolDescription: payload.toolDescription,
           inputPreview: payload.inputPreview,
           metadata: payload.metadata,
+        },
+      ]);
+    });
+    return () => unsubscribe();
+  }, [setPendingAgentConsents]);
+
+  // MCP tool consents share the same queue/banner as agent-tool consents.
+  useEffect(() => {
+    const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
+      setPendingAgentConsents((prev) => [
+        ...prev,
+        {
+          kind: "mcp",
+          requestId: payload.requestId,
+          chatId: payload.chatId,
+          serverId: payload.serverId,
+          serverName: payload.serverName,
+          toolName: payload.toolName,
+          toolDescription: payload.toolDescription,
+          inputPreview: payload.inputPreview,
+          classifierReason: payload.reason,
         },
       ]);
     });

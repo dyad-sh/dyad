@@ -288,14 +288,19 @@ export function ModelPicker() {
     const freeProQuotaLabel =
       freeModelQuota.isLoading && !freeModelQuota.quotaStatus
         ? "Loading"
-        : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
+        : freeModelQuota.error
+          ? "Unavailable"
+          : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
 
     const item = (
       <DropdownMenuItem
         key={`${providerId}-${model.apiName}`}
-        disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
+        aria-disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
           "relative px-2 py-1.5",
+          isFreeProRow &&
+            freeModelQuota.isQuotaExceeded &&
+            "opacity-60 cursor-default",
           isSelected &&
             "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
         )}

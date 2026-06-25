@@ -281,26 +281,26 @@ function convertRemoteCatalog(
     ),
   );
   const remoteAutoModels = modelsByProvider.auto ?? [];
-  if (!remoteAutoModels.some((model) => model.apiName === "free-pro")) {
-    const fallbackFreeProModel = MODEL_OPTIONS.auto.find(
-      (model) => model.name === "free-pro",
+  const fallbackAutoModels = MODEL_OPTIONS.auto.map((model) => ({
+    apiName: model.name,
+    displayName: model.displayName,
+    description: model.description,
+    tag: model.tag,
+    tagColor: model.tagColor,
+    maxOutputTokens: model.maxOutputTokens,
+    contextWindow: model.contextWindow,
+    temperature: model.temperature,
+    dollarSigns: model.dollarSigns,
+    type: "cloud" as const,
+  }));
+  if (remoteAutoModels.length === 0) {
+    modelsByProvider.auto = fallbackAutoModels;
+  } else if (!remoteAutoModels.some((model) => model.apiName === "free-pro")) {
+    const fallbackFreeProModel = fallbackAutoModels.find(
+      (model) => model.apiName === "free-pro",
     );
     if (fallbackFreeProModel) {
-      modelsByProvider.auto = [
-        ...remoteAutoModels,
-        {
-          apiName: fallbackFreeProModel.name,
-          displayName: fallbackFreeProModel.displayName,
-          description: fallbackFreeProModel.description,
-          tag: fallbackFreeProModel.tag,
-          tagColor: fallbackFreeProModel.tagColor,
-          maxOutputTokens: fallbackFreeProModel.maxOutputTokens,
-          contextWindow: fallbackFreeProModel.contextWindow,
-          temperature: fallbackFreeProModel.temperature,
-          dollarSigns: fallbackFreeProModel.dollarSigns,
-          type: "cloud" as const,
-        },
-      ];
+      modelsByProvider.auto = [...remoteAutoModels, fallbackFreeProModel];
     }
   }
 

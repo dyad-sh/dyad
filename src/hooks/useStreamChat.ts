@@ -55,6 +55,7 @@ import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 import { resolveAppIdForChat } from "@/lib/chatUtils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
+import { isFreeProModel } from "@/lib/freeProModel";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -259,6 +260,9 @@ export function useStreamChat({
       }
 
       let hasIncrementedStreamCount = false;
+      const shouldInvalidateFreeModelQuota = isFreeProModel(
+        settings?.selectedModel,
+      );
       // Resolve the target app from the chat itself when the caller didn't
       // pass one. Falling back to `selectedAppId` is wrong for background
       // queue processing, where the user may have switched to a different
@@ -452,9 +456,11 @@ export function useStreamChat({
                 queryClient.invalidateQueries({
                   queryKey: queryKeys.freeAgentQuota.status,
                 });
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.freeModelQuota.status,
-                });
+                if (shouldInvalidateFreeModelQuota) {
+                  queryClient.invalidateQueries({
+                    queryKey: queryKeys.freeModelQuota.status,
+                  });
+                }
 
                 // Keep the same as below
                 setIsStreamingById((prev) => {
@@ -551,9 +557,11 @@ export function useStreamChat({
               queryClient.invalidateQueries({
                 queryKey: queryKeys.freeAgentQuota.status,
               });
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.freeModelQuota.status,
-              });
+              if (shouldInvalidateFreeModelQuota) {
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.freeModelQuota.status,
+                });
+              }
 
               // Keep the same as above
               setIsStreamingById((prev) => {

@@ -440,13 +440,6 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
  */
 const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
-const ENGINE_ENDPOINT_TOOLS = new Set<string>([
-  "web_search",
-  "web_crawl",
-  "web_fetch",
-  "generate_image",
-]);
-
 /**
  * Tools that are part of the app blueprint flow. Excluded when the feature
  * is disabled via the Workflow setting or once the per-app blueprint flag is
@@ -484,7 +477,7 @@ export function shouldIncludeTool(
   if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
     return false;
   }
-  if (options.freeModelMode && ENGINE_ENDPOINT_TOOLS.has(tool.name)) {
+  if (options.freeModelMode && tool.usesEngineEndpoint) {
     return false;
   }
   // Skip app blueprint tools when the feature is disabled.

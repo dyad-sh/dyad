@@ -39,12 +39,21 @@ export async function getFreeModelQuotaStatus() {
     /\/$/,
     "",
   );
-  const response = await fetch(`${baseURL}/free/quota`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetch(`${baseURL}/free/quota`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+  } catch (error) {
+    logger.warn("Failed to fetch free model quota.", error);
+    throw new DyadError(
+      "Unable to fetch Dyad Free quota.",
+      DyadErrorKind.External,
+    );
+  }
 
   if (!response.ok) {
     const errorBody = await response.text();

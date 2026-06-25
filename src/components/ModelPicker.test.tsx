@@ -13,8 +13,15 @@ const mocks = vi.hoisted(() => ({
       messagesRemaining: 7,
       isQuotaExceeded: false,
       resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
-    },
+    } as {
+      messagesUsed: number;
+      messagesLimit: number;
+      messagesRemaining: number;
+      isQuotaExceeded: boolean;
+      resetTime: number;
+    } | null,
     isLoading: false,
+    error: null as Error | null,
     isQuotaExceeded: false,
     messagesUsed: 3,
     messagesLimit: 10,
@@ -244,6 +251,7 @@ describe("ModelPicker", () => {
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
     mocks.isTrial = false;
     mocks.freeModelQuota.isQuotaExceeded = false;
+    mocks.freeModelQuota.error = null;
     mocks.freeModelQuota.messagesRemaining = 7;
     mocks.freeModelQuota.quotaStatus = {
       messagesUsed: 3,
@@ -351,5 +359,15 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
 
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("shows Dyad Free quota as unavailable when the quota fetch fails", () => {
+    mocks.freeModelQuota.error = new Error("quota unavailable");
+    mocks.freeModelQuota.quotaStatus = null;
+
+    render(<ModelPicker />);
+
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.queryByText("10/10 left")).toBeNull();
   });
 });

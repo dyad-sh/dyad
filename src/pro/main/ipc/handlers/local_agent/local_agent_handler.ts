@@ -361,6 +361,7 @@ export async function handleLocalAgentStream(
     planModeOnly = false,
     messageOverride,
     settingsOverride,
+    freeModelMode,
     referencedApps = [],
     currentTurnHasOnDiskAttachment,
   }: {
@@ -383,6 +384,7 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
+    freeModelMode?: boolean;
     /**
      * Apps referenced via `@app:Name` mentions in the user's prompt.
      * Read-only tools can target these via an `app_name` parameter.
@@ -709,7 +711,7 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
-      freeModelMode: isFreeProModel(settings.selectedModel),
+      freeModelMode: freeModelMode ?? isFreeProModel(settings.selectedModel),
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     };

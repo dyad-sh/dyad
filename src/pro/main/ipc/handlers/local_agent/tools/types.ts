@@ -189,6 +189,11 @@ export interface ToolDefinition<T = any> {
    * Used to filter out state-modifying tools in read-only mode (e.g., ask mode).
    */
   readonly modifiesState?: boolean;
+  /**
+   * If true, this tool calls a Dyad Engine endpoint outside the main model
+   * generation endpoint.
+   */
+  readonly usesEngineEndpoint?: boolean;
   execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**

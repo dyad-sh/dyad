@@ -10,7 +10,9 @@ const STALE_TIME_MS = 30_000;
 const TEST_STALE_TIME_MS = 500;
 const FREE_MODEL_QUOTA_LIMIT = 10;
 
-export function useFreeModelQuota() {
+export function useFreeModelQuota({
+  enabled = true,
+}: { enabled?: boolean } = {}) {
   const { settings } = useSettings();
   const queryClient = useQueryClient();
   const { userBudget, isLoadingUserBudget } = useUserBudgetInfo();
@@ -25,7 +27,7 @@ export function useFreeModelQuota() {
   } = useQuery<FreeModelQuotaStatus, Error, FreeModelQuotaStatus>({
     queryKey: queryKeys.freeModelQuota.status,
     queryFn: () => ipc.freeModelQuota.getFreeModelQuotaStatus(),
-    enabled: !!settings && isPro && !isTrial && !isLoadingUserBudget,
+    enabled: enabled && !!settings && isPro && !isTrial && !isLoadingUserBudget,
     refetchInterval: THIRTY_MINUTES_IN_MS,
     staleTime: isTestMode ? TEST_STALE_TIME_MS : STALE_TIME_MS,
     retry: false,
@@ -45,7 +47,10 @@ export function useFreeModelQuota() {
     isQuotaExceeded: quotaStatus?.isQuotaExceeded ?? false,
     messagesUsed: quotaStatus?.messagesUsed ?? 0,
     messagesLimit: quotaStatus?.messagesLimit ?? FREE_MODEL_QUOTA_LIMIT,
-    messagesRemaining: quotaStatus?.messagesRemaining ?? FREE_MODEL_QUOTA_LIMIT,
+    messagesRemaining: Math.max(
+      0,
+      quotaStatus?.messagesRemaining ?? FREE_MODEL_QUOTA_LIMIT,
+    ),
     resetTime: quotaStatus?.resetTime ?? null,
   };
 }

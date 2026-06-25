@@ -27,11 +27,14 @@ export function ChatErrorBox({
   isDyadProEnabled: boolean;
   onStartNewChat?: () => void;
 }) {
+  const isFreeModelQuotaError =
+    error.includes("dyad_free_model_quota_exceeded") ||
+    error.includes("FREE_MODEL_QUOTA_EXCEEDED");
   const { messagesLimit } = useFreeAgentQuota();
   const {
     messagesLimit: freeModelMessagesLimit,
     resetTime: freeModelResetTime,
-  } = useFreeModelQuota();
+  } = useFreeModelQuota({ enabled: isFreeModelQuotaError });
 
   if (error.includes("doesn't have a free quota tier")) {
     return (
@@ -140,10 +143,7 @@ export function ChatErrorBox({
     );
   }
 
-  if (
-    error.includes("dyad_free_model_quota_exceeded") ||
-    error.includes("FREE_MODEL_QUOTA_EXCEEDED")
-  ) {
+  if (isFreeModelQuotaError) {
     const resetText = freeModelResetTime
       ? ` Your quota resets at ${new Intl.DateTimeFormat(undefined, {
           hour: "numeric",
@@ -154,7 +154,7 @@ export function ChatErrorBox({
 
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
-        You have used all {freeModelMessagesLimit} Dyad Free messages for today.
+        You have reached the {freeModelMessagesLimit}-message Dyad Free limit.
         {resetText} Switch to another Dyad Pro model to keep going.
       </ChatErrorContainer>
     );

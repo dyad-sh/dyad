@@ -104,6 +104,7 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
   description: DESCRIPTION,
   inputSchema: codeSearchSchema,
   defaultConsent: "always",
+  usesEngineEndpoint: true,
 
   // Requires Dyad Pro engine API. When the compiler-backed `explore_code` tool
   // is available for the current app, it supersedes semantic code search for

@@ -345,9 +345,78 @@ If the user asks for server-side code in a Vite app (API routes, database access
 This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
 `;
 
+/**
+ * Guidance for writing end-to-end tests. The body is shared across surfaces so
+ * they all produce the same kind of test; only the instruction for HOW to emit
+ * the spec file differs:
+ * - Build mode emits a `<dyad-generate-test>` tag.
+ * - The Pro/local agent writes the spec with the `write_file` tool; Dyad
+ *   detects `.spec.ts` files and surfaces them in the Tests panel.
+ */
+const buildTestWritingGuidance = (emitInstruction: string) =>
+  `# Writing end-to-end tests
+
+When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
+
+- Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
+${emitInstruction}
+- Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
+- Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
+- Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
+- Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.
+- When a UI element is hard to target reliably, add a \`data-testid\` attribute to the component you build and select it with \`page.getByTestId("...")\`. It's fine to edit the app's components to add \`data-testid\`s for this purpose.
+- Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
+- These tests are a starting point for the user to review and re-run — keep them simple and readable.
+
+## Tests from a recorded flow
+
+The user can record a flow by interacting with the live preview. When a turn contains a "recorded flow" — a numbered list of user actions (clicks, fills, navigations, etc.) — turn it into a single Playwright test:
+- The recording captures ACTIONS ONLY. It is YOUR job to add meaningful assertions: after the actions, assert the expected outcome the user was demonstrating (e.g. a success message appears, a new item shows up, the URL changed).
+- Map each recorded action to a robust locator using the hints provided (prefer role + accessible name, then label/placeholder/text/testId). Do not copy brittle CSS selectors.
+- Preserve the order of the recorded actions. Use the recorded values for fills/selects (a masked password value means "type a password" — use a realistic placeholder value).
+
+## Isolated test data (database-connected apps)
+
+When the app is connected to a database, Dyad runs each test session against a temporary, throwaway copy of the database — so tests can create, update, and delete data freely without ever touching the user's real data. You do NOT need to write any branch/teardown code; Dyad handles isolating the database around the run.
+
+Because the database starts as a copy of the current data (which may be empty or messy), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
+
+### Fixtures: seeding the data a test needs
+
+- Put reusable setup in files under \`tests/fixtures/\` (e.g. \`tests/fixtures/todos.ts\`) and import them into your specs. Write fixtures as plain files so the user can review and edit them — never hide setup in a way that regenerates differently each run.
+- Seed data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. This guarantees the data is written to the isolated test database the running app is pointed at.
+- Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, not the isolated copy.
+- Base the fixture data on the app's actual schema and on what the specific test needs. Keep it minimal: seed only what the test asserts on.
+
+### Authenticated tests (signing in a test user)
+
+When a flow requires a logged-in user, use the built-in auth fixture instead of hand-rolling credentials:
+- A shared test user is defined in \`tests/fixtures/test-user.ts\` and created by driving the app's OWN signup flow (so the user can really authenticate). Import the user and the \`signIn\`/\`signUp\` helper from there.
+- If the app does NOT have a signup flow yet, build one (or an equivalent way to create a user) before writing auth-gated tests — a test user that can't be created through the app can't be signed in. Say so clearly if you add it.
+- Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.`;
+
+/** Build-mode test-writing guidance: emit the spec via a `<dyad-generate-test>` tag. */
+export const TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
+  `- In Build mode, emit it with a \`<dyad-generate-test>\` tag (NOT \`<dyad-write>\`) so it shows up in the Tests panel:
+  <dyad-generate-test path="tests/signup.spec.ts" description="Tests the signup flow">
+  ...test code...
+  </dyad-generate-test>`,
+);
+
+/**
+ * Local-agent test-writing guidance: write the spec with the `write_file` tool.
+ * Dyad detects `.spec.ts` files and surfaces them in the Tests panel where the
+ * user can run them — there is no dedicated test tool.
+ */
+export const AGENT_TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
+  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
+);
+
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
+
+${TEST_WRITING_GUIDANCE}
 
 ${BUILD_SYSTEM_POSTFIX}`;
 

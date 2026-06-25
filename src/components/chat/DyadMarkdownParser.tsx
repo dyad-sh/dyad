@@ -14,6 +14,7 @@ import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
+import { DyadGenerateTest } from "./DyadGenerateTest";
 import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
@@ -602,9 +603,44 @@ function renderCustomTag(
           {content}
         </DyadThink>
       );
-    case "dyad-write":
+    case "dyad-write": {
+      // Spec files written via `write_file` (e.g. tests/signup.spec.ts) get the
+      // dedicated test card with a "View in Tests" deep-link, matching how the
+      // Tests panel surfaces them on disk.
+      const writePath = attributes.path || "";
+      if (writePath.endsWith(".spec.ts")) {
+        return (
+          <DyadGenerateTest
+            node={{
+              properties: {
+                path: writePath,
+                description: attributes.description || "",
+                state: getState({ isStreaming, inProgress }),
+              },
+            }}
+          >
+            {content}
+          </DyadGenerateTest>
+        );
+      }
       return (
         <DyadWrite
+          node={{
+            properties: {
+              path: writePath,
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWrite>
+      );
+    }
+
+    case "dyad-generate-test":
+      return (
+        <DyadGenerateTest
           node={{
             properties: {
               path: attributes.path || "",
@@ -614,7 +650,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWrite>
+        </DyadGenerateTest>
       );
 
     case "dyad-rename":

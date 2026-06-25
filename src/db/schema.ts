@@ -70,6 +70,11 @@ export const apps = sqliteTable("apps", {
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
   neonActiveBranchId: text("neon_active_branch_id"),
+  // In-flight ephemeral test branch for isolated e2e test runs. Set while a
+  // test session holds a throwaway copy-on-write branch, cleared on teardown.
+  // Persisted so a crash mid-session can be reconciled (orphan branch deleted)
+  // on the next launch. See ipc/utils/neon_test_branch.ts.
+  neonTestBranchId: text("neon_test_branch_id"),
   neonProductionAuthCookieSecret: text("neon_production_auth_cookie_secret"),
   neonDevelopmentAuthCookieSecret: text("neon_development_auth_cookie_secret"),
   // Which Neon branch the unified database section is set to deploy/sync

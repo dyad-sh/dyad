@@ -415,11 +415,6 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
 ]);
 
 /**
- * Tools only available in Pro agent mode (excluded from basic agent mode).
- */
-const PRO_AGENT_ONLY_TOOLS = new Set<string>();
-
-/**
  * Tools that are part of the app blueprint flow. Excluded when the feature
  * is disabled via the Workflow setting or once the per-app blueprint flag is
  * cleared.

@@ -208,6 +208,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
               return (
                 <div
                   key={version.oid}
+                  data-testid="version-list-item"
                   className={cn(
                     "px-4 py-2 hover:bg-(--background-lightest) cursor-pointer flex gap-3",
                     selectedVersionId === version.oid &&

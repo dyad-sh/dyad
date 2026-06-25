@@ -100,6 +100,13 @@ export const queryKeys = {
   versions: {
     all: ["versions"] as const,
     list: ({ appId }: { appId: number | null }) => ["versions", appId] as const,
+    changes: ({
+      appId,
+      versionId,
+    }: {
+      appId: number | null;
+      versionId: string | null;
+    }) => ["versions", appId, "changes", versionId] as const,
   },
 
   branches: {

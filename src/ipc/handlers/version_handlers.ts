@@ -20,6 +20,9 @@ import {
   gitCurrentBranch,
   gitLog,
   isGitStatusClean,
+  getChangedFilesForCommit,
+  getFileAtCommit,
+  getOldFileContent,
 } from "../utils/git_utils";
 
 import {
@@ -37,6 +40,29 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("version_handlers");
+
+// Guard against dumping binary blobs or huge files into the renderer's diff
+// editor. Binary files render as garbage and large files hurt performance.
+const MAX_DIFF_CONTENT_BYTES = 1_000_000; // ~1 MB
+
+function sanitizeDiffContent(content: string): string {
+  // Size guard first: content.length is an O(1) check that short-circuits
+  // oversized files before the O(N) NUL scan / byte-length traversal below.
+  // Fast-path: every UTF-8 character is at least 1 byte, so if the string
+  // length already exceeds the limit, the byte length must too — which lets us
+  // skip the Buffer.byteLength traversal for large files entirely.
+  if (
+    content.length > MAX_DIFF_CONTENT_BYTES ||
+    Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES
+  ) {
+    return "<file too large to display>";
+  }
+  // A NUL byte is a strong signal the file is binary.
+  if (/\u0000/.test(content)) {
+    return "<binary file not shown>";
+  }
+  return content;
+}
 
 async function syncCloudSandboxSnapshotBestEffort(appId: number) {
   try {
@@ -158,6 +184,80 @@ export function registerVersionHandlers() {
       logger.error(`Error getting current branch for app ${appId}:`, error);
       throw new DyadError(
         `Failed to get current branch: ${error.message}`,
+        DyadErrorKind.External,
+      );
+    }
+  });
+
+  createTypedHandler(versionContracts.getVersionChanges, async (_, params) => {
+    const { appId, versionId } = params;
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(app.path);
+
+    if (!fs.existsSync(path.join(appPath, ".git"))) {
+      throw new DyadError("Not a git repository", DyadErrorKind.External);
+    }
+
+    try {
+      const changedFiles = await getChangedFilesForCommit({
+        path: appPath,
+        commitHash: versionId,
+      });
+
+      const loadFileChange = async (file: (typeof changedFiles)[number]) => {
+        const newContent =
+          file.type === "deleted"
+            ? ""
+            : ((await getFileAtCommit({
+                path: appPath,
+                filePath: file.path,
+                commitHash: versionId,
+              })) ?? "");
+        const oldContent =
+          file.type === "added"
+            ? ""
+            : ((await getOldFileContent({
+                path: appPath,
+                filePath: file.path,
+                commitHash: versionId,
+              })) ?? "");
+        return {
+          path: file.path,
+          type: file.type,
+          oldContent: sanitizeDiffContent(oldContent),
+          newContent: sanitizeDiffContent(newContent),
+        };
+      };
+
+      // Each file may spawn up to two git child processes (native git). Bound
+      // the concurrency so commits touching many files (e.g. an initial commit
+      // of a generated app) don't exhaust file descriptors.
+      const CONCURRENCY = 10;
+      const results: Awaited<ReturnType<typeof loadFileChange>>[] = [];
+      for (let i = 0; i < changedFiles.length; i += CONCURRENCY) {
+        const batch = changedFiles.slice(i, i + CONCURRENCY);
+        results.push(...(await Promise.all(batch.map(loadFileChange))));
+      }
+      return results;
+    } catch (error: any) {
+      // Preserve the original error kind for DyadErrors thrown by inner
+      // functions; only wrap unexpected (non-Dyad) failures as External.
+      if (error instanceof DyadError) {
+        throw error;
+      }
+      logger.error(
+        `Error getting version changes for app ${appId} version ${versionId}:`,
+        error,
+      );
+      throw new DyadError(
+        `Failed to get version changes: ${error.message}`,
         DyadErrorKind.External,
       );
     }

@@ -152,6 +152,9 @@ import type {
   GitMergeParams,
   GitCreateBranchParams,
   GitDeleteBranchParams,
+  GitChangedFile,
+  GitChangedFileType,
+  GitListChangedFilesParams,
 } from "../git_types";
 
 /**
@@ -873,6 +876,209 @@ export async function getFileAtCommit({
       // File doesn't exist at this commit
       return null;
     }
+  }
+}
+
+/**
+ * Resolves the parent commit oid of the given commit, or null if the commit is
+ * a root commit (no parents). Used to look up the "before" content of a file.
+ */
+async function getParentCommitOid({
+  path,
+  commitHash,
+}: GitListChangedFilesParams): Promise<string | null> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Stay on the native backend rather than mixing in isomorphic-git, which
+    // may be unable to read objects in shallow/partial clones that native git
+    // handles fine. `--verify --quiet` exits non-zero (without erroring) for a
+    // root commit, where `<commit>^` does not resolve.
+    const result = await execGit(
+      ["rev-parse", "--verify", "--quiet", `${commitHash}^`],
+      path,
+    );
+    if (result.exitCode !== 0) {
+      return null;
+    }
+    return result.stdout.toString().trim() || null;
+  }
+  const { commit } = await git.readCommit({
+    fs,
+    dir: path,
+    oid: commitHash,
+  });
+  return commit.parent.length > 0 ? commit.parent[0] : null;
+}
+
+/**
+ * Returns the content of a file as it existed in the PARENT of the given commit,
+ * i.e. the "before" side of the commit's diff. Returns null when the commit is a
+ * root commit (no parent) or the file did not exist in the parent.
+ *
+ * Note: isomorphic-git does not understand the `^` parent ref syntax, so we
+ * resolve the parent oid explicitly for that path.
+ */
+export async function getOldFileContent({
+  path,
+  filePath,
+  commitHash,
+}: GitFileAtCommitParams): Promise<string | null> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    return getFileAtCommit({
+      path,
+      filePath,
+      commitHash: `${commitHash}^`,
+    });
+  }
+  const parentOid = await getParentCommitOid({ path, commitHash });
+  if (!parentOid) {
+    return null;
+  }
+  return getFileAtCommit({ path, filePath, commitHash: parentOid });
+}
+
+/**
+ * Lists the files changed in a single commit (compared to its parent), with the
+ * kind of change. Renames are decomposed into a delete + add pair so the result
+ * maps cleanly onto per-path content lookups. Filters out files that are not
+ * user-visible (e.g. .dyad/, pnpm-workspace.yaml) for parity with the rest of
+ * the file. Supports both native git and isomorphic-git.
+ */
+export async function getChangedFilesForCommit({
+  path,
+  commitHash,
+}: GitListChangedFilesParams): Promise<GitChangedFile[]> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    // Diff the commit explicitly against its FIRST parent so the result matches
+    // the isomorphic-git path below (which walks parent[0]). For merge commits
+    // `-m --first-parent` is NOT sufficient: -m still reports files that merely
+    // differ from the *second* parent even though they were already present on
+    // the first parent, making them appear as spurious additions/modifications.
+    // Diffing the explicit `<parent> <commit>` range avoids that. Root commits
+    // have no parent, so fall back to --root (which shows their files as adds).
+    // --no-renames decomposes renames into D + A pairs.
+    // -z gives NUL-delimited output for robust parsing of paths with spaces.
+    const parentOid = await getParentCommitOid({ path, commitHash });
+    const result = await execGit(
+      [
+        "diff-tree",
+        "--no-commit-id",
+        "--no-renames",
+        "--name-status",
+        "-r",
+        "-z",
+        ...(parentOid ? [parentOid, commitHash] : ["--root", commitHash]),
+      ],
+      path,
+    );
+    if (result.exitCode !== 0) {
+      throw new DyadError(
+        result.stderr.toString() || result.stdout.toString(),
+        DyadErrorKind.External,
+      );
+    }
+
+    // Output is a flat NUL-delimited stream: status, path, status, path, ...
+    const tokens = result.stdout
+      .split("\0")
+      .filter((token) => token.length > 0);
+    const changes: GitChangedFile[] = [];
+    for (let i = 0; i + 1 < tokens.length; i += 2) {
+      const status = tokens[i];
+      const filePath = tokens[i + 1];
+      const type = mapDiffStatusToChangeType(status);
+      if (type && isUserVisibleGitPath(filePath)) {
+        changes.push({ path: filePath, type });
+      }
+    }
+    return changes;
+  }
+
+  // isomorphic-git: walk the parent tree and the commit tree side by side.
+  const parentOid = await getParentCommitOid({ path, commitHash });
+  const trees = parentOid
+    ? [git.TREE({ ref: parentOid }), git.TREE({ ref: commitHash })]
+    : [git.TREE({ ref: commitHash })];
+
+  const results = await git.walk({
+    fs,
+    dir: path,
+    trees,
+    map: async (filepath, entries) => {
+      if (filepath === ".") {
+        return undefined;
+      }
+
+      // Root commit: only one walker, everything present is an addition.
+      if (entries.length === 1) {
+        const [current] = entries;
+        if (!current || (await current.type()) === "tree") {
+          return undefined;
+        }
+        return { path: filepath, type: "added" as GitChangedFileType };
+      }
+
+      const [parent, current] = entries;
+      const parentType = parent ? await parent.type() : undefined;
+      const currentType = current ? await current.type() : undefined;
+      if (parentType === "tree" || currentType === "tree") {
+        // One side may be a blob while the other is a directory (a file was
+        // replaced by a directory, or vice versa). The tree side is handled by
+        // walk recursing into its children, but the blob side must be emitted
+        // here as an add/delete, otherwise half of the commit is suppressed.
+        if (currentType === "blob") {
+          return { path: filepath, type: "added" as GitChangedFileType };
+        }
+        if (parentType === "blob") {
+          return { path: filepath, type: "deleted" as GitChangedFileType };
+        }
+        // Pure directory on the relevant side(s): let walk recurse, emit nothing.
+        return undefined;
+      }
+
+      if (!parent && !current) {
+        return undefined;
+      }
+      if (!parent && current) {
+        return { path: filepath, type: "added" as GitChangedFileType };
+      }
+      if (parent && !current) {
+        return { path: filepath, type: "deleted" as GitChangedFileType };
+      }
+
+      const [parentBlobOid, currentBlobOid] = await Promise.all([
+        parent!.oid(),
+        current!.oid(),
+      ]);
+      if (parentBlobOid === currentBlobOid) {
+        return undefined;
+      }
+      return { path: filepath, type: "modified" as GitChangedFileType };
+    },
+  });
+
+  return (results as (GitChangedFile | undefined)[])
+    .filter((entry): entry is GitChangedFile => Boolean(entry))
+    .filter((entry) => isUserVisibleGitPath(entry.path));
+}
+
+function mapDiffStatusToChangeType(status: string): GitChangedFileType | null {
+  // status may be like "A", "M", "D", "T", or "R100"/"C100" for rename/copy
+  // (which shouldn't occur with --no-renames, but handle defensively).
+  const code = status[0];
+  switch (code) {
+    case "A":
+      return "added";
+    case "D":
+      return "deleted";
+    case "M":
+    case "T":
+      return "modified";
+    default:
+      return null;
   }
 }
 

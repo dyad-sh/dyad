@@ -42,7 +42,34 @@ export type RevertVersionResponse = z.infer<typeof RevertVersionResponseSchema>;
 
 export const CheckoutVersionParamsSchema = z.object({
   appId: z.number(),
-  versionId: z.string(),
+  // Unlike getVersionChanges, this accepts arbitrary git refs (e.g. the "main"
+  // branch for the restore-to-latest flow), so it can't be constrained to a hex
+  // SHA. We still reject leading-dash values so a ref can't be interpreted as a
+  // git option when passed to native `git checkout`.
+  versionId: z
+    .string()
+    .refine((v) => !v.startsWith("-"), "versionId must not start with '-'"),
+});
+
+export const VersionChangeTypeSchema = z.enum(["added", "modified", "deleted"]);
+
+export const VersionChangedFileSchema = z.object({
+  path: z.string(),
+  type: VersionChangeTypeSchema,
+  oldContent: z.string(), // "" when added (or old side absent/binary)
+  newContent: z.string(), // "" when deleted (or new side absent/binary)
+});
+
+export type VersionChangedFile = z.infer<typeof VersionChangedFileSchema>;
+
+export const GetVersionChangesParamsSchema = z.object({
+  appId: z.number(),
+  // Must be a hex commit SHA. This is appended as a positional argument to
+  // native `git diff-tree`/`cat-file`; constraining it to hex characters
+  // prevents a dash-prefixed value from being interpreted as a git option.
+  versionId: z
+    .string()
+    .regex(/^[0-9a-fA-F]{4,64}$/, "versionId must be a hex commit SHA"),
 });
 
 // =============================================================================
@@ -66,6 +93,12 @@ export const versionContracts = {
     channel: "checkout-version",
     input: CheckoutVersionParamsSchema,
     output: z.void(),
+  }),
+
+  getVersionChanges: defineContract({
+    channel: "get-version-changes",
+    input: GetVersionChangesParamsSchema,
+    output: z.array(VersionChangedFileSchema),
   }),
 
   getCurrentBranch: defineContract({

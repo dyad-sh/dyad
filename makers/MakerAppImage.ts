@@ -103,8 +103,11 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
       await mkdir(binDir, { recursive: true, mode: 0o755 });
       await mkdir(libDir, { recursive: true, mode: 0o755 });
 
-      // Add the actual application code to the AppDir
-      await cp(dir, libDir, { recursive: true });
+      // Add the actual application code to the AppDir.
+      // verbatimSymlinks keeps relative symlinks (e.g. dugite's
+      // git-remote-https -> git-remote-http) intact; without it fs.cp rewrites
+      // them to absolute build-machine paths that dangle on the user's system.
+      await cp(dir, libDir, { recursive: true, verbatimSymlinks: true });
 
       // Generate .desktop file
       // See: https://docs.appimage.org/reference/desktop-integration.html#desktop-files

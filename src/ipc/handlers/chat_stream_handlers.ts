@@ -944,6 +944,7 @@ ${componentSnippet}
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
+          freeModelMode,
           frameworkType,
           hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
           enableAppBlueprint:
@@ -1343,6 +1344,7 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             readOnly: true,
+            freeModelMode,
             codeExplorerAvailable,
           });
 
@@ -1389,6 +1391,7 @@ This conversation includes one or more image attachments. When the user uploads 
             chatMode: "plan",
             enableTurboEditsV2: false,
             themePrompt,
+            freeModelMode,
           });
 
           await handleLocalAgentStream(event, req, abortController, {
@@ -1493,6 +1496,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
+                freeModelMode,
                 frameworkType,
                 hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
               }),

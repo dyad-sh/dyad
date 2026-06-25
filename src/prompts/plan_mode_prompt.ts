@@ -123,8 +123,15 @@ Use this context to inform your implementation plan and ensure consistency with 
 export function constructPlanModePrompt(
   aiRules: string | undefined,
   themePrompt?: string,
+  options?: { freeModelMode?: boolean },
 ): string {
-  let prompt = PLAN_MODE_SYSTEM_PROMPT.replace(
+  const basePrompt = options?.freeModelMode
+    ? PLAN_MODE_SYSTEM_PROMPT.replace(
+        "read_file, list_files, grep, code_search",
+        "read_file, list_files, grep",
+      ).replace("- `code_search` - Semantic code search\n", "")
+    : PLAN_MODE_SYSTEM_PROMPT;
+  let prompt = basePrompt.replace(
     "[[AI_RULES]]",
     aiRules ?? DEFAULT_PLAN_AI_RULES,
   );

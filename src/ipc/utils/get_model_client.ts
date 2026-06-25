@@ -78,6 +78,13 @@ export async function getModelClient(
     );
   }
 
+  if (isFreeProModel(model) && (!settings.enableDyadPro || !dyadApiKey)) {
+    throw new DyadError(
+      "Dyad Free requires an active Dyad Pro API key. Switch to another model or enable Dyad Pro.",
+      DyadErrorKind.Auth,
+    );
+  }
+
   // Handle Dyad Pro override
   if (dyadApiKey && settings.enableDyadPro) {
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR

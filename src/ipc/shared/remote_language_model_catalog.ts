@@ -295,13 +295,6 @@ function convertRemoteCatalog(
   }));
   if (remoteAutoModels.length === 0) {
     modelsByProvider.auto = fallbackAutoModels;
-  } else if (!remoteAutoModels.some((model) => model.apiName === "free-pro")) {
-    const fallbackFreeProModel = fallbackAutoModels.find(
-      (model) => model.apiName === "free-pro",
-    );
-    if (fallbackFreeProModel) {
-      modelsByProvider.auto = [...remoteAutoModels, fallbackFreeProModel];
-    }
   }
 
   const parsedExpiresAt = remoteCatalog.expiresAt

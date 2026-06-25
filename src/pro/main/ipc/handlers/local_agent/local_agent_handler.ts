@@ -1662,7 +1662,7 @@ export async function handleLocalAgentStream(
     logger.error("Local agent error:", error);
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error: `Error: ${getErrorMessage(error)}`,
+      error: `Error: ${getErrorMessageWithDetails(error)}`,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
@@ -1745,6 +1745,34 @@ function getErrorMessage(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+function getErrorResponseBody(error: unknown): string | undefined {
+  if (!isRecord(error)) {
+    return undefined;
+  }
+  if (typeof error.responseBody === "string" && error.responseBody.length > 0) {
+    return error.responseBody;
+  }
+  if ("error" in error) {
+    const nested = getErrorResponseBody(error.error);
+    if (nested) {
+      return nested;
+    }
+  }
+  if ("cause" in error) {
+    return getErrorResponseBody(error.cause);
+  }
+  return undefined;
+}
+
+function getErrorMessageWithDetails(error: unknown): string {
+  const message = getErrorMessage(error);
+  const responseBody = getErrorResponseBody(error);
+  if (!responseBody || message.includes(responseBody)) {
+    return message;
+  }
+  return `${message}\n\nDetails: ${responseBody}`;
 }
 
 function isTerminatedStreamError(error: unknown): boolean {

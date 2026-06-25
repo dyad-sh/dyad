@@ -27,9 +27,13 @@ export function ChatErrorBox({
   isDyadProEnabled: boolean;
   onStartNewChat?: () => void;
 }) {
+  const fallbackPrefix = "Fallbacks=[{";
+  const normalizedError = error.includes(fallbackPrefix)
+    ? error.split(fallbackPrefix)[0]
+    : error;
   const isFreeModelQuotaError =
-    error.includes("dyad_free_model_quota_exceeded") ||
-    error.includes("FREE_MODEL_QUOTA_EXCEEDED");
+    normalizedError.includes("dyad_free_model_quota_exceeded") ||
+    normalizedError.includes("FREE_MODEL_QUOTA_EXCEEDED");
   const { messagesLimit } = useFreeAgentQuota();
   const {
     messagesLimit: freeModelMessagesLimit,
@@ -121,9 +125,8 @@ export function ChatErrorBox({
   // We are matching "Fallbacks=[{" and not just "Fallbacks=" because the fallback
   // model itself can error and we want to include the fallback model error in the error message.
   // Example: https://github.com/dyad-sh/dyad/issues/1849#issuecomment-3590685911
-  const fallbackPrefix = "Fallbacks=[{";
   if (error.includes(fallbackPrefix)) {
-    error = error.split(fallbackPrefix)[0];
+    error = normalizedError;
   }
   // Handle FREE_AGENT_QUOTA_EXCEEDED error (Basic Agent mode quota exceeded)
   if (error.includes("FREE_AGENT_QUOTA_EXCEEDED")) {

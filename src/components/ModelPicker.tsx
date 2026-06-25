@@ -295,7 +295,7 @@ export function ModelPicker() {
     const item = (
       <DropdownMenuItem
         key={`${providerId}-${model.apiName}`}
-        aria-disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
+        disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
           "relative px-2 py-1.5",
           isFreeProRow &&

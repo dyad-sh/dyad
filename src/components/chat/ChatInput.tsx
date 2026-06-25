@@ -214,18 +214,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   };
 
-  // Send the decision first; only drop the banner once it is acknowledged, so a
-  // failed send keeps the prompt instead of losing the decision.
+  // Remove the banner immediately for instant feedback, then send the decision.
+  // If the send fails, re-queue the consent so the decision is not lost.
   const decideConsent = async (
     consent: PendingAgentConsent,
     decision: "accept-once" | "accept-always" | "decline",
   ) => {
+    setPendingAgentConsents((prev) =>
+      prev.filter((c) => c.requestId !== consent.requestId),
+    );
     try {
       await respondToPendingConsent(consent, decision);
-      setPendingAgentConsents((prev) =>
-        prev.filter((c) => c.requestId !== consent.requestId),
-      );
     } catch (error) {
+      setPendingAgentConsents((prev) => [consent, ...prev]);
       showErrorToast(error as Error);
     }
   };

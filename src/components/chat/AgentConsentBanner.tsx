@@ -122,7 +122,7 @@ export function AgentConsentBanner({
         </div>
         {classifierReason && (
           <div className="ml-6 mb-1.5 text-xs text-muted-foreground">
-            Flagged for review: {classifierReason}
+            {t("flaggedForReview")} {classifierReason}
           </div>
         )}
         {inputPreview && (

@@ -2043,7 +2043,10 @@ async function getMcpTools(
                 });
 
               if (!approved)
-                throw new Error(`User declined running tool ${key}`);
+                throw new DyadError(
+                  `User declined running tool ${key}`,
+                  DyadErrorKind.UserCancelled,
+                );
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
               const { serverName, toolName } = parseMcpToolKey(key);

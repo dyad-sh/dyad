@@ -38,7 +38,7 @@ function getChatBackupDir(appPath: string, chatId: number): string {
 export function transformToolTags(content: string): string {
   // Transform <dyad-mcp-tool-call> to <tool-use>
   let result = content.replace(
-    /<dyad-mcp-tool-call server="([^"]*)" tool="([^"]*)">\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
+    /<dyad-mcp-tool-call server="([^"]*)" tool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
     '<tool-use name="$2" server="$1">\n$3\n</tool-use>',
   );
 

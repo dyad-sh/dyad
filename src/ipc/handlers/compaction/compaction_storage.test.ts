@@ -25,6 +25,16 @@ describe("transformToolTags", () => {
     expect(result).not.toContain("dyad-mcp-tool-call");
   });
 
+  it("transforms tool-call tags that carry extra attributes", () => {
+    const content = `<dyad-mcp-tool-call server="filesystem" tool="read_file" auto-approved-reason="Reads a project file.">
+{"path": "/src/index.ts"}
+</dyad-mcp-tool-call>`;
+
+    const result = transformToolTags(content);
+    expect(result).toContain('<tool-use name="read_file" server="filesystem">');
+    expect(result).not.toContain("dyad-mcp-tool-call");
+  });
+
   it("transforms tool-result tags and includes char count", () => {
     const content = `<dyad-mcp-tool-result server="filesystem" tool="read_file">
 short result

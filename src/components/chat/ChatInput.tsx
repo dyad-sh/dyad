@@ -203,9 +203,30 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     decision: "accept-once" | "accept-always" | "decline",
   ) => {
     if (consent.kind === "mcp") {
-      ipc.mcp.respondToConsent({ requestId: consent.requestId, decision });
-    } else {
-      ipc.agent.respondToConsent({ requestId: consent.requestId, decision });
+      return ipc.mcp.respondToConsent({
+        requestId: consent.requestId,
+        decision,
+      });
+    }
+    return ipc.agent.respondToConsent({
+      requestId: consent.requestId,
+      decision,
+    });
+  };
+
+  // Send the decision first; only drop the banner once it is acknowledged, so a
+  // failed send keeps the prompt instead of losing the decision.
+  const decideConsent = async (
+    consent: PendingAgentConsent,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) => {
+    try {
+      await respondToPendingConsent(consent, decision);
+      setPendingAgentConsents((prev) =>
+        prev.filter((c) => c.requestId !== consent.requestId),
+      );
+    } catch (error) {
+      showErrorToast(error as Error);
     }
   };
 
@@ -793,24 +814,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             <AgentConsentBanner
               consent={pendingAgentConsent}
               queueTotal={consentsForThisChat.length}
-              onDecision={(decision) => {
-                respondToPendingConsent(pendingAgentConsent, decision);
-                // Remove this consent from the queue by requestId
-                setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
-                );
-              }}
-              onClose={() => {
-                respondToPendingConsent(pendingAgentConsent, "decline");
-                // Remove this consent from the queue by requestId
-                setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
-                );
-              }}
+              onDecision={(decision) =>
+                decideConsent(pendingAgentConsent, decision)
+              }
+              onClose={() => decideConsent(pendingAgentConsent, "decline")}
             />
           )}
           {/* Show queued messages list */}

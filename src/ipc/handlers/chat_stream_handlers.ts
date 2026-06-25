@@ -1934,6 +1934,8 @@ ${problemReport.problems
 
       // Notify renderer that stream has ended
       safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      // Unblock any pending MCP consents (their banners are cleared on stream end).
+      clearPendingMcpConsentsForChat(req.chatId);
     }
   });
 

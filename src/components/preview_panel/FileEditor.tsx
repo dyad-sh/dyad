@@ -351,7 +351,7 @@ export const FileEditor = ({
           options={{
             minimap: { enabled: true },
             scrollBeyondLastLine: false,
-            wordWrap: "on",
+            wordWrap: "off",
             automaticLayout: true,
             fontFamily: "monospace",
             fontSize: 13,

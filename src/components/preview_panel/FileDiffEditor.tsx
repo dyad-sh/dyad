@@ -31,11 +31,11 @@ export function FileDiffEditor({
         theme={editorTheme}
         options={{
           readOnly: true,
-          renderSideBySide: true,
+          renderSideBySide: false,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          wordWrap: "on",
+          wordWrap: "off",
           fontFamily: "monospace",
           fontSize: 13,
           lineNumbers: "on",

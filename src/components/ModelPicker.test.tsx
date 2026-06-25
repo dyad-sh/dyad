@@ -5,6 +5,22 @@ import { ModelPicker } from "./ModelPicker";
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   updateSettings: vi.fn(),
+  isTrial: false,
+  freeModelQuota: {
+    quotaStatus: {
+      messagesUsed: 3,
+      messagesLimit: 10,
+      messagesRemaining: 7,
+      isQuotaExceeded: false,
+      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+    },
+    isLoading: false,
+    isQuotaExceeded: false,
+    messagesUsed: 3,
+    messagesLimit: 10,
+    messagesRemaining: 7,
+    resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+  },
   settings: {
     enableDyadPro: true,
     providerSettings: {
@@ -36,8 +52,13 @@ vi.mock("@/hooks/useSettings", () => ({
 
 vi.mock("@/hooks/useTrialModelRestriction", () => ({
   useTrialModelRestriction: () => ({
-    isTrial: false,
+    isTrial: mocks.isTrial,
+    isLoadingTrialStatus: false,
   }),
+}));
+
+vi.mock("@/hooks/useFreeModelQuota", () => ({
+  useFreeModelQuota: () => mocks.freeModelQuota,
 }));
 
 vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
@@ -56,6 +77,13 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
           displayName: "Free",
           description: "Free model",
           type: "cloud",
+        },
+        {
+          apiName: "free-pro",
+          displayName: "Dyad Free",
+          description: "Free Pro model",
+          type: "cloud",
+          tag: "Free",
         },
       ],
       openai: [
@@ -214,6 +242,16 @@ describe("ModelPicker", () => {
     mocks.updateSettings.mockReset();
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
+    mocks.isTrial = false;
+    mocks.freeModelQuota.isQuotaExceeded = false;
+    mocks.freeModelQuota.messagesRemaining = 7;
+    mocks.freeModelQuota.quotaStatus = {
+      messagesUsed: 3,
+      messagesLimit: 10,
+      messagesRemaining: 7,
+      isQuotaExceeded: false,
+      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+    };
   });
 
   it("shows Pro users a flat primary cloud model list with provider grouping under More models", () => {
@@ -224,6 +262,9 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("GLM 4.7")).toBeNull();
     expect(screen.queryByText("Kimi K2")).toBeNull();
     expect(screen.queryByText("Free (OpenRouter)")).toBeNull();
+    expect(screen.getByText("Dyad Free")).toBeTruthy();
+    expect(screen.getByText("7/10 left")).toBeTruthy();
+    expect(screen.getByText("Data sharing")).toBeTruthy();
     expect(screen.getByText("Claude Sonnet 4.5")).toBeTruthy();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
     expect(screen.queryByText("xAI")).toBeNull();
@@ -266,6 +307,7 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("More models")).toBeNull();
     expect(screen.queryByText("GPT 5")).toBeNull();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
+    expect(screen.queryByText("Dyad Free")).toBeNull();
   });
 
   it("selects flat Pro models with their source provider", () => {
@@ -280,5 +322,34 @@ describe("ModelPicker", () => {
       }),
     });
     expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Dyad Free for Dyad Pro trial users", () => {
+    mocks.isTrial = true;
+
+    render(<ModelPicker />);
+
+    expect(screen.queryByText("Dyad Free")).toBeNull();
+    expect(
+      screen.getByText("Upgrade from Dyad Pro trial to unlock more models."),
+    ).toBeTruthy();
+  });
+
+  it("does not select Dyad Free when quota is exhausted", () => {
+    mocks.freeModelQuota.isQuotaExceeded = true;
+    mocks.freeModelQuota.messagesRemaining = 0;
+    mocks.freeModelQuota.quotaStatus = {
+      messagesUsed: 10,
+      messagesLimit: 10,
+      messagesRemaining: 0,
+      isQuotaExceeded: true,
+      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+    };
+
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 });

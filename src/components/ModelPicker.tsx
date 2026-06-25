@@ -31,6 +31,11 @@ import {
 } from "@/components/ui/tooltip";
 import { CheckIcon } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { useFreeModelQuota } from "@/hooks/useFreeModelQuota";
+import {
+  FREE_PRO_MODEL_NAME,
+  isFreeProLanguageModel,
+} from "@/lib/freeProModel";
 
 const SCROLL_AREA_CLASS = "max-h-100 overflow-y-auto scrollbar-on-hover";
 
@@ -75,7 +80,8 @@ function tierFor(dollarSigns: number | undefined): Tier {
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
-  const { isTrial } = useTrialModelRestriction();
+  const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
+  const freeModelQuota = useFreeModelQuota();
   const onModelSelect = (model: LargeLanguageModel) => {
     updateSettings({ selectedModel: model });
     // Invalidate token count when model changes since different models have different context windows
@@ -160,6 +166,9 @@ export function ModelPicker() {
   const autoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
       ? modelsByProviders["auto"].filter((model) => {
+          if (model.apiName === FREE_PRO_MODEL_NAME) {
+            return dyadProEnabled && !isTrial && !isLoadingTrialStatus;
+          }
           if (settings && !dyadProEnabled && model.apiName === "value") {
             return false;
           }
@@ -237,6 +246,13 @@ export function ModelPicker() {
   };
 
   const handleCloudModelSelect = (providerId: string, model: LanguageModel) => {
+    if (
+      isFreeProLanguageModel(providerId, model.apiName) &&
+      freeModelQuota.isQuotaExceeded
+    ) {
+      return;
+    }
+
     const customModelId = model.type === "custom" ? model.id : undefined;
     onModelSelect({
       name: model.apiName,
@@ -261,10 +277,23 @@ export function ModelPicker() {
       selectedModel.provider === providerId &&
       selectedModel.name === model.apiName;
     const isAutoProviderRow = providerId === "auto";
+    const isFreeProRow = isFreeProLanguageModel(providerId, model.apiName);
+    const freeProResetTimeLabel = freeModelQuota.resetTime
+      ? new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date(freeModelQuota.resetTime))
+      : null;
+    const freeProQuotaLabel =
+      freeModelQuota.isLoading && !freeModelQuota.quotaStatus
+        ? "Loading"
+        : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
 
     const item = (
       <DropdownMenuItem
         key={`${providerId}-${model.apiName}`}
+        disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
           "relative px-2 py-1.5",
           isSelected &&
@@ -292,7 +321,7 @@ export function ModelPicker() {
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
-            {model.tag && (
+            {model.tag && !isFreeProRow && (
               <span
                 className={cn(
                   PILL_CLASS,
@@ -305,6 +334,43 @@ export function ModelPicker() {
             )}
             {isSelected && (
               <CheckIcon className="size-3.5 text-primary shrink-0" />
+            )}
+            {isFreeProRow && (
+              <>
+                <span
+                  className={cn(
+                    PILL_CLASS,
+                    freeModelQuota.isQuotaExceeded
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                  )}
+                  title={
+                    freeProResetTimeLabel
+                      ? `Resets at ${freeProResetTimeLabel}`
+                      : undefined
+                  }
+                >
+                  {freeProQuotaLabel}
+                </span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        className={cn(
+                          PILL_CLASS,
+                          "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                        )}
+                      >
+                        Data sharing
+                      </span>
+                    }
+                  />
+                  <TooltipContent side="right" align="start">
+                    Data may be shared with the AI provider and used for
+                    training models.
+                  </TooltipContent>
+                </Tooltip>
+              </>
             )}
           </span>
         </div>

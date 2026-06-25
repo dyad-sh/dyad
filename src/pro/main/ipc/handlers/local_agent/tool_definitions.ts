@@ -383,6 +383,11 @@ export interface BuildAgentToolSetOptions {
    */
   basicAgentMode?: boolean;
   /**
+   * If true, exclude tools that call separate Dyad Engine endpoints.
+   * The free Pro model only uses the engine chat-completions endpoint.
+   */
+  freeModelMode?: boolean;
+  /**
    * If false, exclude app blueprint tools (write_app_blueprint).
    */
   enableAppBlueprint?: boolean;
@@ -435,6 +440,13 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
  */
 const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
+const ENGINE_ENDPOINT_TOOLS = new Set<string>([
+  "web_search",
+  "web_crawl",
+  "web_fetch",
+  "generate_image",
+]);
+
 /**
  * Tools that are part of the app blueprint flow. Excluded when the feature
  * is disabled via the Workflow setting or once the per-app blueprint flag is
@@ -470,6 +482,9 @@ export function shouldIncludeTool(
   }
   // Skip Pro-only tools in basic agent mode.
   if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  if (options.freeModelMode && ENGINE_ENDPOINT_TOOLS.has(tool.name)) {
     return false;
   }
   // Skip app blueprint tools when the feature is disabled.

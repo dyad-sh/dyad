@@ -70,6 +70,11 @@ Creates a chat model for text generation.
 */
   chatModel(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 
+  freeChatModel(
+    modelId: ExampleChatModelId,
+    chatParams: ChatParams,
+  ): LanguageModel;
+
   responses(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 
   anthropic(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
@@ -96,10 +101,10 @@ export function createDyadEngine(
     fetch?: FetchFunction;
   }
 
-  const getCommonModelConfig = (): CommonModelConfig => ({
+  const getCommonModelConfig = (pathPrefix = ""): CommonModelConfig => ({
     provider: `dyad-engine`,
     url: ({ path }) => {
-      const url = new URL(`${baseURL}${path}`);
+      const url = new URL(`${baseURL}${pathPrefix}${path}`);
       if (options.queryParams) {
         url.search = new URLSearchParams(options.queryParams).toString();
       }
@@ -138,9 +143,11 @@ export function createDyadEngine(
   const createDyadFetch = ({
     providerId,
     dyadProviderOptions,
+    disableDyadOptions = false,
   }: {
     providerId: string;
     dyadProviderOptions?: DyadEngineProviderOptions;
+    disableDyadOptions?: boolean;
   }): FetchFunction => {
     return (input: RequestInfo | URL, init?: RequestInit) => {
       const requestInput = appendQueryParams(input);
@@ -183,7 +190,8 @@ export function createDyadEngine(
         if ("dyadAppId" in parsedBody) {
           delete parsedBody.dyadAppId;
         }
-        const dyadDisableFiles = getDyadOption("dyadDisableFiles");
+        const dyadDisableFiles =
+          disableDyadOptions || getDyadOption("dyadDisableFiles");
         if ("dyadDisableFiles" in parsedBody) {
           delete parsedBody.dyadDisableFiles;
         }
@@ -248,14 +256,23 @@ export function createDyadEngine(
   const createChatModel = (
     modelId: ExampleChatModelId,
     chatParams: ChatParams,
+    pathPrefix = "",
   ) => {
     const config = {
-      ...getCommonModelConfig(),
-      fetch: createDyadFetch({ providerId: chatParams.providerId }),
+      ...getCommonModelConfig(pathPrefix),
+      fetch: createDyadFetch({
+        providerId: chatParams.providerId,
+        disableDyadOptions: pathPrefix === "/free",
+      }),
     };
 
     return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
+
+  const createFreeChatModel = (
+    modelId: ExampleChatModelId,
+    chatParams: ChatParams,
+  ) => createChatModel(modelId, chatParams, "/free");
 
   const createResponsesModel = (
     modelId: ExampleChatModelId,
@@ -322,6 +339,7 @@ export function createDyadEngine(
     createChatModel(modelId, chatParams);
 
   provider.chatModel = createChatModel;
+  provider.freeChatModel = createFreeChatModel;
   provider.responses = createResponsesModel;
   provider.anthropic = createAnthropicModel;
 

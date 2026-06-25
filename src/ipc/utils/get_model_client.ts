@@ -34,6 +34,7 @@ import {
   formatInvalidProviderApiKeyMessage,
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
+import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -208,6 +209,15 @@ async function getProModelClient({
   provider: DyadEngineProvider;
   modelId: string;
 }): Promise<ModelClient> {
+  if (isFreeProModel(model)) {
+    return {
+      model: provider.freeChatModel(FREE_PRO_MODEL_NAME, {
+        providerId: model.provider,
+      }),
+      builtinProviderId: model.provider,
+    };
+  }
+
   if (
     settings.selectedChatMode === "local-agent" &&
     model.provider === "auto" &&

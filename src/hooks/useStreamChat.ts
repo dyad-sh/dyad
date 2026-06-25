@@ -452,6 +452,9 @@ export function useStreamChat({
                 queryClient.invalidateQueries({
                   queryKey: queryKeys.freeAgentQuota.status,
                 });
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.freeModelQuota.status,
+                });
 
                 // Keep the same as below
                 setIsStreamingById((prev) => {
@@ -547,6 +550,9 @@ export function useStreamChat({
               // (the server may have refunded the quota)
               queryClient.invalidateQueries({
                 queryKey: queryKeys.freeAgentQuota.status,
+              });
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.freeModelQuota.status,
               });
 
               // Keep the same as above

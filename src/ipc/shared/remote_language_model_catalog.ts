@@ -280,6 +280,29 @@ function convertRemoteCatalog(
       ],
     ),
   );
+  const remoteAutoModels = modelsByProvider.auto ?? [];
+  if (!remoteAutoModels.some((model) => model.apiName === "free-pro")) {
+    const fallbackFreeProModel = MODEL_OPTIONS.auto.find(
+      (model) => model.name === "free-pro",
+    );
+    if (fallbackFreeProModel) {
+      modelsByProvider.auto = [
+        ...remoteAutoModels,
+        {
+          apiName: fallbackFreeProModel.name,
+          displayName: fallbackFreeProModel.displayName,
+          description: fallbackFreeProModel.description,
+          tag: fallbackFreeProModel.tag,
+          tagColor: fallbackFreeProModel.tagColor,
+          maxOutputTokens: fallbackFreeProModel.maxOutputTokens,
+          contextWindow: fallbackFreeProModel.contextWindow,
+          temperature: fallbackFreeProModel.temperature,
+          dollarSigns: fallbackFreeProModel.dollarSigns,
+          type: "cloud" as const,
+        },
+      ];
+    }
+  }
 
   const parsedExpiresAt = remoteCatalog.expiresAt
     ? new Date(remoteCatalog.expiresAt).getTime()

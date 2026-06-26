@@ -39,6 +39,121 @@ import { ContextFilesPickerDialog } from "./dialogs/ContextFilesPickerDialog";
 import { ProModesDialog } from "./dialogs/ProModesDialog";
 import { Timeout } from "../constants";
 
+const IGNORED_SNAPSHOT_FILE_PATHS = new Set([".gitattributes"]);
+
+function isIgnoredSnapshotFile(filePath: string | undefined): boolean {
+  return (
+    typeof filePath === "string" &&
+    IGNORED_SNAPSHOT_FILE_PATHS.has(normalizePath(filePath))
+  );
+}
+
+function removeIgnoredDyadFileBlocks(text: string): string {
+  return text
+    .replace(
+      /\n?<dyad-file path="\.gitattributes">[\s\S]*?<\/dyad-file>\n*/g,
+      "",
+    )
+    .replace(
+      /This is my codebase\.\s+(<dyad-file)/g,
+      "This is my codebase. $1",
+    );
+}
+
+function sanitizeContentForSnapshot(content: unknown): unknown {
+  if (typeof content === "string") {
+    return removeIgnoredDyadFileBlocks(content);
+  }
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (
+        part &&
+        typeof part === "object" &&
+        "text" in part &&
+        typeof part.text === "string"
+      ) {
+        return {
+          ...part,
+          text: removeIgnoredDyadFileBlocks(part.text),
+        };
+      }
+      return part;
+    });
+  }
+  return content;
+}
+
+function removeIgnoredSnapshotFilesFromDump(dump: any): void {
+  const body = dump?.body;
+  if (!body) {
+    return;
+  }
+
+  for (const key of ["input", "messages"] as const) {
+    if (Array.isArray(body[key])) {
+      body[key] = body[key].map((message: any) => ({
+        ...message,
+        content: sanitizeContentForSnapshot(message.content),
+      }));
+    }
+  }
+
+  if (Array.isArray(body.dyad_options?.files)) {
+    body.dyad_options.files = body.dyad_options.files.filter(
+      (file: any) => !isIgnoredSnapshotFile(file.path),
+    );
+  }
+
+  if (Array.isArray(body.dyad_options?.mentioned_apps)) {
+    for (const mentionedApp of body.dyad_options.mentioned_apps) {
+      if (Array.isArray(mentionedApp.files)) {
+        mentionedApp.files = mentionedApp.files.filter(
+          (file: any) => !isIgnoredSnapshotFile(file.path),
+        );
+      }
+    }
+  }
+
+  const vf = body.dyad_options?.versioned_files;
+  if (!vf) {
+    return;
+  }
+
+  const ignoredFileIds = new Set<string>();
+  if (Array.isArray(vf.fileReferences)) {
+    vf.fileReferences = vf.fileReferences.filter((ref: any) => {
+      if (isIgnoredSnapshotFile(ref.path)) {
+        if (typeof ref.fileId === "string") {
+          ignoredFileIds.add(ref.fileId);
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+
+  if (vf.fileIdToContent) {
+    for (const fileId of ignoredFileIds) {
+      delete vf.fileIdToContent[fileId];
+    }
+  }
+
+  if (vf.messageIndexToFilePathToFileId) {
+    for (const pathToId of Object.values(
+      vf.messageIndexToFilePathToFileId as Record<
+        string,
+        Record<string, string>
+      >,
+    )) {
+      for (const filePath of Object.keys(pathToId)) {
+        if (isIgnoredSnapshotFile(filePath)) {
+          delete pathToId[filePath];
+        }
+      }
+    }
+  }
+}
+
 export class PageObject {
   public userDataDir: string;
   public fakeLlmPort: number;
@@ -421,6 +536,9 @@ export class PageObject {
 
       // Sort by relative path to ensure deterministic output
       filesData.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+      filesData = filesData.filter(
+        (file) => !isIgnoredSnapshotFile(file.relativePath),
+      );
       if (files) {
         filesData = filesData.filter((file) =>
           files.some(
@@ -548,6 +666,7 @@ export class PageObject {
 
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
+    removeIgnoredSnapshotFilesFromDump(parsedDump);
     if (parsedDump["body"]["input"]) {
       parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
         (input: any) => {

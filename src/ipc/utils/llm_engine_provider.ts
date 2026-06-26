@@ -230,9 +230,17 @@ export function createDyadEngine(
           modifiedRequestId = `${requestId}:attempt-${currentAttempt}`;
         }
 
-        // Add files to the request if they exist
+        parsedBody.dyad_options = {
+          app_id: dyadAppId,
+          app_uuid: dyadAppUuid,
+          app_name: dyadAppName,
+          chat_id: dyadChatId,
+          turn_uuid: dyadTurnUuid,
+        };
+
+        // Add files to the request if they exist.
         if (!dyadDisableFiles) {
-          parsedBody.dyad_options = {
+          Object.assign(parsedBody.dyad_options, {
             files: dyadFiles,
             versioned_files: dyadVersionedFiles,
             enable_lazy_edits: options.dyadOptions.enableLazyEdits,
@@ -240,12 +248,7 @@ export function createDyadEngine(
               options.dyadOptions.enableSmartFilesContext,
             smart_context_mode: dyadSmartContextMode,
             enable_web_search: options.dyadOptions.enableWebSearch,
-            app_id: dyadAppId,
-            app_uuid: dyadAppUuid,
-            app_name: dyadAppName,
-            chat_id: dyadChatId,
-            turn_uuid: dyadTurnUuid,
-          };
+          });
           if (dyadMentionedApps?.length) {
             parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
           }

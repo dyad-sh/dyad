@@ -163,6 +163,83 @@ describe("createDyadEngine", () => {
     expect(url.searchParams.get("source")).toBe("test");
   });
 
+  test("keeps app metadata when file injection is disabled", async () => {
+    const requests: Array<{
+      input: RequestInfo | URL;
+      init?: RequestInit;
+    }> = [];
+
+    const provider = createDyadEngine({
+      apiKey: "dyad-pro-key",
+      baseURL: "https://engine.example.test/v1",
+      dyadOptions: {
+        enableLazyEdits: true,
+        enableSmartFilesContext: true,
+        enableWebSearch: true,
+      },
+      settings: {} as UserSettings,
+      fetch: async (input, init) => {
+        requests.push({ input, init });
+
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-5",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 1,
+              completion_tokens: 1,
+              total_tokens: 2,
+            },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        );
+      },
+    });
+
+    const model = provider.chatModel("gpt-5", {
+      providerId: "openai",
+    }) as LanguageModelV3;
+
+    await model.doGenerate({
+      prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+      providerOptions: {
+        "dyad-engine": {
+          dyadAppId: 42,
+          dyadAppUuid: "00000000-0000-4000-8000-000000000042",
+          dyadAppName: "Test App",
+          dyadChatId: 7,
+          dyadTurnUuid: "00000000-0000-4000-8000-000000000007",
+          dyadRequestId: "request-1",
+          dyadFiles: [{ path: "src/App.tsx", content: "export {}" }],
+          dyadDisableFiles: true,
+        },
+      },
+    } satisfies LanguageModelV3CallOptions);
+
+    expect(requests).toHaveLength(1);
+    const body = JSON.parse(String(requests[0].init?.body));
+    expect(body.dyad_options).toEqual({
+      app_id: 42,
+      app_uuid: "00000000-0000-4000-8000-000000000042",
+      app_name: "Test App",
+      chat_id: 7,
+      turn_uuid: "00000000-0000-4000-8000-000000000007",
+    });
+    expect(body.dyad_options).not.toHaveProperty("files");
+    expect(body.dyad_options).not.toHaveProperty("enable_smart_files_context");
+  });
+
   test("sends stable free quota key separately from attempt request id", async () => {
     const requests: Array<{
       input: RequestInfo | URL;

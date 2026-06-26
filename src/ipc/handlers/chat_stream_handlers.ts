@@ -16,7 +16,7 @@ import {
 } from "ai";
 
 import { db } from "../../db";
-import { apps, chats, messages } from "../../db/schema";
+import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
 import {
@@ -67,6 +67,7 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
+import { ensureAppUuid } from "../utils/app_uuid";
 import { mcpServers } from "../../db/schema";
 import {
   requireMcpToolConsent,
@@ -726,15 +727,7 @@ ${componentSnippet}
           DyadErrorKind.NotFound,
         );
       }
-      let appUuid = updatedChat.app.appUuid;
-      if (!appUuid) {
-        appUuid = uuidv4();
-        await db
-          .update(apps)
-          .set({ appUuid })
-          .where(eq(apps.id, updatedChat.app.id));
-        updatedChat.app.appUuid = appUuid;
-      }
+      const appUuid = await ensureAppUuid(updatedChat.app);
 
       // Send the messages right away so that the loading state is shown for the message.
       safeSend(event.sender, "chat:response:chunk", {

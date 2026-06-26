@@ -52,6 +52,7 @@ import {
   startCloudSandboxLogStream,
 } from "../services/app_runtime_service";
 import { getPtySessionManager } from "../utils/pty_session_manager";
+import { ensureAppUuid } from "../utils/app_uuid";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -666,12 +667,7 @@ export function registerAppHandlers() {
       if (!app) {
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
-      let appUuid = app.appUuid;
-      if (!appUuid) {
-        appUuid = uuidv4();
-        await db.update(apps).set({ appUuid }).where(eq(apps.id, app.id));
-        app.appUuid = appUuid;
-      }
+      const appUuid = await ensureAppUuid(app);
 
       logger.debug(`Starting app ${appId} in path ${app.path}`);
 
@@ -949,12 +945,7 @@ export function registerAppHandlers() {
         logger.debug(
           `Executing app ${appId} in path ${app.path} after restart request`,
         ); // Adjusted log
-        let appUuid = app.appUuid;
-        if (!appUuid) {
-          appUuid = uuidv4();
-          await db.update(apps).set({ appUuid }).where(eq(apps.id, app.id));
-          app.appUuid = appUuid;
-        }
+        const appUuid = await ensureAppUuid(app);
 
         await executeApp({
           appPath,

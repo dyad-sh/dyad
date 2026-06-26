@@ -20,6 +20,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - `requireMcpToolConsent` resolves to a structured result, not a bare boolean. If `npm run ts` reports `Argument of type 'boolean' is not assignable to parameter of type 'McpConsentResult'`, update mocks to return `{ approved: true/false }`.
 
+## SQL consent and auto-approval
+
+- When changing `execute_sql` consent metadata or safety checks, audit both Agent mode (`shouldAutoApproveAgentTool` / `executeSqlTool.getConsentMetadata`) and Build mode auto-apply (`chat_stream_handlers.ts` with `autoApproveChanges`). A SQL safety rule only on the Agent tool path can still be bypassed by Build mode global auto-approve.
+
 ## Stream retries
 
 - When extending `handleLocalAgentStream` retry behavior, do not only match transport errors like `"terminated"`. Providers can emit structured stream errors such as `{ type: "error", error: { type: "server_error", ... } }`, and those transient 5xx / rate-limit failures need explicit retry classification too.

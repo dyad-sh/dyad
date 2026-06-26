@@ -16,6 +16,12 @@ testSkipIfWindows("security review", async ({ po }) => {
 
   await po.page.getByRole("button", { name: "Fix Issue" }).first().click();
   await po.chatActions.waitForChatCompletion();
+  await expect(async () => {
+    const text = await po.page.getByTestId("messages-list").textContent();
+    expect(text).toMatch(
+      /Please fix the following security issue[\s\S]*Version 2:/,
+    );
+  }).toPass({ timeout: Timeout.MEDIUM });
   await po.snapshotMessages({
     name: "security-review---fix-issue",
     replaceDumpPath: true,

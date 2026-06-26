@@ -118,6 +118,11 @@ const QUALIFIED_SCHEMA_FUNCTIONS: ReadonlyMap<string, string> = new Map([
   ["ALTER_JOB", "CRON"],
 ]);
 
+const DATA_DELETION_FUNCTIONS: ReadonlySet<string> = new Set([
+  // Arbitrary-SQL escape hatch: the payload is opaque, so flag the call.
+  "DBLINK_EXEC",
+]);
+
 export function detectSqlSchemaMutation(
   sql: string,
 ): SqlSchemaMutationAnalysis {
@@ -233,6 +238,10 @@ function classifyDataDeletionTokens(
     return dataDeleting(sql, "update", "UPDATE");
   }
 
+  if (first === "INSERT" && insertUpdatesOnConflict(tokens)) {
+    return dataDeleting(sql, "update", "INSERT ON CONFLICT DO UPDATE");
+  }
+
   if (first === "TRUNCATE") {
     return dataDeleting(sql, "truncate", "TRUNCATE");
   }
@@ -291,6 +300,13 @@ function classifyDataDeletionTokens(
     }
   }
 
+  if (shouldScanForDataDeletionFunctions(first, tokens)) {
+    const dataDeletionFunction = findDataDeletionFunctionCall(tokens);
+    if (dataDeletionFunction !== null) {
+      return dataDeleting(sql, "dynamic_execution", dataDeletionFunction);
+    }
+  }
+
   return nonDataDeleting(sql, first);
 }
 
@@ -340,6 +356,27 @@ function shouldScanForSchemaFunctions(
   }
 
   return false;
+}
+
+function shouldScanForDataDeletionFunctions(
+  first: string,
+  tokens: readonly Token[],
+): boolean {
+  if (first === "EXPLAIN") return explainExecutesStatement(tokens);
+  return shouldScanForSchemaFunctions(first, tokens);
+}
+
+function findDataDeletionFunctionCall(tokens: readonly Token[]): string | null {
+  for (let i = 0; i < tokens.length; i += 1) {
+    const open = tokens[i];
+    if (open?.type !== "symbol" || open.value !== "(") continue;
+
+    const nameValue = identifierTokenValue(tokens[i - 1]);
+    if (nameValue !== null && DATA_DELETION_FUNCTIONS.has(nameValue)) {
+      return nameValue;
+    }
+  }
+  return null;
 }
 
 function explainExecutesStatement(tokens: readonly Token[]): boolean {
@@ -580,6 +617,19 @@ function statementDropsColumn(tokens: readonly Token[]): boolean {
 
 function mergeDeletesRows(tokens: readonly Token[]): boolean {
   return hasUnquotedWord(tokens, "MERGE") && hasUnquotedWord(tokens, "DELETE");
+}
+
+function insertUpdatesOnConflict(tokens: readonly Token[]): boolean {
+  const words = unquotedWords(tokens);
+  const conflictIndex = words.findIndex(
+    (word, index) => word === "ON" && words[index + 1] === "CONFLICT",
+  );
+  if (conflictIndex === -1) return false;
+
+  for (let i = conflictIndex + 2; i < words.length - 1; i += 1) {
+    if (words[i] === "DO" && words[i + 1] === "UPDATE") return true;
+  }
+  return false;
 }
 
 function hasTopLevelSelectInto(tokens: readonly Token[]): boolean {

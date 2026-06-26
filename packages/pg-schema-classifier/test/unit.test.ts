@@ -221,6 +221,7 @@ describe("detectSqlDataDeletion", () => {
     for (const sql of [
       "UPDATE users SET name = 'Ada'",
       "UPDATE users SET email = NULL",
+      "INSERT INTO users (id, email) VALUES (1, 'x') ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email",
       "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN UPDATE SET name = incoming.name",
     ]) {
       expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
@@ -234,6 +235,7 @@ describe("detectSqlDataDeletion", () => {
       "CALL delete_inactive_users()",
       "PREPARE wipe AS DELETE FROM users",
       "EXECUTE wipe",
+      "SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
     ]) {
       const result = detectSqlDataDeletion(sql);
       expect(result.deletesData, sql).toBe(true);
@@ -289,6 +291,7 @@ describe("detectSqlDataDeletion", () => {
     for (const sql of [
       "SELECT * FROM users",
       "INSERT INTO users (name) VALUES ('Ada')",
+      "INSERT INTO users (id, email) VALUES (1, 'x') ON CONFLICT (id) DO NOTHING",
       "DROP VIEW old_users",
       "ALTER TABLE users DROP CONSTRAINT users_email_key",
       "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
@@ -338,6 +341,16 @@ describe("detectSqlDataDeletion", () => {
     expect(
       detectSqlDataDeletion(
         "EXPLAIN (ANALYZE true) UPDATE users SET email = NULL",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
+      ).deletesData,
+    ).toBe(false);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN ANALYZE SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
       ).deletesData,
     ).toBe(true);
   });

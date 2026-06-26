@@ -82,4 +82,29 @@ describe("extractCodebase", () => {
       force: false,
     });
   });
+
+  it("excludes git metadata policy files from context", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+
+    await fs.promises.writeFile(
+      path.join(appDir, ".gitattributes"),
+      "* text=auto eol=lf\n",
+    );
+    await fs.promises.writeFile(path.join(appDir, ".gitignore"), "dist\n");
+    await fs.promises.writeFile(path.join(appDir, "src.ts"), "export {};\n");
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+    });
+
+    expect(result.files.map((file) => file.path)).toEqual([
+      ".gitignore",
+      "src.ts",
+    ]);
+    expect(result.formattedOutput).not.toContain(".gitattributes");
+  });
 });

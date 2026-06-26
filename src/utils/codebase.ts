@@ -75,6 +75,7 @@ const EXCLUDED_DIRS = [
 
 // Files to always exclude
 const EXCLUDED_FILES = [
+  ".gitattributes",
   "pnpm-lock.yaml",
   "package-lock.json",
   "pnpm-workspace.yaml",

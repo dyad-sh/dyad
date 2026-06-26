@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { detectSqlSchemaMutation } from "../src/index.js";
+import {
+  detectSqlDataDeletion,
+  detectSqlSchemaMutation,
+} from "../src/index.js";
 
 describe("detectSqlSchemaMutation", () => {
   it("does not flag ordinary reads or DML", () => {
@@ -188,5 +191,182 @@ describe("detectSqlSchemaMutation", () => {
       mutatesSchema: true,
       reason: "unparseable_or_incomplete",
     });
+  });
+});
+
+describe("detectSqlDataDeletion", () => {
+  it("flags direct data deletion statements", () => {
+    for (const sql of [
+      "DELETE FROM users WHERE id = 1",
+      "TRUNCATE events",
+      "TRUNCATE TABLE events RESTART IDENTITY",
+      "DROP TABLE users",
+      "DROP TABLE IF EXISTS users",
+      "DROP SCHEMA private CASCADE",
+      "DROP SCHEMA IF EXISTS private CASCADE",
+      "DROP DATABASE old_app",
+      "DROP DATABASE IF EXISTS old_app",
+      "DROP OWNED BY app_user CASCADE",
+      "ALTER TABLE users DROP COLUMN legacy_id",
+      "ALTER TABLE users DROP legacy_id",
+      "ALTER TABLE users DROP IF EXISTS legacy_id",
+      "ALTER TABLE users DROP COLUMN IF EXISTS legacy_id",
+      'ALTER TABLE users DROP "email"',
+      'ALTER TABLE users DROP IF EXISTS "legacy_id"',
+      "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE",
+    ]) {
+      expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
+    }
+  });
+
+  it("flags data update statements", () => {
+    for (const sql of [
+      "UPDATE users SET name = 'Ada'",
+      "UPDATE users SET email = NULL",
+      "INSERT INTO users (id, email) VALUES (1, 'x') ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email",
+      "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN UPDATE SET name = incoming.name",
+    ]) {
+      expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
+    }
+  });
+
+  it("treats dynamic execution as destructive because the body is opaque", () => {
+    for (const sql of [
+      "DO $$ BEGIN DELETE FROM users WHERE inactive; END $$",
+      "DO $$ BEGIN EXECUTE 'DELETE FROM users'; END $$",
+      "CALL delete_inactive_users()",
+      "PREPARE wipe AS DELETE FROM users",
+      "EXECUTE wipe",
+      "SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
+    ]) {
+      const result = detectSqlDataDeletion(sql);
+      expect(result.deletesData, sql).toBe(true);
+      expect(result.statements[0]?.reason, sql).toBe("dynamic_execution");
+    }
+  });
+
+  it("treats incomplete SQL as destructive because it gates auto-approval", () => {
+    for (const sql of ["SELECT 'unterminated", "SELECT 1 /* inspect"]) {
+      const result = detectSqlDataDeletion(sql);
+      expect(result.deletesData, sql).toBe(true);
+      expect(result.statements[0]?.reason, sql).toBe(
+        "unparseable_or_incomplete",
+      );
+    }
+  });
+
+  it("treats EOF line comments as complete SQL", () => {
+    expect(detectSqlDataDeletion("SELECT 1 -- inspect").deletesData).toBe(
+      false,
+    );
+
+    const deleteResult = detectSqlDataDeletion("DELETE FROM users -- cleanup");
+    expect(deleteResult.deletesData).toBe(true);
+    expect(deleteResult.statements[0]?.reason).toBe("delete");
+  });
+
+  it("flags data-modifying CTE deletes", () => {
+    const result = detectSqlDataDeletion(`
+      WITH deleted AS (
+        DELETE FROM users WHERE inactive = true RETURNING id
+      )
+      SELECT * FROM deleted;
+    `);
+
+    expect(result.deletesData).toBe(true);
+    expect(result.statements[0]?.reason).toBe("data_modifying_cte");
+  });
+
+  it("flags data-modifying CTE updates", () => {
+    const result = detectSqlDataDeletion(`
+      WITH updated AS (
+        UPDATE users SET email = NULL WHERE inactive = true RETURNING id
+      )
+      SELECT * FROM updated;
+    `);
+
+    expect(result.deletesData).toBe(true);
+    expect(result.statements[0]?.reason).toBe("data_modifying_cte");
+  });
+
+  it("does not flag reads, inserts, comments, or quoted text", () => {
+    for (const sql of [
+      "SELECT * FROM users",
+      "INSERT INTO users (name) VALUES ('Ada')",
+      "INSERT INTO users (id, email) VALUES (1, 'x') ON CONFLICT (id) DO NOTHING",
+      "DROP VIEW old_users",
+      "ALTER TABLE users DROP CONSTRAINT users_email_key",
+      "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
+      'ALTER TABLE users DROP CONSTRAINT "users_email_key"',
+      "ALTER TABLE users ALTER COLUMN legacy_id DROP DEFAULT",
+      "ALTER TABLE users ALTER COLUMN legacy_id DROP NOT NULL",
+      "SELECT 'DELETE FROM users' AS example",
+      "-- DELETE FROM users\nSELECT 1",
+      "/* TRUNCATE events */ SELECT 1",
+      `SELECT $$DELETE FROM users$$ AS example`,
+    ]) {
+      expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(false);
+    }
+  });
+
+  it("only flags EXPLAIN-wrapped deletes when the statement executes", () => {
+    expect(
+      detectSqlDataDeletion("EXPLAIN DELETE FROM users WHERE id = 1")
+        .deletesData,
+    ).toBe(false);
+    expect(
+      detectSqlDataDeletion("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1")
+        .deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE false) DELETE FROM users WHERE id = 1",
+      ).deletesData,
+    ).toBe(false);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) DELETE FROM users WHERE id = 1",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion("EXPLAIN ANALYZE DROP TABLE users").deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) ALTER TABLE users DROP COLUMN legacy_id",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) UPDATE users SET email = NULL",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
+      ).deletesData,
+    ).toBe(false);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN ANALYZE SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
+      ).deletesData,
+    ).toBe(true);
+  });
+
+  it("reports mixed multi-statement SQL when any statement deletes data", () => {
+    const result = detectSqlDataDeletion(`
+      SELECT * FROM users;
+      DELETE FROM users WHERE id = 1;
+    `);
+
+    expect(result.deletesData).toBe(true);
+    expect(result.statements.map((statement) => statement.deletesData)).toEqual(
+      [false, true],
+    );
   });
 });

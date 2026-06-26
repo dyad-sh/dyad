@@ -44,6 +44,7 @@ export function AgentConsentBanner({
     classifierReason,
   } = consent;
   const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
+  const sqlDeletesData = consent.metadata?.sqlDeletesData === true;
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
@@ -139,6 +140,12 @@ export function AgentConsentBanner({
               <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
                 <span>{t("changesDatabaseSchema")}</span>
+              </div>
+            )}
+            {sqlDeletesData && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-red-700 dark:text-red-400">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>{t("destructiveDataChange")}</span>
               </div>
             )}
             <div className="rounded bg-muted p-1.5">

@@ -6,6 +6,7 @@ import {
   createEventClient,
 } from "../contracts/core";
 import { AgentToolConsentSchema } from "../../lib/schemas";
+import { SqlConsentMetadataSchema } from "../../shared/sqlConsentMetadata";
 
 // =============================================================================
 // Agent Schemas
@@ -20,12 +21,7 @@ export const AgentToolConsentRequestSchema = z.object({
   toolName: z.string(),
   toolDescription: z.string().nullable().optional(),
   inputPreview: z.string().nullable().optional(),
-  metadata: z
-    .object({
-      sqlMutatesSchema: z.boolean().optional(),
-    })
-    .nullable()
-    .optional(),
+  metadata: SqlConsentMetadataSchema.nullable().optional(),
 });
 
 export type AgentToolConsentRequestPayload = z.infer<

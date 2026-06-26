@@ -6,6 +6,7 @@
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
+import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -183,17 +184,19 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
 
 /**
  * When autoApproveNonSchemaSql is enabled, execute_sql calls that the schema
- * classifier determines do not mutate the schema run without a consent prompt.
- * Schema-mutating SQL still requires consent.
+ * classifier determines do not mutate the schema and do not delete data run
+ * without a consent prompt. Schema-mutating or data-deleting SQL still
+ * requires consent.
  */
 export function shouldAutoApproveAgentTool(params: {
   toolName: AgentToolName;
-  metadata?: { sqlMutatesSchema?: boolean } | null;
+  metadata?: SqlConsentMetadata | null;
   autoApproveNonSchemaSql: boolean | undefined;
 }): boolean {
   return (
     params.toolName === "execute_sql" &&
     params.metadata?.sqlMutatesSchema === false &&
+    params.metadata?.sqlDeletesData === false &&
     params.autoApproveNonSchemaSql === true
   );
 }
@@ -242,7 +245,7 @@ export async function requireAgentToolConsent(
     toolName: AgentToolName;
     toolDescription?: string | null;
     inputPreview?: string | null;
-    metadata?: { sqlMutatesSchema?: boolean } | null;
+    metadata?: SqlConsentMetadata | null;
   },
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);

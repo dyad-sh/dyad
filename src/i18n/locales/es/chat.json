@@ -97,6 +97,7 @@
   "noChanges": "Sin cambios",
   "sqlQuery": "Consulta SQL",
   "changesDatabaseSchema": "Cambia el esquema de la base de datos",
+  "destructiveDataChange": "Cambio destructivo de datos",
   "approved": "Aprobado",
   "rejected": "Rechazado",
   "copy": "Copiar",

@@ -6,7 +6,7 @@ describe("shouldAutoApproveAgentTool", () => {
     expect(
       shouldAutoApproveAgentTool({
         toolName: "execute_sql",
-        metadata: { sqlMutatesSchema: false },
+        metadata: { sqlMutatesSchema: false, sqlDeletesData: false },
         autoApproveNonSchemaSql: true,
       }),
     ).toBe(true);
@@ -16,7 +16,17 @@ describe("shouldAutoApproveAgentTool", () => {
     expect(
       shouldAutoApproveAgentTool({
         toolName: "execute_sql",
-        metadata: { sqlMutatesSchema: true },
+        metadata: { sqlMutatesSchema: true, sqlDeletesData: false },
+        autoApproveNonSchemaSql: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("still asks for data-deleting execute_sql when enabled", () => {
+    expect(
+      shouldAutoApproveAgentTool({
+        toolName: "execute_sql",
+        metadata: { sqlMutatesSchema: false, sqlDeletesData: true },
         autoApproveNonSchemaSql: true,
       }),
     ).toBe(false);
@@ -26,14 +36,14 @@ describe("shouldAutoApproveAgentTool", () => {
     expect(
       shouldAutoApproveAgentTool({
         toolName: "execute_sql",
-        metadata: { sqlMutatesSchema: false },
+        metadata: { sqlMutatesSchema: false, sqlDeletesData: false },
         autoApproveNonSchemaSql: false,
       }),
     ).toBe(false);
     expect(
       shouldAutoApproveAgentTool({
         toolName: "execute_sql",
-        metadata: { sqlMutatesSchema: false },
+        metadata: { sqlMutatesSchema: false, sqlDeletesData: false },
         autoApproveNonSchemaSql: undefined,
       }),
     ).toBe(false);
@@ -53,7 +63,7 @@ describe("shouldAutoApproveAgentTool", () => {
     expect(
       shouldAutoApproveAgentTool({
         toolName: "write_file",
-        metadata: { sqlMutatesSchema: false },
+        metadata: { sqlMutatesSchema: false, sqlDeletesData: false },
         autoApproveNonSchemaSql: true,
       }),
     ).toBe(false);

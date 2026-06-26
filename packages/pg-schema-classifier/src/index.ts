@@ -19,6 +19,31 @@ export type SqlSchemaMutationAnalysis = {
   readonly statements: readonly SqlSchemaMutationStatement[];
 };
 
+export type SqlDataDeletionReason =
+  | "delete"
+  | "update"
+  | "truncate"
+  | "data_modifying_cte"
+  | "dynamic_execution"
+  | "unparseable_or_incomplete"
+  | "drop_database"
+  | "drop_schema"
+  | "drop_table"
+  | "drop_owned"
+  | "drop_column";
+
+export type SqlDataDeletionStatement = {
+  readonly sql: string;
+  readonly deletesData: boolean;
+  readonly reason: SqlDataDeletionReason | null;
+  readonly command: string | null;
+};
+
+export type SqlDataDeletionAnalysis = {
+  readonly deletesData: boolean;
+  readonly statements: readonly SqlDataDeletionStatement[];
+};
+
 type SplitStatement = {
   readonly sql: string;
   readonly incomplete: boolean;
@@ -93,12 +118,25 @@ const QUALIFIED_SCHEMA_FUNCTIONS: ReadonlyMap<string, string> = new Map([
   ["ALTER_JOB", "CRON"],
 ]);
 
+const DATA_DELETION_FUNCTIONS: ReadonlySet<string> = new Set([
+  // Arbitrary-SQL escape hatch: the payload is opaque, so flag the call.
+  "DBLINK_EXEC",
+]);
+
 export function detectSqlSchemaMutation(
   sql: string,
 ): SqlSchemaMutationAnalysis {
   const statements = splitSqlStatements(sql).map(classifyStatement);
   return {
     mutatesSchema: statements.some((statement) => statement.mutatesSchema),
+    statements,
+  };
+}
+
+export function detectSqlDataDeletion(sql: string): SqlDataDeletionAnalysis {
+  const statements = splitSqlStatements(sql).map(classifyDataDeletionStatement);
+  return {
+    deletesData: statements.some((statement) => statement.deletesData),
     statements,
   };
 }
@@ -171,6 +209,107 @@ function classifyStatement(
   };
 }
 
+function classifyDataDeletionStatement(
+  statement: SplitStatement,
+): SqlDataDeletionStatement {
+  const trimmed = statement.sql.trim();
+  if (statement.incomplete) {
+    return dataDeleting(trimmed, "unparseable_or_incomplete", null);
+  }
+
+  const tokens = tokenizeStatement(trimmed);
+  return classifyDataDeletionTokens(tokens, trimmed);
+}
+
+function classifyDataDeletionTokens(
+  tokens: readonly Token[],
+  sql: string,
+): SqlDataDeletionStatement {
+  const first = firstWord(tokens);
+  if (first === null) {
+    return nonDataDeleting(sql, null);
+  }
+
+  if (first === "DELETE") {
+    return dataDeleting(sql, "delete", "DELETE");
+  }
+
+  if (first === "UPDATE") {
+    return dataDeleting(sql, "update", "UPDATE");
+  }
+
+  if (first === "INSERT" && insertUpdatesOnConflict(tokens)) {
+    return dataDeleting(sql, "update", "INSERT ON CONFLICT DO UPDATE");
+  }
+
+  if (first === "TRUNCATE") {
+    return dataDeleting(sql, "truncate", "TRUNCATE");
+  }
+
+  if (first === "DO" || first === "CALL" || first === "EXECUTE") {
+    return dataDeleting(sql, "dynamic_execution", first);
+  }
+
+  if (first === "PREPARE") {
+    return dataDeleting(sql, "dynamic_execution", first);
+  }
+
+  if (first === "DROP") {
+    const droppedObject = droppedObjectType(tokens);
+    if (droppedObject === "DATABASE") {
+      return dataDeleting(sql, "drop_database", "DROP DATABASE");
+    }
+    if (droppedObject === "SCHEMA") {
+      return dataDeleting(sql, "drop_schema", "DROP SCHEMA");
+    }
+    if (droppedObject === "TABLE") {
+      return dataDeleting(sql, "drop_table", "DROP TABLE");
+    }
+    if (droppedObject === "OWNED") {
+      return dataDeleting(sql, "drop_owned", "DROP OWNED");
+    }
+  }
+
+  if (first === "ALTER" && statementDropsColumn(tokens)) {
+    return dataDeleting(sql, "drop_column", "ALTER TABLE DROP COLUMN");
+  }
+
+  if (first === "MERGE" && mergeDeletesRows(tokens)) {
+    return dataDeleting(sql, "delete", "MERGE DELETE");
+  }
+
+  if (
+    first === "MERGE" &&
+    hasUnquotedWord(tokens, "UPDATE") &&
+    hasUnquotedWord(tokens, "SET")
+  ) {
+    return dataDeleting(sql, "update", "MERGE UPDATE");
+  }
+
+  if (
+    first === "WITH" &&
+    (hasUnquotedWord(tokens, "DELETE") || hasUnquotedWord(tokens, "UPDATE"))
+  ) {
+    return dataDeleting(sql, "data_modifying_cte", "WITH DATA CHANGE");
+  }
+
+  if (first === "EXPLAIN" && explainExecutesStatement(tokens)) {
+    const statementStart = explainStatementStartIndex(tokens);
+    if (statementStart !== null) {
+      return classifyDataDeletionTokens(tokens.slice(statementStart), sql);
+    }
+  }
+
+  if (shouldScanForDataDeletionFunctions(first, tokens)) {
+    const dataDeletionFunction = findDataDeletionFunctionCall(tokens);
+    if (dataDeletionFunction !== null) {
+      return dataDeleting(sql, "dynamic_execution", dataDeletionFunction);
+    }
+  }
+
+  return nonDataDeleting(sql, first);
+}
+
 function findSchemaFunctionCall(tokens: readonly Token[]): string | null {
   for (let i = 0; i < tokens.length; i += 1) {
     const open = tokens[i];
@@ -219,6 +358,27 @@ function shouldScanForSchemaFunctions(
   return false;
 }
 
+function shouldScanForDataDeletionFunctions(
+  first: string,
+  tokens: readonly Token[],
+): boolean {
+  if (first === "EXPLAIN") return explainExecutesStatement(tokens);
+  return shouldScanForSchemaFunctions(first, tokens);
+}
+
+function findDataDeletionFunctionCall(tokens: readonly Token[]): string | null {
+  for (let i = 0; i < tokens.length; i += 1) {
+    const open = tokens[i];
+    if (open?.type !== "symbol" || open.value !== "(") continue;
+
+    const nameValue = identifierTokenValue(tokens[i - 1]);
+    if (nameValue !== null && DATA_DELETION_FUNCTIONS.has(nameValue)) {
+      return nameValue;
+    }
+  }
+  return null;
+}
+
 function explainExecutesStatement(tokens: readonly Token[]): boolean {
   const explainIndex = tokens.findIndex((token) =>
     isUnquotedWord(token, "EXPLAIN"),
@@ -233,6 +393,39 @@ function explainExecutesStatement(tokens: readonly Token[]): boolean {
   }
 
   return false;
+}
+
+function explainStatementStartIndex(tokens: readonly Token[]): number | null {
+  const explainIndex = tokens.findIndex((token) =>
+    isUnquotedWord(token, "EXPLAIN"),
+  );
+  if (explainIndex === -1) return null;
+
+  let index = explainIndex + 1;
+  const next = tokens[index];
+  if (next?.type === "symbol" && next.value === "(") {
+    let depth = 1;
+    for (index += 1; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token?.type !== "symbol") continue;
+      if (token.value === "(") {
+        depth += 1;
+        continue;
+      }
+      if (token.value !== ")") continue;
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+    return null;
+  }
+
+  if (isUnquotedWord(tokens[index], "ANALYZE")) {
+    index += 1;
+  }
+  if (isUnquotedWord(tokens[index], "VERBOSE")) {
+    index += 1;
+  }
+  return index < tokens.length ? index : null;
 }
 
 function explainOptionsEnableAnalyze(
@@ -324,13 +517,43 @@ function mutating(
   };
 }
 
+function dataDeleting(
+  sql: string,
+  reason: SqlDataDeletionReason,
+  command: string | null,
+): SqlDataDeletionStatement {
+  return {
+    sql,
+    deletesData: true,
+    reason,
+    command,
+  };
+}
+
+function nonDataDeleting(
+  sql: string,
+  command: string | null,
+): SqlDataDeletionStatement {
+  return {
+    sql,
+    deletesData: false,
+    reason: null,
+    command,
+  };
+}
+
 function firstWord(tokens: readonly Token[]): string | null {
   return tokens.find((token) => isUnquotedWord(token))?.value ?? null;
 }
 
 function wordAt(tokens: readonly Token[], index: number): string | null {
-  const words = tokens.filter((token) => isUnquotedWord(token));
-  return words[index]?.value ?? null;
+  return unquotedWords(tokens)[index] ?? null;
+}
+
+function unquotedWords(tokens: readonly Token[]): string[] {
+  return tokens
+    .filter((token) => isUnquotedWord(token))
+    .map((token) => token.value);
 }
 
 function isUnquotedWord(
@@ -342,6 +565,73 @@ function isUnquotedWord(
     token.quoted !== true &&
     (value === undefined || token.value === value)
   );
+}
+
+function hasUnquotedWord(tokens: readonly Token[], value: string): boolean {
+  return tokens.some((token) => isUnquotedWord(token, value));
+}
+
+function droppedObjectType(tokens: readonly Token[]): string | null {
+  const words = unquotedWords(tokens);
+  let index = 1;
+  if (words[index] === "IF" && words[index + 1] === "EXISTS") {
+    index += 2;
+  }
+  return words[index] ?? null;
+}
+
+const NON_COLUMN_ALTER_TABLE_DROP_TARGETS: ReadonlySet<string> = new Set([
+  "CONSTRAINT",
+  "DEFAULT",
+  "EXPRESSION",
+  "IDENTITY",
+  "INHERIT",
+  "NOT",
+  "OF",
+  "REPLICA",
+]);
+
+function statementDropsColumn(tokens: readonly Token[]): boolean {
+  return (
+    wordAt(tokens, 1) === "TABLE" &&
+    tokens.some((token, index) => {
+      if (!isUnquotedWord(token, "DROP")) return false;
+      const tokensAfterDrop = tokens.slice(index + 1);
+      if (isUnquotedWord(tokensAfterDrop[0], "COLUMN")) return true;
+
+      let targetIndex = 0;
+      if (
+        isUnquotedWord(tokensAfterDrop[targetIndex], "IF") &&
+        isUnquotedWord(tokensAfterDrop[targetIndex + 1], "EXISTS")
+      ) {
+        targetIndex += 2;
+      }
+
+      const target = tokensAfterDrop[targetIndex];
+      if (target?.type !== "word") return false;
+      return !(
+        isUnquotedWord(target) &&
+        NON_COLUMN_ALTER_TABLE_DROP_TARGETS.has(target.value)
+      );
+    })
+  );
+}
+
+function mergeDeletesRows(tokens: readonly Token[]): boolean {
+  return hasUnquotedWord(tokens, "MERGE") && hasUnquotedWord(tokens, "DELETE");
+}
+
+function insertUpdatesOnConflict(tokens: readonly Token[]): boolean {
+  const words = unquotedWords(tokens);
+  const conflictIndex = words.findIndex(
+    (word, index) => word === "ON" && words[index + 1] === "CONFLICT",
+  );
+  if (conflictIndex === -1) return false;
+
+  for (let i = conflictIndex + 2; i < words.length - 1; i += 1) {
+    if (words[i] === "DO" && words[i + 1] === "UPDATE") return true;
+  }
+  return false;
 }
 
 function hasTopLevelSelectInto(tokens: readonly Token[]): boolean {
@@ -555,5 +845,5 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     }
   }
 
-  return state !== "normal";
+  return state !== "normal" && state !== "line_comment";
 }

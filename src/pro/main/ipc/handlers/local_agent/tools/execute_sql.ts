@@ -10,7 +10,10 @@ import { executeNeonSql } from "../../../../../../neon_admin/neon_context";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
+import {
+  doesSqlDeleteData,
+  doesSqlMutateSchema,
+} from "@/lib/sqlSchemaMutation";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -33,6 +36,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
 
     getConsentMetadata: (args) => ({
       sqlMutatesSchema: doesSqlMutateSchema(args.query),
+      sqlDeletesData: doesSqlDeleteData(args.query),
     }),
 
     buildXml: (args, isComplete) => {

@@ -43,6 +43,8 @@ import {
   dryRunSearchReplace,
   processFullResponseActions,
 } from "../processors/response_processor";
+import { getDyadExecuteSqlTags } from "../utils/dyad_tag_parser";
+import { doesSqlDeleteData } from "@/lib/sqlSchemaMutation";
 import {
   streamTestResponse,
   getTestResponse,
@@ -1889,7 +1891,14 @@ ${problemReport.problems
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
         const latestSettings = readSettings();
-        if (latestSettings.autoApproveChanges && selectedChatMode !== "ask") {
+        const shouldAutoApply =
+          latestSettings.autoApproveChanges && selectedChatMode !== "ask";
+        const hasDestructiveSql =
+          shouldAutoApply &&
+          getDyadExecuteSqlTags(fullResponse).some((query) =>
+            doesSqlDeleteData(query.content),
+          );
+        if (shouldAutoApply && !hasDestructiveSql) {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,

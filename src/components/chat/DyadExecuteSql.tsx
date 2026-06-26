@@ -13,7 +13,10 @@ import {
   DyadStateIndicator,
   DyadCardContent,
 } from "./DyadCardPrimitives";
-import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
+import {
+  doesSqlDeleteData,
+  doesSqlMutateSchema,
+} from "@/lib/sqlSchemaMutation";
 
 interface DyadExecuteSqlProps {
   children?: ReactNode;
@@ -44,6 +47,10 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
     () => (sqlText ? doesSqlMutateSchema(sqlText) : false),
     [sqlText],
   );
+  const sqlDeletesData = useMemo(
+    () => (sqlText ? doesSqlDeleteData(sqlText) : false),
+    [sqlText],
+  );
 
   return (
     <DyadCard
@@ -58,6 +65,12 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
           <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
             {t("changesDatabaseSchema")}
+          </span>
+        )}
+        {sqlDeletesData && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-400">
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+            {t("destructiveDataChange")}
           </span>
         )}
         {queryDescription && (

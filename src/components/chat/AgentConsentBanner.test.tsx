@@ -7,6 +7,7 @@ vi.mock("react-i18next", () => ({
     t: (key: string) =>
       ({
         changesDatabaseSchema: "Changes database schema",
+        destructiveDataChange: "Destructive data change",
       })[key] ?? key,
   }),
 }));
@@ -29,6 +30,25 @@ describe("AgentConsentBanner", () => {
     );
 
     expect(screen.getByText("Changes database schema")).toBeTruthy();
+  });
+
+  it("shows destructive data metadata when present", () => {
+    render(
+      <AgentConsentBanner
+        consent={{
+          kind: "agent",
+          requestId: "request",
+          chatId: 1,
+          toolName: "execute_sql",
+          inputPreview: "DELETE FROM users WHERE id = 1;",
+          metadata: { sqlMutatesSchema: false, sqlDeletesData: true },
+        }}
+        onDecision={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Destructive data change")).toBeTruthy();
   });
 
   it("shows the server name and classifier reason for an MCP consent", () => {

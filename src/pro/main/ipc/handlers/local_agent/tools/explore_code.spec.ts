@@ -40,6 +40,10 @@ describe("exploreCodeTool", () => {
     );
   });
 
+  it("is treated as engine-backed so Dyad Free model turns filter it out", () => {
+    expect(exploreCodeTool.usesEngineEndpoint).toBe(true);
+  });
+
   it("runs the sub-agent on every call (no report cache)", async () => {
     const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-"));
     await fs.mkdir(path.join(appPath, "src"), { recursive: true });

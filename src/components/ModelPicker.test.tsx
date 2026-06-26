@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
   freeModelQuota: {
     quotaStatus: {
       messagesUsed: 3,
-      messagesLimit: 10,
-      messagesRemaining: 7,
+      messagesLimit: 5,
+      messagesRemaining: 2,
       isQuotaExceeded: false,
       resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
     } as {
@@ -24,8 +24,8 @@ const mocks = vi.hoisted(() => ({
     error: null as Error | null,
     isQuotaExceeded: false,
     messagesUsed: 3,
-    messagesLimit: 10,
-    messagesRemaining: 7,
+    messagesLimit: 5,
+    messagesRemaining: 2,
     resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
   },
   settings: {
@@ -252,11 +252,11 @@ describe("ModelPicker", () => {
     mocks.isTrial = false;
     mocks.freeModelQuota.isQuotaExceeded = false;
     mocks.freeModelQuota.error = null;
-    mocks.freeModelQuota.messagesRemaining = 7;
+    mocks.freeModelQuota.messagesRemaining = 2;
     mocks.freeModelQuota.quotaStatus = {
       messagesUsed: 3,
-      messagesLimit: 10,
-      messagesRemaining: 7,
+      messagesLimit: 5,
+      messagesRemaining: 2,
       isQuotaExceeded: false,
       resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
     };
@@ -271,7 +271,7 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("Kimi K2")).toBeNull();
     expect(screen.queryByText("Free (OpenRouter)")).toBeNull();
     expect(screen.getByText("Dyad Free")).toBeTruthy();
-    expect(screen.getByText("7/10 left")).toBeTruthy();
+    expect(screen.getByText("2/5 left")).toBeTruthy();
     expect(screen.getByText("Data sharing")).toBeTruthy();
     expect(screen.getByText("Claude Sonnet 4.5")).toBeTruthy();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
@@ -347,8 +347,8 @@ describe("ModelPicker", () => {
     mocks.freeModelQuota.isQuotaExceeded = true;
     mocks.freeModelQuota.messagesRemaining = 0;
     mocks.freeModelQuota.quotaStatus = {
-      messagesUsed: 10,
-      messagesLimit: 10,
+      messagesUsed: 5,
+      messagesLimit: 5,
       messagesRemaining: 0,
       isQuotaExceeded: true,
       resetTime: new Date("2026-06-26T00:00:00Z").getTime(),

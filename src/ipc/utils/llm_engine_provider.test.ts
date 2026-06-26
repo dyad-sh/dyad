@@ -150,4 +150,67 @@ describe("createDyadEngine", () => {
     expect(url.searchParams.get("feature")).toBe("anthropic-direct");
     expect(url.searchParams.get("source")).toBe("test");
   });
+
+  test("sends stable free quota key separately from attempt request id", async () => {
+    const requests: Array<{
+      input: RequestInfo | URL;
+      init?: RequestInit;
+    }> = [];
+
+    const provider = createDyadEngine({
+      apiKey: "dyad-pro-key",
+      baseURL: "https://engine.example.test/v1",
+      dyadOptions: {},
+      settings: {} as UserSettings,
+      fetch: async (input, init) => {
+        requests.push({ input, init });
+
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "free-pro",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 1,
+              completion_tokens: 1,
+              total_tokens: 2,
+            },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        );
+      },
+    });
+
+    const model = provider.freeChatModel("free-pro", {
+      providerId: "auto",
+    }) as LanguageModelV3;
+
+    await model.doGenerate({
+      prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+      providerOptions: {
+        "dyad-engine": {
+          dyadRequestId: "visible-turn-1",
+        },
+      },
+    } satisfies LanguageModelV3CallOptions);
+
+    expect(requests).toHaveLength(1);
+    expect(String(requests[0].input)).toBe(
+      "https://engine.example.test/v1/free/chat/completions",
+    );
+    expect(requests[0].init?.headers).toMatchObject({
+      "X-Dyad-Request-Id": "visible-turn-1:attempt-1",
+      "X-Dyad-Free-Quota-Key": "visible-turn-1",
+    });
+  });
 });

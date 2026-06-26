@@ -144,10 +144,12 @@ export function createDyadEngine(
     providerId,
     dyadProviderOptions,
     disableDyadOptions = false,
+    includeFreeQuotaKey = false,
   }: {
     providerId: string;
     dyadProviderOptions?: DyadEngineProviderOptions;
     disableDyadOptions?: boolean;
+    includeFreeQuotaKey?: boolean;
   }): FetchFunction => {
     return (input: RequestInfo | URL, init?: RequestInit) => {
       const requestInput = appendQueryParams(input);
@@ -239,6 +241,10 @@ export function createDyadEngine(
             ...(modifiedRequestId && {
               "X-Dyad-Request-Id": modifiedRequestId,
             }),
+            ...(includeFreeQuotaKey &&
+              requestId && {
+                "X-Dyad-Free-Quota-Key": requestId,
+              }),
           },
           body: JSON.stringify(parsedBody),
         };
@@ -263,6 +269,7 @@ export function createDyadEngine(
       fetch: createDyadFetch({
         providerId: chatParams.providerId,
         disableDyadOptions: pathPrefix === "/free",
+        includeFreeQuotaKey: pathPrefix === "/free",
       }),
     };
 

@@ -164,7 +164,7 @@ Add a new catalog model under the `auto` provider or another Dyad-owned provider
 
 - `apiName`: `free-pro`
 - `displayName`: `Dyad Free`
-- `description`: `10 messages/day included with Dyad Pro`
+- `description`: `5 messages/day included with Dyad Pro`
 - `dollarSigns`: `0`
 - `tag`: `Free`
 
@@ -213,14 +213,14 @@ Model picker:
 
 - Show `Dyad Free` to Pro users.
 - Do not show `Dyad Free` to Dyad Pro trial users.
-- Show `7/10 remaining today` in the row.
+- Show `2/5 remaining today` in the row.
 - Show a visible `Data sharing` chip directly in the row, not only in the description or tooltip.
 - The `Data sharing` chip should have a tooltip: `Data may be shared with the AI provider and used for training models.`
 - Disable selection when remaining is 0, unless it is currently selected; if currently selected, show a warning row and guide the user to choose another model.
 
 Title bar / Pro credit display:
 
-- Consider adding the free-model quota to the existing Pro tooltip rather than making another persistent chip. Example: `Dyad Free: 7 of 10 messages remaining today`.
+- Consider adding the free-model quota to the existing Pro tooltip rather than making another persistent chip. Example: `Dyad Free: 2 of 5 messages remaining today`.
 
 Chat errors:
 

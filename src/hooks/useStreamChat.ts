@@ -289,6 +289,12 @@ export function useStreamChat({
                 queryKeys.chats.detail({ chatId }),
               );
 
+        if (shouldInvalidateFreeModelQuota) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.freeModelQuota.status,
+          });
+        }
+
         ipc.chatStream.start(
           {
             chatId,

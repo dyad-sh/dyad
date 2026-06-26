@@ -8,7 +8,7 @@ import { useUserBudgetInfo } from "./useUserBudgetInfo";
 const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
 const STALE_TIME_MS = 30_000;
 const TEST_STALE_TIME_MS = 500;
-const FREE_MODEL_QUOTA_LIMIT = 10;
+const FREE_MODEL_QUOTA_LIMIT = 5;
 
 export function useFreeModelQuota({
   enabled = true,

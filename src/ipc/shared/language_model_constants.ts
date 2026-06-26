@@ -333,8 +333,9 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "free-pro",
-      displayName: "Dyad Free",
-      description: "10 free messages per day for paid Dyad Pro users",
+      displayName: "Free (Daily)",
+      description:
+        "5 free messages per day for Dyad Pro users (note: your data may be used for training models)",
       tag: "Free",
       tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
       maxOutputTokens: 32_000,

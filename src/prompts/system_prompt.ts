@@ -562,7 +562,7 @@ export const constructSystemPrompt = ({
   codeExplorerAvailable?: boolean;
 }) => {
   if (chatMode === "plan") {
-    return constructPlanModePrompt(aiRules, themePrompt, { freeModelMode });
+    return constructPlanModePrompt(aiRules, themePrompt);
   }
 
   if (chatMode === "local-agent") {

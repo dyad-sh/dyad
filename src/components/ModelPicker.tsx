@@ -33,9 +33,14 @@ import { CheckIcon } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { useFreeModelQuota } from "@/hooks/useFreeModelQuota";
 import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   FREE_PRO_MODEL_NAME,
+  isFreeProBuildModeCombination,
   isFreeProLanguageModel,
+  isFreeProModel,
 } from "@/lib/freeProModel";
+import { useRouterState } from "@tanstack/react-router";
+import { useChatMode } from "@/hooks/useChatMode";
 
 const SCROLL_AREA_CLASS = "max-h-100 overflow-y-auto scrollbar-on-hover";
 
@@ -79,11 +84,26 @@ function tierFor(dollarSigns: number | undefined): Tier {
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
+  const routerState = useRouterState();
+  const isChatRoute = routerState.location.pathname === "/chat";
+  const chatId = routerState.location.search.id as number | undefined;
+  const { selectedMode, setChatMode } = useChatMode(
+    isChatRoute ? chatId : null,
+  );
   const queryClient = useQueryClient();
   const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
   const freeModelQuota = useFreeModelQuota();
-  const onModelSelect = (model: LargeLanguageModel) => {
-    updateSettings({ selectedModel: model });
+  const onModelSelect = async (model: LargeLanguageModel) => {
+    if (isFreeProBuildModeCombination(model, selectedMode)) {
+      await setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE);
+    }
+
+    updateSettings({
+      selectedModel: model,
+      ...(isFreeProModel(model) && settings?.defaultChatMode === "build"
+        ? { defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE }
+        : {}),
+    });
     // Invalidate token count when model changes since different models have different context windows
     // (technically they have different tokenizers, but we don't keep track of that).
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
@@ -254,7 +274,7 @@ export function ModelPicker() {
     }
 
     const customModelId = model.type === "custom" ? model.id : undefined;
-    onModelSelect({
+    void onModelSelect({
       name: model.apiName,
       provider: providerId,
       customModelId,
@@ -493,7 +513,7 @@ export function ModelPicker() {
             <DropdownMenuItem
               className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
               onClick={() => {
-                onModelSelect({ name: "auto", provider: "auto" });
+                void onModelSelect({ name: "auto", provider: "auto" });
                 setOpen(false);
               }}
             >
@@ -722,7 +742,7 @@ export function ModelPicker() {
                                 "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
                             )}
                             onClick={() => {
-                              onModelSelect({
+                              void onModelSelect({
                                 name: model.modelName,
                                 provider: "ollama",
                               });
@@ -820,7 +840,7 @@ export function ModelPicker() {
                                 "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
                             )}
                             onClick={() => {
-                              onModelSelect({
+                              void onModelSelect({
                                 name: model.modelName,
                                 provider: "lmstudio",
                               });

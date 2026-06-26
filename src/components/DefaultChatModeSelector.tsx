@@ -10,17 +10,36 @@ import {
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useTranslation } from "react-i18next";
+import { useEffect } from "react";
+import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
+  isFreeProBuildModeCombination,
+  isFreeProModel,
+} from "@/lib/freeProModel";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const { t } = useTranslation("settings");
 
+  useEffect(() => {
+    if (
+      settings &&
+      isFreeProBuildModeCombination(
+        settings.selectedModel,
+        settings.defaultChatMode,
+      )
+    ) {
+      updateSettings({ defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE });
+    }
+  }, [settings, updateSettings]);
+
   if (!settings) {
     return null;
   }
 
   const isProEnabled = isDyadProEnabled(settings);
+  const isDyadFreeSelected = isFreeProModel(settings.selectedModel);
   // Wait for quota status to load before determining effective default
   const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
   const effectiveDefault = getEffectiveDefaultChatMode(
@@ -32,6 +51,9 @@ export function DefaultChatModeSelector() {
   const showBasicAgentOption = isProEnabled || freeAgentQuotaAvailable;
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
+    if (isFreeProBuildModeCombination(settings.selectedModel, value)) {
+      return;
+    }
     updateSettings({ defaultChatMode: value });
   };
 
@@ -81,11 +103,13 @@ export function DefaultChatModeSelector() {
                 </div>
               </SelectItem>
             )}
-            <SelectItem value="build">
+            <SelectItem value="build" disabled={isDyadFreeSelected}>
               <div className="flex flex-col items-start">
                 <span className="font-medium">Build</span>
                 <span className="text-xs text-muted-foreground">
-                  Generate and edit code
+                  {isDyadFreeSelected
+                    ? "Use Agent with Dyad Free"
+                    : "Generate and edit code"}
                 </span>
               </div>
             </SelectItem>

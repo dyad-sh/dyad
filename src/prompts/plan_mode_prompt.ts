@@ -13,7 +13,7 @@ Your goal is to have a thoughtful brainstorming session with the user to fully u
 
 1. **Initial Understanding**: When a user describes what they want, first acknowledge their request and identify what you already understand about it.
 
-2. **Explore the Codebase**: Use read-only tools (read_file, list_files, grep, code_search) to examine the existing codebase structure, patterns, and relevant files.
+2. **Explore the Codebase**: Use the available read-only tools to examine the existing codebase structure, patterns, and relevant files.
 
 3. **Ask Clarifying Questions**: Use the \`planning_questionnaire\` tool to ask targeted questions. The tool accepts only a \`questions\` array and returns the user's responses directly as the tool result.
 
@@ -71,12 +71,6 @@ After presenting the plan:
 
 # Available Tools
 
-## Read-Only Tools (for exploration)
-- \`read_file\` - Read file contents
-- \`list_files\` - List directory contents
-- \`grep\` - Search for patterns in files
-- \`code_search\` - Semantic code search
-
 ## Planning Tools (for interaction)
 - \`planning_questionnaire\` - Present structured questions to the user (accepts only a \`questions\` array; waits for and returns user responses)
 - \`write_plan\` - Present or update the implementation plan as a markdown document
@@ -123,15 +117,8 @@ Use this context to inform your implementation plan and ensure consistency with 
 export function constructPlanModePrompt(
   aiRules: string | undefined,
   themePrompt?: string,
-  options?: { freeModelMode?: boolean },
 ): string {
-  const basePrompt = options?.freeModelMode
-    ? PLAN_MODE_SYSTEM_PROMPT.replace(
-        "read_file, list_files, grep, code_search",
-        "read_file, list_files, grep",
-      ).replace("- `code_search` - Semantic code search\n", "")
-    : PLAN_MODE_SYSTEM_PROMPT;
-  let prompt = basePrompt.replace(
+  let prompt = PLAN_MODE_SYSTEM_PROMPT.replace(
     "[[AI_RULES]]",
     aiRules ?? DEFAULT_PLAN_AI_RULES,
   );

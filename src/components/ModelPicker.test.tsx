@@ -1,10 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelPicker } from "./ModelPicker";
 
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
+  setChatMode: vi.fn(),
   updateSettings: vi.fn(),
+  selectedMode: "build",
   isTrial: false,
   freeModelQuota: {
     quotaStatus: {
@@ -41,6 +43,8 @@ const mocks = vi.hoisted(() => ({
       name: "auto",
       provider: "auto",
     },
+    selectedChatMode: "build",
+    defaultChatMode: "build",
   },
 }));
 
@@ -54,6 +58,22 @@ vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     settings: mocks.settings,
     updateSettings: mocks.updateSettings,
+  }),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useRouterState: () => ({
+    location: {
+      pathname: "/",
+      search: {},
+    },
+  }),
+}));
+
+vi.mock("@/hooks/useChatMode", () => ({
+  useChatMode: () => ({
+    selectedMode: mocks.selectedMode,
+    setChatMode: mocks.setChatMode,
   }),
 }));
 
@@ -246,9 +266,14 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 describe("ModelPicker", () => {
   beforeEach(() => {
     mocks.invalidateQueries.mockReset();
+    mocks.setChatMode.mockReset();
+    mocks.setChatMode.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
+    mocks.selectedMode = "build";
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
+    mocks.settings.selectedChatMode = "build";
+    mocks.settings.defaultChatMode = "build";
     mocks.isTrial = false;
     mocks.freeModelQuota.isQuotaExceeded = false;
     mocks.freeModelQuota.error = null;
@@ -359,6 +384,23 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
 
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("moves Build mode to Agent when selecting Dyad Free", async () => {
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
+
+    await waitFor(() => {
+      expect(mocks.setChatMode).toHaveBeenCalledWith("local-agent");
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedModel: expect.objectContaining({
+          name: "free-pro",
+          provider: "auto",
+        }),
+        defaultChatMode: "local-agent",
+      });
+    });
   });
 
   it("shows Dyad Free quota as unavailable when the quota fetch fails", () => {

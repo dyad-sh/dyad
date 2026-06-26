@@ -125,7 +125,11 @@ import {
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
-import { isFreeProModel } from "@/lib/freeProModel";
+import {
+  FREE_PRO_BUILD_MODE_ERROR,
+  isFreeProBuildModeCombination,
+  isFreeProModel,
+} from "@/lib/freeProModel";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import {
   getFreeAgentQuotaStatus,
@@ -648,6 +652,14 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
+      if (
+        isFreeProBuildModeCombination(settings.selectedModel, selectedChatMode)
+      ) {
+        throw new DyadError(
+          FREE_PRO_BUILD_MODE_ERROR,
+          DyadErrorKind.Precondition,
+        );
+      }
       const freeModelMode = isFreeProModel(settings.selectedModel);
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),

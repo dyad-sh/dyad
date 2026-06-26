@@ -97,7 +97,7 @@
   "noChanges": "No changes",
   "sqlQuery": "SQL Query",
   "changesDatabaseSchema": "Schema change",
-  "flaggedForReview": "Flagged for review:",
+  "flaggedForReview": "Flagged for review",
   "approved": "Approved",
   "rejected": "Rejected",
   "copy": "Copy",

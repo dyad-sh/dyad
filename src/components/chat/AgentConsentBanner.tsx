@@ -121,8 +121,16 @@ export function AgentConsentBanner({
           </button>
         </div>
         {classifierReason && (
-          <div className="ml-6 mb-1.5 text-xs text-muted-foreground">
-            {t("flaggedForReview")} {classifierReason}
+          <div className="ml-6 mb-1.5 flex gap-2 rounded-lg border-l-4 border-orange-400 bg-amber-50 px-3 py-2 dark:border-orange-500 dark:bg-amber-950/30">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400" />
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+                {t("flaggedForReview")}
+              </div>
+              <div className="mt-0.5 whitespace-pre-wrap break-words text-sm text-orange-900 dark:text-orange-200">
+                {classifierReason}
+              </div>
+            </div>
           </div>
         )}
         {inputPreview && (

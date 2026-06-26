@@ -4,6 +4,7 @@ import { Api, createApiClient } from "@neondatabase/api-client";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getNeonErrorMessage } from "./neon_errors";
 
 const logger = log.scope("neon_management_client");
 
@@ -414,52 +415,14 @@ export async function getNeonOrganizationId(): Promise<string> {
   }
 }
 
-export function getNeonErrorMessage(error: unknown): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" &&
-          error !== null &&
-          "message" in error &&
-          typeof error.message === "string"
-        ? error.message
-        : null;
-  const detailedMessage =
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error &&
-    typeof error.response === "object" &&
-    error.response !== null &&
-    "data" in error.response &&
-    typeof error.response.data === "object" &&
-    error.response.data !== null &&
-    "message" in error.response.data &&
-    typeof error.response.data.message === "string"
-      ? error.response.data.message
-      : null;
-
-  if (message && detailedMessage) {
-    return `${message} ${detailedMessage}`;
-  }
-  if (message) {
-    return message;
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-  if (error == null) {
-    return "Unknown Neon error";
-  }
-
-  try {
-    const serializedError = JSON.stringify(error);
-    return serializedError && serializedError !== "{}"
-      ? serializedError
-      : "Unknown Neon error";
-  } catch {
-    return String(error);
-  }
-}
+// Pure error-parsing helpers live in ./neon_errors so they can be unit-tested
+// without importing the full management client. Re-exported here so existing
+// importers of neon_management_client keep working unchanged.
+export {
+  getNeonErrorMessage,
+  isRetentionWindowError,
+  getRetentionWindowFromError,
+} from "./neon_errors";
 
 const DEFAULT_EMAIL_PASSWORD_CONFIG = {
   enabled: false,

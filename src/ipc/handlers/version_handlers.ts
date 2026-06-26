@@ -28,6 +28,8 @@ import {
 import {
   getNeonClient,
   getNeonErrorMessage,
+  getRetentionWindowFromError,
+  isRetentionWindowError,
 } from "../../neon_admin/neon_management_client";
 import { getConnectionUri } from "../../neon_admin/neon_context";
 import {
@@ -64,6 +66,29 @@ function sanitizeDiffContent(content: string): string {
   return content;
 }
 
+/**
+ * Builds a user-facing warning for when the code was restored but the Neon
+ * database could not be. The retention-window case (the database snapshot is
+ * older than Neon keeps history for, e.g. 6 hours on the free plan) gets a
+ * dedicated explanation since it isn't an unexpected failure.
+ */
+function getDatabaseRestoreWarning(error: unknown): string {
+  if (isRetentionWindowError(error)) {
+    const window = getRetentionWindowFromError(error);
+    return (
+      "Restored your code to this version, but the database could not be restored: " +
+      `this version is older than your database's restore window${
+        window ? ` (${window})` : ""
+      }. ` +
+      "Neon's free plan only keeps a limited window of database history, so this " +
+      "snapshot has expired. Your current database was left unchanged."
+    );
+  }
+  return `Could not restore the database because of an error: ${getNeonErrorMessage(
+    error,
+  )}`;
+}
+
 async function syncCloudSandboxSnapshotBestEffort(appId: number) {
   try {
     await syncCloudSandboxSnapshot({ appId });
@@ -88,21 +113,15 @@ async function restoreBranchForPreview({
   previewBranchId: string;
   developmentBranchId: string;
 }): Promise<void> {
-  try {
-    const neonClient = await getNeonClient();
-    await retryOnLocked(
-      () =>
-        neonClient.restoreProjectBranch(neonProjectId, previewBranchId, {
-          source_branch_id: developmentBranchId,
-          source_timestamp: dbTimestamp,
-        }),
-      `Restore preview branch ${previewBranchId} for app ${appId}`,
-    );
-  } catch (error) {
-    const errorMessage = getNeonErrorMessage(error);
-    logger.error("Error in restoreBranchForPreview:", errorMessage);
-    throw new Error(errorMessage);
-  }
+  const neonClient = await getNeonClient();
+  await retryOnLocked(
+    () =>
+      neonClient.restoreProjectBranch(neonProjectId, previewBranchId, {
+        source_branch_id: developmentBranchId,
+        source_timestamp: dbTimestamp,
+      }),
+    `Restore preview branch ${previewBranchId} for app ${appId}`,
+  );
 }
 
 export function registerVersionHandlers() {
@@ -432,15 +451,19 @@ export function registerVersionHandlers() {
               const errorMessage = getNeonErrorMessage(error);
               logger.error("Error in deleteProjectBranch:", errorMessage);
             }
+            successMessage =
+              "Successfully restored to version (including database)";
           } catch (error) {
-            const errorMessage = getNeonErrorMessage(error);
-            logger.error("Error in restoreBranchForCheckout:", errorMessage);
-            warningMessage = `Could not restore database because of error: ${errorMessage}`;
-            // Do not throw, so we can finish switching the postgres branch
-            // It might throw because they picked a timestamp that's too old.
+            logger.error(
+              "Error restoring Neon development branch during revert:",
+              getNeonErrorMessage(error),
+            );
+            // Do not throw: the code has already been reverted, so we keep the
+            // current database, warn the user, and finish switching the
+            // postgres branch. This commonly happens when the picked version is
+            // older than Neon's retention window.
+            warningMessage = getDatabaseRestoreWarning(error);
           }
-          successMessage =
-            "Successfully restored to version (including database)";
         }
         await switchPostgresToDevelopmentBranch({
           neonProjectId: app.neonProjectId,
@@ -489,6 +512,7 @@ export function registerVersionHandlers() {
   createTypedHandler(versionContracts.checkoutVersion, async (_, params) => {
     const { appId, versionId: gitRef } = params;
     return withLock(appId, async () => {
+      let warningMessage = "";
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -529,27 +553,66 @@ export function registerVersionHandlers() {
           });
 
           if (version && version.neonDbTimestamp) {
-            // SWITCH the env var for POSTGRES_URL to the preview branch
-            const connectionUri = await getConnectionUri({
-              projectId: app.neonProjectId,
-              branchId: app.neonPreviewBranchId,
-            });
+            try {
+              // SWITCH the env var for POSTGRES_URL to the preview branch
+              const connectionUri = await getConnectionUri({
+                projectId: app.neonProjectId,
+                branchId: app.neonPreviewBranchId,
+              });
 
-            await restoreBranchForPreview({
-              appId,
-              dbTimestamp: version.neonDbTimestamp,
-              neonProjectId: app.neonProjectId,
-              previewBranchId: app.neonPreviewBranchId,
-              developmentBranchId: app.neonDevelopmentBranchId,
-            });
+              await restoreBranchForPreview({
+                appId,
+                dbTimestamp: version.neonDbTimestamp,
+                neonProjectId: app.neonProjectId,
+                previewBranchId: app.neonPreviewBranchId,
+                developmentBranchId: app.neonDevelopmentBranchId,
+              });
 
-            await updatePostgresUrlEnvVar({
-              appPath: app.path,
-              connectionUri,
-            });
-            logger.info(
-              `Switched Postgres to preview branch for app ${appId} commit ${version.commitHash} dbTimestamp=${version.neonDbTimestamp}`,
-            );
+              await updatePostgresUrlEnvVar({
+                appPath: app.path,
+                connectionUri,
+              });
+              logger.info(
+                `Switched Postgres to preview branch for app ${appId} commit ${version.commitHash} dbTimestamp=${version.neonDbTimestamp}`,
+              );
+            } catch (error) {
+              logger.error(
+                "Error restoring Neon preview branch during checkout:",
+                getNeonErrorMessage(error),
+              );
+              // Do not throw: we still want to check out the code below. This
+              // commonly happens when the picked version is older than Neon's
+              // retention window, so the database snapshot has expired.
+              warningMessage = getDatabaseRestoreWarning(error);
+              // Keep the app pointed at the live development database so the
+              // checked-out code still has a database to run against. This is
+              // best-effort and must never block the code checkout.
+              try {
+                await updatePostgresUrlEnvVar({
+                  appPath: app.path,
+                  connectionUri: await getConnectionUri({
+                    projectId: app.neonProjectId,
+                    branchId: app.neonDevelopmentBranchId,
+                  }),
+                });
+              } catch (fallbackError) {
+                logger.error(
+                  "Failed to point Postgres at the development branch after a failed preview restore:",
+                  getNeonErrorMessage(fallbackError),
+                );
+                // The fallback failed too, so we could not explicitly re-point
+                // the app at the development branch. The env file is left at its
+                // previous value, which is usually still the development branch
+                // but may be a stale preview branch from an earlier checkout.
+                // Overwrite the warning so the user knows the DB branch is
+                // uncertain.
+                warningMessage =
+                  "Restored your code to this version, but the database could not be " +
+                  "switched and we were unable to confirm which database branch your app " +
+                  `is connected to: ${getNeonErrorMessage(fallbackError)}. Please check ` +
+                  "your app's database connection before relying on its data.";
+              }
+            }
           }
         }
       }
@@ -559,6 +622,10 @@ export function registerVersionHandlers() {
         ref: gitRef,
       });
       await syncCloudSandboxSnapshotBestEffort(appId);
+      if (warningMessage) {
+        return { warningMessage };
+      }
+      return {};
     });
   });
 }

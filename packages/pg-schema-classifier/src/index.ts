@@ -596,20 +596,22 @@ function statementDropsColumn(tokens: readonly Token[]): boolean {
     wordAt(tokens, 1) === "TABLE" &&
     tokens.some((token, index) => {
       if (!isUnquotedWord(token, "DROP")) return false;
-      const wordsAfterDrop = unquotedWords(tokens.slice(index + 1));
-      if (wordsAfterDrop[0] === "COLUMN") return true;
+      const tokensAfterDrop = tokens.slice(index + 1);
+      if (isUnquotedWord(tokensAfterDrop[0], "COLUMN")) return true;
 
       let targetIndex = 0;
       if (
-        wordsAfterDrop[targetIndex] === "IF" &&
-        wordsAfterDrop[targetIndex + 1] === "EXISTS"
+        isUnquotedWord(tokensAfterDrop[targetIndex], "IF") &&
+        isUnquotedWord(tokensAfterDrop[targetIndex + 1], "EXISTS")
       ) {
         targetIndex += 2;
       }
 
-      const target = wordsAfterDrop[targetIndex];
-      return (
-        target !== undefined && !NON_COLUMN_ALTER_TABLE_DROP_TARGETS.has(target)
+      const target = tokensAfterDrop[targetIndex];
+      if (target?.type !== "word") return false;
+      return !(
+        isUnquotedWord(target) &&
+        NON_COLUMN_ALTER_TABLE_DROP_TARGETS.has(target.value)
       );
     })
   );

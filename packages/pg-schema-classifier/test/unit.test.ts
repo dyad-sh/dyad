@@ -211,6 +211,8 @@ describe("detectSqlDataDeletion", () => {
       "ALTER TABLE users DROP legacy_id",
       "ALTER TABLE users DROP IF EXISTS legacy_id",
       "ALTER TABLE users DROP COLUMN IF EXISTS legacy_id",
+      'ALTER TABLE users DROP "email"',
+      'ALTER TABLE users DROP IF EXISTS "legacy_id"',
       "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE",
     ]) {
       expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
@@ -295,6 +297,7 @@ describe("detectSqlDataDeletion", () => {
       "DROP VIEW old_users",
       "ALTER TABLE users DROP CONSTRAINT users_email_key",
       "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
+      'ALTER TABLE users DROP CONSTRAINT "users_email_key"',
       "ALTER TABLE users ALTER COLUMN legacy_id DROP DEFAULT",
       "ALTER TABLE users ALTER COLUMN legacy_id DROP NOT NULL",
       "SELECT 'DELETE FROM users' AS example",

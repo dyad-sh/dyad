@@ -1766,10 +1766,27 @@ function getErrorResponseBody(error: unknown): string | undefined {
   return undefined;
 }
 
+// Markers that identify the engine's free-model quota error in a response
+// body. We only surface raw response bodies for this case so the renderer's
+// ChatErrorBox can recognize the quota error; other errors keep their normal
+// (non-verbose) message.
+const FREE_MODEL_QUOTA_MARKERS = [
+  "dyad_free_model_quota_exceeded",
+  "FREE_MODEL_QUOTA_EXCEEDED",
+  "Dyad Free has reached its daily limit.",
+  "Dyad Free limit",
+];
+
 function getErrorMessageWithDetails(error: unknown): string {
   const message = getErrorMessage(error);
   const responseBody = getErrorResponseBody(error);
   if (!responseBody || message.includes(responseBody)) {
+    return message;
+  }
+  const isFreeModelQuotaBody = FREE_MODEL_QUOTA_MARKERS.some((marker) =>
+    responseBody.includes(marker),
+  );
+  if (!isFreeModelQuotaBody) {
     return message;
   }
   return `${message}\n\nDetails: ${responseBody}`;

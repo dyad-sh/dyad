@@ -1,6 +1,7 @@
 import { ipc } from "@/ipc/types";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useFreeModelQuota } from "@/hooks/useFreeModelQuota";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import {
   X,
@@ -41,6 +42,10 @@ export function ChatErrorBox({
     messagesLimit: freeModelMessagesLimit,
     resetTime: freeModelResetTime,
   } = useFreeModelQuota({ enabled: isFreeModelQuotaError });
+  const { userBudget } = useUserBudgetInfo();
+  // Trial Pro users cannot use the Free model (it is hidden from the picker and
+  // rejected by the engine), so don't suggest it to them.
+  const isTrialProUser = userBudget?.isTrial === true;
 
   if (error.includes("doesn't have a free quota tier")) {
     return (
@@ -110,8 +115,13 @@ export function ChatErrorBox({
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          You have used all of your Dyad AI credits this month. Switch to the
-          Free model and send {freeModelMessagesLimit} free messages per day.{" "}
+          You have used all of your Dyad AI credits this month.{" "}
+          {!isTrialProUser && (
+            <>
+              Switch to the Free model and send {freeModelMessagesLimit} free
+              messages per day.{" "}
+            </>
+          )}
           <ExternalLink
             href="https://academy.dyad.sh/subscription?utm_source=dyad-app&utm_medium=app&utm_campaign=exceeded-budget-error"
             variant="primary"
@@ -222,7 +232,7 @@ function ExternalLink({
   icon?: React.ReactNode;
 }) {
   const baseClasses =
-    "mt-2 cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2";
+    "cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2";
   const primaryClasses =
     "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500";
   const secondaryClasses =
@@ -236,15 +246,13 @@ function ExternalLink({
     ));
 
   return (
-    <div>
-      <a
-        className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses}`}
-        onClick={() => ipc.system.openExternalUrl(href)}
-      >
-        <span>{children}</span>
-        {iconElement}
-      </a>
-    </div>
+    <a
+      className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses}`}
+      onClick={() => ipc.system.openExternalUrl(href)}
+    >
+      <span>{children}</span>
+      {iconElement}
+    </a>
   );
 }
 

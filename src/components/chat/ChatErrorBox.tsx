@@ -33,7 +33,9 @@ export function ChatErrorBox({
     : error;
   const isFreeModelQuotaError =
     normalizedError.includes("dyad_free_model_quota_exceeded") ||
-    normalizedError.includes("FREE_MODEL_QUOTA_EXCEEDED");
+    normalizedError.includes("FREE_MODEL_QUOTA_EXCEEDED") ||
+    normalizedError.includes("Dyad Free has reached its daily limit.") ||
+    normalizedError.includes("Dyad Free limit");
   const { messagesLimit } = useFreeAgentQuota();
   const {
     messagesLimit: freeModelMessagesLimit,
@@ -108,14 +110,14 @@ export function ChatErrorBox({
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          You have used all of your Dyad AI credits this month.{" "}
+          You have used all of your Dyad AI credits this month. Switch to the
+          Free model and send {freeModelMessagesLimit} free messages per day.{" "}
           <ExternalLink
             href="https://academy.dyad.sh/subscription?utm_source=dyad-app&utm_medium=app&utm_campaign=exceeded-budget-error"
             variant="primary"
           >
-            Reload or upgrade your subscription
-          </ExternalLink>{" "}
-          and get more AI credits
+            Get more AI credits
+          </ExternalLink>
         </span>
       </ChatInfoContainer>
     );
@@ -157,8 +159,17 @@ export function ChatErrorBox({
 
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
-        You have reached the {freeModelMessagesLimit}-message Dyad Free limit.
-        {resetText} Switch to another Dyad Pro model to keep going.
+        <span>
+          You have reached the {freeModelMessagesLimit}-message Dyad Free model
+          limit.
+          {resetText} Switch to paid models.{" "}
+          <ExternalLink
+            href="https://academy.dyad.sh/subscription?utm_source=dyad-app&utm_medium=app&utm_campaign=exceeded-budget-error"
+            variant="primary"
+          >
+            Get more AI credits
+          </ExternalLink>
+        </span>
       </ChatErrorContainer>
     );
   }
@@ -211,7 +222,7 @@ function ExternalLink({
   icon?: React.ReactNode;
 }) {
   const baseClasses =
-    "cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2";
+    "mt-2 cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2";
   const primaryClasses =
     "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500";
   const secondaryClasses =
@@ -225,13 +236,15 @@ function ExternalLink({
     ));
 
   return (
-    <a
-      className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses}`}
-      onClick={() => ipc.system.openExternalUrl(href)}
-    >
-      <span>{children}</span>
-      {iconElement}
-    </a>
+    <div>
+      <a
+        className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses}`}
+        onClick={() => ipc.system.openExternalUrl(href)}
+      >
+        <span>{children}</span>
+        {iconElement}
+      </a>
+    </div>
   );
 }
 

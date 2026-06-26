@@ -4,15 +4,17 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("version search", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
+  const versionButton = po.page.getByRole("button", {
+    name: /^Version \d+$/,
+  });
 
   // Wait for version 2 to appear
-  await expect(po.page.getByRole("button", { name: "Version" })).toHaveText(
-    "Version 2",
-    { timeout: Timeout.MEDIUM },
-  );
+  await expect(versionButton).toHaveText("Version 2", {
+    timeout: Timeout.MEDIUM,
+  });
 
   // Open version pane
-  await po.page.getByRole("button", { name: "Version" }).click();
+  await versionButton.click();
 
   // Both versions should be visible
   await expect(po.page.getByText("Init Dyad app")).toBeVisible();
@@ -42,13 +44,15 @@ testSkipIfWindows("version search", async ({ po }) => {
   );
 
   const versionNote = "Stable landing screen";
+  await po.page.getByLabel("Add note for version 2").click();
   const noteInput = po.page.getByLabel("Note for version 2");
   await noteInput.fill(versionNote);
-  await searchInput.click();
-  await po.page.waitForTimeout(800);
-  await expect(po.page.getByRole("button", { name: "Version" })).toHaveText(
-    "Version 2",
+  await po.page.getByLabel("Close version pane").click();
+  await versionButton.click();
+  await expect(po.page.getByLabel("Note for version 2")).toHaveValue(
+    versionNote,
   );
+  await expect(versionButton).toHaveText("Version 2");
 
   // Favorites-only filter should hide unfavorited versions
   await po.page
@@ -59,7 +63,7 @@ testSkipIfWindows("version search", async ({ po }) => {
 
   // Closing and reopening resets the filter to all versions while preserving metadata
   await po.page.getByLabel("Close version pane").click();
-  await po.page.getByRole("button", { name: "Version" }).click();
+  await versionButton.click();
   await expect(po.page.getByTestId("version-row-1")).toBeVisible();
   await expect(po.page.getByLabel("Note for version 2")).toHaveValue(
     versionNote,

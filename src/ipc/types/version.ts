@@ -82,15 +82,17 @@ export type CheckoutVersionResponse = z.infer<
   typeof CheckoutVersionResponseSchema
 >;
 
+const CommitHashSchema = z.string().regex(/^[a-f0-9]{40}$/i);
+
 export const SetVersionFavoriteParamsSchema = z.object({
   appId: z.number(),
-  versionId: z.string(),
+  versionId: CommitHashSchema,
   isFavorite: z.boolean(),
 });
 
 export const SetVersionNoteParamsSchema = z.object({
   appId: z.number(),
-  versionId: z.string(),
+  versionId: CommitHashSchema,
   note: z.string().nullable(),
 });
 

@@ -17,6 +17,7 @@ import {
   gitCommit,
   gitStageToRevert,
   getCurrentCommitHash,
+  gitCommitExists,
   gitCurrentBranch,
   gitLog,
   isGitStatusClean,
@@ -129,11 +130,11 @@ async function assertVersionExists({
   appPath: string;
   versionId: string;
 }) {
-  const commits = await gitLog({
+  const exists = await gitCommitExists({
     path: appPath,
-    depth: 100_000,
+    commitHash: versionId,
   });
-  if (!commits.some((commit) => commit.oid === versionId)) {
+  if (!exists) {
     throw new DyadError("Version not found", DyadErrorKind.NotFound);
   }
 }

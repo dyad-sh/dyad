@@ -2,13 +2,21 @@ import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
-import { RotateCcw, X, Database, Loader2, Search, Star } from "lucide-react";
+import {
+  RotateCcw,
+  X,
+  Database,
+  Loader2,
+  Search,
+  Star,
+  Pencil,
+} from "lucide-react";
 import type { Version } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,9 +75,18 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [expandedNoteVersionIds, setExpandedNoteVersionIds] = useState<
+    Set<string>
+  >(() => new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const noteSaveTimeoutsRef = useRef(
-    new Map<string, ReturnType<typeof setTimeout>>(),
+    new Map<
+      string,
+      { timeout: ReturnType<typeof setTimeout>; note: string | null }
+    >(),
+  );
+  const saveVersionNoteRef = useRef(
+    (_versionId: string, _note: string | null, _syncCache: boolean) => {},
   );
 
   const { data: screenshotsData } = useQuery({
@@ -85,6 +102,62 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     [screenshotsData],
   );
 
+  const updateCachedVersion = (
+    versionId: string,
+    updates: Partial<Pick<Version, "isFavorite" | "note">>,
+  ) => {
+    setCachedVersions((prevVersions) => {
+      const sourceVersions =
+        prevVersions.length > 0 ? prevVersions : liveVersions;
+      return sourceVersions.map((version) =>
+        version.oid === versionId ? { ...version, ...updates } : version,
+      );
+    });
+  };
+
+  const saveVersionNote = async (
+    versionId: string,
+    note: string | null,
+    syncCache = true,
+  ) => {
+    try {
+      const result = await setVersionNote({ versionId, note });
+      if (syncCache) {
+        updateCachedVersion(result.oid, {
+          isFavorite: result.isFavorite,
+          note: result.note,
+        });
+      }
+    } catch (error) {
+      if (!syncCache) {
+        console.error("Failed to save pending version note", error);
+        return;
+      }
+      const result = await refreshVersions();
+      setCachedVersions(result.data ?? liveVersions);
+    }
+  };
+  saveVersionNoteRef.current = saveVersionNote;
+
+  const flushPendingNoteSaves = useCallback((syncCache = true) => {
+    const pendingSaves = [...noteSaveTimeoutsRef.current.entries()];
+    noteSaveTimeoutsRef.current.clear();
+    for (const [versionId, pendingSave] of pendingSaves) {
+      clearTimeout(pendingSave.timeout);
+      void saveVersionNoteRef.current(versionId, pendingSave.note, syncCache);
+    }
+  }, []);
+
+  const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
+
+  const versionNumberByOid = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let index = 0; index < versions.length; index++) {
+      map.set(versions[index].oid, versions.length - index);
+    }
+    return map;
+  }, [versions]);
+
   useEffect(() => {
     async function updatePaneState() {
       // When pane becomes visible after being closed
@@ -97,8 +170,10 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
       // Reset when closing
       if (!isVisible && wasVisibleRef.current) {
+        flushPendingNoteSaves();
         setSearchQuery("");
         setShowFavoritesOnly(false);
+        setExpandedNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
           await checkoutVersion({ appId, versionId: "main" });
@@ -118,6 +193,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     appId,
     app?.neonProjectId,
     checkoutVersion,
+    flushPendingNoteSaves,
     refreshVersions,
     liveVersions,
     restartApp,
@@ -125,12 +201,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   useEffect(() => {
     return () => {
-      for (const timeout of noteSaveTimeoutsRef.current.values()) {
-        clearTimeout(timeout);
-      }
-      noteSaveTimeoutsRef.current.clear();
+      flushPendingNoteSaves(false);
     };
-  }, []);
+  }, [flushPendingNoteSaves]);
 
   // Initial load of cached versions when live versions become available
   useEffect(() => {
@@ -159,8 +232,6 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     }
   };
 
-  const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
-
   const favoriteFilteredVersions = showFavoritesOnly
     ? versions.filter((version) => version.isFavorite)
     : versions;
@@ -168,7 +239,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const filteredVersions = searchQuery.trim()
     ? favoriteFilteredVersions.filter((v) => {
         const query = searchQuery.toLowerCase();
-        const versionNumber = String(versions.length - versions.indexOf(v));
+        const versionNumber = String(versionNumberByOid.get(v.oid) ?? 0);
         return (
           v.oid.toLowerCase().includes(query) ||
           (v.message && v.message.toLowerCase().includes(query)) ||
@@ -178,51 +249,24 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       })
     : favoriteFilteredVersions;
 
-  const updateCachedVersion = (
-    versionId: string,
-    updates: Partial<Pick<Version, "isFavorite" | "note">>,
-  ) => {
-    setCachedVersions((prevVersions) => {
-      const sourceVersions =
-        prevVersions.length > 0 ? prevVersions : liveVersions;
-      return sourceVersions.map((version) =>
-        version.oid === versionId ? { ...version, ...updates } : version,
-      );
-    });
-  };
-
-  const saveVersionNote = (versionId: string, note: string | null) => {
-    void setVersionNote({ versionId, note })
-      .then((result) => {
-        updateCachedVersion(result.oid, {
-          isFavorite: result.isFavorite,
-          note: result.note,
-        });
-      })
-      .catch(async () => {
-        const result = await refreshVersions();
-        setCachedVersions(result.data ?? liveVersions);
-      });
-  };
-
   const queueVersionNoteSave = (versionId: string, note: string | null) => {
-    const existingTimeout = noteSaveTimeoutsRef.current.get(versionId);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
+    const existingPendingSave = noteSaveTimeoutsRef.current.get(versionId);
+    if (existingPendingSave) {
+      clearTimeout(existingPendingSave.timeout);
     }
     const timeout = setTimeout(() => {
       noteSaveTimeoutsRef.current.delete(versionId);
-      saveVersionNote(versionId, note);
+      void saveVersionNoteRef.current(versionId, note, true);
     }, 600);
-    noteSaveTimeoutsRef.current.set(versionId, timeout);
+    noteSaveTimeoutsRef.current.set(versionId, { timeout, note });
   };
 
   const flushVersionNoteSave = (versionId: string, note: string | null) => {
-    const existingTimeout = noteSaveTimeoutsRef.current.get(versionId);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
+    const existingPendingSave = noteSaveTimeoutsRef.current.get(versionId);
+    if (existingPendingSave) {
+      clearTimeout(existingPendingSave.timeout);
       noteSaveTimeoutsRef.current.delete(versionId);
-      saveVersionNote(versionId, note);
+      void saveVersionNoteRef.current(versionId, note, true);
     }
   };
 
@@ -306,7 +350,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
           <div className="divide-y divide-border">
             {filteredVersions.map((version: Version) => {
               const thumbnailUrl = screenshotByHash.get(version.oid);
-              const versionNumber = versions.length - versions.indexOf(version);
+              const versionNumber = versionNumberByOid.get(version.oid) ?? 0;
+              const showNoteEditor =
+                expandedNoteVersionIds.has(version.oid) || !!version.note;
               return (
                 <div
                   key={version.oid}
@@ -351,8 +397,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           data-testid={`version-favorite-button-${versionNumber}`}
                           aria-label={
                             version.isFavorite
-                              ? "Remove version from favorites"
-                              : "Favorite version"
+                              ? `Remove version ${versionNumber} from favorites`
+                              : `Favorite version ${versionNumber}`
                           }
                           title={
                             version.isFavorite
@@ -472,13 +518,10 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                                   ? version.message.replace(
                                       /Reverted all changes back to version ([a-f0-9]+)/,
                                       (_, hash) => {
-                                        const targetIndex = versions.findIndex(
-                                          (v) => v.oid === hash,
-                                        );
-                                        return targetIndex !== -1
-                                          ? `Reverted all changes back to version ${
-                                              versions.length - targetIndex
-                                            }`
+                                        const targetVersionNumber =
+                                          versionNumberByOid.get(hash);
+                                        return targetVersionNumber !== undefined
+                                          ? `Reverted all changes back to version ${targetVersionNumber}`
                                           : version.message;
                                       },
                                     )
@@ -489,22 +532,50 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           </p>
                         )}
 
-                        <Textarea
-                          value={version.note ?? ""}
-                          placeholder="Add note..."
-                          aria-label={`Note for version ${versionNumber}`}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const note = e.target.value;
-                            updateCachedVersion(version.oid, { note });
-                            queueVersionNoteSave(version.oid, note);
-                          }}
-                          onBlur={(e) =>
-                            flushVersionNoteSave(version.oid, e.target.value)
-                          }
-                          className="mt-2 min-h-8 resize-none px-2 py-1 text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0"
-                        />
+                        {showNoteEditor ? (
+                          <Textarea
+                            value={version.note ?? ""}
+                            placeholder="Add note..."
+                            aria-label={`Note for version ${versionNumber}`}
+                            autoFocus={!version.note}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const note = e.target.value;
+                              setExpandedNoteVersionIds((previous) => {
+                                if (previous.has(version.oid)) {
+                                  return previous;
+                                }
+                                const next = new Set(previous);
+                                next.add(version.oid);
+                                return next;
+                              });
+                              updateCachedVersion(version.oid, { note });
+                              queueVersionNoteSave(version.oid, note);
+                            }}
+                            onBlur={(e) =>
+                              flushVersionNoteSave(version.oid, e.target.value)
+                            }
+                            className="mt-2 min-h-8 resize-none px-2 py-1 text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={`Add note for version ${versionNumber}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedNoteVersionIds((previous) => {
+                                const next = new Set(previous);
+                                next.add(version.oid);
+                                return next;
+                              });
+                            }}
+                            className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span>Add note</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1">

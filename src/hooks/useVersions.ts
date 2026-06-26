@@ -16,6 +16,26 @@ export function useVersions(appId: number | null) {
   const { restartApp } = useRunApp();
   const { settings } = useSettings();
 
+  const updateVersionMetadataCache = (result: {
+    oid: string;
+    isFavorite: boolean;
+    note: string | null;
+  }) => {
+    queryClient.setQueryData<Version[]>(
+      queryKeys.versions.list({ appId }),
+      (oldVersions) =>
+        oldVersions?.map((version) =>
+          version.oid === result.oid
+            ? {
+                ...version,
+                isFavorite: result.isFavorite,
+                note: result.note,
+              }
+            : version,
+        ),
+    );
+  };
+
   const {
     data: versions,
     isLoading: loading,
@@ -92,8 +112,7 @@ export function useVersions(appId: number | null) {
   const setVersionFavoriteMutation = useMutation<
     { oid: string; isFavorite: boolean; note: string | null },
     Error,
-    { versionId: string; isFavorite: boolean },
-    { previousVersions?: Version[] }
+    { versionId: string; isFavorite: boolean }
   >({
     mutationFn: async ({ versionId, isFavorite }) => {
       if (appId === null) {
@@ -105,48 +124,14 @@ export function useVersions(appId: number | null) {
         isFavorite,
       });
     },
-    onMutate: async ({ versionId, isFavorite }) => {
-      const queryKey = queryKeys.versions.list({ appId });
-      await queryClient.cancelQueries({ queryKey });
-      const previousVersions = queryClient.getQueryData<Version[]>(queryKey);
-      queryClient.setQueryData<Version[]>(queryKey, (oldVersions) =>
-        oldVersions?.map((version) =>
-          version.oid === versionId ? { ...version, isFavorite } : version,
-        ),
-      );
-      return { previousVersions };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousVersions) {
-        queryClient.setQueryData(
-          queryKeys.versions.list({ appId }),
-          context.previousVersions,
-        );
-      }
-    },
-    onSuccess: (result) => {
-      queryClient.setQueryData<Version[]>(
-        queryKeys.versions.list({ appId }),
-        (oldVersions) =>
-          oldVersions?.map((version) =>
-            version.oid === result.oid
-              ? {
-                  ...version,
-                  isFavorite: result.isFavorite,
-                  note: result.note,
-                }
-              : version,
-          ),
-      );
-    },
+    onSuccess: updateVersionMetadataCache,
     meta: { showErrorToast: true },
   });
 
   const setVersionNoteMutation = useMutation<
     { oid: string; isFavorite: boolean; note: string | null },
     Error,
-    { versionId: string; note: string | null },
-    { previousVersions?: Version[] }
+    { versionId: string; note: string | null }
   >({
     mutationFn: async ({ versionId, note }) => {
       if (appId === null) {
@@ -158,43 +143,7 @@ export function useVersions(appId: number | null) {
         note,
       });
     },
-    onMutate: async ({ versionId, note }) => {
-      const queryKey = queryKeys.versions.list({ appId });
-      await queryClient.cancelQueries({ queryKey });
-      const previousVersions = queryClient.getQueryData<Version[]>(queryKey);
-      const normalizedNote = note?.trim() || null;
-      queryClient.setQueryData<Version[]>(queryKey, (oldVersions) =>
-        oldVersions?.map((version) =>
-          version.oid === versionId
-            ? { ...version, note: normalizedNote }
-            : version,
-        ),
-      );
-      return { previousVersions };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previousVersions) {
-        queryClient.setQueryData(
-          queryKeys.versions.list({ appId }),
-          context.previousVersions,
-        );
-      }
-    },
-    onSuccess: (result) => {
-      queryClient.setQueryData<Version[]>(
-        queryKeys.versions.list({ appId }),
-        (oldVersions) =>
-          oldVersions?.map((version) =>
-            version.oid === result.oid
-              ? {
-                  ...version,
-                  isFavorite: result.isFavorite,
-                  note: result.note,
-                }
-              : version,
-          ),
-      );
-    },
+    onSuccess: updateVersionMetadataCache,
     meta: { showErrorToast: true },
   });
 

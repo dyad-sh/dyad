@@ -201,11 +201,44 @@ describe("detectSqlDataDeletion", () => {
       "TRUNCATE events",
       "TRUNCATE TABLE events RESTART IDENTITY",
       "DROP TABLE users",
+      "DROP TABLE IF EXISTS users",
       "DROP SCHEMA private CASCADE",
+      "DROP SCHEMA IF EXISTS private CASCADE",
       "DROP DATABASE old_app",
+      "DROP DATABASE IF EXISTS old_app",
       "ALTER TABLE users DROP COLUMN legacy_id",
+      "ALTER TABLE users DROP legacy_id",
+      "ALTER TABLE users DROP IF EXISTS legacy_id",
+      "ALTER TABLE users DROP COLUMN IF EXISTS legacy_id",
+      "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE",
     ]) {
       expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
+    }
+  });
+
+  it("treats dynamic execution as destructive because the body is opaque", () => {
+    for (const sql of [
+      "DO $$ BEGIN DELETE FROM users WHERE inactive; END $$",
+      "DO $$ BEGIN EXECUTE 'DELETE FROM users'; END $$",
+      "CALL delete_inactive_users()",
+    ]) {
+      const result = detectSqlDataDeletion(sql);
+      expect(result.deletesData, sql).toBe(true);
+      expect(result.statements[0]?.reason, sql).toBe("dynamic_execution");
+    }
+  });
+
+  it("treats incomplete SQL as destructive because it gates auto-approval", () => {
+    for (const sql of [
+      "SELECT 'unterminated",
+      "DELETE FROM users -- cleanup",
+      "DROP TABLE users -- cleanup",
+    ]) {
+      const result = detectSqlDataDeletion(sql);
+      expect(result.deletesData, sql).toBe(true);
+      expect(result.statements[0]?.reason, sql).toBe(
+        "unparseable_or_incomplete",
+      );
     }
   });
 
@@ -228,6 +261,9 @@ describe("detectSqlDataDeletion", () => {
       "UPDATE users SET name = 'Ada'",
       "DROP VIEW old_users",
       "ALTER TABLE users DROP CONSTRAINT users_email_key",
+      "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
+      "ALTER TABLE users ALTER COLUMN legacy_id DROP DEFAULT",
+      "ALTER TABLE users ALTER COLUMN legacy_id DROP NOT NULL",
       "SELECT 'DELETE FROM users' AS example",
       "-- DELETE FROM users\nSELECT 1",
       "/* TRUNCATE events */ SELECT 1",
@@ -254,6 +290,19 @@ describe("detectSqlDataDeletion", () => {
     expect(
       detectSqlDataDeletion(
         "EXPLAIN (ANALYZE true) DELETE FROM users WHERE id = 1",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion("EXPLAIN ANALYZE DROP TABLE users").deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) ALTER TABLE users DROP COLUMN legacy_id",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE",
       ).deletesData,
     ).toBe(true);
   });

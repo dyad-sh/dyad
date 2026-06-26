@@ -1891,14 +1891,14 @@ ${problemReport.problems
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
         const latestSettings = readSettings();
-        const hasDestructiveSql = getDyadExecuteSqlTags(fullResponse).some(
-          (query) => doesSqlDeleteData(query.content),
-        );
-        if (
-          latestSettings.autoApproveChanges &&
-          selectedChatMode !== "ask" &&
-          !hasDestructiveSql
-        ) {
+        const shouldAutoApply =
+          latestSettings.autoApproveChanges && selectedChatMode !== "ask";
+        const hasDestructiveSql =
+          shouldAutoApply &&
+          getDyadExecuteSqlTags(fullResponse).some((query) =>
+            doesSqlDeleteData(query.content),
+          );
+        if (shouldAutoApply && !hasDestructiveSql) {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,

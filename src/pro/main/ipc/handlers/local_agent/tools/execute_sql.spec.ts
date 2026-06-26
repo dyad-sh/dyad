@@ -62,6 +62,19 @@ describe("executeSqlTool", () => {
         query: "DROP TABLE users;",
       }),
     ).toEqual({ sqlMutatesSchema: true, sqlDeletesData: true });
+
+    expect(
+      executeSqlTool.getConsentMetadata?.({
+        query:
+          "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE;",
+      }),
+    ).toEqual({ sqlMutatesSchema: false, sqlDeletesData: true });
+
+    expect(
+      executeSqlTool.getConsentMetadata?.({
+        query: "DO $$ BEGIN DELETE FROM users; END $$;",
+      }),
+    ).toEqual({ sqlMutatesSchema: true, sqlDeletesData: true });
   });
 
   it("returns the full query as the consent preview", () => {

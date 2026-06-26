@@ -605,8 +605,7 @@ export function registerVersionHandlers() {
                 // previous value, which is usually still the development branch
                 // but may be a stale preview branch from an earlier checkout.
                 // Overwrite the warning so the user knows the DB branch is
-                // uncertain (the earlier copy claimed it was left unchanged on
-                // the development database, which we can no longer guarantee).
+                // uncertain.
                 warningMessage =
                   "Restored your code to this version, but the database could not be " +
                   "switched and we were unable to confirm which database branch your app " +

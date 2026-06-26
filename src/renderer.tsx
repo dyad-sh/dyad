@@ -23,7 +23,7 @@ import { showError } from "./lib/toast";
 import { ipc } from "./ipc/types";
 import { useSetAtom } from "jotai";
 import {
-  pendingAgentConsentsAtom,
+  pendingToolConsentsAtom,
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
 import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
@@ -180,7 +180,7 @@ function App() {
   }, []);
 
   // Agent v2 tool consent requests - queue consents instead of overwriting
-  const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
+  const setPendingToolConsents = useSetAtom(pendingToolConsentsAtom);
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
   const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
@@ -211,7 +211,7 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = ipc.events.agent.onConsentRequest((payload) => {
-      setPendingAgentConsents((prev) => [
+      setPendingToolConsents((prev) => [
         ...prev,
         {
           kind: "agent",
@@ -225,12 +225,12 @@ function App() {
       ]);
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents]);
+  }, [setPendingToolConsents]);
 
   // MCP tool consents share the same queue/banner as agent-tool consents.
   useEffect(() => {
     const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
-      setPendingAgentConsents((prev) => [
+      setPendingToolConsents((prev) => [
         ...prev,
         {
           kind: "mcp",
@@ -246,13 +246,13 @@ function App() {
       ]);
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents]);
+  }, [setPendingToolConsents]);
 
   // Clear pending agent consents when a chat stream ends or errors
   // This prevents stale consent banners from remaining visible after cancellation
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onChatStreamEnd(({ chatId }) => {
-      setPendingAgentConsents((prev) =>
+      setPendingToolConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
       setPendingQuestionnaire((prev) => {
@@ -273,7 +273,7 @@ function App() {
       });
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents, setPendingQuestionnaire, setPendingIntegration]);
+  }, [setPendingToolConsents, setPendingQuestionnaire, setPendingIntegration]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

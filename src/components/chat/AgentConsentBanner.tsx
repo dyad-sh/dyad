@@ -9,7 +9,7 @@ import {
   Ban,
   AlertTriangle,
 } from "lucide-react";
-import type { PendingAgentConsent } from "@/atoms/chatAtoms";
+import type { PendingToolConsent } from "@/atoms/chatAtoms";
 import {
   Tooltip,
   TooltipContent,
@@ -22,7 +22,7 @@ const INPUT_PREVIEW_COLLAPSED_LINES = 6;
 const INPUT_PREVIEW_EXPANDED_MAX_HEIGHT = "40vh";
 
 interface AgentConsentBannerProps {
-  consent: PendingAgentConsent;
+  consent: PendingToolConsent;
   onDecision: (decision: "accept-once" | "accept-always" | "decline") => void;
   onClose: () => void;
   /** Total number of consents in the queue */

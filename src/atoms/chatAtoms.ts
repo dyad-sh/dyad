@@ -468,7 +468,7 @@ export const attachmentsAtom = atom<FileAttachment[]>([]);
 
 // Tool consent request queue. Holds both agent-tool and MCP-tool consents;
 // `kind` routes the decision back to the right IPC channel.
-export interface PendingAgentConsent {
+export interface PendingToolConsent {
   kind: "agent" | "mcp";
   requestId: string;
   chatId: number;
@@ -482,7 +482,7 @@ export interface PendingAgentConsent {
   classifierReason?: string | null;
 }
 
-export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
+export const pendingToolConsentsAtom = atom<PendingToolConsent[]>([]);
 
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());

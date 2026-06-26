@@ -98,6 +98,7 @@
   "sqlQuery": "SQL Query",
   "changesDatabaseSchema": "Schema change",
   "flaggedForReview": "Flagged for review",
+  "autoApproved": "Auto-approved",
   "approved": "Approved",
   "rejected": "Rejected",
   "copy": "Copy",

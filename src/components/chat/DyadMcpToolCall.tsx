@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Wrench } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { CodeHighlight } from "./CodeHighlight";
 import {
   DyadCard,
@@ -18,6 +19,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   node,
   children,
 }) => {
+  const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
   const toolName: string = node?.properties?.toolName || "";
   const autoApprovedReason: string = node?.properties?.autoApprovedReason || "";
@@ -56,7 +58,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
         )}
         {autoApprovedReason && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300 ring-1 ring-inset ring-green-200 dark:ring-green-800 flex-shrink-0">
-            Auto-approved
+            {t("autoApproved")}
           </span>
         )}
         <div className="ml-auto flex-shrink-0">

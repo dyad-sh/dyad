@@ -194,17 +194,56 @@ async function execOrThrow(
   }
 }
 
+const gitLineEndingConfigPromises = new Map<string, Promise<void>>();
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: string }).code === "EEXIST"
+  );
+}
+
+async function configureGitLineEndings(path: string): Promise<void> {
+  await execOrThrow(
+    ["config", "--local", "core.autocrlf", "false"],
+    path,
+    "Failed to configure git line ending core.autocrlf",
+  );
+  await execOrThrow(
+    ["config", "--local", "core.eol", "lf"],
+    path,
+    "Failed to configure git line ending core.eol",
+  );
+  await execOrThrow(
+    ["config", "--local", "core.safecrlf", "warn"],
+    path,
+    "Failed to configure git line ending core.safecrlf",
+  );
+}
+
 export async function ensureGitLineEndingPolicy({
   path,
   writeGitattributes = false,
 }: GitBaseParams & { writeGitattributes?: boolean }): Promise<void> {
+  const gitMetadataPath = pathModule.join(path, ".git");
+  if (!fs.existsSync(gitMetadataPath)) {
+    return;
+  }
+
   if (writeGitattributes) {
     const gitattributesPath = pathModule.join(path, ".gitattributes");
-    if (!fs.existsSync(gitattributesPath)) {
+    try {
       await fsPromises.writeFile(
         gitattributesPath,
         "# Normalize text files to LF so Dyad commits are stable across platforms.\n* text=auto eol=lf\n",
+        { flag: "wx" },
       );
+      logger.debug(`Created default .gitattributes in ${path}`);
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error;
+      }
     }
   }
 
@@ -213,26 +252,20 @@ export async function ensureGitLineEndingPolicy({
     return;
   }
 
-  const gitMetadataPath = pathModule.join(path, ".git");
-  if (!fs.existsSync(gitMetadataPath)) {
-    return;
+  const resolvedPath = pathModule.resolve(path);
+  const existingPromise = gitLineEndingConfigPromises.get(resolvedPath);
+  if (existingPromise) {
+    return existingPromise;
   }
 
-  await execOrThrow(
-    ["config", "--local", "core.autocrlf", "false"],
-    path,
-    "Failed to configure git line endings",
-  );
-  await execOrThrow(
-    ["config", "--local", "core.eol", "lf"],
-    path,
-    "Failed to configure git line endings",
-  );
-  await execOrThrow(
-    ["config", "--local", "core.safecrlf", "warn"],
-    path,
-    "Failed to configure git line endings",
-  );
+  const promise = configureGitLineEndings(path);
+  gitLineEndingConfigPromises.set(resolvedPath, promise);
+  try {
+    await promise;
+  } catch (error) {
+    gitLineEndingConfigPromises.delete(resolvedPath);
+    throw error;
+  }
 }
 
 /**

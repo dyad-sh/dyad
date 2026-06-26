@@ -78,6 +78,7 @@ describe("ensureGitLineEndingPolicy", () => {
   it("does not overwrite an existing gitattributes file", async () => {
     vi.mocked(readSettings).mockReturnValue({ enableNativeGit: false } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+    await runGit(repoDir, ["init"]);
     await fs.promises.writeFile(
       path.join(repoDir, ".gitattributes"),
       "*.png binary\n",
@@ -91,6 +92,35 @@ describe("ensureGitLineEndingPolicy", () => {
     await expect(
       fs.promises.readFile(path.join(repoDir, ".gitattributes"), "utf8"),
     ).resolves.toBe("*.png binary\n");
+  });
+
+  it("does not create gitattributes for non-repo paths", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: false } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await ensureGitLineEndingPolicy({
+      path: repoDir,
+      writeGitattributes: true,
+    });
+
+    await expect(
+      fs.promises.stat(path.join(repoDir, ".gitattributes")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("caches native git line ending config per repo path", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await ensureGitLineEndingPolicy({ path: repoDir });
+    await runGit(repoDir, ["config", "--local", "core.eol", "crlf"]);
+
+    await ensureGitLineEndingPolicy({ path: repoDir });
+
+    await expect(
+      runGitOutput(repoDir, ["config", "--local", "core.eol"]),
+    ).resolves.toBe("crlf");
   });
 });
 

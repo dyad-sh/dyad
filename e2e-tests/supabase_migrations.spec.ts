@@ -55,14 +55,14 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   await po.chatActions.waitForChatCompletion();
 
   await expect(async () => {
-    // Check that one migration file was created
+    // Check that the no-description SQL created the second migration.
     files = await fs.readdir(migrationsDir);
     expect(files).toHaveLength(2);
   }).toPass();
 
   expect(files[1]).toMatch(/0001_\w+_\w+_\w+\.sql/);
   expect(await fs.readFile(path.join(migrationsDir, files[1]), "utf8")).toEqual(
-    "DROP TABLE users;",
+    "ALTER TABLE users ADD COLUMN email text;",
   );
 });
 
@@ -128,13 +128,13 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   await po.chatActions.waitForChatCompletion();
 
   await expect(async () => {
-    // Check that one migration file was created
+    // Check that the no-description SQL created the second migration.
     files = await fs.readdir(migrationsDir);
     expect(files).toHaveLength(2);
   }).toPass();
 
   expect(files[1]).toMatch(/0001_\w+_\w+_\w+\.sql/);
   expect(await fs.readFile(path.join(migrationsDir, files[1]), "utf8")).toEqual(
-    "DROP TABLE users;",
+    "ALTER TABLE users ADD COLUMN email text;",
   );
 });

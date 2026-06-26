@@ -92,13 +92,55 @@ export class ChatActions {
     return this.page.getByRole("button", { name: "Retry" });
   }
 
+  private async getCurrentChatCompletionCheckpoint() {
+    const chatId = Number(new URL(this.page.url()).searchParams.get("id"));
+    if (!chatId) {
+      return null;
+    }
+    const messageCount = await this.page
+      .evaluate(async (currentChatId) => {
+        const chat = await (window as any).electron.ipcRenderer.invoke(
+          "get-chat",
+          currentChatId,
+        );
+        return chat.messages.length;
+      }, chatId)
+      .catch(() => null);
+    if (messageCount === null) {
+      return null;
+    }
+    return { chatId, messageCount };
+  }
+
   private getUndoButton() {
     return this.page.getByRole("button", { name: "Undo" });
   }
 
   async waitForChatCompletion({
     timeout = Timeout.MEDIUM,
-  }: { timeout?: number } = {}) {
+    checkpoint,
+  }: {
+    timeout?: number;
+    checkpoint?: { chatId: number; messageCount: number } | null;
+  } = {}) {
+    if (checkpoint) {
+      await expect(async () => {
+        const chat = await this.page.evaluate(async (chatId) => {
+          return (window as any).electron.ipcRenderer.invoke(
+            "get-chat",
+            chatId,
+          );
+        }, checkpoint.chatId);
+        expect(chat.messages.length).toBeGreaterThanOrEqual(
+          checkpoint.messageCount + 2,
+        );
+        const lastMessage = chat.messages.at(-1);
+        expect(lastMessage?.role).toBe("assistant");
+        expect(lastMessage?.content.trim().length).toBeGreaterThan(0);
+      }).toPass({ timeout });
+      return;
+    }
+
     await expect(this.getRetryButton()).toBeVisible({
       timeout,
     });
@@ -147,6 +189,8 @@ export class ChatActions {
         '[data-testid="chat-input-container"]:visible, [data-testid="home-chat-input-container"]:visible',
       )
       .getByRole("button", { name: "Send message" });
+    const completionCheckpoint =
+      await this.getCurrentChatCompletionCheckpoint();
 
     await expect(chatInput).toBeVisible();
     await expect(async () => {
@@ -166,29 +210,37 @@ export class ChatActions {
       try {
         await sendButton.click({ timeout: 1_000 });
       } catch (error) {
-        const promptSubmitted = await this.page
-          .getByTestId("messages-list")
-          .getByText(visiblePrompt)
-          .last()
-          .isVisible({ timeout: 1_000 })
-          .catch(() => false);
-        const generationStarted = await this.page
-          .getByRole("button", { name: "Cancel generation" })
-          .isVisible({ timeout: 500 })
-          .catch(() => false);
-        const inputText = await chatInput
-          .textContent({ timeout: 500 })
-          .catch(() => "");
+        await expect(async () => {
+          const promptSubmitted = await this.page
+            .getByTestId("messages-list")
+            .getByText(visiblePrompt)
+            .last()
+            .isVisible({ timeout: 500 })
+            .catch(() => false);
+          const generationStarted = await this.page
+            .getByRole("button", { name: "Cancel generation" })
+            .isVisible({ timeout: 500 })
+            .catch(() => false);
+          const inputText = await chatInput
+            .textContent({ timeout: 500 })
+            .catch(() => "");
 
-        if (promptSubmitted || (generationStarted && !inputText?.trim())) {
-          return;
-        }
-        throw error;
+          expect(
+            promptSubmitted || (generationStarted && !inputText?.trim()),
+          ).toBe(true);
+        })
+          .toPass({ timeout: Timeout.SHORT })
+          .catch(() => {
+            throw error;
+          });
       }
     }).toPass({ timeout: Timeout.MEDIUM });
 
     if (!skipWaitForCompletion) {
-      await this.waitForChatCompletion({ timeout });
+      await this.waitForChatCompletion({
+        timeout,
+        checkpoint: completionCheckpoint,
+      });
     }
   }
 

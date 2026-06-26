@@ -1,7 +1,7 @@
 No description!
 
 <dyad-execute-sql>
-DROP TABLE users;
+ALTER TABLE users ADD COLUMN email text;
 </dyad-execute-sql>
 
 Done.

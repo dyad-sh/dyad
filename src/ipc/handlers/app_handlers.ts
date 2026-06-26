@@ -10,6 +10,7 @@ import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { v4 as uuidv4 } from "uuid";
 import {
   getDyadAppPath,
   getDefaultDyadAppsDirectory,
@@ -404,6 +405,7 @@ export function registerAppHandlers() {
     const [app] = await db
       .insert(apps)
       .values({
+        appUuid: uuidv4(),
         name: params.name,
         // Use the name as the path for now
         path: appPath,
@@ -516,6 +518,7 @@ export function registerAppHandlers() {
     const [newDbApp] = await db
       .insert(apps)
       .values({
+        appUuid: uuidv4(),
         name: newAppName,
         path: newAppName, // Use the new name for the path
         // Explicitly set these to null because we don't want to copy them over.
@@ -663,6 +666,12 @@ export function registerAppHandlers() {
       if (!app) {
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
+      let appUuid = app.appUuid;
+      if (!appUuid) {
+        appUuid = uuidv4();
+        await db.update(apps).set({ appUuid }).where(eq(apps.id, app.id));
+        app.appUuid = appUuid;
+      }
 
       logger.debug(`Starting app ${appId} in path ${app.path}`);
 
@@ -673,6 +682,8 @@ export function registerAppHandlers() {
         await executeApp({
           appPath,
           appId,
+          appUuid,
+          appName: app.name,
           event,
           isNeon: !!app.neonProjectId,
           installCommand: app.installCommand,
@@ -938,10 +949,18 @@ export function registerAppHandlers() {
         logger.debug(
           `Executing app ${appId} in path ${app.path} after restart request`,
         ); // Adjusted log
+        let appUuid = app.appUuid;
+        if (!appUuid) {
+          appUuid = uuidv4();
+          await db.update(apps).set({ appUuid }).where(eq(apps.id, app.id));
+          app.appUuid = appUuid;
+        }
 
         await executeApp({
           appPath,
           appId,
+          appUuid,
+          appName: app.name,
           event,
           isNeon: !!app.neonProjectId,
           installCommand: app.installCommand,

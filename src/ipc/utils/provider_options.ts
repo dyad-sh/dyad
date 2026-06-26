@@ -15,6 +15,10 @@ export interface MentionedAppCodebase {
 
 export interface GetProviderOptionsParams {
   dyadAppId: number;
+  dyadAppUuid?: string | null;
+  dyadAppName?: string;
+  dyadChatId?: number;
+  dyadTurnUuid?: string;
   dyadRequestId?: string;
   dyadDisableFiles?: boolean;
   smartContextMode?: SmartContextMode;
@@ -31,6 +35,10 @@ export interface GetProviderOptionsParams {
  */
 export function getProviderOptions({
   dyadAppId,
+  dyadAppUuid,
+  dyadAppName,
+  dyadChatId,
+  dyadTurnUuid,
   dyadRequestId,
   dyadDisableFiles,
   smartContextMode,
@@ -43,6 +51,10 @@ export function getProviderOptions({
   const providerOptions: Record<string, any> = {
     "dyad-engine": {
       dyadAppId,
+      dyadAppUuid,
+      dyadAppName,
+      dyadChatId,
+      dyadTurnUuid,
       dyadRequestId,
       dyadDisableFiles,
       dyadSmartContextMode: smartContextMode,

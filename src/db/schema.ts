@@ -46,6 +46,7 @@ export const appCollections = sqliteTable(
 
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  appUuid: text("app_uuid"),
   name: text("name").notNull(),
   path: text("path").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" })
@@ -120,6 +121,7 @@ export const chats = sqliteTable("chats", {
 
 export const messages = sqliteTable("messages", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  turnUuid: text("turn_uuid"),
   chatId: integer("chat_id")
     .notNull()
     .references(() => chats.id, { onDelete: "cascade" }),

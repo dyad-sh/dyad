@@ -192,6 +192,22 @@ export function createDyadEngine(
         if ("dyadAppId" in parsedBody) {
           delete parsedBody.dyadAppId;
         }
+        const dyadAppUuid = getDyadOption("dyadAppUuid");
+        if ("dyadAppUuid" in parsedBody) {
+          delete parsedBody.dyadAppUuid;
+        }
+        const dyadAppName = getDyadOption("dyadAppName");
+        if ("dyadAppName" in parsedBody) {
+          delete parsedBody.dyadAppName;
+        }
+        const dyadChatId = getDyadOption("dyadChatId");
+        if ("dyadChatId" in parsedBody) {
+          delete parsedBody.dyadChatId;
+        }
+        const dyadTurnUuid = getDyadOption("dyadTurnUuid");
+        if ("dyadTurnUuid" in parsedBody) {
+          delete parsedBody.dyadTurnUuid;
+        }
         const dyadDisableFiles =
           disableDyadOptions || getDyadOption("dyadDisableFiles");
         if ("dyadDisableFiles" in parsedBody) {
@@ -225,6 +241,10 @@ export function createDyadEngine(
             smart_context_mode: dyadSmartContextMode,
             enable_web_search: options.dyadOptions.enableWebSearch,
             app_id: dyadAppId,
+            app_uuid: dyadAppUuid,
+            app_name: dyadAppName,
+            chat_id: dyadChatId,
+            turn_uuid: dyadTurnUuid,
           };
           if (dyadMentionedApps?.length) {
             parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;

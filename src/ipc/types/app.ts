@@ -13,6 +13,7 @@ import { ChatModeSchema } from "../../lib/schemas";
  */
 export const AppBaseSchema = z.object({
   id: z.number(),
+  appUuid: z.string().nullable(),
   name: z.string(),
   path: z.string(),
   createdAt: z.date(),

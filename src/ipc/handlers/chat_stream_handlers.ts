@@ -16,7 +16,7 @@ import {
 } from "ai";
 
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { apps, chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
 import {
@@ -630,9 +630,11 @@ ${componentSnippet}
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
+      const turnUuid = uuidv4();
       const [insertedUserMessage] = await db
         .insert(messages)
         .values({
+          turnUuid,
           chatId: req.chatId,
           role: "user",
           content:
@@ -723,6 +725,15 @@ ${componentSnippet}
           `Chat not found: ${req.chatId}`,
           DyadErrorKind.NotFound,
         );
+      }
+      let appUuid = updatedChat.app.appUuid;
+      if (!appUuid) {
+        appUuid = uuidv4();
+        await db
+          .update(apps)
+          .set({ appUuid })
+          .where(eq(apps.id, updatedChat.app.id));
+        updatedChat.app.appUuid = appUuid;
       }
 
       // Send the messages right away so that the loading state is shown for the message.
@@ -1223,6 +1234,10 @@ This conversation includes one or more image attachments. When the user uploads 
             : "balanced";
           const providerOptions = getProviderOptions({
             dyadAppId: updatedChat.app.id,
+            dyadAppUuid: appUuid,
+            dyadAppName: updatedChat.app.name,
+            dyadChatId: updatedChat.id,
+            dyadTurnUuid: turnUuid,
             dyadRequestId,
             dyadDisableFiles,
             smartContextMode,
@@ -1379,6 +1394,7 @@ This conversation includes one or more image attachments. When the user uploads 
               // and new chats will default to non-ask modes.
               systemPrompt: readOnlySystemPrompt,
               dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              turnUuid,
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
@@ -1412,6 +1428,7 @@ This conversation includes one or more image attachments. When the user uploads 
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt: planModeSystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            turnUuid,
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
@@ -1462,6 +1479,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 placeholderMessageId: placeholderAssistantMessage.id,
                 systemPrompt,
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
+                turnUuid,
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
                 freeModelMode,

@@ -8,6 +8,7 @@ import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
 
 import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
@@ -137,6 +138,7 @@ export function registerImportHandlers() {
       const [app] = await db
         .insert(apps)
         .values({
+          appUuid: uuidv4(),
           name: appName,
           path: skipCopy ? sourcePath : appName,
           installCommand: installCommand ?? null,

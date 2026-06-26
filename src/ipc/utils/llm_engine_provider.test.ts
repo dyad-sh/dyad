@@ -60,6 +60,10 @@ describe("createDyadEngine", () => {
       providerOptions: {
         "dyad-engine": {
           dyadAppId: 42,
+          dyadAppUuid: "00000000-0000-4000-8000-000000000042",
+          dyadAppName: "Test App",
+          dyadChatId: 7,
+          dyadTurnUuid: "00000000-0000-4000-8000-000000000007",
           dyadRequestId: "request-1",
           dyadFiles: [{ path: "src/App.tsx", content: "export {}" }],
         },
@@ -85,6 +89,10 @@ describe("createDyadEngine", () => {
       output_config: { effort: "medium" },
       dyad_options: {
         app_id: 42,
+        app_uuid: "00000000-0000-4000-8000-000000000042",
+        app_name: "Test App",
+        chat_id: 7,
+        turn_uuid: "00000000-0000-4000-8000-000000000007",
         enable_lazy_edits: true,
         enable_smart_files_context: true,
         enable_web_search: false,
@@ -92,6 +100,10 @@ describe("createDyadEngine", () => {
       },
     });
     expect(body).not.toHaveProperty("dyadAppId");
+    expect(body).not.toHaveProperty("dyadAppUuid");
+    expect(body).not.toHaveProperty("dyadAppName");
+    expect(body).not.toHaveProperty("dyadChatId");
+    expect(body).not.toHaveProperty("dyadTurnUuid");
     expect(body).not.toHaveProperty("dyadRequestId");
     expect(body).not.toHaveProperty("dyadFiles");
     expect(body).not.toHaveProperty("reasoning_effort");

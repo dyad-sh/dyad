@@ -154,6 +154,10 @@ export async function runExploreCodeSubagent({
       }),
       providerOptions: getProviderOptions({
         dyadAppId: ctx.appId,
+        dyadAppUuid: ctx.appUuid,
+        dyadAppName: ctx.appName,
+        dyadChatId: ctx.chatId,
+        dyadTurnUuid: ctx.turnUuid,
         dyadRequestId: ctx.dyadRequestId,
         dyadDisableFiles: true,
         files: [],

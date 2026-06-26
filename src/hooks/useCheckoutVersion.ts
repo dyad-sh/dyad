@@ -40,7 +40,7 @@ export function useCheckoutVersion() {
         // The code was checked out, but the database snapshot may not have been
         // restored (e.g. the version is older than Neon's retention window).
         if (result?.warningMessage) {
-          toast.warning(result.warningMessage);
+          toast.warning(result.warningMessage, { duration: 8000 });
         }
         // Invalidate queries that depend on the current version/branch
         await queryClient.invalidateQueries({

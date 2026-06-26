@@ -600,6 +600,18 @@ export function registerVersionHandlers() {
                   "Failed to point Postgres at the development branch after a failed preview restore:",
                   getNeonErrorMessage(fallbackError),
                 );
+                // The fallback failed too, so we could not explicitly re-point
+                // the app at the development branch. The env file is left at its
+                // previous value, which is usually still the development branch
+                // but may be a stale preview branch from an earlier checkout.
+                // Overwrite the warning so the user knows the DB branch is
+                // uncertain (the earlier copy claimed it was left unchanged on
+                // the development database, which we can no longer guarantee).
+                warningMessage =
+                  "Restored your code to this version, but the database could not be " +
+                  "switched and we were unable to confirm which database branch your app " +
+                  `is connected to: ${getNeonErrorMessage(fallbackError)}. Please check ` +
+                  "your app's database connection before relying on its data.";
               }
             }
           }

@@ -4,6 +4,7 @@ import log from "electron-log";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import { buildMcpConsentSystemPrompt } from "@/prompts/mcp_consent_policy";
+import type { McpAutoApproveResult } from "@/ipc/utils/mcp_consent";
 import {
   formatRecentTurns,
   getRecentTurnsForConsent,
@@ -147,7 +148,7 @@ export function buildMcpAutoApprove(params: {
   toolDescription?: string | null;
   inputSchema?: unknown;
   args: unknown;
-}): (() => Promise<boolean>) | undefined {
+}): (() => Promise<McpAutoApproveResult>) | undefined {
   if (!params.settings.autoApproveSafeMcpTools || !params.isDyadPro) {
     return undefined;
   }
@@ -165,9 +166,12 @@ export function buildMcpAutoApprove(params: {
         recentTurns,
         settings: params.settings,
       });
-      return decision.decision === "allow";
+      return {
+        approved: decision.decision === "allow",
+        reason: decision.reason,
+      };
     } catch {
-      return false;
+      return { approved: false };
     }
   };
 }

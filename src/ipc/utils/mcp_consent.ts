@@ -6,27 +6,41 @@ import crypto from "node:crypto";
 
 export type Consent = "ask" | "always" | "denied";
 
-const pendingConsentResolvers = new Map<
-  string,
-  (d: "accept-once" | "accept-always" | "decline") => void
->();
+type ConsentDecision = "accept-once" | "accept-always" | "decline";
+
+interface PendingMcpConsent {
+  chatId: number;
+  resolve: (d: ConsentDecision) => void;
+}
+
+const pendingConsentResolvers = new Map<string, PendingMcpConsent>();
 
 export function waitForConsent(
   requestId: string,
-): Promise<"accept-once" | "accept-always" | "decline"> {
+  chatId: number,
+): Promise<ConsentDecision> {
   return new Promise((resolve) => {
-    pendingConsentResolvers.set(requestId, resolve);
+    pendingConsentResolvers.set(requestId, { chatId, resolve });
   });
 }
 
-export function resolveConsent(
-  requestId: string,
-  decision: "accept-once" | "accept-always" | "decline",
-) {
-  const resolver = pendingConsentResolvers.get(requestId);
-  if (resolver) {
+export function resolveConsent(requestId: string, decision: ConsentDecision) {
+  const entry = pendingConsentResolvers.get(requestId);
+  if (entry) {
     pendingConsentResolvers.delete(requestId);
-    resolver(decision);
+    entry.resolve(decision);
+  }
+}
+
+// Resolve any pending MCP consents for a chat as declined. Called when a stream
+// is cancelled or ends so the tool calls unblock instead of hanging once their
+// consent UI has been cleared.
+export function clearPendingMcpConsentsForChat(chatId: number): void {
+  for (const [requestId, entry] of pendingConsentResolvers) {
+    if (entry.chatId === chatId) {
+      pendingConsentResolvers.delete(requestId);
+      entry.resolve("decline");
+    }
   }
 }
 
@@ -76,6 +90,20 @@ export async function setStoredConsent(
   }
 }
 
+// Result of the auto-approve hook: whether the classifier auto-approved, plus
+// its one-sentence reason (shown to the user on either path).
+export interface McpAutoApproveResult {
+  approved: boolean;
+  reason?: string;
+}
+
+// Result of a consent check. autoApprovedReason is set only when the classifier
+// auto-approved, so the caller can surface it on the tool-call card.
+export interface McpConsentResult {
+  approved: boolean;
+  autoApprovedReason?: string;
+}
+
 export async function requireMcpToolConsent(
   event: IpcMainInvokeEvent,
   params: {
@@ -87,15 +115,21 @@ export async function requireMcpToolConsent(
     chatId: number;
     // Optional auto-approve hook (agent mode, Pro). Runs only on the "ask"
     // path, so explicit always/denied choices still win.
-    autoApprove?: () => Promise<boolean>;
+    autoApprove?: () => Promise<McpAutoApproveResult>;
   },
-): Promise<boolean> {
+): Promise<McpConsentResult> {
   const current = await getStoredConsent(params.serverId, params.toolName);
-  if (current === "always") return true;
-  if (current === "denied") return false;
+  if (current === "always") return { approved: true };
+  if (current === "denied") return { approved: false };
 
-  if (params.autoApprove && (await params.autoApprove())) {
-    return true;
+  // The classifier's reason for asking, shown in the consent prompt.
+  let classifierReason: string | undefined;
+  if (params.autoApprove) {
+    const result = await params.autoApprove();
+    if (result.approved) {
+      return { approved: true, autoApprovedReason: result.reason };
+    }
+    classifierReason = result.reason;
   }
 
   // Ask renderer for a decision via event bridge. Strip non-serializable
@@ -105,15 +139,16 @@ export async function requireMcpToolConsent(
   (event.sender as any).send("mcp:tool-consent-request", {
     requestId,
     ...serializableParams,
+    reason: classifierReason,
   });
-  const response = await waitForConsent(requestId);
+  const response = await waitForConsent(requestId, params.chatId);
 
   if (response === "accept-always") {
     await setStoredConsent(params.serverId, params.toolName, "always");
-    return true;
+    return { approved: true };
   }
   if (response === "decline") {
-    return false;
+    return { approved: false };
   }
-  return response === "accept-once";
+  return { approved: response === "accept-once" };
 }

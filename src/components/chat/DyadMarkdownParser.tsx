@@ -701,6 +701,7 @@ function renderCustomTag(
             properties: {
               serverName: attributes.server || "",
               toolName: attributes.tool || "",
+              autoApprovedReason: attributes["auto-approved-reason"] || "",
             },
           }}
         >

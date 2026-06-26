@@ -19,11 +19,11 @@ import {
   MutationCache,
   useQueryClient,
 } from "@tanstack/react-query";
-import { showError, showMcpConsentToast } from "./lib/toast";
+import { showError } from "./lib/toast";
 import { ipc } from "./ipc/types";
 import { useSetAtom } from "jotai";
 import {
-  pendingAgentConsentsAtom,
+  pendingToolConsentsAtom,
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
 import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
@@ -163,23 +163,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
-      showMcpConsentToast({
-        serverName: payload.serverName,
-        toolName: payload.toolName,
-        toolDescription: payload.toolDescription,
-        inputPreview: payload.inputPreview,
-        onDecision: (d) =>
-          ipc.mcp.respondToConsent({
-            requestId: payload.requestId,
-            decision: d,
-          }),
-      });
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     const unsubscribe = ipc.events.misc.onErrorToast(({ message, action }) => {
       showError(message, {
         action: action
@@ -197,7 +180,7 @@ function App() {
   }, []);
 
   // Agent v2 tool consent requests - queue consents instead of overwriting
-  const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
+  const setPendingToolConsents = useSetAtom(pendingToolConsentsAtom);
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
   const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
@@ -228,9 +211,10 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = ipc.events.agent.onConsentRequest((payload) => {
-      setPendingAgentConsents((prev) => [
+      setPendingToolConsents((prev) => [
         ...prev,
         {
+          kind: "agent",
           requestId: payload.requestId,
           chatId: payload.chatId,
           toolName: payload.toolName,
@@ -241,13 +225,34 @@ function App() {
       ]);
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents]);
+  }, [setPendingToolConsents]);
+
+  // MCP tool consents share the same queue/banner as agent-tool consents.
+  useEffect(() => {
+    const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
+      setPendingToolConsents((prev) => [
+        ...prev,
+        {
+          kind: "mcp",
+          requestId: payload.requestId,
+          chatId: payload.chatId,
+          serverId: payload.serverId,
+          serverName: payload.serverName,
+          toolName: payload.toolName,
+          toolDescription: payload.toolDescription,
+          inputPreview: payload.inputPreview,
+          classifierReason: payload.reason,
+        },
+      ]);
+    });
+    return () => unsubscribe();
+  }, [setPendingToolConsents]);
 
   // Clear pending agent consents when a chat stream ends or errors
   // This prevents stale consent banners from remaining visible after cancellation
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onChatStreamEnd(({ chatId }) => {
-      setPendingAgentConsents((prev) =>
+      setPendingToolConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
       setPendingQuestionnaire((prev) => {
@@ -268,7 +273,7 @@ function App() {
       });
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents, setPendingQuestionnaire, setPendingIntegration]);
+  }, [setPendingToolConsents, setPendingQuestionnaire, setPendingIntegration]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

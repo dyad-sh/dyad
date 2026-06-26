@@ -16,6 +16,7 @@ describe("AgentConsentBanner", () => {
     render(
       <AgentConsentBanner
         consent={{
+          kind: "agent",
           requestId: "request",
           chatId: 1,
           toolName: "execute_sql",
@@ -28,5 +29,27 @@ describe("AgentConsentBanner", () => {
     );
 
     expect(screen.getByText("Changes database schema")).toBeTruthy();
+  });
+
+  it("shows the server name and classifier reason for an MCP consent", () => {
+    render(
+      <AgentConsentBanner
+        consent={{
+          kind: "mcp",
+          requestId: "request",
+          chatId: 1,
+          toolName: "send_email",
+          serverName: "email-server",
+          classifierReason: "Sends an email to an external address.",
+        }}
+        onDecision={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("email-server")).toBeTruthy();
+    expect(
+      screen.getByText(/Sends an email to an external address/),
+    ).toBeTruthy();
   });
 });

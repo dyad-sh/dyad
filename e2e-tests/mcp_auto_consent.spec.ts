@@ -57,6 +57,11 @@ testSkipIfWindows(
     await expect(
       po.page.getByRole("button", { name: "Always allow" }),
     ).toHaveCount(0);
+    // The tool-call card shows it was auto-approved, with the visible reason.
+    await expect(po.page.getByText("Auto-approved")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(po.page.getByText("safe tool")).toBeVisible();
   },
 );
 
@@ -77,6 +82,8 @@ testSkipIfWindows(
     await expect(
       po.page.getByRole("button", { name: "Always allow" }),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+    // The consent prompt surfaces the classifier's reason.
+    await expect(po.page.getByText(/Flagged for review/)).toBeVisible();
   },
 );
 

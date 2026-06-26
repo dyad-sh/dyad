@@ -66,7 +66,10 @@ import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { mcpServers } from "../../db/schema";
-import { requireMcpToolConsent } from "../utils/mcp_consent";
+import {
+  requireMcpToolConsent,
+  clearPendingMcpConsentsForChat,
+} from "../utils/mcp_consent";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
@@ -1931,6 +1934,8 @@ ${problemReport.problems
 
       // Notify renderer that stream has ended
       safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      // Unblock any pending MCP consents (their banners are cleared on stream end).
+      clearPendingMcpConsentsForChat(req.chatId);
     }
   });
 
@@ -1956,6 +1961,8 @@ ${problemReport.problems
 
     // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire
     safeSend(event.sender, "chat:stream:end", { chatId });
+    // Unblock any pending MCP consents (their banners are cleared on stream end).
+    clearPendingMcpConsentsForChat(chatId);
 
     return true;
   });
@@ -2209,7 +2216,7 @@ async function getMcpTools(
                 : Array.isArray(args)
                   ? args.join(" ")
                   : JSON.stringify(args).slice(0, 500);
-            const ok = await requireMcpToolConsent(event, {
+            const { approved } = await requireMcpToolConsent(event, {
               serverId: s.id,
               serverName: s.name,
               toolName: name,
@@ -2218,7 +2225,7 @@ async function getMcpTools(
               chatId,
             });
 
-            if (!ok)
+            if (!approved)
               throw new DyadError(
                 `User declined running tool ${key}`,
                 DyadErrorKind.UserCancelled,

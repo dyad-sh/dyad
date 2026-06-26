@@ -149,16 +149,19 @@ export function buildMcpCapabilityMap(params: {
         args,
       });
 
-      const ok = await requireMcpToolConsent(params.event, {
-        serverId: def.serverId,
-        serverName: def.serverName,
-        toolName: def.toolName,
-        toolDescription: def.description,
-        inputPreview,
-        chatId: params.ctx.chatId,
-        autoApprove,
-      });
-      if (!ok) {
+      const { approved, autoApprovedReason } = await requireMcpToolConsent(
+        params.event,
+        {
+          serverId: def.serverId,
+          serverName: def.serverName,
+          toolName: def.toolName,
+          toolDescription: def.description,
+          inputPreview,
+          chatId: params.ctx.chatId,
+          autoApprove,
+        },
+      );
+      if (!approved) {
         throw new DyadError(
           `User declined running tool ${def.toolKey}`,
           DyadErrorKind.UserCancelled,
@@ -176,8 +179,11 @@ export function buildMcpCapabilityMap(params: {
       }
 
       const contentPretty = JSON.stringify(args, null, 2);
+      const autoApprovedAttr = autoApprovedReason
+        ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
+        : "";
       params.ctx.onXmlComplete(
-        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}">\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
+        `<dyad-mcp-tool-call server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}"${autoApprovedAttr}>\n${escapeXmlContent(contentPretty)}\n</dyad-mcp-tool-call>`,
       );
 
       try {

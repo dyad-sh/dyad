@@ -19,10 +19,6 @@ vi.mock("../components/InputRequestToast", () => ({
   InputRequestToast: () => null,
 }));
 
-vi.mock("../components/McpConsentToast", () => ({
-  McpConsentToast: () => null,
-}));
-
 describe("showError", () => {
   beforeEach(() => {
     vi.clearAllMocks();

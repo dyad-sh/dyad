@@ -9,7 +9,7 @@ import {
   Ban,
   AlertTriangle,
 } from "lucide-react";
-import type { PendingAgentConsent } from "@/atoms/chatAtoms";
+import type { PendingToolConsent } from "@/atoms/chatAtoms";
 import {
   Tooltip,
   TooltipContent,
@@ -22,7 +22,7 @@ const INPUT_PREVIEW_COLLAPSED_LINES = 6;
 const INPUT_PREVIEW_EXPANDED_MAX_HEIGHT = "40vh";
 
 interface AgentConsentBannerProps {
-  consent: PendingAgentConsent;
+  consent: PendingToolConsent;
   onDecision: (decision: "accept-once" | "accept-always" | "decline") => void;
   onClose: () => void;
   /** Total number of consents in the queue */
@@ -36,7 +36,13 @@ export function AgentConsentBanner({
   queueTotal = 1,
 }: AgentConsentBannerProps) {
   const { t } = useTranslation("chat");
-  const { toolName, toolDescription, inputPreview } = consent;
+  const {
+    toolName,
+    toolDescription,
+    inputPreview,
+    serverName,
+    classifierReason,
+  } = consent;
   const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
 
   // Collapsible input preview state
@@ -80,7 +86,14 @@ export function AgentConsentBanner({
         <div className="flex items-center gap-2 mb-1">
           <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
-            Allow <span className="font-mono">{toolName}</span> to run?
+            Allow <span className="font-mono">{toolName}</span>
+            {serverName && (
+              <>
+                {" "}
+                from <span className="font-mono">{serverName}</span>
+              </>
+            )}{" "}
+            to run?
             {queueTotal > 1 && (
               <span className="ml-1.5 text-xs text-muted-foreground font-normal">
                 (1 of {queueTotal})
@@ -107,6 +120,19 @@ export function AgentConsentBanner({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+        {classifierReason && (
+          <div className="ml-6 mb-1.5 flex gap-2 rounded-lg border-l-4 border-orange-400 bg-amber-50 px-3 py-2 dark:border-orange-500 dark:bg-amber-950/30">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400" />
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+                {t("flaggedForReview")}
+              </div>
+              <div className="mt-0.5 whitespace-pre-wrap break-words text-sm text-orange-900 dark:text-orange-200">
+                {classifierReason}
+              </div>
+            </div>
+          </div>
+        )}
         {inputPreview && (
           <div className="ml-6 mb-1.5">
             {sqlMutatesSchema && (

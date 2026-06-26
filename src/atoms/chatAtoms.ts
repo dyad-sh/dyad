@@ -466,17 +466,23 @@ export const removeChatIdFromAllTrackingAtom = atom(
 
 export const attachmentsAtom = atom<FileAttachment[]>([]);
 
-// Agent tool consent request queue
-export interface PendingAgentConsent {
+// Tool consent request queue. Holds both agent-tool and MCP-tool consents;
+// `kind` routes the decision back to the right IPC channel.
+export interface PendingToolConsent {
+  kind: "agent" | "mcp";
   requestId: string;
   chatId: number;
   toolName: string;
   toolDescription?: string | null;
   inputPreview?: string | null;
   metadata?: { sqlMutatesSchema?: boolean } | null;
+  // MCP-only fields.
+  serverId?: number;
+  serverName?: string | null;
+  classifierReason?: string | null;
 }
 
-export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
+export const pendingToolConsentsAtom = atom<PendingToolConsent[]>([]);
 
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());

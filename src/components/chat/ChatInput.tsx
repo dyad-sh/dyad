@@ -29,7 +29,8 @@ import {
   chatInputValuesByIdAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
-  pendingAgentConsentsAtom,
+  pendingToolConsentsAtom,
+  type PendingToolConsent,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
@@ -187,14 +188,48 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setIsRestoringQueuedSelection = useSetAtom(
     isRestoringQueuedSelectionAtom,
   );
-  const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
-    pendingAgentConsentsAtom,
+  const [pendingToolConsents, setPendingToolConsents] = useAtom(
+    pendingToolConsentsAtom,
   );
   // Get the first consent in the queue for this chat (if any)
-  const consentsForThisChat = pendingAgentConsents.filter(
+  const consentsForThisChat = pendingToolConsents.filter(
     (c) => c.chatId === chatId,
   );
-  const pendingAgentConsent = consentsForThisChat[0] ?? null;
+  const pendingToolConsent = consentsForThisChat[0] ?? null;
+
+  // Route a consent decision back to the channel that requested it.
+  const respondToPendingConsent = (
+    consent: PendingToolConsent,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) => {
+    if (consent.kind === "mcp") {
+      return ipc.mcp.respondToConsent({
+        requestId: consent.requestId,
+        decision,
+      });
+    }
+    return ipc.agent.respondToConsent({
+      requestId: consent.requestId,
+      decision,
+    });
+  };
+
+  // Remove the banner immediately for instant feedback, then send the decision.
+  // If the send fails, re-queue the consent so the decision is not lost.
+  const decideConsent = async (
+    consent: PendingToolConsent,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) => {
+    setPendingToolConsents((prev) =>
+      prev.filter((c) => c.requestId !== consent.requestId),
+    );
+    try {
+      await respondToPendingConsent(consent, decision);
+    } catch (error) {
+      setPendingToolConsents((prev) => [consent, ...prev]);
+      showErrorToast(error as Error);
+    }
+  };
 
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
@@ -775,35 +810,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
           {/* Show todo list if there are todos for this chat */}
           {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
-          {/* Show agent consent banner if there's a pending consent request */}
-          {pendingAgentConsent && (
+          {/* Show consent banner if there's a pending consent request */}
+          {pendingToolConsent && (
             <AgentConsentBanner
-              consent={pendingAgentConsent}
+              consent={pendingToolConsent}
               queueTotal={consentsForThisChat.length}
-              onDecision={(decision) => {
-                ipc.agent.respondToConsent({
-                  requestId: pendingAgentConsent.requestId,
-                  decision,
-                });
-                // Remove this consent from the queue by requestId
-                setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
-                );
-              }}
-              onClose={() => {
-                ipc.agent.respondToConsent({
-                  requestId: pendingAgentConsent.requestId,
-                  decision: "decline",
-                });
-                // Remove this consent from the queue by requestId
-                setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
-                );
-              }}
+              onDecision={(decision) =>
+                decideConsent(pendingToolConsent, decision)
+              }
+              onClose={() => decideConsent(pendingToolConsent, "decline")}
             />
           )}
           {/* Show queued messages list */}
@@ -837,7 +852,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             </div>
           )}
           {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
-          {!pendingAgentConsent &&
+          {!pendingToolConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
             effectiveMode !== "ask" &&

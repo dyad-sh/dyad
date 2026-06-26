@@ -158,6 +158,8 @@ export const McpConsentRequestSchema = z.object({
   toolDescription: z.string().nullable().optional(),
   inputPreview: z.string().nullable().optional(),
   chatId: z.number(),
+  // Classifier's reason for asking (agent mode, Pro). Shown in the prompt.
+  reason: z.string().nullable().optional(),
 });
 
 export type McpConsentRequestPayload = z.infer<typeof McpConsentRequestSchema>;

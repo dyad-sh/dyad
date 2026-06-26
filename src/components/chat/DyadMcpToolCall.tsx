@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Wrench } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { CodeHighlight } from "./CodeHighlight";
 import {
   DyadCard,
@@ -18,8 +19,10 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   node,
   children,
 }) => {
+  const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
   const toolName: string = node?.properties?.toolName || "";
+  const autoApprovedReason: string = node?.properties?.autoApprovedReason || "";
   const [expanded, setExpanded] = useState(false);
 
   const raw = typeof children === "string" ? children : String(children ?? "");
@@ -53,10 +56,20 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             {toolName}
           </span>
         )}
-        <div className="ml-auto">
+        {autoApprovedReason && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300 ring-1 ring-inset ring-green-200 dark:ring-green-800 flex-shrink-0">
+            {t("autoApproved")}
+          </span>
+        )}
+        <div className="ml-auto flex-shrink-0">
           <DyadExpandIcon isExpanded={expanded} />
         </div>
       </DyadCardHeader>
+      {autoApprovedReason && (
+        <div className="px-3 pb-2 -mt-1 text-xs text-green-700 dark:text-green-300 whitespace-pre-wrap break-words">
+          {autoApprovedReason}
+        </div>
+      )}
       <DyadCardContent isExpanded={expanded}>
         <CodeHighlight className="language-json">{prettyJson}</CodeHighlight>
       </DyadCardContent>

@@ -254,7 +254,7 @@ describe("buildMcpCapabilityMap", () => {
   });
 
   it("invokes the MCP tool and emits tool-call + tool-result XML on success", async () => {
-    vi.mocked(requireMcpToolConsent).mockResolvedValue(true);
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "hi" }],
     });
@@ -282,7 +282,7 @@ describe("buildMcpCapabilityMap", () => {
   });
 
   it("wraps a plain-string MCP result into the declared McpResult shape", async () => {
-    vi.mocked(requireMcpToolConsent).mockResolvedValue(true);
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockResolvedValue("hello world");
     vi.mocked(mcpManager.getClient).mockResolvedValue({
       tools: async () => ({ hello: { execute } }),
@@ -308,7 +308,7 @@ describe("buildMcpCapabilityMap", () => {
   });
 
   it("throws a DyadError(UserCancelled) and skips execution when consent is denied", async () => {
-    vi.mocked(requireMcpToolConsent).mockResolvedValue(false);
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: false });
     const execute = vi.fn();
     vi.mocked(mcpManager.getClient).mockResolvedValue({
       tools: async () => ({ hello: { execute } }),
@@ -337,7 +337,7 @@ describe("buildMcpCapabilityMap", () => {
   });
 
   it("throws a DyadError(NotFound) when the live client no longer exposes the tool", async () => {
-    vi.mocked(requireMcpToolConsent).mockResolvedValue(true);
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     vi.mocked(mcpManager.getClient).mockResolvedValue({
       tools: async () => ({}),
     } as any);
@@ -363,7 +363,7 @@ describe("buildMcpCapabilityMap", () => {
   });
 
   it("emits an error <dyad-output> and re-throws when the MCP tool execute() fails", async () => {
-    vi.mocked(requireMcpToolConsent).mockResolvedValue(true);
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockRejectedValue(new Error("upstream boom"));
     vi.mocked(mcpManager.getClient).mockResolvedValue({
       tools: async () => ({ hello: { execute } }),

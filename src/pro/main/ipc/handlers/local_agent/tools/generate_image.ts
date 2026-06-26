@@ -122,6 +122,7 @@ export const generateImageTool: ToolDefinition<
   inputSchema: generateImageSchema,
   defaultConsent: "always",
   modifiesState: true,
+  usesEngineEndpoint: true,
 
   isEnabled: (ctx) => ctx.isDyadPro,
 

@@ -10,7 +10,10 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
   getModelClient: mocks.getModelClient,
 }));
 
-import { classifyMcpToolConsent } from "./mcp_auto_consent";
+import {
+  buildMcpAutoApprove,
+  classifyMcpToolConsent,
+} from "./mcp_auto_consent";
 
 function withText(text: string) {
   mocks.getModelClient.mockResolvedValue({ modelClient: { model: {} } });
@@ -78,5 +81,36 @@ describe("classifyMcpToolConsent", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("buildMcpAutoApprove", () => {
+  const baseParams = {
+    settings: { autoApproveSafeMcpTools: true } as any,
+    isDyadPro: true,
+    chatId: 1,
+    serverName: "srv",
+    toolName: "tool",
+    toolDescription: "does a thing",
+    inputSchema: { type: "object" },
+    args: { a: 1 },
+  };
+
+  it("does not build an auto-approve callback for Dyad Free turns", () => {
+    const autoApprove = buildMcpAutoApprove({
+      ...baseParams,
+      freeModelMode: true,
+    });
+
+    expect(autoApprove).toBeUndefined();
+  });
+
+  it("builds an auto-approve callback for Pro non-free turns when enabled", () => {
+    const autoApprove = buildMcpAutoApprove({
+      ...baseParams,
+      freeModelMode: false,
+    });
+
+    expect(autoApprove).toEqual(expect.any(Function));
   });
 });

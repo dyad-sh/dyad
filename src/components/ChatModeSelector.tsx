@@ -30,6 +30,11 @@ import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 import { useEffect, useRef } from "react";
+import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
+  isFreeProBuildModeCombination,
+  isFreeProModel,
+} from "@/lib/freeProModel";
 
 export function ChatModeSelector() {
   const { updateSettings } = useSettings();
@@ -53,6 +58,8 @@ export function ChatModeSelector() {
     useFreeAgentQuota();
   const { servers } = useMcp();
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
+  const isDyadFreeSelected = isFreeProModel(settings?.selectedModel);
+  const buildUnavailableForDyadFree = isDyadFreeSelected;
 
   useEffect(() => {
     if (!chatId || !fallbackReason || !storedChatMode) {
@@ -77,8 +84,24 @@ export function ChatModeSelector() {
     });
   }, [chatId, effectiveMode, fallbackReason, isProEnabled, storedChatMode]);
 
+  useEffect(() => {
+    if (
+      settings &&
+      isFreeProBuildModeCombination(settings.selectedModel, selectedMode)
+    ) {
+      void setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE).catch(() => {});
+    }
+  }, [selectedMode, setChatMode, settings]);
+
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
+    if (
+      settings &&
+      isFreeProBuildModeCombination(settings.selectedModel, newMode)
+    ) {
+      toast.error("Dyad Free is not available in Build mode.");
+      return;
+    }
     void setChatMode(newMode).catch(() => {});
 
     // We want to show a toast when user is switching to the new agent mode
@@ -209,14 +232,16 @@ export function ChatModeSelector() {
               </div>
             </SelectItem>
           )}
-          <SelectItem value="build">
+          <SelectItem value="build" disabled={buildUnavailableForDyadFree}>
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
                 <Hammer size={14} className="text-muted-foreground" />
                 <span className="font-medium">Build</span>
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
-                Generate and edit code
+                {buildUnavailableForDyadFree
+                  ? "Use Agent, Ask, or Plan with Dyad Free"
+                  : "Generate and edit code"}
               </span>
             </div>
           </SelectItem>

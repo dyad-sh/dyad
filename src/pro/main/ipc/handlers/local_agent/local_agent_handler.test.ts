@@ -1480,6 +1480,47 @@ describe("handleLocalAgentStream", () => {
       );
       expect(continuationInstructionFound).toBe(true);
     });
+
+    it("should report circular provider errors without overflowing the stack", async () => {
+      // Arrange
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      const circularStreamError: Record<string, unknown> = {
+        message: "provider exploded",
+      };
+      circularStreamError.error = circularStreamError;
+
+      mockStreamResult = {
+        fullStream: (async function* () {
+          yield* [];
+          throw circularStreamError;
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(1);
+      expect(errorMessages[0].args[0]).toMatchObject({
+        chatId: 1,
+        error: "Error: provider exploded",
+      });
+    });
   });
 
   describe("Stream processing - reasoning blocks", () => {

@@ -525,6 +525,7 @@ export const constructSystemPrompt = ({
   themePrompt,
   readOnly,
   basicAgentMode,
+  freeModelMode,
   frameworkType,
   hasSupabaseProject,
   enableAppBlueprint,
@@ -538,6 +539,8 @@ export const constructSystemPrompt = ({
   readOnly?: boolean;
   /** If true, use basic agent mode (free tier with limited tools) */
   basicAgentMode?: boolean;
+  /** If true, use free model mode with limited engine endpoint tools */
+  freeModelMode?: boolean;
   /**
    * Detected framework of the app. The Nitro nudge only fires for `"vite"`
    * (i.e. Vite without Nitro yet); `"vite-nitro"` apps already have the server
@@ -566,6 +569,7 @@ export const constructSystemPrompt = ({
     return constructLocalAgentPrompt(aiRules, themePrompt, {
       readOnly,
       basicAgentMode,
+      freeModelMode,
       frameworkType,
       hasSupabaseProject,
       enableAppBlueprint,

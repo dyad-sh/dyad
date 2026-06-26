@@ -122,4 +122,26 @@ describe("getModelClient", () => {
       "gemini/gemini-3-flash-preview",
     ]);
   });
+
+  test("routes Dyad Free through its dedicated engine model", async () => {
+    const { modelClient } = await getModelClient(
+      {
+        provider: "auto",
+        name: "free-pro",
+      },
+      {
+        enableDyadPro: true,
+        providerSettings: {
+          auto: {
+            apiKey: {
+              value: "dyad-pro-key",
+            },
+          },
+        },
+      } as unknown as UserSettings,
+    );
+
+    expect((modelClient.model as { modelId: string }).modelId).toBe("free-pro");
+    expect(modelClient.builtinProviderId).toBe("auto");
+  });
 });

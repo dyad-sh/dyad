@@ -34,6 +34,7 @@ import {
   formatInvalidProviderApiKeyMessage,
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
+import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -74,6 +75,13 @@ export async function getModelClient(
     throw new DyadError(
       `Configuration not found for provider: ${model.provider}`,
       DyadErrorKind.NotFound,
+    );
+  }
+
+  if (isFreeProModel(model) && (!settings.enableDyadPro || !dyadApiKey)) {
+    throw new DyadError(
+      "Dyad Free requires an active Dyad Pro API key. Switch to another model or enable Dyad Pro.",
+      DyadErrorKind.Auth,
     );
   }
 
@@ -208,6 +216,15 @@ async function getProModelClient({
   provider: DyadEngineProvider;
   modelId: string;
 }): Promise<ModelClient> {
+  if (isFreeProModel(model)) {
+    return {
+      model: provider.freeChatModel(FREE_PRO_MODEL_NAME, {
+        providerId: model.provider,
+      }),
+      builtinProviderId: model.provider,
+    };
+  }
+
   if (
     settings.selectedChatMode === "local-agent" &&
     model.provider === "auto" &&

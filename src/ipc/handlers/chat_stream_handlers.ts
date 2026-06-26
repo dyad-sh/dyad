@@ -125,6 +125,11 @@ import {
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import {
+  FREE_PRO_BUILD_MODE_ERROR,
+  isFreeProBuildModeCombination,
+  isFreeProModel,
+} from "@/lib/freeProModel";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import {
   getFreeAgentQuotaStatus,
@@ -647,6 +652,15 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
+      if (
+        isFreeProBuildModeCombination(settings.selectedModel, selectedChatMode)
+      ) {
+        throw new DyadError(
+          FREE_PRO_BUILD_MODE_ERROR,
+          DyadErrorKind.Precondition,
+        );
+      }
+      const freeModelMode = isFreeProModel(settings.selectedModel);
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),
       );
@@ -942,6 +956,7 @@ ${componentSnippet}
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
+          freeModelMode,
           frameworkType,
           hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
           enableAppBlueprint:
@@ -1341,6 +1356,7 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             readOnly: true,
+            freeModelMode,
             codeExplorerAvailable,
           });
 
@@ -1364,6 +1380,7 @@ This conversation includes one or more image attachments. When the user uploads 
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
               settingsOverride: settings,
+              freeModelMode,
               referencedApps: referencedAppsForAgent,
               currentTurnHasOnDiskAttachment:
                 hasScriptReadableAttachment(storedAttachments),
@@ -1386,6 +1403,7 @@ This conversation includes one or more image attachments. When the user uploads 
             chatMode: "plan",
             enableTurboEditsV2: false,
             themePrompt,
+            freeModelMode,
           });
 
           await handleLocalAgentStream(event, req, abortController, {
@@ -1395,6 +1413,7 @@ This conversation includes one or more image attachments. When the user uploads 
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
+            freeModelMode,
             referencedApps: referencedAppsForAgent,
             currentTurnHasOnDiskAttachment: false,
           });
@@ -1443,6 +1462,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 dyadRequestId: dyadRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
                 settingsOverride: settings,
+                freeModelMode,
                 referencedApps: referencedAppsForAgent,
                 currentTurnHasOnDiskAttachment:
                   hasScriptReadableAttachment(storedAttachments),
@@ -1488,6 +1508,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
+                freeModelMode,
                 frameworkType,
                 hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
               }),

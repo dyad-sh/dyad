@@ -31,6 +31,16 @@ import {
 } from "@/components/ui/tooltip";
 import { CheckIcon } from "lucide-react";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { useFreeModelQuota } from "@/hooks/useFreeModelQuota";
+import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
+  FREE_PRO_MODEL_NAME,
+  isFreeProBuildModeCombination,
+  isFreeProLanguageModel,
+  isFreeProModel,
+} from "@/lib/freeProModel";
+import { useRouterState } from "@tanstack/react-router";
+import { useChatMode } from "@/hooks/useChatMode";
 
 const SCROLL_AREA_CLASS = "max-h-100 overflow-y-auto scrollbar-on-hover";
 
@@ -74,10 +84,26 @@ function tierFor(dollarSigns: number | undefined): Tier {
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
+  const routerState = useRouterState();
+  const isChatRoute = routerState.location.pathname === "/chat";
+  const chatId = routerState.location.search.id as number | undefined;
+  const { selectedMode, setChatMode } = useChatMode(
+    isChatRoute ? chatId : null,
+  );
   const queryClient = useQueryClient();
-  const { isTrial } = useTrialModelRestriction();
-  const onModelSelect = (model: LargeLanguageModel) => {
-    updateSettings({ selectedModel: model });
+  const { isTrial, isLoadingTrialStatus } = useTrialModelRestriction();
+  const freeModelQuota = useFreeModelQuota();
+  const onModelSelect = async (model: LargeLanguageModel) => {
+    if (isFreeProBuildModeCombination(model, selectedMode)) {
+      await setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE);
+    }
+
+    updateSettings({
+      selectedModel: model,
+      ...(isFreeProModel(model) && settings?.defaultChatMode === "build"
+        ? { defaultChatMode: FREE_PRO_MODEL_FALLBACK_CHAT_MODE }
+        : {}),
+    });
     // Invalidate token count when model changes since different models have different context windows
     // (technically they have different tokenizers, but we don't keep track of that).
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
@@ -160,6 +186,9 @@ export function ModelPicker() {
   const autoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
       ? modelsByProviders["auto"].filter((model) => {
+          if (model.apiName === FREE_PRO_MODEL_NAME) {
+            return dyadProEnabled && !isTrial && !isLoadingTrialStatus;
+          }
           if (settings && !dyadProEnabled && model.apiName === "value") {
             return false;
           }
@@ -237,8 +266,15 @@ export function ModelPicker() {
   };
 
   const handleCloudModelSelect = (providerId: string, model: LanguageModel) => {
+    if (
+      isFreeProLanguageModel(providerId, model.apiName) &&
+      freeModelQuota.isQuotaExceeded
+    ) {
+      return;
+    }
+
     const customModelId = model.type === "custom" ? model.id : undefined;
-    onModelSelect({
+    void onModelSelect({
       name: model.apiName,
       provider: providerId,
       customModelId,
@@ -261,12 +297,30 @@ export function ModelPicker() {
       selectedModel.provider === providerId &&
       selectedModel.name === model.apiName;
     const isAutoProviderRow = providerId === "auto";
+    const isFreeProRow = isFreeProLanguageModel(providerId, model.apiName);
+    const freeProResetTimeLabel = freeModelQuota.resetTime
+      ? new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date(freeModelQuota.resetTime))
+      : null;
+    const freeProQuotaLabel =
+      freeModelQuota.isLoading && !freeModelQuota.quotaStatus
+        ? "Loading"
+        : freeModelQuota.error
+          ? "Unavailable"
+          : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
 
     const item = (
       <DropdownMenuItem
         key={`${providerId}-${model.apiName}`}
+        disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
           "relative px-2 py-1.5",
+          isFreeProRow &&
+            freeModelQuota.isQuotaExceeded &&
+            "opacity-60 cursor-default",
           isSelected &&
             "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
         )}
@@ -292,7 +346,7 @@ export function ModelPicker() {
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             {showPrice && <PriceBadge dollarSigns={model.dollarSigns} />}
-            {model.tag && (
+            {model.tag && !isFreeProRow && (
               <span
                 className={cn(
                   PILL_CLASS,
@@ -305,6 +359,43 @@ export function ModelPicker() {
             )}
             {isSelected && (
               <CheckIcon className="size-3.5 text-primary shrink-0" />
+            )}
+            {isFreeProRow && (
+              <>
+                <span
+                  className={cn(
+                    PILL_CLASS,
+                    freeModelQuota.isQuotaExceeded
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                  )}
+                  title={
+                    freeProResetTimeLabel
+                      ? `Resets at ${freeProResetTimeLabel}`
+                      : undefined
+                  }
+                >
+                  {freeProQuotaLabel}
+                </span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        className={cn(
+                          PILL_CLASS,
+                          "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                        )}
+                      >
+                        Data sharing
+                      </span>
+                    }
+                  />
+                  <TooltipContent side="right" align="start">
+                    Data may be shared with the AI provider and used for
+                    training models.
+                  </TooltipContent>
+                </Tooltip>
+              </>
             )}
           </span>
         </div>
@@ -422,7 +513,7 @@ export function ModelPicker() {
             <DropdownMenuItem
               className="relative py-2 bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary"
               onClick={() => {
-                onModelSelect({ name: "auto", provider: "auto" });
+                void onModelSelect({ name: "auto", provider: "auto" });
                 setOpen(false);
               }}
             >
@@ -651,7 +742,7 @@ export function ModelPicker() {
                                 "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
                             )}
                             onClick={() => {
-                              onModelSelect({
+                              void onModelSelect({
                                 name: model.modelName,
                                 provider: "ollama",
                               });
@@ -749,7 +840,7 @@ export function ModelPicker() {
                                 "bg-primary/8 before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary",
                             )}
                             onClick={() => {
-                              onModelSelect({
+                              void onModelSelect({
                                 name: model.modelName,
                                 provider: "lmstudio",
                               });

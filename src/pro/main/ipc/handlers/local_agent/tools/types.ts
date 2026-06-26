@@ -75,6 +75,11 @@ export interface AgentContext {
    */
   isDyadPro: boolean;
   /**
+   * If true, this turn is using a Dyad Free model. Some Pro-enabled
+   * conveniences, such as MCP auto-approval, should stay disabled.
+   */
+  freeModelMode?: boolean;
+  /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
    */
@@ -189,6 +194,11 @@ export interface ToolDefinition<T = any> {
    * Used to filter out state-modifying tools in read-only mode (e.g., ask mode).
    */
   readonly modifiesState?: boolean;
+  /**
+   * If true, this tool calls a Dyad Engine endpoint outside the main model
+   * generation endpoint.
+   */
+  readonly usesEngineEndpoint?: boolean;
   execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**

@@ -1,10 +1,35 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelPicker } from "./ModelPicker";
 
 const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
+  setChatMode: vi.fn(),
   updateSettings: vi.fn(),
+  selectedMode: "build",
+  isTrial: false,
+  freeModelQuota: {
+    quotaStatus: {
+      messagesUsed: 3,
+      messagesLimit: 5,
+      messagesRemaining: 2,
+      isQuotaExceeded: false,
+      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+    } as {
+      messagesUsed: number;
+      messagesLimit: number;
+      messagesRemaining: number;
+      isQuotaExceeded: boolean;
+      resetTime: number;
+    } | null,
+    isLoading: false,
+    error: null as Error | null,
+    isQuotaExceeded: false,
+    messagesUsed: 3,
+    messagesLimit: 5,
+    messagesRemaining: 2,
+    resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+  },
   settings: {
     enableDyadPro: true,
     providerSettings: {
@@ -18,6 +43,8 @@ const mocks = vi.hoisted(() => ({
       name: "auto",
       provider: "auto",
     },
+    selectedChatMode: "build",
+    defaultChatMode: "build",
   },
 }));
 
@@ -34,10 +61,31 @@ vi.mock("@/hooks/useSettings", () => ({
   }),
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+  useRouterState: () => ({
+    location: {
+      pathname: "/",
+      search: {},
+    },
+  }),
+}));
+
+vi.mock("@/hooks/useChatMode", () => ({
+  useChatMode: () => ({
+    selectedMode: mocks.selectedMode,
+    setChatMode: mocks.setChatMode,
+  }),
+}));
+
 vi.mock("@/hooks/useTrialModelRestriction", () => ({
   useTrialModelRestriction: () => ({
-    isTrial: false,
+    isTrial: mocks.isTrial,
+    isLoadingTrialStatus: false,
   }),
+}));
+
+vi.mock("@/hooks/useFreeModelQuota", () => ({
+  useFreeModelQuota: () => mocks.freeModelQuota,
 }));
 
 vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
@@ -56,6 +104,13 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
           displayName: "Free",
           description: "Free model",
           type: "cloud",
+        },
+        {
+          apiName: "free-pro",
+          displayName: "Dyad Free",
+          description: "Free Pro model",
+          type: "cloud",
+          tag: "Free",
         },
       ],
       openai: [
@@ -211,9 +266,25 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 describe("ModelPicker", () => {
   beforeEach(() => {
     mocks.invalidateQueries.mockReset();
+    mocks.setChatMode.mockReset();
+    mocks.setChatMode.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
+    mocks.selectedMode = "build";
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
+    mocks.settings.selectedChatMode = "build";
+    mocks.settings.defaultChatMode = "build";
+    mocks.isTrial = false;
+    mocks.freeModelQuota.isQuotaExceeded = false;
+    mocks.freeModelQuota.error = null;
+    mocks.freeModelQuota.messagesRemaining = 2;
+    mocks.freeModelQuota.quotaStatus = {
+      messagesUsed: 3,
+      messagesLimit: 5,
+      messagesRemaining: 2,
+      isQuotaExceeded: false,
+      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+    };
   });
 
   it("shows Pro users a flat primary cloud model list with provider grouping under More models", () => {
@@ -224,6 +295,9 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("GLM 4.7")).toBeNull();
     expect(screen.queryByText("Kimi K2")).toBeNull();
     expect(screen.queryByText("Free (OpenRouter)")).toBeNull();
+    expect(screen.getByText("Dyad Free")).toBeTruthy();
+    expect(screen.getByText("2/5 left")).toBeTruthy();
+    expect(screen.getByText("Data sharing")).toBeTruthy();
     expect(screen.getByText("Claude Sonnet 4.5")).toBeTruthy();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
     expect(screen.queryByText("xAI")).toBeNull();
@@ -266,6 +340,7 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("More models")).toBeNull();
     expect(screen.queryByText("GPT 5")).toBeNull();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
+    expect(screen.queryByText("Dyad Free")).toBeNull();
   });
 
   it("selects flat Pro models with their source provider", () => {
@@ -280,5 +355,61 @@ describe("ModelPicker", () => {
       }),
     });
     expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Dyad Free for Dyad Pro trial users", () => {
+    mocks.isTrial = true;
+
+    render(<ModelPicker />);
+
+    expect(screen.queryByText("Dyad Free")).toBeNull();
+    expect(
+      screen.getByText("Upgrade from Dyad Pro trial to unlock more models."),
+    ).toBeTruthy();
+  });
+
+  it("does not select Dyad Free when quota is exhausted", () => {
+    mocks.freeModelQuota.isQuotaExceeded = true;
+    mocks.freeModelQuota.messagesRemaining = 0;
+    mocks.freeModelQuota.quotaStatus = {
+      messagesUsed: 5,
+      messagesLimit: 5,
+      messagesRemaining: 0,
+      isQuotaExceeded: true,
+      resetTime: new Date("2026-06-26T00:00:00Z").getTime(),
+    };
+
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("moves Build mode to Agent when selecting Dyad Free", async () => {
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("Dyad Free").closest("button")!);
+
+    await waitFor(() => {
+      expect(mocks.setChatMode).toHaveBeenCalledWith("local-agent");
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedModel: expect.objectContaining({
+          name: "free-pro",
+          provider: "auto",
+        }),
+        defaultChatMode: "local-agent",
+      });
+    });
+  });
+
+  it("shows Dyad Free quota as unavailable when the quota fetch fails", () => {
+    mocks.freeModelQuota.error = new Error("quota unavailable");
+    mocks.freeModelQuota.quotaStatus = null;
+
+    render(<ModelPicker />);
+
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.queryByText("10/10 left")).toBeNull();
   });
 });

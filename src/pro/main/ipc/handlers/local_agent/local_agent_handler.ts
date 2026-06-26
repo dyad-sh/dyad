@@ -30,6 +30,7 @@ import {
   isBasicAgentMode,
   type UserSettings,
 } from "@/lib/schemas";
+import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
@@ -121,6 +122,7 @@ import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
 const MAX_TERMINATED_STREAM_RETRIES = 3;
+const MAX_ERROR_RESPONSE_BODY_DEPTH = 5;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
@@ -360,6 +362,7 @@ export async function handleLocalAgentStream(
     planModeOnly = false,
     messageOverride,
     settingsOverride,
+    freeModelMode,
     referencedApps = [],
     currentTurnHasOnDiskAttachment,
   }: {
@@ -382,6 +385,7 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
     settingsOverride?: UserSettings;
+    freeModelMode?: boolean;
     /**
      * Apps referenced via `@app:Name` mentions in the user's prompt.
      * Read-only tools can target these via an `app_name` parameter.
@@ -631,6 +635,8 @@ export async function handleLocalAgentStream(
     const referencedAppsMap = new Map(
       referencedApps.map((ref) => [ref.appName.toLowerCase(), ref.appPath]),
     );
+    const effectiveFreeModelMode =
+      freeModelMode ?? isFreeProModel(settings.selectedModel);
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -651,6 +657,7 @@ export async function handleLocalAgentStream(
       dyadRequestId,
       fileEditTracker,
       isDyadPro: isDyadProEnabled(settings),
+      freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
         // Does NOT enter `message.content` or `fullResponse` — the patch
@@ -708,6 +715,7 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
+      freeModelMode: effectiveFreeModelMode,
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     };
@@ -1658,7 +1666,7 @@ export async function handleLocalAgentStream(
     logger.error("Local agent error:", error);
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error: `Error: ${getErrorMessage(error)}`,
+      error: `Error: ${getErrorMessageWithDetails(error)}`,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,
     });
@@ -1741,6 +1749,51 @@ function getErrorMessage(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+function getErrorResponseBody(error: unknown, depth = 0): string | undefined {
+  if (!isRecord(error) || depth > MAX_ERROR_RESPONSE_BODY_DEPTH) {
+    return undefined;
+  }
+  if (typeof error.responseBody === "string" && error.responseBody.length > 0) {
+    return error.responseBody;
+  }
+  if ("error" in error) {
+    const nested = getErrorResponseBody(error.error, depth + 1);
+    if (nested) {
+      return nested;
+    }
+  }
+  if ("cause" in error) {
+    return getErrorResponseBody(error.cause, depth + 1);
+  }
+  return undefined;
+}
+
+// Markers that identify the engine's free-model quota error in a response
+// body. We only surface raw response bodies for this case so the renderer's
+// ChatErrorBox can recognize the quota error; other errors keep their normal
+// (non-verbose) message.
+const FREE_MODEL_QUOTA_MARKERS = [
+  "dyad_free_model_quota_exceeded",
+  "FREE_MODEL_QUOTA_EXCEEDED",
+  "Dyad Free has reached its daily limit.",
+  "Dyad Free limit",
+];
+
+function getErrorMessageWithDetails(error: unknown): string {
+  const message = getErrorMessage(error);
+  const responseBody = getErrorResponseBody(error);
+  if (!responseBody || message.includes(responseBody)) {
+    return message;
+  }
+  const isFreeModelQuotaBody = FREE_MODEL_QUOTA_MARKERS.some((marker) =>
+    responseBody.includes(marker),
+  );
+  if (!isFreeModelQuotaBody) {
+    return message;
+  }
+  return `${message}\n\nDetails: ${responseBody}`;
 }
 
 function isTerminatedStreamError(error: unknown): boolean {
@@ -2023,6 +2076,7 @@ async function getMcpTools(
               const autoApprove = buildMcpAutoApprove({
                 settings: readSettings(),
                 isDyadPro: ctx.isDyadPro,
+                freeModelMode: ctx.freeModelMode,
                 chatId: ctx.chatId,
                 serverName: s.name,
                 toolName: name,

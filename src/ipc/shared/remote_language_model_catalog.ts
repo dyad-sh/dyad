@@ -280,6 +280,22 @@ function convertRemoteCatalog(
       ],
     ),
   );
+  const remoteAutoModels = modelsByProvider.auto ?? [];
+  const fallbackAutoModels = MODEL_OPTIONS.auto.map((model) => ({
+    apiName: model.name,
+    displayName: model.displayName,
+    description: model.description,
+    tag: model.tag,
+    tagColor: model.tagColor,
+    maxOutputTokens: model.maxOutputTokens,
+    contextWindow: model.contextWindow,
+    temperature: model.temperature,
+    dollarSigns: model.dollarSigns,
+    type: "cloud" as const,
+  }));
+  if (remoteAutoModels.length === 0) {
+    modelsByProvider.auto = fallbackAutoModels;
+  }
 
   const parsedExpiresAt = remoteCatalog.expiresAt
     ? new Date(remoteCatalog.expiresAt).getTime()

@@ -332,6 +332,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
     {
+      name: "free-pro",
+      displayName: "Free (Daily)",
+      description:
+        "5 free messages per day for Dyad Pro users (note: your data may be used for training models)",
+      tag: "Free",
+      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+      maxOutputTokens: 32_000,
+      contextWindow: 128_000,
+      temperature: 0,
+      dollarSigns: 0,
+    },
+    {
       name: "value",
       displayName: "Super Value",
       description: "Uses the most cost-effective models available",

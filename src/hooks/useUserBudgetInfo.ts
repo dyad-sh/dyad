@@ -4,7 +4,9 @@ import { queryKeys } from "@/lib/queryKeys";
 
 const FIVE_MINUTES_IN_MS = 5 * 60 * 1000;
 
-export function useUserBudgetInfo() {
+export function useUserBudgetInfo({
+  enabled = true,
+}: { enabled?: boolean } = {}) {
   const { data, isLoading, error, isFetching, refetch } = useQuery<
     UserBudgetInfo | null,
     Error,
@@ -16,6 +18,7 @@ export function useUserBudgetInfo() {
     },
     // This data is not critical and can be stale for a bit
     staleTime: FIVE_MINUTES_IN_MS,
+    enabled,
     // If an error occurs (e.g. API key not set), it returns null.
     // We don't want react-query to retry automatically in such cases as it's not a transient network error.
     retry: false,

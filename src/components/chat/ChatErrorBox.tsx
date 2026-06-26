@@ -1,5 +1,7 @@
 import { ipc } from "@/ipc/types";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { useFreeModelQuota } from "@/hooks/useFreeModelQuota";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import {
   X,
@@ -26,7 +28,24 @@ export function ChatErrorBox({
   isDyadProEnabled: boolean;
   onStartNewChat?: () => void;
 }) {
+  const fallbackPrefix = "Fallbacks=[{";
+  const normalizedError = error.includes(fallbackPrefix)
+    ? error.split(fallbackPrefix)[0]
+    : error;
+  const isFreeModelQuotaError =
+    normalizedError.includes("dyad_free_model_quota_exceeded") ||
+    normalizedError.includes("FREE_MODEL_QUOTA_EXCEEDED") ||
+    normalizedError.includes("Dyad Free has reached its daily limit.") ||
+    normalizedError.includes("Dyad Free limit");
   const { messagesLimit } = useFreeAgentQuota();
+  const {
+    messagesLimit: freeModelMessagesLimit,
+    resetTime: freeModelResetTime,
+  } = useFreeModelQuota({ enabled: isFreeModelQuotaError });
+  const { userBudget } = useUserBudgetInfo();
+  // Trial Pro users cannot use the Free model (it is hidden from the picker and
+  // rejected by the engine), so don't suggest it to them.
+  const isTrialProUser = userBudget?.isTrial === true;
 
   if (error.includes("doesn't have a free quota tier")) {
     return (
@@ -97,13 +116,18 @@ export function ChatErrorBox({
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
           You have used all of your Dyad AI credits this month.{" "}
+          {!isTrialProUser && (
+            <>
+              Switch to the Free model and send {freeModelMessagesLimit} free
+              messages per day.{" "}
+            </>
+          )}
           <ExternalLink
             href="https://academy.dyad.sh/subscription?utm_source=dyad-app&utm_medium=app&utm_campaign=exceeded-budget-error"
             variant="primary"
           >
-            Reload or upgrade your subscription
-          </ExternalLink>{" "}
-          and get more AI credits
+            Get more AI credits
+          </ExternalLink>
         </span>
       </ChatInfoContainer>
     );
@@ -113,9 +137,8 @@ export function ChatErrorBox({
   // We are matching "Fallbacks=[{" and not just "Fallbacks=" because the fallback
   // model itself can error and we want to include the fallback model error in the error message.
   // Example: https://github.com/dyad-sh/dyad/issues/1849#issuecomment-3590685911
-  const fallbackPrefix = "Fallbacks=[{";
   if (error.includes(fallbackPrefix)) {
-    error = error.split(fallbackPrefix)[0];
+    error = normalizedError;
   }
   // Handle FREE_AGENT_QUOTA_EXCEEDED error (Basic Agent mode quota exceeded)
   if (error.includes("FREE_AGENT_QUOTA_EXCEEDED")) {
@@ -131,6 +154,32 @@ export function ChatErrorBox({
             Upgrade to Dyad Pro
           </ExternalLink>
         </div>
+      </ChatErrorContainer>
+    );
+  }
+
+  if (isFreeModelQuotaError) {
+    const resetText = freeModelResetTime
+      ? ` Your quota resets at ${new Intl.DateTimeFormat(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }).format(new Date(freeModelResetTime))}.`
+      : "";
+
+    return (
+      <ChatErrorContainer onDismiss={onDismiss}>
+        <span>
+          You have reached the {freeModelMessagesLimit}-message Dyad Free model
+          limit.
+          {resetText} Switch to paid models.{" "}
+          <ExternalLink
+            href="https://academy.dyad.sh/subscription?utm_source=dyad-app&utm_medium=app&utm_campaign=exceeded-budget-error"
+            variant="primary"
+          >
+            Get more AI credits
+          </ExternalLink>
+        </span>
       </ChatErrorContainer>
     );
   }

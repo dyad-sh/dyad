@@ -405,6 +405,7 @@ export function constructLocalAgentPrompt(
   options?: {
     readOnly?: boolean;
     basicAgentMode?: boolean;
+    freeModelMode?: boolean;
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
@@ -418,7 +419,7 @@ export function constructLocalAgentPrompt(
   let basePrompt: string;
   if (options?.readOnly) {
     basePrompt = LOCAL_AGENT_ASK_SYSTEM_PROMPT;
-  } else if (options?.basicAgentMode) {
+  } else if (options?.basicAgentMode || options?.freeModelMode) {
     basePrompt = buildLocalAgentBasicSystemPrompt(enableAppBlueprint);
   } else {
     basePrompt = buildLocalAgentSystemPrompt({

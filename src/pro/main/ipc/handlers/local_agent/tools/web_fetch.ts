@@ -86,6 +86,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
   description: DESCRIPTION,
   inputSchema: webFetchSchema,
   defaultConsent: "always",
+  usesEngineEndpoint: true,
 
   // Requires Dyad Pro engine API
   isEnabled: (ctx) => ctx.isDyadPro,

@@ -97,6 +97,7 @@
   "noChanges": "No changes",
   "sqlQuery": "SQL Query",
   "changesDatabaseSchema": "Schema change",
+  "destructiveDataChange": "Destructive data change",
   "flaggedForReview": "Flagged for review",
   "autoApproved": "Auto-approved",
   "approved": "Approved",

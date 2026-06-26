@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { detectSqlSchemaMutation } from "../src/index.js";
+import {
+  detectSqlDataDeletion,
+  detectSqlSchemaMutation,
+} from "../src/index.js";
 
 describe("detectSqlSchemaMutation", () => {
   it("does not flag ordinary reads or DML", () => {
@@ -188,5 +191,82 @@ describe("detectSqlSchemaMutation", () => {
       mutatesSchema: true,
       reason: "unparseable_or_incomplete",
     });
+  });
+});
+
+describe("detectSqlDataDeletion", () => {
+  it("flags direct data deletion statements", () => {
+    for (const sql of [
+      "DELETE FROM users WHERE id = 1",
+      "TRUNCATE events",
+      "TRUNCATE TABLE events RESTART IDENTITY",
+      "DROP TABLE users",
+      "DROP SCHEMA private CASCADE",
+      "DROP DATABASE old_app",
+      "ALTER TABLE users DROP COLUMN legacy_id",
+    ]) {
+      expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
+    }
+  });
+
+  it("flags data-modifying CTE deletes", () => {
+    const result = detectSqlDataDeletion(`
+      WITH deleted AS (
+        DELETE FROM users WHERE inactive = true RETURNING id
+      )
+      SELECT * FROM deleted;
+    `);
+
+    expect(result.deletesData).toBe(true);
+    expect(result.statements[0]?.reason).toBe("data_modifying_cte");
+  });
+
+  it("does not flag reads, inserts, updates, comments, or quoted text", () => {
+    for (const sql of [
+      "SELECT * FROM users",
+      "INSERT INTO users (name) VALUES ('Ada')",
+      "UPDATE users SET name = 'Ada'",
+      "DROP VIEW old_users",
+      "ALTER TABLE users DROP CONSTRAINT users_email_key",
+      "SELECT 'DELETE FROM users' AS example",
+      "-- DELETE FROM users\nSELECT 1",
+      "/* TRUNCATE events */ SELECT 1",
+      `SELECT $$DELETE FROM users$$ AS example`,
+    ]) {
+      expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(false);
+    }
+  });
+
+  it("only flags EXPLAIN-wrapped deletes when the statement executes", () => {
+    expect(
+      detectSqlDataDeletion("EXPLAIN DELETE FROM users WHERE id = 1")
+        .deletesData,
+    ).toBe(false);
+    expect(
+      detectSqlDataDeletion("EXPLAIN ANALYZE DELETE FROM users WHERE id = 1")
+        .deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE false) DELETE FROM users WHERE id = 1",
+      ).deletesData,
+    ).toBe(false);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) DELETE FROM users WHERE id = 1",
+      ).deletesData,
+    ).toBe(true);
+  });
+
+  it("reports mixed multi-statement SQL when any statement deletes data", () => {
+    const result = detectSqlDataDeletion(`
+      SELECT * FROM users;
+      DELETE FROM users WHERE id = 1;
+    `);
+
+    expect(result.deletesData).toBe(true);
+    expect(result.statements.map((statement) => statement.deletesData)).toEqual(
+      [false, true],
+    );
   });
 });

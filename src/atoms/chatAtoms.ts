@@ -475,7 +475,10 @@ export interface PendingToolConsent {
   toolName: string;
   toolDescription?: string | null;
   inputPreview?: string | null;
-  metadata?: { sqlMutatesSchema?: boolean } | null;
+  metadata?: {
+    sqlMutatesSchema?: boolean;
+    sqlDeletesData?: boolean;
+  } | null;
   // MCP-only fields.
   serverId?: number;
   serverName?: string | null;

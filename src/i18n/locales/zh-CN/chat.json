@@ -97,6 +97,7 @@
   "noChanges": "无更改",
   "sqlQuery": "SQL 查询",
   "changesDatabaseSchema": "更改数据库架构",
+  "destructiveDataChange": "破坏性数据更改",
   "approved": "已批准",
   "rejected": "已拒绝",
   "copy": "复制",

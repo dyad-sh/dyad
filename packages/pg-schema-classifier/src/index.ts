@@ -19,6 +19,27 @@ export type SqlSchemaMutationAnalysis = {
   readonly statements: readonly SqlSchemaMutationStatement[];
 };
 
+export type SqlDataDeletionReason =
+  | "delete"
+  | "truncate"
+  | "data_modifying_cte"
+  | "drop_database"
+  | "drop_schema"
+  | "drop_table"
+  | "drop_column";
+
+export type SqlDataDeletionStatement = {
+  readonly sql: string;
+  readonly deletesData: boolean;
+  readonly reason: SqlDataDeletionReason | null;
+  readonly command: string | null;
+};
+
+export type SqlDataDeletionAnalysis = {
+  readonly deletesData: boolean;
+  readonly statements: readonly SqlDataDeletionStatement[];
+};
+
 type SplitStatement = {
   readonly sql: string;
   readonly incomplete: boolean;
@@ -103,6 +124,14 @@ export function detectSqlSchemaMutation(
   };
 }
 
+export function detectSqlDataDeletion(sql: string): SqlDataDeletionAnalysis {
+  const statements = splitSqlStatements(sql).map(classifyDataDeletionStatement);
+  return {
+    deletesData: statements.some((statement) => statement.deletesData),
+    statements,
+  };
+}
+
 function classifyStatement(
   statement: SplitStatement,
 ): SqlSchemaMutationStatement {
@@ -169,6 +198,61 @@ function classifyStatement(
     reason: null,
     command: first,
   };
+}
+
+function classifyDataDeletionStatement(
+  statement: SplitStatement,
+): SqlDataDeletionStatement {
+  const trimmed = statement.sql.trim();
+  if (statement.incomplete) {
+    return nonDataDeleting(trimmed, null);
+  }
+
+  const tokens = tokenizeStatement(trimmed);
+  const first = firstWord(tokens);
+  if (first === null) {
+    return nonDataDeleting(trimmed, null);
+  }
+
+  if (first === "DELETE") {
+    return dataDeleting(trimmed, "delete", "DELETE");
+  }
+
+  if (first === "TRUNCATE") {
+    return dataDeleting(trimmed, "truncate", "TRUNCATE");
+  }
+
+  if (first === "DROP") {
+    const droppedObject = wordAt(tokens, 1);
+    if (droppedObject === "DATABASE") {
+      return dataDeleting(trimmed, "drop_database", "DROP DATABASE");
+    }
+    if (droppedObject === "SCHEMA") {
+      return dataDeleting(trimmed, "drop_schema", "DROP SCHEMA");
+    }
+    if (droppedObject === "TABLE") {
+      return dataDeleting(trimmed, "drop_table", "DROP TABLE");
+    }
+  }
+
+  if (first === "ALTER" && statementDropsColumn(tokens)) {
+    return dataDeleting(trimmed, "drop_column", "ALTER TABLE DROP COLUMN");
+  }
+
+  if (first === "WITH" && hasUnquotedWord(tokens, "DELETE")) {
+    return dataDeleting(trimmed, "data_modifying_cte", "WITH DELETE");
+  }
+
+  if (first === "EXPLAIN" && explainExecutesStatement(tokens)) {
+    if (hasUnquotedWord(tokens, "TRUNCATE")) {
+      return dataDeleting(trimmed, "truncate", "EXPLAIN TRUNCATE");
+    }
+    if (hasUnquotedWord(tokens, "DELETE")) {
+      return dataDeleting(trimmed, "delete", "EXPLAIN DELETE");
+    }
+  }
+
+  return nonDataDeleting(trimmed, first);
 }
 
 function findSchemaFunctionCall(tokens: readonly Token[]): string | null {
@@ -324,6 +408,31 @@ function mutating(
   };
 }
 
+function dataDeleting(
+  sql: string,
+  reason: SqlDataDeletionReason,
+  command: string | null,
+): SqlDataDeletionStatement {
+  return {
+    sql,
+    deletesData: true,
+    reason,
+    command,
+  };
+}
+
+function nonDataDeleting(
+  sql: string,
+  command: string | null,
+): SqlDataDeletionStatement {
+  return {
+    sql,
+    deletesData: false,
+    reason: null,
+    command,
+  };
+}
+
 function firstWord(tokens: readonly Token[]): string | null {
   return tokens.find((token) => isUnquotedWord(token))?.value ?? null;
 }
@@ -341,6 +450,20 @@ function isUnquotedWord(
     token?.type === "word" &&
     token.quoted !== true &&
     (value === undefined || token.value === value)
+  );
+}
+
+function hasUnquotedWord(tokens: readonly Token[], value: string): boolean {
+  return tokens.some((token) => isUnquotedWord(token, value));
+}
+
+function statementDropsColumn(tokens: readonly Token[]): boolean {
+  return (
+    wordAt(tokens, 1) === "TABLE" &&
+    tokens.some((token, index) => {
+      if (!isUnquotedWord(token, "DROP")) return false;
+      return wordAt(tokens.slice(index + 1), 0) === "COLUMN";
+    })
   );
 }
 

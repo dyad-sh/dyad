@@ -41,13 +41,27 @@ describe("executeSqlTool", () => {
       executeSqlTool.getConsentMetadata?.({
         query: "CREATE TABLE users (id bigint);",
       }),
-    ).toEqual({ sqlMutatesSchema: true });
+    ).toEqual({ sqlMutatesSchema: true, sqlDeletesData: false });
 
     expect(
       executeSqlTool.getConsentMetadata?.({
         query: "SELECT * FROM users;",
       }),
-    ).toEqual({ sqlMutatesSchema: false });
+    ).toEqual({ sqlMutatesSchema: false, sqlDeletesData: false });
+  });
+
+  it("marks data-deleting SQL in consent metadata", () => {
+    expect(
+      executeSqlTool.getConsentMetadata?.({
+        query: "DELETE FROM users WHERE id = 1;",
+      }),
+    ).toEqual({ sqlMutatesSchema: false, sqlDeletesData: true });
+
+    expect(
+      executeSqlTool.getConsentMetadata?.({
+        query: "DROP TABLE users;",
+      }),
+    ).toEqual({ sqlMutatesSchema: true, sqlDeletesData: true });
   });
 
   it("returns the full query as the consent preview", () => {

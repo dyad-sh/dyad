@@ -7,6 +7,7 @@ vi.mock("react-i18next", () => ({
     t: (key: string) =>
       ({
         changesDatabaseSchema: "Changes database schema",
+        destructiveDataChange: "Destructive data change",
       })[key] ?? key,
   }),
 }));
@@ -34,5 +35,11 @@ describe("DyadExecuteSql", () => {
     render(<DyadExecuteSql>SELECT * FROM users;</DyadExecuteSql>);
 
     expect(screen.queryByText("Changes database schema")).toBeNull();
+  });
+
+  it("shows a destructive data indicator for deletes", () => {
+    render(<DyadExecuteSql>DELETE FROM users WHERE id = 1;</DyadExecuteSql>);
+
+    expect(screen.getByText("Destructive data change")).toBeTruthy();
   });
 });

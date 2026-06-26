@@ -183,17 +183,22 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
 
 /**
  * When autoApproveNonSchemaSql is enabled, execute_sql calls that the schema
- * classifier determines do not mutate the schema run without a consent prompt.
- * Schema-mutating SQL still requires consent.
+ * classifier determines do not mutate the schema and do not delete data run
+ * without a consent prompt. Schema-mutating or data-deleting SQL still
+ * requires consent.
  */
 export function shouldAutoApproveAgentTool(params: {
   toolName: AgentToolName;
-  metadata?: { sqlMutatesSchema?: boolean } | null;
+  metadata?: {
+    sqlMutatesSchema?: boolean;
+    sqlDeletesData?: boolean;
+  } | null;
   autoApproveNonSchemaSql: boolean | undefined;
 }): boolean {
   return (
     params.toolName === "execute_sql" &&
     params.metadata?.sqlMutatesSchema === false &&
+    params.metadata?.sqlDeletesData === false &&
     params.autoApproveNonSchemaSql === true
   );
 }
@@ -242,7 +247,10 @@ export async function requireAgentToolConsent(
     toolName: AgentToolName;
     toolDescription?: string | null;
     inputPreview?: string | null;
-    metadata?: { sqlMutatesSchema?: boolean } | null;
+    metadata?: {
+      sqlMutatesSchema?: boolean;
+      sqlDeletesData?: boolean;
+    } | null;
   },
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);

@@ -23,6 +23,7 @@ export const AgentToolConsentRequestSchema = z.object({
   metadata: z
     .object({
       sqlMutatesSchema: z.boolean().optional(),
+      sqlDeletesData: z.boolean().optional(),
     })
     .nullable()
     .optional(),

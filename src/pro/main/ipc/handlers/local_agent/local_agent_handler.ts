@@ -681,7 +681,10 @@ export async function handleLocalAgentStream(
         toolName: string;
         toolDescription?: string | null;
         inputPreview?: string | null;
-        metadata?: { sqlMutatesSchema?: boolean } | null;
+        metadata?: {
+          sqlMutatesSchema?: boolean;
+          sqlDeletesData?: boolean;
+        } | null;
       }) => {
         return requireAgentToolConsent(event, {
           chatId: chat.id,

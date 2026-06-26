@@ -218,6 +218,80 @@ async function execOrThrow(
   }
 }
 
+const gitLineEndingConfigPromises = new Map<string, Promise<void>>();
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: string }).code === "EEXIST"
+  );
+}
+
+async function configureGitLineEndings(path: string): Promise<void> {
+  await execOrThrow(
+    ["config", "--local", "core.autocrlf", "false"],
+    path,
+    "Failed to configure git line ending core.autocrlf",
+  );
+  await execOrThrow(
+    ["config", "--local", "core.eol", "lf"],
+    path,
+    "Failed to configure git line ending core.eol",
+  );
+  await execOrThrow(
+    ["config", "--local", "core.safecrlf", "warn"],
+    path,
+    "Failed to configure git line ending core.safecrlf",
+  );
+}
+
+export async function ensureGitLineEndingPolicy({
+  path,
+  writeGitattributes = false,
+}: GitBaseParams & { writeGitattributes?: boolean }): Promise<void> {
+  const gitMetadataPath = pathModule.join(path, ".git");
+  if (!fs.existsSync(gitMetadataPath)) {
+    return;
+  }
+
+  if (writeGitattributes) {
+    const gitattributesPath = pathModule.join(path, ".gitattributes");
+    try {
+      await fsPromises.writeFile(
+        gitattributesPath,
+        "# Normalize text files to LF so Dyad commits are stable across platforms.\n* text=auto eol=lf\n",
+        { flag: "wx" },
+      );
+      logger.debug(`Created default .gitattributes in ${path}`);
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    return;
+  }
+
+  const resolvedPath = pathModule.resolve(path);
+  const existingPromise = gitLineEndingConfigPromises.get(resolvedPath);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const promise = configureGitLineEndings(path);
+  gitLineEndingConfigPromises.set(resolvedPath, promise);
+  try {
+    await promise;
+  } catch (error) {
+    gitLineEndingConfigPromises.delete(resolvedPath);
+    throw error;
+  }
+}
+
 /**
  * Prepends git config args for user.name and user.email to the provided args.
  * Automatically fetches the git author from settings.
@@ -516,6 +590,7 @@ export async function gitStageToRevert({
 export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
+    await ensureGitLineEndingPolicy({ path });
     await execOrThrow(["add", "."], path, "Failed to stage all files");
     return;
   } else {
@@ -550,6 +625,7 @@ export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   }
 
   if (settings.enableNativeGit) {
+    await ensureGitLineEndingPolicy({ path });
     await execOrThrow(
       ["add", "--", normalizedFilepath],
       path,

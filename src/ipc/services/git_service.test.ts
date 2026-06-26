@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  ensureGitLineEndingPolicy: vi.fn(),
   gitInit: vi.fn(),
   gitAdd: vi.fn(),
   gitAddAll: vi.fn(),
@@ -32,8 +33,17 @@ describe("GitService", () => {
   it("initRepoWithInitialCommit inits, stages all, then commits", async () => {
     const hash = await service.initRepoWithInitialCommit({ path: "/repo" });
 
-    expect(callOrder).toEqual(["gitInit", "gitAddAll", "gitCommit"]);
+    expect(callOrder).toEqual([
+      "gitInit",
+      "ensureGitLineEndingPolicy",
+      "gitAddAll",
+      "gitCommit",
+    ]);
     expect(mocks.gitInit).toHaveBeenCalledWith({ path: "/repo", ref: "main" });
+    expect(mocks.ensureGitLineEndingPolicy).toHaveBeenCalledWith({
+      path: "/repo",
+      writeGitattributes: true,
+    });
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: "/repo",
       message: "Init Dyad app",

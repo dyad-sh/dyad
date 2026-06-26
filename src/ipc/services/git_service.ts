@@ -1,4 +1,5 @@
 import {
+  ensureGitLineEndingPolicy,
   gitAdd,
   gitAddAll,
   gitCommit,
@@ -31,6 +32,7 @@ export class GitService {
     ref?: string;
   }): Promise<string> {
     await gitInit({ path, ref });
+    await ensureGitLineEndingPolicy({ path, writeGitattributes: true });
     await gitAddAll({ path });
     return gitCommit({ path, message });
   }

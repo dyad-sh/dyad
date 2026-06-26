@@ -141,6 +141,7 @@ export function buildMcpCapabilityMap(params: {
       const autoApprove = buildMcpAutoApprove({
         settings: readSettings(),
         isDyadPro: params.ctx.isDyadPro,
+        freeModelMode: params.ctx.freeModelMode,
         chatId: params.ctx.chatId,
         serverName: def.serverName,
         toolName: def.toolName,

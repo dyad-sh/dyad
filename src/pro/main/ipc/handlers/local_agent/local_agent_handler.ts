@@ -122,6 +122,7 @@ import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
 const MAX_TERMINATED_STREAM_RETRIES = 3;
+const MAX_ERROR_RESPONSE_BODY_DEPTH = 5;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
@@ -634,6 +635,8 @@ export async function handleLocalAgentStream(
     const referencedAppsMap = new Map(
       referencedApps.map((ref) => [ref.appName.toLowerCase(), ref.appPath]),
     );
+    const effectiveFreeModelMode =
+      freeModelMode ?? isFreeProModel(settings.selectedModel);
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -654,6 +657,7 @@ export async function handleLocalAgentStream(
       dyadRequestId,
       fileEditTracker,
       isDyadPro: isDyadProEnabled(settings),
+      freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
         // Does NOT enter `message.content` or `fullResponse` — the patch
@@ -711,7 +715,7 @@ export async function handleLocalAgentStream(
       readOnly,
       planModeOnly,
       basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
-      freeModelMode: freeModelMode ?? isFreeProModel(settings.selectedModel),
+      freeModelMode: effectiveFreeModelMode,
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     };
@@ -1747,21 +1751,21 @@ function getErrorMessage(error: unknown): string {
   }
 }
 
-function getErrorResponseBody(error: unknown): string | undefined {
-  if (!isRecord(error)) {
+function getErrorResponseBody(error: unknown, depth = 0): string | undefined {
+  if (!isRecord(error) || depth > MAX_ERROR_RESPONSE_BODY_DEPTH) {
     return undefined;
   }
   if (typeof error.responseBody === "string" && error.responseBody.length > 0) {
     return error.responseBody;
   }
   if ("error" in error) {
-    const nested = getErrorResponseBody(error.error);
+    const nested = getErrorResponseBody(error.error, depth + 1);
     if (nested) {
       return nested;
     }
   }
   if ("cause" in error) {
-    return getErrorResponseBody(error.cause);
+    return getErrorResponseBody(error.cause, depth + 1);
   }
   return undefined;
 }
@@ -2072,6 +2076,7 @@ async function getMcpTools(
               const autoApprove = buildMcpAutoApprove({
                 settings: readSettings(),
                 isDyadPro: ctx.isDyadPro,
+                freeModelMode: ctx.freeModelMode,
                 chatId: ctx.chatId,
                 serverName: s.name,
                 toolName: name,

@@ -75,6 +75,11 @@ export interface AgentContext {
    */
   isDyadPro: boolean;
   /**
+   * If true, this turn is using a Dyad Free model. Some Pro-enabled
+   * conveniences, such as MCP auto-approval, should stay disabled.
+   */
+  freeModelMode?: boolean;
+  /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
    */

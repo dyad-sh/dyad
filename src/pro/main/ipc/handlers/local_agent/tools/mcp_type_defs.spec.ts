@@ -21,6 +21,14 @@ vi.mock("@/ipc/utils/mcp_consent", () => ({
   requireMcpToolConsent: vi.fn(),
 }));
 
+const mockState = vi.hoisted(() => ({
+  settings: { autoApproveSafeMcpTools: true },
+}));
+
+vi.mock("@/main/settings", () => ({
+  readSettings: vi.fn(() => mockState.settings),
+}));
+
 function def(overrides: Partial<McpToolDef> & { jsName: string }): McpToolDef {
   return {
     toolKey: overrides.jsName,
@@ -251,6 +259,7 @@ function makeDef(): McpToolDef {
 describe("buildMcpCapabilityMap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockState.settings = { autoApproveSafeMcpTools: true };
   });
 
   it("invokes the MCP tool and emits tool-call + tool-result XML on success", async () => {
@@ -334,6 +343,27 @@ describe("buildMcpCapabilityMap", () => {
     );
     expect(execute).not.toHaveBeenCalled();
     expect(ctx.onXmlComplete).not.toHaveBeenCalled();
+  });
+
+  it("does not pass an auto-approve callback during Dyad Free turns", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: false });
+
+    const ctx = createCtx();
+    ctx.isDyadPro = true;
+    ctx.freeModelMode = true;
+    const map = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    });
+
+    await expect(map.srv__hello({})).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(requireMcpToolConsent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ autoApprove: undefined }),
+    );
   });
 
   it("throws a DyadError(NotFound) when the live client no longer exposes the tool", async () => {

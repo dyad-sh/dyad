@@ -44,7 +44,6 @@ const config: PlaywrightTestConfig = {
             outputFile: `./blob-report/report-${os.platform()}-${timestamp}.zip`,
           },
         ],
-        ["@flakiness/playwright", { endpoint: "https://flakiness.io" }],
       ]
     : [["html"], ["line"]],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

@@ -369,7 +369,6 @@ jobs:
         run: npx playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
-          FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
           PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
         # You can add debug logging to make it easier to see what's failing
@@ -393,13 +392,6 @@ jobs:
         with:
           name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
           path: blob-report
-          retention-days: 1
-      - name: Upload flakiness report (for fork PRs)
-        uses: actions/upload-artifact@v6
-        if: ${{ !cancelled() }}
-        with:
-          name: flakiness-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
-          path: flakiness-report
           retention-days: 1
       - name: Cleanup (self-hosted macOS)
         if: always() && contains(matrix.os.image, 'self-hosted')

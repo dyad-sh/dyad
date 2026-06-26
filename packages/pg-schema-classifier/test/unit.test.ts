@@ -206,6 +206,7 @@ describe("detectSqlDataDeletion", () => {
       "DROP SCHEMA IF EXISTS private CASCADE",
       "DROP DATABASE old_app",
       "DROP DATABASE IF EXISTS old_app",
+      "DROP OWNED BY app_user CASCADE",
       "ALTER TABLE users DROP COLUMN legacy_id",
       "ALTER TABLE users DROP legacy_id",
       "ALTER TABLE users DROP IF EXISTS legacy_id",
@@ -216,11 +217,23 @@ describe("detectSqlDataDeletion", () => {
     }
   });
 
+  it("flags data update statements", () => {
+    for (const sql of [
+      "UPDATE users SET name = 'Ada'",
+      "UPDATE users SET email = NULL",
+      "MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN UPDATE SET name = incoming.name",
+    ]) {
+      expect(detectSqlDataDeletion(sql).deletesData, sql).toBe(true);
+    }
+  });
+
   it("treats dynamic execution as destructive because the body is opaque", () => {
     for (const sql of [
       "DO $$ BEGIN DELETE FROM users WHERE inactive; END $$",
       "DO $$ BEGIN EXECUTE 'DELETE FROM users'; END $$",
       "CALL delete_inactive_users()",
+      "PREPARE wipe AS DELETE FROM users",
+      "EXECUTE wipe",
     ]) {
       const result = detectSqlDataDeletion(sql);
       expect(result.deletesData, sql).toBe(true);
@@ -229,17 +242,23 @@ describe("detectSqlDataDeletion", () => {
   });
 
   it("treats incomplete SQL as destructive because it gates auto-approval", () => {
-    for (const sql of [
-      "SELECT 'unterminated",
-      "DELETE FROM users -- cleanup",
-      "DROP TABLE users -- cleanup",
-    ]) {
+    for (const sql of ["SELECT 'unterminated", "SELECT 1 /* inspect"]) {
       const result = detectSqlDataDeletion(sql);
       expect(result.deletesData, sql).toBe(true);
       expect(result.statements[0]?.reason, sql).toBe(
         "unparseable_or_incomplete",
       );
     }
+  });
+
+  it("treats EOF line comments as complete SQL", () => {
+    expect(detectSqlDataDeletion("SELECT 1 -- inspect").deletesData).toBe(
+      false,
+    );
+
+    const deleteResult = detectSqlDataDeletion("DELETE FROM users -- cleanup");
+    expect(deleteResult.deletesData).toBe(true);
+    expect(deleteResult.statements[0]?.reason).toBe("delete");
   });
 
   it("flags data-modifying CTE deletes", () => {
@@ -254,11 +273,22 @@ describe("detectSqlDataDeletion", () => {
     expect(result.statements[0]?.reason).toBe("data_modifying_cte");
   });
 
-  it("does not flag reads, inserts, updates, comments, or quoted text", () => {
+  it("flags data-modifying CTE updates", () => {
+    const result = detectSqlDataDeletion(`
+      WITH updated AS (
+        UPDATE users SET email = NULL WHERE inactive = true RETURNING id
+      )
+      SELECT * FROM updated;
+    `);
+
+    expect(result.deletesData).toBe(true);
+    expect(result.statements[0]?.reason).toBe("data_modifying_cte");
+  });
+
+  it("does not flag reads, inserts, comments, or quoted text", () => {
     for (const sql of [
       "SELECT * FROM users",
       "INSERT INTO users (name) VALUES ('Ada')",
-      "UPDATE users SET name = 'Ada'",
       "DROP VIEW old_users",
       "ALTER TABLE users DROP CONSTRAINT users_email_key",
       "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key",
@@ -303,6 +333,11 @@ describe("detectSqlDataDeletion", () => {
     expect(
       detectSqlDataDeletion(
         "EXPLAIN (ANALYZE true) MERGE INTO users USING incoming ON users.id = incoming.id WHEN MATCHED THEN DELETE",
+      ).deletesData,
+    ).toBe(true);
+    expect(
+      detectSqlDataDeletion(
+        "EXPLAIN (ANALYZE true) UPDATE users SET email = NULL",
       ).deletesData,
     ).toBe(true);
   });

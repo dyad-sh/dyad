@@ -21,6 +21,7 @@ export type SqlSchemaMutationAnalysis = {
 
 export type SqlDataDeletionReason =
   | "delete"
+  | "update"
   | "truncate"
   | "data_modifying_cte"
   | "dynamic_execution"
@@ -28,6 +29,7 @@ export type SqlDataDeletionReason =
   | "drop_database"
   | "drop_schema"
   | "drop_table"
+  | "drop_owned"
   | "drop_column";
 
 export type SqlDataDeletionStatement = {
@@ -227,11 +229,19 @@ function classifyDataDeletionTokens(
     return dataDeleting(sql, "delete", "DELETE");
   }
 
+  if (first === "UPDATE") {
+    return dataDeleting(sql, "update", "UPDATE");
+  }
+
   if (first === "TRUNCATE") {
     return dataDeleting(sql, "truncate", "TRUNCATE");
   }
 
-  if (first === "DO" || first === "CALL") {
+  if (first === "DO" || first === "CALL" || first === "EXECUTE") {
+    return dataDeleting(sql, "dynamic_execution", first);
+  }
+
+  if (first === "PREPARE") {
     return dataDeleting(sql, "dynamic_execution", first);
   }
 
@@ -246,6 +256,9 @@ function classifyDataDeletionTokens(
     if (droppedObject === "TABLE") {
       return dataDeleting(sql, "drop_table", "DROP TABLE");
     }
+    if (droppedObject === "OWNED") {
+      return dataDeleting(sql, "drop_owned", "DROP OWNED");
+    }
   }
 
   if (first === "ALTER" && statementDropsColumn(tokens)) {
@@ -256,8 +269,19 @@ function classifyDataDeletionTokens(
     return dataDeleting(sql, "delete", "MERGE DELETE");
   }
 
-  if (first === "WITH" && hasUnquotedWord(tokens, "DELETE")) {
-    return dataDeleting(sql, "data_modifying_cte", "WITH DELETE");
+  if (
+    first === "MERGE" &&
+    hasUnquotedWord(tokens, "UPDATE") &&
+    hasUnquotedWord(tokens, "SET")
+  ) {
+    return dataDeleting(sql, "update", "MERGE UPDATE");
+  }
+
+  if (
+    first === "WITH" &&
+    (hasUnquotedWord(tokens, "DELETE") || hasUnquotedWord(tokens, "UPDATE"))
+  ) {
+    return dataDeleting(sql, "data_modifying_cte", "WITH DATA CHANGE");
   }
 
   if (first === "EXPLAIN" && explainExecutesStatement(tokens)) {
@@ -769,5 +793,5 @@ function walkSql(sql: string, callbacks: SqlWalkerCallbacks): boolean {
     }
   }
 
-  return state !== "normal";
+  return state !== "normal" && state !== "line_comment";
 }

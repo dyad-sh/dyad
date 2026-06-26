@@ -5,6 +5,7 @@ import type {
   ComponentSelection,
 } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
+import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -475,10 +476,7 @@ export interface PendingToolConsent {
   toolName: string;
   toolDescription?: string | null;
   inputPreview?: string | null;
-  metadata?: {
-    sqlMutatesSchema?: boolean;
-    sqlDeletesData?: boolean;
-  } | null;
+  metadata?: SqlConsentMetadata | null;
   // MCP-only fields.
   serverId?: number;
   serverName?: string | null;

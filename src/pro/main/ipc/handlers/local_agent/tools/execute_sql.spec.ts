@@ -59,6 +59,12 @@ describe("executeSqlTool", () => {
 
     expect(
       executeSqlTool.getConsentMetadata?.({
+        query: "UPDATE users SET email = NULL;",
+      }),
+    ).toEqual({ sqlMutatesSchema: false, sqlDeletesData: true });
+
+    expect(
+      executeSqlTool.getConsentMetadata?.({
         query: "DROP TABLE users;",
       }),
     ).toEqual({ sqlMutatesSchema: true, sqlDeletesData: true });

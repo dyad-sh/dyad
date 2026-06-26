@@ -6,6 +6,7 @@
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
+import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -189,10 +190,7 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
  */
 export function shouldAutoApproveAgentTool(params: {
   toolName: AgentToolName;
-  metadata?: {
-    sqlMutatesSchema?: boolean;
-    sqlDeletesData?: boolean;
-  } | null;
+  metadata?: SqlConsentMetadata | null;
   autoApproveNonSchemaSql: boolean | undefined;
 }): boolean {
   return (
@@ -247,10 +245,7 @@ export async function requireAgentToolConsent(
     toolName: AgentToolName;
     toolDescription?: string | null;
     inputPreview?: string | null;
-    metadata?: {
-      sqlMutatesSchema?: boolean;
-      sqlDeletesData?: boolean;
-    } | null;
+    metadata?: SqlConsentMetadata | null;
   },
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);

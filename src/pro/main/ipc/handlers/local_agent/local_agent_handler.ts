@@ -30,6 +30,7 @@ import {
   isBasicAgentMode,
   type UserSettings,
 } from "@/lib/schemas";
+import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
@@ -681,10 +682,7 @@ export async function handleLocalAgentStream(
         toolName: string;
         toolDescription?: string | null;
         inputPreview?: string | null;
-        metadata?: {
-          sqlMutatesSchema?: boolean;
-          sqlDeletesData?: boolean;
-        } | null;
+        metadata?: SqlConsentMetadata | null;
       }) => {
         return requireAgentToolConsent(event, {
           chatId: chat.id,

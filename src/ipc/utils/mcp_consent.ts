@@ -184,6 +184,9 @@ export async function requireMcpToolConsent(
   send("mcp:tool-consent-classified", {
     requestId,
     reason: winner.result.reason,
+    chatId: params.chatId,
+    toolName: params.toolName,
+    serverName: params.serverName,
   });
   return finalize((await humanPromise).decision);
 }

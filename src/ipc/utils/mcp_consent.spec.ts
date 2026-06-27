@@ -80,7 +80,13 @@ describe("requireMcpToolConsent (classifier race)", () => {
     await vi.waitFor(() =>
       expect(send).toHaveBeenCalledWith(
         "mcp:tool-consent-classified",
-        expect.objectContaining({ reason: "risky" }),
+        // Carries the chat/tool identity so the notification hook can notify now.
+        expect.objectContaining({
+          reason: "risky",
+          chatId: baseParams.chatId,
+          toolName: baseParams.toolName,
+          serverName: baseParams.serverName,
+        }),
       ),
     );
     resolveConsent(lastRequestId(send), "accept-once");

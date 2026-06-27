@@ -170,10 +170,15 @@ export type McpConsentRequestPayload = z.infer<typeof McpConsentRequestSchema>;
 // The classifier auto-approved; dismiss the pending prompt.
 export const McpConsentResolvedSchema = z.object({ requestId: z.string() });
 
-// The classifier finished and wants review; drop the spinner and show why.
+// The classifier finished and wants review; drop the spinner and show why. The
+// chat/tool identity lets the notification hook raise the OS notification only
+// now that we know the user is actually needed.
 export const McpConsentClassifiedSchema = z.object({
   requestId: z.string(),
   reason: z.string().nullable().optional(),
+  chatId: z.number(),
+  toolName: z.string(),
+  serverName: z.string().nullable().optional(),
 });
 
 export const McpConsentDecisionEnum = z.enum([

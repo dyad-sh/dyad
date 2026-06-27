@@ -57,6 +57,19 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
   const isVersionSelected = selectedVersionId != null;
   const { problemReport } = useCheckProblems(selectedAppId);
 
+  // When a version is selected, only the preview/diff panels are available.
+  // Coerce a stale previewMode (e.g. "configure", "problems") to the diff
+  // view so the toolbar and rendered panel don't diverge.
+  useEffect(() => {
+    if (
+      isVersionSelected &&
+      previewMode !== "preview" &&
+      previewMode !== "code"
+    ) {
+      setPreviewMode("code");
+    }
+  }, [isVersionSelected, previewMode, setPreviewMode]);
+
   const problemCount = problemReport ? problemReport.problems.length : 0;
   const displayCount =
     problemCount === 0

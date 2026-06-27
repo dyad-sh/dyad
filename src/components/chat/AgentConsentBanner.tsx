@@ -124,7 +124,11 @@ export function AgentConsentBanner({
           </button>
         </div>
         {classifierPending && (
-          <div className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div
+            className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
             <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
             <span>{t("aiReviewingRequest")}</span>
           </div>

@@ -160,10 +160,14 @@ export async function requireMcpToolConsent(
   const humanPromise = waitForConsent(requestId, params.chatId).then(
     (decision) => ({ source: "human" as const, decision }),
   );
-  const classifierPromise = autoApprove().then((result) => ({
-    source: "classifier" as const,
-    result,
-  }));
+  // Fail closed if the classifier rejects: fall back to asking the user so the
+  // race always settles and the prompt never sticks on the spinner.
+  const classifierPromise = autoApprove()
+    .then((result) => ({ source: "classifier" as const, result }))
+    .catch(() => ({
+      source: "classifier" as const,
+      result: { approved: false } as McpAutoApproveResult,
+    }));
   const winner = await Promise.race([humanPromise, classifierPromise]);
 
   if (winner.source === "human") {

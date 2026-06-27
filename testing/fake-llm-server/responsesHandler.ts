@@ -176,9 +176,21 @@ export const createResponsesHandler =
         decision: risky ? "ask" : "allow",
       });
       // Answer slowly for print_envs so e2e can observe the "AI reviewing"
-      // spinner and exercise the user-decides-before-the-AI path.
+      // spinner and exercise the user-decides-before-the-AI path. Race the delay
+      // against the client disconnecting so we don't write to a closed response.
       if (lastUserText.includes("Tool: print_envs")) {
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            req.off("close", onClose);
+            resolve();
+          }, 4000);
+          const onClose = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          req.on("close", onClose);
+        });
+        if (req.destroyed) return;
       }
     }
 

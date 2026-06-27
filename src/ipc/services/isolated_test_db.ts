@@ -65,11 +65,13 @@ export async function prepareIsolatedTestDatabase({
   event,
   emit,
   runtimeMode,
+  signal,
 }: {
   app: AppRow;
   event: IpcMainInvokeEvent;
   emit: EmitOutput;
   runtimeMode: string;
+  signal?: AbortSignal;
 }): Promise<PreparedIsolation> {
   // Supabase: disclosure-only path.
   if (app.supabaseProjectId) {
@@ -149,7 +151,7 @@ export async function prepareIsolatedTestDatabase({
     //    it's serving again before Playwright points at it.
     emit("Starting the app against the isolated test database…\n", "setup");
     await restartAppInPlace({ app, appPath, event });
-    await waitForServerReady(app.id);
+    await waitForServerReady(app.id, signal);
 
     return {
       isolation: { mode: "neon-branch" },
@@ -221,9 +223,15 @@ async function restartAppInPlace({
  * HTTP request. The proxy URL is set asynchronously once the dev server prints
  * its address, so we poll rather than assume it's immediately ready.
  */
-async function waitForServerReady(appId: number): Promise<void> {
+async function waitForServerReady(
+  appId: number,
+  signal?: AbortSignal,
+): Promise<void> {
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
     const baseUrl = runningApps.get(appId)?.proxyUrl;
     if (baseUrl && (await isResponding(baseUrl))) {
       return;

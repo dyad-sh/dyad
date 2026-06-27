@@ -325,14 +325,19 @@ export function registerTestsHandlers() {
       // Resolve symlinks before the containment check: a symlink inside the app
       // dir could otherwise point outside it (e.g. test-results/x.png ->
       // /etc/passwd) and pass a string-only check while the read escapes.
+      // Resolve the app path through realpathSync too: ancestor symlinks (e.g.
+      // /var -> /private/var on macOS, or a user-configured apps dir) would
+      // otherwise leave a `..` prefix and reject every legitimate screenshot.
+      let realAppPath: string;
       let realPath: string;
       try {
+        realAppPath = fs.realpathSync(appPath);
         realPath = fs.realpathSync(resolved);
       } catch (error) {
         logger.warn(`Failed to resolve screenshot path ${resolved}: ${error}`);
         return { dataUrl: null };
       }
-      const rel = path.relative(appPath, realPath);
+      const rel = path.relative(realAppPath, realPath);
       const insideApp =
         rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
       if (!insideApp) {
@@ -373,6 +378,7 @@ export function registerTestsHandlers() {
           event,
           emit,
           runtimeMode,
+          signal: controller.signal,
         });
 
         // Isolation was required but couldn't be set up — dead-end safely

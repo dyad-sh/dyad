@@ -694,17 +694,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // effect (not the toggle handler) so recording can also be started elsewhere
   // (e.g. the Tests panel "Record a test" CTA) just by flipping the atom.
   useEffect(() => {
-    if (!iframeRef.current?.contentWindow || !isComponentSelectorInitialized) {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow || !isComponentSelectorInitialized) {
       return;
     }
-    iframeRef.current.contentWindow.postMessage(
-      {
-        type: isRecording
-          ? "activate-dyad-recorder"
-          : "deactivate-dyad-recorder",
-      },
-      "*",
-    );
+    const sendState = () => {
+      iframe.contentWindow?.postMessage(
+        {
+          type: isRecording
+            ? "activate-dyad-recorder"
+            : "deactivate-dyad-recorder",
+        },
+        "*",
+      );
+    };
+    sendState();
+    // Re-send on reload: navigating or submitting a form during recording
+    // re-injects the recorder client with `active = false`, so without this the
+    // recorder would silently stop capturing on the new page.
+    iframe.addEventListener("load", sendState);
+    return () => {
+      iframe.removeEventListener("load", sendState);
+    };
   }, [isRecording, isComponentSelectorInitialized]);
 
   // Restore component overlays in iframe only during queued-message edit restoration.
@@ -1329,7 +1340,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       prompt: buildRecordedTestPrompt(actions),
       chatId: selectedChatId,
     });
-    showInfo(`Sent ${actions.length} recorded step(s) to chat to write a test…`);
+    showInfo(
+      `Sent ${actions.length} recorded step(s) to chat to write a test…`,
+    );
   };
 
   // Function to handle annotator button click

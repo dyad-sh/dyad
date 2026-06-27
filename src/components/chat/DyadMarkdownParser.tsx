@@ -469,7 +469,13 @@ function renderCustomTag(
       // dedicated test card with a "View in Tests" deep-link, matching how the
       // Tests panel surfaces them on disk.
       const writePath = attributes.path || "";
-      if (writePath.endsWith(".spec.ts")) {
+      // Only spec files under `tests/` get the test card. A component spec like
+      // `src/components/Button.spec.ts` is a unit test, not an E2E test, and
+      // shouldn't get a "View in Tests" deep-link.
+      const isTestSpec =
+        writePath.endsWith(".spec.ts") &&
+        (writePath.startsWith("tests/") || writePath.startsWith("tests\\"));
+      if (isTestSpec) {
         return (
           <DyadGenerateTest
             node={{

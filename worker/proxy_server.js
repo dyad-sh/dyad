@@ -154,27 +154,35 @@ try {
   );
 }
 
-// Load Service Worker files
-let dyadSwContent = null;
-let dyadSwRegisterContent = null;
+// Load the network monitor (conditionally registers the Dyad SW or falls
+// back to fetch/XHR monkey-patching when the user app has its own SW).
+let dyadNetworkMonitorContent = null;
 
 try {
-  const dyadSwPath = path.join(__dirname, "dyad-sw.js");
-  dyadSwContent = fs.readFileSync(dyadSwPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-sw.js loaded.");
+  const dyadNetworkMonitorPath = path.join(
+    __dirname,
+    "dyad-network-monitor.js",
+  );
+  dyadNetworkMonitorContent = fs.readFileSync(dyadNetworkMonitorPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad-network-monitor.js loaded.");
 } catch (error) {
   parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-sw.js: ${error.message}`,
+    `[proxy-worker] Failed to read dyad-network-monitor.js: ${error.message}`,
   );
 }
 
+// Load the Dyad service worker body. Served from /__dyad-sw__.js so the
+// unique pathname acts as the marker that distinguishes it from any SW the
+// user app registers (see dyad-network-monitor.js).
+let dyadSwContent = null;
+
 try {
-  const dyadSwRegisterPath = path.join(__dirname, "dyad-sw-register.js");
-  dyadSwRegisterContent = fs.readFileSync(dyadSwRegisterPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-sw-register.js loaded.");
+  const dyadSwPath = path.join(__dirname, "__dyad-sw__.js");
+  dyadSwContent = fs.readFileSync(dyadSwPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] __dyad-sw__.js loaded.");
 } catch (error) {
   parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-sw-register.js: ${error.message}`,
+    `[proxy-worker] Failed to read __dyad-sw__.js: ${error.message}`,
   );
 }
 
@@ -246,18 +254,20 @@ function injectHTML(buf) {
       '<script>console.warn("[proxy-worker] dyad visual editor client was not injected.");</script>',
     );
   }
+  // Network monitor goes before dyad_logs so the fetch/XHR patches are
+  // installed before any user script (or other observability code) runs.
+  if (dyadNetworkMonitorContent) {
+    scripts.push(`<script>${dyadNetworkMonitorContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad-network-monitor.js was not injected.");</script>',
+    );
+  }
   if (dyadLogsContent) {
     scripts.push(`<script>${dyadLogsContent}</script>`);
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad_logs.js was not injected.");</script>',
-    );
-  }
-  if (dyadSwRegisterContent) {
-    scripts.push(`<script>${dyadSwRegisterContent}</script>`);
-  } else {
-    scripts.push(
-      '<script>console.warn("[proxy-worker] dyad-sw-register.js was not injected.");</script>',
     );
   }
   const allScripts = scripts.join("\n");
@@ -352,8 +362,10 @@ function rewriteSetCookieHeaders(headers) {
 /* ----------------------------------------------------------------------- */
 
 const server = http.createServer((clientReq, clientRes) => {
-  // Special handling for Service Worker file
-  if (clientReq.url === "/dyad-sw.js") {
+  // Serve the Dyad service worker file. The marker pathname /__dyad-sw__.js
+  // is what dyad-network-monitor.js uses to distinguish Dyad's SW from any
+  // SW the user app may register.
+  if (clientReq.url === "/__dyad-sw__.js") {
     if (dyadSwContent) {
       clientRes.writeHead(200, {
         "content-type": "application/javascript",

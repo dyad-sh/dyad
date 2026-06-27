@@ -1,23 +1,22 @@
 /**
- * dyad-sw.js – Service Worker for network request interception
- * Intercepts all fetch requests and reports them to the client
+ * __dyad-sw__.js – Service Worker for network request interception
+ *
+ * The unique filename serves as the marker that distinguishes Dyad's SW from
+ * any service worker the user app may register. See dyad-network-monitor.js,
+ * which keys off `scriptURL.pathname === "/__dyad-sw__.js"` to decide whether
+ * to keep the SW or fall back to fetch/XHR monkey-patching.
  */
 
-// Service Worker installation
 self.addEventListener("install", (_event) => {
   console.log("[Dyad SW] Installing...");
-  // Skip waiting to activate immediately
   self.skipWaiting();
 });
 
-// Service Worker activation
 self.addEventListener("activate", (event) => {
   console.log("[Dyad SW] Activating...");
-  // Claim all clients immediately
   event.waitUntil(self.clients.claim());
 });
 
-// Intercept all fetch requests
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
@@ -30,13 +29,10 @@ self.addEventListener("fetch", (event) => {
   // destination). Other destinations (`style`, `image`, `font`, etc.) are
   // intentionally NOT filtered out — they don't trigger the same Vite/Nitro
   // dev-server quirk, and the network panel relies on these events to
-  // surface CSS/image/font loads. If a future framework hits a similar
-  // MIME-type issue with another destination, narrow the filter here rather
-  // than dropping all observability for that resource type.
+  // surface CSS/image/font loads.
   if (request.destination === "script" || request.destination === "worker")
     return;
 
-  // Only handle http(s)
   let urlObj;
   try {
     urlObj = new URL(request.url);
@@ -49,19 +45,16 @@ self.addEventListener("fetch", (event) => {
   if (request.cache === "only-if-cached" && request.mode !== "same-origin")
     return;
 
-  // Skip noisy Vite and Next.js development module requests
   const pathname = urlObj.pathname;
   if (
-    // Vite
-    pathname.includes("/node_modules") || // Vite deps
-    pathname.includes("/@vite/") || // Vite client/HMR
-    pathname.includes("/__vite_ping") || // Vite ping
-    // Next.js
-    pathname.includes("/_next/static/") || // Static assets (chunks, CSS, media)
-    pathname.includes("/_next/webpack-hmr") || // Next.js HMR
-    pathname.includes("/__nextjs_original-stack-frame") || // Error overlay internals
-    pathname.includes("/__webpack_hmr") || // Webpack HMR
-    pathname.includes(".hot-update.") // HMR update chunks
+    pathname.includes("/node_modules") ||
+    pathname.includes("/@vite/") ||
+    pathname.includes("/__vite_ping") ||
+    pathname.includes("/_next/static/") ||
+    pathname.includes("/_next/webpack-hmr") ||
+    pathname.includes("/__nextjs_original-stack-frame") ||
+    pathname.includes("/__webpack_hmr") ||
+    pathname.includes(".hot-update.")
   ) {
     return;
   }
@@ -70,10 +63,8 @@ self.addEventListener("fetch", (event) => {
   const url = request.url;
   const method = request.method;
 
-  // Helper to send message to the initiating client or broadcast as fallback
   const postMessage = (message) => {
     const sendMessage = async () => {
-      // Prefer sending to the initiating client
       if (event.clientId) {
         const client = await self.clients.get(event.clientId);
         if (client) {
@@ -81,8 +72,6 @@ self.addEventListener("fetch", (event) => {
           return;
         }
       }
-
-      // Fallback: broadcast to all clients within SW scope
       const clients = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
@@ -91,12 +80,9 @@ self.addEventListener("fetch", (event) => {
         client.postMessage(message);
       }
     };
-
-    // Wrap with event.waitUntil to ensure completion
     event.waitUntil(sendMessage());
   };
 
-  // Send initial request info
   postMessage({
     type: "network-request",
     method,
@@ -105,13 +91,10 @@ self.addEventListener("fetch", (event) => {
     timestamp: new Date().toISOString(),
   });
 
-  // Pass through the request and monitor the response
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         const duration = Date.now() - startTime;
-
-        // Send response info
         postMessage({
           type: "network-response",
           method,
@@ -122,14 +105,10 @@ self.addEventListener("fetch", (event) => {
           requestType: "fetch",
           timestamp: new Date().toISOString(),
         });
-
-        // Return the response unchanged
         return response;
       })
       .catch((error) => {
         const duration = Date.now() - startTime;
-
-        // Send error info
         postMessage({
           type: "network-error",
           method,
@@ -140,8 +119,6 @@ self.addEventListener("fetch", (event) => {
           requestType: "fetch",
           timestamp: new Date().toISOString(),
         });
-
-        // Re-throw the error
         throw error;
       }),
   );

@@ -8,7 +8,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("lmstudio_handler");
 
 export interface LMStudioModel {
-  type: "llm" | "embedding" | string;
+  type: "llm" | "vlm" | "embedding" | "embeddings" | string;
   id: string;
   object: string;
   publisher: string;
@@ -19,6 +19,8 @@ export interface LMStudioModel {
   arch: string;
   [key: string]: any;
 }
+
+const NON_CHAT_LM_STUDIO_MODEL_TYPES = new Set(["embeddings", "embedding"]);
 
 export async function fetchLMStudioModels(): Promise<{ models: LocalModel[] }> {
   const modelsResponse: Response = await fetch(
@@ -33,7 +35,7 @@ export async function fetchLMStudioModels(): Promise<{ models: LocalModel[] }> {
   const modelsJson = await modelsResponse.json();
   const downloadedModels = modelsJson.data as LMStudioModel[];
   const models: LocalModel[] = downloadedModels
-    .filter((model: any) => model.type === "llm")
+    .filter((model: any) => !NON_CHAT_LM_STUDIO_MODEL_TYPES.has(model.type))
     .map((model: any) => ({
       modelName: model.id,
       displayName: model.id,

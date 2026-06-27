@@ -13,6 +13,12 @@ export function normalizeTestPath(rawPath: string): string {
     .split("/")
     .filter((segment) => segment !== "" && segment !== "." && segment !== "..")
     .join("/");
+  // An empty/all-dots path would otherwise collapse to `tests/`, and writing to
+  // a directory path throws EISDIR in the response processor — fall back to a
+  // concrete filename instead.
+  if (!sanitized) {
+    return "tests/generated.spec.ts";
+  }
   if (sanitized === "tests" || sanitized.startsWith("tests/")) return sanitized;
   return `tests/${sanitized}`;
 }

@@ -150,17 +150,22 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<void> {
   if (!branchId || !projectId) {
     return;
   }
-  await deleteBranchBestEffort(projectId, branchId);
-  await db
-    .update(apps)
-    .set({ neonTestBranchId: null })
-    .where(eq(apps.id, appData.id));
+  // Only forget the branch once Neon confirms it's gone. Clearing the column on
+  // a failed delete would orphan the branch in the user's account forever, since
+  // the startup reconciliation sweep relies on this id to find it again.
+  const deleted = await deleteBranchBestEffort(projectId, branchId);
+  if (deleted) {
+    await db
+      .update(apps)
+      .set({ neonTestBranchId: null })
+      .where(eq(apps.id, appData.id));
+  }
 }
 
 async function deleteBranchBestEffort(
   projectId: string,
   branchId: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const neonClient = await getNeonClient();
     await retryOnLocked(
@@ -168,10 +173,12 @@ async function deleteBranchBestEffort(
       `Delete test branch ${branchId}`,
     );
     logger.info(`Deleted test branch ${branchId} for project ${projectId}`);
+    return true;
   } catch (error) {
     logger.warn(
       `Failed to delete test branch ${branchId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );
+    return false;
   }
 }
 

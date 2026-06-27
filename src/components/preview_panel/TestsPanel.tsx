@@ -204,13 +204,19 @@ function FailureDetails({
   label: string;
 }) {
   const [screenshot, setScreenshot] = useState<string | null>(null);
+  // Distinguishes "still fetching" from "fetched, but unavailable" — without it
+  // a null result is indistinguishable from the initial state and the UI would
+  // show "Loading screenshot…" forever.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!screenshotPath) {
       setScreenshot(null);
+      setLoaded(false);
       return;
     }
     let cancelled = false;
+    setLoaded(false);
     ipc.tests
       .getTestScreenshot({ appId, path: screenshotPath })
       .then((res) => {
@@ -218,6 +224,9 @@ function FailureDetails({
       })
       .catch(() => {
         if (!cancelled) setScreenshot(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -245,7 +254,7 @@ function FailureDetails({
             />
           ) : (
             <div className="text-[11px] text-muted-foreground">
-              Loading screenshot…
+              {loaded ? "Screenshot unavailable" : "Loading screenshot…"}
             </div>
           )}
         </div>

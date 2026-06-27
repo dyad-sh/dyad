@@ -123,7 +123,7 @@ export function AgentConsentBanner({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-        {classifierPending && (
+        {classifierPending ? (
           <div
             className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
             role="status"
@@ -132,8 +132,7 @@ export function AgentConsentBanner({
             <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
             <span>{t("aiReviewingRequest")}</span>
           </div>
-        )}
-        {classifierReason && (
+        ) : classifierReason ? (
           <div className="ml-6 mb-1.5 flex gap-2 rounded-lg border-l-4 border-orange-400 bg-amber-50 px-3 py-2 dark:border-orange-500 dark:bg-amber-950/30">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400" />
             <div className="min-w-0">
@@ -145,7 +144,7 @@ export function AgentConsentBanner({
               </div>
             </div>
           </div>
-        )}
+        ) : null}
         {inputPreview && (
           <div className="ml-6 mb-1.5">
             {sqlMutatesSchema && (

@@ -33,12 +33,6 @@ export function resolveConsent(requestId: string, decision: ConsentDecision) {
   }
 }
 
-// Drop a pending waiter without resolving it. Used when the classifier
-// auto-approves and the still-registered human waiter is no longer needed.
-export function cancelConsentWaiter(requestId: string): void {
-  pendingConsentResolvers.delete(requestId);
-}
-
 // Resolve any pending MCP consents for a chat as declined. Called when a stream
 // is cancelled or ends so the tool calls unblock instead of hanging once their
 // consent UI has been cleared.
@@ -183,8 +177,9 @@ export async function requireMcpToolConsent(
     return finalize(winner.decision);
   }
   if (winner.result.approved) {
-    // Auto-approved: dismiss the prompt and drop the still-registered waiter.
-    cancelConsentWaiter(requestId);
+    // Auto-approved: dismiss the prompt and settle the still-registered waiter.
+    // The decision is discarded since the race already resolved to the classifier.
+    resolveConsent(requestId, "decline");
     send("mcp:tool-consent-resolved", { requestId });
     return { approved: true, autoApprovedReason: winner.result.reason };
   }

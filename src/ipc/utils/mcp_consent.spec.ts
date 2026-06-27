@@ -44,7 +44,9 @@ describe("requireMcpToolConsent (classifier race)", () => {
 
   function makeEvent() {
     const send = vi.fn();
-    return { event: { sender: { send } } as any, send };
+    // safeSend guards on these before sending.
+    const sender = { send, isDestroyed: () => false, isCrashed: () => false };
+    return { event: { sender } as any, send };
   }
 
   function lastRequestId(send: ReturnType<typeof vi.fn>): string {

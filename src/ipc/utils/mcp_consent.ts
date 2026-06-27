@@ -3,6 +3,7 @@ import { mcpToolConsents } from "../../db/schema";
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
+import { safeSend } from "./safe_sender";
 
 export type Consent = "ask" | "always" | "denied";
 
@@ -131,8 +132,10 @@ export async function requireMcpToolConsent(
   // Strip the non-serializable callback before sending over IPC.
   const { autoApprove, ...serializableParams } = params;
   const requestId = `${params.serverId}:${params.toolName}:${crypto.randomUUID()}`;
+  // Some of these sends fire after an await, so guard against a renderer that
+  // was destroyed (window closed, e2e teardown) in the meantime.
   const send = (channel: string, payload: Record<string, unknown>) =>
-    (event.sender as any).send(channel, payload);
+    safeSend(event.sender, channel, payload);
 
   const finalize = async (
     response: ConsentDecision,
@@ -151,7 +154,10 @@ export async function requireMcpToolConsent(
   }
 
   // Classifier active: show the prompt immediately with a spinner and race the
-  // classifier against the user. The user can decide at any time.
+  // classifier against the user. The user can decide at any time, and a user
+  // decision always wins over the classifier. The only exception is a click
+  // issued in the sub-millisecond gap before its IPC reaches the main process,
+  // which is an acceptable window given the live buttons are shown throughout.
   send("mcp:tool-consent-request", {
     requestId,
     ...serializableParams,
@@ -171,6 +177,9 @@ export async function requireMcpToolConsent(
   const winner = await Promise.race([humanPromise, classifierPromise]);
 
   if (winner.source === "human") {
+    // The classifier promise is intentionally left to finish on its own; it is
+    // a stateless call whose result we no longer need. The .catch() above keeps
+    // a late rejection from going unhandled.
     return finalize(winner.decision);
   }
   if (winner.result.approved) {

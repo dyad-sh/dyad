@@ -3,12 +3,14 @@ import {
   type PreviewMode,
   previewModeAtom,
   selectedAppIdAtom,
+  selectedVersionIdAtom,
 } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import {
   AlertTriangle,
   Code,
+  Diff,
   Eye,
   Globe,
   MoreHorizontal,
@@ -51,6 +53,8 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const selectedVersionId = useAtomValue(selectedVersionIdAtom);
+  const isVersionSelected = selectedVersionId != null;
   const { problemReport } = useCheckProblems(selectedAppId);
 
   const problemCount = problemReport ? problemReport.problems.length : 0;
@@ -88,8 +92,8 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
       testId: "problems-mode-button",
     },
     code: {
-      icon: <Code size={16} />,
-      label: t("preview.code"),
+      icon: isVersionSelected ? <Diff size={16} /> : <Code size={16} />,
+      label: isVersionSelected ? t("preview.diff") : t("preview.code"),
       testId: "code-mode-button",
     },
     configure: {
@@ -147,9 +151,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
     );
   };
 
-  const visibleModes: readonly ToolbarMode[] = isCompact
-    ? PRIMARY_MODES
-    : [...PRIMARY_MODES, ...OVERFLOW_MODES];
+  const visibleModes: readonly ToolbarMode[] = isVersionSelected
+    ? (["preview", "code"] as const)
+    : isCompact
+      ? PRIMARY_MODES
+      : [...PRIMARY_MODES, ...OVERFLOW_MODES];
   const isOverflowActive =
     (OVERFLOW_MODES as readonly PreviewMode[]).includes(previewMode) &&
     isPreviewOpen;
@@ -158,7 +164,7 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
   return (
     <div className="flex items-center gap-0.5">
       {visibleModes.map((mode) => renderButton(mode))}
-      {isCompact && (
+      {isCompact && !isVersionSelected && (
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger

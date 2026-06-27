@@ -175,6 +175,11 @@ export const createResponsesHandler =
         reason: risky ? "destructive tool" : "safe tool",
         decision: risky ? "ask" : "allow",
       });
+      // Answer slowly for print_envs so e2e can observe the "AI reviewing"
+      // spinner and exercise the user-decides-before-the-AI path.
+      if (lastUserText.includes("Tool: print_envs")) {
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+      }
     }
 
     const responseId = `resp_${Date.now()}`;

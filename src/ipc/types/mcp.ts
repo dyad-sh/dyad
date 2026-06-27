@@ -160,9 +160,21 @@ export const McpConsentRequestSchema = z.object({
   chatId: z.number(),
   // Classifier's reason for asking (agent mode, Pro). Shown in the prompt.
   reason: z.string().nullable().optional(),
+  // True while the auto-approve classifier is still deciding; the prompt shows
+  // a spinner and the user can decide manually or wait.
+  classifierPending: z.boolean().optional(),
 });
 
 export type McpConsentRequestPayload = z.infer<typeof McpConsentRequestSchema>;
+
+// The classifier auto-approved; dismiss the pending prompt.
+export const McpConsentResolvedSchema = z.object({ requestId: z.string() });
+
+// The classifier finished and wants review; drop the spinner and show why.
+export const McpConsentClassifiedSchema = z.object({
+  requestId: z.string(),
+  reason: z.string().nullable().optional(),
+});
 
 export const McpConsentDecisionEnum = z.enum([
   "accept-once",
@@ -286,6 +298,14 @@ export const mcpEvents = {
   consentRequest: defineEvent({
     channel: "mcp:tool-consent-request",
     payload: McpConsentRequestSchema,
+  }),
+  consentResolved: defineEvent({
+    channel: "mcp:tool-consent-resolved",
+    payload: McpConsentResolvedSchema,
+  }),
+  consentClassified: defineEvent({
+    channel: "mcp:tool-consent-classified",
+    payload: McpConsentClassifiedSchema,
   }),
 } as const;
 

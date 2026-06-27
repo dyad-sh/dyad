@@ -100,6 +100,7 @@
   "destructiveDataChange": "Destructive data change",
   "flaggedForReview": "Flagged for review",
   "autoApproved": "Auto-approved",
+  "aiReviewingRequest": "AI is reviewing this request to decide if it's safe to auto-approve…",
   "approved": "Approved",
   "rejected": "Rejected",
   "copy": "Copy",

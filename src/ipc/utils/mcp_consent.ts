@@ -32,6 +32,12 @@ export function resolveConsent(requestId: string, decision: ConsentDecision) {
   }
 }
 
+// Drop a pending waiter without resolving it. Used when the classifier
+// auto-approves and the still-registered human waiter is no longer needed.
+export function cancelConsentWaiter(requestId: string): void {
+  pendingConsentResolvers.delete(requestId);
+}
+
 // Resolve any pending MCP consents for a chat as declined. Called when a stream
 // is cancelled or ends so the tool calls unblock instead of hanging once their
 // consent UI has been cleared.
@@ -122,33 +128,58 @@ export async function requireMcpToolConsent(
   if (current === "always") return { approved: true };
   if (current === "denied") return { approved: false };
 
-  // The classifier's reason for asking, shown in the consent prompt.
-  let classifierReason: string | undefined;
-  if (params.autoApprove) {
-    const result = await params.autoApprove();
-    if (result.approved) {
-      return { approved: true, autoApprovedReason: result.reason };
+  // Strip the non-serializable callback before sending over IPC.
+  const { autoApprove, ...serializableParams } = params;
+  const requestId = `${params.serverId}:${params.toolName}:${crypto.randomUUID()}`;
+  const send = (channel: string, payload: Record<string, unknown>) =>
+    (event.sender as any).send(channel, payload);
+
+  const finalize = async (
+    response: ConsentDecision,
+  ): Promise<McpConsentResult> => {
+    if (response === "accept-always") {
+      await setStoredConsent(params.serverId, params.toolName, "always");
+      return { approved: true };
     }
-    classifierReason = result.reason;
+    return { approved: response === "accept-once" };
+  };
+
+  // No classifier: show the prompt and wait for the user.
+  if (!autoApprove) {
+    send("mcp:tool-consent-request", { requestId, ...serializableParams });
+    return finalize(await waitForConsent(requestId, params.chatId));
   }
 
-  // Ask renderer for a decision via event bridge. Strip non-serializable
-  // fields (the autoApprove callback) before sending over IPC.
-  const { autoApprove: _autoApprove, ...serializableParams } = params;
-  const requestId = `${params.serverId}:${params.toolName}:${crypto.randomUUID()}`;
-  (event.sender as any).send("mcp:tool-consent-request", {
+  // Classifier active: show the prompt immediately with a spinner and race the
+  // classifier against the user. The user can decide at any time.
+  send("mcp:tool-consent-request", {
     requestId,
     ...serializableParams,
-    reason: classifierReason,
+    classifierPending: true,
   });
-  const response = await waitForConsent(requestId, params.chatId);
+  const humanPromise = waitForConsent(requestId, params.chatId).then(
+    (decision) => ({ source: "human" as const, decision }),
+  );
+  const classifierPromise = autoApprove().then((result) => ({
+    source: "classifier" as const,
+    result,
+  }));
+  const winner = await Promise.race([humanPromise, classifierPromise]);
 
-  if (response === "accept-always") {
-    await setStoredConsent(params.serverId, params.toolName, "always");
-    return { approved: true };
+  if (winner.source === "human") {
+    return finalize(winner.decision);
   }
-  if (response === "decline") {
-    return { approved: false };
+  if (winner.result.approved) {
+    // Auto-approved: dismiss the prompt and drop the still-registered waiter.
+    cancelConsentWaiter(requestId);
+    send("mcp:tool-consent-resolved", { requestId });
+    return { approved: true, autoApprovedReason: winner.result.reason };
   }
-  return { approved: response === "accept-once" };
+  // Classifier wants review: drop the spinner, surface the reason, and keep
+  // waiting for the user via the existing waiter.
+  send("mcp:tool-consent-classified", {
+    requestId,
+    reason: winner.result.reason,
+  });
+  return finalize((await humanPromise).decision);
 }

@@ -35,7 +35,7 @@ export async function fetchLMStudioModels(): Promise<{ models: LocalModel[] }> {
   const modelsJson = await modelsResponse.json();
   const downloadedModels = modelsJson.data as LMStudioModel[];
   const models: LocalModel[] = downloadedModels
-    .filter((model: any) => !NON_CHAT_LM_STUDIO_MODEL_TYPES.has(model.type))
+    .filter((model) => !NON_CHAT_LM_STUDIO_MODEL_TYPES.has(model.type))
     .map((model: any) => ({
       modelName: model.id,
       displayName: model.id,

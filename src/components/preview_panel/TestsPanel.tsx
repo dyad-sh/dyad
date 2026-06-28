@@ -953,16 +953,27 @@ export function TestsPanel() {
               Isolated test data
             </span>
           )}
+          {!isRunning && runState.isolation?.mode === "supabase-test-user" && (
+            <span
+              className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
+              title="Tests ran as a temporary, isolated test user under Row-Level Security — your real data was not touched."
+            >
+              <ShieldCheck size={11} className="shrink-0" />
+              Isolated test user
+            </span>
+          )}
         </div>
       )}
 
-      {/* Disclosure: ran against current data (Supabase / no isolation). Calm
-          info, not an error — runs still completed. Suppressed when a dead-end
-          infra error is already shown. */}
+      {/* Disclosure / warning: either ran against current data (no isolation),
+          or ran as an isolated Supabase test user but some tables lack RLS.
+          Both surface via `reason`. Calm info, not an error — runs still
+          completed. Suppressed when a dead-end infra error is already shown.
+          (Neon's fully-isolated path never sets a reason.) */}
       {!isRunning &&
         !runState.runError &&
-        runState.isolation?.mode === "none" &&
-        runState.isolation.reason && (
+        runState.isolation?.mode !== "neon-branch" &&
+        runState.isolation?.reason && (
           <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
             <AlertTriangle size={15} className="shrink-0 mt-0.5" />
             <span className="flex-1">{runState.isolation.reason}</span>

@@ -377,22 +377,22 @@ The user can record a flow by interacting with the live preview. When a turn con
 
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad runs each test session against a temporary, throwaway copy of the database — so tests can create, update, and delete data freely without ever touching the user's real data. You do NOT need to write any branch/teardown code; Dyad handles isolating the database around the run.
+When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
 
-Because the database starts as a copy of the current data (which may be empty or messy), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
+Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
 ### Fixtures: seeding the data a test needs
 
 - Put reusable setup in files under \`tests/fixtures/\` (e.g. \`tests/fixtures/todos.ts\`) and import them into your specs. Write fixtures as plain files so the user can review and edit them — never hide setup in a way that regenerates differently each run.
-- Seed data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. This guarantees the data is written to the isolated test database the running app is pointed at.
-- Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, not the isolated copy.
+- Seed data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. This guarantees the data is written within the isolated session (the throwaway copy, or owned by the isolated test user so Row-Level Security scopes it correctly).
+- Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, outside the isolated session.
 - Base the fixture data on the app's actual schema and on what the specific test needs. Keep it minimal: seed only what the test asserts on.
 
 ### Authenticated tests (signing in a test user)
 
-When a flow requires a logged-in user, use the built-in auth fixture instead of hand-rolling credentials:
-- A shared test user is defined in \`tests/fixtures/test-user.ts\` and created by driving the app's OWN signup flow (so the user can really authenticate). Import the user and the \`signIn\`/\`signUp\` helper from there.
-- If the app does NOT have a signup flow yet, build one (or an equivalent way to create a user) before writing auth-gated tests — a test user that can't be created through the app can't be signed in. Say so clearly if you add it.
+When a flow requires a logged-in user, use the built-in auth fixture in \`tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
+- If \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user — read the credentials from those env vars and sign that user in by driving the app's OWN login UI. Do NOT sign them up; they already exist. If the app has no login UI yet, build one before writing auth-gated tests.
+- Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the app has no signup flow yet, build one (or an equivalent way to create a user) first. Say so clearly if you add it.
 - Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.`;
 
 /** Build-mode test-writing guidance: emit the spec via a `<dyad-generate-test>` tag. */

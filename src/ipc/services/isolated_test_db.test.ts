@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
   deleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
+  createTempTestUser: vi.fn(),
+  deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
+  checkRls: vi.fn().mockResolvedValue({ tablesWithoutRls: [] }),
   updateNeonEnvVars: vi.fn().mockResolvedValue(undefined),
   readEnvFileIfExists: vi.fn().mockResolvedValue(null),
   executeApp: vi.fn().mockResolvedValue(undefined),
@@ -14,6 +17,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../utils/neon_test_branch", () => ({
   createTempTestBranch: mocks.createTempTestBranch,
   deleteTempTestBranch: mocks.deleteTempTestBranch,
+}));
+vi.mock("../utils/supabase_test_user", () => ({
+  createTempTestUser: mocks.createTempTestUser,
+  deleteTempTestUser: mocks.deleteTempTestUser,
+  checkRls: mocks.checkRls,
 }));
 vi.mock("../utils/app_env_var_utils", () => ({
   ENV_FILE_NAME: ".env.local",
@@ -59,6 +67,8 @@ function makeApp(overrides: Record<string, unknown> = {}) {
     id: 1,
     path: "app1",
     supabaseProjectId: null,
+    supabaseOrganizationSlug: null,
+    supabaseTestUserId: null,
     neonProjectId: null,
     installCommand: null,
     startCommand: null,
@@ -69,10 +79,60 @@ function makeApp(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.runningApps.clear();
+  mocks.checkRls.mockResolvedValue({ tablesWithoutRls: [] });
+  mocks.createTempTestUser.mockResolvedValue({
+    userId: "user-1",
+    email: "dyad-test+1@dyad.test",
+    password: "pw",
+    projectUrl: "https://sb-1.supabase.co",
+  });
 });
 
-describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
-  it("discloses (but does not block) for Supabase apps", async () => {
+describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
+  it("creates a test user and returns credentials when RLS is fully enabled", async () => {
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      event,
+      emit,
+      runtimeMode: "host",
+    });
+    expect(mocks.createTempTestUser).toHaveBeenCalled();
+    expect(prepared.isolation.mode).toBe("supabase-test-user");
+    expect(prepared.isolation.reason).toBeUndefined();
+    expect(prepared.testCredentials).toMatchObject({
+      DYAD_TEST_USER_EMAIL: "dyad-test+1@dyad.test",
+      DYAD_TEST_USER_PASSWORD: "pw",
+      DYAD_TEST_SUPABASE_URL: "https://sb-1.supabase.co",
+    });
+    expect(prepared.infraError).toBeUndefined();
+
+    await prepared.teardown();
+    expect(mocks.deleteTempTestUser).toHaveBeenCalledWith(
+      expect.objectContaining({ supabaseTestUserId: "user-1" }),
+    );
+  });
+
+  it("warns (but still isolates) when some tables lack RLS", async () => {
+    mocks.checkRls.mockResolvedValue({ tablesWithoutRls: ["posts", "todos"] });
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      event,
+      emit,
+      runtimeMode: "host",
+    });
+    expect(prepared.isolation.mode).toBe("supabase-test-user");
+    expect(prepared.isolation.reason).toMatch(/posts, todos/);
+    expect(prepared.testCredentials).toBeDefined();
+    expect(prepared.infraError).toBeUndefined();
+  });
+
+  it("discloses without creating a user when no organization is connected", async () => {
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp({ supabaseProjectId: "sb-1" }),
       event,
@@ -80,11 +140,29 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
       runtimeMode: "host",
     });
     expect(prepared.isolation.mode).toBe("none");
-    expect(prepared.isolation.reason).toMatch(/Supabase/);
-    expect(prepared.infraError).toBeUndefined();
-    expect(mocks.createTempTestBranch).not.toHaveBeenCalled();
+    expect(prepared.isolation.reason).toMatch(/Supabase organization/);
+    expect(mocks.createTempTestUser).not.toHaveBeenCalled();
   });
 
+  it("dead-ends (infraError) when test-user creation fails", async () => {
+    mocks.createTempTestUser.mockRejectedValue(new Error("supabase down"));
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      event,
+      emit,
+      runtimeMode: "host",
+    });
+    expect(prepared.infraError).toBeDefined();
+    expect(prepared.infraError?.message).toMatch(/real data was not touched/i);
+    expect(prepared.isolation.mode).toBe("none");
+    expect(prepared.testCredentials).toBeUndefined();
+  });
+});
+
+describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
   it("runs as-is with no reason for apps with no database", async () => {
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp(),

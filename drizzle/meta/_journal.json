@@ -253,6 +253,13 @@
       "when": 1783529641487,
       "tag": "0035_open_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1782672437570,
+      "tag": "0035_slippery_ben_parker",
+      "breakpoints": true
     }
   ]
 }

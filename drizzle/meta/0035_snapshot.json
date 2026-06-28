@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bc5bca1d-9304-4f36-826c-458e37c923fb",
-  "prevId": "533d5162-c7e9-4feb-b6fc-b51bb5d37796",
+  "id": "34bc8018-f554-4bad-844d-4482c4bfe68a",
+  "prevId": "a2479e37-7225-4e7d-ac77-948877c83560",
   "tables": {
     "app_collections": {
       "name": "app_collections",
@@ -129,6 +129,13 @@
         },
         "supabase_organization_slug": {
           "name": "supabase_organization_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supabase_test_user_id": {
+          "name": "supabase_test_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1003,21 +1010,6 @@
         },
         "neon_db_timestamp": {
           "name": "neon_db_timestamp",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_favorite": {
-          "name": "is_favorite",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "0"
-        },
-        "note": {
-          "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

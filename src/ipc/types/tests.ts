@@ -135,11 +135,15 @@ export const RunAppTestsParamsSchema = z.object({
 /**
  * Whether the run executed against an isolated, throwaway database:
  * - `neon-branch`: ran against an ephemeral Neon branch; real data untouched.
+ * - `supabase-test-user`: ran against the app's real Supabase project, but
+ *   authenticated as a throwaway test user scoped by Row-Level Security.
+ *   `reason` (when set) is a warning — e.g. tables without RLS that the test
+ *   could still affect.
  * - `none`: ran against the app's current database (no DB connected, or a
- *   provider without isolation support such as Supabase). `reason` explains why.
+ *   provider without isolation support). `reason` explains why.
  */
 export const TestIsolationSchema = z.object({
-  mode: z.enum(["neon-branch", "none"]),
+  mode: z.enum(["neon-branch", "supabase-test-user", "none"]),
   reason: z.string().optional(),
 });
 export type TestIsolation = z.infer<typeof TestIsolationSchema>;

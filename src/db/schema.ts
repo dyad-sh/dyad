@@ -66,6 +66,14 @@ export const apps = sqliteTable("apps", {
   supabaseParentProjectId: text("supabase_parent_project_id"),
   // Supabase organization slug for credential lookup
   supabaseOrganizationSlug: text("supabase_organization_slug"),
+  // In-flight ephemeral test-user id for isolated e2e runs against Supabase.
+  // Supabase's free tier has no DB branching, so instead of a throwaway branch
+  // we create a dedicated throwaway auth user (via the Auth Admin API, stamped
+  // app_metadata.dyad_test=true) and run the tests authenticated as it. Set
+  // while a test session holds that user, cleared on teardown. Persisted so a
+  // crash mid-session can be reconciled (orphan user deleted) on the next
+  // launch. See ipc/utils/supabase_test_user.ts.
+  supabaseTestUserId: text("supabase_test_user_id"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),

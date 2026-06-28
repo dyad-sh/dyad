@@ -98,6 +98,12 @@ export interface RunAppTestsCoreOptions {
   signal?: AbortSignal;
   /** Streams raw bootstrap/runner output as it arrives. */
   onOutput?: (chunk: string, phase: "setup" | "running") => void;
+  /**
+   * Extra env vars merged into the Playwright runner (e.g. Supabase test-user
+   * credentials the generated test signs in with). Never contains privileged
+   * keys.
+   */
+  testEnv?: Record<string, string>;
 }
 
 /**
@@ -113,6 +119,7 @@ export async function runAppTestsCore({
   parallel,
   signal,
   onOutput,
+  testEnv,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
   const appPath = getDyadAppPath(app.path);
@@ -201,6 +208,7 @@ export async function runAppTestsCore({
     cwd: appPath,
     env: {
       ...process.env,
+      ...testEnv,
       [TEST_BASE_URL_ENV]: baseUrl,
       PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
       // Non-interactive: never try to open/serve an HTML report.
@@ -401,6 +409,7 @@ export function registerTestsHandlers() {
             parallel,
             signal: controller.signal,
             onOutput: emit,
+            testEnv: prepared.testCredentials,
           });
           return { ...result, isolation: prepared.isolation };
         } finally {

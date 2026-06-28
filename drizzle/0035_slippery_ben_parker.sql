@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `supabase_test_user_id` text;

@@ -9,6 +9,12 @@ import {
   deleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import {
+  checkRls,
+  createTempTestUser,
+  deleteTempTestUser,
+  type TempTestUser,
+} from "../utils/supabase_test_user";
+import {
   getEnvFilePath,
   readEnvFileIfExists,
   updateNeonEnvVars,
@@ -37,6 +43,13 @@ const SERVER_READY_POLL_MS = 500;
 export interface PreparedIsolation {
   isolation: TestIsolation;
   infraError?: { message: string };
+  /**
+   * Extra env vars to inject into the test runner (e.g. Supabase test-user
+   * credentials the generated test signs in with). Never contains privileged
+   * keys — the service_role key stays in the main process. Undefined for the
+   * Neon/no-DB paths.
+   */
+  testCredentials?: Record<string, string>;
   teardown: () => Promise<void>;
 }
 
@@ -53,8 +66,10 @@ const NOOP_TEARDOWN = async () => {
  *   `.env.local` at it, and restart the dev server so it picks up the branch.
  *   On any failure we dead-end (no run against real data). `teardown` restores
  *   `.env.local`, restarts back onto the real branch, and deletes the branch.
- * - Supabase apps: isolation isn't supported yet — run against current data
- *   with an honest disclosure (`mode: "none"`, with a reason).
+ * - Supabase apps (free tier, no branching): create a throwaway auth user in
+ *   the real project and run the tests authenticated as it, scoped by RLS. No
+ *   env swap or server restart — the app keeps its real project + anon key.
+ *   `teardown` cleans up the user's rows and deletes the user.
  * - No database: nothing to isolate (`mode: "none"`).
  *
  * Host runtime only. Docker/cloud runtimes fall back to the non-isolated path
@@ -73,16 +88,9 @@ export async function prepareIsolatedTestDatabase({
   runtimeMode: string;
   signal?: AbortSignal;
 }): Promise<PreparedIsolation> {
-  // Supabase: disclosure-only path.
+  // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
-    return {
-      isolation: {
-        mode: "none",
-        reason:
-          "Tests run against your current data — isolated test data isn't available for Supabase yet.",
-      },
-      teardown: NOOP_TEARDOWN,
-    };
+    return prepareSupabaseTestUserIsolation({ app, emit });
   }
 
   // No Neon project → nothing to isolate.
@@ -176,6 +184,95 @@ export async function prepareIsolatedTestDatabase({
       teardown: NOOP_TEARDOWN,
     };
   }
+}
+
+/**
+ * Supabase (free tier) isolation: create a throwaway auth user in the real
+ * project and have the test sign in as it. Isolation comes from Row-Level
+ * Security, so we warn (but don't block) when some public tables lack RLS. On
+ * setup failure we dead-end with an infra error, never running against real
+ * data unguarded.
+ */
+async function prepareSupabaseTestUserIsolation({
+  app,
+  emit,
+}: {
+  app: AppRow;
+  emit: EmitOutput;
+}): Promise<PreparedIsolation> {
+  const projectId = app.supabaseProjectId!;
+  const organizationSlug = app.supabaseOrganizationSlug;
+  if (!organizationSlug) {
+    return {
+      isolation: {
+        mode: "none",
+        reason:
+          "Tests run against your current data — connect a Supabase organization to get an isolated test user.",
+      },
+      teardown: NOOP_TEARDOWN,
+    };
+  }
+
+  // RLS gate (warn, don't refuse): surface unprotected tables to the user.
+  const rls = await checkRls({ projectId, organizationSlug });
+  const warning = buildRlsWarning(rls);
+
+  let testUser: TempTestUser | undefined;
+  const teardown = async () => {
+    if (testUser) {
+      await deleteTempTestUser({ ...app, supabaseTestUserId: testUser.userId });
+    }
+  };
+
+  try {
+    emit("Creating an isolated test user…\n", "setup");
+    testUser = await createTempTestUser(app);
+    return {
+      isolation: { mode: "supabase-test-user", reason: warning },
+      testCredentials: {
+        DYAD_TEST_USER_EMAIL: testUser.email,
+        DYAD_TEST_USER_PASSWORD: testUser.password,
+        DYAD_TEST_SUPABASE_URL: testUser.projectUrl,
+      },
+      teardown,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(
+      `Failed to set up isolated test user for app ${app.id}: ${message}`,
+    );
+    await teardown();
+    return {
+      isolation: {
+        mode: "none",
+        reason: "Couldn't set up an isolated Supabase test user.",
+      },
+      infraError: {
+        message:
+          "Couldn't set up an isolated test user, so the run was stopped. Your real data was not touched.",
+      },
+      teardown: NOOP_TEARDOWN,
+    };
+  }
+}
+
+/** Build the user-facing RLS warning, or undefined when fully protected. */
+function buildRlsWarning(rls: {
+  tablesWithoutRls: string[];
+  unverified?: boolean;
+}): string | undefined {
+  if (rls.unverified) {
+    return "Tests ran as an isolated test user, but Dyad couldn't verify Row-Level Security — some real data may be reachable.";
+  }
+  if (rls.tablesWithoutRls.length === 0) {
+    return undefined;
+  }
+  const shown = rls.tablesWithoutRls.slice(0, 5).join(", ");
+  const more =
+    rls.tablesWithoutRls.length > 5
+      ? `, and ${rls.tablesWithoutRls.length - 5} more`
+      : "";
+  return `Tests ran as an isolated test user, but these tables don't have Row-Level Security, so the test could affect real data in them: ${shown}${more}. Enable RLS for full isolation.`;
 }
 
 /** Restore `.env.local` to a previous snapshot (or remove it if there was none). */

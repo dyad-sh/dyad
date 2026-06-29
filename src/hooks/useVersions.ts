@@ -183,6 +183,13 @@ export function useVersions(appId: number | null) {
   const mutateRevertRef = useRef(revertVersionMutation.mutateAsync);
   mutateRevertRef.current = revertVersionMutation.mutateAsync;
 
+  // Synchronous guard against two reverts racing to open the gate. The atom
+  // check alone isn't tight: two `revertVersion` calls can both be awaiting
+  // `fetchQuery` and then both observe `gate.open === false` before either sets
+  // it. This ref is flipped synchronously (no await between the check and the
+  // set), so only the first caller proceeds; the rest bail.
+  const isOpeningGateRef = useRef(false);
+
   // Gate the revert on a clean worktree. If there are uncommitted changes, open
   // the app-wide dialog (see UncommittedChangesGateDialog) to get the user's
   // choice, which the revert handler applies on `main` before reverting. Returns
@@ -202,24 +209,35 @@ export function useVersions(appId: number | null) {
       });
       let resolution: UncommittedChangesResolution | null = null;
       if (uncommittedFiles.length > 0) {
-        // Bail out if another revert already has the gate dialog open (e.g. rapid
-        // clicks across VersionPane and MessagesList). Re-opening would overwrite
-        // the in-flight onResolve/onCancel and leave the first revert's Promise
-        // pending forever. The check + open below run synchronously, so there's no
-        // interleaving window between them.
-        if (store.get(uncommittedChangesGateAtom).open) {
+        // Bail out if another revert already has the gate dialog open (or is
+        // about to open it), e.g. rapid clicks across VersionPane and
+        // MessagesList. Re-opening would overwrite the in-flight
+        // onResolve/onCancel and leave the first revert's Promise pending
+        // forever. `isOpeningGateRef` closes the window the atom check alone
+        // leaves open across the `fetchQuery` await: it's read and set
+        // synchronously here (no await in between), so only the first caller
+        // proceeds.
+        if (
+          isOpeningGateRef.current ||
+          store.get(uncommittedChangesGateAtom).open
+        ) {
           return null;
         }
-        resolution = await new Promise<UncommittedChangesResolution | null>(
-          (resolve) => {
-            setUncommittedChangesGate({
-              open: true,
-              appId,
-              onResolve: (r) => resolve(r),
-              onCancel: () => resolve(null),
-            });
-          },
-        );
+        isOpeningGateRef.current = true;
+        try {
+          resolution = await new Promise<UncommittedChangesResolution | null>(
+            (resolve) => {
+              setUncommittedChangesGate({
+                open: true,
+                appId,
+                onResolve: (r) => resolve(r),
+                onCancel: () => resolve(null),
+              });
+            },
+          );
+        } finally {
+          isOpeningGateRef.current = false;
+        }
         setUncommittedChangesGate({
           open: false,
           appId: null,

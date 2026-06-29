@@ -413,29 +413,40 @@ export function registerVersionHandlers() {
         ref: "main",
       });
 
+      // Discard runs *before* switching to main. When the worktree is on a
+      // detached preview HEAD (VersionPane checks out the selected commit before
+      // showing Restore) with modified tracked files, `git checkout main` would
+      // abort on those changes before we ever resolved them. Discarding first
+      // clears the tree so the checkout succeeds. In the common case the worktree
+      // is already on main, so the ordering relative to the checkout is moot.
+      if (
+        uncommittedChangesStrategy === "discard" &&
+        !(await isGitStatusClean({ path: appPath }))
+      ) {
+        await gitDiscardAllChanges({ path: appPath });
+      }
+
       await gitCheckout({
         path: appPath,
         ref: "main",
       });
 
-      // Resolve any uncommitted changes on `main` per the user's choice before
-      // reverting. Done here (under the lock, after checking out main) so the
-      // commit lands on main rather than a detached preview HEAD. If no strategy
-      // was provided, gitStageToRevert below throws the "uncommitted changes"
-      // error as a backstop.
+      // Commit runs *after* checking out main so the commit lands on main rather
+      // than a detached preview HEAD. If the worktree was on a preview HEAD with
+      // changes that conflict with main, the checkout above already threw and we
+      // fail loudly with the changes preserved in the worktree — preferable to
+      // committing them onto a detached HEAD where the revert would orphan them.
+      // If no strategy was provided, gitStageToRevert below throws the
+      // "uncommitted changes" error as a backstop.
       if (
-        uncommittedChangesStrategy &&
+        uncommittedChangesStrategy === "commit" &&
         !(await isGitStatusClean({ path: appPath }))
       ) {
-        if (uncommittedChangesStrategy === "commit") {
-          await gitAddAll({ path: appPath });
-          await gitCommit({
-            path: appPath,
-            message: commitMessage?.trim() || "Commit changes before revert",
-          });
-        } else {
-          await gitDiscardAllChanges({ path: appPath });
-        }
+        await gitAddAll({ path: appPath });
+        await gitCommit({
+          path: appPath,
+          message: commitMessage?.trim() || "Commit changes before revert",
+        });
       }
 
       if (app.neonProjectId && app.neonDevelopmentBranchId) {

@@ -35,6 +35,10 @@ export function UncommittedChangesGateDialog() {
     if (!gate.open) {
       seededRef.current = false;
       setShowDiscardConfirm(false);
+      // Clear the message too, otherwise the previous session's commit text
+      // briefly flashes on the next open before the effect re-seeds it from the
+      // new file list.
+      setCommitMessage("");
       return;
     }
     if (!seededRef.current && uncommittedFiles.length > 0) {

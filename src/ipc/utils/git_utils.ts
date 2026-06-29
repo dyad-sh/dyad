@@ -564,7 +564,14 @@ export async function gitCheckout({
     // else (user files, or .dyad/* which holds chat history/media) surfaces the
     // original error instead of being silently deleted.
     const errorDetails = result.stderr.trim() || result.stdout.trim();
-    const blockingFiles = parseUntrackedOverwriteFiles(errorDetails);
+    // The "untracked files would be overwritten" block normally lands on stderr,
+    // but parse stdout too: if stderr carries unrelated noise (e.g. an autocrlf
+    // hint) the `||` fallback above would never reach stdout and we'd miss the
+    // blocking-file list. Check both streams independently.
+    const blockingFiles =
+      parseUntrackedOverwriteFiles(result.stderr).length > 0
+        ? parseUntrackedOverwriteFiles(result.stderr)
+        : parseUntrackedOverwriteFiles(result.stdout);
     if (
       blockingFiles.length > 0 &&
       blockingFiles.every((file) => isRegeneratableManagedFile(file))
@@ -593,11 +600,16 @@ export async function gitStageToRevert({
   path,
   targetOid,
 }: GitStageToRevertParams): Promise<void> {
-  // Safety: refuse to run if the work-tree isn't clean. Covers both git
-  // backends (isGitStatusClean branches on enableNativeGit internally). The
-  // frontend gate (UncommittedChangesGateDialog) normally prevents reaching
+  // Safety: refuse to run if there are *user-visible* uncommitted changes. We
+  // use the same user-visible filter as the gate (getGitUncommittedFiles) rather
+  // than a raw clean check, so Dyad-managed files that are hidden from the gate
+  // (pnpm-workspace.yaml, .dyad/*) don't block an otherwise-safe revert. App
+  // startup can write pnpm-workspace.yaml without any user-visible change, which
+  // would make a raw clean check fail here even though the gate never opened.
+  // The frontend gate (UncommittedChangesGateDialog) normally prevents reaching
   // here with a dirty tree; this is the defensive backstop.
-  if (!(await isGitStatusClean({ path }))) {
+  const userVisibleDirtyFiles = await getGitUncommittedFiles({ path });
+  if (userVisibleDirtyFiles.length > 0) {
     throw new DyadError(
       "Cannot revert: working tree has uncommitted changes.",
       DyadErrorKind.Conflict,

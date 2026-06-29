@@ -152,7 +152,7 @@ export function UncommittedChangesReview({
                 variant="destructive"
                 size="sm"
                 onClick={onDiscard}
-                disabled={isDiscarding}
+                disabled={isCommitting || isDiscarding}
                 data-testid="confirm-discard-button"
               >
                 {isDiscarding ? "Discarding..." : "Yes, discard all"}
@@ -161,7 +161,7 @@ export function UncommittedChangesReview({
                 variant="outline"
                 size="sm"
                 onClick={() => onShowDiscardConfirm(false)}
-                disabled={isDiscarding}
+                disabled={isCommitting || isDiscarding}
               >
                 Keep changes
               </Button>

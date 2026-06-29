@@ -225,6 +225,8 @@ export function useVersions(appId: number | null) {
           isOpeningGateRef.current ||
           store.get(uncommittedChangesGateAtom).open
         ) {
+          // Surface the no-op so a second click doesn't appear to do nothing.
+          toast.info("A revert is already in progress");
           return null;
         }
         isOpeningGateRef.current = true;

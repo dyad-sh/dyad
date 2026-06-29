@@ -14,6 +14,7 @@ import {
 import type { Version } from "@/ipc/types";
 import { ipc, MAX_VERSION_NOTE_LENGTH } from "@/ipc/types";
 import { cn } from "@/lib/utils";
+import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -723,18 +724,32 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             onClick={async (e) => {
                               e.stopPropagation();
 
-                              const result = await revertVersion({
-                                versionId: version.oid,
-                              });
-                              // Cancelled at the uncommitted-changes prompt.
-                              if (!result) {
-                                return;
-                              }
-                              setSelectedVersionId(null);
-                              // Close the pane after revert to force a refresh on next open
-                              onClose();
-                              if (version.dbTimestamp) {
-                                await restartApp();
+                              // revertVersion performs an IPC call
+                              // (getUncommittedFiles) before the mutation, which
+                              // can throw outside the mutation's error-toast
+                              // handler. Wrap the whole flow so any failure surfaces
+                              // a toast instead of an unhandled rejection, matching
+                              // the pattern used in MessagesList.
+                              try {
+                                const result = await revertVersion({
+                                  versionId: version.oid,
+                                });
+                                // Cancelled at the uncommitted-changes prompt.
+                                if (!result) {
+                                  return;
+                                }
+                                setSelectedVersionId(null);
+                                // Close the pane after revert to force a refresh on next open
+                                onClose();
+                                if (version.dbTimestamp) {
+                                  await restartApp();
+                                }
+                              } catch (error) {
+                                console.error(
+                                  "Error during restore operation:",
+                                  error,
+                                );
+                                showError("Failed to restore version");
                               }
                             }}
                             // Also disable while a preview checkout is in flight:
@@ -743,7 +758,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             // same lock. Clicking Restore before the checkout
                             // settles races the two git operations, so the revert
                             // can observe an already-clean worktree and no-op.
-                            disabled={isRevertingVersion || isCheckingOutVersion}
+                            disabled={
+                              isRevertingVersion || isCheckingOutVersion
+                            }
                             className={cn(
                               "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
                               selectedVersionId === version.oid && "visible",

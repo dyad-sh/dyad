@@ -568,9 +568,10 @@ export async function gitCheckout({
     // but parse stdout too: if stderr carries unrelated noise (e.g. an autocrlf
     // hint) the `||` fallback above would never reach stdout and we'd miss the
     // blocking-file list. Check both streams independently.
+    const stderrBlockingFiles = parseUntrackedOverwriteFiles(result.stderr);
     const blockingFiles =
-      parseUntrackedOverwriteFiles(result.stderr).length > 0
-        ? parseUntrackedOverwriteFiles(result.stderr)
+      stderrBlockingFiles.length > 0
+        ? stderrBlockingFiles
         : parseUntrackedOverwriteFiles(result.stdout);
     if (
       blockingFiles.length > 0 &&

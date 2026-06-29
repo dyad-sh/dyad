@@ -627,7 +627,6 @@ export async function extractCodebase({
   const sortedFiles = await sortFilesByModificationTime([...new Set(files)]);
 
   // Format files and collect individual file contents
-  const filesArray: CodebaseFile[] = [];
   const formatPromises = sortedFiles.map(async (file) => {
     // Get raw content for the files array
     const normalizedRelativePath = path
@@ -659,16 +658,21 @@ export async function extractCodebase({
       fileContent = readContent ?? "// Error reading file";
     }
 
-    filesArray.push({
-      path: normalizedRelativePath,
-      content: fileContent,
-      force: isForced,
-    });
-
-    return formattedContent;
+    return {
+      formattedContent,
+      file: {
+        path: normalizedRelativePath,
+        content: fileContent,
+        force: isForced,
+      } satisfies CodebaseFile,
+    };
   });
 
-  const formattedFiles = await Promise.all(formatPromises);
+  const formattedResults = await Promise.all(formatPromises);
+  const formattedFiles = formattedResults.map(
+    (result) => result.formattedContent,
+  );
+  const filesArray = formattedResults.map((result) => result.file);
   const formattedOutput = formattedFiles.join("");
 
   const endTime = Date.now();

@@ -83,6 +83,7 @@ export type CheckoutVersionResponse = z.infer<
 >;
 
 const CommitHashSchema = z.string().regex(/^[a-f0-9]{40}$/i);
+export const MAX_VERSION_NOTE_LENGTH = 10_000;
 
 export const SetVersionFavoriteParamsSchema = z.object({
   appId: z.number(),
@@ -93,7 +94,7 @@ export const SetVersionFavoriteParamsSchema = z.object({
 export const SetVersionNoteParamsSchema = z.object({
   appId: z.number(),
   versionId: CommitHashSchema,
-  note: z.string().nullable(),
+  note: z.string().max(MAX_VERSION_NOTE_LENGTH).nullable(),
 });
 
 export const VersionMetadataResultSchema = z.object({

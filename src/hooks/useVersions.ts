@@ -16,13 +16,16 @@ export function useVersions(appId: number | null) {
   const { restartApp } = useRunApp();
   const { settings } = useSettings();
 
-  const updateVersionMetadataCache = (result: {
-    oid: string;
-    isFavorite: boolean;
-    note: string | null;
-  }) => {
+  const updateVersionMetadataCache = (
+    result: {
+      oid: string;
+      isFavorite: boolean;
+      note: string | null;
+    },
+    targetAppId = appId,
+  ) => {
     queryClient.setQueryData<Version[]>(
-      queryKeys.versions.list({ appId }),
+      queryKeys.versions.list({ appId: targetAppId }),
       (oldVersions) =>
         oldVersions?.map((version) =>
           version.oid === result.oid
@@ -124,26 +127,34 @@ export function useVersions(appId: number | null) {
         isFavorite,
       });
     },
-    onSuccess: updateVersionMetadataCache,
+    onSuccess: (result) => {
+      updateVersionMetadataCache(result);
+    },
     meta: { showErrorToast: true },
   });
 
   const setVersionNoteMutation = useMutation<
     { oid: string; isFavorite: boolean; note: string | null },
     Error,
-    { versionId: string; note: string | null }
+    { appId?: number | null; versionId: string; note: string | null }
   >({
-    mutationFn: async ({ versionId, note }) => {
-      if (appId === null) {
+    mutationFn: async ({ appId: mutationAppId, versionId, note }) => {
+      const targetAppId = mutationAppId === undefined ? appId : mutationAppId;
+      if (targetAppId === null) {
         throw new DyadError("App ID is null", DyadErrorKind.External);
       }
       return ipc.version.setVersionNote({
-        appId,
+        appId: targetAppId,
         versionId,
         note,
       });
     },
-    onSuccess: updateVersionMetadataCache,
+    onSuccess: (result, variables) => {
+      updateVersionMetadataCache(
+        result,
+        variables.appId === undefined ? appId : variables.appId,
+      );
+    },
     meta: { showErrorToast: true },
   });
 

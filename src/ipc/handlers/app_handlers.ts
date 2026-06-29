@@ -538,6 +538,9 @@ export function registerAppHandlers() {
         .map((version) => ({
           appId: newDbApp.id,
           commitHash: version.commitHash,
+          // neonDbTimestamp intentionally omitted: duplicated apps get their
+          // own Neon branches, so snapshot timestamps from the original app
+          // do not apply.
           isFavorite: version.isFavorite,
           note: version.note,
         }));

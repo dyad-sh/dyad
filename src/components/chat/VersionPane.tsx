@@ -12,7 +12,7 @@ import {
   Pencil,
 } from "lucide-react";
 import type { Version } from "@/ipc/types";
-import { ipc } from "@/ipc/types";
+import { ipc, MAX_VERSION_NOTE_LENGTH } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
 import { useQuery } from "@tanstack/react-query";
@@ -55,6 +55,7 @@ interface VersionPaneProps {
 }
 
 type SaveVersionNote = (
+  appId: number | null,
   versionId: string,
   note: string | null,
   syncCache: boolean,
@@ -75,6 +76,7 @@ function getPendingNoteSaveKey(appId: number | null, versionId: string) {
 export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
   const currentAppIdRef = useRef(appId);
+  const previousAppIdRef = useRef(appId);
   currentAppIdRef.current = appId;
   const { refreshApp, app } = useLoadApp(appId);
   const { restartApp } = useRunApp();
@@ -98,8 +100,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const [expandedNoteVersionIds, setExpandedNoteVersionIds] = useState<
     Set<string>
   >(() => new Set());
+  const [autoFocusNoteVersionIds, setAutoFocusNoteVersionIds] = useState<
+    Set<string>
+  >(() => new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const noteSaveTimeoutsRef = useRef(new Map<string, PendingNoteSave>());
+  const liveVersionsRef = useRef(liveVersions);
+  liveVersionsRef.current = liveVersions;
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -128,12 +135,17 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   };
 
   const saveVersionNote = async (
+    targetAppId: number | null,
     versionId: string,
     note: string | null,
     syncCache = true,
   ) => {
     try {
-      const result = await setVersionNote({ versionId, note });
+      const result = await setVersionNote({
+        appId: targetAppId,
+        versionId,
+        note,
+      });
       if (syncCache) {
         updateCachedVersion(result.oid, {
           isFavorite: result.isFavorite,
@@ -146,7 +158,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         return;
       }
       const result = await refreshVersions();
-      setCachedVersions(result.data ?? liveVersions);
+      setCachedVersions(result.data ?? liveVersionsRef.current);
     }
   };
   const flushPendingNoteSaves = useCallback((syncCache = true) => {
@@ -155,6 +167,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     for (const [, pendingSave] of pendingSaves) {
       clearTimeout(pendingSave.timeout);
       void pendingSave.saveVersionNote(
+        pendingSave.appId,
         pendingSave.versionId,
         pendingSave.note,
         syncCache && pendingSave.appId === currentAppIdRef.current,
@@ -178,7 +191,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       if (isVisible && !wasVisibleRef.current) {
         if (appId) {
           const result = await refreshVersions();
-          setCachedVersions(result.data ?? liveVersions);
+          setCachedVersions(result.data ?? liveVersionsRef.current);
         }
       }
 
@@ -188,6 +201,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         setSearchQuery("");
         setShowFavoritesOnly(false);
         setExpandedNoteVersionIds(new Set());
+        setAutoFocusNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
           await checkoutVersion({ appId, versionId: "main" });
@@ -212,6 +226,19 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     liveVersions,
     restartApp,
   ]);
+
+  useEffect(() => {
+    if (previousAppIdRef.current === appId) {
+      return;
+    }
+    previousAppIdRef.current = appId;
+    flushPendingNoteSaves(false);
+    setCachedVersions([]);
+    setSearchQuery("");
+    setShowFavoritesOnly(false);
+    setExpandedNoteVersionIds(new Set());
+    setAutoFocusNoteVersionIds(new Set());
+  }, [appId, flushPendingNoteSaves]);
 
   useEffect(() => {
     return () => {
@@ -276,6 +303,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       }
       noteSaveTimeoutsRef.current.delete(pendingSaveKey);
       void pendingSave.saveVersionNote(
+        pendingSave.appId,
         pendingSave.versionId,
         pendingSave.note,
         pendingSave.appId === currentAppIdRef.current,
@@ -297,6 +325,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       clearTimeout(existingPendingSave.timeout);
       noteSaveTimeoutsRef.current.delete(pendingSaveKey);
       void existingPendingSave.saveVersionNote(
+        existingPendingSave.appId,
         existingPendingSave.versionId,
         note,
         existingPendingSave.appId === currentAppIdRef.current,
@@ -571,9 +600,20 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             value={version.note ?? ""}
                             placeholder="Add note..."
                             aria-label={`Note for version ${versionNumber}`}
-                            autoFocus={!version.note}
+                            autoFocus={autoFocusNoteVersionIds.has(version.oid)}
+                            maxLength={MAX_VERSION_NOTE_LENGTH}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => e.stopPropagation()}
+                            onFocus={() => {
+                              setAutoFocusNoteVersionIds((previous) => {
+                                if (!previous.has(version.oid)) {
+                                  return previous;
+                                }
+                                const next = new Set(previous);
+                                next.delete(version.oid);
+                                return next;
+                              });
+                            }}
                             onChange={(e) => {
                               const note = e.target.value;
                               setExpandedNoteVersionIds((previous) => {
@@ -599,6 +639,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             onClick={(e) => {
                               e.stopPropagation();
                               setExpandedNoteVersionIds((previous) => {
+                                const next = new Set(previous);
+                                next.add(version.oid);
+                                return next;
+                              });
+                              setAutoFocusNoteVersionIds((previous) => {
                                 const next = new Set(previous);
                                 next.add(version.oid);
                                 return next;

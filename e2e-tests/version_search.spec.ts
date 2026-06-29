@@ -46,6 +46,7 @@ testSkipIfWindows("version search", async ({ po }) => {
   const versionNote = "Stable landing screen";
   await po.page.getByLabel("Add note for version 2").click();
   const noteInput = po.page.getByLabel("Note for version 2");
+  await expect(noteInput).toHaveAttribute("maxlength", "10000");
   await noteInput.fill(versionNote);
   await po.page.getByLabel("Close version pane").click();
   await versionButton.click();

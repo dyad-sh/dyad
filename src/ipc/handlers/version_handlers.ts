@@ -285,16 +285,12 @@ export function registerVersionHandlers() {
 
   createTypedHandler(versionContracts.setVersionFavorite, async (_, params) => {
     const { appId, versionId, isFavorite } = params;
-    return withLock(appId, async () =>
-      upsertVersionMetadata({ appId, versionId, isFavorite }),
-    );
+    return upsertVersionMetadata({ appId, versionId, isFavorite });
   });
 
   createTypedHandler(versionContracts.setVersionNote, async (_, params) => {
     const { appId, versionId, note } = params;
-    return withLock(appId, async () =>
-      upsertVersionMetadata({ appId, versionId, note }),
-    );
+    return upsertVersionMetadata({ appId, versionId, note });
   });
 
   createTypedHandler(versionContracts.getCurrentBranch, async (_, params) => {

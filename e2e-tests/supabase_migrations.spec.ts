@@ -53,6 +53,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   // Send a prompt that triggers a migration
   await po.sendPrompt("tc=execute-sql-no-description");
   await po.chatActions.waitForChatCompletion();
+  await po.approveProposal();
 
   await expect(async () => {
     // Check that one migration file was created
@@ -126,6 +127,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // Send a prompt that triggers a migration
   await po.sendPrompt("tc=execute-sql-no-description");
   await po.chatActions.waitForChatCompletion();
+  await po.approveProposal();
 
   await expect(async () => {
     // Check that one migration file was created

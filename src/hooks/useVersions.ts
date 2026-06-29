@@ -199,14 +199,18 @@ export function useVersions(appId: number | null) {
       if (appId === null) {
         throw new DyadError("App ID is null", DyadErrorKind.External);
       }
-      const uncommittedFiles = await queryClient.fetchQuery({
-        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
-        queryFn: () => ipc.git.getUncommittedFiles({ appId }),
-        // Always read the current worktree state — the cached value (populated by
-        // the banner's poll under the global 60s staleTime) can be stale right
-        // after an edit, which would skip the gate.
-        staleTime: 0,
-      });
+      // Read the current worktree state directly via IPC rather than through the
+      // query cache. `fetchQuery` (even with staleTime: 0) dedupes against an
+      // in-flight request for the same key, and the banner polls this exact key
+      // every 5s (see useUncommittedFiles). So fetchQuery can hand back the
+      // result of a poll that started before the latest edit — reporting a clean
+      // worktree and silently skipping the gate. A direct IPC call always
+      // reflects the true current state; seed the cache so the banner stays in sync.
+      const uncommittedFiles = await ipc.git.getUncommittedFiles({ appId });
+      queryClient.setQueryData(
+        queryKeys.uncommittedFiles.byApp({ appId }),
+        uncommittedFiles,
+      );
       let resolution: UncommittedChangesResolution | null = null;
       if (uncommittedFiles.length > 0) {
         // Bail out if another revert already has the gate dialog open (or is

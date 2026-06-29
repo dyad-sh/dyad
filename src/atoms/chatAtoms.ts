@@ -481,6 +481,8 @@ export interface PendingToolConsent {
   serverId?: number;
   serverName?: string | null;
   classifierReason?: string | null;
+  // True while the auto-approve classifier is still deciding (shows a spinner).
+  classifierPending?: boolean;
 }
 
 export const pendingToolConsentsAtom = atom<PendingToolConsent[]>([]);

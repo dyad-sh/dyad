@@ -8,6 +8,7 @@ import {
   Check,
   Ban,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import type { PendingToolConsent } from "@/atoms/chatAtoms";
 import {
@@ -42,6 +43,7 @@ export function AgentConsentBanner({
     inputPreview,
     serverName,
     classifierReason,
+    classifierPending,
   } = consent;
   const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
   const sqlDeletesData = consent.metadata?.sqlDeletesData === true;
@@ -121,7 +123,16 @@ export function AgentConsentBanner({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-        {classifierReason && (
+        {classifierPending ? (
+          <div
+            className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+            <span>{t("aiReviewingRequest")}</span>
+          </div>
+        ) : classifierReason ? (
           <div className="ml-6 mb-1.5 flex gap-2 rounded-lg border-l-4 border-orange-400 bg-amber-50 px-3 py-2 dark:border-orange-500 dark:bg-amber-950/30">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400" />
             <div className="min-w-0">
@@ -133,7 +144,7 @@ export function AgentConsentBanner({
               </div>
             </div>
           </div>
-        )}
+        ) : null}
         {inputPreview && (
           <div className="ml-6 mb-1.5">
             {sqlMutatesSchema && (

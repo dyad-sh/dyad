@@ -8,6 +8,8 @@ vi.mock("react-i18next", () => ({
       ({
         changesDatabaseSchema: "Changes database schema",
         destructiveDataChange: "Destructive data change",
+        aiReviewingRequest:
+          "AI is reviewing this request to decide if it's safe to auto-approve…",
       })[key] ?? key,
   }),
 }));
@@ -71,5 +73,27 @@ describe("AgentConsentBanner", () => {
     expect(
       screen.getByText(/Sends an email to an external address/),
     ).toBeTruthy();
+  });
+
+  it("shows the reviewing spinner and live buttons while the classifier is pending", () => {
+    render(
+      <AgentConsentBanner
+        consent={{
+          kind: "mcp",
+          requestId: "request",
+          chatId: 1,
+          toolName: "calculator_add",
+          serverName: "calc-server",
+          classifierPending: true,
+        }}
+        onDecision={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/reviewing this request/i)).toBeTruthy();
+    // Buttons stay clickable during review.
+    expect(screen.getByRole("button", { name: "Allow once" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
   });
 });

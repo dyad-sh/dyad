@@ -347,9 +347,26 @@ export function useNotificationHandler() {
     return () => unsubscribe();
   }, [handleConsentRequest]);
 
-  // MCP Tool Consent Listener (IPC)
+  // MCP Tool Consent Listener (IPC). When the auto-approve classifier is still
+  // running we wait for its verdict: a notification fires only once we know the
+  // user is needed (see the classified listener), not for tools it auto-approves.
   useEffect(() => {
     const unsubscribe = ipc.events.mcp.onConsentRequest(async (payload) => {
+      if (payload.classifierPending) return;
+      handleConsentRequest({
+        chatId: payload.chatId,
+        toolName: payload.toolName,
+        sourceLabel: payload.serverName || "an MCP server",
+        tagPrefix: "dyad-mcp-consent",
+      }).catch(console.error);
+    });
+    return () => unsubscribe();
+  }, [handleConsentRequest]);
+
+  // Classifier asked for manual review: notify now, evaluating backgrounded
+  // state at this moment rather than when the request first arrived.
+  useEffect(() => {
+    const unsubscribe = ipc.events.mcp.onConsentClassified(async (payload) => {
       handleConsentRequest({
         chatId: payload.chatId,
         toolName: payload.toolName,

@@ -131,3 +131,31 @@ testSkipIfWindows(
     ).toHaveCount(0);
   },
 );
+
+// The prompt appears immediately with an "AI reviewing" spinner while the
+// classifier decides; the user can approve before it finishes. (The fake
+// classifier answers print_envs slowly so the spinner is observable.)
+testSkipIfWindows(
+  "mcp auto-consent - user can approve while the classifier is still reviewing",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await addTestMcpServer(po);
+    await po.settings.waitForMcpTool("testing-mcp-server", "print_envs");
+    await enableAutoApproveSafeMcpTools(po);
+    await startAgentChat(po);
+
+    await po.sendPrompt("tc=local-agent/mcp-print-envs", {
+      skipWaitForCompletion: true,
+    });
+
+    // The prompt shows immediately with the reviewing spinner and live buttons.
+    await expect(po.page.getByText(/reviewing this request/i)).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    // The user decides before the classifier returns.
+    await po.page.getByRole("button", { name: "Allow once" }).click();
+
+    await po.chatActions.waitForChatCompletion();
+    await expect(po.page.getByText(/reviewing this request/i)).toHaveCount(0);
+  },
+);

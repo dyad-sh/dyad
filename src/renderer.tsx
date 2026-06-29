@@ -242,8 +242,37 @@ function App() {
           toolDescription: payload.toolDescription,
           inputPreview: payload.inputPreview,
           classifierReason: payload.reason,
+          classifierPending: payload.classifierPending ?? false,
         },
       ]);
+    });
+    return () => unsubscribe();
+  }, [setPendingToolConsents]);
+
+  // Auto-approved by the classifier: remove the prompt.
+  useEffect(() => {
+    const unsubscribe = ipc.events.mcp.onConsentResolved((payload) => {
+      setPendingToolConsents((prev) =>
+        prev.filter((c) => c.requestId !== payload.requestId),
+      );
+    });
+    return () => unsubscribe();
+  }, [setPendingToolConsents]);
+
+  // Classifier wants review: drop the spinner and show the reason.
+  useEffect(() => {
+    const unsubscribe = ipc.events.mcp.onConsentClassified((payload) => {
+      setPendingToolConsents((prev) =>
+        prev.map((c) =>
+          c.requestId === payload.requestId
+            ? {
+                ...c,
+                classifierPending: false,
+                classifierReason: payload.reason,
+              }
+            : c,
+        ),
+      );
     });
     return () => unsubscribe();
   }, [setPendingToolConsents]);

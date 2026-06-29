@@ -115,20 +115,24 @@ export function useVersions(appId: number | null) {
   const setVersionFavoriteMutation = useMutation<
     { oid: string; isFavorite: boolean; note: string | null },
     Error,
-    { versionId: string; isFavorite: boolean }
+    { appId?: number | null; versionId: string; isFavorite: boolean }
   >({
-    mutationFn: async ({ versionId, isFavorite }) => {
-      if (appId === null) {
+    mutationFn: async ({ appId: mutationAppId, versionId, isFavorite }) => {
+      const targetAppId = mutationAppId === undefined ? appId : mutationAppId;
+      if (targetAppId === null) {
         throw new DyadError("App ID is null", DyadErrorKind.External);
       }
       return ipc.version.setVersionFavorite({
-        appId,
+        appId: targetAppId,
         versionId,
         isFavorite,
       });
     },
-    onSuccess: (result) => {
-      updateVersionMetadataCache(result);
+    onSuccess: (result, variables) => {
+      updateVersionMetadataCache(
+        result,
+        variables.appId === undefined ? appId : variables.appId,
+      );
     },
     meta: { showErrorToast: true },
   });

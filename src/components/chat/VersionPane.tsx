@@ -25,6 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { showError } from "@/lib/toast";
 
 import { useRunApp } from "@/hooks/useRunApp";
 
@@ -127,7 +128,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   ) => {
     setCachedVersions((prevVersions) => {
       const sourceVersions =
-        prevVersions.length > 0 ? prevVersions : liveVersions;
+        prevVersions.length > 0 ? prevVersions : liveVersionsRef.current;
       return sourceVersions.map((version) =>
         version.oid === versionId ? { ...version, ...updates } : version,
       );
@@ -152,13 +153,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
           note: result.note,
         });
       }
-    } catch (error) {
-      if (!syncCache) {
-        console.error("Failed to save pending version note", error);
-        return;
-      }
-      const result = await refreshVersions();
-      setCachedVersions(result.data ?? liveVersionsRef.current);
+    } catch {
+      showError("Failed to save version note. Please try again.");
     }
   };
   const flushPendingNoteSaves = useCallback((syncCache = true) => {
@@ -223,7 +219,6 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     checkoutVersion,
     flushPendingNoteSaves,
     refreshVersions,
-    liveVersions,
     restartApp,
   ]);
 
@@ -436,266 +431,284 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 >
                   <div
                     data-testid="version-list-item"
-                    className="flex-shrink-0 w-16 h-10 rounded border border-border bg-muted overflow-hidden flex items-center justify-center"
-                    aria-hidden="true"
+                    className="flex gap-3 w-full"
                   >
-                    {thumbnailUrl ? (
-                      <img
-                        src={thumbnailUrl}
-                        alt=""
-                        loading="lazy"
-                        className="w-full h-full object-cover object-top"
-                      />
-                    ) : (
-                      <span className="text-[10px] font-mono text-muted-foreground">
-                        {version.oid.slice(0, 4)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          data-testid={`version-favorite-button-${versionNumber}`}
-                          aria-label={
-                            version.isFavorite
-                              ? `Remove version ${versionNumber} from favorites`
-                              : `Favorite version ${versionNumber}`
-                          }
-                          title={
-                            version.isFavorite
-                              ? "Remove version from favorites"
-                              : "Favorite version"
-                          }
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            const nextIsFavorite = !version.isFavorite;
-                            updateCachedVersion(version.oid, {
-                              isFavorite: nextIsFavorite,
-                            });
-                            try {
-                              const result = await setVersionFavorite({
-                                versionId: version.oid,
-                                isFavorite: nextIsFavorite,
-                              });
-                              updateCachedVersion(result.oid, {
-                                isFavorite: result.isFavorite,
-                                note: result.note,
-                              });
-                            } catch {
-                              updateCachedVersion(version.oid, {
-                                isFavorite: version.isFavorite,
-                              });
-                            }
-                          }}
-                          className={cn(
-                            "rounded-sm p-0.5 transition-colors",
-                            version.isFavorite
-                              ? "text-[#6c55dc]"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <Star
-                            className={cn(
-                              "h-3.5 w-3.5",
-                              version.isFavorite && "fill-[#6c55dc]",
-                            )}
-                          />
-                        </button>
-                        <span className="font-medium text-xs">
-                          Version{" "}
-                          <HighlightMatch
-                            text={String(versionNumber)}
-                            query={searchQuery.trim()}
-                          />{" "}
-                          (
-                          <HighlightMatch
-                            text={version.oid.slice(0, 7)}
-                            query={searchQuery.trim()}
-                          />
-                          )
+                    <div
+                      className="flex-shrink-0 w-16 h-10 rounded border border-border bg-muted overflow-hidden flex items-center justify-center"
+                      aria-hidden="true"
+                    >
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt=""
+                          loading="lazy"
+                          className="w-full h-full object-cover object-top"
+                        />
+                      ) : (
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {version.oid.slice(0, 4)}
                         </span>
-                        {/* example format: '2025-07-25T21:52:01Z' */}
-                        {version.dbTimestamp &&
-                          (() => {
-                            const timestampMs = new Date(
-                              version.dbTimestamp,
-                            ).getTime();
-                            const isExpired =
-                              Date.now() - timestampMs > 24 * 60 * 60 * 1000;
-                            return (
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <div
-                                    className={cn(
-                                      "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md",
-                                      isExpired
-                                        ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                                        : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-                                    )}
-                                  >
-                                    <Database size={10} />
-                                    <span>DB</span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {isExpired
-                                    ? "DB snapshot may have expired (older than 24 hours)"
-                                    : `Database snapshot available at timestamp ${version.dbTimestamp}`}
-                                </TooltipContent>
-                              </Tooltip>
-                            );
-                          })()}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isCheckingOutVersion &&
-                          selectedVersionId === version.oid && (
-                            <Loader2
-                              size={12}
-                              className="animate-spin text-primary"
-                            />
-                          )}
-                        <span className="text-xs opacity-90">
-                          {isCheckingOutVersion &&
-                          selectedVersionId === version.oid
-                            ? "Loading..."
-                            : formatDistanceToNow(
-                                new Date(version.timestamp * 1000),
-                                {
-                                  addSuffix: true,
-                                },
-                              )}
-                        </span>
-                      </div>
+                      )}
                     </div>
-                    <div className="mt-1 flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        {version.message && (
-                          <p className="text-sm">
-                            <HighlightMatch
-                              text={
-                                version.message.startsWith(
-                                  "Reverted all changes back to version ",
-                                )
-                                  ? version.message.replace(
-                                      /Reverted all changes back to version ([a-f0-9]+)/,
-                                      (_, hash) => {
-                                        const targetVersionNumber =
-                                          versionNumberByOid.get(hash);
-                                        return targetVersionNumber !== undefined
-                                          ? `Reverted all changes back to version ${targetVersionNumber}`
-                                          : version.message;
-                                      },
-                                    )
-                                  : version.message
-                              }
-                              query={searchQuery.trim()}
-                            />
-                          </p>
-                        )}
-
-                        {showNoteEditor ? (
-                          <Textarea
-                            value={version.note ?? ""}
-                            placeholder="Add note..."
-                            aria-label={`Note for version ${versionNumber}`}
-                            autoFocus={autoFocusNoteVersionIds.has(version.oid)}
-                            maxLength={MAX_VERSION_NOTE_LENGTH}
-                            onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            onFocus={() => {
-                              setAutoFocusNoteVersionIds((previous) => {
-                                if (!previous.has(version.oid)) {
-                                  return previous;
-                                }
-                                const next = new Set(previous);
-                                next.delete(version.oid);
-                                return next;
-                              });
-                            }}
-                            onChange={(e) => {
-                              const note = e.target.value;
-                              setExpandedNoteVersionIds((previous) => {
-                                if (previous.has(version.oid)) {
-                                  return previous;
-                                }
-                                const next = new Set(previous);
-                                next.add(version.oid);
-                                return next;
-                              });
-                              updateCachedVersion(version.oid, { note });
-                              queueVersionNoteSave(version.oid, note);
-                            }}
-                            onBlur={(e) =>
-                              flushVersionNoteSave(version.oid, e.target.value)
-                            }
-                            className="mt-2 min-h-8 resize-none px-2 py-1 text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0"
-                          />
-                        ) : (
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            aria-label={`Add note for version ${versionNumber}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpandedNoteVersionIds((previous) => {
-                                const next = new Set(previous);
-                                next.add(version.oid);
-                                return next;
-                              });
-                              setAutoFocusNoteVersionIds((previous) => {
-                                const next = new Set(previous);
-                                next.add(version.oid);
-                                return next;
-                              });
-                            }}
-                            className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            <span>Add note</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {/* Restore button */}
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-
-                            await revertVersion({
-                              versionId: version.oid,
-                            });
-                            setSelectedVersionId(null);
-                            // Close the pane after revert to force a refresh on next open
-                            onClose();
-                            if (version.dbTimestamp) {
-                              await restartApp();
+                            data-testid={`version-favorite-button-${versionNumber}`}
+                            aria-label={
+                              version.isFavorite
+                                ? `Remove version ${versionNumber} from favorites`
+                                : `Favorite version ${versionNumber}`
                             }
-                          }}
-                          disabled={isRevertingVersion}
-                          className={cn(
-                            "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
-                            selectedVersionId === version.oid && "visible",
-                            isRevertingVersion &&
-                              "opacity-50 cursor-not-allowed",
-                          )}
-                          aria-label="Restore to this version"
-                          title={
-                            isRevertingVersion
-                              ? "Restoring to this version..."
-                              : "Restore to this version"
-                          }
-                        >
-                          {isRevertingVersion ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <RotateCcw size={12} />
-                          )}
-                          <span>
-                            {isRevertingVersion ? "Restoring..." : "Restore"}
+                            title={
+                              version.isFavorite
+                                ? "Remove version from favorites"
+                                : "Favorite version"
+                            }
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const targetAppId = appId;
+                              const nextIsFavorite = !version.isFavorite;
+                              updateCachedVersion(version.oid, {
+                                isFavorite: nextIsFavorite,
+                              });
+                              try {
+                                const result = await setVersionFavorite({
+                                  appId: targetAppId,
+                                  versionId: version.oid,
+                                  isFavorite: nextIsFavorite,
+                                });
+                                if (targetAppId !== currentAppIdRef.current) {
+                                  return;
+                                }
+                                updateCachedVersion(result.oid, {
+                                  isFavorite: result.isFavorite,
+                                  note: result.note,
+                                });
+                              } catch {
+                                if (targetAppId !== currentAppIdRef.current) {
+                                  return;
+                                }
+                                updateCachedVersion(version.oid, {
+                                  isFavorite: version.isFavorite,
+                                });
+                              }
+                            }}
+                            className={cn(
+                              "rounded-sm p-0.5 transition-colors",
+                              version.isFavorite
+                                ? "text-[#6c55dc]"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            <Star
+                              className={cn(
+                                "h-3.5 w-3.5",
+                                version.isFavorite && "fill-[#6c55dc]",
+                              )}
+                            />
+                          </button>
+                          <span className="font-medium text-xs">
+                            Version{" "}
+                            <HighlightMatch
+                              text={String(versionNumber)}
+                              query={searchQuery.trim()}
+                            />{" "}
+                            (
+                            <HighlightMatch
+                              text={version.oid.slice(0, 7)}
+                              query={searchQuery.trim()}
+                            />
+                            )
                           </span>
-                        </button>
+                          {/* example format: '2025-07-25T21:52:01Z' */}
+                          {version.dbTimestamp &&
+                            (() => {
+                              const timestampMs = new Date(
+                                version.dbTimestamp,
+                              ).getTime();
+                              const isExpired =
+                                Date.now() - timestampMs > 24 * 60 * 60 * 1000;
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <div
+                                      className={cn(
+                                        "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md",
+                                        isExpired
+                                          ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                          : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+                                      )}
+                                    >
+                                      <Database size={10} />
+                                      <span>DB</span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {isExpired
+                                      ? "DB snapshot may have expired (older than 24 hours)"
+                                      : `Database snapshot available at timestamp ${version.dbTimestamp}`}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isCheckingOutVersion &&
+                            selectedVersionId === version.oid && (
+                              <Loader2
+                                size={12}
+                                className="animate-spin text-primary"
+                              />
+                            )}
+                          <span className="text-xs opacity-90">
+                            {isCheckingOutVersion &&
+                            selectedVersionId === version.oid
+                              ? "Loading..."
+                              : formatDistanceToNow(
+                                  new Date(version.timestamp * 1000),
+                                  {
+                                    addSuffix: true,
+                                  },
+                                )}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-1 flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          {version.message && (
+                            <p className="text-sm">
+                              <HighlightMatch
+                                text={
+                                  version.message.startsWith(
+                                    "Reverted all changes back to version ",
+                                  )
+                                    ? version.message.replace(
+                                        /Reverted all changes back to version ([a-f0-9]+)/,
+                                        (_, hash) => {
+                                          const targetVersionNumber =
+                                            versionNumberByOid.get(hash);
+                                          return targetVersionNumber !==
+                                            undefined
+                                            ? `Reverted all changes back to version ${targetVersionNumber}`
+                                            : version.message;
+                                        },
+                                      )
+                                    : version.message
+                                }
+                                query={searchQuery.trim()}
+                              />
+                            </p>
+                          )}
+
+                          {showNoteEditor ? (
+                            <Textarea
+                              value={version.note ?? ""}
+                              placeholder="Add note..."
+                              aria-label={`Note for version ${versionNumber}`}
+                              autoFocus={autoFocusNoteVersionIds.has(
+                                version.oid,
+                              )}
+                              maxLength={MAX_VERSION_NOTE_LENGTH}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              onFocus={() => {
+                                setAutoFocusNoteVersionIds((previous) => {
+                                  if (!previous.has(version.oid)) {
+                                    return previous;
+                                  }
+                                  const next = new Set(previous);
+                                  next.delete(version.oid);
+                                  return next;
+                                });
+                              }}
+                              onChange={(e) => {
+                                const note = e.target.value;
+                                setExpandedNoteVersionIds((previous) => {
+                                  if (previous.has(version.oid)) {
+                                    return previous;
+                                  }
+                                  const next = new Set(previous);
+                                  next.add(version.oid);
+                                  return next;
+                                });
+                                updateCachedVersion(version.oid, { note });
+                                queueVersionNoteSave(version.oid, note);
+                              }}
+                              onBlur={(e) =>
+                                flushVersionNoteSave(
+                                  version.oid,
+                                  e.target.value,
+                                )
+                              }
+                              className="mt-2 min-h-8 resize-none px-2 py-1 text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              aria-label={`Add note for version ${versionNumber}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedNoteVersionIds((previous) => {
+                                  const next = new Set(previous);
+                                  next.add(version.oid);
+                                  return next;
+                                });
+                                setAutoFocusNoteVersionIds((previous) => {
+                                  const next = new Set(previous);
+                                  next.add(version.oid);
+                                  return next;
+                                });
+                              }}
+                              className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              <span>Add note</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {/* Restore button */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+
+                              await revertVersion({
+                                versionId: version.oid,
+                              });
+                              setSelectedVersionId(null);
+                              // Close the pane after revert to force a refresh on next open
+                              onClose();
+                              if (version.dbTimestamp) {
+                                await restartApp();
+                              }
+                            }}
+                            disabled={isRevertingVersion}
+                            className={cn(
+                              "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
+                              selectedVersionId === version.oid && "visible",
+                              isRevertingVersion &&
+                                "opacity-50 cursor-not-allowed",
+                            )}
+                            aria-label="Restore to this version"
+                            title={
+                              isRevertingVersion
+                                ? "Restoring to this version..."
+                                : "Restore to this version"
+                            }
+                          >
+                            {isRevertingVersion ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <RotateCcw size={12} />
+                            )}
+                            <span>
+                              {isRevertingVersion ? "Restoring..." : "Restore"}
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

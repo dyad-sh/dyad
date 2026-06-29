@@ -155,38 +155,22 @@ async function upsertVersionMetadata({
 
   const normalizedNote =
     note === undefined ? undefined : normalizeVersionNote(note);
-  const existingVersion = await db.query.versions.findFirst({
-    where: and(eq(versions.appId, appId), eq(versions.commitHash, versionId)),
-  });
 
-  if (existingVersion) {
-    const [updatedVersion] = await db
-      .update(versions)
-      .set({
-        ...(isFavorite === undefined ? {} : { isFavorite }),
-        ...(normalizedNote === undefined ? {} : { note: normalizedNote }),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(versions.appId, appId), eq(versions.commitHash, versionId)))
-      .returning({
-        isFavorite: versions.isFavorite,
-        note: versions.note,
-      });
-
-    return {
-      oid: versionId,
-      isFavorite: updatedVersion.isFavorite,
-      note: updatedVersion.note,
-    };
-  }
-
-  const [createdVersion] = await db
+  const [versionMetadata] = await db
     .insert(versions)
     .values({
       appId,
       commitHash: versionId,
       isFavorite: isFavorite ?? false,
       note: normalizedNote ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [versions.appId, versions.commitHash],
+      set: {
+        ...(isFavorite === undefined ? {} : { isFavorite }),
+        ...(normalizedNote === undefined ? {} : { note: normalizedNote }),
+        updatedAt: new Date(),
+      },
     })
     .returning({
       isFavorite: versions.isFavorite,
@@ -195,8 +179,8 @@ async function upsertVersionMetadata({
 
   return {
     oid: versionId,
-    isFavorite: createdVersion.isFavorite,
-    note: createdVersion.note,
+    isFavorite: versionMetadata.isFavorite,
+    note: versionMetadata.note,
   };
 }
 

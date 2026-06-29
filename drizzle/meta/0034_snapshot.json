@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a2479e37-7225-4e7d-ac77-948877c83560",
+  "id": "44ff3a2a-9437-491a-bdb2-e019f321e0ed",
   "prevId": "b5003e32-965d-48d8-a807-e252fd088c09",
   "tables": {
     "app_collections": {
@@ -129,6 +129,13 @@
         },
         "supabase_organization_slug": {
           "name": "supabase_organization_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supabase_test_user_id": {
+          "name": "supabase_test_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

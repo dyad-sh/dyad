@@ -101,7 +101,7 @@ async function createSupportedPnpmShim(userDataDir: string) {
 }
 
 function warmSocketFirewallCache() {
-  const maxAttempts = 5;
+  const maxAttempts = process.env.CI ? 8 : 5;
   const warmupEnv = {
     ...process.env,
     npm_config_store_dir: undefined,

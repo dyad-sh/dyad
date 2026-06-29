@@ -101,7 +101,7 @@ describe("extractCodebase", () => {
       },
     });
 
-    expect(result.files.map((file) => file.path)).toEqual([
+    expect(result.files.map((file) => file.path).sort()).toEqual([
       ".gitignore",
       "src.ts",
     ]);

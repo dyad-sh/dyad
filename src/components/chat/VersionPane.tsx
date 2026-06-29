@@ -54,8 +54,28 @@ interface VersionPaneProps {
   onClose: () => void;
 }
 
+type SaveVersionNote = (
+  versionId: string,
+  note: string | null,
+  syncCache: boolean,
+) => void;
+
+type PendingNoteSave = {
+  timeout: ReturnType<typeof setTimeout>;
+  appId: number | null;
+  versionId: string;
+  note: string | null;
+  saveVersionNote: SaveVersionNote;
+};
+
+function getPendingNoteSaveKey(appId: number | null, versionId: string) {
+  return `${appId ?? "none"}:${versionId}`;
+}
+
 export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
+  const currentAppIdRef = useRef(appId);
+  currentAppIdRef.current = appId;
   const { refreshApp, app } = useLoadApp(appId);
   const { restartApp } = useRunApp();
   const {
@@ -79,15 +99,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     Set<string>
   >(() => new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const noteSaveTimeoutsRef = useRef(
-    new Map<
-      string,
-      { timeout: ReturnType<typeof setTimeout>; note: string | null }
-    >(),
-  );
-  const saveVersionNoteRef = useRef(
-    (_versionId: string, _note: string | null, _syncCache: boolean) => {},
-  );
+  const noteSaveTimeoutsRef = useRef(new Map<string, PendingNoteSave>());
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -137,14 +149,16 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       setCachedVersions(result.data ?? liveVersions);
     }
   };
-  saveVersionNoteRef.current = saveVersionNote;
-
   const flushPendingNoteSaves = useCallback((syncCache = true) => {
     const pendingSaves = [...noteSaveTimeoutsRef.current.entries()];
     noteSaveTimeoutsRef.current.clear();
-    for (const [versionId, pendingSave] of pendingSaves) {
+    for (const [, pendingSave] of pendingSaves) {
       clearTimeout(pendingSave.timeout);
-      void saveVersionNoteRef.current(versionId, pendingSave.note, syncCache);
+      void pendingSave.saveVersionNote(
+        pendingSave.versionId,
+        pendingSave.note,
+        syncCache && pendingSave.appId === currentAppIdRef.current,
+      );
     }
   }, []);
 
@@ -250,23 +264,43 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     : favoriteFilteredVersions;
 
   const queueVersionNoteSave = (versionId: string, note: string | null) => {
-    const existingPendingSave = noteSaveTimeoutsRef.current.get(versionId);
+    const pendingSaveKey = getPendingNoteSaveKey(appId, versionId);
+    const existingPendingSave = noteSaveTimeoutsRef.current.get(pendingSaveKey);
     if (existingPendingSave) {
       clearTimeout(existingPendingSave.timeout);
     }
     const timeout = setTimeout(() => {
-      noteSaveTimeoutsRef.current.delete(versionId);
-      void saveVersionNoteRef.current(versionId, note, true);
+      const pendingSave = noteSaveTimeoutsRef.current.get(pendingSaveKey);
+      if (!pendingSave) {
+        return;
+      }
+      noteSaveTimeoutsRef.current.delete(pendingSaveKey);
+      void pendingSave.saveVersionNote(
+        pendingSave.versionId,
+        pendingSave.note,
+        pendingSave.appId === currentAppIdRef.current,
+      );
     }, 600);
-    noteSaveTimeoutsRef.current.set(versionId, { timeout, note });
+    noteSaveTimeoutsRef.current.set(pendingSaveKey, {
+      timeout,
+      appId,
+      versionId,
+      note,
+      saveVersionNote,
+    });
   };
 
   const flushVersionNoteSave = (versionId: string, note: string | null) => {
-    const existingPendingSave = noteSaveTimeoutsRef.current.get(versionId);
+    const pendingSaveKey = getPendingNoteSaveKey(appId, versionId);
+    const existingPendingSave = noteSaveTimeoutsRef.current.get(pendingSaveKey);
     if (existingPendingSave) {
       clearTimeout(existingPendingSave.timeout);
-      noteSaveTimeoutsRef.current.delete(versionId);
-      void saveVersionNoteRef.current(versionId, note, true);
+      noteSaveTimeoutsRef.current.delete(pendingSaveKey);
+      void existingPendingSave.saveVersionNote(
+        existingPendingSave.versionId,
+        note,
+        existingPendingSave.appId === currentAppIdRef.current,
+      );
     }
   };
 

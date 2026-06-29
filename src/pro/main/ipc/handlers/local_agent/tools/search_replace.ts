@@ -30,7 +30,7 @@ const searchReplaceSchema = z.object({
   old_string: z
     .string()
     .describe(
-      "The text to replace (must be unique within the file, and must match the file contents exactly, including all whitespace and indentation)",
+      "The text block to replace. Matching is line-based: each line in old_string must match a whole line in the file, not just a substring within a line. To edit part of a line, include the entire original line in old_string and the entire edited line in new_string. The block must be unique within the file.",
     ),
   new_string: z
     .string()
@@ -45,7 +45,7 @@ export const searchReplaceTool: ToolDefinition<
   name: "search_replace",
   description: `Use this tool to propose a search and replace operation on an existing file.
 
-The tool will replace ONE occurrence of old_string with new_string in the specified file.
+The tool will replace ONE occurrence of old_string with new_string in the specified file. Matching is line-based: old_string must match whole file lines, not a partial fragment within a line. To edit part of a line, include the entire original line in old_string and the entire edited line in new_string.
 
 CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
@@ -53,6 +53,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
    - Include AT LEAST 3-5 lines of context BEFORE the change point
    - Include AT LEAST 3-5 lines of context AFTER the change point
    - Include all whitespace, indentation, and surrounding code exactly as it appears in the file
+   - Do NOT use only a partial fragment of a line. Include the full line containing the change.
 
 2. SINGLE INSTANCE: This tool can only change ONE instance at a time. If you need to change multiple instances:
    - Make separate calls to this tool for each instance

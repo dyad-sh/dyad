@@ -240,6 +240,72 @@ describe("createDyadEngine", () => {
     expect(body.dyad_options).not.toHaveProperty("enable_smart_files_context");
   });
 
+  test("omits nullable or invalid UUID metadata from dyad options", async () => {
+    const requests: Array<{
+      input: RequestInfo | URL;
+      init?: RequestInit;
+    }> = [];
+
+    const provider = createDyadEngine({
+      apiKey: "dyad-pro-key",
+      baseURL: "https://engine.example.test/v1",
+      dyadOptions: {},
+      settings: {} as UserSettings,
+      fetch: async (input, init) => {
+        requests.push({ input, init });
+
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-5",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 1,
+              completion_tokens: 1,
+              total_tokens: 2,
+            },
+          }),
+          {
+            headers: { "content-type": "application/json" },
+          },
+        );
+      },
+    });
+
+    const model = provider.chatModel("gpt-5", {
+      providerId: "openai",
+    }) as LanguageModelV3;
+
+    await model.doGenerate({
+      prompt: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
+      providerOptions: {
+        "dyad-engine": {
+          dyadAppId: 42,
+          dyadAppUuid: null,
+          dyadAppName: "Test App",
+          dyadTurnUuid: "[no-request-id]",
+        },
+      },
+    } satisfies LanguageModelV3CallOptions);
+
+    expect(requests).toHaveLength(1);
+    const body = JSON.parse(String(requests[0].init?.body));
+    expect(body.dyad_options).toEqual({
+      app_id: 42,
+      app_name: "Test App",
+    });
+    expect(body).not.toHaveProperty("dyadAppUuid");
+    expect(body).not.toHaveProperty("dyadTurnUuid");
+  });
+
   test("sends stable free quota key separately from attempt request id", async () => {
     const requests: Array<{
       input: RequestInfo | URL;

@@ -28,6 +28,23 @@ export interface ChatParams {
 
 type DyadEngineProviderOptions = Record<string, any>;
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function toOptionalUuid(value: unknown): string | undefined {
+  return typeof value === "string" && UUID_REGEX.test(value)
+    ? value
+    : undefined;
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export interface ExampleProviderSettings {
   /**
 Example API key.
@@ -166,61 +183,34 @@ export function createDyadEngine(
           ...getExtraProviderOptionsForEngine(providerId, options.settings),
         };
 
-        const getDyadOption = (key: string) =>
-          key in parsedBody ? parsedBody[key] : dyadProviderOptions?.[key];
+        const takeDyadOption = (key: string) => {
+          const value =
+            key in parsedBody ? parsedBody[key] : dyadProviderOptions?.[key];
+          if (key in parsedBody) {
+            delete parsedBody[key];
+          }
+          return value;
+        };
 
-        const dyadVersionedFiles = getDyadOption("dyadVersionedFiles");
-        if ("dyadVersionedFiles" in parsedBody) {
-          delete parsedBody.dyadVersionedFiles;
-        }
-        const dyadFiles = getDyadOption("dyadFiles");
-        if ("dyadFiles" in parsedBody) {
-          delete parsedBody.dyadFiles;
-        }
+        const dyadVersionedFiles = takeDyadOption("dyadVersionedFiles");
+        const dyadFiles = takeDyadOption("dyadFiles");
         // Read from body (OpenAICompatible models spread providerOptions into
         // the body) with a fallback to an internal header (OpenAIResponses
         // models don't forward providerOptions, so we pass it via header).
         const requestId =
-          getDyadOption("dyadRequestId") ??
+          takeDyadOption("dyadRequestId") ??
           (init.headers as Record<string, string> | undefined)?.[
             DYAD_INTERNAL_REQUEST_ID_HEADER
           ];
-        if ("dyadRequestId" in parsedBody) {
-          delete parsedBody.dyadRequestId;
-        }
-        const dyadAppId = getDyadOption("dyadAppId");
-        if ("dyadAppId" in parsedBody) {
-          delete parsedBody.dyadAppId;
-        }
-        const dyadAppUuid = getDyadOption("dyadAppUuid");
-        if ("dyadAppUuid" in parsedBody) {
-          delete parsedBody.dyadAppUuid;
-        }
-        const dyadAppName = getDyadOption("dyadAppName");
-        if ("dyadAppName" in parsedBody) {
-          delete parsedBody.dyadAppName;
-        }
-        const dyadChatId = getDyadOption("dyadChatId");
-        if ("dyadChatId" in parsedBody) {
-          delete parsedBody.dyadChatId;
-        }
-        const dyadTurnUuid = getDyadOption("dyadTurnUuid");
-        if ("dyadTurnUuid" in parsedBody) {
-          delete parsedBody.dyadTurnUuid;
-        }
+        const dyadAppId = takeDyadOption("dyadAppId");
+        const dyadAppUuid = takeDyadOption("dyadAppUuid");
+        const dyadAppName = takeDyadOption("dyadAppName");
+        const dyadChatId = takeDyadOption("dyadChatId");
+        const dyadTurnUuid = takeDyadOption("dyadTurnUuid");
         const dyadDisableFiles =
-          disableDyadOptions || getDyadOption("dyadDisableFiles");
-        if ("dyadDisableFiles" in parsedBody) {
-          delete parsedBody.dyadDisableFiles;
-        }
-        const dyadMentionedApps = getDyadOption("dyadMentionedApps");
-        if ("dyadMentionedApps" in parsedBody) {
-          delete parsedBody.dyadMentionedApps;
-        }
-        const dyadSmartContextMode = getDyadOption("dyadSmartContextMode");
-        if ("dyadSmartContextMode" in parsedBody) {
-          delete parsedBody.dyadSmartContextMode;
-        }
+          disableDyadOptions || takeDyadOption("dyadDisableFiles");
+        const dyadMentionedApps = takeDyadOption("dyadMentionedApps");
+        const dyadSmartContextMode = takeDyadOption("dyadSmartContextMode");
 
         // Track and modify requestId with attempt number
         let modifiedRequestId = requestId;
@@ -231,11 +221,11 @@ export function createDyadEngine(
         }
 
         parsedBody.dyad_options = {
-          app_id: dyadAppId,
-          app_uuid: dyadAppUuid,
-          app_name: dyadAppName,
-          chat_id: dyadChatId,
-          turn_uuid: dyadTurnUuid,
+          app_id: toOptionalNumber(dyadAppId),
+          app_uuid: toOptionalUuid(dyadAppUuid),
+          app_name: toOptionalString(dyadAppName),
+          chat_id: toOptionalNumber(dyadChatId),
+          turn_uuid: toOptionalUuid(dyadTurnUuid),
         };
 
         // Add files to the request if they exist.

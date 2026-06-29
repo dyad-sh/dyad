@@ -13,6 +13,7 @@ import {
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
+import { v4 as uuidv4 } from "uuid";
 
 import { db } from "@/db";
 import { chats, messages, mcpServers } from "@/db/schema";
@@ -359,7 +360,7 @@ export async function handleLocalAgentStream(
     placeholderMessageId,
     systemPrompt,
     dyadRequestId,
-    turnUuid = dyadRequestId,
+    turnUuid = uuidv4(),
     readOnly = false,
     planModeOnly = false,
     messageOverride,

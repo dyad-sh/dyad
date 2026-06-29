@@ -51,10 +51,10 @@ export function getProviderOptions({
   const providerOptions: Record<string, any> = {
     "dyad-engine": {
       dyadAppId,
-      dyadAppUuid,
+      dyadAppUuid: dyadAppUuid ?? undefined,
       dyadAppName,
       dyadChatId,
-      dyadTurnUuid,
+      dyadTurnUuid: dyadTurnUuid ?? undefined,
       dyadRequestId,
       dyadDisableFiles,
       dyadSmartContextMode: smartContextMode,

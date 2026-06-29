@@ -69,39 +69,6 @@ export const TestResultSchema = z.object({
 });
 export type TestResult = z.infer<typeof TestResultSchema>;
 
-// =============================================================================
-// Recorded actions (preview "record a test" feature)
-// =============================================================================
-
-/**
- * A single user action captured while recording a flow in the preview. The
- * recorder captures *actions only* — the AI is responsible for turning these
- * into a Playwright test and adding assertions. `selector` holds robust locator
- * hints (in rough order of preference) so the AI can pick the best one.
- */
-export const RecordedActionSchema = z.object({
-  kind: z.enum(["click", "fill", "press", "navigate", "select", "check"]),
-  selector: z
-    .object({
-      role: z.string().optional(),
-      name: z.string().optional(),
-      label: z.string().optional(),
-      placeholder: z.string().optional(),
-      text: z.string().optional(),
-      testId: z.string().optional(),
-      dyadId: z.string().optional(),
-      dyadName: z.string().optional(),
-      tag: z.string().optional(),
-    })
-    .optional(),
-  /** For fill/select: the entered value. For press: the key. */
-  value: z.string().optional(),
-  /** For navigate: the destination URL (or path). */
-  url: z.string().optional(),
-  timestamp: z.number(),
-});
-export type RecordedAction = z.infer<typeof RecordedActionSchema>;
-
 export const ListAppTestsParamsSchema = z.object({
   appId: z.number(),
 });

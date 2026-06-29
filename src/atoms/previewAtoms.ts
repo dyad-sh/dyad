@@ -1,5 +1,4 @@
 import { ComponentSelection, VisualEditingChange } from "@/ipc/types";
-import type { RecordedAction } from "@/ipc/types/tests";
 import { atom } from "jotai";
 
 export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
@@ -26,9 +25,3 @@ export const pendingVisualChangesAtom = atom<Map<string, VisualEditingChange>>(
 );
 
 export const pendingScreenshotAppIdAtom = atom<number | null>(null);
-
-// "Record a test" feature: whether the preview is currently capturing user
-// actions, and the actions captured so far (in order). Cleared when a new
-// recording starts; consumed when the user stops recording.
-export const isRecordingAtom = atom<boolean>(false);
-export const recordedActionsAtom = atom<RecordedAction[]>([]);

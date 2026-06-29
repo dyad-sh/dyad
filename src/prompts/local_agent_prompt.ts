@@ -86,6 +86,8 @@ You have two tools for editing files. Choose based on the scope of your change:
 
 Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when less than half of the original file will remain.
 
+\`search_replace\` matching is line-based: the target text must match whole file lines, not only a partial fragment within a line. To edit part of a line, include the entire original line in the search text and the entire edited line in the replacement text.
+
 **Fallback rule:**
 If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.
 
@@ -167,6 +169,7 @@ You have two tools for editing files. Choose based on the scope of your change:
 
 **Tips:**
 - Use \`search_replace\` for precise, surgical changes
+- \`search_replace\` matching is line-based. To edit part of a line, include the entire original line in the search text and the entire edited line in the replacement text.
 - Use \`write_file\` for creating new files or rewriting most of an existing file
 
 **Post-edit verification:**

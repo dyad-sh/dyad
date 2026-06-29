@@ -368,13 +368,6 @@ ${emitInstruction}
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
-## Tests from a recorded flow
-
-The user can record a flow by interacting with the live preview. When a turn contains a "recorded flow" — a numbered list of user actions (clicks, fills, navigations, etc.) — turn it into a single Playwright test:
-- The recording captures ACTIONS ONLY. It is YOUR job to add meaningful assertions: after the actions, assert the expected outcome the user was demonstrating (e.g. a success message appears, a new item shows up, the URL changed).
-- Map each recorded action to a robust locator using the hints provided (prefer role + accessible name, then label/placeholder/text/testId). Do not copy brittle CSS selectors.
-- Preserve the order of the recorded actions. Use the recorded values for fills/selects (a masked password value means "type a password" — use a realistic placeholder value).
-
 ## Isolated test data (database-connected apps)
 
 When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.

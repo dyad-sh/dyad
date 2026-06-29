@@ -33,8 +33,6 @@ import {
   Trash2,
   Maximize2,
   Minimize2,
-  Circle,
-  Square,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -58,11 +56,8 @@ import {
   pendingVisualChangesAtom,
   isRestoringQueuedSelectionAtom,
   pendingScreenshotAppIdAtom,
-  isRecordingAtom,
-  recordedActionsAtom,
 } from "@/atoms/previewAtoms";
 import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
-import { buildRecordedTestPrompt } from "./recordedTestPrompt";
 import { ComponentSelection } from "@/ipc/types";
 import { mergePendingChange } from "@/ipc/types/visual-editing";
 import {
@@ -81,7 +76,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError, showSuccess, showInfo } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
@@ -278,8 +273,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // This is different from appUrl - it tracks the CURRENT route, not just the base URL
   const currentIframeUrlRef = useRef<string | null>(initialUrl || appUrl);
   const [isPicking, setIsPicking] = useState(false);
-  const [isRecording, setIsRecording] = useAtom(isRecordingAtom);
-  const [recordedActions, setRecordedActions] = useAtom(recordedActionsAtom);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
     screenshotDataUrlAtom,
@@ -669,9 +662,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setVisualEditingSelectedComponent(null);
       setPendingChanges(new Map());
       setCurrentComponentCoordinates(null);
-      // Don't carry an in-progress recording across app switches.
-      setIsRecording(false);
-      setRecordedActions([]);
     };
   }, [selectedAppId]);
 
@@ -689,34 +679,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
     }
   }, [isProMode, isComponentSelectorInitialized]);
-
-  // Keep the in-iframe recorder in sync with the recording state. Driven by an
-  // effect (not the toggle handler) so recording can also be started elsewhere
-  // (e.g. the Tests panel "Record a test" CTA) just by flipping the atom.
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe?.contentWindow || !isComponentSelectorInitialized) {
-      return;
-    }
-    const sendState = () => {
-      iframe.contentWindow?.postMessage(
-        {
-          type: isRecording
-            ? "activate-dyad-recorder"
-            : "deactivate-dyad-recorder",
-        },
-        "*",
-      );
-    };
-    sendState();
-    // Re-send on reload: navigating or submitting a form during recording
-    // re-injects the recorder client with `active = false`, so without this the
-    // recorder would silently stop capturing on the new page.
-    iframe.addEventListener("load", sendState);
-    return () => {
-      iframe.removeEventListener("load", sendState);
-    };
-  }, [isRecording, isComponentSelectorInitialized]);
 
   // Restore component overlays in iframe only during queued-message edit restoration.
   // Normal interactive selections are already handled by the iframe's own click handler,
@@ -937,14 +899,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           analyzeComponent(component.id);
         }
 
-        return;
-      }
-
-      if (event.data?.type === "dyad-recorded-action") {
-        const action = event.data.action;
-        if (action) {
-          setRecordedActions((prev) => [...prev, action]);
-        }
         return;
       }
 
@@ -1246,7 +1200,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setPreservedUrls,
     queryClient,
     setPendingScreenshotAppId,
-    setRecordedActions,
   ]);
 
   useEffect(() => {
@@ -1298,51 +1251,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         "*",
       );
     }
-  };
-
-  // Record-a-test: capture user actions in the preview, then on stop hand the
-  // recorded flow to the AI as a normal chat turn (which writes the test).
-  const handleRecordToggle = () => {
-    const contentWindow = iframeRef.current?.contentWindow;
-    if (!contentWindow) return;
-
-    if (!isRecording) {
-      // Turn off the component selector so its click interception doesn't
-      // conflict with the recorder observing real clicks.
-      if (isPicking) {
-        setIsPicking(false);
-        contentWindow.postMessage(
-          { type: "deactivate-dyad-component-selector" },
-          "*",
-        );
-      }
-      setRecordedActions([]);
-      // The effect below activates the recorder in the iframe.
-      setIsRecording(true);
-      showInfo("Recording — use your app, then click Stop to generate a test.");
-      return;
-    }
-
-    // Stop recording (the effect below deactivates the recorder in the iframe).
-    setIsRecording(false);
-    const actions = recordedActions;
-    setRecordedActions([]);
-
-    if (actions.length === 0) {
-      showInfo("No actions were recorded.");
-      return;
-    }
-    if (selectedChatId == null) {
-      showInfo("Open a chat first, then record a flow to generate a test.");
-      return;
-    }
-    streamMessage({
-      prompt: buildRecordedTestPrompt(actions),
-      chatId: selectedChatId,
-    });
-    showInfo(
-      `Sent ${actions.length} recorded step(s) to chat to write a test…`,
-    );
   };
 
   // Function to handle annotator button click
@@ -1926,48 +1834,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipTrigger>
               <TooltipContent>
                 {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleRecordToggle}
-                    aria-label={
-                      isRecording
-                        ? `Stop recording (${recordedActions.length} steps)`
-                        : "Record a test"
-                    }
-                    aria-pressed={isRecording}
-                    className={`flex items-center gap-1 p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isRecording
-                        ? "bg-red-500 text-white hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700"
-                        : " text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/40"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-record-test-button"
-                  />
-                }
-              >
-                {isRecording ? (
-                  <>
-                    <Square size={14} />
-                    <span className="text-xs font-medium">
-                      {recordedActions.length}
-                    </span>
-                  </>
-                ) : (
-                  <Circle size={16} />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>
-                {isRecording
-                  ? `Stop recording (${recordedActions.length} steps) & write a test`
-                  : "Record a test"}
               </TooltipContent>
             </Tooltip>
             <Tooltip>

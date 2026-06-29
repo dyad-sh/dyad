@@ -18,9 +18,8 @@ import {
   Zap,
   ShieldCheck,
 } from "lucide-react";
-import { selectedAppIdAtom, previewModeAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { isRecordingAtom, recordedActionsAtom } from "@/atoms/previewAtoms";
 import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   currentTestSpecsAtom,
@@ -545,9 +544,6 @@ export function TestsPanel() {
   const appUrl = useAtomValue(currentAppUrlAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
-  const setPreviewMode = useSetAtom(previewModeAtom);
-  const setIsRecording = useSetAtom(isRecordingAtom);
-  const setRecordedActions = useSetAtom(recordedActionsAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { runApp } = useRunApp();
   const { streamMessage, isStreaming } = useStreamChat();
@@ -728,15 +724,6 @@ export function TestsPanel() {
     if (selectedAppId == null) return;
     ipc.tests.stopAppTests({ appId: selectedAppId }).catch(() => {});
   }, [selectedAppId]);
-
-  // Start recording a flow: switch to the live preview and flip the recording
-  // atom (PreviewIframe activates the in-iframe recorder). The user records,
-  // then stops from the preview toolbar, which writes the test via chat.
-  const startRecording = useCallback(() => {
-    setRecordedActions([]);
-    setIsRecording(true);
-    setPreviewMode("preview");
-  }, [setRecordedActions, setIsRecording, setPreviewMode]);
 
   // User-initiated only: hand the failure back into a normal chat turn.
   const askAiToFix = useCallback<AskAiToFix>(
@@ -1038,24 +1025,6 @@ export function TestsPanel() {
               Ask the AI in chat to write a test for a feature — generated tests
               show up here. They're a starting point you can review and re-run.
             </p>
-            <button
-              onClick={startRecording}
-              disabled={!devServerRunning}
-              aria-label="Record a test"
-              className={cn(
-                "mt-5 flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
-                "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60",
-                !devServerRunning && "opacity-40 cursor-not-allowed",
-              )}
-            >
-              <Circle size={14} />
-              Record a test
-            </button>
-            {!devServerRunning && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Start the app to record a flow.
-              </p>
-            )}
           </div>
         ) : (
           <div>

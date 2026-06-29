@@ -44,7 +44,6 @@ let dyadComponentSelectorClientContent = null;
 let dyadScreenshotClientContent = null;
 let htmlToImageContent = null;
 let dyadVisualEditorClientContent = null;
-let dyadRecorderClientContent = null;
 let dyadLogsContent = null;
 
 try {
@@ -142,19 +141,6 @@ try {
 } catch (error) {
   parentPort?.postMessage(
     `[proxy-worker] Failed to read dyad-visual-editor-client.js: ${error.message}`,
-  );
-}
-
-try {
-  const dyadRecorderClientPath = path.join(
-    __dirname,
-    "dyad-recorder-client.js",
-  );
-  dyadRecorderClientContent = fs.readFileSync(dyadRecorderClientPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-recorder-client.js loaded.");
-} catch (error) {
-  parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-recorder-client.js: ${error.message}`,
   );
 }
 
@@ -258,13 +244,6 @@ function injectHTML(buf) {
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad visual editor client was not injected.");</script>',
-    );
-  }
-  if (dyadRecorderClientContent) {
-    scripts.push(`<script>${dyadRecorderClientContent}</script>`);
-  } else {
-    scripts.push(
-      '<script>console.warn("[proxy-worker] dyad recorder client was not injected.");</script>',
     );
   }
   if (dyadLogsContent) {

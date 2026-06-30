@@ -90,7 +90,7 @@ export async function prepareIsolatedTestDatabase({
 }): Promise<PreparedIsolation> {
   // Supabase: isolate via a throwaway, RLS-scoped test user.
   if (app.supabaseProjectId) {
-    return prepareSupabaseTestUserIsolation({ app, emit });
+    return prepareSupabaseTestUserIsolation({ app, emit, signal });
   }
 
   // No Neon project → nothing to isolate.
@@ -111,22 +111,31 @@ export async function prepareIsolatedTestDatabase({
 
   const appPath = getDyadAppPath(app.path);
   let envSnapshot: string | null = null;
+  let envModified = false;
   let branchId: string | undefined;
 
   // Build a teardown that restores whatever we changed. Captured branchId/env
   // are read at call time so a partial failure still restores correctly.
   const teardown = async () => {
-    try {
-      await restoreEnvFile(appPath, envSnapshot);
-    } catch (error) {
-      logger.error(`Failed to restore .env.local for app ${app.id}: ${error}`);
-    }
-    try {
-      await restartAppInPlace({ app, appPath, event });
-    } catch (error) {
-      logger.error(
-        `Failed to restart app ${app.id} back onto its real branch: ${error}`,
-      );
+    // Only touch the env file / restart the dev server if we actually swapped
+    // the env. If setup failed before the env swap (e.g. during branch
+    // creation), restoring and restarting would be a pointless, user-visible
+    // interruption.
+    if (envModified) {
+      try {
+        await restoreEnvFile(appPath, envSnapshot);
+      } catch (error) {
+        logger.error(
+          `Failed to restore .env.local for app ${app.id}: ${error}`,
+        );
+      }
+      try {
+        await restartAppInPlace({ app, appPath, event });
+      } catch (error) {
+        logger.error(
+          `Failed to restart app ${app.id} back onto its real branch: ${error}`,
+        );
+      }
     }
     if (branchId) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
@@ -145,7 +154,9 @@ export async function prepareIsolatedTestDatabase({
     const branch = await createTempTestBranch(app);
     branchId = branch.branchId;
 
-    // 3. Point the app at the throwaway branch.
+    // 3. Point the app at the throwaway branch. Mark the env as modified before
+    //    the write so a partial failure still triggers a restore in teardown.
+    envModified = true;
     await updateNeonEnvVars({
       appPath,
       connectionUri: branch.databaseUrl,
@@ -196,9 +207,11 @@ export async function prepareIsolatedTestDatabase({
 async function prepareSupabaseTestUserIsolation({
   app,
   emit,
+  signal,
 }: {
   app: AppRow;
   emit: EmitOutput;
+  signal?: AbortSignal;
 }): Promise<PreparedIsolation> {
   const projectId = app.supabaseProjectId!;
   const organizationSlug = app.supabaseOrganizationSlug;
@@ -225,6 +238,12 @@ async function prepareSupabaseTestUserIsolation({
   };
 
   try {
+    // checkRls and createTempTestUser each make network requests that can take
+    // several seconds; honor a Stop pressed in between them so cancellation
+    // takes effect promptly instead of only after they complete.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
     emit("Creating an isolated test user…\n", "setup");
     testUser = await createTempTestUser(app);
     return {

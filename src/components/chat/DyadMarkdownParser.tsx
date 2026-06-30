@@ -473,7 +473,7 @@ function renderCustomTag(
       // `src/components/Button.spec.ts` is a unit test, not an E2E test, and
       // shouldn't get a "View in Tests" deep-link.
       const isTestSpec =
-        writePath.endsWith(".spec.ts") &&
+        /\.spec\.(ts|tsx|js|jsx)$/.test(writePath) &&
         (writePath.startsWith("tests/") || writePath.startsWith("tests\\"));
       if (isTestSpec) {
         return (

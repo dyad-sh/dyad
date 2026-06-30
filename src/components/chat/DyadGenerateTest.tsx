@@ -80,7 +80,10 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto flex items-center gap-1">
-          {!inProgress && (
+          {/* Hide the deep-link when the write didn't finish — an aborted tag
+              never wrote the spec to disk, so the Tests panel has nothing to
+              show and the link would dead-end. */}
+          {!inProgress && !aborted && (
             <button
               onClick={openTestsPanel}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors cursor-pointer"

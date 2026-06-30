@@ -54,7 +54,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.${TEST_BASE_URL_ENV} || "http://localhost:32100",${channelLine}
     screenshot: "only-on-failure",
-    trace: "off",
+    trace: "retain-on-failure",
   },
 });
 `;

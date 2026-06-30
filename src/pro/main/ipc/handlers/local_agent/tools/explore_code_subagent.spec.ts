@@ -37,7 +37,6 @@ const mocks = vi.hoisted(() => ({
   getAiHeaders: vi.fn(),
   getProviderOptions: vi.fn(),
   cancelOrphanedBaseStream: vi.fn(),
-  fastTextOutput: vi.fn(),
   runRawExploreCode: vi.fn(),
 }));
 
@@ -67,10 +66,15 @@ vi.mock("@/ipc/utils/provider_options", () => ({
   getProviderOptions: mocks.getProviderOptions,
 }));
 
-vi.mock("@/ipc/utils/stream_text_utils", () => ({
-  cancelOrphanedBaseStream: mocks.cancelOrphanedBaseStream,
-  fastTextOutput: mocks.fastTextOutput,
-}));
+vi.mock("@/ipc/utils/stream_text_utils", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/stream_text_utils")
+  >("@/ipc/utils/stream_text_utils");
+  return {
+    ...actual,
+    cancelOrphanedBaseStream: mocks.cancelOrphanedBaseStream,
+  };
+});
 
 vi.mock("./explore_code_raw", async () => {
   const actual =

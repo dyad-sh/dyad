@@ -42,6 +42,8 @@ export interface FileEditTracker {
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
+  appUuid?: string | null;
+  appName?: string;
   appPath: string;
   /**
    * Apps referenced via `@app:Name` in the current turn. Read-only tools
@@ -68,6 +70,8 @@ export interface AgentContext {
   todos: Todo[];
   /** Request ID for tracking requests to the Dyad engine */
   dyadRequestId: string;
+  /** Logical user-visible chat turn ID for grouping multiple model calls. */
+  turnUuid?: string;
   /** Tracks file edit tool usage per file for telemetry */
   fileEditTracker: FileEditTracker;
   /**

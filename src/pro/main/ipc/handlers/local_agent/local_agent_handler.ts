@@ -13,6 +13,7 @@ import {
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
+import { v4 as uuidv4 } from "uuid";
 
 import { db } from "@/db";
 import { chats, messages, mcpServers } from "@/db/schema";
@@ -359,6 +360,7 @@ export async function handleLocalAgentStream(
     placeholderMessageId,
     systemPrompt,
     dyadRequestId,
+    turnUuid = uuidv4(),
     readOnly = false,
     planModeOnly = false,
     messageOverride,
@@ -370,6 +372,7 @@ export async function handleLocalAgentStream(
     placeholderMessageId: number;
     systemPrompt: string;
     dyadRequestId: string;
+    turnUuid?: string;
     /**
      * If true, the agent operates in read-only mode (e.g., ask mode).
      * State-modifying tools are disabled, and no commits/deploys are made.
@@ -641,6 +644,8 @@ export async function handleLocalAgentStream(
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
+      appUuid: chat.app.appUuid,
+      appName: chat.app.name,
       appPath,
       referencedApps: referencedAppsMap,
       chatId: chat.id,
@@ -656,6 +661,7 @@ export async function handleLocalAgentStream(
       pendingFunctionDeploys: [],
       todos: persistedTodos,
       dyadRequestId,
+      turnUuid,
       fileEditTracker,
       isDyadPro: isDyadProEnabled(settings),
       freeModelMode: effectiveFreeModelMode,
@@ -914,6 +920,10 @@ export async function handleLocalAgentStream(
             },
             providerOptions: getProviderOptions({
               dyadAppId: chat.app.id,
+              dyadAppUuid: chat.app.appUuid,
+              dyadAppName: chat.app.name,
+              dyadChatId: chat.id,
+              dyadTurnUuid: turnUuid,
               dyadRequestId,
               dyadDisableFiles: true, // Local agent uses tools, not file injection
               files: [],

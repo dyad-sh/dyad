@@ -189,6 +189,8 @@ function emitPnpmMinimumReleaseAgeWarning({
 export async function executeApp({
   appPath,
   appId,
+  appUuid,
+  appName,
   event,
   isNeon,
   installCommand,
@@ -196,6 +198,8 @@ export async function executeApp({
 }: {
   appPath: string;
   appId: number;
+  appUuid?: string | null;
+  appName?: string;
   event: Electron.IpcMainInvokeEvent;
   isNeon: boolean;
   installCommand?: string | null;
@@ -217,6 +221,8 @@ export async function executeApp({
     await executeAppInCloud({
       appPath,
       appId,
+      appUuid,
+      appName,
       event,
       installCommand,
       startCommand,
@@ -850,12 +856,16 @@ ${errorOutput || "(empty)"}`,
 async function executeAppInCloud({
   appPath,
   appId,
+  appUuid,
+  appName,
   event,
   installCommand,
   startCommand,
 }: {
   appPath: string;
   appId: number;
+  appUuid?: string | null;
+  appName?: string;
   event: Electron.IpcMainInvokeEvent;
   installCommand?: string | null;
   startCommand?: string | null;
@@ -868,6 +878,8 @@ async function executeAppInCloud({
   try {
     const createResult = await createCloudSandbox({
       appId,
+      appUuid,
+      appName,
       appPath,
       installCommand,
       startCommand,

@@ -174,6 +174,8 @@ export interface CloudSandboxProvider {
   name: string;
   createSandbox(input: {
     appId: number;
+    appUuid?: string | null;
+    appName?: string;
     appPath: string;
     installCommand?: string | null;
     startCommand?: string | null;
@@ -698,6 +700,8 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
 
   async createSandbox(input: {
     appId: number;
+    appUuid?: string | null;
+    appName?: string;
     appPath: string;
     installCommand?: string | null;
     startCommand?: string | null;
@@ -711,6 +715,8 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
       method: "POST",
       body: JSON.stringify({
         appId: input.appId,
+        appUuid: input.appUuid ?? undefined,
+        appName: input.appName,
         appPath: input.appPath,
         installCommand,
         startCommand,
@@ -823,6 +829,8 @@ export async function destroyCloudSandbox(sandboxId: string): Promise<void> {
 
 export async function createCloudSandbox(input: {
   appId: number;
+  appUuid?: string | null;
+  appName?: string;
   appPath: string;
   installCommand?: string | null;
   startCommand?: string | null;

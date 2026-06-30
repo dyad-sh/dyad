@@ -5,7 +5,10 @@ const mocks = vi.hoisted(() => ({
   getModelClient: vi.fn(),
 }));
 
-vi.mock("ai", () => ({ streamText: mocks.streamText }));
+vi.mock("ai", async () => {
+  const actual = await vi.importActual<typeof import("ai")>("ai");
+  return { ...actual, streamText: mocks.streamText };
+});
 vi.mock("@/ipc/utils/get_model_client", () => ({
   getModelClient: mocks.getModelClient,
 }));

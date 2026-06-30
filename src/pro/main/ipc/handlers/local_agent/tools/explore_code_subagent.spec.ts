@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   getAiHeaders: vi.fn(),
   getProviderOptions: vi.fn(),
   cancelOrphanedBaseStream: vi.fn(),
+  fastTextOutput: vi.fn(),
   runRawExploreCode: vi.fn(),
 }));
 
@@ -68,6 +69,7 @@ vi.mock("@/ipc/utils/provider_options", () => ({
 
 vi.mock("@/ipc/utils/stream_text_utils", () => ({
   cancelOrphanedBaseStream: mocks.cancelOrphanedBaseStream,
+  fastTextOutput: mocks.fastTextOutput,
 }));
 
 vi.mock("./explore_code_raw", async () => {

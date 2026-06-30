@@ -29,9 +29,15 @@ export function fastTextOutput(): ReturnType<typeof Output.text> {
   const base = Output.text();
   return {
     ...base,
+    // `text` is the SDK's append-only accumulated output, so its length strictly
+    // increases: the value changes every chunk (keeping text flushing) while
+    // staying O(1) to stringify and diff.
     parsePartialOutput: async ({ text }: { text: string }) => ({
       partial: text.length,
     }),
+    // `partial` is intentionally a number, not the base `Output.text()` string.
+    // Safe because nothing consumes `partialOutput`; we only use it as a cheap
+    // per-chunk change signal to drive flushing.
   } as unknown as ReturnType<typeof Output.text>;
 }
 

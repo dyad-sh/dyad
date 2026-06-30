@@ -84,7 +84,7 @@ export function registerHelpBotHandlers() {
       let assistantContent = "";
 
       const stream = streamText({
-        experimental_output: fastTextOutput(),
+        output: fastTextOutput(),
         model: provider.responses(helpBotModel.apiName),
         providerOptions: {
           openai: {

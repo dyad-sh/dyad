@@ -151,7 +151,7 @@ export async function runExploreCodeSubagent({
 
   try {
     const streamResult = streamText({
-      experimental_output: fastTextOutput(),
+      output: fastTextOutput(),
       model: modelInfo.modelClient.model,
       headers: getAiHeaders({
         builtinProviderId: modelInfo.modelClient.builtinProviderId,

@@ -720,7 +720,7 @@ images: ${imagesPart}`;
         }
 
         const stream = streamText({
-          experimental_output: fastTextOutput(),
+          output: fastTextOutput(),
           model: modelClient.model,
           system: systemPrompt,
           maxRetries: 1,
@@ -960,7 +960,7 @@ source: Live website (screenshot and content provided)`;
 
       try {
         const stream = streamText({
-          experimental_output: fastTextOutput(),
+          output: fastTextOutput(),
           model: modelClient.model,
           system: systemPrompt,
           maxRetries: 1,

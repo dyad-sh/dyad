@@ -1248,7 +1248,7 @@ This conversation includes one or more image attachments. When the user uploads 
             // Avoids the SDK's O(n^2) per-chunk JSON.stringify of the full
             // accumulated text (see fastTextOutput). We read fullStream parts
             // directly and never consume partialOutput.
-            experimental_output: fastTextOutput(),
+            output: fastTextOutput(),
             providerOptions,
             system: systemPromptOverride,
             tools,

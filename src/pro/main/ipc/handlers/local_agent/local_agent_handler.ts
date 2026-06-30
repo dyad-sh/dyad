@@ -908,7 +908,7 @@ export async function handleLocalAgentStream(
 
         try {
           const streamResult = streamText({
-            experimental_output: fastTextOutput(),
+            output: fastTextOutput(),
             model: modelClient.model,
             headers: {
               ...getAiHeaders({

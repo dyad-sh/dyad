@@ -100,7 +100,7 @@ export async function classifyMcpToolConsent(
     );
 
     const stream = streamText({
-      experimental_output: fastTextOutput(),
+      output: fastTextOutput(),
       model: modelClient.model,
       system: buildMcpConsentSystemPrompt(),
       maxRetries: 1,

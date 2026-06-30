@@ -37,7 +37,8 @@ export function fastTextOutput(): ReturnType<typeof Output.text> {
     }),
     // `partial` is intentionally a number, not the base `Output.text()` string.
     // Safe because nothing consumes `partialOutput`; we only use it as a cheap
-    // per-chunk change signal to drive flushing.
+    // per-chunk change signal to drive flushing. This holds as of ai@6.0.68;
+    // worth rechecking on AI SDK version bumps.
   } as unknown as ReturnType<typeof Output.text>;
 }
 

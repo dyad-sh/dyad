@@ -187,7 +187,7 @@ export async function performCompaction(
     ];
 
     const summaryResult = streamText({
-      experimental_output: fastTextOutput(),
+      output: fastTextOutput(),
       model: modelClient.model,
       headers: {
         ...getAiHeaders({

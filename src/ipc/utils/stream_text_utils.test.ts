@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { streamText } from "ai";
+import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { fastTextOutput } from "./stream_text_utils";
 
 describe("fastTextOutput", () => {
@@ -30,5 +33,54 @@ describe("fastTextOutput", () => {
     await expect(
       output.parseCompleteOutput({ text: "full response" }),
     ).resolves.toBe("full response");
+  });
+
+  // Guards the streaming mechanism the number partial depends on: the SDK's
+  // output transform publishes a text chunk only when the partial value changes.
+  // If an SDK change broke that for a number partial, text would batch to the
+  // end (or error) instead of flushing per chunk, and this test would fail.
+  it("streams text incrementally through streamText with the number partial", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream<LanguageModelV3StreamPart>({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            { type: "text-start", id: "1" },
+            { type: "text-delta", id: "1", delta: "Hello " },
+            { type: "text-delta", id: "1", delta: "world" },
+            { type: "text-delta", id: "1", delta: "!" },
+            { type: "text-end", id: "1" },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: "stop" },
+              usage: {
+                inputTokens: {
+                  total: 1,
+                  noCache: 1,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                },
+                outputTokens: { total: 3, text: 3, reasoning: 0 },
+              },
+            },
+          ],
+        }),
+      }),
+    });
+
+    const result = streamText({
+      model,
+      output: fastTextOutput(),
+      prompt: "hi",
+    });
+
+    const deltas: string[] = [];
+    for await (const part of result.fullStream) {
+      if (part.type === "text-delta") deltas.push(part.text);
+    }
+
+    // One delta per input chunk = incremental, not batched at the end.
+    expect(deltas).toEqual(["Hello ", "world", "!"]);
+    await expect(result.text).resolves.toBe("Hello world!");
   });
 });

@@ -18,7 +18,10 @@ import {
   shouldTriggerCompaction,
 } from "@/ipc/utils/token_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
+import {
+  cancelOrphanedBaseStream,
+  fastTextOutput,
+} from "@/ipc/utils/stream_text_utils";
 import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {
   storePreCompactionMessages,
@@ -184,6 +187,7 @@ export async function performCompaction(
     ];
 
     const summaryResult = streamText({
+      experimental_output: fastTextOutput(),
       model: modelClient.model,
       headers: {
         ...getAiHeaders({

@@ -1,8 +1,39 @@
 import log from "electron-log";
+import { Output } from "ai";
 import type { StreamingPatch } from "@/ipc/types";
 import { hashPrefix } from "@/lib/prefixHash";
 
 const logger = log.scope("stream_text_utils");
+
+/**
+ * Drop-in replacement for the AI SDK's default `Output.text()` that avoids an
+ * O(n^2) cost in `streamText`'s `fullStream`.
+ *
+ * `streamText` always pipes `fullStream` through `createOutputTransformStream`.
+ * With no `output` configured it defaults to `Output.text()`, whose
+ * `parsePartialOutput` returns the whole accumulated text as `partial`. On every
+ * text-delta the transform then runs `JSON.stringify(partial)` and diffs it
+ * against the previous value to decide whether to emit a `partialOutput`, so
+ * that stringify+diff is O(n) per chunk, O(n^2) over a long response. On large
+ * multi-file generations this saturates the main process's JS thread and
+ * freezes the app.
+ *
+ * We read `fullStream` parts directly and never consume `partialOutput`, so the
+ * work is pure waste. This returns an O(1) value that still changes every chunk
+ * (the text length), which keeps text flushing incrementally while making the
+ * per-chunk work O(1). (Returning `undefined` would instead make text flush only
+ * at block end, breaking streaming.) `responseFormat` is unchanged, so the model
+ * request is identical.
+ */
+export function fastTextOutput(): ReturnType<typeof Output.text> {
+  const base = Output.text();
+  return {
+    ...base,
+    parsePartialOutput: async ({ text }: { text: string }) => ({
+      partial: text.length,
+    }),
+  } as unknown as ReturnType<typeof Output.text>;
+}
 
 /**
  * Computes a tail-only streaming patch from `lastSentContent` to `fullResponse`

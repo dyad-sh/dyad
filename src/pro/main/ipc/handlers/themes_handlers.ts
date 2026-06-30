@@ -12,7 +12,10 @@ import { streamText, TextPart, ImagePart } from "ai";
 import { readSettings } from "../../../../main/settings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getModelClient } from "../../../../ipc/utils/get_model_client";
-import { cancelOrphanedBaseStream } from "../../../../ipc/utils/stream_text_utils";
+import {
+  cancelOrphanedBaseStream,
+  fastTextOutput,
+} from "../../../../ipc/utils/stream_text_utils";
 import { v4 as uuidv4 } from "uuid";
 import type {
   SetAppThemeParams,
@@ -717,6 +720,7 @@ images: ${imagesPart}`;
         }
 
         const stream = streamText({
+          experimental_output: fastTextOutput(),
           model: modelClient.model,
           system: systemPrompt,
           maxRetries: 1,
@@ -956,6 +960,7 @@ source: Live website (screenshot and content provided)`;
 
       try {
         const stream = streamText({
+          experimental_output: fastTextOutput(),
           model: modelClient.model,
           system: systemPrompt,
           maxRetries: 1,

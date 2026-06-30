@@ -95,12 +95,11 @@ import {
   filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
 import {
-  extractMentionedAppsCodebases,
-  extractMentionedAppsReferences,
+  extractMentionedAppsCodebasesFromPrompt,
+  extractMentionedAppsReferencesFromPrompt,
   type MentionedAppCodebaseEntry,
   type MentionedAppReference,
 } from "../utils/mention_apps";
-import { parseAppMentions } from "@/shared/parse_mention_apps";
 import {
   parseMediaMentions,
   stripResolvedMediaMentions,
@@ -793,9 +792,6 @@ ${componentSnippet}
           }
         }
 
-        // Parse app mentions from the prompt
-        const mentionedAppNames = parseAppMentions(req.prompt);
-
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
@@ -808,15 +804,17 @@ ${componentSnippet}
         let mentionedAppsCodebases: MentionedAppCodebaseEntry[] = [];
         let referencedAppsForAgent: MentionedAppReference[] = [];
         if (willUseLocalAgentStream) {
-          referencedAppsForAgent = await extractMentionedAppsReferences(
-            mentionedAppNames,
-            updatedChat.app.id, // Exclude current app
-          );
+          referencedAppsForAgent =
+            await extractMentionedAppsReferencesFromPrompt(
+              req.prompt,
+              updatedChat.app.id, // Exclude current app
+            );
         } else {
-          mentionedAppsCodebases = await extractMentionedAppsCodebases(
-            mentionedAppNames,
-            updatedChat.app.id, // Exclude current app
-          );
+          mentionedAppsCodebases =
+            await extractMentionedAppsCodebasesFromPrompt(
+              req.prompt,
+              updatedChat.app.id, // Exclude current app
+            );
           referencedAppsForAgent = mentionedAppsCodebases.map(
             ({ appName, appPath }) => ({ appName, appPath }),
           );

@@ -472,7 +472,9 @@ export function LexicalChatInput({
           }
 
           // Transform @AppName mentions to @app:AppName format
-          const appNames = apps?.map((app) => app.name) || [];
+          const appNames =
+            apps?.map((app) => app.name).sort((a, b) => b.length - a.length) ||
+            [];
           for (const appName of appNames) {
             // Escape special regex characters in app name
             const escapedAppName = appName.replace(
@@ -480,7 +482,7 @@ export function LexicalChatInput({
               "\\$&",
             );
             const mentionRegex = new RegExp(
-              `@(${escapedAppName})(?![a-zA-Z0-9_/\\-])`,
+              `@(${escapedAppName})(?![a-zA-Z0-9_./\\-])`,
               "g",
             );
             textContent = textContent.replace(mentionRegex, "@app:$1");

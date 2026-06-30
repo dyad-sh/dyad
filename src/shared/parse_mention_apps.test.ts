@@ -1,4 +1,7 @@
-import { parseAppMentions } from "@/shared/parse_mention_apps";
+import {
+  parseAppMentions,
+  parseKnownAppMentions,
+} from "@/shared/parse_mention_apps";
 import { describe, it, expect } from "vitest";
 
 describe("parseAppMentions", () => {
@@ -18,6 +21,12 @@ describe("parseAppMentions", () => {
     const prompt = "Check @app:my-app and @app:another-app-name";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["my-app", "another-app-name"]);
+  });
+
+  it("should parse app mentions with dots", () => {
+    const prompt = "Check @app:foo.app.com and @app:another.app-name";
+    const result = parseAppMentions(prompt);
+    expect(result).toEqual(["foo.app.com", "another.app-name"]);
   });
 
   it("should parse app mentions with numbers", () => {
@@ -141,11 +150,11 @@ Line 3 has @app:App3`;
     expect(result).toEqual([longAppName]);
   });
 
-  it("should stop parsing at invalid characters", () => {
+  it("should stop parsing at invalid non-dot characters", () => {
     const prompt =
       "Check @app:MyApp@InvalidPart and @app:AnotherApp.InvalidPart";
     const result = parseAppMentions(prompt);
-    expect(result).toEqual(["MyApp", "AnotherApp"]);
+    expect(result).toEqual(["MyApp", "AnotherApp.InvalidPart"]);
   });
 
   it("should handle mentions with numbers and underscores mixed", () => {
@@ -223,5 +232,48 @@ Line 3 has @app:App3`;
     const prompt = "Check @app:App1 @app:App2 @app:App3 test";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["App1", "App2", "App3"]);
+  });
+});
+
+describe("parseKnownAppMentions", () => {
+  it("matches dotted app names from the known app list", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com", [
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("prefers the longest known app name", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com", [
+      "foo",
+      "foo.app",
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("does not match a shorter app name when the remaining suffix is not punctuation", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com", ["foo"]);
+
+    expect(result).toEqual([]);
+  });
+
+  it("allows a trailing sentence period after the known app name", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com.", [
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("preserves prompt order and known app name casing", () => {
+    const result = parseKnownAppMentions(
+      "Check @app:foo.app.com then @app:BAR",
+      ["Foo.App.Com", "bar"],
+    );
+
+    expect(result).toEqual(["Foo.App.Com", "bar"]);
   });
 });

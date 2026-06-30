@@ -25,8 +25,7 @@ import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
-import { extractMentionedAppsCodebases } from "../utils/mention_apps";
-import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
 import { isLocalAgentBackedMode, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
@@ -74,9 +73,6 @@ export function registerTokenCountHandlers() {
         ...storedSettings,
         selectedChatMode,
       };
-
-      // Parse app mentions from the input
-      const mentionedAppNames = parseAppMentions(req.input);
 
       // Count system prompt tokens
       // Migration on read converts "agent" to "build", so no need to check for it here
@@ -159,10 +155,11 @@ export function registerTokenCountHandlers() {
 
       let mentionedAppsTokens = 0;
       if (!willUseLocalAgentStream) {
-        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-          mentionedAppNames,
-          chat.app?.id, // Exclude current app
-        );
+        const mentionedAppsCodebases =
+          await extractMentionedAppsCodebasesFromPrompt(
+            req.input,
+            chat.app?.id, // Exclude current app
+          );
 
         if (mentionedAppsCodebases.length > 0) {
           const mentionedAppsContent = mentionedAppsCodebases

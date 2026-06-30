@@ -596,7 +596,11 @@ export function TestsPanel() {
   const prevStreamingRef = useRef(isStreaming);
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
-      loadSpecs({ withSpinner: false });
+      const cancel = loadSpecs({ withSpinner: false });
+      prevStreamingRef.current = isStreaming;
+      // Return the cancellation so a fast app-switch during this background
+      // reload can't write the old app's specs into the new app's atom slot.
+      return cancel;
     }
     prevStreamingRef.current = isStreaming;
   }, [isStreaming, loadSpecs]);

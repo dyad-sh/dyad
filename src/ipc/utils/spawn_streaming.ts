@@ -20,6 +20,13 @@ export interface SpawnStreamingResult {
  *
  * The `onProcess` hook hands the spawned child to the caller so it can be
  * tracked (e.g. for an external Stop button) in addition to the signal.
+ *
+ * SECURITY (Windows): on Windows this spawns with `shell: true` so `.cmd`
+ * shims like `npm`/`npx` resolve. Node passes the args array through the shim
+ * but certain metacharacters can still be interpreted by `cmd.exe`. Callers
+ * MUST NOT pass unvalidated/user-controlled strings in `command` or `args`;
+ * validate or sanitize them first (existing callers pass only fixed commands
+ * and validated paths).
  */
 export async function spawnStreaming({
   command,

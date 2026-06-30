@@ -339,9 +339,13 @@ WHERE table_schema = 'public'
         continue;
       }
       try {
+        // Let Postgres escape the identifiers/value via format(%I, %L) instead
+        // of relying on the regex check above as the only guard. The regex
+        // still prevents the values from breaking out of the SQL string
+        // literals, and `format` handles identifier quoting in the database.
         await executeSupabaseSql({
           supabaseProjectId: projectId,
-          query: `DELETE FROM public."${table}" WHERE "${column}" = '${userId}';`,
+          query: `DO $$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $$;`,
           organizationSlug,
         });
       } catch (error) {
@@ -366,6 +370,12 @@ async function deleteUserBestEffort({
   organizationSlug: string;
   userId: string;
 }): Promise<boolean> {
+  if (!UUID_RE.test(userId)) {
+    // The id comes from Supabase (or a possibly-corrupted DB column), but never
+    // interpolate a non-UUID into the admin API URL path.
+    logger.warn(`Refusing to delete non-UUID test user "${userId}".`);
+    return false;
+  }
   try {
     const serviceRole = await getServiceRoleKey({
       projectId,

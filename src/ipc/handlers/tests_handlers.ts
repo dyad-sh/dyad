@@ -43,9 +43,16 @@ function parallelWorkerCount(): number {
   return Math.max(2, Math.min(cores - 1, 8));
 }
 
-// Abort controllers for in-flight runs, keyed by appId, so the Stop button can
-// cancel an in-progress bootstrap or test run.
-const testRunControllers = new Map<number, AbortController>();
+// In-flight runs keyed by appId. `controller` lets the Stop button cancel an
+// in-progress bootstrap or test run; `done` resolves once the whole
+// prepare → run → teardown lifecycle has finished, so a new run can wait for
+// the prior run's teardown (env restore + branch delete) before swapping env
+// again instead of racing it.
+interface TestRun {
+  controller: AbortController;
+  done: Promise<void>;
+}
+const testRunControllers = new Map<number, TestRun>();
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -304,10 +311,7 @@ export function registerTestsHandlers() {
   });
 
   createTypedHandler(testsContracts.stopAppTests, async (_event, params) => {
-    const controller = testRunControllers.get(params.appId);
-    if (controller) {
-      controller.abort();
-    }
+    testRunControllers.get(params.appId)?.controller.abort();
     return { ok: true as const };
   });
 
@@ -366,11 +370,23 @@ export function registerTestsHandlers() {
     async (event, params): Promise<RunAppTestsResult> => {
       const { appId, testFile, testLine, headed, parallel } = params;
 
-      // Cancel any prior run for this app, then start a fresh controller so the
-      // Stop button can abort this run.
-      testRunControllers.get(appId)?.abort();
+      // Cancel any prior run for this app and wait for its full lifecycle
+      // (prepare → run → teardown) to finish before starting. Otherwise a
+      // Stop-then-Run could race the prior run's teardown (env restore +
+      // branch delete) against this run's env snapshot/swap, causing tests to
+      // execute against the user's real database.
+      const prior = testRunControllers.get(appId);
+      if (prior) {
+        prior.controller.abort();
+        await prior.done.catch(() => {});
+      }
+
       const controller = new AbortController();
-      testRunControllers.set(appId, controller);
+      let resolveDone!: () => void;
+      const done = new Promise<void>((resolve) => {
+        resolveDone = resolve;
+      });
+      testRunControllers.set(appId, { controller, done });
 
       const emit = (chunk: string, phase: "setup" | "running") =>
         emitOutput(event, appId, chunk, phase);
@@ -418,9 +434,11 @@ export function registerTestsHandlers() {
           await prepared.teardown();
         }
       } finally {
-        if (testRunControllers.get(appId) === controller) {
+        if (testRunControllers.get(appId)?.controller === controller) {
           testRunControllers.delete(appId);
         }
+        // Signal the next queued run that this lifecycle (incl. teardown) is done.
+        resolveDone();
       }
     },
   );

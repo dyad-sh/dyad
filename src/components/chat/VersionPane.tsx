@@ -59,6 +59,7 @@ type SaveVersionNote = (
   appId: number | null,
   versionId: string,
   note: string | null,
+  saveSequence: number,
   syncCache: boolean,
 ) => void;
 
@@ -67,6 +68,7 @@ type PendingNoteSave = {
   appId: number | null;
   versionId: string;
   note: string | null;
+  saveSequence: number;
   saveVersionNote: SaveVersionNote;
 };
 
@@ -106,6 +108,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   >(() => new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const noteSaveTimeoutsRef = useRef(new Map<string, PendingNoteSave>());
+  const noteSaveSequencesRef = useRef(new Map<string, number>());
   const liveVersionsRef = useRef(liveVersions);
   liveVersionsRef.current = liveVersions;
 
@@ -122,41 +125,58 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     [screenshotsData],
   );
 
-  const updateCachedVersion = (
-    versionId: string,
-    updates: Partial<Pick<Version, "isFavorite" | "note">>,
-  ) => {
-    setCachedVersions((prevVersions) => {
-      const sourceVersions =
-        prevVersions.length > 0 ? prevVersions : liveVersionsRef.current;
-      return sourceVersions.map((version) =>
-        version.oid === versionId ? { ...version, ...updates } : version,
-      );
-    });
-  };
-
-  const saveVersionNote = async (
-    targetAppId: number | null,
-    versionId: string,
-    note: string | null,
-    syncCache = true,
-  ) => {
-    try {
-      const result = await setVersionNote({
-        appId: targetAppId,
-        versionId,
-        note,
+  const updateCachedVersion = useCallback(
+    (
+      versionId: string,
+      updates: Partial<Pick<Version, "isFavorite" | "note">>,
+    ) => {
+      setCachedVersions((prevVersions) => {
+        const sourceVersions =
+          prevVersions.length > 0 ? prevVersions : liveVersionsRef.current;
+        return sourceVersions.map((version) =>
+          version.oid === versionId ? { ...version, ...updates } : version,
+        );
       });
-      if (syncCache) {
-        updateCachedVersion(result.oid, {
-          isFavorite: result.isFavorite,
-          note: result.note,
+    },
+    [],
+  );
+
+  const saveVersionNote = useCallback(
+    async (
+      targetAppId: number | null,
+      versionId: string,
+      note: string | null,
+      saveSequence: number,
+      syncCache = true,
+    ) => {
+      const pendingSaveKey = getPendingNoteSaveKey(targetAppId, versionId);
+      const isLatestSave = () =>
+        noteSaveSequencesRef.current.get(pendingSaveKey) === saveSequence;
+      try {
+        const result = await setVersionNote({
+          appId: targetAppId,
+          versionId,
+          note,
         });
+        if (
+          syncCache &&
+          isLatestSave() &&
+          targetAppId === currentAppIdRef.current
+        ) {
+          updateCachedVersion(result.oid, { note: result.note });
+        }
+      } catch {
+        if (
+          syncCache &&
+          isLatestSave() &&
+          targetAppId === currentAppIdRef.current
+        ) {
+          showError("Failed to save version note. Please try again.");
+        }
       }
-    } catch {
-      showError("Failed to save version note. Please try again.");
-    }
-  };
+    },
+    [setVersionNote, updateCachedVersion],
+  );
   const flushPendingNoteSaves = useCallback((syncCache = true) => {
     const pendingSaves = [...noteSaveTimeoutsRef.current.entries()];
     noteSaveTimeoutsRef.current.clear();
@@ -166,6 +186,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         pendingSave.appId,
         pendingSave.versionId,
         pendingSave.note,
+        pendingSave.saveSequence,
         syncCache && pendingSave.appId === currentAppIdRef.current,
       );
     }
@@ -291,6 +312,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     if (existingPendingSave) {
       clearTimeout(existingPendingSave.timeout);
     }
+    const saveSequence =
+      (noteSaveSequencesRef.current.get(pendingSaveKey) ?? 0) + 1;
+    noteSaveSequencesRef.current.set(pendingSaveKey, saveSequence);
     const timeout = setTimeout(() => {
       const pendingSave = noteSaveTimeoutsRef.current.get(pendingSaveKey);
       if (!pendingSave) {
@@ -301,6 +325,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         pendingSave.appId,
         pendingSave.versionId,
         pendingSave.note,
+        pendingSave.saveSequence,
         pendingSave.appId === currentAppIdRef.current,
       );
     }, 600);
@@ -309,6 +334,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       appId,
       versionId,
       note,
+      saveSequence,
       saveVersionNote,
     });
   };
@@ -323,6 +349,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         existingPendingSave.appId,
         existingPendingSave.versionId,
         note,
+        existingPendingSave.saveSequence,
         existingPendingSave.appId === currentAppIdRef.current,
       );
     }
@@ -484,7 +511,6 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                                 }
                                 updateCachedVersion(result.oid, {
                                   isFavorite: result.isFavorite,
-                                  note: result.note,
                                 });
                               } catch {
                                 if (targetAppId !== currentAppIdRef.current) {

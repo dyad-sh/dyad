@@ -17,24 +17,15 @@ export function useVersions(appId: number | null) {
   const { settings } = useSettings();
 
   const updateVersionMetadataCache = (
-    result: {
-      oid: string;
-      isFavorite: boolean;
-      note: string | null;
-    },
+    oid: string,
+    updates: Partial<Pick<Version, "isFavorite" | "note">>,
     targetAppId = appId,
   ) => {
     queryClient.setQueryData<Version[]>(
       queryKeys.versions.list({ appId: targetAppId }),
       (oldVersions) =>
         oldVersions?.map((version) =>
-          version.oid === result.oid
-            ? {
-                ...version,
-                isFavorite: result.isFavorite,
-                note: result.note,
-              }
-            : version,
+          version.oid === oid ? { ...version, ...updates } : version,
         ),
     );
   };
@@ -130,7 +121,8 @@ export function useVersions(appId: number | null) {
     },
     onSuccess: (result, variables) => {
       updateVersionMetadataCache(
-        result,
+        result.oid,
+        { isFavorite: result.isFavorite },
         variables.appId === undefined ? appId : variables.appId,
       );
     },
@@ -153,13 +145,6 @@ export function useVersions(appId: number | null) {
         note,
       });
     },
-    onSuccess: (result, variables) => {
-      updateVersionMetadataCache(
-        result,
-        variables.appId === undefined ? appId : variables.appId,
-      );
-    },
-    meta: { showErrorToast: true },
   });
 
   return {

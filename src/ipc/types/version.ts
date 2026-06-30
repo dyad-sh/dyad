@@ -82,7 +82,9 @@ export type CheckoutVersionResponse = z.infer<
   typeof CheckoutVersionResponseSchema
 >;
 
-const CommitHashSchema = z.string().regex(/^[a-f0-9]{40}$/i);
+const CommitHashSchema = z
+  .string()
+  .regex(/^[a-f0-9]{4,64}$/i, "versionId must be a hex commit SHA");
 export const MAX_VERSION_NOTE_LENGTH = 10_000;
 
 export const SetVersionFavoriteParamsSchema = z.object({

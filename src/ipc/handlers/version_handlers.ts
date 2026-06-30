@@ -161,6 +161,8 @@ async function upsertVersionMetadata({
     .values({
       appId,
       commitHash: versionId,
+      // Insert means this is the first metadata touch for the version. For an
+      // absent row, defaults for omitted fields preserve the intended baseline.
       isFavorite: isFavorite ?? false,
       note: normalizedNote ?? null,
     })

@@ -88,13 +88,13 @@ beforeEach(() => {
 });
 
 describe("createTempTestBranch", () => {
-  it("branches off the preview branch and returns the connection string", async () => {
+  it("branches off the active branch and returns the connection string", async () => {
     const result = await createTempTestBranch(makeApp());
 
     expect(mocks.createProjectBranch).toHaveBeenCalledWith(
       "proj-1",
       expect.objectContaining({
-        branch: expect.objectContaining({ parent_id: "preview-br" }),
+        branch: expect.objectContaining({ parent_id: "active-br" }),
       }),
     );
     expect(result).toMatchObject({
@@ -107,12 +107,24 @@ describe("createTempTestBranch", () => {
     });
   });
 
-  it("falls back to the active branch when there is no preview branch", async () => {
-    await createTempTestBranch(makeApp({ neonPreviewBranchId: null }));
+  it("falls back to the development branch when there is no active branch", async () => {
+    await createTempTestBranch(makeApp({ neonActiveBranchId: null }));
     expect(mocks.createProjectBranch).toHaveBeenCalledWith(
       "proj-1",
       expect.objectContaining({
-        branch: expect.objectContaining({ parent_id: "active-br" }),
+        branch: expect.objectContaining({ parent_id: "dev-br" }),
+      }),
+    );
+  });
+
+  it("falls back to the preview branch when there is no active or development branch", async () => {
+    await createTempTestBranch(
+      makeApp({ neonActiveBranchId: null, neonDevelopmentBranchId: null }),
+    );
+    expect(mocks.createProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      expect.objectContaining({
+        branch: expect.objectContaining({ parent_id: "preview-br" }),
       }),
     );
   });

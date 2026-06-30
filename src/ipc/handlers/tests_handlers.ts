@@ -379,8 +379,9 @@ export function registerTestsHandlers() {
         const app = await getApp(appId);
         const runtimeMode = readSettings().runtimeMode2 ?? "host";
 
-        // Set up an isolated, throwaway database so the run never mutates the
-        // user's real data (Neon only for now; Supabase/no-DB run as-is).
+        // Set up isolation so the run never mutates the user's real data: Neon
+        // apps get a throwaway copy-on-write branch, Supabase apps get a
+        // throwaway RLS-scoped test user, and no-DB apps run as-is.
         const prepared = await prepareIsolatedTestDatabase({
           app,
           event,

@@ -27,14 +27,16 @@ export interface TempTestBranch {
 
 /**
  * Resolve the parent branch a test branch should be cut from. We prefer the
- * preview branch so the throwaway branch inherits realistic schema + data via
- * Neon's instant copy-on-write, falling back to the active/development branch.
+ * active branch the user is currently working on so the throwaway branch
+ * inherits their realistic schema + data via Neon's instant copy-on-write.
+ * This mirrors the canonical `active ?? development` resolution used elsewhere;
+ * the preview branch (historical rollback snapshots) is only a last resort.
  */
 function resolveParentBranchId(appData: AppRow): string | null {
   return (
-    appData.neonPreviewBranchId ??
     appData.neonActiveBranchId ??
     appData.neonDevelopmentBranchId ??
+    appData.neonPreviewBranchId ??
     null
   );
 }
@@ -42,7 +44,7 @@ function resolveParentBranchId(appData: AppRow): string | null {
 /**
  * Create a throwaway copy-on-write Neon branch for an isolated test run.
  *
- * The branch is cut from the app's preview branch (or the active/development
+ * The branch is cut from the app's active branch (or the development/preview
  * branch as a fallback) so it inherits the current schema and data instantly.
  * Neon Auth + a per-branch cookie secret are provisioned best-effort so
  * auth-gated tests can run. The branch id is persisted on the app row

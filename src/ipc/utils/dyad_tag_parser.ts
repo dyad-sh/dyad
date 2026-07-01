@@ -5,19 +5,33 @@ import { SqlQuery } from "../../lib/schemas";
 
 const logger = log.scope("dyad_tag_parser");
 
-export function getDyadWriteTags(fullResponse: string): {
+interface DyadFileTag {
   path: string;
   content: string;
   description?: string;
-}[] {
-  const dyadWriteRegex = /<dyad-write([^>]*)>([\s\S]*?)<\/dyad-write>/gi;
+}
+
+/**
+ * Parse `<tagName path="..." description="...">content</tagName>` occurrences
+ * into file tags. Shared by the identical `<dyad-write>` and
+ * `<dyad-generate-test>` extraction: both carry a `path`/`description` and a
+ * body with optional surrounding markdown fences.
+ */
+function parseDyadFileTags(
+  fullResponse: string,
+  tagName: string,
+): DyadFileTag[] {
+  const tagRegex = new RegExp(
+    `<${tagName}([^>]*)>([\\s\\S]*?)</${tagName}>`,
+    "gi",
+  );
   const pathRegex = /path="([^"]+)"/;
   const descriptionRegex = /description="([^"]+)"/;
 
   let match;
-  const tags: { path: string; content: string; description?: string }[] = [];
+  const tags: DyadFileTag[] = [];
 
-  while ((match = dyadWriteRegex.exec(fullResponse)) !== null) {
+  while ((match = tagRegex.exec(fullResponse)) !== null) {
     const attributesString = match[1];
     let content = unescapeXmlContent(match[2].trim());
 
@@ -42,7 +56,7 @@ export function getDyadWriteTags(fullResponse: string): {
       tags.push({ path: normalizePath(path), content, description });
     } else {
       logger.warn(
-        "Found <dyad-write> tag without a valid 'path' attribute:",
+        `Found <${tagName}> tag without a valid 'path' attribute:`,
         match[0],
       );
     }
@@ -50,50 +64,12 @@ export function getDyadWriteTags(fullResponse: string): {
   return tags;
 }
 
-export function getDyadGenerateTestTags(fullResponse: string): {
-  path: string;
-  content: string;
-  description?: string;
-}[] {
-  const dyadGenerateTestRegex =
-    /<dyad-generate-test([^>]*)>([\s\S]*?)<\/dyad-generate-test>/gi;
-  const pathRegex = /path="([^"]+)"/;
-  const descriptionRegex = /description="([^"]+)"/;
+export function getDyadWriteTags(fullResponse: string): DyadFileTag[] {
+  return parseDyadFileTags(fullResponse, "dyad-write");
+}
 
-  let match;
-  const tags: { path: string; content: string; description?: string }[] = [];
-
-  while ((match = dyadGenerateTestRegex.exec(fullResponse)) !== null) {
-    const attributesString = match[1];
-    let content = unescapeXmlContent(match[2].trim());
-
-    const pathMatch = pathRegex.exec(attributesString);
-    const descriptionMatch = descriptionRegex.exec(attributesString);
-
-    if (pathMatch && pathMatch[1]) {
-      const path = unescapeXmlAttr(pathMatch[1]);
-      const description = descriptionMatch?.[1]
-        ? unescapeXmlAttr(descriptionMatch[1])
-        : undefined;
-
-      const contentLines = content.split("\n");
-      if (contentLines[0]?.startsWith("```")) {
-        contentLines.shift();
-      }
-      if (contentLines[contentLines.length - 1]?.startsWith("```")) {
-        contentLines.pop();
-      }
-      content = contentLines.join("\n");
-
-      tags.push({ path: normalizePath(path), content, description });
-    } else {
-      logger.warn(
-        "Found <dyad-generate-test> tag without a valid 'path' attribute:",
-        match[0],
-      );
-    }
-  }
-  return tags;
+export function getDyadGenerateTestTags(fullResponse: string): DyadFileTag[] {
+  return parseDyadFileTags(fullResponse, "dyad-generate-test");
 }
 
 export function getDyadRenameTags(fullResponse: string): {

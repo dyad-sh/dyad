@@ -14,6 +14,31 @@ function unescapeLiteral(raw: string): string {
 }
 
 /**
+ * Strip a trailing `//` line comment, ignoring `//` that appears inside a string
+ * literal (e.g. `page.goto("http://x")`). Best-effort and single-line, matching
+ * the rest of this parser — it stops a `test(...)` written inside an inline
+ * comment (`doThing(); // test("nope")`) from becoming a phantom entry.
+ */
+function stripLineComment(line: string): string {
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === "\\") {
+        i++; // skip the escaped char
+        continue;
+      }
+      if (c === quote) quote = null;
+    } else if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+    } else if (c === "/" && line[i + 1] === "/") {
+      return line.slice(0, i);
+    }
+  }
+  return line;
+}
+
+/**
  * Best-effort static extraction of the individual `test()` cases in a Playwright
  * spec file. Returns one entry per test call found, with the 1-based line of the
  * call so a single test can be targeted via Playwright's `file:line` selector.
@@ -38,7 +63,9 @@ export function parseTestCases(source: string): TestCase[] {
     ) {
       continue;
     }
-    const match = TEST_CALL.exec(line);
+    // Also drop any inline `//` comment so `code(); // test("nope")` on a real
+    // code line doesn't register a phantom test.
+    const match = TEST_CALL.exec(stripLineComment(line));
     if (match) {
       out.push({ title: unescapeLiteral(match[2]), line: i + 1 });
     }

@@ -22,7 +22,10 @@ import {
 import { parsePlaywrightReport } from "../utils/playwright_report";
 import { parseTestCases } from "../utils/parse_test_cases";
 import { sendTelemetryEvent } from "../utils/telemetry";
-import { prepareIsolatedTestDatabase } from "../services/isolated_test_db";
+import {
+  prepareIsolatedTestDatabase,
+  type PreparedIsolation,
+} from "../services/isolated_test_db";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -242,9 +245,29 @@ export async function runAppTestsCore({
     }
   }
 
-  if (!parseOk || results.length === 0) {
+  if (!parseOk) {
     // No report produced — Playwright itself failed (missing browser,
     // config error, dev server unreachable). Infra/amber.
+    const tail = run.stderr.trim() || run.stdout.trim();
+    return {
+      appId,
+      results,
+      infraError: {
+        message:
+          tail.slice(-1500) ||
+          "The test runner didn't produce a report. Check the output for details.",
+      },
+    };
+  }
+
+  if (results.length === 0) {
+    // A report parsed but has no results. If Playwright exited cleanly this is
+    // a "no tests matched" outcome (e.g. running a single test by line whose
+    // selector matched nothing) — not an infra failure, so don't show an amber
+    // error. A non-zero exit with an empty report is a real runner failure.
+    if (run.code === 0) {
+      return { appId, results: [] };
+    }
     const tail = run.stderr.trim() || run.stdout.trim();
     return {
       appId,
@@ -349,6 +372,13 @@ export function registerTestsHandlers() {
         logger.warn(`Failed to resolve screenshot path ${resolved}: ${error}`);
         return { dataUrl: null };
       }
+      // Re-check the extension on the REAL (symlink-resolved) path: the initial
+      // `.png` check ran on the pre-resolution path, so a `foo.png` symlink
+      // pointing at a `.env.local` (or any non-PNG) would otherwise pass the
+      // extension gate and leak the target's contents into the renderer.
+      if (path.extname(realPath).toLowerCase() !== ".png") {
+        return { dataUrl: null };
+      }
       const rel = path.relative(realAppPath, realPath);
       const insideApp =
         rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
@@ -370,16 +400,13 @@ export function registerTestsHandlers() {
     async (event, params): Promise<RunAppTestsResult> => {
       const { appId, testFile, testLine, headed, parallel } = params;
 
-      // Cancel any prior run for this app and wait for its full lifecycle
-      // (prepare → run → teardown) to finish before starting. Otherwise a
-      // Stop-then-Run could race the prior run's teardown (env restore +
-      // branch delete) against this run's env snapshot/swap, causing tests to
-      // execute against the user's real database.
+      // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
+      // run's teardown — so a concurrent invocation sees THIS run as its prior
+      // and chains behind it. If we awaited before registering, two rapid Run
+      // clicks could both capture the same old run as `prior`, both wait for it,
+      // then both start isolation setup at once and double-swap the env file.
       const prior = testRunControllers.get(appId);
-      if (prior) {
-        prior.controller.abort();
-        await prior.done.catch(() => {});
-      }
+      prior?.controller.abort();
 
       const controller = new AbortController();
       let resolveDone!: () => void;
@@ -391,14 +418,23 @@ export function registerTestsHandlers() {
       const emit = (chunk: string, phase: "setup" | "running") =>
         emitOutput(event, appId, chunk, phase);
 
+      let prepared: PreparedIsolation | undefined;
       try {
+        // Wait for the prior run's full lifecycle (prepare → run → teardown) to
+        // finish before swapping env. Otherwise a Stop-then-Run could race the
+        // prior run's teardown (env restore + branch delete) against this run's
+        // env snapshot/swap, causing tests to execute against the real database.
+        if (prior) {
+          await prior.done.catch(() => {});
+        }
+
         const app = await getApp(appId);
         const runtimeMode = readSettings().runtimeMode2 ?? "host";
 
         // Set up isolation so the run never mutates the user's real data: Neon
         // apps get a throwaway copy-on-write branch, Supabase apps get a
         // throwaway RLS-scoped test user, and no-DB apps run as-is.
-        const prepared = await prepareIsolatedTestDatabase({
+        prepared = await prepareIsolatedTestDatabase({
           app,
           event,
           emit,
@@ -407,7 +443,7 @@ export function registerTestsHandlers() {
         });
 
         // Isolation was required but couldn't be set up — dead-end safely
-        // rather than run against real data.
+        // rather than run against real data. teardown still runs in `finally`.
         if (prepared.infraError) {
           return {
             appId,
@@ -417,23 +453,24 @@ export function registerTestsHandlers() {
           };
         }
 
-        try {
-          const result = await runAppTestsCore({
-            appId,
-            testFile,
-            testLine,
-            headed,
-            parallel,
-            signal: controller.signal,
-            onOutput: emit,
-            testEnv: prepared.testCredentials,
-          });
-          return { ...result, isolation: prepared.isolation };
-        } finally {
-          // Always restore the app to its real database, even on abort/throw.
+        const result = await runAppTestsCore({
+          appId,
+          testFile,
+          testLine,
+          headed,
+          parallel,
+          signal: controller.signal,
+          onOutput: emit,
+          testEnv: prepared.testCredentials,
+        });
+        return { ...result, isolation: prepared.isolation };
+      } finally {
+        // Always restore the app to its real database, even on the infraError
+        // early-return, abort, or throw. `teardown` is safe to call exactly
+        // once; on the infraError path it's a NOOP (isolation already restored).
+        if (prepared) {
           await prepared.teardown();
         }
-      } finally {
         if (testRunControllers.get(appId)?.controller === controller) {
           testRunControllers.delete(appId);
         }

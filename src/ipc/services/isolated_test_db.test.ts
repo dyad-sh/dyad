@@ -237,7 +237,8 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     expect(prepared.infraError).toBeDefined();
     expect(prepared.infraError?.message).toMatch(/real data was not touched/i);
     expect(prepared.isolation.mode).toBe("none");
-    // Restart-back was attempted as part of the dead-end restore.
-    expect(mocks.executeApp).toHaveBeenCalled();
+    // Branch creation failed before the env was swapped, so there is nothing to
+    // restore — teardown correctly skips the restart (no executeApp call).
+    expect(mocks.executeApp).not.toHaveBeenCalled();
   });
 });

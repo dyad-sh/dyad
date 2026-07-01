@@ -177,8 +177,21 @@ export async function createTempTestUser(
   }
 
   // Persist the in-flight user id immediately so a crash before teardown is
-  // recoverable by the startup reconciliation sweep.
-  await persistTestUserId(appData.id, created.id);
+  // recoverable by the startup reconciliation sweep. If persisting fails, the
+  // reconciliation sweep will never know about this user, so compensate by
+  // deleting it now — otherwise we'd leak an untracked auth user in the real
+  // project.
+  try {
+    await persistTestUserId(appData.id, created.id);
+  } catch (error) {
+    await deleteUserBestEffort({
+      projectUrl,
+      projectId,
+      organizationSlug,
+      userId: created.id,
+    });
+    throw error;
+  }
 
   logger.info(`Created test user ${created.id} for app ${appData.id}`);
   return { userId: created.id, email, password, projectUrl };
@@ -339,10 +352,16 @@ WHERE table_schema = 'public'
         continue;
       }
       try {
-        // Let Postgres escape the identifiers/value via format(%I, %L) instead
-        // of relying on the regex check above as the only guard. The regex
-        // still prevents the values from breaking out of the SQL string
-        // literals, and `format` handles identifier quoting in the database.
+        // SECURITY: the regex guards above (SAFE_IDENT_RE for table/column,
+        // UUID_RE for userId) are the LOAD-BEARING injection defense here, not
+        // format(). The values are interpolated into the JS template string
+        // *before* Postgres ever sees the query, so if a value contained a
+        // single quote it would break out of the SQL string literal that wraps
+        // format()'s arguments — format() only escapes what reaches it intact.
+        // The regexes guarantee that: SAFE_IDENT_RE/UUID_RE must NEVER be
+        // relaxed to allow quotes, dollar signs, or backslashes. format(%I, %L)
+        // is a second layer that quotes identifiers/values that already passed
+        // regex validation.
         await executeSupabaseSql({
           supabaseProjectId: projectId,
           query: `DO $$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $$;`,

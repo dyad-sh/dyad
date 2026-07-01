@@ -162,12 +162,16 @@ describe("deleteTempTestUser", () => {
 
     await deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }));
 
-    // Scoped DELETE ran against the discovered table/column.
+    // Scoped DELETE ran against the discovered table/column. The cleanup SQL is
+    // a `DO $$ ... EXECUTE format('DELETE FROM ...') ... $$;` block, so match on
+    // the DELETE substring rather than the statement prefix.
     const deleteCall = mocks.executeSupabaseSql.mock.calls.find(([arg]) =>
-      arg.query.startsWith("DELETE FROM"),
+      arg.query.includes("DELETE FROM"),
     );
-    expect(deleteCall?.[0].query).toContain('public."todos"');
-    expect(deleteCall?.[0].query).toContain(`"user_id" = '${UUID}'`);
+    expect(deleteCall?.[0].query).toContain("public.%I");
+    expect(deleteCall?.[0].query).toContain(`'todos'`);
+    expect(deleteCall?.[0].query).toContain(`'user_id'`);
+    expect(deleteCall?.[0].query).toContain(`'${UUID}'`);
 
     // User deleted via the admin API, then column cleared.
     expect(fetchSpy).toHaveBeenCalledWith(

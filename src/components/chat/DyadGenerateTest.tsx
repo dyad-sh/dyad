@@ -41,7 +41,9 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
   const aborted = state === "aborted";
   const inProgress = state === "pending";
 
-  const fileName = path ? path.split("/").pop() : "";
+  // Split on both separators so a Windows-style `tests\foo.spec.ts` still
+  // derives just the filename.
+  const fileName = path ? path.split(/[\\/]/).pop() : "";
 
   const openTestsPanel = (e: React.MouseEvent) => {
     e.stopPropagation();

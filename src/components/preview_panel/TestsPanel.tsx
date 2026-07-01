@@ -41,6 +41,9 @@ import { showError, showInfo } from "@/lib/toast";
  * prefix or being absolute), so we fall back from exact → suffix → basename.
  * Returns the original path when no unambiguous match exists.
  */
+/** Cap on the accumulated run output kept in the renderer (keeps the tail). */
+const MAX_OUTPUT_LENGTH = 500_000;
+
 function reconcileResultFile(resultFile: string, specFiles: string[]): string {
   const normalized = resultFile.replace(/\\/g, "/");
   if (specFiles.includes(normalized)) return normalized;
@@ -332,7 +335,10 @@ function TestCaseRow({
 }: TestCaseRowProps) {
   const [expanded, setExpanded] = useState(false);
   const isFailing = status === "failed" || status === "inconclusive";
-  const canExpand = isFailing && !!result?.error;
+  // Expandable when there's error text OR a failure screenshot — some failures
+  // capture a screenshot without a textual error, and those still deserve to be
+  // viewable.
+  const canExpand = isFailing && !!(result?.error || result?.screenshotPath);
 
   return (
     <div className="group">
@@ -613,7 +619,10 @@ export function TestsPanel() {
         update: (prev) => ({
           ...prev,
           phase: payload.phase,
-          output: prev.output + payload.chunk,
+          // Cap the accumulated output so a chatty run (verbose reporters,
+          // parallel workers) can't grow this string unboundedly and degrade
+          // the renderer. The tail is the most useful part for debugging.
+          output: (prev.output + payload.chunk).slice(-MAX_OUTPUT_LENGTH),
         }),
       });
     });

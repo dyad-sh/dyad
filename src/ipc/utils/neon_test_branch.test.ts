@@ -151,6 +151,33 @@ describe("createTempTestBranch", () => {
     expect(result.neonAuthBaseUrl).toBeUndefined();
     expect(result.cookieSecret).toBeUndefined();
   });
+
+  it("dead-ends when the app uses Neon Auth but provisioning fails", async () => {
+    // ensureNeonAuth resolves undefined (default) → auth could not be activated.
+    await expect(
+      createTempTestBranch(
+        makeApp({ neonDevelopmentAuthCookieSecret: "dev-secret" }),
+      ),
+    ).rejects.toThrow(/Neon Auth/);
+    // The just-created branch is deleted and the column cleared so we don't
+    // orphan it or run the app against real auth with an isolated DB branch.
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "test-new-branch-id",
+    );
+    expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+
+  it("does not overwrite the column when the prior branch cleanup fails", async () => {
+    // The prior leaked branch can't be deleted (Neon rejects), so we must keep
+    // the column pointing at it for the reconciliation sweep instead of the new
+    // branch id.
+    mocks.deleteProjectBranch.mockRejectedValueOnce(new Error("neon down"));
+    await createTempTestBranch(makeApp({ neonTestBranchId: "old-br" }));
+    expect(mocks.set).not.toHaveBeenCalledWith({
+      neonTestBranchId: "test-new-branch-id",
+    });
+  });
 });
 
 describe("deleteTempTestBranch", () => {

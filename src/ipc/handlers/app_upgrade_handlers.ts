@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
+import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "../utils/socket_firewall";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -87,8 +88,7 @@ async function applyCapacitor({
 }) {
   // Install Capacitor dependencies
   await simpleSpawn({
-    command:
-      "pnpm add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+    command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps`,
     cwd: appPath,
     successMessage: "Capacitor dependencies installed successfully",
     errorPrefix: "Failed to install Capacitor dependencies",
@@ -106,8 +106,7 @@ async function applyCapacitor({
   // 1. confirmModulesPurge will almost never be needed for capacitor (i.e. user would need to switch from npm to pnpm and not triggered a rebuild).
   // 2. strictBuildDeps should be kept true (default value) in case capacitor has native deps.
   await simpleSpawn({
-    command:
-      "pnpm install --prod=false || npm install --include=dev --legacy-peer-deps",
+    command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} install --prod=false || npm install --include=dev --legacy-peer-deps`,
     cwd: appPath,
     successMessage: "Development dependencies installed successfully",
     errorPrefix: "Failed to install development dependencies",

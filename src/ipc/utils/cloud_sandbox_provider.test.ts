@@ -535,8 +535,8 @@ describe("cloud_sandbox_provider sandbox creation", () => {
       appId: 42,
       appPath: "/tmp/app",
       installCommand:
-        "pnpm --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
-      startCommand: "pnpm run dev",
+        "pnpm --pm-on-fail=ignore --config.confirmModulesPurge=false --config.strictDepBuilds=false install",
+      startCommand: "pnpm --pm-on-fail=ignore run dev",
     });
     expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
       "/tmp/app",

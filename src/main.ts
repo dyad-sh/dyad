@@ -9,6 +9,8 @@ import {
   crashReporter,
 } from "electron";
 import * as path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
 // @ts-ignore
@@ -73,16 +75,64 @@ import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
 import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
-import { applyManagedPnpmToProcessPath } from "./ipc/utils/socket_firewall";
+import {
+  applyManagedPnpmToProcessPath,
+  getManagedPnpmBinDir,
+  getManagedPnpmInstallDir,
+} from "./ipc/utils/socket_firewall";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
 log.scope.labelPadding = false;
+const execFileAsync = promisify(execFile);
 
 // Prefer the Dyad-managed pnpm (if installed) for everything spawned from the
 // main process. Runs after all module imports, so it wins over the shell PATH
 // that fixPath() restores at app_runtime_service load time.
 applyManagedPnpmToProcessPath();
+
+async function resolveStartupExecutablePath(
+  command: string,
+): Promise<string | null> {
+  try {
+    const { stdout } =
+      process.platform === "win32"
+        ? await execFileAsync("where.exe", [command], {
+            encoding: "utf8",
+            env: process.env,
+          })
+        : await execFileAsync("which", [command], {
+            encoding: "utf8",
+            env: process.env,
+          });
+    return (
+      stdout
+        .split(/\r?\n/)
+        .find((line) => line.trim())
+        ?.trim() ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function logStartupExecutablePaths(): Promise<void> {
+  const [node, npm, pnpm] = await Promise.all([
+    resolveStartupExecutablePath("node"),
+    resolveStartupExecutablePath("npm"),
+    resolveStartupExecutablePath("pnpm"),
+  ]);
+
+  log.info("Startup executable paths", {
+    node,
+    npm,
+    pnpm,
+    managedPnpmBinDir: getManagedPnpmBinDir(),
+    managedPnpmInstallDir: getManagedPnpmInstallDir(),
+  });
+}
+
+void logStartupExecutablePaths();
 
 // In dev, keep minidumps under the project's ./userData (matching where Dyad
 // writes its other dev files) instead of the OS userData dir, so they don't

@@ -74,9 +74,15 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
   getPackageManagerCommandEnv: () => ({
     ...process.env,
     COREPACK_ENABLE_PROJECT_SPEC: "0",
+    COREPACK_ENABLE_STRICT: "0",
+    npm_config_pm_on_fail: "ignore",
   }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
-  PNPM_INSTALL_POLICY_ARGS: ["--minimum-release-age=1440"],
+  PNPM_INSTALL_POLICY_ARGS: [
+    "--pm-on-fail=ignore",
+    "--minimum-release-age=1440",
+  ],
+  PNPM_PM_ON_FAIL_IGNORE_ARG: "--pm-on-fail=ignore",
 }));
 
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
@@ -248,12 +254,14 @@ describe("executeApp", () => {
     });
 
     expect(spawnMock).toHaveBeenCalledWith(
-      "pnpm --minimum-release-age=1440 install && pnpm run dev --port 32101",
+      "pnpm --pm-on-fail=ignore --minimum-release-age=1440 install && pnpm --pm-on-fail=ignore run dev --port 32101",
       [],
       expect.objectContaining({
         cwd: "/tmp/app",
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_pm_on_fail: "ignore",
         }),
         shell: true,
       }),

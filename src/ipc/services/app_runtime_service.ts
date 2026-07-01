@@ -37,6 +37,7 @@ import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   type PackageManager,
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
 
@@ -80,6 +81,10 @@ function getPnpmInstallCommand(): string {
   return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
 }
 
+function getPnpmRunCommand(): string {
+  return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
+}
+
 function getNpmInstallCommand(): string {
   return "npm install --legacy-peer-deps";
 }
@@ -105,7 +110,7 @@ async function getDefaultCommand({
   if (runtimeMode === "docker") {
     await ensurePnpmAllowBuildsConfigured({ appPath });
     return {
-      command: `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`,
+      command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
       isCustom: false,
       packageManager: "pnpm",
     };
@@ -127,7 +132,7 @@ async function getDefaultCommand({
 
   await ensurePnpmAllowBuildsConfigured({ appPath });
   return {
-    command: `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`,
+    command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
     isCustom: false,
     packageManager: "pnpm",
   };

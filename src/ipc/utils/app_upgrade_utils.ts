@@ -4,6 +4,7 @@ import path from "node:path";
 import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "./socket_firewall";
 
 export const logger = log.scope("app_upgrade_utils");
 
@@ -128,8 +129,7 @@ export async function applyComponentTagger(
   if (installDependencies) {
     try {
       await simpleSpawn({
-        command:
-          "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger",
+        command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger`,
         cwd: appPath,
         successMessage:
           "component-tagger dependency installed successfully with pnpm",

@@ -6,6 +6,7 @@ import log from "electron-log";
 import {
   commitPnpmAllowBuildsConfigIfChanged,
   PNPM_INSTALL_POLICY_ARGS,
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
@@ -135,7 +136,7 @@ function getDefaultInstallCommand(): string {
 }
 
 function getDefaultStartCommand(): string {
-  return "pnpm run dev";
+  return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
 }
 
 function getDefaultCloudSandboxErrorMessage(status: number): string {

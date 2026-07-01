@@ -71,6 +71,8 @@ describe("getPackageManagerCommandEnv", () => {
       PATH: [managedPnpmBinDir, "/bin"].join(path.delimiter),
       FOO: "bar",
       COREPACK_ENABLE_PROJECT_SPEC: "0",
+      COREPACK_ENABLE_STRICT: "0",
+      npm_config_pm_on_fail: "ignore",
     });
   });
 
@@ -102,12 +104,18 @@ describe("detectPreferredPackageManager", () => {
       .mockResolvedValue({ stdout: "10.16.0", stderr: "" });
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
-      env: expect.objectContaining({
-        COREPACK_ENABLE_PROJECT_SPEC: "0",
-      }),
-      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
-    });
+    expect(runner).toHaveBeenCalledWith(
+      "pnpm",
+      ["--pm-on-fail=ignore", "--version"],
+      {
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_pm_on_fail: "ignore",
+        }),
+        timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 
   it("falls back to npm when pnpm is unavailable", async () => {
@@ -116,12 +124,18 @@ describe("detectPreferredPackageManager", () => {
       .mockRejectedValue(new Error("ENOENT"));
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
-      env: expect.objectContaining({
-        COREPACK_ENABLE_PROJECT_SPEC: "0",
-      }),
-      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
-    });
+    expect(runner).toHaveBeenCalledWith(
+      "pnpm",
+      ["--pm-on-fail=ignore", "--version"],
+      {
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_pm_on_fail: "ignore",
+        }),
+        timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 
   it("prefers pnpm when pnpm is available but too old for minimumReleaseAge", async () => {
@@ -130,12 +144,18 @@ describe("detectPreferredPackageManager", () => {
       .mockResolvedValue({ stdout: "10.15.0", stderr: "" });
 
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
-    expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
-      env: expect.objectContaining({
-        COREPACK_ENABLE_PROJECT_SPEC: "0",
-      }),
-      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
-    });
+    expect(runner).toHaveBeenCalledWith(
+      "pnpm",
+      ["--pm-on-fail=ignore", "--version"],
+      {
+        env: expect.objectContaining({
+          COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_pm_on_fail: "ignore",
+        }),
+        timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+      },
+    );
   });
 
   it("reports old pnpm as available but not minimumReleaseAge-capable", async () => {
@@ -620,6 +640,7 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
+          "--pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -652,6 +673,7 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
+          "--pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -685,6 +707,7 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
+          "--pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -712,6 +735,7 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
+          "--pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -747,6 +771,8 @@ describe("ensureSocketFirewallInstalled", () => {
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
       },
@@ -769,6 +795,8 @@ describe("ensureSocketFirewallInstalled", () => {
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
       },

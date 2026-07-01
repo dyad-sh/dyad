@@ -20,6 +20,7 @@ import {
   getManagedPnpmInstallDir,
   getPackageManagerCommandEnv,
   PNPM_GLOBAL_INSTALL_PACKAGE,
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_MINIMUM_RELEASE_AGE_VERSION,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
@@ -91,7 +92,7 @@ async function installManagedPnpm(): Promise<string> {
 
   const result = await runCommand(
     getManagedPnpmExecutablePath(),
-    ["--version"],
+    [PNPM_PM_ON_FAIL_IGNORE_ARG, "--version"],
     {
       env: getPackageManagerCommandEnv(),
     },
@@ -147,9 +148,12 @@ function scheduleManagedPnpmInstall(currentPnpmVersion: string | null): void {
 }
 
 async function getPnpmVersionAndScheduleInstall(): Promise<string | null> {
-  const currentPnpmVersion = await runShellCommand("pnpm --version", {
-    env: getPackageManagerCommandEnv(),
-  });
+  const currentPnpmVersion = await runShellCommand(
+    `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} --version`,
+    {
+      env: getPackageManagerCommandEnv(),
+    },
+  );
   if (
     currentPnpmVersion &&
     isVersionAtLeast(currentPnpmVersion, PNPM_MINIMUM_RELEASE_AGE_VERSION)

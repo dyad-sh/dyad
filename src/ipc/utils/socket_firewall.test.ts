@@ -72,6 +72,7 @@ describe("getPackageManagerCommandEnv", () => {
       FOO: "bar",
       COREPACK_ENABLE_PROJECT_SPEC: "0",
       COREPACK_ENABLE_STRICT: "0",
+      npm_config_package_manager_strict: "false",
       npm_config_pm_on_fail: "ignore",
     });
   });
@@ -106,11 +107,12 @@ describe("detectPreferredPackageManager", () => {
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
     expect(runner).toHaveBeenCalledWith(
       "pnpm",
-      ["--pm-on-fail=ignore", "--version"],
+      ["--config.pm-on-fail=ignore", "--version"],
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
@@ -126,11 +128,12 @@ describe("detectPreferredPackageManager", () => {
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("npm");
     expect(runner).toHaveBeenCalledWith(
       "pnpm",
-      ["--pm-on-fail=ignore", "--version"],
+      ["--config.pm-on-fail=ignore", "--version"],
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
@@ -146,11 +149,12 @@ describe("detectPreferredPackageManager", () => {
     await expect(detectPreferredPackageManager(runner)).resolves.toBe("pnpm");
     expect(runner).toHaveBeenCalledWith(
       "pnpm",
-      ["--pm-on-fail=ignore", "--version"],
+      ["--config.pm-on-fail=ignore", "--version"],
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
@@ -640,7 +644,7 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
-          "--pm-on-fail=ignore",
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -673,7 +677,7 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
-          "--pm-on-fail=ignore",
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -707,7 +711,7 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
-          "--pm-on-fail=ignore",
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -735,7 +739,7 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
-          "--pm-on-fail=ignore",
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -772,6 +776,7 @@ describe("ensureSocketFirewallInstalled", () => {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
@@ -796,6 +801,7 @@ describe("ensureSocketFirewallInstalled", () => {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,

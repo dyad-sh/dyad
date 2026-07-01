@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -75,14 +78,15 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
     ...process.env,
     COREPACK_ENABLE_PROJECT_SPEC: "0",
     COREPACK_ENABLE_STRICT: "0",
+    npm_config_package_manager_strict: "false",
     npm_config_pm_on_fail: "ignore",
   }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
   PNPM_INSTALL_POLICY_ARGS: [
-    "--pm-on-fail=ignore",
+    "--config.pm-on-fail=ignore",
     "--minimum-release-age=1440",
   ],
-  PNPM_PM_ON_FAIL_IGNORE_ARG: "--pm-on-fail=ignore",
+  PNPM_PM_ON_FAIL_IGNORE_ARG: "--config.pm-on-fail=ignore",
 }));
 
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
@@ -131,6 +135,29 @@ function createEvent(): Electron.IpcMainInvokeEvent {
   } as unknown as WebContents;
 
   return { sender } as IpcMainInvokeEvent;
+}
+
+async function createTempAppDir(): Promise<string> {
+  return mkdtemp(path.join(os.tmpdir(), "dyad-runtime-pm-"));
+}
+
+async function writePackageJson(
+  appPath: string,
+  packageJson: Record<string, unknown>,
+): Promise<void> {
+  await writeFile(
+    path.join(appPath, "package.json"),
+    JSON.stringify(packageJson, null, 2),
+  );
+}
+
+async function createMarker(
+  appPath: string,
+  relativePath: string,
+): Promise<void> {
+  const markerPath = path.join(appPath, relativePath);
+  await mkdir(path.dirname(markerPath), { recursive: true });
+  await writeFile(markerPath, "");
 }
 
 async function withCorepackProjectSpecEnv<T>(
@@ -254,13 +281,14 @@ describe("executeApp", () => {
     });
 
     expect(spawnMock).toHaveBeenCalledWith(
-      "pnpm --pm-on-fail=ignore --minimum-release-age=1440 install && pnpm --pm-on-fail=ignore run dev --port 32101",
+      "pnpm --config.pm-on-fail=ignore --minimum-release-age=1440 install && pnpm --config.pm-on-fail=ignore run dev --port 32101",
       [],
       expect.objectContaining({
         cwd: "/tmp/app",
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         shell: true,
@@ -277,6 +305,105 @@ describe("executeApp", () => {
         message: "Install pnpm 10.16.0 or newer for the strongest protection",
       }),
     );
+  });
+
+  it.each<
+    [
+      string,
+      (appPath: string) => Promise<void>,
+      { pnpmAvailable: boolean; expectedCommandPrefix: "pnpm" | "(npm" },
+    ]
+  >([
+    [
+      "uses pnpm when packageManager starts with pnpm@",
+      (appPath) => writePackageJson(appPath, { packageManager: "pnpm@11.9.0" }),
+      { pnpmAvailable: true, expectedCommandPrefix: "pnpm" },
+    ],
+    [
+      "uses npm when packageManager starts with pnpm@ but pnpm is unavailable",
+      (appPath) => writePackageJson(appPath, { packageManager: "pnpm@11.9.0" }),
+      { pnpmAvailable: false, expectedCommandPrefix: "(npm" },
+    ],
+    [
+      "uses npm when packageManager starts with npm@",
+      (appPath) => writePackageJson(appPath, { packageManager: "npm@10.8.2" }),
+      { pnpmAvailable: true, expectedCommandPrefix: "(npm" },
+    ],
+    [
+      "uses pnpm when node_modules is pnpm-shaped even with both lockfiles",
+      async (appPath) => {
+        await createMarker(appPath, "pnpm-lock.yaml");
+        await createMarker(appPath, "package-lock.json");
+        await createMarker(appPath, "node_modules/.pnpm/.keep");
+      },
+      { pnpmAvailable: true, expectedCommandPrefix: "pnpm" },
+    ],
+    [
+      "uses npm when node_modules is npm-shaped even with both lockfiles",
+      async (appPath) => {
+        await createMarker(appPath, "pnpm-lock.yaml");
+        await createMarker(appPath, "package-lock.json");
+        await createMarker(appPath, "node_modules/.package-lock.json");
+      },
+      { pnpmAvailable: true, expectedCommandPrefix: "(npm" },
+    ],
+    [
+      "uses pnpm when only pnpm-lock.yaml exists",
+      (appPath) => createMarker(appPath, "pnpm-lock.yaml"),
+      { pnpmAvailable: true, expectedCommandPrefix: "pnpm" },
+    ],
+    [
+      "uses npm when only pnpm-lock.yaml exists but pnpm is unavailable",
+      (appPath) => createMarker(appPath, "pnpm-lock.yaml"),
+      { pnpmAvailable: false, expectedCommandPrefix: "(npm" },
+    ],
+    [
+      "uses npm when only package-lock.json exists",
+      (appPath) => createMarker(appPath, "package-lock.json"),
+      { pnpmAvailable: true, expectedCommandPrefix: "(npm" },
+    ],
+    [
+      "uses pnpm when both lockfiles exist and node_modules has no shape",
+      async (appPath) => {
+        await createMarker(appPath, "pnpm-lock.yaml");
+        await createMarker(appPath, "package-lock.json");
+      },
+      { pnpmAvailable: true, expectedCommandPrefix: "pnpm" },
+    ],
+    [
+      "uses pnpm for no-signal apps when pnpm is available",
+      async () => {},
+      { pnpmAvailable: true, expectedCommandPrefix: "pnpm" },
+    ],
+    [
+      "uses npm for no-signal apps when pnpm is unavailable",
+      async () => {},
+      { pnpmAvailable: false, expectedCommandPrefix: "(npm" },
+    ],
+  ])("%s", async (_, arrangeApp, { pnpmAvailable, expectedCommandPrefix }) => {
+    const appPath = await createTempAppDir();
+    try {
+      await arrangeApp(appPath);
+      const process = new FakeChildProcess(101);
+      spawnMock.mockReturnValueOnce(process);
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: pnpmAvailable,
+        minimumReleaseAgeSupported: pnpmAvailable,
+      });
+
+      await executeApp({
+        appPath,
+        appId: 1,
+        event: createEvent(),
+        isNeon: false,
+      });
+
+      expect(
+        String(spawnMock.mock.calls[0][0]).startsWith(expectedCommandPrefix),
+      ).toBe(true);
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
   });
 
   it("does not disable Corepack project specs for npm fallback commands", async () => {

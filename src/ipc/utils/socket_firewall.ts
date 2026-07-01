@@ -20,8 +20,9 @@ export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
 export const PNPM_GLOBAL_INSTALL_PACKAGE = "pnpm@latest-11";
 export const COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV = "0";
 export const COREPACK_ENABLE_STRICT_DISABLED_ENV = "0";
+export const PNPM_PACKAGE_MANAGER_STRICT_DISABLED_ENV = "false";
 export const PNPM_PM_ON_FAIL_IGNORE_ENV = "ignore";
-export const PNPM_PM_ON_FAIL_IGNORE_ARG = "--pm-on-fail=ignore";
+export const PNPM_PM_ON_FAIL_IGNORE_ARG = "--config.pm-on-fail=ignore";
 const MANAGED_TOOLS_DIR = "managed-tools";
 const MANAGED_PNPM_DIR = "pnpm";
 const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
@@ -174,6 +175,7 @@ export function getPackageManagerCommandEnv(
     ...withManagedPnpmPath(env),
     COREPACK_ENABLE_PROJECT_SPEC: COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV,
     COREPACK_ENABLE_STRICT: COREPACK_ENABLE_STRICT_DISABLED_ENV,
+    npm_config_package_manager_strict: PNPM_PACKAGE_MANAGER_STRICT_DISABLED_ENV,
     npm_config_pm_on_fail: PNPM_PM_ON_FAIL_IGNORE_ENV,
   };
 }

@@ -385,6 +385,7 @@ describe("executeAddDependency", () => {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
@@ -436,6 +437,7 @@ describe("executeAddDependency", () => {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
           COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
           npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,

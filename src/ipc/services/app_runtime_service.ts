@@ -33,6 +33,7 @@ import {
   runningApps,
 } from "@/ipc/utils/process_manager";
 import {
+  applyManagedPnpmToProcessPath,
   ensurePnpmAllowBuildsConfigured,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
@@ -44,6 +45,7 @@ const logger = log.scope("app_runtime_service");
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
+applyManagedPnpmToProcessPath();
 
 export function formatCloudSandboxError(error: unknown) {
   if (!(error instanceof CloudSandboxApiError)) {

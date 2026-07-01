@@ -11,12 +11,15 @@ import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { isVersionAtLeast } from "@/shared/version_utils";
+import { getUserDataPath } from "@/paths/paths";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
 export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
 export const PNPM_GLOBAL_INSTALL_PACKAGE = "pnpm@latest-11";
 export const COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV = "0";
+const MANAGED_TOOLS_DIR = "managed-tools";
+const MANAGED_PNPM_DIR = "pnpm";
 const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
   MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
@@ -101,11 +104,67 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
+function getPathEnvKey(env: NodeJS.ProcessEnv): string {
+  return Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+}
+
+function prependPathSegment(
+  env: NodeJS.ProcessEnv,
+  segment: string,
+): NodeJS.ProcessEnv {
+  const pathKey = getPathEnvKey(env);
+  const currentPath = env[pathKey] ?? "";
+  const pathSegments = currentPath
+    .split(path.delimiter)
+    .filter((value) => value.length > 0);
+  const hasSegment = pathSegments.some((value) =>
+    process.platform === "win32"
+      ? value.toLowerCase() === segment.toLowerCase()
+      : value === segment,
+  );
+
+  if (hasSegment) {
+    return env;
+  }
+
+  return {
+    ...env,
+    [pathKey]: [segment, ...pathSegments].join(path.delimiter),
+  };
+}
+
+export function getManagedPnpmInstallDir(): string {
+  return path.join(getUserDataPath(), MANAGED_TOOLS_DIR, MANAGED_PNPM_DIR);
+}
+
+export function getManagedPnpmBinDir(): string {
+  return path.join(getManagedPnpmInstallDir(), "node_modules", ".bin");
+}
+
+export function getManagedPnpmExecutablePath(): string {
+  return path.join(
+    getManagedPnpmBinDir(),
+    process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+  );
+}
+
+export function withManagedPnpmPath(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return prependPathSegment(env, getManagedPnpmBinDir());
+}
+
+export function applyManagedPnpmToProcessPath(): void {
+  const pathKey = getPathEnvKey(process.env);
+  const nextEnv = withManagedPnpmPath(process.env);
+  process.env[pathKey] = nextEnv[pathKey] ?? "";
+}
+
 export function getPackageManagerCommandEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return {
-    ...env,
+    ...withManagedPnpmPath(env),
     COREPACK_ENABLE_PROJECT_SPEC: COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV,
   };
 }

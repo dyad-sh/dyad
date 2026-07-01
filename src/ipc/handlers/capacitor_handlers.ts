@@ -10,6 +10,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { createTypedHandler } from "./base";
 import { capacitorContracts } from "../types/capacitor";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 
 const logger = log.scope("capacitor_handlers");
 
@@ -73,6 +74,7 @@ export function registerCapacitorHandlers() {
     await simpleSpawn({
       command: "npm run build",
       cwd: appPath,
+      env: getPackageManagerCommandEnv(),
       successMessage: "App built successfully",
       errorPrefix: "Failed to build app",
     });
@@ -83,7 +85,7 @@ export function registerCapacitorHandlers() {
       successMessage: "Capacitor sync completed successfully",
       errorPrefix: "Failed to sync Capacitor",
       env: {
-        ...process.env,
+        ...getPackageManagerCommandEnv(),
         LANG: "en_US.UTF-8",
       },
     });
@@ -109,6 +111,7 @@ export function registerCapacitorHandlers() {
     await simpleSpawn({
       command: "npx cap open ios",
       cwd: appPath,
+      env: getPackageManagerCommandEnv(),
       successMessage: "iOS project opened successfully",
       errorPrefix: "Failed to open iOS project",
     });
@@ -136,6 +139,7 @@ export function registerCapacitorHandlers() {
     await simpleSpawn({
       command: "npx cap open android",
       cwd: appPath,
+      env: getPackageManagerCommandEnv(),
       successMessage: "Android project opened successfully",
       errorPrefix: "Failed to open Android project",
     });

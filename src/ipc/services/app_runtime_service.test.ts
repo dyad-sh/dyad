@@ -69,6 +69,7 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
 }));
 
 vi.mock("@/ipc/utils/socket_firewall", () => ({
+  applyManagedPnpmToProcessPath: vi.fn(),
   ensurePnpmAllowBuildsConfigured: (args: unknown) =>
     ensurePnpmAllowBuildsConfiguredMock(args),
   getPackageManagerCommandEnv: () => ({

@@ -5,6 +5,7 @@ import fixPath from "fix-path";
 import { runShellCommand } from "../utils/runShellCommand";
 import log from "electron-log";
 import { existsSync } from "fs";
+import fs from "fs/promises";
 import { join } from "path";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
@@ -12,7 +13,10 @@ import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  applyManagedPnpmToProcessPath,
   getCommandExecutionDisplayDetails,
+  getManagedPnpmExecutablePath,
+  getManagedPnpmInstallDir,
   getPackageManagerCommandEnv,
   PNPM_GLOBAL_INSTALL_PACKAGE,
   runCommand,
@@ -37,6 +41,7 @@ function reloadNodePath() {
     process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
     logger.debug("Added custom Node.js path to PATH:", settings.customNodePath);
   }
+  applyManagedPnpmToProcessPath();
 }
 
 function formatInstallFailureReason(error: unknown): string {
@@ -124,13 +129,7 @@ export function registerNodeHandlers() {
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
       runShellCommand("node --version"),
-      // First, check if pnpm is installed.
-      // If not, try to install it using corepack.
-      // If both fail, then pnpm is not available.
-      runShellCommand(
-        `pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g ${PNPM_GLOBAL_INSTALL_PACKAGE} && pnpm --version)`,
-        { env: getPackageManagerCommandEnv() },
-      ),
+      runShellCommand("pnpm --version", { env: getPackageManagerCommandEnv() }),
     ]);
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
   });
@@ -146,20 +145,30 @@ export function registerNodeHandlers() {
         return { pnpmVersion: testInstallPnpmVersion };
       }
 
-      // Use --force in case pnpm is already installed, but user
-      // wants to upgrade.
+      const managedPnpmInstallDir = getManagedPnpmInstallDir();
+      await fs.mkdir(managedPnpmInstallDir, { recursive: true });
       await runCommand(
         "npm",
-        ["install", "-g", "--force", PNPM_GLOBAL_INSTALL_PACKAGE],
+        [
+          "install",
+          "--prefix",
+          managedPnpmInstallDir,
+          "--force",
+          PNPM_GLOBAL_INSTALL_PACKAGE,
+        ],
         {
           env: getPackageManagerCommandEnv(),
         },
       );
-      reloadNodePath();
+      applyManagedPnpmToProcessPath();
 
-      const result = await runCommand("pnpm", ["--version"], {
-        env: getPackageManagerCommandEnv(),
-      });
+      const result = await runCommand(
+        getManagedPnpmExecutablePath(),
+        ["--version"],
+        {
+          env: getPackageManagerCommandEnv(),
+        },
+      );
       const pnpmVersion = result.stdout.trim();
       if (!pnpmVersion) {
         throw new Error(

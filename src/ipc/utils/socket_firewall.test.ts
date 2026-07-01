@@ -26,6 +26,7 @@ import {
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
+  getManagedPnpmBinDir,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
@@ -64,11 +65,22 @@ beforeEach(() => {
 
 describe("getPackageManagerCommandEnv", () => {
   it("disables Corepack project packageManager pins while preserving the rest of the env", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+
     expect(getPackageManagerCommandEnv({ PATH: "/bin", FOO: "bar" })).toEqual({
-      PATH: "/bin",
+      PATH: [managedPnpmBinDir, "/bin"].join(path.delimiter),
       FOO: "bar",
       COREPACK_ENABLE_PROJECT_SPEC: "0",
     });
+  });
+
+  it("does not duplicate the managed pnpm path segment", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+    const pathValue = [managedPnpmBinDir, "/bin"].join(path.delimiter);
+
+    expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
+      pathValue,
+    );
   });
 });
 

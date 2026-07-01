@@ -100,6 +100,7 @@ async function applyCapacitor({
   await simpleSpawn({
     command: `npx cap init "${appName}" "com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, "")}" --web-dir=dist`,
     cwd: appPath,
+    env: getPackageManagerCommandEnv(),
     successMessage: "Capacitor initialized successfully",
     errorPrefix: "Failed to initialize Capacitor",
   });
@@ -120,6 +121,7 @@ async function applyCapacitor({
   await simpleSpawn({
     command: "npx cap add ios && npx cap add android",
     cwd: appPath,
+    env: getPackageManagerCommandEnv(),
     successMessage: "iOS and Android platforms added successfully",
     errorPrefix: "Failed to add iOS and Android platforms",
   });

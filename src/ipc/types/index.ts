@@ -251,6 +251,7 @@ export type {
   RevertVersionResponse,
   VersionChangedFile,
   CheckoutVersionResponse,
+  UncommittedChangesStrategy,
 } from "./version";
 
 // Language model types

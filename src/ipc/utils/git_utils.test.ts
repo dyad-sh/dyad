@@ -21,11 +21,12 @@ vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(),
 }));
 
-import { gitListFilesNative } from "@/ipc/utils/git_utils";
 import {
   ensureGitLineEndingPolicy,
+  gitListFilesNative,
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
+  gitCheckout,
 } from "@/ipc/utils/git_utils";
 import { readSettings } from "@/main/settings";
 
@@ -35,7 +36,7 @@ async function runGit(repoDir: string, args: string[]): Promise<void> {
   await execFileAsync("git", args, { cwd: repoDir });
 }
 
-async function runGitOutput(repoDir: string, args: string[]): Promise<string> {
+async function runGitStdout(repoDir: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: repoDir });
   return stdout.trim();
 }
@@ -65,13 +66,13 @@ describe("ensureGitLineEndingPolicy", () => {
       fs.promises.readFile(path.join(repoDir, ".gitattributes"), "utf8"),
     ).resolves.toContain("* text=auto eol=lf");
     await expect(
-      runGitOutput(repoDir, ["config", "--local", "core.autocrlf"]),
+      runGitStdout(repoDir, ["config", "--local", "core.autocrlf"]),
     ).resolves.toBe("false");
     await expect(
-      runGitOutput(repoDir, ["config", "--local", "core.eol"]),
+      runGitStdout(repoDir, ["config", "--local", "core.eol"]),
     ).resolves.toBe("lf");
     await expect(
-      runGitOutput(repoDir, ["config", "--local", "core.safecrlf"]),
+      runGitStdout(repoDir, ["config", "--local", "core.safecrlf"]),
     ).resolves.toBe("warn");
   });
 
@@ -119,10 +120,40 @@ describe("ensureGitLineEndingPolicy", () => {
     await ensureGitLineEndingPolicy({ path: repoDir });
 
     await expect(
-      runGitOutput(repoDir, ["config", "--local", "core.eol"]),
+      runGitStdout(repoDir, ["config", "--local", "core.eol"]),
     ).resolves.toBe("crlf");
   });
 });
+
+/**
+ * Builds a repo where `pnpm-workspace.yaml` is tracked at the first commit but
+ * has since been untracked (git rm --cached) and left on disk. Checking out the
+ * first commit then hits git's "untracked working tree files would be
+ * overwritten" abort. Returns the first commit's hash.
+ */
+async function setupRepoWithUntrackedManagedFile(
+  repoDir: string,
+): Promise<string> {
+  await runGit(repoDir, ["init"]);
+  await runGit(repoDir, ["config", "user.email", "test@dyad.sh"]);
+  await runGit(repoDir, ["config", "user.name", "Dyad Test"]);
+
+  await fs.promises.writeFile(path.join(repoDir, "app.txt"), "v1");
+  await fs.promises.writeFile(
+    path.join(repoDir, "pnpm-workspace.yaml"),
+    "onlyBuiltDependencies:\n  - esbuild\n",
+  );
+  await runGit(repoDir, ["add", "."]);
+  await runGit(repoDir, ["commit", "-m", "first"]);
+  const firstCommit = await runGitStdout(repoDir, ["rev-parse", "HEAD"]);
+
+  // Untrack pnpm-workspace.yaml (kept on disk -> now untracked) and commit the
+  // removal so HEAD no longer tracks it.
+  await runGit(repoDir, ["rm", "--cached", "pnpm-workspace.yaml"]);
+  await runGit(repoDir, ["commit", "-m", "untrack pnpm-workspace.yaml"]);
+
+  return firstCommit;
+}
 
 describe("gitListFilesNative", () => {
   let repoDir: string | undefined;
@@ -238,5 +269,109 @@ describe("getGitUncommittedFiles", () => {
     await expect(
       getGitUncommittedFilesWithStatus({ path: repoDir }),
     ).resolves.toEqual([{ path: "src.ts", status: "added" }]);
+  });
+});
+
+describe("gitCheckout", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  it("removes a blocking untracked Dyad-managed file and checks out", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    const firstCommit = await setupRepoWithUntrackedManagedFile(repoDir);
+
+    await expect(
+      gitCheckout({ path: repoDir, ref: firstCommit }),
+    ).resolves.toBeUndefined();
+
+    // HEAD is now at the first commit and its tracked pnpm-workspace.yaml content
+    // was restored over the removed untracked one.
+    const head = await runGitStdout(repoDir, ["rev-parse", "HEAD"]);
+    expect(head).toEqual(firstCommit);
+    expect(
+      await fs.promises.readFile(
+        path.join(repoDir, "pnpm-workspace.yaml"),
+        "utf8",
+      ),
+    ).toEqual("onlyBuiltDependencies:\n  - esbuild\n");
+  });
+
+  it("does not delete a blocking user-visible untracked file and throws", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@dyad.sh"]);
+    await runGit(repoDir, ["config", "user.name", "Dyad Test"]);
+
+    await fs.promises.writeFile(path.join(repoDir, "app.txt"), "v1");
+    await fs.promises.writeFile(path.join(repoDir, "user.txt"), "tracked");
+    await runGit(repoDir, ["add", "."]);
+    await runGit(repoDir, ["commit", "-m", "first"]);
+    const firstCommit = await runGitStdout(repoDir, ["rev-parse", "HEAD"]);
+
+    await runGit(repoDir, ["rm", "--cached", "user.txt"]);
+    await runGit(repoDir, ["commit", "-m", "untrack user.txt"]);
+    await fs.promises.writeFile(path.join(repoDir, "user.txt"), "my work");
+
+    await expect(
+      gitCheckout({ path: repoDir, ref: firstCommit }),
+    ).rejects.toThrow(/Failed to checkout ref/);
+
+    // The user-visible untracked file is left untouched.
+    expect(
+      await fs.promises.readFile(path.join(repoDir, "user.txt"), "utf8"),
+    ).toEqual("my work");
+  });
+
+  it("does not delete a blocking .dyad file and throws", async () => {
+    // .dyad/* is hidden from the uncommitted-files UI but holds real user data
+    // (chat history, todos, generated media), so it must NOT be auto-deleted to
+    // unblock a checkout the way pnpm-workspace.yaml is.
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@dyad.sh"]);
+    await runGit(repoDir, ["config", "user.name", "Dyad Test"]);
+
+    await fs.promises.mkdir(path.join(repoDir, ".dyad", "media"), {
+      recursive: true,
+    });
+    await fs.promises.writeFile(path.join(repoDir, "app.txt"), "v1");
+    await fs.promises.writeFile(
+      path.join(repoDir, ".dyad", "media", "hero.png"),
+      "generated-image",
+    );
+    await runGit(repoDir, ["add", "."]);
+    await runGit(repoDir, ["commit", "-m", "first"]);
+    const firstCommit = await runGitStdout(repoDir, ["rev-parse", "HEAD"]);
+
+    await runGit(repoDir, ["rm", "--cached", ".dyad/media/hero.png"]);
+    await runGit(repoDir, ["commit", "-m", "untrack .dyad media"]);
+    await fs.promises.writeFile(
+      path.join(repoDir, ".dyad", "media", "hero.png"),
+      "my unsaved image",
+    );
+
+    await expect(
+      gitCheckout({ path: repoDir, ref: firstCommit }),
+    ).rejects.toThrow(/Failed to checkout ref/);
+
+    // The .dyad data is left untouched rather than deleted.
+    expect(
+      await fs.promises.readFile(
+        path.join(repoDir, ".dyad", "media", "hero.png"),
+        "utf8",
+      ),
+    ).toEqual("my unsaved image");
   });
 });

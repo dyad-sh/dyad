@@ -27,10 +27,23 @@ export const CurrentChatMessageIdSchema = z.object({
   messageId: z.number(),
 });
 
+export const UncommittedChangesStrategySchema = z.enum(["commit", "discard"]);
+
+export type UncommittedChangesStrategy = z.infer<
+  typeof UncommittedChangesStrategySchema
+>;
+
 export const RevertVersionParamsSchema = z.object({
   appId: z.number(),
   previousVersionId: z.string(),
   currentChatMessageId: CurrentChatMessageIdSchema.optional(),
+  // How to resolve uncommitted changes on `main` before reverting. When omitted
+  // and the worktree is dirty, the revert is refused as a backstop; the UI
+  // resolves this first via UncommittedChangesGateDialog and passes the choice.
+  uncommittedChangesStrategy: UncommittedChangesStrategySchema.optional(),
+  // Commit message to use when uncommittedChangesStrategy is "commit". Bounded
+  // to keep an oversized renderer payload from reaching `git commit -m`.
+  commitMessage: z.string().max(10_000).optional(),
 });
 
 export type RevertVersionParams = z.infer<typeof RevertVersionParamsSchema>;

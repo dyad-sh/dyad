@@ -718,8 +718,11 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
       .sort((a, b) => a.file.localeCompare(b.file))
       .map((item) => item.file);
   }
-  // Sort by modification time (oldest first)
-  return fileStats.sort((a, b) => a.mtime - b.mtime).map((item) => item.file);
+  // Sort by modification time (oldest first), with a deterministic tie-break
+  // by file path so ordering is stable across platforms when mtimes are equal.
+  return fileStats
+    .sort((a, b) => a.mtime - b.mtime || a.file.localeCompare(b.file))
+    .map((item) => item.file);
 }
 
 function createFullGlobPath({

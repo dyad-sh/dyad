@@ -21,6 +21,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
+import { UncommittedChangesGateDialog } from "./chat/UncommittedChangesGateDialog";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
 import { Button } from "@/components/ui/button";
@@ -360,6 +361,7 @@ export function ChatPanel({
           isVisible={isVersionPaneOpen}
           onClose={() => setIsVersionPaneOpen(false)}
         />
+        <UncommittedChangesGateDialog />
       </div>
       <AnimatePresence initial={false}>
         {showTerminalDrawer && (

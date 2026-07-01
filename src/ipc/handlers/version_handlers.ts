@@ -13,8 +13,10 @@ import { versionContracts } from "../types/version";
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import { readSettings } from "../../main/settings";
 import {
+  gitAddAll,
   gitCheckout,
   gitCommit,
+  gitDiscardAllChanges,
   gitStageToRevert,
   getCurrentCommitHash,
   gitCommitExists,
@@ -386,7 +388,13 @@ export function registerVersionHandlers() {
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
-    const { appId, previousVersionId, currentChatMessageId } = params;
+    const {
+      appId,
+      previousVersionId,
+      currentChatMessageId,
+      uncommittedChangesStrategy,
+      commitMessage,
+    } = params;
     return withLock(appId, async () => {
       let successMessage = "Restored version";
       let warningMessage = "";
@@ -405,10 +413,62 @@ export function registerVersionHandlers() {
         ref: "main",
       });
 
-      await gitCheckout({
-        path: appPath,
-        ref: "main",
-      });
+      // Discard runs *before* switching to main. When the worktree is on a
+      // detached preview HEAD (VersionPane checks out the selected commit before
+      // showing Restore) with modified tracked files, `git checkout main` would
+      // abort on those changes before we ever resolved them. Discarding first
+      // clears the tree so the checkout succeeds. In the common case the worktree
+      // is already on main, so the ordering relative to the checkout is moot.
+      if (
+        uncommittedChangesStrategy === "discard" &&
+        !(await isGitStatusClean({ path: appPath }))
+      ) {
+        await gitDiscardAllChanges({ path: appPath });
+      }
+
+      try {
+        await gitCheckout({
+          path: appPath,
+          ref: "main",
+        });
+      } catch (error) {
+        // When the user chose "commit", a checkout failure means their (still
+        // unsaved) changes on a detached preview HEAD conflict with main. The
+        // raw git error ("local changes would be overwritten by checkout") is
+        // opaque, so surface an actionable message. Their changes are untouched
+        // on disk.
+        if (
+          uncommittedChangesStrategy === "commit" &&
+          !(await isGitStatusClean({ path: appPath }))
+        ) {
+          throw new DyadError(
+            "Cannot commit changes: they conflict with the version you're " +
+              "restoring from. Discard them or resolve the conflict manually, " +
+              "then try restoring again.",
+            DyadErrorKind.Conflict,
+          );
+        }
+        throw error;
+      }
+
+      // Commit runs *after* checking out main so the commit lands on main rather
+      // than a detached preview HEAD. If the worktree was on a preview HEAD with
+      // changes that conflict with main, the checkout above already threw (with a
+      // friendly message for the commit strategy) and we fail loudly with the
+      // changes preserved in the worktree — preferable to committing them onto a
+      // detached HEAD where the revert would orphan them. If no strategy was
+      // provided, gitStageToRevert below throws the "uncommitted changes" error
+      // as a backstop.
+      if (
+        uncommittedChangesStrategy === "commit" &&
+        !(await isGitStatusClean({ path: appPath }))
+      ) {
+        await gitAddAll({ path: appPath });
+        await gitCommit({
+          path: appPath,
+          message: commitMessage?.trim() || "Commit changes before revert",
+        });
+      }
 
       if (app.neonProjectId && app.neonDevelopmentBranchId) {
         // We are going to add a new commit on top, so let's store

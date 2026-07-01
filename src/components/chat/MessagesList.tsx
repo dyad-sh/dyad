@@ -117,7 +117,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                         "Reverting to previous version",
                         revertTargetVersionId,
                       );
-                      await revertVersion({
+                      const result = await revertVersion({
                         versionId: revertTargetVersionId,
                         currentChatMessageId: userMessage
                           ? {
@@ -126,6 +126,10 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                             }
                           : undefined,
                       });
+                      // Cancelled at the uncommitted-changes prompt.
+                      if (!result) {
+                        return;
+                      }
                       const chat = await ipc.chat.getChat(selectedChatId);
                       setMessagesById((prev) => {
                         const next = new Map(prev);
@@ -181,9 +185,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                       previousAssistantMessage?.commitHash
                     ) {
                       console.debug("Reverting to previous assistant version");
-                      await revertVersion({
+                      const result = await revertVersion({
                         versionId: previousAssistantMessage.commitHash,
                       });
+                      // Cancelled at the uncommitted-changes prompt.
+                      if (!result) {
+                        return;
+                      }
                       shouldRedo = false;
                     } else {
                       const chat = await ipc.chat.getChat(selectedChatId);
@@ -192,9 +200,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                           "Reverting to initial commit hash",
                           chat.initialCommitHash,
                         );
-                        await revertVersion({
+                        const result = await revertVersion({
                           versionId: chat.initialCommitHash,
                         });
+                        // Cancelled at the uncommitted-changes prompt.
+                        if (!result) {
+                          return;
+                        }
                       } else {
                         showWarning(
                           "No initial commit hash found for chat. Need to manually undo code changes",

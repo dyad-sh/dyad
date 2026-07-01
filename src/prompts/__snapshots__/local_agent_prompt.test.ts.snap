@@ -111,6 +111,7 @@ When you reach the Implement step and the implementation requires a server layer
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -299,6 +300,7 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -486,6 +488,7 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -657,6 +660,7 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -845,6 +849,7 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -1115,6 +1120,7 @@ When you reach the Implement step and the implementation requires a server layer
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -1289,6 +1295,7 @@ You have two tools for editing files. Choose based on the scope of your change:
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
@@ -1447,6 +1454,7 @@ You have two tools for editing files. Choose based on the scope of your change:
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 - Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.

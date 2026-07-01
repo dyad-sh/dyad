@@ -137,9 +137,19 @@ describe("createTempTestBranch", () => {
 
   it("attaches auth details when Neon Auth activates", async () => {
     mocks.ensureNeonAuth.mockResolvedValue("https://auth.example");
-    const result = await createTempTestBranch(makeApp());
+    const result = await createTempTestBranch(
+      makeApp({ neonDevelopmentAuthCookieSecret: "dev-secret" }),
+    );
     expect(result.neonAuthBaseUrl).toBe("https://auth.example");
     expect(result.cookieSecret).toBe("secret");
+  });
+
+  it("skips Neon Auth provisioning when the app does not use Neon Auth", async () => {
+    mocks.ensureNeonAuth.mockResolvedValue("https://auth.example");
+    const result = await createTempTestBranch(makeApp());
+    expect(mocks.ensureNeonAuth).not.toHaveBeenCalled();
+    expect(result.neonAuthBaseUrl).toBeUndefined();
+    expect(result.cookieSecret).toBeUndefined();
   });
 });
 

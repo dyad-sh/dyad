@@ -358,6 +358,7 @@ const buildTestWritingGuidance = (emitInstruction: string) =>
 
 When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 ${emitInstruction}
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.

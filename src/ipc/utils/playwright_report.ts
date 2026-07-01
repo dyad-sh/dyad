@@ -137,6 +137,8 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
   let durationMs = 0;
   let hasInfra = false;
   let hasAssertion = false;
+  let hasPassed = false;
+  let hasSkipped = false;
   let sawResult = false;
   let error: string | undefined;
   let screenshotPath: string | undefined;
@@ -149,7 +151,15 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
     durationMs += final.duration ?? 0;
 
     const status = final.status ?? "";
-    if (status === "passed" || status === "skipped") continue;
+    if (status === "passed") {
+      hasPassed = true;
+      continue;
+    }
+    // A skipped test never executed — don't let it roll up as a green "passed".
+    if (status === "skipped") {
+      hasSkipped = true;
+      continue;
+    }
 
     const errText = resultErrorText(final);
     const kind =
@@ -172,6 +182,10 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
   if (hasAssertion) {
     status = "failed";
   } else if (hasInfra) {
+    status = "inconclusive";
+  } else if (hasSkipped && !hasPassed) {
+    // The spec only ever skipped (never ran a passing result) — surface it as
+    // inconclusive rather than a misleading green pass.
     status = "inconclusive";
   } else {
     status = "passed";

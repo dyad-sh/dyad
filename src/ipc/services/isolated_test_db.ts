@@ -349,7 +349,7 @@ async function waitForServerReady(
       throw new Error("Test run stopped.");
     }
     const baseUrl = runningApps.get(appId)?.proxyUrl;
-    if (baseUrl && (await isResponding(baseUrl))) {
+    if (baseUrl && (await isResponding(baseUrl, signal))) {
       return;
     }
     await delay(SERVER_READY_POLL_MS);
@@ -359,19 +359,28 @@ async function waitForServerReady(
   );
 }
 
-async function isResponding(url: string): Promise<boolean> {
+async function isResponding(
+  url: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  // Forward an outer Stop to the in-flight fetch so pressing Stop cancels the
+  // health check immediately instead of waiting up to the 3s fetch timeout.
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    try {
-      // Any HTTP response (even a 404/500) means the server is up and serving.
-      await fetch(url, { signal: controller.signal });
-      return true;
-    } finally {
-      clearTimeout(timer);
-    }
+    // Any HTTP response (even a 404/500) means the server is up and serving.
+    await fetch(url, { signal: controller.signal });
+    return true;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

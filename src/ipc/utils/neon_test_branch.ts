@@ -86,9 +86,16 @@ export async function createTempTestBranch(
   }
 
   // Best-effort: if a prior session leaked a branch on this row, delete it
-  // before we overwrite the column so we don't orphan it.
+  // before we overwrite the column so we don't orphan it. Remember whether that
+  // cleanup actually succeeded — if it didn't, we must NOT overwrite the column
+  // below (that would drop the prior branch id and orphan it forever, since the
+  // startup reconciliation sweep relies on the column to find it again).
+  let priorCleanupOk = true;
   if (appData.neonTestBranchId) {
-    await deleteBranchBestEffort(projectId, appData.neonTestBranchId);
+    priorCleanupOk = await deleteBranchBestEffort(
+      projectId,
+      appData.neonTestBranchId,
+    );
   }
 
   const neonClient = await getNeonClient();
@@ -115,12 +122,18 @@ export async function createTempTestBranch(
     );
   }
 
-  // Persist the in-flight branch id immediately so a crash before teardown is
-  // recoverable by the startup reconciliation sweep.
-  await db
-    .update(apps)
-    .set({ neonTestBranchId: branch.id })
-    .where(eq(apps.id, appData.id));
+  // Persist the in-flight branch id so a crash before teardown is recoverable
+  // by the startup reconciliation sweep — but only when the prior branch was
+  // successfully cleaned up (or there was none). If the prior cleanup failed we
+  // leave the column pointing at the PRIOR branch so reconciliation retries it;
+  // this run's own teardown uses the returned branch object, not the column, so
+  // the new branch is still cleaned up when the run finishes normally.
+  if (priorCleanupOk) {
+    await db
+      .update(apps)
+      .set({ neonTestBranchId: branch.id })
+      .where(eq(apps.id, appData.id));
+  }
 
   // Provision Neon Auth on the throwaway branch best-effort. Auth-gated tests
   // need it; non-auth tests still run if this fails.
@@ -149,6 +162,27 @@ export async function createTempTestBranch(
     } catch (error) {
       logger.warn(
         `Neon Auth could not be activated on test branch ${branch.id} for app ${appData.id}: ${error}`,
+      );
+    }
+
+    // The app relies on Neon Auth but we couldn't provision it on the throwaway
+    // branch. Proceeding would point the app's database at the isolated test
+    // branch while its auth still targets the REAL auth branch (updateNeonEnvVars
+    // preserves the existing NEON_AUTH_* vars when we pass no test auth URL) —
+    // sign-up/login in the test would then hit real auth data. Dead-end instead:
+    // delete the branch we just created and clear the column (it points at this
+    // now-deleted branch), then throw so the caller restores and never runs.
+    if (!neonAuthBaseUrl) {
+      await deleteBranchBestEffort(projectId, branch.id);
+      if (priorCleanupOk) {
+        await db
+          .update(apps)
+          .set({ neonTestBranchId: null })
+          .where(eq(apps.id, appData.id));
+      }
+      throw new DyadError(
+        "Couldn't set up isolated Neon Auth for the test branch.",
+        DyadErrorKind.External,
       );
     }
   }

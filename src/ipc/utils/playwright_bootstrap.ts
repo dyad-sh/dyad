@@ -2,9 +2,56 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log/main";
 import { spawnStreaming } from "./spawn_streaming";
+import { PNPM_INSTALL_POLICY_ARGS } from "./socket_firewall";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("playwright_bootstrap");
+
+/**
+ * The command + args that add `@playwright/test` as a dev dependency using the
+ * app's OWN package manager, detected from its lockfile. Matching the app's
+ * package manager avoids dirtying a pnpm/yarn project with npm artifacts (a
+ * stray `package-lock.json` and a divergent dependency tree vs. the dev server).
+ * Defaults to npm when no lockfile is recognized.
+ */
+function playwrightInstallCommand(appPath: string): {
+  command: string;
+  args: string[];
+} {
+  const has = (file: string) => fs.existsSync(path.join(appPath, file));
+  if (has("pnpm-lock.yaml")) {
+    return {
+      command: "pnpm",
+      args: [
+        ...PNPM_INSTALL_POLICY_ARGS,
+        "add",
+        "--save-dev",
+        "@playwright/test",
+      ],
+    };
+  }
+  if (has("yarn.lock")) {
+    return { command: "yarn", args: ["add", "--dev", "@playwright/test"] };
+  }
+  // npm (package-lock.json) or unknown — mirror the app runtime's npm install.
+  return {
+    command: "npm",
+    args: [
+      "install",
+      "--save-dev",
+      "@playwright/test",
+      // Match the app runtime's npm install (app_runtime_service): tolerate the
+      // peer-dependency conflicts common in generated apps instead of failing
+      // or prompting on ERESOLVE.
+      "--legacy-peer-deps",
+      // Skip the audit/funding passes and the progress spinner: pure noise
+      // here, and the audit step adds a slow extra network round-trip.
+      "--no-audit",
+      "--no-fund",
+      "--progress=false",
+    ],
+  };
+}
 
 /** Environment variable the generated playwright.config.ts reads for baseURL. */
 export const TEST_BASE_URL_ENV = "DYAD_TEST_BASE_URL";
@@ -258,22 +305,10 @@ export async function ensurePlaywrightBootstrap({
 
   if (!packageInstalled) {
     onOutput?.("Installing @playwright/test...\n");
+    const { command, args } = playwrightInstallCommand(appPath);
     const installDep = await spawnStreaming({
-      command: "npm",
-      args: [
-        "install",
-        "--save-dev",
-        "@playwright/test",
-        // Match the app runtime's install (app_runtime_service): tolerate the
-        // peer-dependency conflicts common in generated apps instead of failing
-        // or prompting on ERESOLVE.
-        "--legacy-peer-deps",
-        // Skip the audit/funding passes and the progress spinner: pure noise
-        // here, and the audit step adds a slow extra network round-trip.
-        "--no-audit",
-        "--no-fund",
-        "--progress=false",
-      ],
+      command,
+      args,
       cwd: appPath,
       signal,
       onOutput,

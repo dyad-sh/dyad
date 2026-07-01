@@ -409,13 +409,19 @@ export const AGENT_TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
   `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
 );
 
+// The test-writing guidance goes AFTER the postfix: the postfix ends with the
+// strong "ONLY use <dyad-write> for ALL code output" mandate, so the test
+// guidance (which tells the model to emit `<dyad-generate-test>` for specs)
+// must come last to carry as the exception — otherwise the postfix reads as the
+// final word and the model may wrap tests in `<dyad-write>`, so they never
+// surface in the Tests panel.
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
 
-${TEST_WRITING_GUIDANCE}
+${BUILD_SYSTEM_POSTFIX}
 
-${BUILD_SYSTEM_POSTFIX}`;
+${TEST_WRITING_GUIDANCE}`;
 
 const DEFAULT_AI_RULES = `# Tech Stack
 - You are building a React application.

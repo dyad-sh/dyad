@@ -4,6 +4,23 @@ import log from "electron-log/main";
 
 const logger = log.scope("spawn_streaming");
 
+/**
+ * Cap on the in-memory stdout/stderr buffers we retain. The full stream is
+ * still delivered live via `onOutput`; the returned buffers only need the tail
+ * for error reporting (callers slice the last ~1.5KB), so keeping the last
+ * ~256KB of each stream bounds memory even when a runaway test or dev server
+ * produces megabytes of output.
+ */
+const MAX_BUFFERED_OUTPUT = 256_000;
+
+/** Append `chunk` to `buffer`, keeping only the last MAX_BUFFERED_OUTPUT chars. */
+function appendCapped(buffer: string, chunk: string): string {
+  const next = buffer + chunk;
+  return next.length > MAX_BUFFERED_OUTPUT
+    ? next.slice(-MAX_BUFFERED_OUTPUT)
+    : next;
+}
+
 export interface SpawnStreamingResult {
   code: number | null;
   stdout: string;
@@ -132,13 +149,13 @@ export async function spawnStreaming({
 
     child.stdout?.on("data", (data) => {
       const output = data.toString();
-      stdout += output;
+      stdout = appendCapped(stdout, output);
       onOutput?.(output);
     });
 
     child.stderr?.on("data", (data) => {
       const output = data.toString();
-      stderr += output;
+      stderr = appendCapped(stderr, output);
       onOutput?.(output);
     });
 

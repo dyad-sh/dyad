@@ -119,6 +119,10 @@ Similarly for GraphQL mutations, write the full query + variables as JSON and us
 gh api graphql --input .claude/tmp/resolve_thread.json
 ```
 
+For a single body field, `-F body=@path/to/body.md` is simpler than `--input`: it posts the raw file contents as that field with no JSON escaping needed. Note the hook blocks the *command line*, not the payload — a heredoc or `-f body="..."` with backticks/parens trips it, `@file` never does.
+
+`jq` is not installed in this environment — use `gh`'s built-in `--jq` flag for JSON extraction, or a Python script for larger parsing (see the sandbox note in `AGENTS.md`: inline `python3 -c` is blocked and scripts must live under `.claude/`).
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` can fail for two reasons:

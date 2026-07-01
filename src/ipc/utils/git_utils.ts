@@ -383,6 +383,31 @@ export async function getCurrentCommitHash({
   }
 }
 
+export async function gitCommitExists({
+  path,
+  commitHash,
+}: GitBaseParams & { commitHash: string }): Promise<boolean> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const result = await execGit(
+      ["cat-file", "-e", `${commitHash}^{commit}`],
+      path,
+    );
+    return result.exitCode === 0;
+  }
+
+  try {
+    await git.readCommit({
+      fs,
+      dir: path,
+      oid: commitHash,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function isGitStatusClean({
   path,
 }: {

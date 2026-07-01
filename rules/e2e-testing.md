@@ -102,6 +102,7 @@ Snapshot normalizers must be idempotent — `normalize(normalize(x)) === normali
 If app-file snapshots unexpectedly include `dist/` assets after running `pnpm --dir scaffold build`, delete `scaffold/dist` and rerun `npm run build` before regenerating E2E baselines. The packaged Electron app snapshots the scaffold contents from the last package build, so a stale packaged `scaffold/dist` can keep contaminating snapshots even after the source directory is cleaned.
 When changing provider request model IDs, search all request-dump snapshots for the old model value. Local-agent snapshots can include the same engine model payloads as `engine.spec.ts`, so updating only the obvious engine snapshot may leave stale expected dumps.
 If CI shows E2E snapshot drift but a local `--update-snapshots` run produces no diff, rebuild the packaged app with `npm run build` and rerun the updater. A stale packaged Electron app can make local snapshot updates compare against old source behavior and hide required baseline changes.
+If a test-only E2E fix fails locally because a new source locator or UI element is missing, check whether the branch already had app-code changes that were never packaged. Rebuild with `npm run build` even if your current diff only touches tests.
 
 ## Accordion-wrapped settings in E2E tests
 
@@ -148,6 +149,8 @@ If `npm run build` fails while rebuilding native modules with `ImportError` from
 ## Missing dependencies during E2E builds
 
 If `npm run build` / Electron Forge packaging fails with `Failed to locate module "<package>"` but `package.json` and `package-lock.json` already declare that package, run `npm install` to restore `node_modules` before debugging app code.
+
+If a targeted E2E fails before launch with `ENOENT: no such file or directory, scandir '<repo>/out'`, verify `ls out` immediately after `npm run build`. If Forge logs end around `Finalizing package` and `electron-forge:plugin:vite handling process exit` but no `out/` directory exists, treat it as a packaging-environment issue and do not debug the spec assertions yet.
 
 ## Common flaky test patterns and fixes
 

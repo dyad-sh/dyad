@@ -16,6 +16,20 @@ export function useVersions(appId: number | null) {
   const { restartApp } = useRunApp();
   const { settings } = useSettings();
 
+  const updateVersionMetadataCache = (
+    oid: string,
+    updates: Partial<Pick<Version, "isFavorite" | "note">>,
+    targetAppId = appId,
+  ) => {
+    queryClient.setQueryData<Version[]>(
+      queryKeys.versions.list({ appId: targetAppId }),
+      (oldVersions) =>
+        oldVersions?.map((version) =>
+          version.oid === oid ? { ...version, ...updates } : version,
+        ),
+    );
+  };
+
   const {
     data: versions,
     isLoading: loading,
@@ -89,6 +103,58 @@ export function useVersions(appId: number | null) {
     meta: { showErrorToast: true },
   });
 
+  const setVersionFavoriteMutation = useMutation<
+    { oid: string; isFavorite: boolean; note: string | null },
+    Error,
+    { appId?: number | null; versionId: string; isFavorite: boolean }
+  >({
+    mutationFn: async ({ appId: mutationAppId, versionId, isFavorite }) => {
+      const targetAppId = mutationAppId === undefined ? appId : mutationAppId;
+      if (targetAppId === null) {
+        throw new DyadError("App ID is null", DyadErrorKind.External);
+      }
+      return ipc.version.setVersionFavorite({
+        appId: targetAppId,
+        versionId,
+        isFavorite,
+      });
+    },
+    onSuccess: (result, variables) => {
+      updateVersionMetadataCache(
+        result.oid,
+        { isFavorite: result.isFavorite },
+        variables.appId === undefined ? appId : variables.appId,
+      );
+    },
+    meta: { showErrorToast: true },
+  });
+
+  const setVersionNoteMutation = useMutation<
+    { oid: string; isFavorite: boolean; note: string | null },
+    Error,
+    { appId?: number | null; versionId: string; note: string | null }
+  >({
+    mutationFn: async ({ appId: mutationAppId, versionId, note }) => {
+      const targetAppId = mutationAppId === undefined ? appId : mutationAppId;
+      if (targetAppId === null) {
+        throw new DyadError("App ID is null", DyadErrorKind.External);
+      }
+      return ipc.version.setVersionNote({
+        appId: targetAppId,
+        versionId,
+        note,
+      });
+    },
+    onSuccess: (result, variables) => {
+      updateVersionMetadataCache(
+        result.oid,
+        { note: result.note },
+        variables.appId === undefined ? appId : variables.appId,
+      );
+    },
+    meta: { showErrorToast: true },
+  });
+
   return {
     versions: versions || [],
     loading,
@@ -96,5 +162,9 @@ export function useVersions(appId: number | null) {
     refreshVersions,
     revertVersion: revertVersionMutation.mutateAsync,
     isRevertingVersion: revertVersionMutation.isPending,
+    setVersionFavorite: setVersionFavoriteMutation.mutateAsync,
+    isSettingVersionFavorite: setVersionFavoriteMutation.isPending,
+    setVersionNote: setVersionNoteMutation.mutateAsync,
+    isSettingVersionNote: setVersionNoteMutation.isPending,
   };
 }

@@ -1,6 +1,6 @@
 import { ipcMain, app, dialog } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
-import { apps, chats, messages } from "../../db/schema";
+import { apps, chats, messages, versions } from "../../db/schema";
 import { desc, eq, inArray, like } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { appContracts } from "../types/app";
@@ -528,6 +528,27 @@ export function registerAppHandlers() {
         startCommand: originalApp.startCommand,
       })
       .returning();
+
+    if (withHistory) {
+      const originalVersionMetadata = await db.query.versions.findMany({
+        where: eq(versions.appId, appId),
+      });
+      const copiedVersionMetadata = originalVersionMetadata
+        .filter((version) => version.isFavorite || version.note)
+        .map((version) => ({
+          appId: newDbApp.id,
+          commitHash: version.commitHash,
+          // neonDbTimestamp intentionally omitted: duplicated apps get their
+          // own Neon branches, so snapshot timestamps from the original app
+          // do not apply.
+          isFavorite: version.isFavorite,
+          note: version.note,
+        }));
+
+      if (copiedVersionMetadata.length > 0) {
+        await db.insert(versions).values(copiedVersionMetadata);
+      }
+    }
 
     return { app: newDbApp };
   });

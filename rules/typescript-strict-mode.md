@@ -10,6 +10,10 @@ If `npm run ts` fails because installed dependency types are missing APIs the re
 
 If `npm run ts` crashes with a Go `SIGSEGV`/segmentation fault inside `tsgo` instead of reporting TypeScript diagnostics, remove the stale incremental build cache and retry: `rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo && npm run ts`. This can happen after package/alias changes and is not necessarily a source type error.
 
+## `useRef` requires an explicit initial value
+
+`useRef<number>()` with no argument fails `npm run ts` with `TS2554: Expected 1 arguments, but got 0` (the React types in this repo have no argless overload). Write `useRef<number | undefined>(undefined)` instead.
+
 ## ES2020 target limitations
 
 The project's `tsconfig.app.json` targets ES2020 with `lib: ["ES2020"]`. Methods introduced in ES2021+ (like `String.prototype.replaceAll`) are not available on the `string` type. If code uses `replaceAll`, it needs an `as any` cast to avoid `TS2550: Property 'replaceAll' does not exist on type 'string'`. Do not remove these casts without updating the tsconfig target.

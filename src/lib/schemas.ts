@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isOpenAIOrAnthropicSetup } from "./providerUtils";
+import { isNonGoogleProviderSetup } from "./providerUtils";
 
 export const SecretSchema = z.object({
   value: z.string(),
@@ -486,11 +486,11 @@ export function shouldShowPnpmMinimumReleaseAgeWarning(
  * Gets the effective default chat mode based on settings, pro status, and free quota availability.
  * - If defaultChatMode is set and valid for the user's Pro status, use it
  * - If defaultChatMode is "local-agent" but user doesn't have Pro:
- *   - If free agent quota available AND OpenAI/Anthropic is set up, use "local-agent" (basic agent mode)
+ *   - If free agent quota available AND a non-Google provider is set up, use "local-agent" (basic agent mode)
  *   - Otherwise, fall back to "build"
  * - If defaultChatMode is NOT set:
  *   - Pro users: use "local-agent"
- *   - Non-Pro users with quota AND OpenAI/Anthropic set up: use "local-agent" (basic agent mode)
+ *   - Non-Pro users with quota AND a non-Google provider set up: use "local-agent" (basic agent mode)
  *   - Non-Pro users without quota or provider: use "build"
  */
 export function getEffectiveDefaultChatMode(
@@ -499,19 +499,17 @@ export function getEffectiveDefaultChatMode(
   freeAgentQuotaAvailable?: boolean,
 ): ChatMode {
   const isPro = isDyadProEnabled(settings);
-  // We are checking that OpenAI or Anthropic is setup, which are the first two
-  // choices for the Auto model selection.
-  //
-  // If user only has Gemini API key, we don't default to local-agent because
+  // If user only has a Google/Gemini API key, we don't default to local-agent because
   // most likely it's a free API key with stringent limits and they'll get
   // a bad experience with local-agent.
-  const hasPaidProviderSetup = isOpenAIOrAnthropicSetup(settings, envVars);
+  const hasNonGoogleProviderSetup = isNonGoogleProviderSetup(settings, envVars);
 
   if (settings.defaultChatMode) {
     // "local-agent" requires either Pro OR (available free quota AND provider setup)
     if (settings.defaultChatMode === "local-agent") {
       if (isPro) return "local-agent";
-      if (freeAgentQuotaAvailable && hasPaidProviderSetup) return "local-agent";
+      if (freeAgentQuotaAvailable && hasNonGoogleProviderSetup)
+        return "local-agent";
       return "build";
     }
     return settings.defaultChatMode;
@@ -519,7 +517,8 @@ export function getEffectiveDefaultChatMode(
 
   // No explicit default set
   if (isPro) return "local-agent";
-  if (freeAgentQuotaAvailable && hasPaidProviderSetup) return "local-agent";
+  if (freeAgentQuotaAvailable && hasNonGoogleProviderSetup)
+    return "local-agent";
   return "build";
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceMcpPairing, buildMcpPairing } from "./DyadMarkdownParser";
+import { buildMcpPairing } from "./DyadMarkdownParser";
 import { parseFullMessage } from "@/lib/streamingMessageParser";
 
 // Builds the block list for the out-of-order interleaving the AI SDK emits
@@ -31,18 +31,6 @@ describe("buildMcpPairing", () => {
     expect(pairing.resultByCallId.get("B")?.content).toContain("fastresult");
   });
 
-  it("hides exactly the result blocks (calls stay visible)", () => {
-    const blocks = outOfOrderBlocks();
-    const pairing = buildMcpPairing(blocks);
-
-    const resultIds = blocks
-      .filter(
-        (b) => b.kind === "custom-tag" && b.tag === "dyad-mcp-tool-result",
-      )
-      .map((b) => b.id);
-    expect(pairing.hiddenResultIds).toEqual(new Set(resultIds));
-  });
-
   it("leaves a call unpaired when its result has not arrived yet", () => {
     const xml = [
       `<dyad-mcp-tool-call server="s" tool="slow" call-id="A">`,
@@ -53,33 +41,20 @@ describe("buildMcpPairing", () => {
 
     expect(pairing.callIds).toEqual(new Set(["A"]));
     expect(pairing.resultByCallId.has("A")).toBe(false);
-    expect(pairing.hiddenResultIds.size).toBe(0);
   });
 
-  it("incrementally extending the tail matches a full rebuild", () => {
-    const blocks = outOfOrderBlocks();
+  it("does not mark an unmatched result for hiding (no matching call id)", () => {
+    // A result whose call block is absent must stay visible: the renderer hides
+    // a result only when callIds contains its call-id.
+    const xml = [
+      `<dyad-mcp-tool-result server="s" tool="orphan" call-id="Z">`,
+      `orphaned`,
+      `</dyad-mcp-tool-result>`,
+    ].join("\n");
+    const pairing = buildMcpPairing(parseFullMessage(xml).blocks);
 
-    // Feed the blocks one at a time, mutating the same accumulator the way the
-    // component's ref-backed cache does (fromIndex advances past prior blocks).
-    let acc = null as ReturnType<typeof advanceMcpPairing>;
-    for (let i = 0; i < blocks.length; i++) {
-      acc = advanceMcpPairing(acc, blocks, i);
-    }
-
-    const full = buildMcpPairing(blocks);
-    expect(acc).not.toBeNull();
-    expect(acc!.callIds).toEqual(full.callIds);
-    expect([...acc!.resultByCallId.entries()]).toEqual([
-      ...full.resultByCallId.entries(),
-    ]);
-    expect(acc!.hiddenResultIds).toEqual(full.hiddenResultIds);
-  });
-
-  it("returns null until the first MCP block (so callers keep the singleton)", () => {
-    const blocks = parseFullMessage(
-      "hello\n<dyad-write path='a'>x</dyad-write>",
-    ).blocks;
-    expect(advanceMcpPairing(null, blocks, 0)).toBeNull();
+    expect(pairing.callIds.has("Z")).toBe(false);
+    expect(pairing.resultByCallId.get("Z")?.content).toContain("orphaned");
   });
 
   it("ignores legacy blocks without a call-id", () => {
@@ -95,6 +70,5 @@ describe("buildMcpPairing", () => {
 
     expect(pairing.callIds.size).toBe(0);
     expect(pairing.resultByCallId.size).toBe(0);
-    expect(pairing.hiddenResultIds.size).toBe(0);
   });
 });

@@ -30,7 +30,6 @@ import { DyadProblemSummary } from "./DyadProblemSummary";
 import { ipc } from "@/ipc/types";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
-import { DyadMcpTool } from "./DyadMcpTool";
 import { DyadMcpToolSearch } from "./DyadMcpToolSearch";
 import { DyadMcpToolSchema } from "./DyadMcpToolSchema";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
@@ -161,36 +160,13 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   const openBlock = getOpenBlock(parserState);
 
   // Pair MCP tool-call blocks with their tool-result blocks by call-id so the
-  // renderer can collapse the two into one card. Incremental: closed blocks
-  // only append and never change, so each close folds just the newly-appended
-  // tail into the prior pairing rather than rescanning the whole message. On a
-  // prefix mismatch (rewrite/resync) we rebuild from scratch. Same advisory
-  // render-time cache pattern as parserCacheRef above.
-  const mcpPairingCacheRef = useRef<{
-    processedLen: number;
-    boundary: Block | null;
-    pairing: McpPairing | null;
-  } | null>(null);
-
-  const mcpPairing = useMemo(() => {
-    const cache = mcpPairingCacheRef.current;
-    const prefixOk =
-      cache != null &&
-      cache.processedLen <= closedBlocks.length &&
-      (cache.processedLen === 0 ||
-        closedBlocks[cache.processedLen - 1] === cache.boundary);
-    const pairing = advanceMcpPairing(
-      prefixOk ? cache!.pairing : null,
-      closedBlocks,
-      prefixOk ? cache!.processedLen : 0,
-    );
-    mcpPairingCacheRef.current = {
-      processedLen: closedBlocks.length,
-      boundary: closedBlocks[closedBlocks.length - 1] ?? null,
-      pairing,
-    };
-    return pairing ?? EMPTY_MCP_PAIRING;
-  }, [closedBlocks]);
+  // renderer can collapse the two into one card. Keyed on `closedBlocks`, which
+  // only changes when a block closes (not per streamed token), so the scan
+  // stays off the streaming hot path.
+  const mcpPairing = useMemo(
+    () => buildMcpPairing(closedBlocks),
+    [closedBlocks],
+  );
 
   // The button is hidden while streaming, so avoid scanning the block list on
   // every chunk. Do the full scan only for settled content.
@@ -232,7 +208,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
         showFixAll={showFixAll}
         chatId={chatId ?? null}
         resultByCallId={mcpPairing.resultByCallId}
-        hiddenResultIds={mcpPairing.hiddenResultIds}
+        callIds={mcpPairing.callIds}
         isStreaming={isStreaming}
       />
       {openBlock ? renderOpenBlock(openBlock, isStreaming, mcpPairing) : null}
@@ -295,56 +271,37 @@ type CustomTagBlock = Extract<Block, { kind: "custom-tag" }>;
 interface McpPairing {
   /** call-id -> the matching tool-result block. */
   resultByCallId: Map<string, CustomTagBlock>;
-  /** Result block ids whose card is rendered by their paired call block. */
-  hiddenResultIds: Set<number>;
-  /** call-ids that have a (closed) tool-call block, i.e. a card on screen. */
+  /** call-ids that have a tool-call block, i.e. a card on screen. */
   callIds: Set<string>;
 }
 
 const EMPTY_MCP_PAIRING: McpPairing = {
   resultByCallId: new Map(),
-  hiddenResultIds: new Set(),
   callIds: new Set(),
 };
 
-// Fold blocks[fromIndex..] into `prev` (mutating it), lazily allocating a
-// pairing only once an MCP block is seen. Returns null if none was seen, so
-// callers can fall back to the shared empty singleton without allocating.
-// Because committed blocks only ever append and never change, the caller can
-// pass a non-zero fromIndex to extend a prior result instead of rescanning.
-export function advanceMcpPairing(
-  prev: McpPairing | null,
-  blocks: Block[],
-  fromIndex: number,
-): McpPairing | null {
-  let pairing = prev;
-  for (let i = fromIndex; i < blocks.length; i++) {
-    const b = blocks[i];
+// Index MCP tool blocks by call-id so the renderer can collapse a call and its
+// result into one card. A plain linear scan: `closedBlocks` only changes when a
+// block closes (not per streamed token), so this runs on close events, not on
+// the streaming hot path. Returns the shared empty singleton (no allocation)
+// when the message has no MCP tool blocks.
+export function buildMcpPairing(blocks: Block[]): McpPairing {
+  let pairing: McpPairing | null = null;
+  for (const b of blocks) {
     if (b.kind !== "custom-tag") continue;
     const callId = b.attributes["call-id"];
     if (!callId) continue;
+    if (b.tag !== "dyad-mcp-tool-call" && b.tag !== "dyad-mcp-tool-result") {
+      continue;
+    }
+    pairing ??= { resultByCallId: new Map(), callIds: new Set() };
     if (b.tag === "dyad-mcp-tool-call") {
-      pairing ??= {
-        resultByCallId: new Map(),
-        hiddenResultIds: new Set(),
-        callIds: new Set(),
-      };
       pairing.callIds.add(callId);
-    } else if (b.tag === "dyad-mcp-tool-result") {
-      pairing ??= {
-        resultByCallId: new Map(),
-        hiddenResultIds: new Set(),
-        callIds: new Set(),
-      };
+    } else {
       pairing.resultByCallId.set(callId, b);
-      pairing.hiddenResultIds.add(b.id);
     }
   }
-  return pairing;
-}
-
-export function buildMcpPairing(blocks: Block[]): McpPairing {
-  return advanceMcpPairing(null, blocks, 0) ?? EMPTY_MCP_PAIRING;
+  return pairing ?? EMPTY_MCP_PAIRING;
 }
 
 // Render the trailing open block, accounting for MCP pairing: an open
@@ -383,11 +340,11 @@ function renderClosedBlock(
   block: Block,
   {
     resultByCallId,
-    hiddenResultIds,
+    callIds,
     isStreaming,
   }: {
     resultByCallId: Map<string, CustomTagBlock>;
-    hiddenResultIds: Set<number>;
+    callIds: Set<string>;
     isStreaming: boolean;
   },
 ): React.ReactNode {
@@ -402,11 +359,9 @@ function renderClosedBlock(
         />
       );
     }
-    if (
-      callId &&
-      block.tag === "dyad-mcp-tool-result" &&
-      hiddenResultIds.has(block.id)
-    ) {
+    // Hide the standalone result only when its call is on screen to absorb it;
+    // an unmatched result still renders on its own.
+    if (callId && block.tag === "dyad-mcp-tool-result" && callIds.has(callId)) {
       return null;
     }
   }
@@ -432,13 +387,20 @@ const MemoMcpToolPair = React.memo(
         ? "pending"
         : "aborted";
     return (
-      <DyadMcpTool
-        serverName={callBlock.attributes.server || ""}
-        toolName={callBlock.attributes.tool || ""}
-        callContent={callBlock.content}
+      <DyadMcpToolCall
+        node={{
+          properties: {
+            serverName: callBlock.attributes.server || "",
+            toolName: callBlock.attributes.tool || "",
+            autoApprovedReason:
+              callBlock.attributes["auto-approved-reason"] || "",
+          },
+        }}
         resultContent={resultBlock?.content}
         state={state}
-      />
+      >
+        {callBlock.content}
+      </DyadMcpToolCall>
     );
   },
   (prev, next) =>
@@ -458,7 +420,7 @@ const MemoClosedBlocks = React.memo(function MemoClosedBlocks({
   showFixAll,
   chatId,
   resultByCallId,
-  hiddenResultIds,
+  callIds,
   isStreaming,
 }: {
   blocks: Block[];
@@ -467,11 +429,11 @@ const MemoClosedBlocks = React.memo(function MemoClosedBlocks({
   showFixAll: boolean;
   chatId: number | null;
   resultByCallId: Map<string, CustomTagBlock>;
-  hiddenResultIds: Set<number>;
+  callIds: Set<string>;
   isStreaming: boolean;
 }) {
   // Hoisted once per render rather than allocated per block in the map.
-  const mcpCtx = { resultByCallId, hiddenResultIds, isStreaming };
+  const mcpCtx = { resultByCallId, callIds, isStreaming };
   return (
     <>
       {blocks.map((block, index) => (

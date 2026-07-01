@@ -42,6 +42,11 @@ export interface PreviewErrorMessage {
   source: "preview-app" | "dyad-app" | "dyad-sync";
 }
 
+export interface PackageManagerWarning {
+  message: string;
+  appId: number | null;
+}
+
 export type PreviewErrorUpdate =
   | PreviewErrorMessage
   | undefined
@@ -65,6 +70,10 @@ export const previewReloadTokenByAppIdAtom = atom<Map<number, number>>(
 export const consoleEntriesByAppIdAtom = atom<Map<number, ConsoleEntry[]>>(
   new Map(),
 );
+export const packageManagerWarningAtom = atom<
+  PackageManagerWarning | undefined
+>(undefined);
+export const dismissedPackageManagerWarningAtom = atom(false);
 
 // Stores the current preview URL to preserve route across HMR-induced remounts.
 // This tracks the current iframe route per app, not the app's base URL.
@@ -116,6 +125,10 @@ export const currentConsoleEntriesAtom = atom((get) => {
   return appId === null
     ? []
     : (get(consoleEntriesByAppIdAtom).get(appId) ?? []);
+});
+
+export const currentPackageManagerWarningAtom = atom((get) => {
+  return get(packageManagerWarningAtom);
 });
 
 export const setPreviewRunStateForAppAtom = atom(
@@ -239,6 +252,36 @@ export const appendConsoleEntriesForAppAtom = atom(
     });
   },
 );
+
+export const setPackageManagerWarningForAppAtom = atom(
+  null,
+  (
+    get,
+    set,
+    {
+      appId,
+      warning,
+    }: { appId: number; warning: Omit<PackageManagerWarning, "appId"> },
+  ) => {
+    if (get(dismissedPackageManagerWarningAtom)) {
+      return;
+    }
+
+    set(packageManagerWarningAtom, { ...warning, appId });
+  },
+);
+
+export const dismissPackageManagerWarningForAppAtom = atom(
+  null,
+  (_get, set) => {
+    set(dismissedPackageManagerWarningAtom, true);
+    set(packageManagerWarningAtom, undefined);
+  },
+);
+
+export const clearPackageManagerWarningForAppAtom = atom(null, (_get, set) => {
+  set(packageManagerWarningAtom, undefined);
+});
 
 export const clearPreviewRuntimeForAppAtom = atom(
   null,

@@ -64,7 +64,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
-  enablePnpmMinimumReleaseAgeWarning: false,
+  enablePnpmMinimumReleaseAgeWarning: true,
   previewIdleTimeoutPolicy: "default",
 };
 

@@ -6,11 +6,14 @@ import {
   clearPreviewRuntimeForAppAtom,
   currentAppUrlAtom,
   currentConsoleEntriesAtom,
+  currentPackageManagerWarningAtom,
   currentPreviewErrorAtom,
   currentPreviewLoadingAtom,
+  dismissPackageManagerWarningForAppAtom,
   previewCurrentUrlAtom,
   previewRunStateByAppIdAtom,
   setAppUrlForAppAtom,
+  setPackageManagerWarningForAppAtom,
   setPreviewErrorForAppAtom,
   setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
@@ -68,15 +71,27 @@ describe("preview runtime atoms", () => {
       previewCurrentUrlAtom,
       new Map([[1, "http://localhost:3000/foo"]]),
     );
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
 
     expect(store.get(currentPreviewLoadingAtom)).toBe(true);
     expect(store.get(currentAppUrlAtom).appUrl).toBe("http://localhost:3000");
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer",
+      appId: 1,
+    });
 
     store.set(clearPreviewRuntimeForAppAtom, 1);
 
     expect(store.get(previewRunStateByAppIdAtom).has(1)).toBe(false);
     expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer",
+      appId: 1,
+    });
     expect(store.get(previewCurrentUrlAtom).has(1)).toBe(false);
   });
 
@@ -106,5 +121,22 @@ describe("preview runtime atoms", () => {
       message: "Preview app error",
       source: "preview-app",
     });
+  });
+
+  it("keeps package manager warning dismissal scoped to the Dyad session", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
+
+    store.set(dismissPackageManagerWarningForAppAtom);
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 2,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
   });
 });

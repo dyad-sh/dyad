@@ -163,11 +163,62 @@ export async function executeNeonSql({
   }
 }
 
+const ADD_VALUE_RE = /\bALTER\s+TYPE\b[\s\S]*?\bADD\s+VALUE\b/i;
+
+/** True for `ALTER TYPE ... ADD VALUE ...` statements. */
+export function isEnumValueAddition(statement: string): boolean {
+  return ADD_VALUE_RE.test(statement);
+}
+
+/**
+ * Make an `ALTER TYPE ... ADD VALUE` statement idempotent by inserting
+ * `IF NOT EXISTS`. Enum additions are applied outside the main transaction, so
+ * a retried apply (after the transaction half rolled back) must not fail on a
+ * label that already landed. Statements that already say `IF NOT EXISTS` and
+ * non-enum statements are returned unchanged.
+ */
+export function ensureAddValueIfNotExists(statement: string): string {
+  return statement.replace(
+    /\bADD\s+VALUE\s+(?!IF\s+NOT\s+EXISTS\b)/i,
+    "ADD VALUE IF NOT EXISTS ",
+  );
+}
+
+/**
+ * Split a migration plan into enum-value additions and everything else,
+ * preserving order within each group. PostgreSQL forbids using a newly added
+ * enum value until the transaction that added it commits, so an addition and a
+ * later statement referencing the new label (e.g. a column default cast to it)
+ * cannot share one transaction. See #3520.
+ */
+export function partitionEnumValueAdditions(statements: string[]): {
+  enumValueAdditions: string[];
+  transactionStatements: string[];
+} {
+  const enumValueAdditions: string[] = [];
+  const transactionStatements: string[] = [];
+  for (const statement of statements) {
+    if (isEnumValueAddition(statement)) {
+      enumValueAdditions.push(statement);
+    } else {
+      transactionStatements.push(statement);
+    }
+  }
+  return { enumValueAdditions, transactionStatements };
+}
+
 /**
  * Execute a list of SQL statements against a Neon database in a single
  * non-interactive Postgres transaction over HTTP. Either every statement
  * commits or the whole batch rolls back. PostgreSQL DDL is transactional, so
  * this is safe for migration apply.
+ *
+ * Exception: `ALTER TYPE ... ADD VALUE` can't share a transaction with
+ * statements that use the new label (PostgreSQL rejects the new value until its
+ * transaction commits). Those additions are committed first, on their own, and
+ * the rest still apply atomically. Additions are purely additive and rewritten
+ * with `IF NOT EXISTS`, so a leftover label from a rolled-back retry is
+ * harmless. See #3520.
  *
  * Caveat: a small set of statements (e.g. `CREATE INDEX CONCURRENTLY`) cannot
  * run inside a transaction. The Neon migration preview calls
@@ -203,13 +254,25 @@ export async function executeNeonStatementsInTransaction({
   }
 
   const sql = neon(connectionUri);
+  const { enumValueAdditions, transactionStatements } =
+    partitionEnumValueAdditions(statements);
   try {
+    // Commit enum-value additions first, each on its own, so a dependent
+    // statement later in the plan can reference the new label. When there are
+    // none this loop is skipped and the whole plan stays in one transaction.
+    for (const statement of enumValueAdditions) {
+      await sql.query(ensureAddValueIfNotExists(statement), []);
+    }
     // Returning an array of unawaited query promises is intentional: the
     // `@neondatabase/serverless` HTTP driver collects them into a single
     // batched POST wrapped in `BEGIN`/`COMMIT`. A socket-based driver (e.g.
     // `pg`) would expect the callback to `await` each query sequentially —
     // do not swap drivers without revisiting this call.
-    await sql.transaction((txn) => statements.map((s) => txn.query(s, [])));
+    if (transactionStatements.length > 0) {
+      await sql.transaction((txn) =>
+        transactionStatements.map((s) => txn.query(s, [])),
+      );
+    }
     return { executed: statements.length };
   } catch (error) {
     logger.error("Error applying migration transaction on Neon:", error);

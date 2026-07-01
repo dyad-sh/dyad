@@ -3,6 +3,7 @@ import { readSettings, writeSettings } from "../main/settings";
 import { Api, createApiClient } from "@neondatabase/api-client";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import { fetchWithRetry } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getNeonErrorMessage } from "./neon_errors";
 
@@ -44,10 +45,11 @@ export async function refreshNeonToken(): Promise<void> {
   }
 
   try {
-    // Make request to Neon refresh endpoint
-    const response = await fetch(
+    // Make request to Neon refresh endpoint. Use fetchWithRetry so a burst of
+    // token refreshes (e.g. running several in-app tests back-to-back) backs
+    // off on 429 instead of failing the whole flow.
+    const response = await fetchWithRetry(
       "https://oauth.dyad.sh/api/integrations/neon/refresh",
-
       {
         method: "POST",
         headers: {
@@ -55,6 +57,7 @@ export async function refreshNeonToken(): Promise<void> {
         },
         body: JSON.stringify({ refreshToken }),
       },
+      "Refresh Neon token",
     );
 
     if (!response.ok) {

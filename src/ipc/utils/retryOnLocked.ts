@@ -1,9 +1,20 @@
 import log from "electron-log";
 
+import { isRateLimitError } from "./retryWithRateLimit";
+
 export const logger = log.scope("retryOnLocked");
 
 export function isLockedError(error: any): boolean {
   return error.response?.status === 423;
+}
+
+/**
+ * Transient Neon management API errors worth retrying with backoff: the branch
+ * is temporarily locked (423) or we've been rate limited (429). Bursts of
+ * in-app test runs hit both, so we treat them the same way here.
+ */
+function isRetryableError(error: any): boolean {
+  return isLockedError(error) || isRateLimitError(error);
 }
 
 // Retry configuration
@@ -15,7 +26,8 @@ const RETRY_CONFIG = {
 };
 
 /**
- * Retries an async operation with exponential backoff on locked errors (423)
+ * Retries an async operation with exponential backoff on transient Neon
+ * management API errors: locked branches (423) and rate limits (429).
  */
 
 export async function retryOnLocked<T>(
@@ -35,8 +47,8 @@ export async function retryOnLocked<T>(
     } catch (error: any) {
       lastError = error;
 
-      // Only retry on locked errors
-      if (!isLockedError(error)) {
+      // Only retry on locked (423) or rate-limit (429) errors
+      if (!isRetryableError(error)) {
         if (retryBranchWithChildError && error.response?.status === 422) {
           logger.info(
             `${context}: Branch with child error (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1})`,
@@ -49,7 +61,7 @@ export async function retryOnLocked<T>(
       // Don't retry if we've exhausted all attempts
       if (attempt === RETRY_CONFIG.maxRetries) {
         logger.error(
-          `${context}: Failed after ${RETRY_CONFIG.maxRetries + 1} attempts due to locked error`,
+          `${context}: Failed after ${RETRY_CONFIG.maxRetries + 1} attempts due to locked/rate-limit error`,
         );
         throw error;
       }

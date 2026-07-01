@@ -42,6 +42,20 @@ function resolveParentBranchId(appData: AppRow): string | null {
 }
 
 /**
+ * Whether the app actually uses Neon Auth. A cookie secret is persisted on a
+ * branch the first time Neon Auth is provisioned for it (see
+ * getOrCreateNeonAuthCookieSecret), so a set column on either branch is a cheap,
+ * reliable signal that auth is in use — apps that never enabled it have both
+ * null and don't need auth provisioned on their throwaway test branches.
+ */
+function appUsesNeonAuth(appData: AppRow): boolean {
+  return Boolean(
+    appData.neonDevelopmentAuthCookieSecret ||
+    appData.neonProductionAuthCookieSecret,
+  );
+}
+
+/**
  * Create a throwaway copy-on-write Neon branch for an isolated test run.
  *
  * The branch is cut from the app's active branch (or the development/preview
@@ -110,24 +124,33 @@ export async function createTempTestBranch(
 
   // Provision Neon Auth on the throwaway branch best-effort. Auth-gated tests
   // need it; non-auth tests still run if this fails.
+  //
+  // Skip provisioning entirely when the app never set up Neon Auth (no cookie
+  // secret persisted on either branch). This avoids 1-3 extra Neon API calls
+  // per test run for non-auth apps — the main driver of "too many requests"
+  // when running several tests back-to-back.
   let neonAuthBaseUrl: string | undefined;
   let cookieSecret: string | undefined;
-  try {
-    neonAuthBaseUrl = await ensureNeonAuth({
-      projectId,
-      branchId: branch.id,
-    });
-    if (neonAuthBaseUrl) {
-      // The test branch mirrors the development branch's auth config.
-      cookieSecret = await getOrCreateNeonAuthCookieSecret({
-        appData,
-        branchType: "development",
-      });
+  if (appUsesNeonAuth(appData)) {
+    try {
+      // Wrap in retryOnLocked so getNeonAuth/createNeonAuth back off on a
+      // locked branch (423) or rate limit (429) instead of failing the run.
+      neonAuthBaseUrl = await retryOnLocked(
+        () => ensureNeonAuth({ projectId, branchId: branch.id }),
+        `Ensure Neon Auth for test branch ${branch.id}`,
+      );
+      if (neonAuthBaseUrl) {
+        // The test branch mirrors the development branch's auth config.
+        cookieSecret = await getOrCreateNeonAuthCookieSecret({
+          appData,
+          branchType: "development",
+        });
+      }
+    } catch (error) {
+      logger.warn(
+        `Neon Auth could not be activated on test branch ${branch.id} for app ${appData.id}: ${error}`,
+      );
     }
-  } catch (error) {
-    logger.warn(
-      `Neon Auth could not be activated on test branch ${branch.id} for app ${appData.id}: ${error}`,
-    );
   }
 
   logger.info(

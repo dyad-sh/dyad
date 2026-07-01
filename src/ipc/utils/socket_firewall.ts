@@ -12,6 +12,7 @@ import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManager
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { isVersionAtLeast } from "@/shared/version_utils";
 import { getUserDataPath } from "@/paths/paths";
+import { getPathEnvKey } from "@/ipc/utils/path_env";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -104,32 +105,34 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
-function getPathEnvKey(env: NodeJS.ProcessEnv): string {
-  return Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-}
-
 function prependPathSegment(
   env: NodeJS.ProcessEnv,
   segment: string,
 ): NodeJS.ProcessEnv {
   const pathKey = getPathEnvKey(env);
   const currentPath = env[pathKey] ?? "";
+  const matchesSegment = (value: string) =>
+    process.platform === "win32"
+      ? value.toLowerCase() === segment.toLowerCase()
+      : value === segment;
   const pathSegments = currentPath
     .split(path.delimiter)
     .filter((value) => value.length > 0);
-  const hasSegment = pathSegments.some((value) =>
-    process.platform === "win32"
-      ? value.toLowerCase() === segment.toLowerCase()
-      : value === segment,
-  );
 
-  if (hasSegment) {
+  // Always promote the segment to the front (not just insert when absent):
+  // PATH may already contain it in a non-front position (e.g. after
+  // customNodePath was prepended by reloadNodePath), and precedence must be
+  // deterministic across platforms.
+  if (pathSegments.length > 0 && matchesSegment(pathSegments[0])) {
     return env;
   }
 
   return {
     ...env,
-    [pathKey]: [segment, ...pathSegments].join(path.delimiter),
+    [pathKey]: [
+      segment,
+      ...pathSegments.filter((value) => !matchesSegment(value)),
+    ].join(path.delimiter),
   };
 }
 
@@ -148,7 +151,7 @@ export function getManagedPnpmExecutablePath(): string {
   );
 }
 
-export function withManagedPnpmPath(
+function withManagedPnpmPath(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return prependPathSegment(env, getManagedPnpmBinDir());

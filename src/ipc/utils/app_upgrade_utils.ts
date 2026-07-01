@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
-import { getPackageManagerCommandEnv } from "./socket_firewall";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const logger = log.scope("app_upgrade_utils");
@@ -132,7 +131,6 @@ export async function applyComponentTagger(
         command:
           "pnpm add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger",
         cwd: appPath,
-        env: getPackageManagerCommandEnv(),
         successMessage:
           "component-tagger dependency installed successfully with pnpm",
         errorPrefix: "Failed to install dependency via pnpm",
@@ -144,7 +142,6 @@ export async function applyComponentTagger(
           command:
             "npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
           cwd: appPath,
-          env: getPackageManagerCommandEnv(),
           successMessage:
             "component-tagger dependency installed successfully with npm",
           errorPrefix: "Failed to install dependency via npm",

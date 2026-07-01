@@ -82,6 +82,17 @@ describe("getPackageManagerCommandEnv", () => {
       pathValue,
     );
   });
+
+  it("promotes a non-front managed pnpm path segment to the front", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+    const pathValue = ["/custom/node", managedPnpmBinDir, "/bin"].join(
+      path.delimiter,
+    );
+
+    expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
+      [managedPnpmBinDir, "/custom/node", "/bin"].join(path.delimiter),
+    );
+  });
 });
 
 describe("detectPreferredPackageManager", () => {

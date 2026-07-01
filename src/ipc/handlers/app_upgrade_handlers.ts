@@ -14,7 +14,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
-import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -91,7 +90,6 @@ async function applyCapacitor({
     command:
       "pnpm add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
     cwd: appPath,
-    env: getPackageManagerCommandEnv(),
     successMessage: "Capacitor dependencies installed successfully",
     errorPrefix: "Failed to install Capacitor dependencies",
   });
@@ -100,7 +98,6 @@ async function applyCapacitor({
   await simpleSpawn({
     command: `npx cap init "${appName}" "com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, "")}" --web-dir=dist`,
     cwd: appPath,
-    env: getPackageManagerCommandEnv(),
     successMessage: "Capacitor initialized successfully",
     errorPrefix: "Failed to initialize Capacitor",
   });
@@ -112,7 +109,6 @@ async function applyCapacitor({
     command:
       "pnpm install --prod=false || npm install --include=dev --legacy-peer-deps",
     cwd: appPath,
-    env: getPackageManagerCommandEnv(),
     successMessage: "Development dependencies installed successfully",
     errorPrefix: "Failed to install development dependencies",
   });
@@ -121,7 +117,6 @@ async function applyCapacitor({
   await simpleSpawn({
     command: "npx cap add ios && npx cap add android",
     cwd: appPath,
-    env: getPackageManagerCommandEnv(),
     successMessage: "iOS and Android platforms added successfully",
     errorPrefix: "Failed to add iOS and Android platforms",
   });

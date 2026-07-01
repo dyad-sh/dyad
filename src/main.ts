@@ -73,10 +73,16 @@ import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
 import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
+import { applyManagedPnpmToProcessPath } from "./ipc/utils/socket_firewall";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
 log.scope.labelPadding = false;
+
+// Prefer the Dyad-managed pnpm (if installed) for everything spawned from the
+// main process. Runs after all module imports, so it wins over the shell PATH
+// that fixPath() restores at app_runtime_service load time.
+applyManagedPnpmToProcessPath();
 
 // In dev, keep minidumps under the project's ./userData (matching where Dyad
 // writes its other dev files) instead of the OS userData dir, so they don't

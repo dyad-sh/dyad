@@ -74,7 +74,6 @@ export function registerCapacitorHandlers() {
     await simpleSpawn({
       command: "npm run build",
       cwd: appPath,
-      env: getPackageManagerCommandEnv(),
       successMessage: "App built successfully",
       errorPrefix: "Failed to build app",
     });
@@ -111,7 +110,6 @@ export function registerCapacitorHandlers() {
     await simpleSpawn({
       command: "npx cap open ios",
       cwd: appPath,
-      env: getPackageManagerCommandEnv(),
       successMessage: "iOS project opened successfully",
       errorPrefix: "Failed to open iOS project",
     });
@@ -139,7 +137,6 @@ export function registerCapacitorHandlers() {
     await simpleSpawn({
       command: "npx cap open android",
       cwd: appPath,
-      env: getPackageManagerCommandEnv(),
       successMessage: "Android project opened successfully",
       errorPrefix: "Failed to open Android project",
     });

@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import log from "electron-log/main";
+import { getPackageManagerCommandEnv } from "./socket_firewall";
 
 const logger = log.scope("simpleSpawn");
 
@@ -14,15 +15,19 @@ export async function simpleSpawn({
   cwd: string;
   successMessage: string;
   errorPrefix: string;
+  // Defaults to getPackageManagerCommandEnv() so Dyad-managed commands see
+  // the managed pnpm and the Corepack project-spec disable without every
+  // call site having to remember to pass it.
   env?: NodeJS.ProcessEnv;
 }): Promise<void> {
+  const spawnEnv = env ?? getPackageManagerCommandEnv();
   return new Promise<void>((resolve, reject) => {
     logger.info(`Running: ${command}`);
     const process = spawn(command, {
       cwd,
       shell: true,
       stdio: "pipe",
-      env,
+      env: spawnEnv,
     });
 
     let stdout = "";

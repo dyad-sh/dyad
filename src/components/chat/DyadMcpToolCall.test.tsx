@@ -60,6 +60,22 @@ describe("DyadMcpToolCall", () => {
     expect(screen.queryByText("Running")).toBeNull();
   });
 
+  it("shows a Failed label for an errored result", () => {
+    render(
+      <DyadMcpToolCall
+        node={node()}
+        resultContent="boom"
+        state="aborted"
+        isError
+      >
+        {`{"a":1}`}
+      </DyadMcpToolCall>,
+    );
+    screen.getByText("Tool");
+    screen.getByText("Failed");
+    expect(screen.queryByText("No result")).toBeNull();
+  });
+
   it("preserves the auto-approved badge and reason in merged mode", () => {
     render(
       <DyadMcpToolCall

@@ -213,6 +213,11 @@ export function buildMcpCapabilityMap(params: {
           error instanceof Error ? error.message : String(error);
         const errorStack =
           error instanceof Error && error.stack ? error.stack : "";
+        // Terminate the merged card in an error state instead of leaving it
+        // stuck on "Running".
+        params.ctx.onXmlComplete(
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(errorMessage)}\n</dyad-mcp-tool-result>`,
+        );
         params.ctx.onXmlComplete(
           `<dyad-output type="error" message="MCP tool '${escapeXmlAttr(def.toolKey)}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
         );

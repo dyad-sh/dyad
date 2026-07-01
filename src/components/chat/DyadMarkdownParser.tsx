@@ -349,11 +349,14 @@ const MemoMcpToolPair = React.memo(
     resultBlock: CustomTagBlock | undefined;
     isStreaming: boolean;
   }) {
-    const state: CustomTagState = resultBlock
-      ? "finished"
-      : isStreaming
+    const isError = resultBlock?.attributes["is-error"] === "true";
+    const state: CustomTagState = !resultBlock
+      ? isStreaming
         ? "pending"
-        : "aborted";
+        : "aborted"
+      : isError
+        ? "aborted"
+        : "finished";
     return (
       <DyadMcpToolCall
         node={{
@@ -366,6 +369,7 @@ const MemoMcpToolPair = React.memo(
         }}
         resultContent={resultBlock?.content}
         state={state}
+        isError={isError}
       >
         {callBlock.content}
       </DyadMcpToolCall>

@@ -36,8 +36,8 @@ function getChatBackupDir(appPath: string, chatId: number): string {
  * and truncate large tool results for token efficiency.
  */
 export function transformToolTags(content: string): string {
-  // Transform <dyad-mcp-tool-call> to <tool-use>. Attribute matching is
-  // order/extra tolerant so optional attrs like call-id don't break it.
+  // Transform <dyad-mcp-tool-call> to <tool-use>. Tolerates extra attributes
+  // (e.g. call-id); expects server before tool, which every emitter does.
   let result = content.replace(
     /<dyad-mcp-tool-call\b[^>]*?\bserver="([^"]*)"[^>]*?\btool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
     '<tool-use name="$2" server="$1">\n$3\n</tool-use>',

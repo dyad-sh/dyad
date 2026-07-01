@@ -2066,6 +2066,9 @@ async function getMcpTools(
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+            const { serverName, toolName } = parseMcpToolKey(key);
+            const callId = execCtx.toolCallId;
+            let callEmitted = false;
             try {
               const inputPreview =
                 typeof args === "string"
@@ -2104,8 +2107,6 @@ async function getMcpTools(
                 );
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
-              const { serverName, toolName } = parseMcpToolKey(key);
-              const callId = execCtx.toolCallId;
               const content = JSON.stringify(args, null, 2);
               const autoApprovedAttr = autoApprovedReason
                 ? ` auto-approved-reason="${escapeXmlAttr(autoApprovedReason)}"`
@@ -2113,6 +2114,7 @@ async function getMcpTools(
               ctx.onXmlComplete(
                 `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}"${autoApprovedAttr}>\n${escapeXmlContent(content)}\n</dyad-mcp-tool-call>`,
               );
+              callEmitted = true;
 
               const res = await mcpTool.execute(args, execCtx);
               const resultStr =
@@ -2128,6 +2130,13 @@ async function getMcpTools(
                 error instanceof Error ? error.message : String(error);
               const errorStack =
                 error instanceof Error && error.stack ? error.stack : "";
+              // Terminate the merged card in an error state instead of leaving
+              // it stuck on "Running" (only when its call card was emitted).
+              if (callEmitted) {
+                ctx.onXmlComplete(
+                  `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(errorMessage)}\n</dyad-mcp-tool-result>`,
+                );
+              }
               ctx.onXmlComplete(
                 `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
               );

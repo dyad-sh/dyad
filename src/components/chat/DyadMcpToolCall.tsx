@@ -23,6 +23,8 @@ interface DyadMcpToolCallProps {
    * (legacy messages that predate call-id pairing).
    */
   state?: CustomTagState;
+  /** The result is a tool error; shows a failure label. */
+  isError?: boolean;
 }
 
 function prettyJson(raw: string): string {
@@ -51,6 +53,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   children,
   resultContent,
   state,
+  isError,
 }) => {
   const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
@@ -102,7 +105,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             <DyadStateIndicator
               state={state}
               pendingLabel="Running"
-              abortedLabel="No result"
+              abortedLabel={isError ? "Failed" : "No result"}
             />
           )}
           <DyadExpandIcon isExpanded={expanded} />

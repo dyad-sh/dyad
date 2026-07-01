@@ -100,25 +100,6 @@ async function extractCodebasesForApps(
   return results;
 }
 
-/**
- * Lightweight resolver for `@app:Name` mentions. Returns only name/path pairs
- * without reading any file contents — use this when the caller just needs
- * to expose referenced apps to on-demand tools (agent/ask/plan modes).
- */
-export async function extractMentionedAppsReferences(
-  mentionedAppNames: string[],
-  excludeCurrentAppId?: number,
-): Promise<MentionedAppReference[]> {
-  const dedupedApps = await resolveMentionedApps(
-    mentionedAppNames,
-    excludeCurrentAppId,
-  );
-  return dedupedApps.map((app) => ({
-    appName: app.name,
-    appPath: getDyadAppPath(app.path),
-  }));
-}
-
 export async function extractMentionedAppsReferencesFromPrompt(
   prompt: string,
   excludeCurrentAppId?: number,
@@ -131,19 +112,6 @@ export async function extractMentionedAppsReferencesFromPrompt(
     appName: app.name,
     appPath: getDyadAppPath(app.path),
   }));
-}
-
-// Helper function to extract codebases from mentioned apps
-export async function extractMentionedAppsCodebases(
-  mentionedAppNames: string[],
-  excludeCurrentAppId?: number,
-): Promise<MentionedAppCodebaseEntry[]> {
-  const dedupedApps = await resolveMentionedApps(
-    mentionedAppNames,
-    excludeCurrentAppId,
-  );
-
-  return extractCodebasesForApps(dedupedApps);
 }
 
 export async function extractMentionedAppsCodebasesFromPrompt(

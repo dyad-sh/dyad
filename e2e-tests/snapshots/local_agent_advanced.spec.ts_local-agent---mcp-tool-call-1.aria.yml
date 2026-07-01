@@ -6,8 +6,7 @@
 - button "Copy Request ID"
 - paragraph: tc=local-agent/mcp-calculator
 - paragraph: I'll calculate the sum of 5 and 3 using the calculator.
-- button "Tool Call testing-mcp-server calculator_add"
-- button "Tool Result testing-mcp-server calculator_add"
+- button "Tool testing-mcp-server calculator_add"
 - button "Script Call calculator_add through MCP [[duration]]"
 - paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
 - button "Copy"

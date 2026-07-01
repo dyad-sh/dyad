@@ -13,6 +13,7 @@ import { generateAppFilesSnapshotData } from "../generateAppFilesSnapshotData";
 import {
   normalizeItemReferences,
   normalizeToolCallIds,
+  normalizeMcpCallIds,
   normalizeVersionedFiles,
   normalizePath,
   prettifyDump,
@@ -701,6 +702,7 @@ export class PageObject {
     // message dumps. Anthropic direct passthrough stores tool IDs inside content
     // blocks instead of OpenAI-style message.tool_calls arrays.
     normalizeToolCallIds(parsedDump);
+    normalizeMcpCallIds(parsedDump);
     if (type === "request") {
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);

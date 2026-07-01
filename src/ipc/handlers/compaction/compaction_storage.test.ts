@@ -50,6 +50,24 @@ short result
     expect(result).not.toContain("truncated");
   });
 
+  it("transforms tags that carry a call-id attribute", () => {
+    const content = `<dyad-mcp-tool-call server="filesystem" tool="read_file" call-id="abc-123">
+{"path": "/a.ts"}
+</dyad-mcp-tool-call>
+<dyad-mcp-tool-result server="filesystem" tool="read_file" call-id="abc-123">
+ok
+</dyad-mcp-tool-result>`;
+
+    const result = transformToolTags(content);
+    expect(result).toContain('<tool-use name="read_file" server="filesystem">');
+    expect(result).toContain(
+      '<tool-result name="read_file" server="filesystem"',
+    );
+    expect(result).not.toContain("dyad-mcp-tool-call");
+    expect(result).not.toContain("dyad-mcp-tool-result");
+    expect(result).not.toContain("call-id");
+  });
+
   it("truncates large tool results", () => {
     const longContent = "x".repeat(TOOL_RESULT_TRUNCATION_LIMIT + 100);
     const content = `<dyad-mcp-tool-result server="filesystem" tool="read_file">

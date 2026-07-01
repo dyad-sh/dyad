@@ -8,16 +8,52 @@ import {
   DyadBadge,
   DyadExpandIcon,
   DyadCardContent,
+  DyadStateIndicator,
 } from "./DyadCardPrimitives";
+import { CustomTagState } from "./stateTypes";
 
 interface DyadMcpToolCallProps {
   node?: any;
   children?: React.ReactNode;
+  /** Raw result string once the paired result arrives; undefined while pending. */
+  resultContent?: string;
+  /**
+   * When set, the card is a merged call+result card: it shows a spinner/
+   * checkmark and a Result section. When undefined, it renders call-only
+   * (legacy messages that predate call-id pairing).
+   */
+  state?: CustomTagState;
+  /** The result is a tool error; shows a failure label. */
+  isError?: boolean;
+}
+
+function prettyJson(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+// Tool results can be plain strings, not just JSON, so highlight as text when
+// the content does not parse as JSON.
+function formatResult(raw: string): {
+  text: string;
+  language: "json" | "text";
+} {
+  try {
+    return { text: JSON.stringify(JSON.parse(raw), null, 2), language: "json" };
+  } catch {
+    return { text: raw, language: "text" };
+  }
 }
 
 export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   node,
   children,
+  resultContent,
+  state,
+  isError,
 }) => {
   const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
@@ -25,27 +61,30 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   const autoApprovedReason: string = node?.properties?.autoApprovedReason || "";
   const [expanded, setExpanded] = useState(false);
 
+  const merged = state !== undefined;
   const raw = typeof children === "string" ? children : String(children ?? "");
 
-  const prettyJson = useMemo(() => {
-    if (!expanded) return "";
-    try {
-      const parsed = JSON.parse(raw);
-      return JSON.stringify(parsed, null, 2);
-    } catch (e) {
-      console.error("Error parsing JSON for dyad-mcp-tool-call", e);
-      return raw;
-    }
-  }, [expanded, raw]);
+  const prettyInput = useMemo(
+    () => (expanded ? prettyJson(raw) : ""),
+    [expanded, raw],
+  );
+  const result = useMemo(
+    () =>
+      expanded && resultContent !== undefined
+        ? formatResult(resultContent)
+        : null,
+    [expanded, resultContent],
+  );
 
   return (
     <DyadCard
       accentColor="blue"
+      state={state}
       isExpanded={expanded}
       onClick={() => setExpanded((v) => !v)}
     >
       <DyadCardHeader icon={<Wrench size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Tool Call</DyadBadge>
+        <DyadBadge color="blue">{merged ? "Tool" : "Tool Call"}</DyadBadge>
         {serverName && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-200 dark:ring-blue-800">
             {serverName}
@@ -61,7 +100,14 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             {t("autoApproved")}
           </span>
         )}
-        <div className="ml-auto flex-shrink-0">
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+          {merged && (
+            <DyadStateIndicator
+              state={state}
+              pendingLabel="Running"
+              abortedLabel={isError ? "Failed" : "No result"}
+            />
+          )}
           <DyadExpandIcon isExpanded={expanded} />
         </div>
       </DyadCardHeader>
@@ -71,7 +117,32 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
         </div>
       )}
       <DyadCardContent isExpanded={expanded}>
-        <CodeHighlight className="language-json">{prettyJson}</CodeHighlight>
+        {merged ? (
+          <>
+            <div className="text-[11px] font-semibold text-muted-foreground mb-1">
+              Input
+            </div>
+            <CodeHighlight className="language-json">
+              {prettyInput}
+            </CodeHighlight>
+            <div className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1">
+              Result
+            </div>
+            {result ? (
+              <CodeHighlight className={`language-${result.language}`}>
+                {result.text}
+              </CodeHighlight>
+            ) : resultContent !== undefined ? (
+              <CodeHighlight className="language-json">{""}</CodeHighlight>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">
+                {state === "aborted" ? "No result." : "Running…"}
+              </div>
+            )}
+          </>
+        ) : (
+          <CodeHighlight className="language-json">{prettyInput}</CodeHighlight>
+        )}
       </DyadCardContent>
     </DyadCard>
   );

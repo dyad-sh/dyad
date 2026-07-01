@@ -22,6 +22,25 @@ server.registerTool(
   },
 );
 
+// Artificially slow tool: when called in parallel with a fast tool, its
+// result lands out of order (after the fast tool's result). Used by
+// mcp_out_of_order.spec.ts.
+server.registerTool(
+  "slow_add",
+  {
+    title: "Slow Add",
+    description: "Add two numbers but take a while to respond",
+    inputSchema: { a: z.number(), b: z.number() },
+  },
+  async ({ a, b }) => {
+    const delayMs = Number(process.env.SLOW_ADD_DELAY_MS ?? "2000");
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return {
+      content: [{ type: "text", text: `slow:${a + b}` }],
+    };
+  },
+);
+
 server.registerTool(
   "print_envs",
   {

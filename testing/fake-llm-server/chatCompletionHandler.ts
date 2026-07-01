@@ -488,6 +488,13 @@ export default Index;
       lastMessage.content &&
       lastMessage.content.includes("[call_tool=calculator_add]")
     );
+    // Emit two parallel tool calls (slow first, fast second) so their results
+    // land out of order. See mcp_out_of_order.spec.ts.
+    const isParallelOutOfOrderToolCall = !!(
+      lastMessage &&
+      lastMessage.content &&
+      lastMessage.content.includes("[call_tools_out_of_order]")
+    );
     let message = {
       role: "assistant",
       content: messageContent,
@@ -542,6 +549,53 @@ export default Index;
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+
+    // Two parallel tool calls in a single assistant message (slow + fast).
+    // The AI SDK runs the executes concurrently, so the fast tool's result
+    // streams back before the slow tool's.
+    if (isParallelOutOfOrderToolCall) {
+      const now = Date.now();
+      const mkChunk = (delta: any, finish: null | string = null) => {
+        const chunk = {
+          id: `chatcmpl-${now}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(now / 1000),
+          model: "fake-model",
+          choices: [{ index: 0, delta, finish_reason: finish }],
+        };
+        return `data: ${JSON.stringify(chunk)}\n\n`;
+      };
+
+      res.write(mkChunk({ role: "assistant" }));
+      res.write(
+        mkChunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: `call_${now}_slow`,
+              type: "function",
+              function: {
+                name: "testing-mcp-server__slow_add",
+                arguments: JSON.stringify({ a: 10, b: 20 }),
+              },
+            },
+            {
+              index: 1,
+              id: `call_${now}_fast`,
+              type: "function",
+              function: {
+                name: "testing-mcp-server__calculator_add",
+                arguments: JSON.stringify({ a: 1, b: 2 }),
+              },
+            },
+          ],
+        }),
+      );
+      res.write(mkChunk({}, "tool_calls"));
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
 
     // Tool call streaming (OpenAI-style)
     if (isToolCall) {

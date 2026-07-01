@@ -260,10 +260,25 @@ export async function ensurePlaywrightBootstrap({
     onOutput?.("Installing @playwright/test...\n");
     const installDep = await spawnStreaming({
       command: "npm",
-      args: ["install", "--save-dev", "@playwright/test"],
+      args: [
+        "install",
+        "--save-dev",
+        "@playwright/test",
+        // Match the app runtime's install (app_runtime_service): tolerate the
+        // peer-dependency conflicts common in generated apps instead of failing
+        // or prompting on ERESOLVE.
+        "--legacy-peer-deps",
+        // Skip the audit/funding passes and the progress spinner: pure noise
+        // here, and the audit step adds a slow extra network round-trip.
+        "--no-audit",
+        "--no-fund",
+        "--progress=false",
+      ],
       cwd: appPath,
       signal,
       onOutput,
+      // Don't let a stuck registry/network hang the whole test flow forever.
+      timeoutMs: 5 * 60 * 1000,
     });
     if (installDep.aborted) {
       throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);
@@ -309,6 +324,9 @@ export async function ensurePlaywrightBootstrap({
       cwd: appPath,
       signal,
       onOutput,
+      // The Chromium download is large; give it a generous ceiling but never
+      // let it hang indefinitely on a stalled connection.
+      timeoutMs: 10 * 60 * 1000,
     });
     if (installBrowser.aborted) {
       throw new DyadError("Test setup cancelled.", DyadErrorKind.Precondition);

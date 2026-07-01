@@ -31,8 +31,12 @@ export function parseAppMentions(prompt: string): string[] {
   const mentions: string[] = [];
   let match;
 
+  MENTION_REGEX.lastIndex = 0;
   while ((match = MENTION_REGEX.exec(prompt)) !== null) {
-    mentions.push(splitAppMentionTrailingDots(match[1]).appName);
+    const { appName } = splitAppMentionTrailingDots(match[1]);
+    if (appName) {
+      mentions.push(appName);
+    }
   }
 
   return mentions;

@@ -1,5 +1,6 @@
 import {
   formatKnownAppMentionsForPrompt,
+  MENTION_REGEX,
   parseAppMentions,
   parseKnownAppMentions,
   splitAppMentionTrailingDots,
@@ -234,6 +235,20 @@ Line 3 has @app:App3`;
     const prompt = "Check @app:App1 @app:App2 @app:App3 test";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["App1", "App2", "App3"]);
+  });
+
+  it("should reset global regex state before parsing", () => {
+    MENTION_REGEX.lastIndex = 10;
+
+    const result = parseAppMentions("@app:First and @app:Second");
+
+    expect(result).toEqual(["First", "Second"]);
+  });
+
+  it("should ignore all-dot app mention candidates", () => {
+    const result = parseAppMentions("@app:... then @app:ValidApp");
+
+    expect(result).toEqual(["ValidApp"]);
   });
 });
 

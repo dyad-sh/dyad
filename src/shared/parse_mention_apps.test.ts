@@ -2,6 +2,7 @@ import {
   formatKnownAppMentionsForPrompt,
   parseAppMentions,
   parseKnownAppMentions,
+  splitAppMentionTrailingDots,
 } from "@/shared/parse_mention_apps";
 import { describe, it, expect } from "vitest";
 
@@ -233,6 +234,26 @@ Line 3 has @app:App3`;
     const prompt = "Check @app:App1 @app:App2 @app:App3 test";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["App1", "App2", "App3"]);
+  });
+});
+
+describe("splitAppMentionTrailingDots", () => {
+  it("keeps dotted app name segments and separates trailing sentence dots", () => {
+    const result = splitAppMentionTrailingDots("foo.app.com.");
+
+    expect(result).toEqual({
+      appName: "foo.app.com",
+      trailingDots: ".",
+    });
+  });
+
+  it("keeps app names without trailing dots unchanged", () => {
+    const result = splitAppMentionTrailingDots("foo.app.com");
+
+    expect(result).toEqual({
+      appName: "foo.app.com",
+      trailingDots: "",
+    });
   });
 });
 

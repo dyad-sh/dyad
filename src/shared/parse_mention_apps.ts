@@ -13,6 +13,17 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export function splitAppMentionTrailingDots(value: string): {
+  appName: string;
+  trailingDots: string;
+} {
+  const appName = value.replace(/\.+$/, "");
+  return {
+    appName,
+    trailingDots: value.slice(appName.length),
+  };
+}
+
 // Helper function to parse app mentions from prompt
 export function parseAppMentions(prompt: string): string[] {
   // Match @app:AppName patterns in the prompt (supports letters, digits, underscores, hyphens, and dots, but NOT spaces)
@@ -21,7 +32,7 @@ export function parseAppMentions(prompt: string): string[] {
   let match;
 
   while ((match = MENTION_REGEX.exec(prompt)) !== null) {
-    mentions.push(match[1].replace(/\.+$/, ""));
+    mentions.push(splitAppMentionTrailingDots(match[1]).appName);
   }
 
   return mentions;

@@ -31,6 +31,7 @@ import {
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
   parseAppMentions,
+  splitAppMentionTrailingDots,
 } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { HistoryNavigation, HISTORY_TRIGGER } from "./HistoryNavigation";
@@ -254,8 +255,13 @@ function ExternalValueSyncPlugin({
           if (textBefore) paragraph.append($createTextNode(textBefore));
         }
         if (match[1]) {
-          const appName = match[1];
+          const { appName, trailingDots } = splitAppMentionTrailingDots(
+            match[1],
+          );
           paragraph.append($createBeautifulMentionNode("@", appName));
+          if (trailingDots) {
+            paragraph.append($createTextNode(trailingDots));
+          }
         } else if (match[2]) {
           const id = Number(match[2]);
           const title = promptsById[id] || `prompt:${id}`;

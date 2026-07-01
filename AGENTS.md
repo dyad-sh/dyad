@@ -118,6 +118,7 @@ You should test your changes before committing or pushing. Run relevant unit tes
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
 - **Never embed GitHub tokens in git remote URLs** (e.g., `https://<token>@github.com/...`) — they persist in plaintext in users' `.git/config` and leak via git error output. Native git network operations (clone/fetch/pull/push) in `src/ipc/utils/git_utils.ts` inject auth per-invocation via `getGitNetworkEnv(accessToken)` (`GIT_CONFIG_*` env vars); any new network-touching git command must pass this env or auth will silently be missing for private repos.
 - Add tests in the same folder tree when touching renderer components.
+- **Sandbox hook restrictions:** inline `python3 -c "..."` is blocked, and Python scripts only run when the file lives inside the repo's `.claude/` directory — write helper scripts to `.claude/tmp/` (and clean them up before committing).
 - **Always use Base UI (`@base-ui/react`) for UI primitives, never Radix UI.** This includes menus, tooltips, accordions, context menus, and other headless UI components. See [rules/base-ui-components.md](rules/base-ui-components.md) for component-specific guidance.
 
 Use these guidelines whenever you work within this repository.

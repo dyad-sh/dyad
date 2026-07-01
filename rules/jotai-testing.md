@@ -41,6 +41,10 @@ The symptom when you get this wrong is assertions like `expected false to be tru
 
 See `src/atoms/githubSyncAtoms.test.tsx` for a complete example covering unmount/remount, cross-unmount completion, and per-key isolation.
 
+## No jest-dom matchers
+
+The vitest setup does not register `@testing-library/jest-dom`, so matchers like `toBeInTheDocument()` or `toBeDisabled()` fail with `Invalid Chai property: toBeInTheDocument`. Use plain assertions instead: `expect(screen.queryByTestId(...)).toBeNull()` / `.not.toBeNull()` for presence, and `expect((button as HTMLButtonElement).disabled).toBe(false)` for disabled state.
+
 ## Hooks That Indirectly Use React Query
 
 If a `renderHook` test starts failing with `No QueryClient set, use QueryClientProvider to set one`, check whether the hook now calls another hook such as `useSettings()` or `useAppVersion()` that uses TanStack Query internally. Either wrap the test in a `QueryClientProvider` or mock the indirect hook when the test is only exercising Jotai/event behavior.

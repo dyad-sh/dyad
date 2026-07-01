@@ -8,49 +8,20 @@ import {
   previewCurrentUrlAtom,
   setAppUrlForAppAtom,
   setConsoleEntriesForAppAtom,
+  setPackageManagerWarningForAppAtom,
   setPreviewAppExitForAppAtom,
   setPreviewErrorForAppAtom,
   setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
-import {
-  showError,
-  showInputRequest,
-  showPnpmMinimumReleaseAgeWarning,
-} from "@/lib/toast";
+import { showError, showInputRequest } from "@/lib/toast";
 import {
   shouldShowPnpmMinimumReleaseAgeWarning,
   type RuntimeMode2,
-  type UserSettings,
 } from "@/lib/schemas";
 import { useSettings } from "./useSettings";
 
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
-
-type UpdateSettings = (newSettings: Partial<UserSettings>) => Promise<unknown>;
-
-export function showPnpmMinimumReleaseAgeWarningToast({
-  message,
-  onInstallPnpm,
-  updateSettings,
-}: {
-  message: string;
-  onInstallPnpm: () => Promise<void>;
-  updateSettings: UpdateSettings;
-}) {
-  showPnpmMinimumReleaseAgeWarning({
-    message,
-    onInstallPnpm,
-    onOpenDocs: () => {
-      void ipc.system.openExternalUrl("https://pnpm.io/installation");
-    },
-    onNeverShowAgain: () => {
-      void updateSettings({
-        hidePnpmMinimumReleaseAgeWarning: true,
-      });
-    },
-  });
-}
 
 export function useRebuildAppAfterPnpmInstall() {
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
@@ -139,15 +110,17 @@ export function useRebuildAppAfterPnpmInstall() {
  * to avoid duplicate event subscriptions causing duplicate log entries.
  */
 export function useAppOutputSubscription() {
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   const setAppUrl = useSetAtom(setAppUrlForAppAtom);
   const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
   const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
+  const setPackageManagerWarning = useSetAtom(
+    setPackageManagerWarningForAppAtom,
+  );
   const bumpPreviewReloadToken = useSetAtom(bumpPreviewReloadTokenForAppAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const selectedAppIdRef = useRef(appId);
-  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   const pnpmWarningSettingRef = useRef({
     hasSettings: Boolean(settings),
     showWarning: shouldShowPnpmMinimumReleaseAgeWarning(settings),
@@ -283,17 +256,12 @@ export function useAppOutputSubscription() {
 
       if (
         output.type === "package-manager-warning" &&
-        selectedAppIdRef.current === output.appId &&
         pnpmWarningSettingRef.current.hasSettings &&
         pnpmWarningSettingRef.current.showWarning
       ) {
-        showPnpmMinimumReleaseAgeWarningToast({
-          message: output.message,
-          onInstallPnpm: async () => {
-            await ipc.system.installPnpm();
-            await rebuildAppAfterPnpmInstall(output.appId);
-          },
-          updateSettings,
+        setPackageManagerWarning({
+          appId: output.appId,
+          warning: { message: output.message },
         });
       }
 
@@ -328,10 +296,9 @@ export function useAppOutputSubscription() {
     [
       onHotModuleReload,
       processProxyServerOutput,
-      rebuildAppAfterPnpmInstall,
+      setPackageManagerWarning,
       setPreviewAppExit,
       setPreviewError,
-      updateSettings,
     ],
   );
 

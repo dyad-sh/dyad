@@ -35,14 +35,11 @@ import {
   mergeResyncMessages,
 } from "@/lib/resyncChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
-import {
-  showPnpmMinimumReleaseAgeWarningToast,
-  useRebuildAppAfterPnpmInstall,
-  useRunApp,
-} from "./useRunApp";
+import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
@@ -116,7 +113,7 @@ export function useStreamChat({
   const { refreshAppIframe } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
   const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
@@ -130,7 +127,9 @@ export function useStreamChat({
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
-  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
+  const setPackageManagerWarning = useSetAtom(
+    setPackageManagerWarningForAppAtom,
+  );
   let chatId: number | undefined;
 
   const showWarningMessage = useCallback(
@@ -140,27 +139,24 @@ export function useStreamChat({
           return;
         }
 
-        showPnpmMinimumReleaseAgeWarningToast({
-          message: warningMessage,
-          onInstallPnpm: async () => {
-            await ipc.system.installPnpm();
-            if (warningAppId !== null) {
-              await rebuildAppAfterPnpmInstall(warningAppId);
-            }
-          },
-          updateSettings,
-        });
+        if (warningAppId !== null) {
+          setPackageManagerWarning({
+            appId: warningAppId,
+            warning: { message: warningMessage },
+          });
+        } else {
+          showWarning(warningMessage);
+        }
         return;
       }
 
       showWarning(warningMessage);
     },
     [
-      rebuildAppAfterPnpmInstall,
+      setPackageManagerWarning,
       settings,
       settings?.enablePnpmMinimumReleaseAgeWarning,
       settings?.hidePnpmMinimumReleaseAgeWarning,
-      updateSettings,
     ],
   );
 

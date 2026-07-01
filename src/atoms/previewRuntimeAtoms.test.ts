@@ -6,11 +6,14 @@ import {
   clearPreviewRuntimeForAppAtom,
   currentAppUrlAtom,
   currentConsoleEntriesAtom,
+  currentPackageManagerWarningAtom,
   currentPreviewErrorAtom,
   currentPreviewLoadingAtom,
+  dismissPackageManagerWarningsAtom,
   previewCurrentUrlAtom,
   previewRunStateByAppIdAtom,
   setAppUrlForAppAtom,
+  setPackageManagerWarningForAppAtom,
   setPreviewErrorForAppAtom,
   setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
@@ -68,16 +71,43 @@ describe("preview runtime atoms", () => {
       previewCurrentUrlAtom,
       new Map([[1, "http://localhost:3000/foo"]]),
     );
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
 
     expect(store.get(currentPreviewLoadingAtom)).toBe(true);
     expect(store.get(currentAppUrlAtom).appUrl).toBe("http://localhost:3000");
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer",
+      appId: 1,
+    });
 
     store.set(clearPreviewRuntimeForAppAtom, 1);
 
     expect(store.get(previewRunStateByAppIdAtom).has(1)).toBe(false);
     expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
     expect(store.get(previewCurrentUrlAtom).has(1)).toBe(false);
+  });
+
+  it("scopes the package manager warning display to the selected app", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 2,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    store.set(selectedAppIdAtom, 2);
+
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer",
+      appId: 2,
+    });
   });
 
   it("applies preview error function updates to the latest app value", () => {
@@ -106,5 +136,26 @@ describe("preview runtime atoms", () => {
       message: "Preview app error",
       source: "preview-app",
     });
+  });
+
+  it("dismisses package manager warnings for all apps for the session", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
+
+    store.set(dismissPackageManagerWarningsAtom);
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 2,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    store.set(selectedAppIdAtom, 2);
+
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
   });
 });

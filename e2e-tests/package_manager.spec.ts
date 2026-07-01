@@ -353,7 +353,7 @@ testSkipIfWindows(
 );
 
 oldPnpmTestSkipIfWindows(
-  "app run uses old pnpm and hides the pnpm minimum release age warning after opt-out",
+  "app run uses old pnpm and dismisses the pnpm minimum release age warning for the session",
   async ({ po }, testInfo) => {
     testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
 
@@ -386,18 +386,18 @@ oldPnpmTestSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
-    const warningToast = po.page.locator("[data-sonner-toast]", {
-      hasText: "Install pnpm 10.16.0 or newer",
+    const warningBanner = po.page.getByTestId("package-manager-warning-banner");
+    await expect(warningBanner).toContainText("Install pnpm 10.16.0 or newer", {
+      timeout: Timeout.EXTRA_LONG,
     });
-    await expect(warningToast).toBeVisible({ timeout: Timeout.EXTRA_LONG });
     await po.previewPanel.expectPreviewIframeIsVisible(
       SOCKET_FIREWALL_TEST_TIMEOUT,
     );
 
-    await warningToast
-      .getByRole("button", { name: "Never show again" })
+    await warningBanner
+      .getByRole("button", { name: "Dismiss pnpm warning" })
       .click();
-    await expect(warningToast).toBeHidden({ timeout: Timeout.MEDIUM });
+    await expect(warningBanner).toBeHidden({ timeout: Timeout.MEDIUM });
     await expect(async () => {
       const settings = await po.page.evaluate(async () => {
         return (window as any).electron.ipcRenderer.invoke(
@@ -405,7 +405,7 @@ oldPnpmTestSkipIfWindows(
           undefined,
         );
       });
-      expect(settings.hidePnpmMinimumReleaseAgeWarning).toBe(true);
+      expect(settings.hidePnpmMinimumReleaseAgeWarning).not.toBe(true);
     }).toPass({ timeout: Timeout.MEDIUM });
 
     await po.clickRestart();
@@ -415,7 +415,7 @@ oldPnpmTestSkipIfWindows(
     await po.previewPanel.expectPreviewIframeIsVisible(
       SOCKET_FIREWALL_TEST_TIMEOUT,
     );
-    await expect(warningToast).toBeHidden({ timeout: Timeout.MEDIUM });
+    await expect(warningBanner).toBeHidden({ timeout: Timeout.MEDIUM });
   },
 );
 
@@ -444,12 +444,12 @@ upgradePnpmTestSkipIfWindows(
       SOCKET_FIREWALL_TEST_TIMEOUT,
     );
 
-    const warningToast = po.page.locator("[data-sonner-toast]", {
-      hasText: "Install pnpm 10.16.0 or newer",
+    const warningBanner = po.page.getByTestId("package-manager-warning-banner");
+    await expect(warningBanner).toContainText("Install pnpm 10.16.0 or newer", {
+      timeout: Timeout.EXTRA_LONG,
     });
-    await expect(warningToast).toBeVisible({ timeout: Timeout.EXTRA_LONG });
 
-    await warningToast.getByRole("button", { name: "Install pnpm" }).click();
+    await warningBanner.getByRole("button", { name: "Install" }).click();
     const logList = po.previewPanel.locatePreviewLoadingLogList();
     await expect(
       logList.getByText("Rebuilding app after pnpm install..."),
@@ -459,7 +459,7 @@ upgradePnpmTestSkipIfWindows(
     await po.previewPanel.expectPreviewIframeIsVisible(
       SOCKET_FIREWALL_TEST_TIMEOUT,
     );
-    await expect(warningToast).toBeHidden({ timeout: Timeout.EXTRA_LONG });
+    await expect(warningBanner).toBeHidden({ timeout: Timeout.EXTRA_LONG });
 
     const appPath = await po.appManagement.getCurrentAppPath();
     await expect(async () => {
@@ -473,6 +473,6 @@ upgradePnpmTestSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
     await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
-    await expect(warningToast).toBeHidden({ timeout: Timeout.MEDIUM });
+    await expect(warningBanner).toBeHidden({ timeout: Timeout.MEDIUM });
   },
 );

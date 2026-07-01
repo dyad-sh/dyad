@@ -6,12 +6,17 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   currentConsoleEntriesAtom,
   currentAppUrlAtom,
+  currentPackageManagerWarningAtom,
   currentPreviewAppExitAtom,
   currentPreviewErrorAtom,
   currentPreviewReloadTokenAtom,
   setConsoleEntriesForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
-import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
+import {
+  useAppOutputSubscription,
+  useRebuildAppAfterPnpmInstall,
+  useRunApp,
+} from "@/hooks/useRunApp";
 
 const {
   addLogMock,
@@ -20,15 +25,12 @@ const {
   appOutputListeners,
   appOutputSubscribeMock,
   clearLogsMock,
-  installPnpmMock,
-  openExternalUrlMock,
   respondToAppInputMock,
   restartAppMock,
   runAppMock,
   settingsMock,
   showErrorMock,
   showInputRequestMock,
-  showPnpmMinimumReleaseAgeWarningMock,
   stopAppMock,
   updateSettingsMock,
 } = vi.hoisted(() => ({
@@ -38,8 +40,6 @@ const {
   appOutputListeners: new Set<(output: unknown) => void>(),
   appOutputSubscribeMock: vi.fn(),
   clearLogsMock: vi.fn(),
-  installPnpmMock: vi.fn(),
-  openExternalUrlMock: vi.fn(),
   respondToAppInputMock: vi.fn(),
   restartAppMock: vi.fn(),
   runAppMock: vi.fn(),
@@ -53,7 +53,6 @@ const {
   },
   showErrorMock: vi.fn(),
   showInputRequestMock: vi.fn(),
-  showPnpmMinimumReleaseAgeWarningMock: vi.fn(),
   stopAppMock: vi.fn(),
   updateSettingsMock: vi.fn(),
 }));
@@ -69,10 +68,6 @@ vi.mock("@/ipc/types", () => ({
     misc: {
       addLog: addLogMock,
       clearLogs: clearLogsMock,
-    },
-    system: {
-      installPnpm: installPnpmMock,
-      openExternalUrl: openExternalUrlMock,
     },
     events: {
       misc: {
@@ -94,7 +89,6 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("@/lib/toast", () => ({
   showError: showErrorMock,
   showInputRequest: showInputRequestMock,
-  showPnpmMinimumReleaseAgeWarning: showPnpmMinimumReleaseAgeWarningMock,
 }));
 
 vi.mock("./useSettings", () => ({
@@ -125,15 +119,12 @@ describe("useAppOutputSubscription", () => {
     appOutputSubscribeMock.mockReset();
     appOutputBatchSubscribeMock.mockReset();
     clearLogsMock.mockReset();
-    installPnpmMock.mockReset();
-    openExternalUrlMock.mockReset();
     respondToAppInputMock.mockReset();
     restartAppMock.mockReset();
     runAppMock.mockReset();
     settingsMock.current = {};
     showErrorMock.mockReset();
     showInputRequestMock.mockReset();
-    showPnpmMinimumReleaseAgeWarningMock.mockReset();
     stopAppMock.mockReset();
     updateSettingsMock.mockReset();
   });
@@ -294,11 +285,11 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
-  it("shows pnpm warning toast with install and docs actions", async () => {
+  it("stores pnpm warning state for the current preview app", () => {
     settingsMock.current = {
       enablePnpmMinimumReleaseAgeWarning: true,
     };
-    const { Wrapper } = makeWrapper(1);
+    const { store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -313,31 +304,16 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(showPnpmMinimumReleaseAgeWarningMock).toHaveBeenCalledTimes(1);
-    const toastArgs = showPnpmMinimumReleaseAgeWarningMock.mock.calls[0][0];
-
-    await act(async () => {
-      await toastArgs.onInstallPnpm();
-      await Promise.resolve();
-    });
-    expect(installPnpmMock).toHaveBeenCalledTimes(1);
-    expect(clearLogsMock).toHaveBeenCalledWith({ appId: 1 });
-    expect(restartAppMock).toHaveBeenCalledWith({
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 1,
-      removeNodeModules: true,
-      recreateSandbox: false,
     });
-
-    toastArgs.onOpenDocs();
-    expect(openExternalUrlMock).toHaveBeenCalledWith(
-      "https://pnpm.io/installation",
-    );
 
     unmount();
   });
 
-  it("does not show pnpm warning toast when the experiment is disabled", () => {
-    const { Wrapper } = makeWrapper(1);
+  it("does not store pnpm warning state when the experiment is disabled", () => {
+    const { store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -352,16 +328,16 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(showPnpmMinimumReleaseAgeWarningMock).not.toHaveBeenCalled();
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
 
     unmount();
   });
 
-  it("does not show pnpm warning toast for a background app", () => {
+  it("stores pnpm warning state for the Dyad session from a background app", () => {
     settingsMock.current = {
       enablePnpmMinimumReleaseAgeWarning: true,
     };
-    const { Wrapper } = makeWrapper(1);
+    const { store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -376,7 +352,16 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(showPnpmMinimumReleaseAgeWarningMock).not.toHaveBeenCalled();
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer for the strongest protection",
+      appId: 2,
+    });
 
     unmount();
   });
@@ -412,7 +397,7 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
-  it("does not clear visible app logs when a stale pnpm toast rebuilds another app", async () => {
+  it("does not affect visible app logs when a background pnpm warning is stored", () => {
     settingsMock.current = {
       enablePnpmMinimumReleaseAgeWarning: true,
     };
@@ -444,20 +429,19 @@ describe("useAppOutputSubscription", () => {
       });
     });
 
-    const toastArgs = showPnpmMinimumReleaseAgeWarningMock.mock.calls[0][0];
-    await act(async () => {
-      await toastArgs.onInstallPnpm();
-    });
-
-    expect(clearLogsMock).toHaveBeenCalledWith({ appId: 1 });
-    expect(restartAppMock).toHaveBeenCalledWith({
-      appId: 1,
-      removeNodeModules: true,
-      recreateSandbox: false,
-    });
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
     expect(
       store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
     ).toEqual(["Current app log"]);
+
+    act(() => {
+      store.set(selectedAppIdAtom, 1);
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      message: "Install pnpm 10.16.0 or newer for the strongest protection",
+      appId: 1,
+    });
 
     unmount();
   });
@@ -506,9 +490,6 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("keeps pnpm rebuild loading scoped to the rebuilt app", async () => {
-    settingsMock.current = {
-      enablePnpmMinimumReleaseAgeWarning: true,
-    };
     const { store, Wrapper } = makeWrapper(1);
     let finishRestartApp: () => void = () => {};
     restartAppMock.mockReturnValueOnce(
@@ -519,45 +500,35 @@ describe("useAppOutputSubscription", () => {
 
     const { result, unmount } = renderHook(
       () => {
-        useAppOutputSubscription();
-        return useRunApp();
+        const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
+        const runAppState = useRunApp();
+        return { rebuildAppAfterPnpmInstall, runAppState };
       },
       {
         wrapper: Wrapper,
       },
     );
 
-    act(() => {
-      for (const listener of appOutputListeners) {
-        listener({
-          type: "package-manager-warning",
-          message: "Install pnpm 10.16.0 or newer for the strongest protection",
-          appId: 1,
-        });
-      }
-    });
-
-    const toastArgs = showPnpmMinimumReleaseAgeWarningMock.mock.calls[0][0];
     let installPromise = Promise.resolve();
     await act(async () => {
-      installPromise = toastArgs.onInstallPnpm();
+      installPromise = result.current.rebuildAppAfterPnpmInstall(1);
       await Promise.resolve();
     });
 
-    expect(result.current.loading).toBe(true);
+    expect(result.current.runAppState.loading).toBe(true);
 
     act(() => {
       store.set(selectedAppIdAtom, 2);
     });
 
-    expect(result.current.loading).toBe(false);
+    expect(result.current.runAppState.loading).toBe(false);
 
     await act(async () => {
       finishRestartApp();
       await installPromise;
     });
 
-    expect(result.current.loading).toBe(false);
+    expect(result.current.runAppState.loading).toBe(false);
 
     unmount();
   });

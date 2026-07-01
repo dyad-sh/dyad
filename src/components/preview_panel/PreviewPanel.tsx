@@ -18,6 +18,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
+import { PackageManagerWarningBanner } from "./PackageManagerWarningBanner";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
@@ -137,6 +138,7 @@ export function PreviewPanel() {
               {previewMode !== "preview" && (
                 <PreviewToolbar compactThreshold={0} />
               )}
+              <PackageManagerWarningBanner />
               <div className="flex-1 overflow-y-auto">
                 {previewMode === "preview" ? (
                   <PreviewIframe key={key} loading={loading} />

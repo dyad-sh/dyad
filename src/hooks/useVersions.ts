@@ -145,6 +145,14 @@ export function useVersions(appId: number | null) {
         note,
       });
     },
+    onSuccess: (result, variables) => {
+      updateVersionMetadataCache(
+        result.oid,
+        { note: result.note },
+        variables.appId === undefined ? appId : variables.appId,
+      );
+    },
+    meta: { showErrorToast: true },
   });
 
   return {

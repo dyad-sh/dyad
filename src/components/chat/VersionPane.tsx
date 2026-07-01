@@ -25,7 +25,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { showError } from "@/lib/toast";
 
 import { useRunApp } from "@/hooks/useRunApp";
 
@@ -59,6 +58,7 @@ type SaveVersionNote = (
   appId: number | null,
   versionId: string,
   note: string | null,
+  previousNote: string | null,
   saveSequence: number,
   syncCache: boolean,
 ) => void;
@@ -68,6 +68,7 @@ type PendingNoteSave = {
   appId: number | null;
   versionId: string;
   note: string | null;
+  previousNote: string | null;
   saveSequence: number;
   saveVersionNote: SaveVersionNote;
 };
@@ -133,6 +134,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       setCachedVersions((prevVersions) => {
         const sourceVersions =
           prevVersions.length > 0 ? prevVersions : liveVersionsRef.current;
+        if (sourceVersions.length === 0) {
+          return prevVersions;
+        }
         return sourceVersions.map((version) =>
           version.oid === versionId ? { ...version, ...updates } : version,
         );
@@ -146,6 +150,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       targetAppId: number | null,
       versionId: string,
       note: string | null,
+      previousNote: string | null,
       saveSequence: number,
       syncCache = true,
     ) => {
@@ -171,7 +176,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
           isLatestSave() &&
           targetAppId === currentAppIdRef.current
         ) {
-          showError("Failed to save version note. Please try again.");
+          updateCachedVersion(versionId, { note: previousNote });
+        }
+      } finally {
+        if (isLatestSave()) {
+          noteSaveSequencesRef.current.delete(pendingSaveKey);
         }
       }
     },
@@ -186,6 +195,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         pendingSave.appId,
         pendingSave.versionId,
         pendingSave.note,
+        pendingSave.previousNote,
         pendingSave.saveSequence,
         syncCache && pendingSave.appId === currentAppIdRef.current,
       );
@@ -306,9 +316,14 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       })
     : favoriteFilteredVersions;
 
-  const queueVersionNoteSave = (versionId: string, note: string | null) => {
+  const queueVersionNoteSave = (
+    versionId: string,
+    note: string | null,
+    previousNote: string | null,
+  ) => {
     const pendingSaveKey = getPendingNoteSaveKey(appId, versionId);
     const existingPendingSave = noteSaveTimeoutsRef.current.get(pendingSaveKey);
+    const noteToRevertTo = existingPendingSave?.previousNote ?? previousNote;
     if (existingPendingSave) {
       clearTimeout(existingPendingSave.timeout);
     }
@@ -325,6 +340,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         pendingSave.appId,
         pendingSave.versionId,
         pendingSave.note,
+        pendingSave.previousNote,
         pendingSave.saveSequence,
         pendingSave.appId === currentAppIdRef.current,
       );
@@ -334,6 +350,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       appId,
       versionId,
       note,
+      previousNote: noteToRevertTo,
       saveSequence,
       saveVersionNote,
     });
@@ -349,6 +366,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         existingPendingSave.appId,
         existingPendingSave.versionId,
         note,
+        existingPendingSave.previousNote,
         existingPendingSave.saveSequence,
         existingPendingSave.appId === currentAppIdRef.current,
       );
@@ -660,7 +678,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                                   return next;
                                 });
                                 updateCachedVersion(version.oid, { note });
-                                queueVersionNoteSave(version.oid, note);
+                                queueVersionNoteSave(
+                                  version.oid,
+                                  note,
+                                  version.note ?? null,
+                                );
                               }}
                               onBlur={(e) =>
                                 flushVersionNoteSave(

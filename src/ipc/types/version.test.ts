@@ -23,4 +23,21 @@ describe("version metadata schemas", () => {
       }).success,
     ).toBe(true);
   });
+
+  it("reject abbreviated commit hashes for version metadata", () => {
+    expect(
+      SetVersionFavoriteParamsSchema.safeParse({
+        appId: 1,
+        versionId: "abcd",
+        isFavorite: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      SetVersionNoteParamsSchema.safeParse({
+        appId: 1,
+        versionId: "abcd",
+        note: "release candidate",
+      }).success,
+    ).toBe(false);
+  });
 });

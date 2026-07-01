@@ -168,6 +168,19 @@ describe("createTempTestBranch", () => {
     expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 
+  it("keeps the column set when the dead-end branch delete fails", async () => {
+    // Auth provisioning fails (dead-end) AND the just-created branch can't be
+    // deleted — the column must stay pointing at it so the startup
+    // reconciliation sweep can retry the delete.
+    mocks.deleteProjectBranch.mockRejectedValueOnce(new Error("neon down"));
+    await expect(
+      createTempTestBranch(
+        makeApp({ neonDevelopmentAuthCookieSecret: "dev-secret" }),
+      ),
+    ).rejects.toThrow(/Neon Auth/);
+    expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+
   it("does not overwrite the column when the prior branch cleanup fails", async () => {
     // The prior leaked branch can't be deleted (Neon rejects), so we must keep
     // the column pointing at it for the reconciliation sweep instead of the new

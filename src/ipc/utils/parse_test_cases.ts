@@ -14,28 +14,45 @@ function unescapeLiteral(raw: string): string {
 }
 
 /**
- * Strip a trailing `//` line comment, ignoring `//` that appears inside a string
- * literal (e.g. `page.goto("http://x")`). Best-effort and single-line, matching
- * the rest of this parser — it stops a `test(...)` written inside an inline
- * comment (`doThing(); // test("nope")`) from becoming a phantom entry.
+ * Strip `//` line comments and `/* … *\/` block comments from a line,
+ * ignoring comment markers that appear inside a string literal (e.g.
+ * `page.goto("http://x")`). Block-comment state carries across lines via
+ * `state` so a `test(...)` inside a multi-line commented-out example doesn't
+ * become a phantom entry. Best-effort, matching the rest of this parser
+ * (a `/*` inside a multi-line template literal would fool it).
  */
-function stripLineComment(line: string): string {
+function stripComments(line: string, state: { inBlock: boolean }): string {
+  let out = "";
   let quote: string | null = null;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
+    if (state.inBlock) {
+      if (c === "*" && line[i + 1] === "/") {
+        state.inBlock = false;
+        i++; // skip the '/'
+      }
+      continue;
+    }
     if (quote) {
+      out += c;
       if (c === "\\") {
-        i++; // skip the escaped char
+        if (i + 1 < line.length) out += line[++i]; // keep the escaped char
         continue;
       }
       if (c === quote) quote = null;
     } else if (c === '"' || c === "'" || c === "`") {
       quote = c;
+      out += c;
     } else if (c === "/" && line[i + 1] === "/") {
-      return line.slice(0, i);
+      break;
+    } else if (c === "/" && line[i + 1] === "*") {
+      state.inBlock = true;
+      i++; // skip the '*'
+    } else {
+      out += c;
     }
   }
-  return line;
+  return out;
 }
 
 /**
@@ -51,21 +68,17 @@ function stripLineComment(line: string): string {
 export function parseTestCases(source: string): TestCase[] {
   const lines = source.split(/\r?\n/);
   const out: TestCase[] = [];
+  const state = { inBlock: false };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    // Skip obvious comment lines so a commented-out or documented `test(...)`
-    // doesn't become a phantom (unrunnable) row.
-    const trimmed = line.trimStart();
-    if (
-      trimmed.startsWith("//") ||
-      trimmed.startsWith("*") ||
-      trimmed.startsWith("/*")
-    ) {
+    // Skip JSDoc continuation lines (`* test(...)`) up front; `//`, `/* */`,
+    // and multi-line block comments are handled by stripComments below so a
+    // commented-out or documented `test(...)` doesn't become a phantom
+    // (unrunnable) row.
+    if (!state.inBlock && line.trimStart().startsWith("*")) {
       continue;
     }
-    // Also drop any inline `//` comment so `code(); // test("nope")` on a real
-    // code line doesn't register a phantom test.
-    const match = TEST_CALL.exec(stripLineComment(line));
+    const match = TEST_CALL.exec(stripComments(line, state));
     if (match) {
       out.push({ title: unescapeLiteral(match[2]), line: i + 1 });
     }

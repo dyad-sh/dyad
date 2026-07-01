@@ -25,6 +25,10 @@ function playwrightInstallCommand(appPath: string): {
       args: [
         ...PNPM_INSTALL_POLICY_ARGS,
         "add",
+        // Dyad can generate a pnpm-workspace.yaml (for install policy), which
+        // makes pnpm treat the app as a workspace root and refuse a plain
+        // `pnpm add` without this opt-in. Matches the add-dependency path.
+        "--ignore-workspace-root-check",
         "--save-dev",
         "@playwright/test",
       ],
@@ -301,6 +305,20 @@ export async function ensurePlaywrightBootstrap({
   signal?: AbortSignal;
   onOutput?: (chunk: string) => void;
 }): Promise<{ installed: boolean }> {
+  // Yarn Plug'n'Play has no node_modules, so the installed-check below and the
+  // `npx playwright` runner can't work with it: every run would reinstall and
+  // then fail to resolve the runner. Dead-end with an actionable message
+  // instead. (Yarn classic and `nodeLinker: node-modules` apps are unaffected.)
+  if (
+    fs.existsSync(path.join(appPath, ".pnp.cjs")) ||
+    fs.existsSync(path.join(appPath, ".pnp.js"))
+  ) {
+    throw new DyadError(
+      "This app uses Yarn Plug'n'Play, which isn't supported for tests yet. Set `nodeLinker: node-modules` in .yarnrc.yml, reinstall dependencies, and try again.",
+      DyadErrorKind.Precondition,
+    );
+  }
+
   const packageInstalled = isPlaywrightInstalled(appPath);
 
   if (!packageInstalled) {

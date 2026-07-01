@@ -20,6 +20,13 @@ interface PwTestResult {
 }
 
 interface PwTest {
+  /**
+   * Playwright's own annotation-aware verdict for the test:
+   * "expected" | "unexpected" | "flaky" | "skipped". Unlike the raw per-run
+   * result status, this accounts for `test.fail()` (an expected failure) and
+   * retries (flaky = eventually passed).
+   */
+  status?: string;
   results?: PwTestResult[];
 }
 
@@ -149,6 +156,15 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
     if (!final) continue;
     sawResult = true;
     durationMs += final.duration ?? 0;
+
+    // Trust Playwright's annotation-aware verdict first: a `test.fail()` spec
+    // that failed as expected reports raw status "failed" but test-level
+    // "expected", and a retry that eventually passed reports "flaky". Both are
+    // green to Playwright, so don't paint them red/amber here.
+    if (test.status === "expected" || test.status === "flaky") {
+      hasPassed = true;
+      continue;
+    }
 
     const status = final.status ?? "";
     if (status === "passed") {

@@ -220,4 +220,57 @@ describe("parsePlaywrightReport", () => {
       },
     ]);
   });
+
+  it("treats Playwright-expected and flaky outcomes as passed", () => {
+    const report: PwReport = {
+      suites: [
+        {
+          file: "tests/a.spec.ts",
+          specs: [
+            {
+              file: "tests/a.spec.ts",
+              title: "expected failure",
+              line: 3,
+              tests: [
+                {
+                  // test.fail() spec: raw run failed, but Playwright says the
+                  // outcome is expected — not a red result.
+                  status: "expected",
+                  results: [
+                    {
+                      status: "failed",
+                      duration: 10,
+                      error: { message: "expect(x).toBe(y)" },
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              file: "tests/a.spec.ts",
+              title: "flaky retry",
+              line: 8,
+              tests: [
+                {
+                  // Failed once, passed on retry — green to Playwright.
+                  status: "flaky",
+                  results: [
+                    {
+                      status: "failed",
+                      duration: 5,
+                      error: { message: "Timed out waiting for locator" },
+                    },
+                    { status: "passed", duration: 5 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const [result] = parsePlaywrightReport(report, appPath);
+    expect(result.status).toBe("passed");
+    expect(result.tests?.map((t) => t.status)).toEqual(["passed", "passed"]);
+  });
 });

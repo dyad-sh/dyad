@@ -51,4 +51,19 @@ describe("parseTestCases", () => {
     const src = `test("it's \\"quoted\\"", async () => {});`;
     expect(parseTestCases(src)).toEqual([{ title: `it's "quoted"`, line: 1 }]);
   });
+
+  it("ignores tests inside comments", () => {
+    const src = [
+      `/*`, // 1
+      `test("inside a block comment", () => {});`, // 2
+      `*/`, // 3
+      `doThing(); // test("inline comment")`, // 4
+      `test("real", () => {});`, // 5
+      `/* test("one-line block") */ test("after block", () => {});`, // 6
+    ].join("\n");
+    expect(parseTestCases(src)).toEqual([
+      { title: "real", line: 5 },
+      { title: "after block", line: 6 },
+    ]);
+  });
 });

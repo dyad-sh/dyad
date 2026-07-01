@@ -197,31 +197,35 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     });
     // Server comes up immediately.
     mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    // try/finally so a failing assertion can't leak the mocked fetch into
+    // other tests (vi.clearAllMocks in beforeEach doesn't restore spies).
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response("ok"));
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        event,
+        emit,
+        runtimeMode: "host",
+      });
 
-    const prepared = await prepareIsolatedTestDatabase({
-      app: makeApp({ neonProjectId: "proj-1" }),
-      event,
-      emit,
-      runtimeMode: "host",
-    });
+      expect(mocks.createTempTestBranch).toHaveBeenCalled();
+      expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionUri: "postgres://temp" }),
+      );
+      expect(mocks.executeApp).toHaveBeenCalled();
+      expect(prepared.isolation).toEqual({ mode: "neon-branch" });
+      expect(prepared.infraError).toBeUndefined();
 
-    expect(mocks.createTempTestBranch).toHaveBeenCalled();
-    expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionUri: "postgres://temp" }),
-    );
-    expect(mocks.executeApp).toHaveBeenCalled();
-    expect(prepared.isolation).toEqual({ mode: "neon-branch" });
-    expect(prepared.infraError).toBeUndefined();
-
-    // Teardown deletes the branch we created (row is stale, so it's passed in).
-    await prepared.teardown();
-    expect(mocks.deleteTempTestBranch).toHaveBeenCalledWith(
-      expect.objectContaining({ neonTestBranchId: "test-br" }),
-    );
-    fetchSpy.mockRestore();
+      // Teardown deletes the branch we created (row is stale, so it's passed in).
+      await prepared.teardown();
+      expect(mocks.deleteTempTestBranch).toHaveBeenCalledWith(
+        expect.objectContaining({ neonTestBranchId: "test-br" }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("dead-ends (infraError) and restores when branch creation fails", async () => {

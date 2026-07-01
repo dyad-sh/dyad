@@ -173,8 +173,11 @@ export async function createTempTestBranch(
     // delete the branch we just created and clear the column (it points at this
     // now-deleted branch), then throw so the caller restores and never runs.
     if (!neonAuthBaseUrl) {
-      await deleteBranchBestEffort(projectId, branch.id);
-      if (priorCleanupOk) {
+      const deleted = await deleteBranchBestEffort(projectId, branch.id);
+      // Only clear the column when the delete succeeded AND the column actually
+      // points at this branch (priorCleanupOk). If the delete failed, leave the
+      // column set so startup reconciliation retries this branch.
+      if (deleted && priorCleanupOk) {
         await db
           .update(apps)
           .set({ neonTestBranchId: null })

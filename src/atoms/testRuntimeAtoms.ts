@@ -27,7 +27,7 @@ export interface TestRunState {
   /** Results keyed by spec file path. */
   results: Record<string, TestResult>;
   /** Spec files in the current in-flight run (drives per-file spinners). */
-  runningFiles: string[];
+  readonly runningFiles: readonly string[];
   /**
    * Test keys (`file:line`) in the current in-flight run, when a single test is
    * being run. Empty/undefined means the whole file(s) are running, so every
@@ -52,7 +52,7 @@ export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
   output: "",
   results: Object.freeze({}),
   runningFiles: Object.freeze([]),
-}) as unknown as TestRunState;
+}) as TestRunState;
 
 // Per-app maps, mirroring previewRunStateByAppIdAtom.
 export const testSpecsByAppIdAtom = atom<Map<number, TestSpec[]>>(new Map());

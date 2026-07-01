@@ -12,6 +12,15 @@ export function isLockedError(error: any): boolean {
  * Transient Neon management API errors worth retrying with backoff: the branch
  * is temporarily locked (423) or we've been rate limited (429). Bursts of
  * in-app test runs hit both, so we treat them the same way here.
+ *
+ * Note: this deliberately uses a lighter strategy than `retryWithRateLimit`
+ * (fewer attempts, shorter base delay, no `Retry-After` handling). All callers
+ * of `retryOnLocked` are Neon management-API operations whose dominant failure
+ * mode is a locked branch (423); 429s on these endpoints are rare and bursty,
+ * so a simple exponential backoff is sufficient. Endpoints that are primarily
+ * rate-limited (and return `Retry-After`) should keep using
+ * `retryWithRateLimit` instead. Before this, non-locked callers didn't retry
+ * 429s at all, so honoring them here only makes those paths more resilient.
  */
 function isRetryableError(error: any): boolean {
   return isLockedError(error) || isRateLimitError(error);

@@ -48,8 +48,10 @@ function reconcileResultFile(resultFile: string, specFiles: string[]): string {
   const normalized = resultFile.replace(/\\/g, "/");
   if (specFiles.includes(normalized)) return normalized;
 
+  // Require a path-separator boundary so a shorter name can't spuriously match
+  // a longer sibling (e.g. "auth.spec.ts" must not match "google-auth.spec.ts").
   const suffixMatches = specFiles.filter(
-    (f) => f.endsWith(normalized) || normalized.endsWith(f),
+    (f) => f.endsWith("/" + normalized) || normalized.endsWith("/" + f),
   );
   if (suffixMatches.length === 1) return suffixMatches[0];
 
@@ -563,6 +565,11 @@ export function TestsPanel() {
   // serially (Playwright `--fully-parallel` with multiple workers).
   const [parallel, setParallel] = useState(false);
   const outputRef = useRef<HTMLPreElement>(null);
+  // Mirror the streamed output into a ref so callbacks that only read it lazily
+  // (e.g. askAiToFix, invoked after a run finishes) don't need to depend on it
+  // and get recreated on every streamed chunk.
+  const latestOutputRef = useRef(runState.output);
+  latestOutputRef.current = runState.output;
 
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
@@ -754,8 +761,10 @@ export function TestsPanel() {
       if (error) {
         sections.push(`Error:\n\`\`\`\n${error.trim()}\n\`\`\``);
       }
-      // Include the tail of the raw run output for extra context (capped).
-      const output = runState.output.trim();
+      // Include the tail of the raw run output for extra context (capped). Read
+      // from the ref so this callback doesn't depend on the streamed output and
+      // get recreated (re-rendering every row) on every chunk.
+      const output = latestOutputRef.current.trim();
       if (output) {
         const MAX = 4000;
         const tail =
@@ -765,7 +774,7 @@ export function TestsPanel() {
       streamMessage({ prompt: sections.join("\n\n"), chatId });
       showInfo("Sent to chat — asking the AI to fix the test…");
     },
-    [chatId, streamMessage, runState.output],
+    [chatId, streamMessage],
   );
 
   // File-level status: a spinner while the file is part of an in-flight run,
@@ -943,7 +952,7 @@ export function TestsPanel() {
               {counts.inconclusive} inconclusive
             </span>
           )}
-          {` of ${specs.length}`}
+          {` of ${specs.length} ${specs.length === 1 ? "file" : "files"}`}
           {!isRunning && runState.isolation?.mode === "neon-branch" && (
             <span
               className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
@@ -1066,6 +1075,8 @@ export function TestsPanel() {
         <div className="border-t border-border">
           <button
             onClick={() => setOutputOpen((v) => !v)}
+            aria-expanded={outputOpen}
+            aria-label="Toggle test output"
             className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
           >
             {outputOpen ? (

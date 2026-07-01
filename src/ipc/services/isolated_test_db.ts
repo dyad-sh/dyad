@@ -352,7 +352,7 @@ async function waitForServerReady(
     if (baseUrl && (await isResponding(baseUrl, signal))) {
       return;
     }
-    await delay(SERVER_READY_POLL_MS);
+    await delay(SERVER_READY_POLL_MS, signal);
   }
   throw new Error(
     "The app didn't come back online with the isolated test database in time.",
@@ -384,6 +384,25 @@ async function isResponding(
   }
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Sleep for `ms`, resolving early if `signal` aborts. Being abort-aware here
+ * lets a Stop pressed mid-poll take effect immediately instead of waiting out
+ * the full poll interval.
+ */
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

@@ -33,6 +33,19 @@ function prettyJson(raw: string): string {
   }
 }
 
+// Tool results can be plain strings, not just JSON, so highlight as text when
+// the content does not parse as JSON.
+function formatResult(raw: string): {
+  text: string;
+  language: "json" | "text";
+} {
+  try {
+    return { text: JSON.stringify(JSON.parse(raw), null, 2), language: "json" };
+  } catch {
+    return { text: raw, language: "text" };
+  }
+}
+
 export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   node,
   children,
@@ -52,9 +65,11 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
     () => (expanded ? prettyJson(raw) : ""),
     [expanded, raw],
   );
-  const prettyResult = useMemo(
+  const result = useMemo(
     () =>
-      expanded && resultContent !== undefined ? prettyJson(resultContent) : "",
+      expanded && resultContent !== undefined
+        ? formatResult(resultContent)
+        : null,
     [expanded, resultContent],
   );
 
@@ -110,10 +125,12 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
             <div className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1">
               Result
             </div>
-            {resultContent !== undefined ? (
-              <CodeHighlight className="language-json">
-                {prettyResult}
+            {result ? (
+              <CodeHighlight className={`language-${result.language}`}>
+                {result.text}
               </CodeHighlight>
+            ) : resultContent !== undefined ? (
+              <CodeHighlight className="language-json">{""}</CodeHighlight>
             ) : (
               <div className="text-xs text-muted-foreground italic">
                 {state === "aborted" ? "No result." : "Running…"}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMcpPairing } from "./DyadMarkdownParser";
+import { buildMcpPairing } from "./mcpPairing";
 import { parseFullMessage } from "@/lib/streamingMessageParser";
 
 // Builds the block list for the out-of-order interleaving the AI SDK emits

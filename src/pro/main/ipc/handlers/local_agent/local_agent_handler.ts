@@ -37,7 +37,10 @@ import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
+import {
+  cancelOrphanedBaseStream,
+  fastTextOutput,
+} from "@/ipc/utils/stream_text_utils";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import {
   getProviderOptions,
@@ -905,6 +908,7 @@ export async function handleLocalAgentStream(
 
         try {
           const streamResult = streamText({
+            output: fastTextOutput(),
             model: modelClient.model,
             headers: {
               ...getAiHeaders({

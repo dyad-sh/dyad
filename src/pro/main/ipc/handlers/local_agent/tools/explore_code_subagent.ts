@@ -5,7 +5,10 @@ import { readSettings } from "@/main/settings";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { getAiHeaders, getProviderOptions } from "@/ipc/utils/provider_options";
-import { cancelOrphanedBaseStream } from "@/ipc/utils/stream_text_utils";
+import {
+  cancelOrphanedBaseStream,
+  fastTextOutput,
+} from "@/ipc/utils/stream_text_utils";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import type { UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -148,6 +151,7 @@ export async function runExploreCodeSubagent({
 
   try {
     const streamResult = streamText({
+      output: fastTextOutput(),
       model: modelInfo.modelClient.model,
       headers: getAiHeaders({
         builtinProviderId: modelInfo.modelClient.builtinProviderId,

@@ -5,6 +5,7 @@ import { getModelClient } from "@/ipc/utils/get_model_client";
 import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import { buildMcpConsentSystemPrompt } from "@/prompts/mcp_consent_policy";
 import type { McpAutoApproveResult } from "@/ipc/utils/mcp_consent";
+import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import {
   formatRecentTurns,
   getRecentTurnsForConsent,
@@ -99,6 +100,7 @@ export async function classifyMcpToolConsent(
     );
 
     const stream = streamText({
+      output: fastTextOutput(),
       model: modelClient.model,
       system: buildMcpConsentSystemPrompt(),
       maxRetries: 1,

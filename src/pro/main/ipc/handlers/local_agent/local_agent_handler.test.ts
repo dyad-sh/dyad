@@ -229,13 +229,17 @@ let mockStreamTextImpl:
   | ((options: Record<string, any>) => FakeStreamResult)
   | null = null;
 
-vi.mock("ai", () => ({
-  streamText: vi.fn((options: Record<string, any>) =>
-    mockStreamTextImpl ? mockStreamTextImpl(options) : mockStreamResult,
-  ),
-  stepCountIs: vi.fn((n: number) => ({ steps: n })),
-  hasToolCall: vi.fn((toolName: string) => ({ toolName })),
-}));
+vi.mock("ai", async () => {
+  const actual = await vi.importActual<typeof import("ai")>("ai");
+  return {
+    ...actual,
+    streamText: vi.fn((options: Record<string, any>) =>
+      mockStreamTextImpl ? mockStreamTextImpl(options) : mockStreamResult,
+    ),
+    stepCountIs: vi.fn((n: number) => ({ steps: n })),
+    hasToolCall: vi.fn((toolName: string) => ({ toolName })),
+  };
+});
 
 vi.mock("@/ipc/utils/get_model_client", () => ({
   getModelClient: vi.fn(async () => ({

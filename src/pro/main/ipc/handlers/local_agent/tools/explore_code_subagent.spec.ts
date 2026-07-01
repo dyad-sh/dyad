@@ -66,9 +66,15 @@ vi.mock("@/ipc/utils/provider_options", () => ({
   getProviderOptions: mocks.getProviderOptions,
 }));
 
-vi.mock("@/ipc/utils/stream_text_utils", () => ({
-  cancelOrphanedBaseStream: mocks.cancelOrphanedBaseStream,
-}));
+vi.mock("@/ipc/utils/stream_text_utils", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/ipc/utils/stream_text_utils")
+  >("@/ipc/utils/stream_text_utils");
+  return {
+    ...actual,
+    cancelOrphanedBaseStream: mocks.cancelOrphanedBaseStream,
+  };
+});
 
 vi.mock("./explore_code_raw", async () => {
   const actual =

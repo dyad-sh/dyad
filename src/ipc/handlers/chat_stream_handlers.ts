@@ -1,7 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
 import { app, ipcMain, IpcMainInvokeEvent } from "electron";
 import { createTypedHandler } from "./base";
-import { computeStreamingPatch } from "../utils/stream_text_utils";
+import {
+  computeStreamingPatch,
+  fastTextOutput,
+} from "../utils/stream_text_utils";
 import { chatContracts } from "../types/chat";
 import {
   ModelMessage,
@@ -1242,6 +1245,10 @@ This conversation includes one or more image attachments. When the user uploads 
             maxRetries: 2,
             model: modelClient.model,
             stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
+            // Avoids the SDK's O(n^2) per-chunk JSON.stringify of the full
+            // accumulated text (see fastTextOutput). We read fullStream parts
+            // directly and never consume partialOutput.
+            output: fastTextOutput(),
             providerOptions,
             system: systemPromptOverride,
             tools,

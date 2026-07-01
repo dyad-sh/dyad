@@ -73,7 +73,7 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
   });
 
-  it("allows stored local-agent mode with a non-OpenAI/Anthropic provider", () => {
+  it("allows stored local-agent mode with Google/Gemini", () => {
     const settings = makeSettings({
       defaultChatMode: "build",
       providerSettings: {
@@ -91,7 +91,7 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "local-agent" });
   });
 
-  it("allows stored local-agent mode with a non-OpenAI/Anthropic env var provider", () => {
+  it("allows stored local-agent mode with a non-Google env var provider", () => {
     const settings = makeSettings({ defaultChatMode: "build" });
 
     expect(
@@ -122,7 +122,7 @@ describe("chat mode resolution", () => {
     ).toEqual({ mode: "build", fallbackReason: "quota-exhausted" });
   });
 
-  it("does not auto-default to basic agent for non-OpenAI/Anthropic providers", () => {
+  it("does not auto-default to basic agent for Google/Gemini", () => {
     const settings = makeSettings({
       providerSettings: {
         google: { apiKey: { value: "test-key" } },
@@ -132,7 +132,54 @@ describe("chat mode resolution", () => {
     expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
   });
 
-  it("does not honor a local-agent default for non-OpenAI/Anthropic providers", () => {
+  it("auto-defaults to basic agent for a non-Google provider", () => {
+    const settings = makeSettings({
+      providerSettings: {
+        openrouter: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
+  });
+
+  it("auto-defaults to basic agent for Vertex", () => {
+    const settings = makeSettings({
+      providerSettings: {
+        vertex: {
+          serviceAccountKey: { value: "test-key" },
+          projectId: "test-project",
+          location: "us-central1",
+        },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
+  });
+
+  it("auto-defaults to basic agent for a non-Google env var provider", () => {
+    const settings = makeSettings();
+
+    expect(
+      getEffectiveDefaultChatMode(
+        settings,
+        { OPENROUTER_API_KEY: "test-key" },
+        true,
+      ),
+    ).toBe("local-agent");
+  });
+
+  it("honors a local-agent default for a non-Google provider", () => {
+    const settings = makeSettings({
+      defaultChatMode: "local-agent",
+      providerSettings: {
+        openrouter: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
+  });
+
+  it("does not honor a local-agent default for Google/Gemini", () => {
     const settings = makeSettings({
       defaultChatMode: "local-agent",
       providerSettings: {

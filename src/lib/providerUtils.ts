@@ -80,17 +80,26 @@ export function isProviderSetup(
 }
 
 /**
- * Simple check for whether OpenAI or Anthropic provider is set up.
+ * Checks whether any non-Google provider is set up.
  * Used for determining if basic agent mode should be available.
  */
-export function isOpenAIOrAnthropicSetup(
+export function isNonGoogleProviderSetup(
   settings: UserSettings,
   envVars: Record<string, string | undefined>,
 ): boolean {
   if (!settings) return false;
 
   const options: ProviderCheckOptions = { settings, envVars };
-  return (
-    isProviderSetup("openai", options) || isProviderSetup("anthropic", options)
+  // Google/Gemini API keys are often free-tier keys with low rate limits, which
+  // makes users likely to hit errors in agent mode. Vertex is still eligible.
+  const excludedProviders = new Set(["auto", "google"]);
+  const configuredProviders = new Set([
+    ...Object.keys(settings.providerSettings ?? {}),
+    ...Object.keys(PROVIDER_TO_ENV_VAR),
+  ]);
+
+  return [...configuredProviders].some(
+    (provider) =>
+      !excludedProviders.has(provider) && isProviderSetup(provider, options),
   );
 }

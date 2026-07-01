@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
+import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -90,6 +91,7 @@ async function applyCapacitor({
     command:
       "pnpm add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
     cwd: appPath,
+    env: getPackageManagerCommandEnv(),
     successMessage: "Capacitor dependencies installed successfully",
     errorPrefix: "Failed to install Capacitor dependencies",
   });
@@ -109,6 +111,7 @@ async function applyCapacitor({
     command:
       "pnpm install --prod=false || npm install --include=dev --legacy-peer-deps",
     cwd: appPath,
+    env: getPackageManagerCommandEnv(),
     successMessage: "Development dependencies installed successfully",
     errorPrefix: "Failed to install development dependencies",
   });

@@ -352,6 +352,12 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 2,
@@ -423,13 +429,19 @@ describe("useAppOutputSubscription", () => {
       });
     });
 
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(
+      store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
+    ).toEqual(["Current app log"]);
+
+    act(() => {
+      store.set(selectedAppIdAtom, 1);
+    });
+
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 1,
     });
-    expect(
-      store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
-    ).toEqual(["Current app log"]);
 
     unmount();
   });

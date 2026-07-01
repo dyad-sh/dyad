@@ -9,7 +9,7 @@ import {
   currentPackageManagerWarningAtom,
   currentPreviewErrorAtom,
   currentPreviewLoadingAtom,
-  dismissPackageManagerWarningForAppAtom,
+  dismissPackageManagerWarningsAtom,
   previewCurrentUrlAtom,
   previewRunStateByAppIdAtom,
   setAppUrlForAppAtom,
@@ -88,11 +88,26 @@ describe("preview runtime atoms", () => {
     expect(store.get(previewRunStateByAppIdAtom).has(1)).toBe(false);
     expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(store.get(previewCurrentUrlAtom).has(1)).toBe(false);
+  });
+
+  it("scopes the package manager warning display to the selected app", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 2,
+      warning: { message: "Install pnpm 10.16.0 or newer" },
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    store.set(selectedAppIdAtom, 2);
+
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
       message: "Install pnpm 10.16.0 or newer",
-      appId: 1,
+      appId: 2,
     });
-    expect(store.get(previewCurrentUrlAtom).has(1)).toBe(false);
   });
 
   it("applies preview error function updates to the latest app value", () => {
@@ -123,7 +138,7 @@ describe("preview runtime atoms", () => {
     });
   });
 
-  it("keeps package manager warning dismissal scoped to the Dyad session", () => {
+  it("dismisses package manager warnings for all apps for the session", () => {
     const store = createStore();
     store.set(selectedAppIdAtom, 1);
     store.set(setPackageManagerWarningForAppAtom, {
@@ -131,11 +146,15 @@ describe("preview runtime atoms", () => {
       warning: { message: "Install pnpm 10.16.0 or newer" },
     });
 
-    store.set(dismissPackageManagerWarningForAppAtom);
+    store.set(dismissPackageManagerWarningsAtom);
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 2,
       warning: { message: "Install pnpm 10.16.0 or newer" },
     });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    store.set(selectedAppIdAtom, 2);
 
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
   });

@@ -44,7 +44,7 @@ export interface PreviewErrorMessage {
 
 export interface PackageManagerWarning {
   message: string;
-  appId: number | null;
+  appId: number;
 }
 
 export type PreviewErrorUpdate =
@@ -70,9 +70,9 @@ export const previewReloadTokenByAppIdAtom = atom<Map<number, number>>(
 export const consoleEntriesByAppIdAtom = atom<Map<number, ConsoleEntry[]>>(
   new Map(),
 );
-export const packageManagerWarningAtom = atom<
-  PackageManagerWarning | undefined
->(undefined);
+export const packageManagerWarningByAppIdAtom = atom<Map<number, string>>(
+  new Map(),
+);
 export const dismissedPackageManagerWarningAtom = atom(false);
 
 // Stores the current preview URL to preserve route across HMR-induced remounts.
@@ -127,9 +127,16 @@ export const currentConsoleEntriesAtom = atom((get) => {
     : (get(consoleEntriesByAppIdAtom).get(appId) ?? []);
 });
 
-export const currentPackageManagerWarningAtom = atom((get) => {
-  return get(packageManagerWarningAtom);
-});
+export const currentPackageManagerWarningAtom = atom(
+  (get): PackageManagerWarning | undefined => {
+    const appId = get(selectedAppIdAtom);
+    if (appId === null) {
+      return undefined;
+    }
+    const message = get(packageManagerWarningByAppIdAtom).get(appId);
+    return message === undefined ? undefined : { message, appId };
+  },
+);
 
 export const setPreviewRunStateForAppAtom = atom(
   null,
@@ -267,21 +274,31 @@ export const setPackageManagerWarningForAppAtom = atom(
       return;
     }
 
-    set(packageManagerWarningAtom, { ...warning, appId });
+    set(packageManagerWarningByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.set(appId, warning.message);
+      return next;
+    });
   },
 );
 
-export const dismissPackageManagerWarningForAppAtom = atom(
-  null,
-  (_get, set) => {
-    set(dismissedPackageManagerWarningAtom, true);
-    set(packageManagerWarningAtom, undefined);
-  },
-);
-
-export const clearPackageManagerWarningForAppAtom = atom(null, (_get, set) => {
-  set(packageManagerWarningAtom, undefined);
+// Dismissal hides the warning for every app for the rest of the Dyad
+// session, not just the app whose banner was dismissed.
+export const dismissPackageManagerWarningsAtom = atom(null, (_get, set) => {
+  set(dismissedPackageManagerWarningAtom, true);
+  set(packageManagerWarningByAppIdAtom, new Map());
 });
+
+export const clearPackageManagerWarningForAppAtom = atom(
+  null,
+  (_get, set, appId: number) => {
+    set(packageManagerWarningByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  },
+);
 
 export const clearPreviewRuntimeForAppAtom = atom(
   null,
@@ -317,6 +334,11 @@ export const clearPreviewRuntimeForAppAtom = atom(
       return next;
     });
     set(previewCurrentUrlAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+    set(packageManagerWarningByAppIdAtom, (prev) => {
       const next = new Map(prev);
       next.delete(appId);
       return next;

@@ -2,7 +2,8 @@ import { useAtomValue, useSetAtom } from "jotai";
 import {
   clearPackageManagerWarningForAppAtom,
   currentPackageManagerWarningAtom,
-  dismissPackageManagerWarningForAppAtom,
+  dismissPackageManagerWarningsAtom,
+  type PackageManagerWarning,
 } from "@/atoms/previewRuntimeAtoms";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +14,22 @@ import {
 import { ipc } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useRebuildAppAfterPnpmInstall } from "@/hooks/useRunApp";
-import { ExternalLink, Loader2, PackageCheck, Shield, X } from "lucide-react";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
+import { isVersionAtLeast } from "@/shared/version_utils";
+import {
+  Download,
+  ExternalLink,
+  Loader2,
+  PackageCheck,
+  Shield,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 type InstallStatus = "idle" | "installing" | "success" | "error";
+
+const PNPM_11_MINIMUM_NODE_VERSION = "22.13.0";
 
 function getInstallErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -28,26 +41,55 @@ function getInstallErrorMessage(error: unknown): string {
 
 export function PackageManagerWarningBanner() {
   const warning = useAtomValue(currentPackageManagerWarningAtom);
-  const clearWarning = useSetAtom(clearPackageManagerWarningForAppAtom);
-  const dismissWarning = useSetAtom(dismissPackageManagerWarningForAppAtom);
-  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
-  const { updateSettings } = useSettings();
-  const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
-  const [installErrorMessage, setInstallErrorMessage] = useState<string>();
 
   if (!warning) {
     return null;
   }
 
+  // Keying by warning identity resets install state whenever a different
+  // warning is shown; unmounting on clear resets it between warnings.
+  return (
+    <PackageManagerWarningBannerContent
+      key={`${warning.appId}:${warning.message}`}
+      warning={warning}
+    />
+  );
+}
+
+function PackageManagerWarningBannerContent({
+  warning,
+}: {
+  warning: PackageManagerWarning;
+}) {
+  const clearWarning = useSetAtom(clearPackageManagerWarningForAppAtom);
+  const dismissWarnings = useSetAtom(dismissPackageManagerWarningsAtom);
+  const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
+  const { updateSettings } = useSettings();
+  const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
+  const [installErrorMessage, setInstallErrorMessage] = useState<string>();
+  const clearTimerRef = useRef<number | undefined>(undefined);
+  const { data: nodeSystemInfo } = useQuery({
+    queryKey: queryKeys.system.nodejsStatus,
+    queryFn: () => ipc.system.getNodejsStatus(),
+  });
+
+  useEffect(() => {
+    return () => window.clearTimeout(clearTimerRef.current);
+  }, []);
+
   const suppressFutureWarnings = () =>
     updateSettings({ hidePnpmMinimumReleaseAgeWarning: true });
 
-  const handleDismiss = () => {
-    dismissWarning();
-  };
-
   const handleOpenDocs = () => {
     void ipc.system.openExternalUrl("https://pnpm.io/installation");
+  };
+
+  const handleDownloadNode = () => {
+    if (!nodeSystemInfo) {
+      return;
+    }
+
+    void ipc.system.openExternalUrl(nodeSystemInfo.nodeDownloadUrl);
   };
 
   const handleInstallPnpm = async () => {
@@ -56,11 +98,12 @@ export function PackageManagerWarningBanner() {
 
     try {
       await ipc.system.installPnpm();
-      if (warning.appId !== null) {
-        await rebuildAppAfterPnpmInstall(warning.appId);
-      }
+      await rebuildAppAfterPnpmInstall(warning.appId);
       setInstallStatus("success");
-      window.setTimeout(() => clearWarning(), 2_000);
+      clearTimerRef.current = window.setTimeout(
+        () => clearWarning(warning.appId),
+        2_000,
+      );
     } catch (error) {
       setInstallStatus("error");
       setInstallErrorMessage(getInstallErrorMessage(error));
@@ -72,11 +115,20 @@ export function PackageManagerWarningBanner() {
   const isInstalling = installStatus === "installing";
   const isSuccess = installStatus === "success";
   const isError = installStatus === "error";
+  const needsNodeUpgrade =
+    nodeSystemInfo !== undefined &&
+    (!nodeSystemInfo.nodeVersion ||
+      !isVersionAtLeast(
+        nodeSystemInfo.nodeVersion,
+        PNPM_11_MINIMUM_NODE_VERSION,
+      ));
   const displayMessage = isSuccess
     ? "pnpm installed. Rebuilding preview..."
     : isError
       ? `${installErrorMessage}.`
-      : warning.message;
+      : needsNodeUpgrade
+        ? `pnpm v11 requires Node.js ${PNPM_11_MINIMUM_NODE_VERSION} or newer. Download and install the latest Node.js first.`
+        : warning.message;
 
   return (
     <div
@@ -102,6 +154,16 @@ export function PackageManagerWarningBanner() {
             <ExternalLink className="size-3.5" />
             Docs
           </Button>
+        ) : needsNodeUpgrade ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleDownloadNode}
+            disabled={isSuccess}
+          >
+            <Download className="size-3.5" />
+            Download Node.js
+          </Button>
         ) : (
           <Button
             size="sm"
@@ -121,7 +183,7 @@ export function PackageManagerWarningBanner() {
           size="icon"
           variant="ghost"
           className="size-7"
-          onClick={handleDismiss}
+          onClick={dismissWarnings}
           aria-label="Dismiss pnpm warning"
         >
           <X className="size-3.5" />

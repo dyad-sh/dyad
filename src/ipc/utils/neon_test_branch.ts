@@ -51,7 +51,7 @@ function resolveParentBranchId(appData: AppRow): string | null {
 function appUsesNeonAuth(appData: AppRow): boolean {
   return Boolean(
     appData.neonDevelopmentAuthCookieSecret ||
-    appData.neonProductionAuthCookieSecret,
+      appData.neonProductionAuthCookieSecret,
   );
 }
 
@@ -85,17 +85,24 @@ export async function createTempTestBranch(
     );
   }
 
-  // Best-effort: if a prior session leaked a branch on this row, delete it
-  // before we overwrite the column so we don't orphan it. Remember whether that
-  // cleanup actually succeeded — if it didn't, we must NOT overwrite the column
-  // below (that would drop the prior branch id and orphan it forever, since the
-  // startup reconciliation sweep relies on the column to find it again).
-  let priorCleanupOk = true;
+  // If a prior session leaked a branch on this row, delete it before we
+  // overwrite the column so we don't orphan it. If that cleanup fails we must
+  // NOT proceed: overwriting the column would orphan the prior branch forever
+  // (the startup reconciliation sweep relies on the column to find it), while
+  // leaving the column untouched would make the branch we're about to create
+  // untracked and unrecoverable on a crash. Dead-end instead and let startup
+  // reconciliation retry the prior branch on the next launch.
   if (appData.neonTestBranchId) {
-    priorCleanupOk = await deleteBranchBestEffort(
+    const priorCleanupOk = await deleteBranchBestEffort(
       projectId,
       appData.neonTestBranchId,
     );
+    if (!priorCleanupOk) {
+      throw new DyadError(
+        `Couldn't clean up the previous Neon test branch for app ${appData.id}. Skipping this run to avoid leaking a branch; it will be retried on the next launch.`,
+        DyadErrorKind.External,
+      );
+    }
   }
 
   const neonClient = await getNeonClient();
@@ -123,16 +130,18 @@ export async function createTempTestBranch(
   }
 
   // Persist the in-flight branch id so a crash before teardown is recoverable
-  // by the startup reconciliation sweep — but only when the prior branch was
-  // successfully cleaned up (or there was none). If the prior cleanup failed we
-  // leave the column pointing at the PRIOR branch so reconciliation retries it;
-  // this run's own teardown uses the returned branch object, not the column, so
-  // the new branch is still cleaned up when the run finishes normally.
-  if (priorCleanupOk) {
+  // by the startup reconciliation sweep. If this write fails (e.g. a transient
+  // SQLite lock), neither teardown nor reconciliation can find the branch to
+  // delete it, so remove the branch we just created before rethrowing rather
+  // than leaking it.
+  try {
     await db
       .update(apps)
       .set({ neonTestBranchId: branch.id })
       .where(eq(apps.id, appData.id));
+  } catch (error) {
+    await deleteBranchBestEffort(projectId, branch.id);
+    throw error;
   }
 
   // Provision Neon Auth on the throwaway branch best-effort. Auth-gated tests
@@ -174,10 +183,10 @@ export async function createTempTestBranch(
     // now-deleted branch), then throw so the caller restores and never runs.
     if (!neonAuthBaseUrl) {
       const deleted = await deleteBranchBestEffort(projectId, branch.id);
-      // Only clear the column when the delete succeeded AND the column actually
-      // points at this branch (priorCleanupOk). If the delete failed, leave the
-      // column set so startup reconciliation retries this branch.
-      if (deleted && priorCleanupOk) {
+      // Clear the column when the delete succeeded so reconciliation doesn't
+      // later try to re-delete a branch that's already gone. If the delete
+      // failed, leave the column set so startup reconciliation retries it.
+      if (deleted) {
         await db
           .update(apps)
           .set({ neonTestBranchId: null })

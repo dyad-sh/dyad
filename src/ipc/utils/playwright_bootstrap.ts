@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log/main";
 import { spawnStreaming } from "./spawn_streaming";
-import { PNPM_INSTALL_POLICY_ARGS } from "./socket_firewall";
+import {
+  PNPM_INSTALL_POLICY_ARGS,
+  getPackageManagerCommandEnv,
+} from "./socket_firewall";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("playwright_bootstrap");
@@ -330,6 +333,10 @@ export async function ensurePlaywrightBootstrap({
       cwd: appPath,
       signal,
       onOutput,
+      // Disable Corepack's project spec so a stale `packageManager` pin can't
+      // fail the install before @playwright/test lands, mirroring the other
+      // Dyad-managed package-manager paths (executeAddDependency, runtime).
+      env: getPackageManagerCommandEnv(),
       // Don't let a stuck registry/network hang the whole test flow forever.
       timeoutMs: 5 * 60 * 1000,
     });
@@ -377,6 +384,8 @@ export async function ensurePlaywrightBootstrap({
       cwd: appPath,
       signal,
       onOutput,
+      // Same Corepack guard as the package install above.
+      env: getPackageManagerCommandEnv(),
       // The Chromium download is large; give it a generous ceiling but never
       // let it hang indefinitely on a stalled connection.
       timeoutMs: 10 * 60 * 1000,

@@ -42,6 +42,8 @@ When a workflow has already identified a target PR number, pass that number expl
 
 If `gh auth status` succeeds but `git push` fails with `Repo <owner>/<repo> is not allowlisted` followed by `fatal: could not read Username for 'https://github.com/...': Device not configured`, run `gh auth setup-git` first and then push to an allowlisted remote. In some bot workspaces, fork remotes are not allowlisted even when `upstream` is, so retry the push against `upstream` if project policy permits it.
 
+If `git push` succeeds but sandboxed `gh pr view` / `gh auth status` reports `The token in default is invalid`, rerun the `gh` command outside the sandbox before giving up on PR creation. The keyring-backed token may be available only to escalated commands.
+
 ## Empty branches cannot produce PRs
 
 Before creating a PR for a freshly pushed branch, check whether it is actually ahead of the base branch:

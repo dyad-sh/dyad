@@ -239,6 +239,13 @@
       "when": 1780444627070,
       "tag": "0033_ambiguous_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1782765294567,
+      "tag": "0034_gray_cerebro",
+      "breakpoints": true
     }
   ]
 }

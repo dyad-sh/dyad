@@ -66,10 +66,23 @@ export const apps = sqliteTable("apps", {
   supabaseParentProjectId: text("supabase_parent_project_id"),
   // Supabase organization slug for credential lookup
   supabaseOrganizationSlug: text("supabase_organization_slug"),
+  // In-flight ephemeral test-user id for isolated e2e runs against Supabase.
+  // Supabase's free tier has no DB branching, so instead of a throwaway branch
+  // we create a dedicated throwaway auth user (via the Auth Admin API, stamped
+  // app_metadata.dyad_test=true) and run the tests authenticated as it. Set
+  // while a test session holds that user, cleared on teardown. Persisted so a
+  // crash mid-session can be reconciled (orphan user deleted) on the next
+  // launch. See ipc/utils/supabase_test_user.ts.
+  supabaseTestUserId: text("supabase_test_user_id"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
   neonActiveBranchId: text("neon_active_branch_id"),
+  // In-flight ephemeral test branch for isolated e2e test runs. Set while a
+  // test session holds a throwaway copy-on-write branch, cleared on teardown.
+  // Persisted so a crash mid-session can be reconciled (orphan branch deleted)
+  // on the next launch. See ipc/utils/neon_test_branch.ts.
+  neonTestBranchId: text("neon_test_branch_id"),
   neonProductionAuthCookieSecret: text("neon_production_auth_cookie_secret"),
   neonDevelopmentAuthCookieSecret: text("neon_development_auth_cookie_secret"),
   // Which Neon branch the unified database section is set to deploy/sync

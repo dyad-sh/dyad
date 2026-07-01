@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
+import { normalizeTestPath } from "../utils/normalize_test_path";
 
 import log from "electron-log";
 import {
@@ -42,6 +43,7 @@ import {
   getDyadExecuteSqlTags,
   getDyadSearchReplaceTags,
   getDyadCopyTags,
+  getDyadGenerateTestTags,
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
@@ -597,6 +599,26 @@ export async function processFullResponseActions(
           pendingFunctionDeploys.push(functionName);
         }
       }
+    }
+
+    // Process all generated tests (<dyad-generate-test>). These are plain file
+    // writes under the hood; they get a distinct in-chat card + "View in Tests"
+    // deep-link, but on disk they behave exactly like a <dyad-write>.
+    const dyadGenerateTestTags = getDyadGenerateTestTags(fullResponse);
+    for (const tag of dyadGenerateTestTags) {
+      // Force the path under tests/ (defense-in-depth) so a stray tag can't
+      // overwrite app source files.
+      const filePath = normalizeTestPath(tag.path);
+      const fullFilePath = safeJoin(appPath, filePath);
+
+      // Ensure directory exists
+      const dirPath = path.dirname(fullFilePath);
+      fs.mkdirSync(dirPath, { recursive: true });
+
+      // Write test content
+      fs.writeFileSync(fullFilePath, tag.content);
+      logger.log(`Successfully wrote test file: ${fullFilePath}`);
+      writtenFiles.push(filePath);
     }
 
     // If shared modules changed, redeploy affected functions or safely fall back.

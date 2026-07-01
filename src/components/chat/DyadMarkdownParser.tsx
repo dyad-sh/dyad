@@ -14,6 +14,7 @@ import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
+import { DyadGenerateTest } from "./DyadGenerateTest";
 import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
@@ -463,9 +464,50 @@ function renderCustomTag(
           {content}
         </DyadThink>
       );
-    case "dyad-write":
+    case "dyad-write": {
+      // Spec files written via `write_file` (e.g. tests/signup.spec.ts) get the
+      // dedicated test card with a "View in Tests" deep-link, matching how the
+      // Tests panel surfaces them on disk.
+      const writePath = attributes.path || "";
+      // Only spec files under `tests/` get the test card. A component spec like
+      // `src/components/Button.spec.ts` is a unit test, not an E2E test, and
+      // shouldn't get a "View in Tests" deep-link.
+      const isTestSpec =
+        /\.spec\.(ts|tsx|js|jsx)$/.test(writePath) &&
+        (writePath.startsWith("tests/") || writePath.startsWith("tests\\"));
+      if (isTestSpec) {
+        return (
+          <DyadGenerateTest
+            node={{
+              properties: {
+                path: writePath,
+                description: attributes.description || "",
+                state: getState({ isStreaming, inProgress }),
+              },
+            }}
+          >
+            {content}
+          </DyadGenerateTest>
+        );
+      }
       return (
         <DyadWrite
+          node={{
+            properties: {
+              path: writePath,
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWrite>
+      );
+    }
+
+    case "dyad-generate-test":
+      return (
+        <DyadGenerateTest
           node={{
             properties: {
               path: attributes.path || "",
@@ -475,7 +517,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWrite>
+        </DyadGenerateTest>
       );
 
     case "dyad-rename":

@@ -17,6 +17,7 @@ import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
+import { TestsPanel } from "./TestsPanel";
 import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
@@ -148,6 +149,8 @@ export function PreviewPanel() {
                   <PublishPanel />
                 ) : previewMode === "security" ? (
                   <SecurityPanel />
+                ) : previewMode === "tests" ? (
+                  <TestsPanel />
                 ) : previewMode === "plan" ? (
                   <PlanPanel />
                 ) : (

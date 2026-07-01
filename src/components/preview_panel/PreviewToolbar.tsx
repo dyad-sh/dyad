@@ -12,6 +12,7 @@ import {
   Code,
   Diff,
   Eye,
+  FlaskConical,
   Globe,
   MoreHorizontal,
   Shield,
@@ -41,7 +42,10 @@ const OVERFLOW_MODES = [
   "configure",
   "problems",
   "security",
+  "tests",
 ] as const satisfies readonly Exclude<PreviewMode, "plan">[];
+// Modes that show an experimental pill in their toolbar entry.
+const EXPERIMENTAL_MODES = new Set<PreviewMode>(["tests"]);
 const COMPACT_TOOLBAR_THRESHOLD = 700;
 
 interface ModeButtonsProps {
@@ -123,6 +127,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
       icon: <Globe size={16} />,
       label: t("preview.publish"),
       testId: "publish-mode-button",
+    },
+    tests: {
+      icon: <FlaskConical size={16} />,
+      label: t("preview.tests"),
+      testId: "tests-mode-button",
     },
   };
 
@@ -214,6 +223,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
                 >
                   {meta.icon}
                   <span>{meta.label}</span>
+                  {EXPERIMENTAL_MODES.has(mode) && (
+                    <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded">
+                      Experimental
+                    </span>
+                  )}
                   {mode === "problems" && displayCount && (
                     <span className="ml-auto px-1.5 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
                       {displayCount}

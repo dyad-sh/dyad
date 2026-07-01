@@ -144,6 +144,8 @@ When changing install-policy constants or helpers in `src/ipc/utils/socket_firew
 
 Do not treat "pnpm is available but older than the minimumReleaseAge-supporting version" the same as "pnpm is unavailable." `PNPM_INSTALL_POLICY_ARGS` currently use `--config.*` flags, which pnpm 10.15.0 and 9.0.0 accept on `pnpm install`; keep using pnpm with those flags when it is present, and only fall back to npm when the pnpm binary cannot be run.
 
+When validating pnpm flag compatibility, test real subcommands such as `pnpm install`, `pnpm run`, and `pnpm add`, not only `pnpm --version`. Older pnpm versions can short-circuit `--version` before normal option validation, hiding `ERROR Unknown option` failures that will break app startup or dependency installs.
+
 When running Dyad-managed package-manager install/add/probe commands from inside an app directory, use `getPackageManagerCommandEnv()` so Corepack ignores stale project `packageManager` pins via `COREPACK_ENABLE_PROJECT_SPEC=0`. Apply this to `pnpm --version` probes and `npx sfw ...` wrappers too, since the wrapped package manager inherits the parent env; avoid forcing it onto user-authored custom commands unless intentionally changing their package-manager semantics.
 
 When generating `pnpm-workspace.yaml` for install policy (`allowBuilds`, `minimumReleaseAge`), include a top-level `packages:` block such as `packages: ["." ]` if one does not already exist. pnpm 9 treats `pnpm-workspace.yaml` as a workspace manifest and fails with `packages field missing or empty` when the file only contains config keys.

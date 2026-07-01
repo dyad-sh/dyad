@@ -122,6 +122,25 @@ describe("createTempTestUser", () => {
     expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: UUID });
   });
 
+  it("keeps the column on the prior user when its cleanup fails", async () => {
+    const PRIOR = "11111111-1111-4111-8111-111111111111";
+    // The prior leaked user's DELETE fails; user creation succeeds. The column
+    // must keep pointing at the prior user so the startup reconciliation sweep
+    // can retry it — persisting the new id would orphan the prior user forever.
+    mockFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? new Response("nope", { status: 500 })
+        : new Response(JSON.stringify({ id: UUID })),
+    );
+
+    const result = await createTempTestUser(
+      makeApp({ supabaseTestUserId: PRIOR }),
+    );
+
+    expect(result.userId).toBe(UUID);
+    expect(mocks.set).not.toHaveBeenCalledWith({ supabaseTestUserId: UUID });
+  });
+
   it("throws when the app has no Supabase project", async () => {
     await expect(
       createTempTestUser(makeApp({ supabaseProjectId: null })),

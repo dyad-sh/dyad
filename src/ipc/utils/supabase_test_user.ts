@@ -133,9 +133,13 @@ export async function createTempTestUser(
   }
 
   // Best-effort: if a prior session leaked a user on this row, delete it before
-  // we overwrite the column so we don't orphan it.
+  // we overwrite the column so we don't orphan it. Remember whether that
+  // cleanup actually succeeded — if it didn't, we must NOT overwrite the column
+  // below (that would drop the prior user id and orphan it forever, since the
+  // startup reconciliation sweep relies on the column to find it again).
+  let priorCleanupOk = true;
   if (appData.supabaseTestUserId) {
-    await deleteUserBestEffort({
+    priorCleanupOk = await deleteUserBestEffort({
       projectUrl,
       projectId,
       organizationSlug,
@@ -181,16 +185,23 @@ export async function createTempTestUser(
   // reconciliation sweep will never know about this user, so compensate by
   // deleting it now — otherwise we'd leak an untracked auth user in the real
   // project.
-  try {
-    await persistTestUserId(appData.id, created.id);
-  } catch (error) {
-    await deleteUserBestEffort({
-      projectUrl,
-      projectId,
-      organizationSlug,
-      userId: created.id,
-    });
-    throw error;
+  //
+  // When the PRIOR user's cleanup failed, leave the column pointing at the
+  // prior user so reconciliation retries it (mirroring the Neon branch path);
+  // this run's own teardown deletes the new user via the returned id, not the
+  // column, so the new user is still cleaned up when the run finishes normally.
+  if (priorCleanupOk) {
+    try {
+      await persistTestUserId(appData.id, created.id);
+    } catch (error) {
+      await deleteUserBestEffort({
+        projectUrl,
+        projectId,
+        organizationSlug,
+        userId: created.id,
+      });
+      throw error;
+    }
   }
 
   logger.info(`Created test user ${created.id} for app ${appData.id}`);

@@ -43,7 +43,7 @@ const TEST_FILE_PATTERN = /^tests\/(?!.*\.\.)[\w\-./]+\.spec\.(ts|tsx|js|jsx)$/;
  */
 function parallelWorkerCount(): number {
   const cores = os.cpus()?.length ?? 2;
-  return Math.max(2, Math.min(cores - 1, 8));
+  return Math.max(1, Math.min(cores - 1, 8));
 }
 
 // In-flight runs keyed by appId. `controller` lets the Stop button cancel an
@@ -212,21 +212,31 @@ export async function runAppTestsCore({
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
   }
 
-  const run = await spawnStreaming({
-    command: "npx",
-    args,
-    cwd: appPath,
-    env: {
-      ...process.env,
-      ...testEnv,
-      [TEST_BASE_URL_ENV]: baseUrl,
-      PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
-      // Non-interactive: never try to open/serve an HTML report.
-      CI: "true",
-    },
-    signal,
-    onOutput: (chunk) => emit(chunk, "running"),
-  });
+  let run;
+  try {
+    run = await spawnStreaming({
+      command: "npx",
+      args,
+      cwd: appPath,
+      env: {
+        ...process.env,
+        ...testEnv,
+        [TEST_BASE_URL_ENV]: baseUrl,
+        PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
+        // Non-interactive: never try to open/serve an HTML report.
+        CI: "true",
+      },
+      signal,
+      onOutput: (chunk) => emit(chunk, "running"),
+    });
+  } catch (error) {
+    // A spawn failure (e.g. npx missing from PATH) rejects rather than exiting
+    // non-zero. Surface it as a structured infra error in the Tests panel
+    // instead of letting it bubble up as a generic IPC failure.
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Failed to spawn the test runner: ${message}`);
+    return { appId, results: [], infraError: { message } };
+  }
 
   if (run.aborted) {
     return { appId, results: [], infraError: { message: "Test run stopped." } };
@@ -468,8 +478,17 @@ export function registerTestsHandlers() {
         // Always restore the app to its real database, even on the infraError
         // early-return, abort, or throw. `teardown` is safe to call exactly
         // once; on the infraError path it's a NOOP (isolation already restored).
+        // A teardown failure must not skip the cleanup below — leaving the
+        // controller registered and `done` unresolved would make every future
+        // run for this app wait forever on `prior.done`.
         if (prepared) {
-          await prepared.teardown();
+          try {
+            await prepared.teardown();
+          } catch (error) {
+            logger.error(
+              `Failed to tear down isolated test environment for app ${appId}: ${error}`,
+            );
+          }
         }
         if (testRunControllers.get(appId)?.controller === controller) {
           testRunControllers.delete(appId);

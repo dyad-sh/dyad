@@ -71,6 +71,14 @@ export async function spawnStreaming({
   timeoutMs?: number;
 }): Promise<SpawnStreamingResult> {
   return new Promise<SpawnStreamingResult>((resolve, reject) => {
+    // An already-cancelled run shouldn't start the process at all — spawning
+    // just to immediately tree-kill it can still kick off side effects (e.g. a
+    // package install or browser download briefly starting after Stop).
+    if (signal?.aborted) {
+      resolve({ code: null, stdout: "", stderr: "", aborted: true });
+      return;
+    }
+
     logger.info(`Running (streaming): ${command} ${args.join(" ")}`);
 
     // Pass a copy of the environment rather than the live global object to

@@ -392,7 +392,7 @@ describe("buildMcpCapabilityMap", () => {
     );
   });
 
-  it("emits an error <dyad-output> and re-throws when the MCP tool execute() fails", async () => {
+  it("emits a failed tool-result and error <dyad-output> and re-throws when the MCP tool execute() fails", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const execute = vi.fn().mockRejectedValue(new Error("upstream boom"));
     vi.mocked(mcpManager.getClient).mockResolvedValue({
@@ -416,7 +416,13 @@ describe("buildMcpCapabilityMap", () => {
           x.includes("MCP tool 'srv__hello' failed"),
       ),
     ).toBe(true);
-    expect(xmls.some((x) => x.startsWith("<dyad-mcp-tool-result"))).toBe(false);
+    expect(
+      xmls.some(
+        (x) =>
+          x.startsWith("<dyad-mcp-tool-result") &&
+          x.includes('is-error="true"'),
+      ),
+    ).toBe(true);
   });
 });
 

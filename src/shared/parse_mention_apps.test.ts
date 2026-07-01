@@ -1,4 +1,5 @@
 import {
+  formatKnownAppMentionsForPrompt,
   parseAppMentions,
   parseKnownAppMentions,
 } from "@/shared/parse_mention_apps";
@@ -275,5 +276,59 @@ describe("parseKnownAppMentions", () => {
     );
 
     expect(result).toEqual(["Foo.App.Com", "bar"]);
+  });
+
+  it("stops a known app mention before an adjacent app mention", () => {
+    const result = parseKnownAppMentions("@app:Foo@app:Bar", ["Foo", "Bar"]);
+
+    expect(result).toEqual(["Foo", "Bar"]);
+  });
+
+  it("stops a known dotted app mention before a path suffix", () => {
+    const result = parseKnownAppMentions("@app:foo.app.com/path", [
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("does not match a shorter app name before a dotted suffix", () => {
+    const result = parseKnownAppMentions("@app:foo.app.com/path", ["foo"]);
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("formatKnownAppMentionsForPrompt", () => {
+  it("allows terminal periods after visible app mentions", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix bug in @MyApp.", [
+      "MyApp",
+    ]);
+
+    expect(result).toBe("Fix bug in @app:MyApp.");
+  });
+
+  it("prefers the longest visible app mention", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix @foo.app.com", [
+      "foo",
+      "foo.app.com",
+    ]);
+
+    expect(result).toBe("Fix @app:foo.app.com");
+  });
+
+  it("does not rewrite shorter visible app mentions before dotted suffixes", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix @foo.app.com", ["foo"]);
+
+    expect(result).toBe("Fix @foo.app.com");
+  });
+
+  it("does not rewrite already-internal app mentions", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix @app:Foo", [
+      "app",
+      "Foo",
+    ]);
+
+    expect(result).toBe("Fix @app:Foo");
   });
 });

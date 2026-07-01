@@ -60,6 +60,10 @@ async function resolveMentionedAppsFromPrompt(
   prompt: string,
   excludeCurrentAppId?: number,
 ) {
+  if (!prompt.includes("@app:")) {
+    return [];
+  }
+
   const allApps = await db.query.apps.findMany();
   const mentionedAppNames = parseKnownAppMentions(
     prompt,

@@ -1,4 +1,10 @@
-import { parseAppMentions } from "@/shared/parse_mention_apps";
+import {
+  formatKnownAppMentionsForPrompt,
+  MENTION_REGEX,
+  parseAppMentions,
+  parseKnownAppMentions,
+  splitAppMentionTrailingDots,
+} from "@/shared/parse_mention_apps";
 import { describe, it, expect } from "vitest";
 
 describe("parseAppMentions", () => {
@@ -18,6 +24,12 @@ describe("parseAppMentions", () => {
     const prompt = "Check @app:my-app and @app:another-app-name";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["my-app", "another-app-name"]);
+  });
+
+  it("should parse app mentions with dots", () => {
+    const prompt = "Check @app:foo.app.com and @app:another.app-name";
+    const result = parseAppMentions(prompt);
+    expect(result).toEqual(["foo.app.com", "another.app-name"]);
   });
 
   it("should parse app mentions with numbers", () => {
@@ -141,11 +153,11 @@ Line 3 has @app:App3`;
     expect(result).toEqual([longAppName]);
   });
 
-  it("should stop parsing at invalid characters", () => {
+  it("should stop parsing at invalid non-dot characters", () => {
     const prompt =
       "Check @app:MyApp@InvalidPart and @app:AnotherApp.InvalidPart";
     const result = parseAppMentions(prompt);
-    expect(result).toEqual(["MyApp", "AnotherApp"]);
+    expect(result).toEqual(["MyApp", "AnotherApp.InvalidPart"]);
   });
 
   it("should handle mentions with numbers and underscores mixed", () => {
@@ -223,5 +235,136 @@ Line 3 has @app:App3`;
     const prompt = "Check @app:App1 @app:App2 @app:App3 test";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["App1", "App2", "App3"]);
+  });
+
+  it("should reset global regex state before parsing", () => {
+    MENTION_REGEX.lastIndex = 10;
+
+    const result = parseAppMentions("@app:First and @app:Second");
+
+    expect(result).toEqual(["First", "Second"]);
+  });
+
+  it("should ignore all-dot app mention candidates", () => {
+    const result = parseAppMentions("@app:... then @app:ValidApp");
+
+    expect(result).toEqual(["ValidApp"]);
+  });
+});
+
+describe("splitAppMentionTrailingDots", () => {
+  it("keeps dotted app name segments and separates trailing sentence dots", () => {
+    const result = splitAppMentionTrailingDots("foo.app.com.");
+
+    expect(result).toEqual({
+      appName: "foo.app.com",
+      trailingDots: ".",
+    });
+  });
+
+  it("keeps app names without trailing dots unchanged", () => {
+    const result = splitAppMentionTrailingDots("foo.app.com");
+
+    expect(result).toEqual({
+      appName: "foo.app.com",
+      trailingDots: "",
+    });
+  });
+});
+
+describe("parseKnownAppMentions", () => {
+  it("matches dotted app names from the known app list", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com", [
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("prefers the longest known app name", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com", [
+      "foo",
+      "foo.app",
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("does not match a shorter app name when the remaining suffix is not punctuation", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com", ["foo"]);
+
+    expect(result).toEqual([]);
+  });
+
+  it("allows a trailing sentence period after the known app name", () => {
+    const result = parseKnownAppMentions("Check @app:foo.app.com.", [
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("preserves prompt order and known app name casing", () => {
+    const result = parseKnownAppMentions(
+      "Check @app:foo.app.com then @app:BAR",
+      ["Foo.App.Com", "bar"],
+    );
+
+    expect(result).toEqual(["Foo.App.Com", "bar"]);
+  });
+
+  it("stops a known app mention before an adjacent app mention", () => {
+    const result = parseKnownAppMentions("@app:Foo@app:Bar", ["Foo", "Bar"]);
+
+    expect(result).toEqual(["Foo", "Bar"]);
+  });
+
+  it("stops a known dotted app mention before a path suffix", () => {
+    const result = parseKnownAppMentions("@app:foo.app.com/path", [
+      "foo.app.com",
+    ]);
+
+    expect(result).toEqual(["foo.app.com"]);
+  });
+
+  it("does not match a shorter app name before a dotted suffix", () => {
+    const result = parseKnownAppMentions("@app:foo.app.com/path", ["foo"]);
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("formatKnownAppMentionsForPrompt", () => {
+  it("allows terminal periods after visible app mentions", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix bug in @MyApp.", [
+      "MyApp",
+    ]);
+
+    expect(result).toBe("Fix bug in @app:MyApp.");
+  });
+
+  it("prefers the longest visible app mention", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix @foo.app.com", [
+      "foo",
+      "foo.app.com",
+    ]);
+
+    expect(result).toBe("Fix @app:foo.app.com");
+  });
+
+  it("does not rewrite shorter visible app mentions before dotted suffixes", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix @foo.app.com", ["foo"]);
+
+    expect(result).toBe("Fix @foo.app.com");
+  });
+
+  it("does not rewrite already-internal app mentions", () => {
+    const result = formatKnownAppMentionsForPrompt("Fix @app:Foo", [
+      "app",
+      "Foo",
+    ]);
+
+    expect(result).toBe("Fix @app:Foo");
   });
 });

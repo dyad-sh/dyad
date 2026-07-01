@@ -26,7 +26,13 @@ import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
+import {
+  APP_MENTION_NAME_PATTERN,
+  formatKnownAppMentionsForPrompt,
+  MENTION_REGEX,
+  parseAppMentions,
+  splitAppMentionTrailingDots,
+} from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { HistoryNavigation, HISTORY_TRIGGER } from "./HistoryNavigation";
 import { slugForPrompt } from "@/ipc/utils/replaceSlashSkillReference";
@@ -237,8 +243,10 @@ function ExternalValueSyncPlugin({
       // Build nodes from internal value, turning @app:Name, @prompt:<id>, @file:<path>, and @media:<ref> into mention nodes
       let lastIndex = 0;
       let match: RegExpExecArray | null;
-      const combined =
-        /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)|@file:([^\s]+)|@media:([^\s]+)/g;
+      const combined = new RegExp(
+        `@app:(${APP_MENTION_NAME_PATTERN})|@prompt:(\\d+)|@file:([^\\s]+)|@media:([^\\s]+)`,
+        "g",
+      );
       while ((match = combined.exec(value)) !== null) {
         const start = match.index;
         const full = match[0];
@@ -247,8 +255,13 @@ function ExternalValueSyncPlugin({
           if (textBefore) paragraph.append($createTextNode(textBefore));
         }
         if (match[1]) {
-          const appName = match[1];
+          const { appName, trailingDots } = splitAppMentionTrailingDots(
+            match[1],
+          );
           paragraph.append($createBeautifulMentionNode("@", appName));
+          if (trailingDots) {
+            paragraph.append($createTextNode(trailingDots));
+          }
         } else if (match[2]) {
           const id = Number(match[2]);
           const title = promptsById[id] || `prompt:${id}`;
@@ -472,19 +485,8 @@ export function LexicalChatInput({
           }
 
           // Transform @AppName mentions to @app:AppName format
-          const appNames = apps?.map((app) => app.name) || [];
-          for (const appName of appNames) {
-            // Escape special regex characters in app name
-            const escapedAppName = appName.replace(
-              /[.*+?^${}()|[\]\\]/g,
-              "\\$&",
-            );
-            const mentionRegex = new RegExp(
-              `@(${escapedAppName})(?![a-zA-Z0-9_/\\-])`,
-              "g",
-            );
-            textContent = textContent.replace(mentionRegex, "@app:$1");
-          }
+          const appNames = (apps ?? []).map((app) => app.name);
+          textContent = formatKnownAppMentionsForPrompt(textContent, appNames);
           // Convert @PromptTitle to @prompt:<id>
           const map = new Map((prompts || []).map((p) => [p.title, p.id]));
           for (const [title, id] of map.entries()) {

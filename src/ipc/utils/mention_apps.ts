@@ -1,8 +1,10 @@
 import { db } from "../../db";
+import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { CodebaseFile, extractCodebase } from "../../utils/codebase";
 import { validateChatContext } from "../utils/context_paths_utils";
 import log from "electron-log";
+import { parseKnownAppMentions } from "@/shared/parse_mention_apps";
 
 const logger = log.scope("mention_apps");
 
@@ -19,14 +21,15 @@ export interface MentionedAppCodebaseEntry extends MentionedAppReference {
 async function resolveMentionedApps(
   mentionedAppNames: string[],
   excludeCurrentAppId?: number,
+  allApps?: (typeof apps.$inferSelect)[],
 ) {
   if (mentionedAppNames.length === 0) {
     return [];
   }
 
-  const allApps = await db.query.apps.findMany();
+  const appsToSearch = allApps ?? (await db.query.apps.findMany());
 
-  const mentionedApps = allApps.filter(
+  const mentionedApps = appsToSearch.filter(
     (app) =>
       mentionedAppNames.some(
         (mentionName) => app.name.toLowerCase() === mentionName.toLowerCase(),
@@ -53,35 +56,25 @@ async function resolveMentionedApps(
   return dedupedApps;
 }
 
-/**
- * Lightweight resolver for `@app:Name` mentions. Returns only name/path pairs
- * without reading any file contents — use this when the caller just needs
- * to expose referenced apps to on-demand tools (agent/ask/plan modes).
- */
-export async function extractMentionedAppsReferences(
-  mentionedAppNames: string[],
+async function resolveMentionedAppsFromPrompt(
+  prompt: string,
   excludeCurrentAppId?: number,
-): Promise<MentionedAppReference[]> {
-  const dedupedApps = await resolveMentionedApps(
-    mentionedAppNames,
-    excludeCurrentAppId,
+) {
+  if (!prompt.includes("@app:")) {
+    return [];
+  }
+
+  const allApps = await db.query.apps.findMany();
+  const mentionedAppNames = parseKnownAppMentions(
+    prompt,
+    allApps.map((app) => app.name),
   );
-  return dedupedApps.map((app) => ({
-    appName: app.name,
-    appPath: getDyadAppPath(app.path),
-  }));
+  return resolveMentionedApps(mentionedAppNames, excludeCurrentAppId, allApps);
 }
 
-// Helper function to extract codebases from mentioned apps
-export async function extractMentionedAppsCodebases(
-  mentionedAppNames: string[],
-  excludeCurrentAppId?: number,
+async function extractCodebasesForApps(
+  dedupedApps: (typeof apps.$inferSelect)[],
 ): Promise<MentionedAppCodebaseEntry[]> {
-  const dedupedApps = await resolveMentionedApps(
-    mentionedAppNames,
-    excludeCurrentAppId,
-  );
-
   const results: MentionedAppCodebaseEntry[] = [];
 
   for (const app of dedupedApps) {
@@ -109,4 +102,30 @@ export async function extractMentionedAppsCodebases(
   }
 
   return results;
+}
+
+export async function extractMentionedAppsReferencesFromPrompt(
+  prompt: string,
+  excludeCurrentAppId?: number,
+): Promise<MentionedAppReference[]> {
+  const dedupedApps = await resolveMentionedAppsFromPrompt(
+    prompt,
+    excludeCurrentAppId,
+  );
+  return dedupedApps.map((app) => ({
+    appName: app.name,
+    appPath: getDyadAppPath(app.path),
+  }));
+}
+
+export async function extractMentionedAppsCodebasesFromPrompt(
+  prompt: string,
+  excludeCurrentAppId?: number,
+): Promise<MentionedAppCodebaseEntry[]> {
+  const dedupedApps = await resolveMentionedAppsFromPrompt(
+    prompt,
+    excludeCurrentAppId,
+  );
+
+  return extractCodebasesForApps(dedupedApps);
 }

@@ -27,6 +27,7 @@ import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
+  APP_MENTION_NAME_PATTERN,
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
   parseAppMentions,
@@ -241,8 +242,10 @@ function ExternalValueSyncPlugin({
       // Build nodes from internal value, turning @app:Name, @prompt:<id>, @file:<path>, and @media:<ref> into mention nodes
       let lastIndex = 0;
       let match: RegExpExecArray | null;
-      const combined =
-        /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)|@file:([^\s]+)|@media:([^\s]+)/g;
+      const combined = new RegExp(
+        `@app:(${APP_MENTION_NAME_PATTERN})|@prompt:(\\d+)|@file:([^\\s]+)|@media:([^\\s]+)`,
+        "g",
+      );
       while ((match = combined.exec(value)) !== null) {
         const start = match.index;
         const full = match[0];

@@ -1,4 +1,8 @@
-export const MENTION_REGEX = /@app:([a-zA-Z0-9_.-]+)/g;
+export const APP_MENTION_NAME_PATTERN = "[a-zA-Z0-9_.-]+";
+export const MENTION_REGEX = new RegExp(
+  `@app:(${APP_MENTION_NAME_PATTERN})`,
+  "g",
+);
 
 const APP_MENTION_PREFIX_REGEX = /@app:/g;
 const APP_MENTION_CANDIDATE_CHAR_REGEX = /[a-zA-Z0-9_.-]/;

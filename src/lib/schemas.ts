@@ -369,6 +369,7 @@ const BaseUserSettingsFields = {
   runtimeMode2: RuntimeMode2Schema.optional(),
   customNodePath: z.string().optional().nullable(),
   nodeRuntimePreference: z.enum(["system", "managed"]).optional(),
+  disablePreviewNodeAutoInstall: z.boolean().optional(),
   customAppsFolder: z.string().optional().nullable(),
   isRunning: z.boolean().optional(),
   lastKnownPerformance: z

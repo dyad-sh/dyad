@@ -21,6 +21,7 @@ import {
   getManagedNodeVersion,
   getNodeVersionAtPath,
   installManagedNode,
+  cancelManagedNodeInstall,
   isManagedNodeInstalled,
   isManagedNodeSupported,
   isUsableSystemNodeVersion,
@@ -534,6 +535,9 @@ export function registerNodeHandlers() {
         nodeRuntimePreference: customNode
           ? (settings.nodeRuntimePreference ?? "system")
           : "managed",
+        // A completed install supersedes any earlier cancel; let future
+        // previews auto-install again.
+        disablePreviewNodeAutoInstall: false,
       });
       await reloadNodePath();
       managedPnpmImplicitInstallFailed = false;
@@ -543,6 +547,13 @@ export function registerNodeHandlers() {
       });
       return { nodeVersion };
     } catch (error) {
+      if (
+        error instanceof DyadError &&
+        error.kind === DyadErrorKind.UserCancelled
+      ) {
+        sendTelemetryEvent("managed_node_install", { status: "cancelled" });
+        throw error;
+      }
       sendTelemetryEvent("managed_node_install", {
         status: "failed",
         failure_category:
@@ -550,6 +561,10 @@ export function registerNodeHandlers() {
       });
       throw error;
     }
+  });
+
+  createTypedHandler(systemContracts.cancelManagedNodeInstall, async () => {
+    cancelManagedNodeInstall();
   });
 
   createTypedHandler(systemContracts.removeManagedNode, async () => {

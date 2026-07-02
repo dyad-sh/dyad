@@ -220,6 +220,12 @@ export const systemContracts = {
     output: InstallManagedNodeResultSchema,
   }),
 
+  cancelManagedNodeInstall: defineContract({
+    channel: "cancel-managed-node-install",
+    input: z.void(),
+    output: z.void(),
+  }),
+
   removeManagedNode: defineContract({
     channel: "remove-managed-node",
     input: z.void(),

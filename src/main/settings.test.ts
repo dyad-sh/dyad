@@ -90,6 +90,7 @@ describe("readSettings", () => {
         {
           "autoApproveNonSchemaSql": true,
           "autoExpandPreviewPanel": true,
+          "disablePreviewNodeAutoInstall": false,
           "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
@@ -505,6 +506,7 @@ describe("readSettings", () => {
         {
           "autoApproveNonSchemaSql": true,
           "autoExpandPreviewPanel": true,
+          "disablePreviewNodeAutoInstall": false,
           "enableAppBlueprint": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,

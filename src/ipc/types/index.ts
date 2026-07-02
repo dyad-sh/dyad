@@ -236,6 +236,7 @@ export type {
 // System types
 export type {
   NodeSystemInfo,
+  ManagedNodeInstallProgress,
   SystemDebugInfo,
   SelectNodeFolderResult,
   DoesReleaseNoteExistParams,

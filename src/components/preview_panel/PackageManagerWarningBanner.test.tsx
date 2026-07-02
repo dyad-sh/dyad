@@ -56,6 +56,12 @@ describe("PackageManagerWarningBanner", () => {
       nodeVersion: "v22.14.0",
       pnpmVersion: "10.15.0",
       nodeDownloadUrl: "https://example.com/node.pkg",
+      source: "system",
+      nodePath: "node",
+      managedNodeInstalled: false,
+      managedNodeVersion: null,
+      systemNodeTooOld: false,
+      managedNodeSupported: true,
     });
   });
 
@@ -196,6 +202,12 @@ describe("PackageManagerWarningBanner", () => {
       nodeVersion: "v20.11.1",
       pnpmVersion: "10.15.0",
       nodeDownloadUrl: "https://example.com/node.pkg",
+      source: "system",
+      nodePath: "node",
+      managedNodeInstalled: false,
+      managedNodeVersion: null,
+      systemNodeTooOld: true,
+      managedNodeSupported: true,
     });
 
     renderBanner();

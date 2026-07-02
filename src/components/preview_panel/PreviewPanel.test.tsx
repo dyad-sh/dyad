@@ -46,11 +46,20 @@ vi.mock("@/atoms/previewRuntimeAtoms", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+  }),
   useQuery: () => ({
     data: {
       nodeDownloadUrl: "https://nodejs.org",
       nodeVersion: mocks.nodeVersion,
       pnpmVersion: "10.15.0",
+      source: "system",
+      nodePath: "node",
+      managedNodeInstalled: false,
+      managedNodeVersion: null,
+      systemNodeTooOld: false,
+      managedNodeSupported: true,
     },
     isError: mocks.nodeCheckFailed,
     isLoading: false,
@@ -65,9 +74,15 @@ vi.mock("@/ipc/types", () => ({
     },
     system: {
       getNodejsStatus: vi.fn(),
+      installManagedNode: vi.fn(),
       reloadEnvPath: mocks.reloadEnvPath,
       selectNodeFolder: vi.fn(),
       openExternalUrl: vi.fn(),
+    },
+    events: {
+      system: {
+        onManagedNodeInstallProgress: vi.fn(() => vi.fn()),
+      },
     },
   },
 }));
@@ -179,7 +194,7 @@ describe("PreviewPanel", () => {
     ).toBeTruthy();
     expect(screen.getByText("Your app · localhost")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: /Install Node\.js/ }),
+      screen.getByRole("button", { name: /Install Node\.js for me/ }),
     ).toBeTruthy();
     expect(mocks.runApp).not.toHaveBeenCalled();
   });

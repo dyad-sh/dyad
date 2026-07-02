@@ -4,19 +4,39 @@ import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
-import { FolderOpen, RotateCcw, CheckCircle, AlertCircle } from "lucide-react";
+import { queryKeys } from "@/lib/queryKeys";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  FolderOpen,
+  RotateCcw,
+  CheckCircle,
+  AlertCircle,
+  Download,
+  Trash2,
+  Loader2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { ManagedNodeInstallProgress, NodeSystemInfo } from "@/ipc/types";
 
 export function NodePathSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const queryClient = useQueryClient();
   const [isSelectingPath, setIsSelectingPath] = useState(false);
+  const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
+  const [isRemovingManagedNode, setIsRemovingManagedNode] = useState(false);
+  const [installProgress, setInstallProgress] = useState(0);
+  const [installPhase, setInstallPhase] = useState<
+    ManagedNodeInstallProgress["phase"] | null
+  >(null);
   const [nodeStatus, setNodeStatus] = useState<{
     version: string | null;
     isValid: boolean;
+    info: NodeSystemInfo | null;
   }>({
     version: null,
     isValid: false,
+    info: null,
   });
   const [isCheckingNode, setIsCheckingNode] = useState(false);
   const [systemPath, setSystemPath] = useState<string>("Loading...");
@@ -49,14 +69,23 @@ export function NodePathSelector() {
       setNodeStatus({
         version: status.nodeVersion,
         isValid: !!status.nodeVersion,
+        info: status,
       });
     } catch (error) {
       console.error("Failed to check Node.js status:", error);
-      setNodeStatus({ version: null, isValid: false });
+      setNodeStatus({ version: null, isValid: false, info: null });
     } finally {
       setIsCheckingNode(false);
     }
   };
+
+  useEffect(() => {
+    return ipc.events.system.onManagedNodeInstallProgress((progress) => {
+      setInstallProgress(progress.percent);
+      setInstallPhase(progress.phase);
+    });
+  }, []);
+
   const handleSelectNodePath = async () => {
     setIsSelectingPath(true);
     try {
@@ -96,13 +125,185 @@ export function NodePathSelector() {
     }
   };
 
+  const refreshNodeStatus = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.system.nodejsStatus,
+    });
+    await fetchSystemPath();
+    await checkNodeStatus();
+  };
+
+  const handlePreferenceChange = async (
+    nodeRuntimePreference: "system" | "managed",
+  ) => {
+    try {
+      await updateSettings({ nodeRuntimePreference, customNodePath: null });
+      await ipc.system.reloadEnvPath();
+      await refreshNodeStatus();
+    } catch (error: any) {
+      showError(
+        `Failed to update Node.js runtime preference: ${error.message}`,
+      );
+    }
+  };
+
+  const handleInstallManagedNode = async () => {
+    setIsInstallingManagedNode(true);
+    setInstallProgress(0);
+    setInstallPhase(null);
+    try {
+      await ipc.system.installManagedNode();
+      await refreshNodeStatus();
+      showSuccess("Dyad-managed Node.js installed successfully");
+    } catch (error: any) {
+      showError(error.message ?? "Failed to install Dyad-managed Node.js");
+    } finally {
+      setIsInstallingManagedNode(false);
+    }
+  };
+
+  const handleRemoveManagedNode = async () => {
+    setIsRemovingManagedNode(true);
+    try {
+      await ipc.system.removeManagedNode();
+      await updateSettings({ nodeRuntimePreference: "system" });
+      await refreshNodeStatus();
+      showSuccess("Removed Dyad-managed Node.js");
+    } catch (error: any) {
+      showError(error.message ?? "Failed to remove Dyad-managed Node.js");
+    } finally {
+      setIsRemovingManagedNode(false);
+    }
+  };
+
   if (!settings) {
     return null;
   }
   const currentPath = settings.customNodePath || systemPath;
   const isCustomPath = !!settings.customNodePath;
+  const runtimePreference = settings.nodeRuntimePreference ?? "system";
+  const activeRuntime = nodeStatus.info?.source;
+  const managedInstalled = !!nodeStatus.info?.managedNodeInstalled;
+  const managedSupported = nodeStatus.info?.managedNodeSupported ?? true;
+  const systemTooOld = !!nodeStatus.info?.systemNodeTooOld;
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Node.js Runtime</Label>
+        <div
+          data-testid="node-runtime-settings"
+          className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                Active:{" "}
+                <span className="font-medium">
+                  {nodeStatus.version
+                    ? `Node ${nodeStatus.version} — ${
+                        activeRuntime === "managed"
+                          ? "Dyad-managed"
+                          : activeRuntime === "custom"
+                            ? "Custom path"
+                            : "System"
+                      }`
+                    : systemTooOld
+                      ? "System Node.js is too old"
+                      : "No usable Node.js found"}
+                </span>
+              </p>
+              {systemTooOld && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  Dyad requires system Node.js v20 or newer, or a managed
+                  runtime.
+                </p>
+              )}
+              {managedInstalled && nodeStatus.info?.managedNodeVersion && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Managed runtime: Node {nodeStatus.info.managedNodeVersion}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 rounded-md border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
+              <button
+                type="button"
+                className={`h-8 rounded px-3 text-sm ${
+                  runtimePreference === "system"
+                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+                onClick={() => handlePreferenceChange("system")}
+              >
+                System
+              </button>
+              <button
+                type="button"
+                className={`h-8 rounded px-3 text-sm ${
+                  runtimePreference === "managed"
+                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+                onClick={() => handlePreferenceChange("managed")}
+              >
+                Managed
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              onClick={handleInstallManagedNode}
+              disabled={
+                isInstallingManagedNode ||
+                isRemovingManagedNode ||
+                !managedSupported
+              }
+              variant={managedInstalled ? "outline" : "default"}
+              size="sm"
+            >
+              {isInstallingManagedNode ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {managedInstalled
+                ? "Reinstall managed Node.js"
+                : "Install managed Node.js"}
+            </Button>
+            {managedInstalled && (
+              <Button
+                onClick={handleRemoveManagedNode}
+                disabled={isInstallingManagedNode || isRemovingManagedNode}
+                variant="outline"
+                size="sm"
+              >
+                {isRemovingManagedNode ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Remove managed Node.js
+              </Button>
+            )}
+          </div>
+
+          {isInstallingManagedNode && (
+            <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width]"
+                  style={{ width: `${installProgress}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {installPhase ?? "starting"} {installProgress}%
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="space-y-2">
         <div className="flex gap-2">
           <Label className="text-sm font-medium">{t("general.nodePath")}</Label>

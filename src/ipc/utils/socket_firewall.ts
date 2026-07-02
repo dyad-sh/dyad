@@ -11,7 +11,11 @@ import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { isVersionAtLeast } from "@/shared/version_utils";
-import { getUserDataPath } from "@/paths/paths";
+import {
+  getManagedToolsDir,
+  prependPathSegment,
+  sanitizePathEnv,
+} from "@/ipc/utils/managed_tools";
 import { getPathEnvKey } from "@/ipc/utils/path_env";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
@@ -23,7 +27,6 @@ export const COREPACK_ENABLE_STRICT_DISABLED_ENV = "0";
 export const PNPM_PACKAGE_MANAGER_STRICT_DISABLED_ENV = "false";
 export const PNPM_PM_ON_FAIL_IGNORE_ENV = "ignore";
 export const PNPM_PM_ON_FAIL_IGNORE_ARG = "--config.pm-on-fail=ignore";
-const MANAGED_TOOLS_DIR = "managed-tools";
 const MANAGED_PNPM_DIR = "pnpm";
 const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
@@ -110,39 +113,8 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
-function prependPathSegment(
-  env: NodeJS.ProcessEnv,
-  segment: string,
-): NodeJS.ProcessEnv {
-  const pathKey = getPathEnvKey(env);
-  const currentPath = env[pathKey] ?? "";
-  const matchesSegment = (value: string) =>
-    process.platform === "win32"
-      ? value.toLowerCase() === segment.toLowerCase()
-      : value === segment;
-  const pathSegments = currentPath
-    .split(path.delimiter)
-    .filter((value) => value.length > 0);
-
-  // Always promote the segment to the front (not just insert when absent):
-  // PATH may already contain it in a non-front position (e.g. after
-  // customNodePath was prepended by reloadNodePath), and precedence must be
-  // deterministic across platforms.
-  if (pathSegments.length > 0 && matchesSegment(pathSegments[0])) {
-    return env;
-  }
-
-  return {
-    ...env,
-    [pathKey]: [
-      segment,
-      ...pathSegments.filter((value) => !matchesSegment(value)),
-    ].join(path.delimiter),
-  };
-}
-
 export function getManagedPnpmInstallDir(): string {
-  return path.join(getUserDataPath(), MANAGED_TOOLS_DIR, MANAGED_PNPM_DIR);
+  return path.join(getManagedToolsDir(), MANAGED_PNPM_DIR);
 }
 
 export function getManagedPnpmBinDir(): string {
@@ -175,7 +147,7 @@ export function getPackageManagerCommandEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return {
-    ...withManagedPnpmPath(env),
+    ...withManagedPnpmPath(sanitizePathEnv(env)),
     COREPACK_ENABLE_PROJECT_SPEC: COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV,
     COREPACK_ENABLE_STRICT: COREPACK_ENABLE_STRICT_DISABLED_ENV,
     npm_config_package_manager_strict: PNPM_PACKAGE_MANAGER_STRICT_DISABLED_ENV,

@@ -14,6 +14,15 @@ export const GitHubRepoSchema = z.object({
 
 export type GithubRepository = z.infer<typeof GitHubRepoSchema>;
 
+export const DyadGithubRepoSchema = z.object({
+  name: z.string(),
+  full_name: z.string(),
+  private: z.boolean(),
+  alreadyImported: z.boolean(),
+});
+
+export type DyadGithubRepo = z.infer<typeof DyadGithubRepoSchema>;
+
 export const GitHubBranchSchema = z.object({
   name: z.string(),
   commit: z.object({ sha: z.string() }),
@@ -135,6 +144,12 @@ export const githubContracts = {
     channel: "github:list-repos",
     input: z.void(),
     output: z.array(GitHubRepoSchema),
+  }),
+
+  listDyadRepos: defineContract({
+    channel: "github:list-dyad-repos",
+    input: z.void(),
+    output: z.array(DyadGithubRepoSchema),
   }),
 
   getRepoBranches: defineContract({

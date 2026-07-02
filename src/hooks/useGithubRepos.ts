@@ -16,3 +16,19 @@ export function useGithubRepos({ enabled }: { enabled: boolean }) {
     error,
   };
 }
+
+export function useDyadGithubRepos({ enabled }: { enabled: boolean }) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.github.dyadRepos,
+    queryFn: () => ipc.github.listDyadRepos(),
+    enabled,
+    meta: { showErrorToast: true },
+  });
+
+  return {
+    repos: data ?? [],
+    loading: isLoading,
+    error,
+    refetch,
+  };
+}

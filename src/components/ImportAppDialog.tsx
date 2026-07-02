@@ -36,6 +36,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
 import { UnconnectedGitHubConnector } from "@/components/GitHubConnector";
+import { ImportDyadAppsTab } from "@/components/ImportDyadAppsTab";
 
 interface ImportAppDialogProps {
   isOpen: boolean;
@@ -348,7 +349,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
             </AlertDescription>
           </Alert>
           <Tabs defaultValue="local-folder" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsList className="grid w-full grid-cols-4 h-auto">
               <TabsTrigger
                 value="local-folder"
                 className="text-xs sm:text-sm px-2 py-2"
@@ -369,6 +370,12 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 className="text-xs sm:text-sm px-2 py-2"
               >
                 {t("home:githubUrl")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="dyad-apps"
+                className="text-xs sm:text-sm px-2 py-2"
+              >
+                {t("home:dyadApps")}
               </TabsTrigger>
             </TabsList>
             <TabsContent value="local-folder" className="space-y-4">
@@ -801,6 +808,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                   t("home:import")
                 )}
               </Button>
+            </TabsContent>
+            <TabsContent value="dyad-apps" className="space-y-4">
+              <ImportDyadAppsTab isOpen={isOpen} />
             </TabsContent>
           </Tabs>
         </div>

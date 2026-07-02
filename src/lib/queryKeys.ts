@@ -362,6 +362,7 @@ export const queryKeys = {
   github: {
     all: ["github"] as const,
     repos: ["github", "repos"] as const,
+    dyadRepos: ["github", "dyad-repos"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -191,6 +191,7 @@ export type {
   GithubSyncOptions,
   CloneRepoParams,
   GithubRepository,
+  DyadGithubRepo,
 } from "./github";
 
 // MCP types

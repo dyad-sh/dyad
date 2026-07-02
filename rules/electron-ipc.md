@@ -79,6 +79,7 @@ writeSettings({
 - When editing shared IPC contract code imported by `src/preload.ts` (especially `src/ipc/contracts/core.ts`), run `npm run build` before E2E. The preload Vite target may not resolve `@/...` aliases from those shared modules; use relative imports for preload-reachable shared code when packaging reports `Rollup failed to resolve import "@/..."`.
 - Avoid unguarded top-level `app.on(...)` or similar Electron API calls in modules that are imported broadly by tests. Many unit tests mock only the Electron APIs they touch, so prefer guarded calls like `app?.on?.(...)` or move event registration behind an explicit initialization function.
 - When splitting large handlers behind service boundaries, leave the handler responsible for IPC registration and request orchestration while moving runtime/policy logic into `src/ipc/services/*`. Preserve any intentional module side effects in the extracted service, such as `fixPath()` for child process PATH setup.
+- Electron `net.request()` response typings do not expose every runtime stream event. If download code needs a `close` guard in addition to `aborted`/`error`, cast the response through `EventEmitter` instead of dropping the guard to appease `npm run ts`.
 
 ## React Query key factory
 

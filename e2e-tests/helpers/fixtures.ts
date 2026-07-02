@@ -6,6 +6,7 @@
 import { test as base } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
+import fs from "fs";
 import os from "os";
 import path from "path";
 import { execSync } from "child_process";
@@ -94,6 +95,21 @@ async function terminateElectronApp(electronApp: ElectronApplication) {
   }
 
   console.log("[cleanup:end] Electron app terminated");
+}
+
+function seedE2eUserSettings(userDataDir: string) {
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(userDataDir, "user-settings.json"),
+    JSON.stringify(
+      {
+        selectedChatMode: "build",
+        defaultChatMode: "build",
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
@@ -194,6 +210,7 @@ export const test = base.extend<{
       }
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);
+      seedE2eUserSettings(userDataDir);
       if (electronConfig.preLaunchHook) {
         await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
       }

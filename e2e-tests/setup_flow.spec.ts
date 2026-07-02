@@ -15,15 +15,11 @@ testSetup.describe("Setup Flow", () => {
   testSetup("setup dialog shows AI provider options", async ({ po }) => {
     const dialog = await openAiSetupDialog(po);
 
-    await expect(
-      dialog.getByText("Dyad uses AI to build your app."),
-    ).toBeVisible();
+    await expect(dialog.getByText("Your prompt is saved")).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: /Start free Dyad Pro trial/ }),
     ).toBeVisible();
-    await expect(
-      dialog.getByRole("button", { name: "Google Gemini" }),
-    ).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Google" })).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: "OpenRouter" }),
     ).toBeVisible();
@@ -40,7 +36,7 @@ testSetup.describe("Setup Flow", () => {
   testSetup("AI provider setup flow", async ({ po }) => {
     let dialog = await openAiSetupDialog(po);
 
-    await dialog.getByRole("button", { name: "Google Gemini" }).click();
+    await dialog.getByRole("button", { name: "Google" }).click();
     await expect(
       po.page.getByRole("heading", { name: "Configure Google" }),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
@@ -73,7 +69,7 @@ testSetup.describe("Setup Flow", () => {
       const prompt = "Build a tiny habit tracker";
       const dialog = await openAiSetupDialog(po, prompt);
 
-      await dialog.getByRole("button", { name: "Google Gemini" }).click();
+      await dialog.getByRole("button", { name: "Google" }).click();
       await expect(
         po.page.getByRole("heading", { name: "Configure Google" }),
       ).toBeVisible({ timeout: Timeout.MEDIUM });
@@ -106,7 +102,7 @@ testSetup.describe("Setup Flow", () => {
         },
       });
 
-      await dialog.getByRole("button", { name: "Google Gemini" }).click();
+      await dialog.getByRole("button", { name: "Google" }).click();
       await expect(
         po.page.getByRole("heading", { name: "Configure Google" }),
       ).toBeVisible({ timeout: Timeout.MEDIUM });
@@ -233,9 +229,9 @@ async function openAiSetupDialog(
     .click();
 
   const dialog = po.page.getByRole("dialog");
-  await expect(dialog.getByText("Dyad uses AI to build your app.")).toBeVisible(
-    { timeout: Timeout.MEDIUM },
-  );
+  await expect(dialog.getByText("Your prompt is saved")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
   return dialog;
 }
 

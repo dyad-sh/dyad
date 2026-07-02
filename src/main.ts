@@ -72,7 +72,11 @@ import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
-import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
+import {
+  getDyadAppsBaseDirectory,
+  getDyadAppPath,
+  getUserDataPath,
+} from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
 import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
 import {
@@ -138,7 +142,11 @@ void logStartupExecutablePaths();
 // writes its other dev files) instead of the OS userData dir, so they don't
 // mingle with a prod install's dumps. Must run before crashReporter.start.
 if (process.env.NODE_ENV === "development") {
-  const devCrashDumps = path.resolve("./userData/Crashpad");
+  const devUserData = getUserDataPath();
+  fs.mkdirSync(devUserData, { recursive: true });
+  app.setPath("userData", devUserData);
+
+  const devCrashDumps = path.join(devUserData, "Crashpad");
   fs.mkdirSync(devCrashDumps, { recursive: true });
   app.setPath("crashDumps", devCrashDumps);
 }

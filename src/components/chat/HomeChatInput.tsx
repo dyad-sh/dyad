@@ -17,7 +17,7 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom, homeSelectedAppAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
@@ -35,14 +35,13 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { AppSearchDialog } from "../AppSearchDialog";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { ipc } from "@/ipc/types";
-import { useCallback, useEffect } from "react";
 import { showError } from "@/lib/toast";
+import { ipc } from "@/ipc/types";
 
 export function HomeChatInput({
   onSubmit,
 }: {
-  onSubmit: (options?: HomeSubmitOptions) => void;
+  onSubmit: (options?: HomeSubmitOptions) => boolean | Promise<boolean>;
 }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
@@ -126,10 +125,14 @@ export function HomeChatInput({
     }
 
     // Call the parent's onSubmit handler with attachments and selected app
-    onSubmit({
+    const didSubmit = await onSubmit({
       attachments,
       selectedApp: selectedApp ?? undefined,
     });
+
+    if (!didSubmit) {
+      return;
+    }
 
     // Clear attachments and selected app as part of submission process
     clearAttachments();

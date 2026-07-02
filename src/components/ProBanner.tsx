@@ -57,17 +57,16 @@ export function ManageDyadProButton({ className }: { className?: string }) {
 export function SetupDyadProButton() {
   const { t } = useTranslation("home");
   return (
-    <Button
-      variant="outline"
-      size="lg"
-      className="cursor-pointer w-full bg-(--background-lighter) text-primary"
+    <button
+      type="button"
+      className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
       onClick={() => {
         ipc.system.openExternalUrl("https://academy.dyad.sh/settings");
       }}
     >
-      <KeyRound aria-hidden="true" />
+      <KeyRound aria-hidden="true" className="size-3.5" />
       {t("proBanner.alreadyHavePro")}
-    </Button>
+    </button>
   );
 }
 

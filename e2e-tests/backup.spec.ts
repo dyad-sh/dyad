@@ -111,7 +111,7 @@ const testWithMultipleBackups = testWithConfig({
 const ensureAppIsRunning = async (po: PageObject) => {
   await po.page.waitForSelector("h1");
   const text = await po.page.$eval("h1", (el) => el.textContent);
-  expect(text).toBe("Build a new app");
+  expect(text).toBe("What do you want to build?");
 };
 
 test("backup is not created for first run", async ({ po }) => {

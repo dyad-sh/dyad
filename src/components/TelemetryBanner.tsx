@@ -1,72 +1,80 @@
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
-import React from "react";
 import { Button } from "./ui/button";
 import { atom, useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
+import { useSidebar } from "@/components/ui/sidebar";
 
 const hideBannerAtom = atom(false);
 
 export function PrivacyBanner() {
   const [hideBanner, setHideBanner] = useAtom(hideBannerAtom);
   const { settings, updateSettings } = useSettings();
+  const { state: sidebarState } = useSidebar();
   const { t } = useTranslation("settings");
-  // TODO: Implement state management for banner visibility and user choice
-  // TODO: Implement functionality for Accept, Reject, Ask me later buttons
-  // TODO: Add state to hide/show banner based on user choice
+
   if (hideBanner) {
     return null;
   }
   if (settings?.telemetryConsent !== "unset") {
     return null;
   }
+  const leftOffset =
+    sidebarState === "expanded"
+      ? "var(--sidebar-width)"
+      : "var(--sidebar-width-icon)";
+
   return (
-    <div className="fixed bg-(--background)/90 bottom-4 right-4  backdrop-blur-md border border-gray-200 dark:border-gray-700 p-4 rounded-lg shadow-lg z-50 max-w-md">
-      <div className="flex flex-col gap-3">
-        <div>
-          <h4 className="text-base font-semibold text-gray-800 dark:text-gray-200">
-            Share anonymous data?
-          </h4>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            {t("telemetry.privacyNotice")}
-            <br />
-            <a
-              onClick={() => {
-                ipc.system.openExternalUrl(
-                  "https://dyad.sh/docs/policies/privacy-policy",
-                );
-              }}
-              className="cursor-pointer text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Learn more
-            </a>
-          </p>
-        </div>
-        <div className="flex gap-2 justify-end">
+    <div
+      className="fixed bottom-0 z-50 border-t border-border bg-(--background-lightest)/95 px-4 py-2 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-[left] duration-200 ease-linear"
+      style={{ left: leftOffset, right: 12 }}
+    >
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm leading-5 text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {t("telemetry.helpImprove")}
+          </span>{" "}
+          {t("telemetry.noCodeOrMessages")}{" "}
+          <button
+            type="button"
+            onClick={() => {
+              ipc.system.openExternalUrl(
+                "https://dyad.sh/docs/policies/privacy-policy",
+              );
+            }}
+            className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {t("telemetry.learnMore")}
+          </button>
+        </p>
+        <div className="flex shrink-0 gap-1.5 sm:justify-end">
           <Button
             variant="default"
+            size="sm"
             onClick={() => {
               updateSettings({ telemetryConsent: "opted_in" });
             }}
             data-testid="telemetry-accept-button"
           >
-            {t("telemetry.acceptAndContinue")}
+            {t("telemetry.accept")}
           </Button>
           <Button
             variant="secondary"
+            size="sm"
             onClick={() => {
               updateSettings({ telemetryConsent: "opted_out" });
             }}
             data-testid="telemetry-reject-button"
           >
-            Reject
+            {t("telemetry.reject")}
           </Button>
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => setHideBanner(true)}
             data-testid="telemetry-later-button"
           >
-            Later
+            {t("telemetry.later")}
           </Button>
         </div>
       </div>

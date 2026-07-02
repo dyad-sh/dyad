@@ -94,7 +94,14 @@
     "telemetryId": "遥测 ID：",
     "enable": "启用遥测",
     "privacyNotice": "我们使用匿名遥测数据来改进产品。不会收集个人数据。",
-    "acceptAndContinue": "接受并继续"
+    "acceptAndContinue": "接受并继续",
+    "shareAnonymousData": "共享匿名数据？",
+    "helpImprove": "通过匿名使用数据帮助改进 Dyad。",
+    "noCodeOrMessages": "注意：这不会记录你的代码或消息。",
+    "learnMore": "了解更多",
+    "accept": "接受",
+    "reject": "拒绝",
+    "later": "稍后"
   },
   "integrations": {
     "title": "集成"

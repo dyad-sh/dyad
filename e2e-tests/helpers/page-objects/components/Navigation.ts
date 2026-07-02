@@ -23,7 +23,7 @@ export class Navigation {
     await appsLink.click();
     await expect(async () => {
       const isAppsLandingVisible = await this.page
-        .getByText("Build a new app")
+        .getByRole("heading", { name: "What do you want to build?" })
         .isVisible({ timeout: 500 })
         .catch(() => false);
       const isAppListVisible = await this.page

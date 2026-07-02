@@ -1,28 +1,12 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  ChevronRight,
-  GiftIcon,
-  CheckCircle,
-  AlertCircle,
-  XCircle,
-  Loader2,
-  Settings,
-  Folder,
-} from "lucide-react";
+import { ChevronRight, GiftIcon, Play, Settings } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
 import SetupProviderCard from "@/components/SetupProviderCard";
 
-import { useState, useEffect, useCallback } from "react";
-import { ipc, NodeSystemInfo } from "@/ipc/types";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { ipc } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePostHog } from "posthog-js/react";
@@ -34,72 +18,18 @@ import logo from "../../assets/logo.svg";
 import googleIcon from "../../assets/ai-logos/google-g-icon.svg";
 // @ts-ignore
 import openrouterLogo from "../../assets/ai-logos/openrouter-logo.png";
-import { OnboardingBanner } from "./home/OnboardingBanner";
-import { showError } from "@/lib/toast";
-import { useSettings } from "@/hooks/useSettings";
-import { DyadProTrialDialog } from "./DyadProTrialDialog";
+import { SetupDyadProButton } from "./ProBanner";
 
-type NodeInstallStep =
-  | "install"
-  | "waiting-for-continue"
-  | "continue-processing"
-  | "finished-checking";
-
-export function SetupBanner() {
+export function SetupBanner({
+  variant = "inline",
+}: {
+  variant?: "inline" | "dialog";
+}) {
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
-  const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
-    null,
-  );
-  const [nodeCheckError, setNodeCheckError] = useState<boolean>(false);
-  const [nodeInstallStep, setNodeInstallStep] =
-    useState<NodeInstallStep>("install");
-  const checkNode = useCallback(async () => {
-    try {
-      setNodeCheckError(false);
-      const status = await ipc.system.getNodejsStatus();
-      setNodeSystemInfo(status);
-    } catch (error) {
-      console.error("Failed to check Node.js status:", error);
-      setNodeSystemInfo(null);
-      setNodeCheckError(true);
-    }
-  }, [setNodeSystemInfo, setNodeCheckError]);
-  const [showManualConfig, setShowManualConfig] = useState(false);
-  const [isSelectingPath, setIsSelectingPath] = useState(false);
-  const [showDyadProTrialDialog, setShowDyadProTrialDialog] = useState(false);
-  const { updateSettings } = useSettings();
-
-  // Add handler for manual path selection
-  const handleManualNodeConfig = useCallback(async () => {
-    setIsSelectingPath(true);
-    try {
-      const result = await ipc.system.selectNodeFolder();
-      if (result.path) {
-        await updateSettings({ customNodePath: result.path });
-        await ipc.system.reloadEnvPath();
-        await checkNode();
-        setNodeInstallStep("finished-checking");
-        setShowManualConfig(false);
-      } else if (result.path === null && result.canceled === false) {
-        showError(
-          `Could not find Node.js at the path "${result.selectedPath}"`,
-        );
-      }
-    } catch (error) {
-      showError("Error setting Node.js path:" + error);
-    } finally {
-      setIsSelectingPath(false);
-    }
-  }, [checkNode]);
-
-  useEffect(() => {
-    checkNode();
-  }, [checkNode]);
 
   const settingsScrollAndNavigateTo = useScrollAndNavigateTo("/settings", {
     behavior: "smooth",
@@ -123,7 +53,9 @@ export function SetupBanner() {
   };
   const handleDyadProSetupClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:dyad:click");
-    setShowDyadProTrialDialog(true);
+    ipc.system.openExternalUrl(
+      "https://academy.dyad.sh/redirect-to-checkout?trialCode=1PRO30&utm_source=dyad-app&utm_medium=app&utm_campaign=setup-dialog-v2",
+    );
   };
 
   const handleOtherProvidersClick = () => {
@@ -131,32 +63,16 @@ export function SetupBanner() {
     settingsScrollAndNavigateTo(SECTION_IDS.providers);
   };
 
-  const handleNodeInstallClick = useCallback(async () => {
-    posthog.capture("setup-flow:start-node-install-click");
-    setNodeInstallStep("waiting-for-continue");
-    ipc.system.openExternalUrl(nodeSystemInfo!.nodeDownloadUrl);
-  }, [nodeSystemInfo, setNodeInstallStep]);
-
-  const finishNodeInstall = useCallback(async () => {
-    posthog.capture("setup-flow:continue-node-install-click");
-    setNodeInstallStep("continue-processing");
-    await ipc.system.reloadEnvPath();
-    await checkNode();
-    setNodeInstallStep("finished-checking");
-  }, [checkNode, setNodeInstallStep]);
-
-  // We only check for node version because pnpm is not required for the app to run.
-  const isNodeSetupComplete = Boolean(nodeSystemInfo?.nodeVersion);
-
   const itemsNeedAction: string[] = [];
-  if (!isNodeSetupComplete && nodeSystemInfo) {
-    itemsNeedAction.push("node-setup");
-  }
   if (!isAnyProviderSetup() && !loading) {
     itemsNeedAction.push("ai-setup");
   }
 
   if (itemsNeedAction.length === 0) {
+    if (variant === "dialog") {
+      return null;
+    }
+
     return (
       <h1 className="text-center text-5xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 tracking-tight">
         {t("setup.buildNewApp")}
@@ -164,308 +80,128 @@ export function SetupBanner() {
     );
   }
 
-  const bannerClasses = cn(
-    "w-full mb-6 border rounded-xl shadow-sm overflow-hidden",
-    "border-zinc-200 dark:border-zinc-700",
-  );
-
-  const getStatusIcon = (isComplete: boolean, hasError: boolean = false) => {
-    if (hasError) {
-      return <XCircle className="w-5 h-5 text-red-500" />;
-    }
-    return isComplete ? (
-      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-500" />
-    ) : (
-      <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
-    );
-  };
-
   return (
     <>
-      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4 pt-6">
-        {t("setup.setupDyad")}
-      </p>
-      <OnboardingBanner
-        isVisible={isOnboardingVisible}
-        setIsVisible={setIsOnboardingVisible}
-      />
-      <div className={bannerClasses}>
-        <Accordion multiple className="w-full" defaultValue={itemsNeedAction}>
-          <AccordionItem
-            value="node-setup"
-            className={cn(
-              nodeCheckError
-                ? "bg-red-50 dark:bg-red-900/30"
-                : isNodeSetupComplete
-                  ? "bg-green-50 dark:bg-green-900/30"
-                  : "bg-yellow-50 dark:bg-yellow-900/30",
-            )}
-          >
-            <AccordionTrigger className="px-4 py-3 transition-colors w-full hover:no-underline">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-3">
-                  {getStatusIcon(isNodeSetupComplete, nodeCheckError)}
-                  <span className="font-medium text-sm">
-                    {t("setup.installNodeJs")}
-                  </span>
-                </div>
+      <div
+        className={cn(
+          "w-full rounded-lg bg-background px-5 py-5",
+          variant === "inline" && "mb-6 border border-border shadow-sm",
+        )}
+      >
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+            {variant === "dialog"
+              ? "You're almost ready to build"
+              : "Connect AI to start building"}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Dyad uses AI to build your app. Choose one option now; you can
+            change it later.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDyadProSetupClick}
+          className="mt-5 flex w-full cursor-pointer items-center justify-between gap-4 rounded-lg border border-primary/45 bg-primary/8 p-4 text-left transition-colors hover:bg-primary/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:bg-primary/15 dark:hover:bg-primary/20"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <img src={logo} alt="Dyad Logo" className="size-6" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-semibold text-primary">
+                  Start free Dyad Pro trial
+                </h3>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                  Recommended
+                </span>
               </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-4 pt-2 pb-4 bg-white dark:bg-zinc-900 border-t border-inherit">
-              {nodeCheckError && (
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  {t("setup.errorCheckingNode")}
-                </p>
-              )}
-              {isNodeSetupComplete ? (
-                <p className="text-sm">
-                  {t("setup.nodeInstalled", {
-                    version: nodeSystemInfo!.nodeVersion,
-                  })}{" "}
-                  {nodeSystemInfo!.pnpmVersion && (
-                    <span className="text-xs text-gray-500">
-                      {" "}
-                      {t("setup.pnpmInstalled", {
-                        version: nodeSystemInfo!.pnpmVersion,
-                      })}
-                    </span>
-                  )}
-                </p>
-              ) : (
-                <div className="text-sm">
-                  <p>{t("setup.nodeRequired")}</p>
-                  {nodeInstallStep === "waiting-for-continue" && (
-                    <p className="mt-1">
-                      {
-                        t("setup.afterInstallNode").split(
-                          t("setup.moreDownloadOptions"),
-                        )[0]
-                      }
-                      <a
-                        className="text-blue-500 dark:text-blue-400 hover:underline"
-                        onClick={() => {
-                          ipc.system.openExternalUrl(
-                            "https://nodejs.org/en/download",
-                          );
-                        }}
-                      >
-                        {t("setup.moreDownloadOptions")}
-                      </a>
-                      .
-                    </p>
-                  )}
-                  <NodeInstallButton
-                    nodeInstallStep={nodeInstallStep}
-                    handleNodeInstallClick={handleNodeInstallClick}
-                    finishNodeInstall={finishNodeInstall}
-                  />
-
-                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                    <button
-                      onClick={() => setShowManualConfig(!showManualConfig)}
-                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      {t("setup.nodeAlreadyInstalled")}
-                    </button>
-
-                    {showManualConfig && (
-                      <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <Button
-                          onClick={handleManualNodeConfig}
-                          disabled={isSelectingPath}
-                          variant="outline"
-                          size="sm"
-                        >
-                          {isSelectingPath ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Selecting...
-                            </>
-                          ) : (
-                            <>
-                              <Folder className="mr-2 h-4 w-4" />
-                              Browse for Node.js folder
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              <NodeJsHelpCallout />
-            </AccordionContent>
-          </AccordionItem>
-
-          <AccordionItem
-            value="ai-setup"
-            className={cn(
-              isAnyProviderSetup()
-                ? "bg-green-50 dark:bg-green-900/30"
-                : "bg-yellow-50 dark:bg-yellow-900/30",
-            )}
-          >
-            <AccordionTrigger
-              className={cn(
-                "px-4 py-3 transition-colors w-full hover:no-underline",
-              )}
-            >
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-3">
-                  {getStatusIcon(isAnyProviderSetup())}
-                  <span className="font-medium text-sm">
-                    2. Setup AI Access
-                  </span>
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-4 pt-2 pb-4 bg-white dark:bg-zinc-900 border-t border-inherit">
-              <p className="text-[15px] mb-3">
-                Not sure what to do? Watch the Get Started video above ☝️
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                No API keys. Access leading models instantly.
               </p>
+            </div>
+          </div>
+          <Button as="span" size="sm" className="shrink-0">
+            Start
+          </Button>
+        </button>
 
-              <SetupProviderCard
-                variant="dyad"
-                onClick={handleDyadProSetupClick}
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
-                }
-                title="Start with Dyad Pro free trial"
-                subtitle="Unlock the full power of Dyad"
-                chip={<>Recommended</>}
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-muted-foreground">
+            Prefer your own key?
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <ProviderOptionButton
+              label="Google Gemini"
+              onClick={handleGoogleSetupClick}
+              icon={<img src={googleIcon} alt="Google" className="size-4" />}
+            />
+            <ProviderOptionButton
+              label="OpenRouter"
+              onClick={handleOpenRouterSetupClick}
+              icon={
+                <img src={openrouterLogo} alt="OpenRouter" className="size-4" />
+              }
+            />
+            <ProviderOptionButton
+              label="Other providers"
+              onClick={handleOtherProvidersClick}
+              icon={<Settings className="size-4 text-muted-foreground" />}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex w-full flex-col items-center justify-around gap-2 text-sm sm:flex-row">
+          <SetupDyadProButton />
+          <button
+            type="button"
+            onClick={() => {
+              ipc.system.openExternalUrl(
+                "https://www.youtube.com/watch?v=rgdNoHLaRN4",
+              );
+            }}
+            className="inline-flex cursor-pointer items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+          >
+            <span className="inline-flex h-4 w-5 items-center justify-center rounded-[4px] bg-red-600 text-white">
+              <Play
+                aria-hidden="true"
+                className="ml-0.5 size-2.5 fill-current stroke-current"
               />
-              <div className="mt-2 flex gap-2">
-                <SetupProviderCard
-                  className="flex-1"
-                  variant="google"
-                  onClick={handleGoogleSetupClick}
-                  tabIndex={isNodeSetupComplete ? 0 : -1}
-                  leadingIcon={
-                    <img src={googleIcon} alt="Google" className="w-4 h-4" />
-                  }
-                  title="Setup Google Gemini API Key"
-                  chip={<>Free</>}
-                />
-
-                <SetupProviderCard
-                  className="flex-1"
-                  variant="openrouter"
-                  onClick={handleOpenRouterSetupClick}
-                  tabIndex={isNodeSetupComplete ? 0 : -1}
-                  leadingIcon={
-                    <img
-                      src={openrouterLogo}
-                      alt="OpenRouter"
-                      className="w-4 h-4"
-                    />
-                  }
-                  title="Setup OpenRouter API Key"
-                  chip={<>Free</>}
-                />
-              </div>
-
-              <div
-                className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
-                onClick={handleOtherProvidersClick}
-                role="button"
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-gray-100 dark:bg-gray-700 p-1.5 rounded-full">
-                      <Settings className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-[15px] text-gray-800 dark:text-gray-300">
-                        Setup other AI providers
-                      </h4>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        OpenAI, Anthropic and more
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+            </span>
+            Watch the walkthrough
+          </button>
+        </div>
       </div>
-
-      <DyadProTrialDialog
-        isOpen={showDyadProTrialDialog}
-        onClose={() => setShowDyadProTrialDialog(false)}
-      />
     </>
   );
 }
 
-function NodeJsHelpCallout() {
-  return (
-    <div className="mt-3 p-3 bg-(--background-lighter) border rounded-lg text-sm">
-      <p>
-        If you run into issues, read our{" "}
-        <a
-          onClick={() => {
-            ipc.system.openExternalUrl("https://www.dyad.sh/docs/help/nodejs");
-          }}
-          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
-        >
-          Node.js troubleshooting guide
-        </a>
-        .{" "}
-      </p>
-      <p className="mt-2">
-        Still stuck? Click the <b>Help</b> button in the bottom-left corner and
-        then <b>Report a Bug</b>.
-      </p>
-    </div>
-  );
-}
-
-function NodeInstallButton({
-  nodeInstallStep,
-  handleNodeInstallClick,
-  finishNodeInstall,
+function ProviderOptionButton({
+  label,
+  icon,
+  onClick,
 }: {
-  nodeInstallStep: NodeInstallStep;
-  handleNodeInstallClick: () => void;
-  finishNodeInstall: () => void;
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
 }) {
-  switch (nodeInstallStep) {
-    case "install":
-      return (
-        <Button className="mt-3" onClick={handleNodeInstallClick}>
-          Install Node.js Runtime
-        </Button>
-      );
-    case "continue-processing":
-      return (
-        <Button className="mt-3" onClick={finishNodeInstall} disabled>
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Checking Node.js setup...
-          </div>
-        </Button>
-      );
-    case "waiting-for-continue":
-      return (
-        <Button className="mt-3" onClick={finishNodeInstall}>
-          <div className="flex items-center gap-2">
-            Continue | I installed Node.js
-          </div>
-        </Button>
-      );
-    case "finished-checking":
-      return (
-        <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-          Node.js not detected. Closing and re-opening Dyad usually fixes this.
-        </div>
-      );
-    default:
-      const _exhaustiveCheck: never = nodeInstallStep;
-  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-12 cursor-pointer items-center justify-between gap-2 rounded-md border border-border bg-(--background-lighter) px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background">
+          {icon}
+        </span>
+        <span className="truncate">{label}</span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
 }
 
 export const OpenRouterSetupBanner = ({

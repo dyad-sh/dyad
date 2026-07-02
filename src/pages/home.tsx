@@ -27,14 +27,24 @@ import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import {
-  ProBanner,
-  ManageDyadProButton,
-  SetupDyadProButton,
-} from "@/components/ProBanner";
-import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { RefreshCw } from "lucide-react";
+
+const ideaChipStyles = [
+  "border-violet-200/80 bg-violet-50/70 text-violet-950 hover:border-violet-300 hover:bg-violet-100/80 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-100 dark:hover:bg-violet-900/40",
+  "border-sky-200/80 bg-sky-50/70 text-sky-950 hover:border-sky-300 hover:bg-sky-100/80 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-100 dark:hover:bg-sky-900/40",
+  "border-emerald-200/80 bg-emerald-50/70 text-emerald-950 hover:border-emerald-300 hover:bg-emerald-100/80 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-100 dark:hover:bg-emerald-900/40",
+] as const;
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -49,12 +59,19 @@ export default function HomePage() {
   const search = useSearch({ from: "/" });
   const { refreshApps } = useLoadApps();
   const { settings, updateSettings, envVars } = useSettings();
+  const { isAnyProviderSetup, isLoading: isLoadingLanguageModelProviders } =
+    useLanguageModelProviders();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const initialChatMode = useInitialChatMode();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
+  const [isAiSetupDialogOpen, setIsAiSetupDialogOpen] = useState(false);
+  const [
+    shouldOpenAiSetupDialogWhenProvidersLoad,
+    setShouldOpenAiSetupDialogWhenProvidersLoad,
+  ] = useState(false);
   const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
@@ -106,11 +123,45 @@ export default function HomePage() {
     }
   }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading, envVars]);
 
+  const openAiSetupDialog = useCallback(() => {
+    posthog.capture("home:ai-setup-dialog-open");
+    setIsAiSetupDialogOpen(true);
+  }, [posthog]);
+
+  useEffect(() => {
+    if (
+      !shouldOpenAiSetupDialogWhenProvidersLoad ||
+      isLoadingLanguageModelProviders
+    ) {
+      return;
+    }
+
+    setShouldOpenAiSetupDialogWhenProvidersLoad(false);
+    if (!isAnyProviderSetup()) {
+      openAiSetupDialog();
+    }
+  }, [
+    isAnyProviderSetup,
+    isLoadingLanguageModelProviders,
+    openAiSetupDialog,
+    shouldOpenAiSetupDialogWhenProvidersLoad,
+  ]);
+
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];
     const selectedApp = options?.selectedApp;
 
-    if (!inputValue.trim() && attachments.length === 0) return;
+    if (!inputValue.trim() && attachments.length === 0) return false;
+
+    if (!isAnyProviderSetup()) {
+      if (isLoadingLanguageModelProviders) {
+        setShouldOpenAiSetupDialogWhenProvidersLoad(true);
+        return false;
+      }
+
+      openAiSetupDialog();
+      return false;
+    }
 
     try {
       setLoadingMode(selectedApp ? "existing" : "new");
@@ -174,6 +225,7 @@ export default function HomePage() {
       posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
       // Select newly created first chat so it appears first in tabs.
       selectChat({ chatId, appId });
+      return true;
     } catch (error) {
       console.error("Failed to create chat:", error);
       showError(
@@ -182,6 +234,7 @@ export default function HomePage() {
         }),
       );
       setIsLoading(false);
+      return false;
     }
   };
 
@@ -215,20 +268,23 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex min-h-full w-full flex-col pb-28">
       <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
-        <div className="fixed top-16 right-8 z-50">
-          {settings && hasDyadProKey(settings) ? (
-            <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
-          ) : (
-            <SetupDyadProButton />
-          )}
-        </div>
-        <SetupBanner />
-
         <div className="w-full">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <ImportAppButton className="px-0 pb-0 flex-none" />
+          <div className="mb-6 text-center">
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+              What do you want to build?
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
+              Describe your idea. Dyad will turn it into a working app.
+            </p>
+            <div className="mt-4 flex justify-center">
+              <ImportAppButton
+                className="px-0 pb-0"
+                variant="outline"
+                size="sm"
+              />
+            </div>
           </div>
           <HomeChatInput onSubmit={handleSubmit} />
 
@@ -237,23 +293,20 @@ export default function HomePage() {
               {randomPrompts.map((item, index) => (
                 <button
                   type="button"
-                  key={index}
-                  onClick={() =>
-                    setInputValue(t("buildMeA", { label: item.label }))
-                  }
-                  className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
-                           bg-white/50 backdrop-blur-sm
-                           transition-all duration-200
-                           hover:bg-white hover:shadow-md hover:border-gray-300
-                           active:scale-[0.98]
-                           dark:bg-gray-800/50 dark:border-gray-700
-                           dark:hover:bg-gray-800 dark:hover:border-gray-600"
+                  key={item.label}
+                  onClick={() => setInputValue(item.prompt)}
+                  className={`group flex min-w-[13.5rem] max-w-[17rem] flex-1 items-center gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] sm:flex-none ${ideaChipStyles[index % ideaChipStyles.length]}`}
                 >
-                  <span className="text-gray-700 dark:text-gray-300">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/70 shadow-xs transition-transform duration-200 group-hover:scale-105 dark:bg-white/10">
                     {item.icon}
                   </span>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {item.label}
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-5">
+                      {item.label}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs opacity-70">
+                      Try this idea
+                    </span>
                   </span>
                 </button>
               ))}
@@ -262,37 +315,27 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => setRandomPrompts(getRandomPrompts())}
-              className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
-                       bg-white/50 backdrop-blur-sm
-                       transition-all duration-200
-                       hover:bg-white hover:shadow-md hover:border-gray-300
-                       active:scale-[0.98]
-                       dark:bg-gray-800/50 dark:border-gray-700
-                       dark:hover:bg-gray-800 dark:hover:border-gray-600"
+              className="group self-center flex items-center gap-2 rounded-full border border-border bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground backdrop-blur-sm transition-all duration-200 hover:border-primary/30 hover:bg-background hover:text-primary hover:shadow-sm active:scale-[0.98]"
             >
-              <svg
-                className="w-5 h-5 text-gray-700 dark:text-gray-300"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t("moreIdeas")}
-              </span>
+              <RefreshCw className="size-4 transition-transform duration-200 group-hover:rotate-[-25deg]" />
+              {t("moreIdeas")}
             </button>
           </div>
-          <ProBanner />
         </div>
         <PrivacyBanner />
       </div>
       <FeaturedAppShowcase />
+      <Dialog open={isAiSetupDialogOpen} onOpenChange={setIsAiSetupDialogOpen}>
+        <DialogContent className="p-0 sm:max-w-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>You're almost ready to build</DialogTitle>
+            <DialogDescription>
+              Choose how Dyad should access AI before generating your app.
+            </DialogDescription>
+          </DialogHeader>
+          <SetupBanner variant="dialog" />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

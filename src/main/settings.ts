@@ -66,6 +66,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableContextCompaction: true,
   enablePnpmMinimumReleaseAgeWarning: true,
   previewIdleTimeoutPolicy: "default",
+  nodeRuntimePreference: "system",
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";

@@ -12,6 +12,15 @@ const mocks = vi.hoisted(() => ({
   getNodejsStatus: vi.fn(),
 }));
 
+const nodeStatusDefaults = {
+  source: "system",
+  nodePath: "node",
+  managedNodeInstalled: false,
+  managedNodeVersion: null,
+  systemNodeTooOld: false,
+  managedNodeSupported: true,
+};
+
 vi.mock("@/ipc/types", () => ({
   ipc: {
     system: {
@@ -30,6 +39,9 @@ describe("useOpenPreviewIfSetupRequired", () => {
       nodeVersion: null,
       pnpmVersion: null,
       nodeDownloadUrl: "https://nodejs.org",
+      ...nodeStatusDefaults,
+      source: null,
+      nodePath: null,
     });
     const { result, store } = renderUseOpenPreviewIfSetupRequired();
 
@@ -47,6 +59,7 @@ describe("useOpenPreviewIfSetupRequired", () => {
       nodeVersion: "v24.0.0",
       pnpmVersion: "10.15.0",
       nodeDownloadUrl: "https://nodejs.org",
+      ...nodeStatusDefaults,
     });
     const { result, store } = renderUseOpenPreviewIfSetupRequired();
 
@@ -82,6 +95,7 @@ describe("useOpenPreviewIfSetupRequired", () => {
       nodeVersion: "v24.0.0",
       pnpmVersion: "10.15.0",
       nodeDownloadUrl: "https://nodejs.org",
+      ...nodeStatusDefaults,
     });
 
     let opened = true;

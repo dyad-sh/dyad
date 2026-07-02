@@ -7,11 +7,28 @@ import log from "electron-log";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import { join } from "path";
-import { readSettings } from "../../main/settings";
+import { readSettings, writeSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { safeSend } from "@/ipc/utils/safe_sender";
+import { getPathEnvKey } from "@/ipc/utils/path_env";
+import {
+  applyManagedNodeToProcessPath,
+  getManagedNodeBinaryPath,
+  getManagedNodeVersion,
+  getNodeVersionAtPath,
+  installManagedNode,
+  isManagedNodeInstalled,
+  isManagedNodeSupported,
+  isUsableSystemNodeVersion,
+  ManagedNodeInstallError,
+  removeManagedNode,
+  type NodeRuntimeSource,
+} from "@/ipc/utils/managed_node";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { prependPathSegment, sanitizePathEnv } from "@/ipc/utils/managed_tools";
 import {
   applyManagedPnpmToProcessPath,
   getCommandExecutionDisplayDetails,
@@ -46,10 +63,15 @@ async function reloadNodePath() {
 
   const settings = readSettings();
   if (settings.customNodePath) {
-    const separator = platform() === "win32" ? ";" : ":";
-    process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
+    const nextEnv = prependPathSegment(process.env, settings.customNodePath);
+    const pathKey = getPathEnvKey(process.env);
+    process.env[pathKey] = nextEnv[pathKey] ?? "";
     logger.debug("Added custom Node.js path to PATH:", settings.customNodePath);
+  } else if (settings.nodeRuntimePreference === "managed") {
+    applyManagedNodeToProcessPath();
   }
+  const pathKey = getPathEnvKey(process.env);
+  process.env[pathKey] = sanitizePathEnv(process.env)[pathKey] ?? "";
   applyManagedPnpmToProcessPath();
 }
 
@@ -180,6 +202,107 @@ async function getPnpmVersionAndScheduleInstall(): Promise<string | null> {
   return currentPnpmVersion;
 }
 
+function getNodeBinaryFromBinDir(binDir: string): string {
+  return join(binDir, platform() === "win32" ? "node.exe" : "node");
+}
+
+async function getSystemNodePath(): Promise<string | null> {
+  if (platform() === "win32") {
+    const output = await runShellCommand("where node", {
+      env: sanitizePathEnv(process.env),
+    });
+    return output?.split(/\r?\n/u)[0]?.trim() || null;
+  }
+  return runShellCommand("command -v node", {
+    env: sanitizePathEnv(process.env),
+  });
+}
+
+function emptyNodeStatus(nodeDownloadUrl: string) {
+  return {
+    nodeVersion: null,
+    pnpmVersion: null,
+    nodeDownloadUrl,
+    source: null,
+    nodePath: null,
+    managedNodeInstalled: false,
+    managedNodeVersion: null,
+    systemNodeTooOld: false,
+    managedNodeSupported: isManagedNodeSupported(),
+  };
+}
+
+async function getResolvedNodeStatus(nodeDownloadUrl: string) {
+  const settings = readSettings();
+  const managedNodeInstalled = await isManagedNodeInstalled();
+  const managedNodeVersion = managedNodeInstalled
+    ? await getManagedNodeVersion()
+    : null;
+  const managedNodeSupported = isManagedNodeSupported();
+
+  let nodeVersion: string | null = null;
+  let source: NodeRuntimeSource | null = null;
+  let nodePath: string | null = null;
+  let systemNodeTooOld = false;
+
+  if (settings.customNodePath) {
+    nodePath = getNodeBinaryFromBinDir(settings.customNodePath);
+    nodeVersion = await getNodeVersionAtPath(nodePath);
+    source = "custom";
+    await reloadNodePath();
+  } else {
+    const systemEnv = sanitizePathEnv(process.env);
+    const systemNodeVersion = await runShellCommand("node --version", {
+      env: systemEnv,
+    });
+    const systemNodePath = await getSystemNodePath();
+    systemNodeTooOld =
+      !!systemNodeVersion && !isUsableSystemNodeVersion(systemNodeVersion);
+
+    if (
+      settings.nodeRuntimePreference === "managed" &&
+      managedNodeInstalled &&
+      managedNodeVersion
+    ) {
+      source = "managed";
+      nodeVersion = managedNodeVersion;
+      nodePath = getManagedNodeBinaryPath();
+      applyManagedNodeToProcessPath();
+    } else if (
+      systemNodeVersion &&
+      isUsableSystemNodeVersion(systemNodeVersion)
+    ) {
+      source = "system";
+      nodeVersion = systemNodeVersion;
+      nodePath = systemNodePath;
+    } else if (managedNodeInstalled && managedNodeVersion) {
+      source = "managed";
+      nodeVersion = managedNodeVersion;
+      nodePath = getManagedNodeBinaryPath();
+      applyManagedNodeToProcessPath();
+    } else {
+      nodeVersion = null;
+      nodePath = systemNodePath;
+    }
+  }
+
+  const pnpmVersion = nodeVersion
+    ? await getPnpmVersionAndScheduleInstall()
+    : null;
+
+  return {
+    nodeVersion,
+    pnpmVersion,
+    nodeDownloadUrl,
+    source,
+    nodePath,
+    managedNodeInstalled,
+    managedNodeVersion,
+    systemNodeTooOld,
+    managedNodeSupported,
+  };
+}
+
 // Test-only: Mock state for Node.js installation status
 // null = use real check, true = mock as installed, false = mock as not installed
 let mockNodeInstalled: boolean | null = null;
@@ -234,13 +357,19 @@ export function registerNodeHandlers() {
     if (process.env.NODE_ENV === "development" && devNodejsStatus) {
       logger.log("Using dev Node.js status override:", devNodejsStatus);
       if (devNodejsStatus === "missing") {
-        return { nodeVersion: null, pnpmVersion: null, nodeDownloadUrl };
+        return emptyNodeStatus(nodeDownloadUrl);
       }
       if (devNodejsStatus === "installed") {
         return {
           nodeVersion: "v22.22.3",
           pnpmVersion: "9.0.0",
           nodeDownloadUrl,
+          source: "system" as const,
+          nodePath: "node",
+          managedNodeInstalled: false,
+          managedNodeVersion: null,
+          systemNodeTooOld: false,
+          managedNodeSupported: isManagedNodeSupported(),
         };
       }
     }
@@ -253,17 +382,73 @@ export function registerNodeHandlers() {
           nodeVersion: "v22.22.3",
           pnpmVersion: "9.0.0",
           nodeDownloadUrl,
+          source: "system" as const,
+          nodePath: "node",
+          managedNodeInstalled: false,
+          managedNodeVersion: null,
+          systemNodeTooOld: false,
+          managedNodeSupported: isManagedNodeSupported(),
         };
       }
-      return { nodeVersion: null, pnpmVersion: null, nodeDownloadUrl };
+      const settings = readSettings();
+      if (settings.nodeRuntimePreference === "managed") {
+        const managedNodeInstalled = await isManagedNodeInstalled();
+        const managedNodeVersion = managedNodeInstalled
+          ? await getManagedNodeVersion()
+          : null;
+        if (managedNodeInstalled && managedNodeVersion) {
+          return {
+            nodeVersion: managedNodeVersion,
+            pnpmVersion: process.env.DYAD_TEST_PNPM_VERSION ?? null,
+            nodeDownloadUrl,
+            source: "managed" as const,
+            nodePath: getManagedNodeBinaryPath(),
+            managedNodeInstalled,
+            managedNodeVersion,
+            systemNodeTooOld: false,
+            managedNodeSupported: isManagedNodeSupported(),
+          };
+        }
+      }
+      return emptyNodeStatus(nodeDownloadUrl);
     }
 
-    // Run checks in parallel
-    const [nodeVersion, pnpmVersion] = await Promise.all([
-      runShellCommand("node --version"),
-      getPnpmVersionAndScheduleInstall(),
-    ]);
-    return { nodeVersion, pnpmVersion, nodeDownloadUrl };
+    return getResolvedNodeStatus(nodeDownloadUrl);
+  });
+
+  createTypedHandler(systemContracts.installManagedNode, async (event) => {
+    sendTelemetryEvent("managed_node_install", { status: "started" });
+    try {
+      const nodeVersion = await installManagedNode((progress) => {
+        safeSend(event.sender, "managed-node:install-progress", progress);
+      });
+      writeSettings({
+        nodeRuntimePreference: "managed",
+        customNodePath: null,
+      });
+      await reloadNodePath();
+      managedPnpmImplicitInstallFailed = false;
+      sendTelemetryEvent("managed_node_install", {
+        status: "succeeded",
+        node_version: nodeVersion,
+      });
+      return { nodeVersion };
+    } catch (error) {
+      sendTelemetryEvent("managed_node_install", {
+        status: "failed",
+        failure_category:
+          error instanceof ManagedNodeInstallError ? error.category : "unknown",
+      });
+      throw error;
+    }
+  });
+
+  createTypedHandler(systemContracts.removeManagedNode, async () => {
+    await removeManagedNode();
+    writeSettings({
+      nodeRuntimePreference: "system",
+    });
+    await reloadNodePath();
   });
 
   createTypedHandler(systemContracts.installPnpm, async () => {
@@ -335,5 +520,16 @@ export function registerNodeHandlers() {
       return { path: null, canceled: false, selectedPath };
     }
     return { path: selectedPath, canceled: false, selectedPath };
+  });
+
+  createTypedHandler(systemContracts.getNodePath, async () => {
+    const settings = readSettings();
+    if (settings.customNodePath) {
+      return getNodeBinaryFromBinDir(settings.customNodePath);
+    }
+    if (settings.nodeRuntimePreference === "managed") {
+      return getManagedNodeBinaryPath();
+    }
+    return getSystemNodePath();
   });
 }

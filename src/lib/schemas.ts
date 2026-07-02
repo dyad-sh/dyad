@@ -368,6 +368,7 @@ const BaseUserSettingsFields = {
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
   customNodePath: z.string().optional().nullable(),
+  nodeRuntimePreference: z.enum(["system", "managed"]).optional(),
   customAppsFolder: z.string().optional().nullable(),
   isRunning: z.boolean().optional(),
   lastKnownPerformance: z

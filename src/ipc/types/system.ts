@@ -14,6 +14,12 @@ export const NodeSystemInfoSchema = z.object({
   nodeVersion: z.string().nullable(),
   pnpmVersion: z.string().nullable(),
   nodeDownloadUrl: z.string(),
+  source: z.enum(["system", "managed", "custom"]).nullable(),
+  nodePath: z.string().nullable(),
+  managedNodeInstalled: z.boolean(),
+  managedNodeVersion: z.string().nullable(),
+  systemNodeTooOld: z.boolean(),
+  managedNodeSupported: z.boolean(),
 });
 
 export type NodeSystemInfo = z.infer<typeof NodeSystemInfoSchema>;
@@ -23,6 +29,29 @@ export const InstallPnpmResultSchema = z.object({
 });
 
 export type InstallPnpmResult = z.infer<typeof InstallPnpmResultSchema>;
+
+export const InstallManagedNodeResultSchema = z.object({
+  nodeVersion: z.string(),
+});
+
+export type InstallManagedNodeResult = z.infer<
+  typeof InstallManagedNodeResultSchema
+>;
+
+export const ManagedNodeInstallProgressSchema = z.object({
+  phase: z.enum([
+    "downloading",
+    "verifying",
+    "extracting",
+    "installing",
+    "done",
+  ]),
+  percent: z.number().min(0).max(100),
+});
+
+export type ManagedNodeInstallProgress = z.infer<
+  typeof ManagedNodeInstallProgressSchema
+>;
 
 export const SystemDebugInfoSchema = z.object({
   nodeVersion: z.string().nullable(),
@@ -185,6 +214,18 @@ export const systemContracts = {
     output: InstallPnpmResultSchema,
   }),
 
+  installManagedNode: defineContract({
+    channel: "install-managed-node",
+    input: z.void(),
+    output: InstallManagedNodeResultSchema,
+  }),
+
+  removeManagedNode: defineContract({
+    channel: "remove-managed-node",
+    input: z.void(),
+    output: z.void(),
+  }),
+
   selectNodeFolder: defineContract({
     channel: "select-node-folder",
     input: z.void(),
@@ -314,6 +355,11 @@ export const systemEvents = {
   forceCloseDetected: defineEvent({
     channel: "force-close-detected",
     payload: ForceCloseDetectedPayloadSchema,
+  }),
+
+  managedNodeInstallProgress: defineEvent({
+    channel: "managed-node:install-progress",
+    payload: ManagedNodeInstallProgressSchema,
   }),
 } as const;
 

@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => {
     deleteProjectBranch: vi.fn().mockResolvedValue({ data: {} }),
     ensureNeonAuth: vi.fn().mockResolvedValue(undefined),
     getOrCreateNeonAuthCookieSecret: vi.fn().mockResolvedValue("secret"),
+    getConnectionUri: vi.fn().mockResolvedValue("postgres://real"),
+    readEnvVarsOrEmpty: vi.fn().mockResolvedValue([]),
+    updateNeonEnvVars: vi.fn().mockResolvedValue(undefined),
+    detectFrameworkType: vi.fn().mockReturnValue("nextjs"),
   };
 });
 
@@ -34,7 +38,16 @@ vi.mock("../../neon_admin/neon_management_client", () => ({
     deleteProjectBranch: mocks.deleteProjectBranch,
   })),
 }));
-vi.mock("../../neon_admin/neon_context", () => ({ getConnectionUri: vi.fn() }));
+vi.mock("../../neon_admin/neon_context", () => ({
+  getConnectionUri: mocks.getConnectionUri,
+}));
+vi.mock("./app_env_var_utils", () => ({
+  readEnvVarsOrEmpty: mocks.readEnvVarsOrEmpty,
+  updateNeonEnvVars: mocks.updateNeonEnvVars,
+}));
+vi.mock("./framework_utils", () => ({
+  detectFrameworkType: mocks.detectFrameworkType,
+}));
 vi.mock("./neon_utils", () => ({
   ensureNeonAuth: mocks.ensureNeonAuth,
   getOrCreateNeonAuthCookieSecret: mocks.getOrCreateNeonAuthCookieSecret,
@@ -79,6 +92,11 @@ beforeEach(() => {
   mocks.where.mockResolvedValue(undefined);
   mocks.selectWhere.mockResolvedValue([]);
   mocks.ensureNeonAuth.mockResolvedValue(undefined);
+  mocks.getConnectionUri.mockResolvedValue("postgres://real");
+  mocks.readEnvVarsOrEmpty.mockResolvedValue([]);
+  mocks.updateNeonEnvVars.mockResolvedValue(undefined);
+  mocks.detectFrameworkType.mockReturnValue("nextjs");
+  mocks.deleteProjectBranch.mockResolvedValue({ data: {} });
   mocks.createProjectBranch.mockResolvedValue({
     data: {
       branch: { id: "test-new-branch-id" },
@@ -144,6 +162,21 @@ describe("createTempTestBranch", () => {
     expect(result.cookieSecret).toBe("secret");
   });
 
+  it("detects upgraded Neon Auth apps from env markers", async () => {
+    mocks.readEnvVarsOrEmpty.mockResolvedValue([
+      { key: "NEON_AUTH_BASE_URL", value: "https://auth.old" },
+    ]);
+    mocks.ensureNeonAuth.mockResolvedValue("https://auth.example");
+
+    const result = await createTempTestBranch(makeApp());
+
+    expect(mocks.ensureNeonAuth).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      branchId: "test-new-branch-id",
+    });
+    expect(result.neonAuthBaseUrl).toBe("https://auth.example");
+  });
+
   it("skips Neon Auth provisioning when the app does not use Neon Auth", async () => {
     mocks.ensureNeonAuth.mockResolvedValue("https://auth.example");
     const result = await createTempTestBranch(makeApp());
@@ -186,7 +219,9 @@ describe("createTempTestBranch", () => {
     // the column pointing at it for the reconciliation sweep instead of the new
     // branch id.
     mocks.deleteProjectBranch.mockRejectedValueOnce(new Error("neon down"));
-    await createTempTestBranch(makeApp({ neonTestBranchId: "old-br" }));
+    await expect(
+      createTempTestBranch(makeApp({ neonTestBranchId: "old-br" })),
+    ).rejects.toThrow(/previous Neon test branch/);
     expect(mocks.set).not.toHaveBeenCalledWith({
       neonTestBranchId: "test-new-branch-id",
     });
@@ -207,15 +242,45 @@ describe("deleteTempTestBranch", () => {
 });
 
 describe("reconcileOrphanTestBranches", () => {
-  it("deletes orphaned branches found at startup", async () => {
+  it("restores the real env before deleting orphaned branches found at startup", async () => {
     mocks.selectWhere.mockResolvedValue([
-      makeApp({ neonTestBranchId: "leaked-br" }),
+      makeApp({
+        neonTestBranchId: "leaked-br",
+        neonDevelopmentAuthCookieSecret: "dev-secret",
+      }),
     ]);
+    mocks.ensureNeonAuth.mockResolvedValue("https://real-auth");
+
     await reconcileOrphanTestBranches();
+
+    expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appPath: "/apps/7",
+        connectionUri: "postgres://real",
+        neonAuthBaseUrl: "https://real-auth",
+        cookieSecret: "secret",
+        preserveExistingAuth: false,
+      }),
+    );
     expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
       "proj-1",
       "leaked-br",
     );
+    expect(mocks.updateNeonEnvVars.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.deleteProjectBranch.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("keeps the orphan branch tracked when real env repair fails", async () => {
+    mocks.selectWhere.mockResolvedValue([
+      makeApp({ neonTestBranchId: "leaked-br" }),
+    ]);
+    mocks.getConnectionUri.mockRejectedValue(new Error("neon down"));
+
+    await reconcileOrphanTestBranches();
+
+    expect(mocks.deleteProjectBranch).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 
   it("never throws when the query fails", async () => {

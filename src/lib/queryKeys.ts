@@ -131,6 +131,15 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Tests
+  // ─────────────────────────────────────────────────────────────────────────────
+  tests: {
+    all: ["tests"] as const,
+    list: ({ appId }: { appId: number | null }) =>
+      ["tests", "list", appId] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Context Paths
   // ─────────────────────────────────────────────────────────────────────────────
   contextPaths: {
@@ -413,6 +422,7 @@ export type AppQueryKey =
       (typeof queryKeys.uncommittedFiles)[keyof typeof queryKeys.uncommittedFiles]
     >
   | QueryKeyOf<(typeof queryKeys.problems)[keyof typeof queryKeys.problems]>
+  | QueryKeyOf<(typeof queryKeys.tests)[keyof typeof queryKeys.tests]>
   | QueryKeyOf<
       (typeof queryKeys.contextPaths)[keyof typeof queryKeys.contextPaths]
     >

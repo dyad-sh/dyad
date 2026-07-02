@@ -5,9 +5,13 @@ import { EndpointType } from "@neondatabase/api-client";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
+import { getConnectionUri } from "../../neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { readEnvVarsOrEmpty, updateNeonEnvVars } from "./app_env_var_utils";
+import { detectFrameworkType } from "./framework_utils";
 import { retryOnLocked } from "./retryOnLocked";
 import { ensureNeonAuth, getOrCreateNeonAuthCookieSecret } from "./neon_utils";
+import { getDyadAppPath } from "@/paths/paths";
 
 const logger = log.scope("neon_test_branch");
 
@@ -42,17 +46,42 @@ function resolveParentBranchId(appData: AppRow): string | null {
 }
 
 /**
- * Whether the app actually uses Neon Auth. A cookie secret is persisted on a
- * branch the first time Neon Auth is provisioned for it (see
- * getOrCreateNeonAuthCookieSecret), so a set column on either branch is a cheap,
- * reliable signal that auth is in use — apps that never enabled it have both
- * null and don't need auth provisioned on their throwaway test branches.
+ * Whether the app actually uses Neon Auth. Newer rows persist a cookie secret
+ * on a branch the first time Neon Auth is provisioned for it (see
+ * getOrCreateNeonAuthCookieSecret). Upgraded rows may only have NEON_AUTH_*
+ * markers in .env.local, so check those before deciding the test branch can
+ * safely skip auth provisioning.
  */
-function appUsesNeonAuth(appData: AppRow): boolean {
-  return Boolean(
+async function appUsesNeonAuth(appData: AppRow): Promise<boolean> {
+  if (
     appData.neonDevelopmentAuthCookieSecret ||
-      appData.neonProductionAuthCookieSecret,
-  );
+    appData.neonProductionAuthCookieSecret
+  ) {
+    return true;
+  }
+
+  try {
+    const envVars = await readEnvVarsOrEmpty({ appPath: appData.path });
+    return envVars.some(
+      (envVar) =>
+        envVar.key === "NEON_AUTH_BASE_URL" ||
+        envVar.key === "NEON_AUTH_COOKIE_SECRET",
+    );
+  } catch (error) {
+    logger.warn(
+      `Couldn't inspect .env.local for Neon Auth markers on app ${appData.id}: ${error}`,
+    );
+    return false;
+  }
+}
+
+function resolveAuthBranchType(
+  appData: AppRow,
+  branchId: string,
+): "development" | "production" {
+  return branchId === appData.neonDevelopmentBranchId
+    ? "development"
+    : "production";
 }
 
 /**
@@ -148,12 +177,12 @@ export async function createTempTestBranch(
   // need it; non-auth tests still run if this fails.
   //
   // Skip provisioning entirely when the app never set up Neon Auth (no cookie
-  // secret persisted on either branch). This avoids 1-3 extra Neon API calls
-  // per test run for non-auth apps — the main driver of "too many requests"
-  // when running several tests back-to-back.
+  // secret persisted on either branch, and no NEON_AUTH_* markers in env).
+  // This avoids 1-3 extra Neon API calls per test run for non-auth apps - the
+  // main driver of "too many requests" when running several tests back-to-back.
   let neonAuthBaseUrl: string | undefined;
   let cookieSecret: string | undefined;
-  if (appUsesNeonAuth(appData)) {
+  if (await appUsesNeonAuth(appData)) {
     try {
       // Wrap in retryOnLocked so getNeonAuth/createNeonAuth back off on a
       // locked branch (423) or rate limit (429) instead of failing the run.
@@ -253,6 +282,61 @@ async function deleteBranchBestEffort(
   }
 }
 
+async function restoreRealBranchEnvVars(appData: AppRow): Promise<boolean> {
+  const projectId = appData.neonProjectId;
+  const branchId = resolveParentBranchId(appData);
+  if (!projectId || !branchId) {
+    logger.warn(
+      `Cannot restore .env.local for app ${appData.id} before deleting test branch: missing Neon project or real branch.`,
+    );
+    return false;
+  }
+
+  try {
+    const appPath = getDyadAppPath(appData.path);
+    const frameworkType = detectFrameworkType(appPath);
+    const connectionUri = await retryOnLocked(
+      () => getConnectionUri({ projectId, branchId }),
+      `Restore Neon env for app ${appData.id}`,
+    );
+
+    let neonAuthBaseUrl: string | undefined;
+    let cookieSecret: string | undefined;
+    if (await appUsesNeonAuth(appData)) {
+      neonAuthBaseUrl = await retryOnLocked(
+        () => ensureNeonAuth({ projectId, branchId }),
+        `Restore Neon Auth env for app ${appData.id}`,
+      );
+      if (!neonAuthBaseUrl) {
+        throw new Error(
+          "Neon Auth could not be resolved for the app's real branch.",
+        );
+      }
+      if (frameworkType === "nextjs") {
+        cookieSecret = await getOrCreateNeonAuthCookieSecret({
+          appData,
+          branchType: resolveAuthBranchType(appData, branchId),
+        });
+      }
+    }
+
+    await updateNeonEnvVars({
+      appPath,
+      connectionUri,
+      neonAuthBaseUrl,
+      frameworkType,
+      cookieSecret,
+      preserveExistingAuth: false,
+    });
+    return true;
+  } catch (error) {
+    logger.warn(
+      `Failed to restore .env.local for app ${appData.id} before deleting test branch ${appData.neonTestBranchId}; leaving the branch tracked for retry: ${error}`,
+    );
+    return false;
+  }
+}
+
 /**
  * Startup reconciliation: any app row still carrying a `neonTestBranchId` means
  * a previous session crashed mid-run and leaked a copy-on-write branch. Delete
@@ -272,6 +356,10 @@ export async function reconcileOrphanTestBranches(): Promise<void> {
       `Reconciling ${rows.length} orphaned Neon test branch(es) from a previous session`,
     );
     for (const appData of rows) {
+      const restored = await restoreRealBranchEnvVars(appData);
+      if (!restored) {
+        continue;
+      }
       await deleteTempTestBranch(appData);
     }
   } catch (error) {

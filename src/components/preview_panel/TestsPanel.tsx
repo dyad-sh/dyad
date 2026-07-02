@@ -1,4 +1,5 @@
 import { useAtomValue, useSetAtom } from "jotai";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlaskConical,
@@ -26,127 +27,26 @@ import {
   currentTestRunStateAtom,
   setTestSpecsForAppAtom,
   setTestRunStateForAppAtom,
+  type RuntimeTestResult,
   type TestStatus,
 } from "@/atoms/testRuntimeAtoms";
-import type { TestCase, TestCaseResult, TestResult } from "@/ipc/types";
+import type { TestCase, TestCaseResult } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
-import { showError, showInfo } from "@/lib/toast";
+import { showInfo } from "@/lib/toast";
+import {
+  buildSingleTestFileResult,
+  findCaseResult,
+  reconcileResultFile,
+  statusLabel,
+  testKey,
+} from "./testResultUtils";
 
-/**
- * Maps a Playwright-reported spec path onto a key from our spec list. The
- * report's path base can differ from the glob's (e.g. missing the "tests/"
- * prefix or being absolute), so we fall back from exact → suffix → basename.
- * Returns the original path when no unambiguous match exists.
- */
 /** Cap on the accumulated run output kept in the renderer (keeps the tail). */
 const MAX_OUTPUT_LENGTH = 500_000;
-
-function reconcileResultFile(resultFile: string, specFiles: string[]): string {
-  const normalized = resultFile.replace(/\\/g, "/");
-  if (specFiles.includes(normalized)) return normalized;
-
-  // Require a path-separator boundary so a shorter name can't spuriously match
-  // a longer sibling (e.g. "auth.spec.ts" must not match "google-auth.spec.ts").
-  const suffixMatches = specFiles.filter(
-    (f) => f.endsWith("/" + normalized) || normalized.endsWith("/" + f),
-  );
-  if (suffixMatches.length === 1) return suffixMatches[0];
-
-  const base = normalized.split("/").pop();
-  const baseMatches = specFiles.filter((f) => f.split("/").pop() === base);
-  if (baseMatches.length === 1) return baseMatches[0];
-
-  return normalized;
-}
-
-/** Stable key for an individual test ("file:line"), used for run tracking. */
-function testKey(file: string, line: number | undefined): string {
-  return line != null ? `${file}:${line}` : file;
-}
-
-/** Find the result for a single test within a file's result, by line then title. */
-function findCaseResult(
-  result: TestResult | undefined,
-  testCase: TestCase,
-): TestCaseResult | undefined {
-  if (!result?.tests) return undefined;
-  return (
-    result.tests.find((t) => t.line != null && t.line === testCase.line) ??
-    result.tests.find((t) => t.title === testCase.title)
-  );
-}
-
-/**
- * Merge per-test results from a single-test run back into a file's existing
- * results, replacing the matched test and keeping the rest. Used so running one
- * test doesn't wipe the statuses of its siblings.
- */
-function mergeCaseResults(
-  existing: TestCaseResult[] | undefined,
-  incoming: TestCaseResult[],
-): TestCaseResult[] {
-  const merged = [...(existing ?? [])];
-  for (const inc of incoming) {
-    const idx = merged.findIndex(
-      (t) =>
-        (t.line != null && inc.line != null && t.line === inc.line) ||
-        t.title === inc.title,
-    );
-    if (idx >= 0) merged[idx] = inc;
-    else merged.push(inc);
-  }
-  merged.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
-  return merged;
-}
-
-/** Roll per-test results up to a file-level result (assertion > infra > pass). */
-function aggregateFileResult(
-  file: string,
-  tests: TestCaseResult[],
-): TestResult {
-  let durationMs = 0;
-  let hasFailed = false;
-  let hasInfra = false;
-  let error: string | undefined;
-  let screenshotPath: string | undefined;
-  for (const t of tests) {
-    durationMs += t.durationMs ?? 0;
-    if (t.status === "failed") hasFailed = true;
-    else if (t.status === "inconclusive") hasInfra = true;
-    if (t.status !== "passed") {
-      if (!error && t.error) error = t.error;
-      if (!screenshotPath && t.screenshotPath)
-        screenshotPath = t.screenshotPath;
-    }
-  }
-  return {
-    file,
-    status: hasFailed ? "failed" : hasInfra ? "inconclusive" : "passed",
-    durationMs: durationMs || undefined,
-    error,
-    screenshotPath,
-    tests,
-  };
-}
-
-function statusLabel(status: TestStatus): string {
-  switch (status) {
-    case "passed":
-      return "Passed";
-    case "failed":
-      return "Test failed — your app may not match the test";
-    case "inconclusive":
-      return "Couldn't run — needs a fix to the test";
-    case "running":
-      return "Running";
-    case "not-run":
-    default:
-      return "Not run yet";
-  }
-}
 
 function StatusIcon({ status }: { status: TestStatus }) {
   switch (status) {
@@ -157,6 +57,8 @@ function StatusIcon({ status }: { status: TestStatus }) {
           className="text-green-600 dark:text-green-500 shrink-0"
         />
       );
+    case "partial":
+      return <Circle size={16} className="text-teal-500 shrink-0" />;
     case "failed":
       return (
         <XCircle
@@ -190,6 +92,8 @@ function statusTextClass(status: TestStatus): string {
       return "text-red-600 dark:text-red-400";
     case "inconclusive":
       return "text-amber-600 dark:text-amber-400";
+    case "partial":
+      return "text-teal-600 dark:text-teal-400";
     default:
       return "text-muted-foreground";
   }
@@ -431,7 +335,7 @@ interface FileRowProps {
   file: string;
   tests: TestCase[];
   status: TestStatus;
-  result: TestResult | undefined;
+  result: RuntimeTestResult | undefined;
   disabled: boolean;
   onRunFile: () => void;
   onRunCase: (line: number) => void;
@@ -555,8 +459,8 @@ export function TestsPanel() {
   const chatId = useAtomValue(selectedChatIdAtom);
   const { runApp } = useRunApp();
   const { streamMessage, isStreaming } = useStreamChat();
+  const queryClient = useQueryClient();
 
-  const [loadingSpecs, setLoadingSpecs] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
   // When enabled, runs open a visible browser window so the user can watch the
   // test drive the app, instead of running headless.
@@ -573,50 +477,37 @@ export function TestsPanel() {
 
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
-
-  const loadSpecs = useCallback(
-    ({ withSpinner }: { withSpinner: boolean }) => {
-      if (selectedAppId == null) return;
-      const appId = selectedAppId;
-      let cancelled = false;
-      if (withSpinner) setLoadingSpecs(true);
-      ipc.tests
-        .listAppTests({ appId })
-        .then((res) => {
-          if (!cancelled) setSpecs({ appId, specs: res.specs });
-        })
-        .catch((err) => {
-          if (!cancelled) showError(err);
-        })
-        .finally(() => {
-          if (!cancelled) setLoadingSpecs(false);
-        });
-      return () => {
-        cancelled = true;
-      };
+  const specsQuery = useQuery({
+    queryKey: queryKeys.tests.list({ appId: selectedAppId }),
+    queryFn: async () => {
+      if (selectedAppId == null) {
+        return { specs: [] };
+      }
+      return ipc.tests.listAppTests({ appId: selectedAppId });
     },
-    [selectedAppId, setSpecs],
-  );
+    enabled: selectedAppId != null,
+    meta: { showErrorToast: true },
+  });
 
-  // Discover specs on mount / app change.
   useEffect(() => {
-    return loadSpecs({ withSpinner: true });
-  }, [loadSpecs]);
+    if (selectedAppId == null || !specsQuery.data) return;
+    setSpecs({ appId: selectedAppId, specs: specsQuery.data.specs });
+  }, [selectedAppId, setSpecs, specsQuery.data]);
 
-  // Re-discover specs when a chat turn finishes — the AI may have generated a
+  // Re-discover specs when a chat turn finishes - the AI may have generated a
   // new test file (via <dyad-generate-test>), which wouldn't otherwise appear
   // until the panel is remounted. Done quietly, without the loading spinner.
   const prevStreamingRef = useRef(isStreaming);
   useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming) {
-      const cancel = loadSpecs({ withSpinner: false });
-      prevStreamingRef.current = isStreaming;
-      // Return the cancellation so a fast app-switch during this background
-      // reload can't write the old app's specs into the new app's atom slot.
-      return cancel;
+    if (prevStreamingRef.current && !isStreaming && selectedAppId != null) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.tests.list({ appId: selectedAppId }),
+      });
     }
     prevStreamingRef.current = isStreaming;
-  }, [isStreaming, loadSpecs]);
+  }, [isStreaming, queryClient, selectedAppId]);
+
+  const loadingSpecs = specsQuery.isLoading && specs.length === 0;
 
   // Subscribe to streamed run output.
   useEffect(() => {
@@ -690,20 +581,21 @@ export function TestsPanel() {
         // the "tests/" prefix). Reconcile each result back onto a known spec
         // key so rows actually pick up their status.
         const specFiles = specs.map((s) => s.file);
+        const specsByFile = new Map(specs.map((s) => [s.file, s]));
         setRunState({
           appId,
           update: (prev) => {
             const nextResults = { ...prev.results };
             for (const r of res.results) {
               const key = reconcileResultFile(r.file, specFiles);
-              const mapped: TestResult = { ...r, file: key };
-              if (isSingleTest && prev.results[key]) {
-                // Merge the single test's result into the file's prior results.
-                const mergedTests = mergeCaseResults(
-                  prev.results[key].tests,
-                  mapped.tests ?? [],
-                );
-                nextResults[key] = aggregateFileResult(key, mergedTests);
+              const mapped = { ...r, file: key };
+              if (isSingleTest) {
+                nextResults[key] = buildSingleTestFileResult({
+                  file: key,
+                  knownTests: specsByFile.get(key)?.tests ?? [],
+                  previous: prev.results[key],
+                  incoming: mapped,
+                });
               } else {
                 nextResults[key] = mapped;
               }
@@ -816,14 +708,16 @@ export function TestsPanel() {
     let passed = 0;
     let failed = 0;
     let inconclusive = 0;
+    let partial = 0;
     for (const spec of specs) {
       const r = runState.results[spec.file];
       if (!r) continue;
       if (r.status === "passed") passed++;
       else if (r.status === "failed") failed++;
       else if (r.status === "inconclusive") inconclusive++;
+      else if (r.status === "partial") partial++;
     }
-    return { passed, failed, inconclusive };
+    return { passed, failed, inconclusive, partial };
   }, [specs, runState.results]);
 
   if (selectedAppId == null) {
@@ -925,7 +819,8 @@ export function TestsPanel() {
 
       {/* Live counter (aria-live for screen readers) */}
       {(isRunning ||
-        counts.passed + counts.failed + counts.inconclusive > 0) && (
+        counts.passed + counts.failed + counts.inconclusive + counts.partial >
+          0) && (
         <div
           aria-live="polite"
           className="px-4 py-1.5 text-xs text-muted-foreground border-b border-border/60"
@@ -950,6 +845,12 @@ export function TestsPanel() {
             <span className="text-amber-600 dark:text-amber-400">
               {" · "}
               {counts.inconclusive} inconclusive
+            </span>
+          )}
+          {counts.partial > 0 && (
+            <span className="text-teal-600 dark:text-teal-400">
+              {" · "}
+              {counts.partial} partial
             </span>
           )}
           {` of ${specs.length} ${specs.length === 1 ? "file" : "files"}`}

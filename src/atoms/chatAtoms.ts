@@ -134,6 +134,16 @@ export const chatTabSessionStorageAtom = atomWithStorage<ChatTabSession>(
   { getOnInit: true },
 );
 
+// When enabled, tabs are kept grouped by app on every render (a live layout),
+// so newly opened chats automatically slot into their app's group. Turned off
+// as soon as the user manually reorders tabs via drag.
+export const groupTabsByAppAtom = atomWithStorage<boolean>(
+  "group-tabs-by-app",
+  false,
+  undefined,
+  { getOnInit: true },
+);
+
 // Closed tab history for "Reopen closed tab"
 export interface ClosedTabRecord {
   chatId: number;

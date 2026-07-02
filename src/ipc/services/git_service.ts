@@ -71,7 +71,12 @@ export class GitService {
   }
 
   /**
-   * Stages a single file and commits it. Returns the commit hash.
+   * Stages a single file and commits it. Returns the commit hash, or null
+   * when there was nothing to commit.
+   *
+   * `gitAdd` skips files ignored by .gitignore (e.g. `.env.local`), which
+   * leaves nothing staged. Guard the commit so those saves don't fail with
+   * "nothing to commit, working tree clean".
    */
   async commitFile({
     path,
@@ -81,8 +86,11 @@ export class GitService {
     path: string;
     filepath: string;
     message: string;
-  }): Promise<string> {
+  }): Promise<string | null> {
     await gitAdd({ path, filepath });
+    if (!(await hasStagedChanges({ path }))) {
+      return null;
+    }
     return gitCommit({ path, message });
   }
 }

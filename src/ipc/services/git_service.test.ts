@@ -110,11 +110,28 @@ describe("GitService", () => {
       message: "msg",
     });
 
-    expect(callOrder).toEqual(["gitAdd", "gitCommit"]);
+    expect(callOrder).toEqual(["gitAdd", "hasStagedChanges", "gitCommit"]);
     expect(mocks.gitAdd).toHaveBeenCalledWith({
       path: "/repo",
       filepath: "src/a.ts",
     });
     expect(hash).toBe("commit-hash");
+  });
+
+  it("commitFile returns null when the file was ignored (nothing staged)", async () => {
+    mocks.hasStagedChanges.mockImplementation(async () => {
+      callOrder.push("hasStagedChanges");
+      return false;
+    });
+
+    const hash = await service.commitFile({
+      path: "/repo",
+      filepath: ".env.local",
+      message: "msg",
+    });
+
+    expect(callOrder).toEqual(["gitAdd", "hasStagedChanges"]);
+    expect(hash).toBeNull();
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
   });
 });

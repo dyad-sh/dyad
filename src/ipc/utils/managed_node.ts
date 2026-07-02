@@ -22,6 +22,8 @@ const logger = log.scope("managed_node");
 
 export const MANAGED_NODE_VERSION = "v24.18.0";
 export const MINIMUM_SYSTEM_NODE_VERSION = "20.0.0";
+export const MANAGED_NODE_INSTALL_CANCELLED_MESSAGE =
+  "Managed Node.js install was cancelled.";
 const MANAGED_NODE_DIR = "node";
 const NODE_DIST_BASE_URL = `https://nodejs.org/dist/${MANAGED_NODE_VERSION}`;
 const NODE_MIRROR_BASE_URL = `https://registry.npmmirror.com/-/binary/node/${MANAGED_NODE_VERSION}`;
@@ -86,9 +88,29 @@ export class ManagedNodeInstallError extends DyadError {
 }
 
 let managedNodeInstallPromise: Promise<string> | null = null;
+let managedNodeInstallAbortController: AbortController | null = null;
 const managedNodeInstallProgressListeners = new Set<
   (progress: ManagedNodeInstallProgress) => void
 >();
+
+function createManagedNodeInstallCancelledError(): DyadError {
+  return new DyadError(
+    MANAGED_NODE_INSTALL_CANCELLED_MESSAGE,
+    DyadErrorKind.UserCancelled,
+  );
+}
+
+function isManagedNodeInstallCancelledError(error: unknown): boolean {
+  return (
+    error instanceof DyadError && error.kind === DyadErrorKind.UserCancelled
+  );
+}
+
+function throwIfManagedNodeInstallCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw createManagedNodeInstallCancelledError();
+  }
+}
 
 function getManagedNodeRootDir(): string {
   return path.join(getManagedToolsDir(), MANAGED_NODE_DIR);
@@ -297,24 +319,55 @@ async function calculateSha256(filePath: string): Promise<string> {
 function runProcess(
   command: string,
   args: string[],
-  options: { cwd?: string } = {},
+  options: { cwd?: string; signal?: AbortSignal } = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(createManagedNodeInstallCancelledError());
+      return;
+    }
+
     const child = spawn(command, args, {
       cwd: options.cwd,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stderr = "";
+    let settled = false;
+
+    function cleanupAbortListener() {
+      options.signal?.removeEventListener("abort", handleAbort);
+    }
+
+    function resolveOnce() {
+      if (settled) return;
+      settled = true;
+      cleanupAbortListener();
+      resolve();
+    }
+
+    function rejectOnce(error: Error) {
+      if (settled) return;
+      settled = true;
+      cleanupAbortListener();
+      reject(error);
+    }
+
+    function handleAbort() {
+      child.kill();
+      rejectOnce(createManagedNodeInstallCancelledError());
+    }
+
+    options.signal?.addEventListener("abort", handleAbort, { once: true });
     child.stderr?.on("data", (data) => {
       stderr += data.toString();
     });
-    child.once("error", reject);
+    child.once("error", rejectOnce);
     child.once("close", (code) => {
       if (code === 0) {
-        resolve();
+        resolveOnce();
       } else {
-        reject(
+        rejectOnce(
           new Error(stderr.trim() || `${command} exited with code ${code}`),
         );
       }
@@ -326,13 +379,17 @@ async function downloadFile({
   url,
   destination,
   onProgress,
+  signal,
 }: {
   url: string;
   destination: string;
   onProgress: (progress: ManagedNodeInstallProgress) => void;
+  signal: AbortSignal;
 }): Promise<void> {
+  throwIfManagedNodeInstallCancelled(signal);
   if (url.startsWith("file://")) {
     await fsp.copyFile(new URL(url), destination);
+    throwIfManagedNodeInstallCancelled(signal);
     onProgress({ phase: "downloading", percent: 100 });
     return;
   }
@@ -352,21 +409,27 @@ async function downloadFile({
       }
     };
 
-    const resolveOnce = () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearDownloadTimeout();
-      resolve();
-    };
+    function cleanupAbortListener() {
+      signal.removeEventListener("abort", handleAbort);
+    }
 
-    const handleError = (error: Error) => {
+    function resolveOnce() {
       if (settled) {
         return;
       }
       settled = true;
       clearDownloadTimeout();
+      cleanupAbortListener();
+      resolve();
+    }
+
+    function handleError(error: Error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearDownloadTimeout();
+      cleanupAbortListener();
       output?.destroy();
       try {
         request.abort();
@@ -374,7 +437,11 @@ async function downloadFile({
         // Best effort only; the promise is already settled with the real error.
       }
       reject(error);
-    };
+    }
+
+    function handleAbort() {
+      handleError(createManagedNodeInstallCancelledError());
+    }
 
     const resetDownloadTimeout = () => {
       clearDownloadTimeout();
@@ -387,6 +454,7 @@ async function downloadFile({
       }, DOWNLOAD_STALL_TIMEOUT_MS);
     };
 
+    signal.addEventListener("abort", handleAbort, { once: true });
     resetDownloadTimeout();
 
     request.on("response", (response) => {
@@ -455,29 +523,40 @@ async function downloadFile({
     request.on("error", handleError);
     request.end();
   });
+  throwIfManagedNodeInstallCancelled(signal);
 }
 
 async function extractArchive({
   archivePath,
   extractDir,
+  signal,
 }: {
   archivePath: string;
   extractDir: string;
+  signal: AbortSignal;
 }): Promise<void> {
+  throwIfManagedNodeInstallCancelled(signal);
   await fsp.mkdir(extractDir, { recursive: true });
   if (process.platform === "win32") {
-    await runProcess("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-Command",
-      "& { Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force }",
-      archivePath,
-      extractDir,
-    ]);
+    await runProcess(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "& { Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force }",
+        archivePath,
+        extractDir,
+      ],
+      { signal },
+    );
     return;
   }
-  await runProcess("tar", ["-xzf", archivePath, "-C", extractDir]);
+  await runProcess("tar", ["-xzf", archivePath, "-C", extractDir], {
+    signal,
+  });
+  throwIfManagedNodeInstallCancelled(signal);
 }
 
 async function findExtractedNodeRoot(extractDir: string): Promise<string> {
@@ -493,13 +572,17 @@ async function installFromArchive({
   archivePath,
   expectedSha256,
   onProgress,
+  signal,
 }: {
   archivePath: string;
   expectedSha256: string;
   onProgress: (progress: ManagedNodeInstallProgress) => void;
+  signal: AbortSignal;
 }): Promise<string> {
+  throwIfManagedNodeInstallCancelled(signal);
   onProgress({ phase: "verifying", percent: 96 });
   const actualSha256 = await calculateSha256(archivePath);
+  throwIfManagedNodeInstallCancelled(signal);
   if (actualSha256 !== expectedSha256) {
     throw new ManagedNodeInstallError(
       "Downloaded Node.js did not match the expected checksum.",
@@ -517,11 +600,15 @@ async function installFromArchive({
 
   try {
     onProgress({ phase: "extracting", percent: 97 });
-    await extractArchive({ archivePath, extractDir: tempExtractDir });
+    await extractArchive({ archivePath, extractDir: tempExtractDir, signal });
+    throwIfManagedNodeInstallCancelled(signal);
     const extractedRoot = await findExtractedNodeRoot(tempExtractDir);
+    throwIfManagedNodeInstallCancelled(signal);
     await fsp.rename(extractedRoot, tempInstallDir);
+    throwIfManagedNodeInstallCancelled(signal);
 
     const verifiedVersion = await getManagedNodeVersionFromDir(tempInstallDir);
+    throwIfManagedNodeInstallCancelled(signal);
     if (verifiedVersion !== MANAGED_NODE_VERSION) {
       throw new ManagedNodeInstallError(
         `Installed Node.js reported ${verifiedVersion ?? "no version"} instead of ${MANAGED_NODE_VERSION}. Your antivirus may have blocked the executable.`,
@@ -531,6 +618,7 @@ async function installFromArchive({
 
     onProgress({ phase: "installing", percent: 99 });
     await swapManagedNodeInstallDir({ tempInstallDir, finalInstallDir });
+    throwIfManagedNodeInstallCancelled(signal);
     await cleanupOldManagedNodeVersions();
     clearSanitizedPathCache();
     applyManagedNodeToProcessPath();
@@ -538,6 +626,9 @@ async function installFromArchive({
     return verifiedVersion;
   } catch (error) {
     await fsp.rm(tempInstallDir, { recursive: true, force: true });
+    if (isManagedNodeInstallCancelledError(error)) {
+      throw error;
+    }
     if (error instanceof ManagedNodeInstallError) {
       throw error;
     }
@@ -685,7 +776,9 @@ export function installManagedNode(
     });
   }
 
-  managedNodeInstallPromise = installManagedNodeInternal((progress) => {
+  managedNodeInstallAbortController = new AbortController();
+  const signal = managedNodeInstallAbortController.signal;
+  managedNodeInstallPromise = installManagedNodeInternal(signal, (progress) => {
     for (const listener of managedNodeInstallProgressListeners) {
       try {
         listener(progress);
@@ -695,12 +788,17 @@ export function installManagedNode(
     }
   }).finally(() => {
     managedNodeInstallPromise = null;
+    managedNodeInstallAbortController = null;
     managedNodeInstallProgressListeners.clear();
   });
 
   return managedNodeInstallPromise.finally(() => {
     managedNodeInstallProgressListeners.delete(onProgress);
   });
+}
+
+export function cancelManagedNodeInstall(): void {
+  managedNodeInstallAbortController?.abort();
 }
 
 async function removeArchiveBestEffort(archivePath: string): Promise<void> {
@@ -715,23 +813,28 @@ async function installArchiveAndCleanUp({
   archivePath,
   expectedSha256,
   onProgress,
+  signal,
 }: {
   archivePath: string;
   expectedSha256: string;
   onProgress: (progress: ManagedNodeInstallProgress) => void;
+  signal: AbortSignal;
 }): Promise<string> {
   const nodeVersion = await installFromArchive({
     archivePath,
     expectedSha256,
     onProgress,
+    signal,
   });
   await removeArchiveBestEffort(archivePath);
   return nodeVersion;
 }
 
 async function installManagedNodeInternal(
+  signal: AbortSignal,
   onProgress: (progress: ManagedNodeInstallProgress) => void,
 ): Promise<string> {
+  throwIfManagedNodeInstallCancelled(signal);
   const artifact = getManagedNodeArtifact();
   if (!artifact) {
     throw new ManagedNodeInstallError(
@@ -743,25 +846,32 @@ async function installManagedNodeInternal(
   const rootDir = getManagedNodeRootDir();
   const tmpDir = path.join(rootDir, "tmp");
   await fsp.mkdir(tmpDir, { recursive: true });
+  throwIfManagedNodeInstallCancelled(signal);
   const archivePath = path.join(tmpDir, artifact.fileName);
   const expectedSha256 = getExpectedSha256(artifact);
 
   let lastError: unknown;
   for (const candidateUrl of getDownloadCandidates(artifact)) {
     try {
+      throwIfManagedNodeInstallCancelled(signal);
       await fsp.rm(archivePath, { force: true });
       onProgress({ phase: "downloading", percent: 0 });
       await downloadFile({
         url: candidateUrl,
         destination: archivePath,
         onProgress,
+        signal,
       });
       return await installArchiveAndCleanUp({
         archivePath,
         expectedSha256,
         onProgress,
+        signal,
       });
     } catch (error) {
+      if (isManagedNodeInstallCancelledError(error)) {
+        throw error;
+      }
       lastError = error;
       logger.warn("Managed Node.js install candidate failed:", {
         candidateUrl,
@@ -778,6 +888,9 @@ async function installManagedNodeInternal(
   }
 
   if (lastError instanceof ManagedNodeInstallError) {
+    throw lastError;
+  }
+  if (isManagedNodeInstallCancelledError(lastError)) {
     throw lastError;
   }
   const message =

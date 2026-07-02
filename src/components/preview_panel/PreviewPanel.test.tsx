@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PreviewPanel } from "./PreviewPanel";
@@ -6,6 +6,8 @@ import { PreviewPanel } from "./PreviewPanel";
 const mocks = vi.hoisted(() => ({
   currentConsoleEntriesAtom: Symbol("currentConsoleEntriesAtom"),
   currentPreviewReloadTokenAtom: Symbol("currentPreviewReloadTokenAtom"),
+  cancelManagedNodeInstall: vi.fn(),
+  installManagedNode: vi.fn(),
   nodeCheckFailed: false,
   managedNodeSupported: true,
   nodeVersion: "v22.14.0",
@@ -16,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   runApp: vi.fn(),
   selectAppForPreview: vi.fn(),
   selectedAppIdAtom: Symbol("selectedAppIdAtom"),
+  settings: {
+    disablePreviewNodeAutoInstall: false,
+  } as Record<string, unknown>,
   updateSettings: vi.fn(),
 }));
 
@@ -76,7 +81,8 @@ vi.mock("@/ipc/types", () => ({
     },
     system: {
       getNodejsStatus: vi.fn(),
-      installManagedNode: vi.fn(),
+      installManagedNode: mocks.installManagedNode,
+      cancelManagedNodeInstall: mocks.cancelManagedNodeInstall,
       reloadEnvPath: mocks.reloadEnvPath,
       selectNodeFolder: vi.fn(),
       openExternalUrl: mocks.openExternalUrl,
@@ -104,6 +110,7 @@ vi.mock("@/hooks/useLoadApp", () => ({
 
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
+    settings: mocks.settings,
     updateSettings: mocks.updateSettings,
   }),
 }));
@@ -167,6 +174,8 @@ vi.mock("./SecurityPanel", () => ({
 describe("PreviewPanel", () => {
   beforeEach(() => {
     mocks.nodeCheckFailed = false;
+    mocks.cancelManagedNodeInstall.mockReset();
+    mocks.installManagedNode.mockReset();
     mocks.managedNodeSupported = true;
     mocks.nodeVersion = "v22.14.0";
     mocks.openExternalUrl.mockReset();
@@ -174,7 +183,13 @@ describe("PreviewPanel", () => {
     mocks.reloadEnvPath.mockReset();
     mocks.runApp.mockReset();
     mocks.selectAppForPreview.mockReset();
+    mocks.settings = {
+      disablePreviewNodeAutoInstall: false,
+    };
     mocks.updateSettings.mockReset();
+    mocks.installManagedNode.mockReturnValue(new Promise(() => {}));
+    mocks.cancelManagedNodeInstall.mockResolvedValue(undefined);
+    mocks.updateSettings.mockResolvedValue(undefined);
   });
 
   it("shows preview when Node is known to be installed even if the latest Node check failed", () => {
@@ -188,19 +203,50 @@ describe("PreviewPanel", () => {
     ).toBeNull();
   });
 
-  it("shows the preview-stage setup and skips running the app when Node.js is missing", () => {
+  it("auto-starts managed Node install and skips running the app when Node.js is missing", async () => {
     mocks.nodeVersion = "";
+
+    render(<PreviewPanel />);
+
+    expect(await screen.findByText("Installing Node.js")).toBeTruthy();
+    expect(screen.getByText("Your app · localhost")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    await waitFor(() => {
+      expect(mocks.installManagedNode).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.runApp).not.toHaveBeenCalled();
+  });
+
+  it("persists opt-out when cancelling automatic managed Node install", async () => {
+    mocks.nodeVersion = "";
+
+    render(<PreviewPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(mocks.cancelManagedNodeInstall).toHaveBeenCalledTimes(1);
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        disablePreviewNodeAutoInstall: true,
+      });
+    });
+  });
+
+  it("shows the manual install action when automatic install was disabled", () => {
+    mocks.nodeVersion = "";
+    mocks.settings = {
+      disablePreviewNodeAutoInstall: true,
+    };
 
     render(<PreviewPanel />);
 
     expect(
       screen.getByText("Install Node.js to see your preview"),
     ).toBeTruthy();
-    expect(screen.getByText("Your app · localhost")).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Install Node\.js for me/ }),
     ).toBeTruthy();
-    expect(mocks.runApp).not.toHaveBeenCalled();
+    expect(mocks.installManagedNode).not.toHaveBeenCalled();
   });
 
   it("lets unsupported managed-runtime platforms reopen the manual download page while watching for Node.js", () => {

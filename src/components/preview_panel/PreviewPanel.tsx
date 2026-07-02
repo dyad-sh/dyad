@@ -39,6 +39,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -82,7 +83,7 @@ export function PreviewPanel() {
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { runApp, loading } = useRunApp();
   const { app } = useLoadApp(selectedAppId);
-  const { updateSettings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const key = useAtomValue(currentPreviewReloadTokenAtom);
   const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
@@ -185,6 +186,11 @@ export function PreviewPanel() {
                     managedNodeSupported={
                       nodeSystemInfo?.managedNodeSupported ?? false
                     }
+                    autoInstallManagedNode={
+                      !!settings &&
+                      settings.disablePreviewNodeAutoInstall !== true &&
+                      (nodeSystemInfo?.managedNodeSupported ?? false)
+                    }
                     isCheckFailed={nodeCheckFailed}
                     onCheckAgain={async () => {
                       await ipc.system.reloadEnvPath();
@@ -197,6 +203,12 @@ export function PreviewPanel() {
                         queryKey: queryKeys.settings.user,
                       });
                       await refetchNodeStatus();
+                    }}
+                    onCancelManagedNodeInstall={async () => {
+                      await ipc.system.cancelManagedNodeInstall();
+                      await updateSettings({
+                        disablePreviewNodeAutoInstall: true,
+                      });
                     }}
                     onSelectNodeFolder={async () => {
                       const result = await ipc.system.selectNodeFolder();
@@ -262,29 +274,41 @@ export function PreviewPanel() {
 
 const NODE_POLL_INTERVAL_MS = 4000;
 
+function isManagedNodeInstallCancelError(error: unknown) {
+  return (
+    error instanceof DyadError && error.kind === DyadErrorKind.UserCancelled
+  );
+}
+
 function PreviewNodeRequirement({
   appName,
   nodeDownloadUrl,
   managedNodeSupported,
+  autoInstallManagedNode,
   isCheckFailed,
   onCheckAgain,
   onInstallManagedNode,
+  onCancelManagedNodeInstall,
   onSelectNodeFolder,
 }: {
   appName?: string;
   nodeDownloadUrl?: string;
   managedNodeSupported: boolean;
+  autoInstallManagedNode: boolean;
   isCheckFailed: boolean;
   onCheckAgain: () => Promise<void>;
   onInstallManagedNode: () => Promise<void>;
+  onCancelManagedNodeInstall: () => Promise<void>;
   onSelectNodeFolder: () => Promise<void>;
 }) {
   const [isCheckingAgain, setIsCheckingAgain] = useState(false);
   const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
+  const [isCancellingManagedNode, setIsCancellingManagedNode] = useState(false);
   const [installProgress, setInstallProgress] = useState(0);
   const [installPhase, setInstallPhase] = useState<string>("starting");
   const [isSelectingNodeFolder, setIsSelectingNodeFolder] = useState(false);
   const [hasOpenedInstaller, setHasOpenedInstaller] = useState(false);
+  const autoInstallStartedRef = useRef(false);
 
   useEffect(() => {
     return ipc.events.system.onManagedNodeInstallProgress((progress) => {
@@ -321,16 +345,39 @@ function PreviewNodeRequirement({
     }
   };
 
-  const handleInstallManagedNode = async () => {
+  const handleInstallManagedNode = useCallback(async () => {
     setIsInstallingManagedNode(true);
     setInstallProgress(0);
     setInstallPhase("starting");
     try {
       await onInstallManagedNode();
     } catch (error: any) {
+      if (isManagedNodeInstallCancelError(error)) {
+        return;
+      }
       showError(error.message ?? "Failed to install Dyad-managed Node.js");
     } finally {
       setIsInstallingManagedNode(false);
+    }
+  }, [onInstallManagedNode]);
+
+  useEffect(() => {
+    if (!autoInstallManagedNode || autoInstallStartedRef.current) {
+      return;
+    }
+    autoInstallStartedRef.current = true;
+    void handleInstallManagedNode();
+  }, [autoInstallManagedNode, handleInstallManagedNode]);
+
+  const handleCancelManagedNodeInstall = async () => {
+    setIsCancellingManagedNode(true);
+    try {
+      await onCancelManagedNodeInstall();
+    } catch (error: any) {
+      showError(error.message ?? "Failed to cancel Node.js install");
+    } finally {
+      setIsInstallingManagedNode(false);
+      setIsCancellingManagedNode(false);
     }
   };
 
@@ -396,6 +443,18 @@ function PreviewNodeRequirement({
                       {installPhase} {installProgress}%
                     </p>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-4 h-8 w-full cursor-pointer text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                    onClick={handleCancelManagedNodeInstall}
+                    disabled={isCancellingManagedNode}
+                  >
+                    {isCancellingManagedNode && (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    )}
+                    Cancel
+                  </Button>
                 </>
               ) : hasOpenedInstaller ? (
                 <>

@@ -67,6 +67,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enablePnpmMinimumReleaseAgeWarning: true,
   previewIdleTimeoutPolicy: "default",
   nodeRuntimePreference: "system",
+  disablePreviewNodeAutoInstall: false,
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";

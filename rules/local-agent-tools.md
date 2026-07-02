@@ -5,6 +5,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Read-only / plan-only mode
 
 - **`modifiesState: true`** must be set on any tool that writes to disk or modifies external state (files, database, etc.). This flag controls whether the tool is available in read-only (ask) mode and plan-only mode — see `buildAgentToolSet` in `tool_definitions.ts`.
+- If a read/inspection tool gains a state-changing host function (for example a new sandbox `write_file` capability inside `execute_sandbox_script`), mark the parent tool `modifiesState: true` too. Otherwise read-only / plan-only filtering can still expose writes through the wrapper tool.
 - Similarly, code in the `handleLocalAgentStream` handler that writes to the workspace (e.g., `ensureDyadGitignored`, injecting synthetic todo reminders) should be guarded with `if (!readOnly && !planModeOnly)` checks. Injecting instructions that reference state-changing tools into non-writable runs will confuse the model since those tools are filtered out.
 
 ## Async I/O
@@ -40,6 +41,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Search all `e2e-tests/snapshots/` baselines for old tool-description text after regenerating request snapshots. Some request baselines are extensionless files such as `local_agent_explore_code.spec.ts_disabled`, not just `.txt` snapshots.
 - When a local-agent tool is gated by a setting or experiment, keep related user-message hints in sync with the same gate. Request snapshots for the default-disabled path should not advertise or include a tool that `buildAgentToolSet` filters out.
 - In `testing/fake-llm-server`, keep Anthropic local-agent fixture routing in sync with the OpenAI chat-completions route for synthetic continuation messages (`incomplete todo(s)`, persisted unfinished todos, and stream retry prompts). If Anthropic routing misses those markers, multi-pass fixtures fall back to the canned `file1.txt` response mid-flow.
+
+## Sandbox host functions
+
+- When adding a built-in sandbox host function, add its name to `SANDBOX_HOST_CALL_NAMES` in `src/ipc/utils/sandbox/capabilities.ts`. MCP tool collection seeds collision detection from that list so MCP capabilities do not silently shadow built-ins when capability maps are merged.
 
 ## Attachment manifest lifecycle
 

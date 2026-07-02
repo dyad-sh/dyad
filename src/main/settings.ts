@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
   enableSandboxScriptExecution: true,
+  enableMcpToolSearch: true,
   enableCodeExplorer: true,
   autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,

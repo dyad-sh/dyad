@@ -8,7 +8,6 @@ import {
 import { buildMcpTypeDefsBlock, type McpToolDef } from "./mcp_type_defs";
 import { bm25Ranker, type ToolRanker } from "./bm25";
 import { sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
-import { readSettings } from "@/main/settings";
 
 /**
  * Number of matching tools whose full TypeScript declarations are returned.
@@ -74,10 +73,8 @@ export const searchMcpToolsTool: ToolDefinition<SearchMcpToolsArgs> = {
   inputSchema: searchMcpToolsSchema,
   defaultConsent: "always",
 
-  // ctx.mcpToolsEnabled already implies sandbox-script execution is on, so only
-  // the experiment flag needs a separate check.
-  isEnabled: (ctx) =>
-    !!ctx.mcpToolsEnabled && !!readSettings().enableMcpToolSearch,
+  // Only registered in search mode; see ctx.useMcpToolSearch.
+  isEnabled: (ctx) => !!ctx.useMcpToolSearch,
 
   getConsentPreview: (args) =>
     args.server

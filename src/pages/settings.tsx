@@ -307,9 +307,9 @@ export default function SettingsPage() {
                   </Label>
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  In Agent mode, let the model search for MCP tools instead of
-                  listing every tool's definition in its context. Requires
-                  sandbox script execution.
+                  When many MCP tools are enabled, let the agent search for the
+                  tools on demand instead of listing every tool in its context.
+                  Requires sandbox script execution.
                 </div>
                 {!settings?.enableSandboxScriptExecution && (
                   <div className="text-xs text-amber-500">

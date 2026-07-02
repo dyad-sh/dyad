@@ -69,26 +69,23 @@ beforeEach(() => {
 });
 
 describe("searchMcpToolsTool.isEnabled", () => {
-  const baseCtx = { mcpToolsEnabled: true } as unknown as AgentContext;
-
-  it("is enabled when sandbox + experiment + mcpToolsEnabled are all on", () => {
-    expect(searchMcpToolsTool.isEnabled?.(baseCtx)).toBe(true);
-  });
-
-  it("is disabled when the experiment flag is off", () => {
-    readSettingsMock.mockReturnValue({
-      enableMcpToolSearch: false,
-      enableSandboxScriptExecution: true,
-    });
-    expect(searchMcpToolsTool.isEnabled?.(baseCtx)).toBe(false);
-  });
-
-  it("is disabled when MCP-in-sandbox is not active for the turn", () => {
+  it("is enabled when search mode is active for the turn", () => {
     expect(
       searchMcpToolsTool.isEnabled?.({
-        mcpToolsEnabled: false,
+        useMcpToolSearch: true,
+      } as unknown as AgentContext),
+    ).toBe(true);
+  });
+
+  it("is disabled in inline mode (search not active)", () => {
+    expect(
+      searchMcpToolsTool.isEnabled?.({
+        useMcpToolSearch: false,
       } as unknown as AgentContext),
     ).toBe(false);
+    expect(searchMcpToolsTool.isEnabled?.({} as unknown as AgentContext)).toBe(
+      false,
+    );
   });
 });
 

@@ -60,25 +60,22 @@ beforeEach(() => {
 });
 
 describe("getMcpToolSchemaTool.isEnabled", () => {
-  const baseCtx = { mcpToolsEnabled: true } as unknown as AgentContext;
-
-  it("is enabled when sandbox + search setting + mcpToolsEnabled are all on", () => {
-    expect(getMcpToolSchemaTool.isEnabled?.(baseCtx)).toBe(true);
-  });
-
-  it("is disabled when the search setting is off", () => {
-    readSettingsMock.mockReturnValue({
-      enableMcpToolSearch: false,
-      enableSandboxScriptExecution: true,
-    });
-    expect(getMcpToolSchemaTool.isEnabled?.(baseCtx)).toBe(false);
-  });
-
-  it("is disabled when MCP-in-sandbox is not active for the turn", () => {
+  it("is enabled when search mode is active for the turn", () => {
     expect(
       getMcpToolSchemaTool.isEnabled?.({
-        mcpToolsEnabled: false,
+        useMcpToolSearch: true,
       } as unknown as AgentContext),
+    ).toBe(true);
+  });
+
+  it("is disabled in inline mode (search not active)", () => {
+    expect(
+      getMcpToolSchemaTool.isEnabled?.({
+        useMcpToolSearch: false,
+      } as unknown as AgentContext),
+    ).toBe(false);
+    expect(
+      getMcpToolSchemaTool.isEnabled?.({} as unknown as AgentContext),
     ).toBe(false);
   });
 });

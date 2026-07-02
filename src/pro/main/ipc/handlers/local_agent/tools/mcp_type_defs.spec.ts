@@ -1,9 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildMcpCapabilityMap,
   buildMcpTypeDefsBlock,
   buildMcpToolNameInventory,
   resolveMcpToolDefs,
+  estimateMcpInlineTokens,
+  getMcpInlineTokenThreshold,
+  MCP_INLINE_TOKEN_THRESHOLD,
   type McpToolDef,
 } from "./mcp_type_defs";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
@@ -213,6 +216,50 @@ describe("resolveMcpToolDefs", () => {
       "linear__create_issue",
     ]);
     expect(found.map((d) => d.jsName)).toEqual(["linear__create_issue"]);
+  });
+});
+
+describe("estimateMcpInlineTokens", () => {
+  it("is 0 for an empty catalog and grows with more tools", () => {
+    expect(estimateMcpInlineTokens([])).toBe(0);
+    const one = estimateMcpInlineTokens([
+      def({ jsName: "a__one", inputSchema: { type: "object" } }),
+    ]);
+    const many = estimateMcpInlineTokens(
+      Array.from({ length: 10 }, (_, i) =>
+        def({ jsName: `a__t${i}`, inputSchema: { type: "object" } }),
+      ),
+    );
+    expect(one).toBeGreaterThan(0);
+    expect(many).toBeGreaterThan(one);
+  });
+});
+
+describe("getMcpInlineTokenThreshold", () => {
+  const KEY = "DYAD_MCP_INLINE_TOKEN_THRESHOLD";
+  const original = process.env[KEY];
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY];
+    else process.env[KEY] = original;
+  });
+
+  it("defaults to MCP_INLINE_TOKEN_THRESHOLD", () => {
+    delete process.env[KEY];
+    expect(getMcpInlineTokenThreshold()).toBe(MCP_INLINE_TOKEN_THRESHOLD);
+  });
+
+  it("honors a valid env override (including 0)", () => {
+    process.env[KEY] = "0";
+    expect(getMcpInlineTokenThreshold()).toBe(0);
+    process.env[KEY] = "500";
+    expect(getMcpInlineTokenThreshold()).toBe(500);
+  });
+
+  it("falls back to the default for invalid values", () => {
+    process.env[KEY] = "not-a-number";
+    expect(getMcpInlineTokenThreshold()).toBe(MCP_INLINE_TOKEN_THRESHOLD);
+    process.env[KEY] = "-5";
+    expect(getMcpInlineTokenThreshold()).toBe(MCP_INLINE_TOKEN_THRESHOLD);
   });
 });
 

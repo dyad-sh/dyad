@@ -152,6 +152,14 @@ export interface AgentContext {
    * as enabled so non-handler callers fail closed.
    */
   enableAppBlueprint?: boolean;
+  /**
+   * Whether MCP tool search is active this turn. The handler sets this to true
+   * if both of the following are true:
+   * 1) the tool search setting is on, and
+   * 2) inlining every tool declaration would exceed the size threshold.
+   * When false, the sandbox inlines every tool declaration instead.
+   */
+  useMcpToolSearch?: boolean;
 }
 
 // ============================================================================

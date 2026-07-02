@@ -83,6 +83,9 @@ export class ManagedNodeInstallError extends DyadError {
 }
 
 let managedNodeInstallPromise: Promise<string> | null = null;
+const managedNodeInstallProgressListeners = new Set<
+  (progress: ManagedNodeInstallProgress) => void
+>();
 
 function getManagedNodeRootDir(): string {
   return path.join(getManagedToolsDir(), MANAGED_NODE_DIR);
@@ -134,13 +137,31 @@ export function isManagedNodeSupported(): boolean {
 }
 
 function getManagedNodeArtifact(): ManagedNodeArtifact | null {
-  if (process.platform !== "darwin" && process.platform !== "win32") {
-    return null;
+  const testArchiveUrl = IS_TEST_BUILD
+    ? process.env.DYAD_TEST_MANAGED_NODE_ARCHIVE_URL
+    : undefined;
+  if (testArchiveUrl) {
+    let fileName = "dyad-test-managed-node.tar.gz";
+    try {
+      const parsedUrl = new URL(testArchiveUrl);
+      fileName = path.basename(parsedUrl.pathname) || fileName;
+    } catch {
+      fileName = path.basename(testArchiveUrl) || fileName;
+    }
+    return {
+      fileName,
+      sha256: process.env.DYAD_TEST_MANAGED_NODE_SHA256 ?? "",
+    };
   }
-  const normalizedArch = os.arch() === "arm64" ? "arm64" : "x64";
-  const key =
-    `${process.platform}-${normalizedArch}` as SupportedManagedNodeKey;
-  return MANAGED_NODE_ARTIFACTS[key] ?? null;
+
+  if (process.platform === "darwin" || process.platform === "win32") {
+    const normalizedArch = os.arch() === "arm64" ? "arm64" : "x64";
+    const key =
+      `${process.platform}-${normalizedArch}` as SupportedManagedNodeKey;
+    return MANAGED_NODE_ARTIFACTS[key] ?? null;
+  }
+
+  return null;
 }
 
 export async function isManagedNodeInstalled(
@@ -240,18 +261,38 @@ async function downloadFile({
 
   await new Promise<void>((resolve, reject) => {
     const request = net.request(url);
+    let output: fs.WriteStream | null = null;
+    let settled = false;
+
+    const resolveOnce = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+
+    const handleError = (error: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      output?.destroy();
+      reject(error);
+    };
+
     request.on("response", (response) => {
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        reject(new Error(`Download returned HTTP ${response.statusCode}`));
+        handleError(new Error(`Download returned HTTP ${response.statusCode}`));
         return;
       }
 
       const totalBytes = Number(response.headers["content-length"] ?? 0);
       let receivedBytes = 0;
-      const output = fs.createWriteStream(destination);
+      output = fs.createWriteStream(destination);
       response.on("data", (chunk: Buffer) => {
         receivedBytes += chunk.length;
-        output.write(chunk);
+        output?.write(chunk);
         if (totalBytes > 0) {
           onProgress({
             phase: "downloading",
@@ -263,14 +304,21 @@ async function downloadFile({
         }
       });
       response.on("end", () => {
-        output.end();
+        output?.end();
       });
+      response.on("error", handleError);
       output.on("finish", () => {
-        output.close(() => resolve());
+        output?.close((error) => {
+          if (error) {
+            handleError(error);
+            return;
+          }
+          resolveOnce();
+        });
       });
-      output.on("error", reject);
+      output.on("error", handleError);
     });
-    request.on("error", reject);
+    request.on("error", handleError);
     request.end();
   });
 }
@@ -289,7 +337,7 @@ async function extractArchive({
       "-ExecutionPolicy",
       "Bypass",
       "-Command",
-      "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force",
+      "& { Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force }",
       archivePath,
       extractDir,
     ]);
@@ -389,10 +437,17 @@ async function cleanupOldManagedNodeVersions(): Promise<void> {
           entry.name !== MANAGED_NODE_VERSION,
       )
       .map((entry) =>
-        fsp.rm(path.join(rootDir, entry.name), {
-          recursive: true,
-          force: true,
-        }),
+        fsp
+          .rm(path.join(rootDir, entry.name), {
+            recursive: true,
+            force: true,
+          })
+          .catch((error) => {
+            logger.warn(
+              `Failed to clean up old managed Node.js version ${entry.name}:`,
+              error,
+            );
+          }),
       ),
   );
 }
@@ -419,16 +474,55 @@ function getExpectedSha256(artifact: ManagedNodeArtifact): string {
 export function installManagedNode(
   onProgress: (progress: ManagedNodeInstallProgress) => void,
 ): Promise<string> {
+  managedNodeInstallProgressListeners.add(onProgress);
   if (managedNodeInstallPromise) {
-    return managedNodeInstallPromise;
+    return managedNodeInstallPromise.finally(() => {
+      managedNodeInstallProgressListeners.delete(onProgress);
+    });
   }
 
-  managedNodeInstallPromise = installManagedNodeInternal(onProgress).finally(
-    () => {
-      managedNodeInstallPromise = null;
-    },
-  );
-  return managedNodeInstallPromise;
+  managedNodeInstallPromise = installManagedNodeInternal((progress) => {
+    for (const listener of managedNodeInstallProgressListeners) {
+      try {
+        listener(progress);
+      } catch (error) {
+        logger.warn("Managed Node.js progress listener failed:", error);
+      }
+    }
+  }).finally(() => {
+    managedNodeInstallPromise = null;
+    managedNodeInstallProgressListeners.clear();
+  });
+
+  return managedNodeInstallPromise.finally(() => {
+    managedNodeInstallProgressListeners.delete(onProgress);
+  });
+}
+
+async function removeArchiveBestEffort(archivePath: string): Promise<void> {
+  try {
+    await fsp.rm(archivePath, { force: true });
+  } catch (error) {
+    logger.warn("Failed to remove managed Node.js archive:", error);
+  }
+}
+
+async function installArchiveAndCleanUp({
+  archivePath,
+  expectedSha256,
+  onProgress,
+}: {
+  archivePath: string;
+  expectedSha256: string;
+  onProgress: (progress: ManagedNodeInstallProgress) => void;
+}): Promise<string> {
+  const nodeVersion = await installFromArchive({
+    archivePath,
+    expectedSha256,
+    onProgress,
+  });
+  await removeArchiveBestEffort(archivePath);
+  return nodeVersion;
 }
 
 async function installManagedNodeInternal(
@@ -458,7 +552,7 @@ async function installManagedNodeInternal(
         destination: archivePath,
         onProgress,
       });
-      return await installFromArchive({
+      return await installArchiveAndCleanUp({
         archivePath,
         expectedSha256,
         onProgress,

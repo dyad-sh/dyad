@@ -182,6 +182,9 @@ export function PreviewPanel() {
                   <PreviewNodeRequirement
                     appName={app?.name}
                     nodeDownloadUrl={nodeSystemInfo?.nodeDownloadUrl}
+                    managedNodeSupported={
+                      nodeSystemInfo?.managedNodeSupported ?? false
+                    }
                     isCheckFailed={nodeCheckFailed}
                     onCheckAgain={async () => {
                       await ipc.system.reloadEnvPath();
@@ -262,6 +265,7 @@ const NODE_POLL_INTERVAL_MS = 4000;
 function PreviewNodeRequirement({
   appName,
   nodeDownloadUrl,
+  managedNodeSupported,
   isCheckFailed,
   onCheckAgain,
   onInstallManagedNode,
@@ -269,6 +273,7 @@ function PreviewNodeRequirement({
 }: {
   appName?: string;
   nodeDownloadUrl?: string;
+  managedNodeSupported: boolean;
   isCheckFailed: boolean;
   onCheckAgain: () => Promise<void>;
   onInstallManagedNode: () => Promise<void>;
@@ -424,13 +429,24 @@ function PreviewNodeRequirement({
                     The free engine that runs your app on this computer. About
                     two minutes to install.
                   </p>
-                  <Button
-                    className="mt-4 h-10 w-full cursor-pointer"
-                    onClick={handleInstallManagedNode}
-                  >
-                    <Download className="size-4" />
-                    Install Node.js for me (~30 MB)
-                  </Button>
+                  {managedNodeSupported ? (
+                    <Button
+                      className="mt-4 h-10 w-full cursor-pointer"
+                      onClick={handleInstallManagedNode}
+                    >
+                      <Download className="size-4" />
+                      Install Node.js for me (~30 MB)
+                    </Button>
+                  ) : (
+                    <Button
+                      className="mt-4 h-10 w-full cursor-pointer"
+                      onClick={handleInstallNode}
+                      disabled={!nodeDownloadUrl}
+                    >
+                      <Download className="size-4" />
+                      Download Node.js from nodejs.org
+                    </Button>
+                  )}
                 </>
               )}
 
@@ -477,7 +493,7 @@ function PreviewNodeRequirement({
               </div>
 
               <div className="mt-2 flex items-center justify-center text-xs">
-                {nodeDownloadUrl && (
+                {nodeDownloadUrl && managedNodeSupported && (
                   <button
                     type="button"
                     onClick={handleInstallNode}

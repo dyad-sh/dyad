@@ -6,7 +6,7 @@ import { readRefreshedWindowsPath } from "../utils/windows_env_path";
 import log from "electron-log";
 import { existsSync } from "fs";
 import fs from "fs/promises";
-import { join } from "path";
+import { delimiter, join } from "path";
 import { readSettings, writeSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
@@ -16,6 +16,7 @@ import { safeSend } from "@/ipc/utils/safe_sender";
 import { getPathEnvKey } from "@/ipc/utils/path_env";
 import {
   applyManagedNodeToProcessPath,
+  getManagedNodeBinDir,
   getManagedNodeBinaryPath,
   getManagedNodeVersion,
   getNodeVersionAtPath,
@@ -47,6 +48,7 @@ let managedPnpmInstallPromise: Promise<string> | null = null;
 let managedPnpmImplicitInstallFailed = false;
 
 async function reloadNodePath() {
+  const pathKey = getPathEnvKey(process.env);
   if (platform() === "win32") {
     // Re-read PATH from the registry: spawning a child (e.g. `cmd /c echo
     // %PATH%`) can never observe PATH entries an installer added while Dyad
@@ -55,7 +57,7 @@ async function reloadNodePath() {
       process.env.PATH ?? "",
     );
     if (refreshedPath) {
-      process.env.PATH = refreshedPath;
+      process.env[pathKey] = refreshedPath;
     }
   } else {
     fixPath();
@@ -70,7 +72,6 @@ async function reloadNodePath() {
   } else if (settings.nodeRuntimePreference === "managed") {
     applyManagedNodeToProcessPath();
   }
-  const pathKey = getPathEnvKey(process.env);
   process.env[pathKey] = sanitizePathEnv(process.env)[pathKey] ?? "";
   applyManagedPnpmToProcessPath();
 }
@@ -206,16 +207,63 @@ function getNodeBinaryFromBinDir(binDir: string): string {
   return join(binDir, platform() === "win32" ? "node.exe" : "node");
 }
 
-async function getSystemNodePath(): Promise<string | null> {
+async function getSystemNodePath(
+  env: NodeJS.ProcessEnv = sanitizePathEnv(process.env),
+): Promise<string | null> {
   if (platform() === "win32") {
     const output = await runShellCommand("where node", {
-      env: sanitizePathEnv(process.env),
+      env,
     });
     return output?.split(/\r?\n/u)[0]?.trim() || null;
   }
   return runShellCommand("command -v node", {
-    env: sanitizePathEnv(process.env),
+    env,
   });
+}
+
+function normalizePathSegmentForComparison(segment: string): string {
+  const normalizedSegment = segment.trim().replace(/^"|"$/g, "");
+  if (platform() === "win32") {
+    return normalizedSegment.toLowerCase();
+  }
+  return normalizedSegment;
+}
+
+function removePathSegmentsFromEnv(
+  env: NodeJS.ProcessEnv,
+  segmentsToRemove: Array<string | null | undefined>,
+): NodeJS.ProcessEnv {
+  const pathKey = getPathEnvKey(env);
+  const currentPath = env[pathKey] ?? "";
+  const normalizedSegmentsToRemove = segmentsToRemove
+    .filter((segment): segment is string => !!segment)
+    .map(normalizePathSegmentForComparison);
+
+  if (normalizedSegmentsToRemove.length === 0 || !currentPath) {
+    return sanitizePathEnv({ ...env });
+  }
+
+  const filteredPath = currentPath
+    .split(delimiter)
+    .filter((segment) => {
+      const normalizedSegment = normalizePathSegmentForComparison(segment);
+      return !normalizedSegmentsToRemove.includes(normalizedSegment);
+    })
+    .join(delimiter);
+
+  return sanitizePathEnv({
+    ...env,
+    [pathKey]: filteredPath,
+  });
+}
+
+function getSystemNodeProbeEnv(
+  customNodePath?: string | null,
+): NodeJS.ProcessEnv {
+  return removePathSegmentsFromEnv(process.env, [
+    getManagedNodeBinDir(),
+    customNodePath,
+  ]);
 }
 
 function emptyNodeStatus(nodeDownloadUrl: string) {
@@ -249,13 +297,12 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
     nodePath = getNodeBinaryFromBinDir(settings.customNodePath);
     nodeVersion = await getNodeVersionAtPath(nodePath);
     source = "custom";
-    await reloadNodePath();
   } else {
-    const systemEnv = sanitizePathEnv(process.env);
+    const systemEnv = getSystemNodeProbeEnv(settings.customNodePath);
     const systemNodeVersion = await runShellCommand("node --version", {
       env: systemEnv,
     });
-    const systemNodePath = await getSystemNodePath();
+    const systemNodePath = await getSystemNodePath(systemEnv);
     systemNodeTooOld =
       !!systemNodeVersion && !isUsableSystemNodeVersion(systemNodeVersion);
 
@@ -267,7 +314,6 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
       source = "managed";
       nodeVersion = managedNodeVersion;
       nodePath = getManagedNodeBinaryPath();
-      applyManagedNodeToProcessPath();
     } else if (
       systemNodeVersion &&
       isUsableSystemNodeVersion(systemNodeVersion)
@@ -275,11 +321,6 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
       source = "system";
       nodeVersion = systemNodeVersion;
       nodePath = systemNodePath;
-    } else if (managedNodeInstalled && managedNodeVersion) {
-      source = "managed";
-      nodeVersion = managedNodeVersion;
-      nodePath = getManagedNodeBinaryPath();
-      applyManagedNodeToProcessPath();
     } else {
       nodeVersion = null;
       nodePath = systemNodePath;
@@ -530,6 +571,6 @@ export function registerNodeHandlers() {
     if (settings.nodeRuntimePreference === "managed") {
       return getManagedNodeBinaryPath();
     }
-    return getSystemNodePath();
+    return getSystemNodePath(getSystemNodeProbeEnv(settings.customNodePath));
   });
 }

@@ -39,7 +39,9 @@ export function NodePathSelector() {
     info: null,
   });
   const [isCheckingNode, setIsCheckingNode] = useState(false);
-  const [systemPath, setSystemPath] = useState<string>("Loading...");
+  const [systemPath, setSystemPath] = useState<string>(() =>
+    t("general.loading"),
+  );
 
   // Check Node.js status when component mounts or path changes
   useEffect(() => {
@@ -49,10 +51,10 @@ export function NodePathSelector() {
   const fetchSystemPath = async () => {
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
-      setSystemPath(debugInfo.nodePath || "System PATH (not available)");
+      setSystemPath(debugInfo.nodePath || t("general.systemPathUnavailable"));
     } catch (err) {
       console.error("Failed to fetch system path:", err);
-      setSystemPath("System PATH (not available)");
+      setSystemPath(t("general.systemPathUnavailable"));
     }
   };
 
@@ -98,14 +100,12 @@ export function NodePathSelector() {
         await ipc.system.reloadEnvPath();
         // Recheck Node.js status
         await checkNodeStatus();
-        showSuccess("Node.js path updated successfully");
+        showSuccess(t("general.nodePathUpdated"));
       } else if (result.path === null && result.canceled === false) {
-        showError(
-          `Could not find Node.js at the path "${result.selectedPath}"`,
-        );
+        showError(t("general.nodePathNotFound", { path: result.selectedPath }));
       }
     } catch (error: any) {
-      showError(`Failed to set Node.js path: ${error.message}`);
+      showError(t("general.nodePathUpdateFailed", { message: error.message }));
     } finally {
       setIsSelectingPath(false);
     }
@@ -119,9 +119,9 @@ export function NodePathSelector() {
       // Recheck Node.js status
       await fetchSystemPath();
       await checkNodeStatus();
-      showSuccess("Reset to system Node.js path");
+      showSuccess(t("general.resetToSystemNodePath"));
     } catch (error: any) {
-      showError(`Failed to reset Node.js path: ${error.message}`);
+      showError(t("general.resetNodePathFailed", { message: error.message }));
     }
   };
 
@@ -136,13 +136,21 @@ export function NodePathSelector() {
   const handlePreferenceChange = async (
     nodeRuntimePreference: "system" | "managed",
   ) => {
+    if (
+      nodeRuntimePreference === "managed" &&
+      nodeStatus.info?.managedNodeSupported !== true
+    ) {
+      return;
+    }
     try {
-      await updateSettings({ nodeRuntimePreference, customNodePath: null });
+      await updateSettings({ nodeRuntimePreference });
       await ipc.system.reloadEnvPath();
       await refreshNodeStatus();
     } catch (error: any) {
       showError(
-        `Failed to update Node.js runtime preference: ${error.message}`,
+        t("general.runtimePreferenceUpdateFailed", {
+          message: error.message,
+        }),
       );
     }
   };
@@ -153,10 +161,13 @@ export function NodePathSelector() {
     setInstallPhase(null);
     try {
       await ipc.system.installManagedNode();
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.user,
+      });
       await refreshNodeStatus();
-      showSuccess("Dyad-managed Node.js installed successfully");
+      showSuccess(t("general.managedNodeInstalled"));
     } catch (error: any) {
-      showError(error.message ?? "Failed to install Dyad-managed Node.js");
+      showError(error.message ?? t("general.managedNodeInstallFailed"));
     } finally {
       setIsInstallingManagedNode(false);
     }
@@ -168,9 +179,9 @@ export function NodePathSelector() {
       await ipc.system.removeManagedNode();
       await updateSettings({ nodeRuntimePreference: "system" });
       await refreshNodeStatus();
-      showSuccess("Removed Dyad-managed Node.js");
+      showSuccess(t("general.managedNodeRemoved"));
     } catch (error: any) {
-      showError(error.message ?? "Failed to remove Dyad-managed Node.js");
+      showError(error.message ?? t("general.managedNodeRemoveFailed"));
     } finally {
       setIsRemovingManagedNode(false);
     }
@@ -184,12 +195,31 @@ export function NodePathSelector() {
   const runtimePreference = settings.nodeRuntimePreference ?? "system";
   const activeRuntime = nodeStatus.info?.source;
   const managedInstalled = !!nodeStatus.info?.managedNodeInstalled;
-  const managedSupported = nodeStatus.info?.managedNodeSupported ?? true;
+  const managedSupported = nodeStatus.info?.managedNodeSupported ?? false;
   const systemTooOld = !!nodeStatus.info?.systemNodeTooOld;
+  const activeRuntimeSource =
+    activeRuntime === "managed"
+      ? t("general.nodeRuntimeSource.managed")
+      : activeRuntime === "custom"
+        ? t("general.nodeRuntimeSource.custom")
+        : t("general.nodeRuntimeSource.system");
+  const activeRuntimeLabel = nodeStatus.version
+    ? t("general.nodeRuntimeActiveVersion", {
+        version: nodeStatus.version,
+        source: activeRuntimeSource,
+      })
+    : systemTooOld
+      ? t("general.systemNodeTooOld")
+      : t("general.noUsableNodeFound");
+  const installPhaseLabel = installPhase
+    ? t(`general.managedNodeInstallPhases.${installPhase}`)
+    : t("general.managedNodeInstallPhases.starting");
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label className="text-sm font-medium">Node.js Runtime</Label>
+        <Label className="text-sm font-medium">
+          {t("general.nodeRuntime")}
+        </Label>
         <div
           data-testid="node-runtime-settings"
           className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
@@ -197,30 +227,19 @@ export function NodePathSelector() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm text-gray-700 dark:text-gray-300">
-                Active:{" "}
-                <span className="font-medium">
-                  {nodeStatus.version
-                    ? `Node ${nodeStatus.version} — ${
-                        activeRuntime === "managed"
-                          ? "Dyad-managed"
-                          : activeRuntime === "custom"
-                            ? "Custom path"
-                            : "System"
-                      }`
-                    : systemTooOld
-                      ? "System Node.js is too old"
-                      : "No usable Node.js found"}
-                </span>
+                {t("general.activeRuntime")}{" "}
+                <span className="font-medium">{activeRuntimeLabel}</span>
               </p>
               {systemTooOld && (
                 <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                  Dyad requires system Node.js v20 or newer, or a managed
-                  runtime.
+                  {t("general.systemNodeTooOldDescription")}
                 </p>
               )}
               {managedInstalled && nodeStatus.info?.managedNodeVersion && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Managed runtime: Node {nodeStatus.info.managedNodeVersion}
+                  {t("general.managedRuntimeVersion", {
+                    version: nodeStatus.info.managedNodeVersion,
+                  })}
                 </p>
               )}
             </div>
@@ -234,19 +253,22 @@ export function NodePathSelector() {
                     : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 }`}
                 onClick={() => handlePreferenceChange("system")}
+                aria-pressed={runtimePreference === "system"}
               >
-                System
+                {t("general.runtimeSystem")}
               </button>
               <button
                 type="button"
-                className={`h-8 rounded px-3 text-sm ${
+                className={`h-8 rounded px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
                   runtimePreference === "managed"
                     ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
                     : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 }`}
                 onClick={() => handlePreferenceChange("managed")}
+                disabled={!managedSupported}
+                aria-pressed={runtimePreference === "managed"}
               >
-                Managed
+                {t("general.runtimeManaged")}
               </button>
             </div>
           </div>
@@ -268,8 +290,8 @@ export function NodePathSelector() {
                 <Download className="w-4 h-4" />
               )}
               {managedInstalled
-                ? "Reinstall managed Node.js"
-                : "Install managed Node.js"}
+                ? t("general.reinstallManagedNode")
+                : t("general.installManagedNode")}
             </Button>
             {managedInstalled && (
               <Button
@@ -283,7 +305,7 @@ export function NodePathSelector() {
                 ) : (
                   <Trash2 className="w-4 h-4" />
                 )}
-                Remove managed Node.js
+                {t("general.removeManagedNode")}
               </Button>
             )}
           </div>
@@ -297,7 +319,10 @@ export function NodePathSelector() {
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {installPhase ?? "starting"} {installProgress}%
+                {t("general.installProgress", {
+                  phase: installPhaseLabel,
+                  percent: installProgress,
+                })}
               </p>
             </div>
           )}
@@ -344,7 +369,7 @@ export function NodePathSelector() {
                 </span>
                 {isCustomPath && (
                   <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
-                    Custom
+                    {t("general.custom")}
                   </span>
                 )}
               </div>

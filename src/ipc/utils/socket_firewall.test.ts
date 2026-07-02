@@ -96,6 +96,16 @@ describe("getPackageManagerCommandEnv", () => {
       [managedPnpmBinDir, "/bin"].join(path.delimiter),
     );
   });
+
+  it("drops empty PATH segments before prepending managed pnpm", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+    const existingDir = os.tmpdir();
+    const pathValue = [existingDir, "", "   "].join(path.delimiter);
+
+    expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
+      [managedPnpmBinDir, existingDir].join(path.delimiter),
+    );
+  });
 });
 
 describe("detectPreferredPackageManager", () => {

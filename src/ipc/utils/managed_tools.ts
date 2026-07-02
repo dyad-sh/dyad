@@ -4,6 +4,12 @@ import { getUserDataPath } from "@/paths/paths";
 import { getPathEnvKey } from "@/ipc/utils/path_env";
 
 export const MANAGED_TOOLS_DIR = "managed-tools";
+const SANITIZED_PATH_CACHE_TTL_MS = 5_000;
+
+const sanitizedPathCache = new Map<
+  string,
+  { expiresAt: number; sanitizedPath: string }
+>();
 
 export function getManagedToolsDir(): string {
   return path.join(getUserDataPath(), MANAGED_TOOLS_DIR);
@@ -66,6 +72,40 @@ function normalizePathSegmentForExistenceCheck(
   return trimmed.replace(/^~(?=$|[/\\])/, process.env.HOME ?? "~");
 }
 
+function getEnvValueCaseInsensitive(
+  env: NodeJS.ProcessEnv,
+  key: string,
+): string {
+  const envKey = Object.keys(env).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+  );
+  return envKey ? `present:${env[envKey] ?? ""}` : "missing:";
+}
+
+function getSanitizedPathCacheKey({
+  env,
+  pathKey,
+  currentPath,
+}: {
+  env: NodeJS.ProcessEnv;
+  pathKey: string;
+  currentPath: string;
+}): string {
+  const referencedEnvValues =
+    process.platform === "win32"
+      ? Array.from(currentPath.matchAll(/%([^%]+)%/g))
+          .map((match) => {
+            const key = match[1] ?? "";
+            return `${key.toLowerCase()}=${getEnvValueCaseInsensitive(env, key)}`;
+          })
+          .join("\0")
+      : `HOME=${process.env.HOME ?? ""}`;
+
+  return [process.platform, pathKey, currentPath, referencedEnvValues].join(
+    "\0",
+  );
+}
+
 export function sanitizePathEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
@@ -75,13 +115,35 @@ export function sanitizePathEnv(
     return env;
   }
 
+  const cacheKey = getSanitizedPathCacheKey({ env, pathKey, currentPath });
+  const cached = sanitizedPathCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) {
+    if (cached.sanitizedPath === currentPath) {
+      return env;
+    }
+    return {
+      ...env,
+      [pathKey]: cached.sanitizedPath,
+    };
+  }
+
   const pathSegments = currentPath.split(path.delimiter);
   const existingSegments = pathSegments.filter((segment) => {
+    if (!segment.trim()) {
+      return false;
+    }
     const pathToCheck = normalizePathSegmentForExistenceCheck(segment, env);
     if (!pathToCheck) {
       return true;
     }
     return fs.existsSync(pathToCheck);
+  });
+  const sanitizedPath = existingSegments.join(path.delimiter);
+
+  sanitizedPathCache.set(cacheKey, {
+    expiresAt: now + SANITIZED_PATH_CACHE_TTL_MS,
+    sanitizedPath,
   });
 
   if (existingSegments.length === pathSegments.length) {
@@ -90,6 +152,6 @@ export function sanitizePathEnv(
 
   return {
     ...env,
-    [pathKey]: existingSegments.join(path.delimiter),
+    [pathKey]: sanitizedPath,
   };
 }

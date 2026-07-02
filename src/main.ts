@@ -510,10 +510,12 @@ export async function onReady() {
     }
   });
 
-  if (settings.nodeRuntimePreference === "managed") {
+  const shouldUseManagedNode =
+    settings.nodeRuntimePreference === "managed" && !settings.customNodePath;
+  if (shouldUseManagedNode) {
     applyManagedNodeToProcessPath();
+    void maybeUpgradeManagedNode();
   }
-  void maybeUpgradeManagedNode();
 
   await onFirstRunMaybe(settings);
   createWindow();
@@ -521,8 +523,9 @@ export async function onReady() {
 
   void getManagedNodeVersion().then((managedNodeVersion) => {
     sendTelemetryEvent("runtime_source", {
-      runtime_source:
-        settings.nodeRuntimePreference === "managed" && managedNodeVersion
+      runtime_source: settings.customNodePath
+        ? "custom"
+        : shouldUseManagedNode && managedNodeVersion
           ? "managed"
           : "system",
       managed_node_installed: !!managedNodeVersion,

@@ -68,6 +68,10 @@ export default function HomePage() {
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [isAiSetupDialogOpen, setIsAiSetupDialogOpen] = useState(false);
+  const [
+    shouldOpenAiSetupDialogWhenProvidersLoad,
+    setShouldOpenAiSetupDialogWhenProvidersLoad,
+  ] = useState(false);
   const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
@@ -119,15 +123,43 @@ export default function HomePage() {
     }
   }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading, envVars]);
 
+  const openAiSetupDialog = useCallback(() => {
+    posthog.capture("home:ai-setup-dialog-open");
+    setIsAiSetupDialogOpen(true);
+  }, [posthog]);
+
+  useEffect(() => {
+    if (
+      !shouldOpenAiSetupDialogWhenProvidersLoad ||
+      isLoadingLanguageModelProviders
+    ) {
+      return;
+    }
+
+    setShouldOpenAiSetupDialogWhenProvidersLoad(false);
+    if (!isAnyProviderSetup()) {
+      openAiSetupDialog();
+    }
+  }, [
+    isAnyProviderSetup,
+    isLoadingLanguageModelProviders,
+    openAiSetupDialog,
+    shouldOpenAiSetupDialogWhenProvidersLoad,
+  ]);
+
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];
     const selectedApp = options?.selectedApp;
 
     if (!inputValue.trim() && attachments.length === 0) return false;
 
-    if (!isLoadingLanguageModelProviders && !isAnyProviderSetup()) {
-      posthog.capture("home:ai-setup-dialog-open");
-      setIsAiSetupDialogOpen(true);
+    if (!isAnyProviderSetup()) {
+      if (isLoadingLanguageModelProviders) {
+        setShouldOpenAiSetupDialogWhenProvidersLoad(true);
+        return false;
+      }
+
+      openAiSetupDialog();
       return false;
     }
 

@@ -5,6 +5,8 @@ import { cloudProviders } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 import { isProviderSetup as isProviderSetupUtil } from "@/lib/providerUtils";
 
+const localProviders = new Set(["ollama", "lmstudio"]);
+
 export function useLanguageModelProviders() {
   const { settings, envVars } = useSettings();
 
@@ -25,6 +27,14 @@ export function useLanguageModelProviders() {
   };
 
   const isAnyProviderSetup = () => {
+    if (
+      settings?.selectedModel.provider &&
+      localProviders.has(settings.selectedModel.provider) &&
+      settings.selectedModel.name.trim()
+    ) {
+      return true;
+    }
+
     // Check hardcoded cloud providers
     if (cloudProviders.some((provider) => isProviderSetup(provider))) {
       return true;

@@ -98,7 +98,7 @@ export function PreviewPanel() {
     selectedAppId !== null &&
     previewMode === "preview" &&
     !isCheckingNode &&
-    (!nodeVersion || nodeCheckFailed);
+    !nodeVersion;
 
   const latestMessage =
     consoleEntries.length > 0

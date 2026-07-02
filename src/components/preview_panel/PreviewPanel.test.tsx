@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PreviewPanel } from "./PreviewPanel";
+import {
+  PreviewPanel,
+  resetPreviewAutoInstallGuardForTests,
+} from "./PreviewPanel";
 
 const mocks = vi.hoisted(() => ({
   currentConsoleEntriesAtom: Symbol("currentConsoleEntriesAtom"),
@@ -173,6 +176,7 @@ vi.mock("./SecurityPanel", () => ({
 
 describe("PreviewPanel", () => {
   beforeEach(() => {
+    resetPreviewAutoInstallGuardForTests();
     mocks.nodeCheckFailed = false;
     mocks.cancelManagedNodeInstall.mockReset();
     mocks.installManagedNode.mockReset();
@@ -215,6 +219,23 @@ describe("PreviewPanel", () => {
       expect(mocks.installManagedNode).toHaveBeenCalledTimes(1);
     });
     expect(mocks.runApp).not.toHaveBeenCalled();
+  });
+
+  it("does not restart the auto-install when the setup card remounts", async () => {
+    mocks.nodeVersion = "";
+
+    const { unmount } = render(<PreviewPanel />);
+    await waitFor(() => {
+      expect(mocks.installManagedNode).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+
+    render(<PreviewPanel />);
+
+    expect(
+      await screen.findByText("Install Node.js to see your preview"),
+    ).toBeTruthy();
+    expect(mocks.installManagedNode).toHaveBeenCalledTimes(1);
   });
 
   it("persists opt-out when cancelling automatic managed Node install", async () => {

@@ -93,6 +93,9 @@ test("managed Node auto-installs from the preview setup card and starts the app"
     .toBe("managed");
 
   await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
+  await expect(
+    po.previewPanel.getPreviewIframeElement().contentFrame().locator("body"),
+  ).toContainText("managed node ok", { timeout: Timeout.EXTRA_LONG });
 });
 
 test("managed Node exposes install, preference, and removal controls in Settings", async ({

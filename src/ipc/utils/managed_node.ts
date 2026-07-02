@@ -353,9 +353,14 @@ function runProcess(
       reject(error);
     }
 
+    let abortRequested = false;
+
     function handleAbort() {
+      // Reject from the "close" handler instead of here so callers only see
+      // the cancellation after the child has released its file handles;
+      // rejecting immediately lets cleanup race the dying process.
+      abortRequested = true;
       child.kill();
-      rejectOnce(createManagedNodeInstallCancelledError());
     }
 
     options.signal?.addEventListener("abort", handleAbort, { once: true });
@@ -364,7 +369,9 @@ function runProcess(
     });
     child.once("error", rejectOnce);
     child.once("close", (code) => {
-      if (code === 0) {
+      if (abortRequested) {
+        rejectOnce(createManagedNodeInstallCancelledError());
+      } else if (code === 0) {
         resolveOnce();
       } else {
         rejectOnce(
@@ -617,8 +624,10 @@ async function installFromArchive({
     }
 
     onProgress({ phase: "installing", percent: 99 });
+    // The swap is the point of no return: the new runtime now lives at the
+    // final install dir, so a late cancel must not report the install as
+    // cancelled or skip the activation steps below.
     await swapManagedNodeInstallDir({ tempInstallDir, finalInstallDir });
-    throwIfManagedNodeInstallCancelled(signal);
     await cleanupOldManagedNodeVersions();
     clearSanitizedPathCache();
     applyManagedNodeToProcessPath();
@@ -769,6 +778,18 @@ function getExpectedSha256(artifact: ManagedNodeArtifact): string {
 export function installManagedNode(
   onProgress: (progress: ManagedNodeInstallProgress) => void,
 ): Promise<string> {
+  if (
+    managedNodeInstallPromise &&
+    managedNodeInstallAbortController?.signal.aborted
+  ) {
+    // A cancelled install is still winding down. Joining it would reject with
+    // UserCancelled and make this request a silent no-op, so wait for it to
+    // settle and start fresh.
+    return managedNodeInstallPromise
+      .catch(() => {})
+      .then(() => installManagedNode(onProgress));
+  }
+
   managedNodeInstallProgressListeners.add(onProgress);
   if (managedNodeInstallPromise) {
     return managedNodeInstallPromise.finally(() => {

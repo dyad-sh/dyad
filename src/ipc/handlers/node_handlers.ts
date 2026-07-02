@@ -535,6 +535,9 @@ export function registerNodeHandlers() {
         nodeRuntimePreference: customNode
           ? (settings.nodeRuntimePreference ?? "system")
           : "managed",
+        // A completed install supersedes any earlier cancel; let future
+        // previews auto-install again.
+        disablePreviewNodeAutoInstall: false,
       });
       await reloadNodePath();
       managedPnpmImplicitInstallFailed = false;

@@ -188,7 +188,7 @@ export function PreviewPanel() {
                     }
                     autoInstallManagedNode={
                       !!settings &&
-                      settings.disablePreviewNodeAutoInstall !== true &&
+                      !settings.disablePreviewNodeAutoInstall &&
                       (nodeSystemInfo?.managedNodeSupported ?? false)
                     }
                     isCheckFailed={nodeCheckFailed}
@@ -280,6 +280,14 @@ function isManagedNodeInstallCancelError(error: unknown) {
   );
 }
 
+// Module-scoped so a remount of the setup card (e.g. switching preview tabs)
+// does not silently restart an install the user already saw fail or cancel.
+let autoInstallAttempted = false;
+
+export function resetPreviewAutoInstallGuardForTests() {
+  autoInstallAttempted = false;
+}
+
 function PreviewNodeRequirement({
   appName,
   nodeDownloadUrl,
@@ -308,7 +316,6 @@ function PreviewNodeRequirement({
   const [installPhase, setInstallPhase] = useState<string>("starting");
   const [isSelectingNodeFolder, setIsSelectingNodeFolder] = useState(false);
   const [hasOpenedInstaller, setHasOpenedInstaller] = useState(false);
-  const autoInstallStartedRef = useRef(false);
 
   useEffect(() => {
     return ipc.events.system.onManagedNodeInstallProgress((progress) => {
@@ -362,10 +369,10 @@ function PreviewNodeRequirement({
   }, [onInstallManagedNode]);
 
   useEffect(() => {
-    if (!autoInstallManagedNode || autoInstallStartedRef.current) {
+    if (!autoInstallManagedNode || autoInstallAttempted) {
       return;
     }
-    autoInstallStartedRef.current = true;
+    autoInstallAttempted = true;
     void handleInstallManagedNode();
   }, [autoInstallManagedNode, handleInstallManagedNode]);
 

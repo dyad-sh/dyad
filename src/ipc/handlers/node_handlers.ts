@@ -107,6 +107,21 @@ export function registerNodeHandlers() {
     );
 
     const nodeDownloadUrl = getNodeDownloadUrl();
+    const devNodejsStatus = process.env.DYAD_DEV_NODEJS_STATUS;
+
+    if (process.env.NODE_ENV === "development" && devNodejsStatus) {
+      logger.log("Using dev Node.js status override:", devNodejsStatus);
+      if (devNodejsStatus === "missing") {
+        return { nodeVersion: null, pnpmVersion: null, nodeDownloadUrl };
+      }
+      if (devNodejsStatus === "installed") {
+        return {
+          nodeVersion: "v22.22.3",
+          pnpmVersion: "9.0.0",
+          nodeDownloadUrl,
+        };
+      }
+    }
 
     // Test-only: Return mock state if set
     if (IS_TEST_BUILD && mockNodeInstalled !== null) {

@@ -113,6 +113,11 @@ export function getTypeScriptCachePath(): string {
 
 export function getUserDataPath(): string {
   const electron = getElectron();
+  const devUserDataDir = process.env.DYAD_DEV_USER_DATA_DIR?.trim();
+
+  if (process.env.NODE_ENV === "development" && devUserDataDir) {
+    return path.resolve(devUserDataDir);
+  }
 
   // When running in Electron and app is ready
   if (process.env.NODE_ENV !== "development" && electron) {

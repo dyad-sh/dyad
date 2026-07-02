@@ -179,6 +179,9 @@ export const createChatCompletionHandler =
 
     // Helper to extract text content from a message (handles both string and array content)
     const getTextContent = (msg: any): string => {
+      if (!msg) {
+        return "";
+      }
       if (typeof msg.content === "string") {
         return msg.content;
       } else if (Array.isArray(msg.content)) {
@@ -186,6 +189,10 @@ export const createChatCompletionHandler =
         return textPart ? textPart.text : "";
       }
       return "";
+    };
+    const extractTestCaseName = (text: string): string | null => {
+      const match = text.match(/(?:^|\s)tc=([^[]+)/);
+      return match?.[1]?.trim().split(/\s+/)[0] || null;
     };
 
     // Get the last user message's text content for other checks
@@ -472,15 +479,8 @@ export default Index;
       messageContent = `counter=${globalCounter}`;
     }
 
-    // Check if the last message starts with "tc=" to load test case file
-    if (
-      lastMessage &&
-      lastMessage.content &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("tc=") &&
-      !lastMessage.content.startsWith("tc=local-agent/")
-    ) {
-      const testCaseName = lastMessage.content.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
+    const testCaseName = extractTestCaseName(getTextContent(lastMessage));
+    if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       console.error(`* Loading test case: ${testCaseName}`);
       const testFilePath = path.join(
         __dirname,

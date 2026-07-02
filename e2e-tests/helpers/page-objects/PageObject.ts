@@ -317,23 +317,54 @@ export class PageObject {
   }
 
   async pinBuildChatModeForSetup() {
-    await this.page.evaluate(async () => {
-      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-        selectedChatMode: "build",
-        defaultChatMode: "build",
-      });
-    });
+    await this.expectBuildChatModeForSetup({ timeout: Timeout.MEDIUM });
+  }
+
+  async expectBuildChatModeForSetup({ timeout }: { timeout: number }) {
     await expect
       .poll(
         () => ({
           selectedChatMode: this.settings.recordSettings().selectedChatMode,
           defaultChatMode: this.settings.recordSettings().defaultChatMode,
         }),
-        { timeout: Timeout.MEDIUM },
+        { timeout },
       )
       .toEqual({
         selectedChatMode: "build",
         defaultChatMode: "build",
+      });
+  }
+
+  async forceBuildChatModeForSetup() {
+    await expect(async () => {
+      await this.page.evaluate(async () => {
+        await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+          selectedChatMode: "build",
+          defaultChatMode: "build",
+        });
+      });
+      await this.expectBuildChatModeForSetup({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
+  }
+
+  async waitForDyadProviderSetup() {
+    await expect
+      .poll(
+        () => {
+          const settings = this.settings.recordSettings();
+          const providerSettings = settings.providerSettings as
+            | { auto?: { apiKey?: { value?: string } } }
+            | undefined;
+          return {
+            enableDyadPro: settings.enableDyadPro,
+            dyadApiKey: providerSettings?.auto?.apiKey?.value,
+          };
+        },
+        { timeout: Timeout.MEDIUM },
+      )
+      .toEqual({
+        enableDyadPro: true,
+        dyadApiKey: "testdyadkey",
       });
   }
 
@@ -367,7 +398,7 @@ export class PageObject {
     await this.settings.setUpTestProvider();
     await this.settings.setUpTestModel();
     if (!enableBasicAgent) {
-      await this.pinBuildChatModeForSetup();
+      await this.forceBuildChatModeForSetup();
     }
     await this.navigation.goToAppsTab();
     if (!enableBasicAgent) {
@@ -375,7 +406,7 @@ export class PageObject {
     }
     await this.modelPicker.selectTestModel();
     if (!enableBasicAgent) {
-      await this.pinBuildChatModeForSetup();
+      await this.forceBuildChatModeForSetup();
     }
   }
 
@@ -394,8 +425,9 @@ export class PageObject {
       await this.settings.toggleAutoApprove();
     }
     await this.settings.setUpDyadProvider();
+    await this.waitForDyadProviderSetup();
     if (!localAgent) {
-      await this.pinBuildChatModeForSetup();
+      await this.forceBuildChatModeForSetup();
     }
     await this.navigation.goToAppsTab();
     if (!localAgent) {
@@ -410,7 +442,7 @@ export class PageObject {
       });
     }
     if (!localAgent) {
-      await this.pinBuildChatModeForSetup();
+      await this.forceBuildChatModeForSetup();
     }
   }
 

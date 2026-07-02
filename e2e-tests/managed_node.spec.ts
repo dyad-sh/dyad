@@ -23,7 +23,7 @@ function createManagedNodeFixtureArchive(userDataDir: string) {
     nodePath,
     [
       "#!/bin/sh",
-      `if [ "$1" = "--version" ]; then echo "${MANAGED_NODE_VERSION}"; exit 0; fi`,
+      `case " $* " in *" --version "*) echo "${MANAGED_NODE_VERSION}"; exit 0;; esac`,
       `exec "${process.execPath.replace(/"/g, '\\"')}" "$@"`,
       "",
     ].join("\n"),

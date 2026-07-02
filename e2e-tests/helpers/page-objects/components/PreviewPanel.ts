@@ -138,10 +138,26 @@ export class PreviewPanel {
     await this.page.getByTestId("toggle-preview-panel-button").click();
   }
 
+  async ensurePreviewPanelOpen() {
+    const previewPanel = this.page.locator("#preview-panel");
+    const isOpen = async () => {
+      const sizeAttr = await previewPanel.getAttribute("data-panel-size");
+      return sizeAttr !== null && parseFloat(sizeAttr) >= 5;
+    };
+
+    if (!(await isOpen())) {
+      await this.clickTogglePreviewPanel();
+    }
+
+    await expect.poll(isOpen, { timeout: Timeout.MEDIUM }).toBe(true);
+  }
+
   async clickPreviewPickElement() {
-    await this.page
-      .getByTestId("preview-pick-element-button")
-      .click({ timeout: Timeout.EXTRA_LONG });
+    await this.ensurePreviewPanelOpen();
+    const button = this.page.getByTestId("preview-pick-element-button");
+    await expect(button).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+    await expect(button).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+    await button.click({ timeout: Timeout.EXTRA_LONG });
   }
 
   async clickDeselectComponent(options?: { index?: number }) {

@@ -31,6 +31,7 @@ import { getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
+import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import {
   Dialog,
   DialogContent,
@@ -65,6 +66,7 @@ export default function HomePage() {
   const initialChatMode = useInitialChatMode();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [isAiSetupDialogOpen, setIsAiSetupDialogOpen] = useState(false);
@@ -204,6 +206,8 @@ export default function HomePage() {
         }
       }
 
+      const openedPreviewSetupPromise = openPreviewIfSetupRequired(appId);
+
       // Stream the message with attachments
       streamMessage({
         prompt: inputValue,
@@ -215,9 +219,12 @@ export default function HomePage() {
       await new Promise((resolve) =>
         setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
       );
+      const openedPreviewSetup = await openedPreviewSetupPromise;
 
       setInputValue("");
-      setIsPreviewOpen(false);
+      if (!openedPreviewSetup) {
+        setIsPreviewOpen(false);
+      }
       await refreshApps();
       await invalidateAppQuery(queryClient, { appId });
       // Invalidate chats so ChatTabs picks up the new chat immediately.

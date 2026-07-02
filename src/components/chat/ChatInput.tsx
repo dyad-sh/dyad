@@ -112,6 +112,7 @@ import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 
 const showTokenBarAtom = atom(false);
 
@@ -144,6 +145,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const initialChatMode = useInitialChatMode();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
+  const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
   const {
     streamMessage,
     isStreaming,
@@ -586,6 +588,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       showInfo("We've switched you to a new chat for a clean context");
 
+      void openPreviewIfSetupRequired(appId);
       await streamMessage({
         prompt: promptWithImages,
         chatId: newChatId,
@@ -639,6 +642,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     clearComposerAfterSubmit();
 
     // Send message with attachments and clear them after sending
+    void openPreviewIfSetupRequired(appId);
     await streamMessage({
       prompt: currentInput,
       chatId,

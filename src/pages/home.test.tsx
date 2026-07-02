@@ -9,8 +9,10 @@ const mocks = vi.hoisted(() => ({
   createChat: vi.fn(),
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
+  openPreviewIfSetupRequired: vi.fn(),
   posthogCapture: vi.fn(),
   refreshApps: vi.fn(),
+  setAtom: vi.fn(),
   streamMessage: vi.fn(),
   updateSettings: vi.fn(),
 }));
@@ -18,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
   useAtom: () => ["Build a notes app", vi.fn()],
-  useSetAtom: () => vi.fn(),
+  useSetAtom: () => mocks.setAtom,
 }));
 
 vi.mock("posthog-js/react", () => ({
@@ -71,6 +73,10 @@ vi.mock("@/hooks/useFreeAgentQuota", () => ({
 
 vi.mock("@/hooks/useInitialChatMode", () => ({
   useInitialChatMode: () => "build",
+}));
+
+vi.mock("@/hooks/useOpenPreviewIfSetupRequired", () => ({
+  useOpenPreviewIfSetupRequired: () => mocks.openPreviewIfSetupRequired,
 }));
 
 vi.mock("@/hooks/useStreamChat", () => ({
@@ -153,7 +159,10 @@ describe("HomePage", () => {
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
     mocks.posthogCapture.mockReset();
+    mocks.openPreviewIfSetupRequired.mockReset();
+    mocks.openPreviewIfSetupRequired.mockResolvedValue(false);
     mocks.refreshApps.mockReset();
+    mocks.setAtom.mockReset();
     mocks.streamMessage.mockReset();
     mocks.updateSettings.mockReset();
     mocks.createApp.mockResolvedValue({
@@ -205,6 +214,27 @@ describe("HomePage", () => {
         prompt: "Build a notes app",
       }),
     );
+    expect(mocks.openPreviewIfSetupRequired).toHaveBeenCalledWith(1);
+    await waitFor(() => {
+      expect(mocks.setAtom).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("keeps the preview panel open when setup was opened for the new app", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.openPreviewIfSetupRequired.mockResolvedValue(true);
+
+    renderHomePage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit home prompt" }));
+
+    await waitFor(() => {
+      expect(mocks.openPreviewIfSetupRequired).toHaveBeenCalledWith(1);
+    });
+    await waitFor(() => {
+      expect(mocks.streamMessage).toHaveBeenCalled();
+    });
+    expect(mocks.setAtom).not.toHaveBeenCalledWith(false);
   });
 });
 

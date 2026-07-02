@@ -125,7 +125,7 @@ async function createValidationModel(
           providerSettings: {
             ...settings.providerSettings,
             auto: {
-              ...settings.providerSettings.auto,
+              ...settings.providerSettings?.auto,
               apiKey: { value: apiKey },
             },
           },
@@ -166,7 +166,7 @@ function classifyValidationError(
   const statusCode = extractStatusCode(error);
 
   logger.info(
-    `Validation failed for ${providerDisplayName}: status=${statusCode ?? "unknown"} message=${errorMessage}`,
+    `Validation failed for ${providerDisplayName}: status=${statusCode ?? "unknown"} authError=${isAuthError(errorMessage)}`,
   );
 
   if (statusCode === 401 || statusCode === 403 || isAuthError(errorMessage)) {
@@ -202,8 +202,8 @@ function extractErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function extractStatusCode(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null) {
+function extractStatusCode(error: unknown, depth = 0): number | undefined {
+  if (depth > 5 || typeof error !== "object" || error === null) {
     return undefined;
   }
 
@@ -218,7 +218,7 @@ function extractStatusCode(error: unknown): number | undefined {
   if (typeof status === "number") {
     return status;
   }
-  return extractStatusCode(candidate.cause);
+  return extractStatusCode(candidate.cause, depth + 1);
 }
 
 function isAuthError(message: string) {

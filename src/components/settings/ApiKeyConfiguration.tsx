@@ -34,6 +34,7 @@ interface ApiKeyConfigurationProps {
   envVars: Record<string, string | undefined>;
   envVarName?: string;
   isSaving: boolean;
+  isTesting: boolean;
   saveError: string | null;
   testSuccessMessage: string | null;
   apiKeyInput: string;
@@ -52,6 +53,7 @@ export function ApiKeyConfiguration({
   envVars,
   envVarName,
   isSaving,
+  isTesting,
   saveError,
   testSuccessMessage,
   apiKeyInput,
@@ -99,6 +101,7 @@ export function ApiKeyConfiguration({
     !userApiKey.startsWith("Invalid Key") &&
     userApiKey !== "Not Set";
   const hasEnvKey = !!envApiKey;
+  const isMutatingKey = isSaving || isTesting;
 
   const activeKeySource = isValidUserKey
     ? "settings"
@@ -137,7 +140,7 @@ export function ApiKeyConfiguration({
                   variant="destructive"
                   size="sm"
                   onClick={onDeleteKey}
-                  disabled={isSaving}
+                  disabled={isMutatingKey}
                   className="flex items-center gap-1 h-7 px-2"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -205,7 +208,7 @@ export function ApiKeyConfiguration({
                     await handleSave(text);
                   }
                 }}
-                disabled={isSaving}
+                disabled={isMutatingKey}
                 variant="outline"
                 size="icon"
                 title="Paste from clipboard and save"
@@ -216,7 +219,7 @@ export function ApiKeyConfiguration({
 
               <Button
                 onClick={() => handleSave(apiKeyInput)}
-                disabled={isSaving || !apiKeyInput}
+                disabled={isMutatingKey || !apiKeyInput}
               >
                 {isSaving ? "Saving..." : "Save Key"}
               </Button>
@@ -225,9 +228,9 @@ export function ApiKeyConfiguration({
                   type="button"
                   variant="outline"
                   onClick={() => onTestKey(apiKeyInput || userApiKey || "")}
-                  disabled={isSaving || (!apiKeyInput && !userApiKey)}
+                  disabled={isMutatingKey || (!apiKeyInput && !userApiKey)}
                 >
-                  {isSaving ? "Testing..." : "Test Key"}
+                  {isTesting ? "Testing..." : "Test Key"}
                 </Button>
               )}
             </div>

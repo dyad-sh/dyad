@@ -301,6 +301,12 @@ export default function HomePage() {
 
   const hasAttemptedAutoResumeRef = useRef(false);
   useEffect(() => {
+    if (!shouldResumeFirstPrompt) {
+      hasAttemptedAutoResumeRef.current = false;
+    }
+  }, [shouldResumeFirstPrompt]);
+
+  useEffect(() => {
     if (
       !shouldResumeFirstPrompt ||
       isLoadingLanguageModelProviders ||

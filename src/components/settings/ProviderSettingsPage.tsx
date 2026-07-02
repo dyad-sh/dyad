@@ -88,6 +88,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
 
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(
     null,
@@ -185,7 +186,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     if (!normalizedValue) {
       return;
     }
-    setIsSaving(true);
+    setIsTesting(true);
     setSaveError(null);
     setTestSuccessMessage(null);
     try {
@@ -245,7 +246,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       console.error("Error saving API key:", error);
       setSaveError(error.message || "Failed to save API key.");
     } finally {
-      setIsSaving(false);
+      setIsTesting(false);
     }
   };
 
@@ -484,6 +485,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               envVars={envVars}
               envVarName={envVarName}
               isSaving={isSaving}
+              isTesting={isTesting}
               saveError={saveError}
               testSuccessMessage={testSuccessMessage}
               apiKeyInput={apiKeyInput}

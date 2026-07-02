@@ -316,7 +316,7 @@ export class PageObject {
     await this.githubConnector.resetRepos();
   }
 
-  private async pinBuildChatModeForSetup() {
+  async pinBuildChatModeForSetup() {
     await this.page.evaluate(async () => {
       await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
         selectedChatMode: "build",
@@ -375,11 +375,7 @@ export class PageObject {
     }
     await this.modelPicker.selectTestModel();
     if (!enableBasicAgent) {
-      await expect
-        .poll(() => this.settings.recordSettings().selectedChatMode, {
-          timeout: Timeout.MEDIUM,
-        })
-        .toBe("build");
+      await this.pinBuildChatModeForSetup();
     }
   }
 
@@ -414,11 +410,7 @@ export class PageObject {
       });
     }
     if (!localAgent) {
-      await expect
-        .poll(() => this.settings.recordSettings().selectedChatMode, {
-          timeout: Timeout.MEDIUM,
-        })
-        .toBe("build");
+      await this.pinBuildChatModeForSetup();
     }
   }
 

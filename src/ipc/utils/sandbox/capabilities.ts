@@ -24,14 +24,16 @@ export interface SandboxReadFileOptions {
   encoding?: "utf8" | "base64";
 }
 
-// Names of the built-in file-inspection host functions exposed to
-// MustardScript. Kept as a const tuple so other modules can import
-// the runtime value (e.g. to avoid registering MCP capabilities that
-// would shadow these names) while keeping the union type intact.
+// Names of the built-in host functions exposed to MustardScript. Kept as a
+// const tuple so other modules can import the runtime value (e.g. to avoid
+// registering MCP capabilities that would shadow these names) while keeping the
+// union type intact. write_file is only injected by the local-agent main-thread
+// sandbox path because it needs AgentContext.
 export const SANDBOX_HOST_CALL_NAMES = [
   "read_file",
   "list_files",
   "file_stats",
+  "write_file",
 ] as const;
 export type SandboxHostCallName = (typeof SANDBOX_HOST_CALL_NAMES)[number];
 

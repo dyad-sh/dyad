@@ -11,6 +11,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { readSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
+import { writeFileTool } from "./write_file";
 import {
   AgentContext,
   escapeXmlAttr,
@@ -41,12 +42,14 @@ const executeSandboxScriptSchema = z.object({
     .default("main")
     .describe(
       "Where to run the script. Default 'main' runs in-process and is " +
-        "the only thread that exposes MCP tools — use it for any script " +
-        "that calls MCP host functions, and for small / fast operations. " +
+        "the only thread that exposes write_file and MCP tools — use it " +
+        "for any script that writes files or calls MCP host functions, and " +
+        "for small / fast operations. " +
         "Use 'worker' for compute-heavy work (parsing multi-MB attachments, " +
         "large aggregations, anything that might take more than a few hundred " +
         "milliseconds) so chat streaming and other main-process work isn't " +
-        "stalled. MCP host functions are NOT available on the worker thread.",
+        "stalled. write_file and MCP host functions are NOT available on " +
+        "the worker thread.",
     ),
 });
 
@@ -118,15 +121,14 @@ function buildScriptXml(params: {
   return `<dyad-script ${attrs.join(" ")}>${escapeXmlContent(payload)}</dyad-script>`;
 }
 
-// File-inspection-only base. Used as-is when no MCP servers are
-// enabled (or in read-only / plan mode where the sandbox cannot reach
-// MCP), and as the lead-in to the MCP-augmented description otherwise.
+// Built-in sandbox host-function base. Used as-is when no MCP servers are
+// enabled, and as the lead-in to the MCP-augmented description otherwise.
 // Keep MCP-specific framing out of this block — if it lands in front
 // of the model when MCP is off, the model will write calls to host
 // functions that don't exist.
-const FILES_ONLY_PREAMBLE = `Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files.
+const BUILT_IN_HOST_FUNCTIONS_PREAMBLE = `Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files.
 
-Use this when you need to slice, search, count, aggregate, or summarize file contents before answering. Return only the concise value you need.
+Use this when you need to slice, search, count, aggregate, summarize file contents, or write generated content to files before answering. Return only the concise value you need.
 
 Supported language surface:
 - let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.
@@ -160,8 +162,8 @@ const row = { key: "x", total: 1 };
 \`\`\`
 
 Execution thread:
-- 'main' (default) runs in-process. Use for small / fast scripts.
-- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations).
+- 'main' (default) runs in-process. Use for small / fast scripts, write_file, and MCP calls.
+- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations). The worker thread exposes read_file, list_files, and file_stats only; write_file and MCP calls are not available.
 
 Host functions:
 \`\`\`ts
@@ -185,9 +187,21 @@ declare function read_file(
 declare function list_files(dir?: "." | "attachments:" | string): Promise<string[]>;
 
 declare function file_stats(path: string): Promise<FileStats>;
+
+declare function write_file(
+  path: string,
+  content: string,
+  description?: string,
+): Promise<string>;
+
+declare function write_file(args: {
+  path: string;
+  content: string;
+  description?: string;
+}): Promise<string>;
 \`\`\`
 
-Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`;
+Paths are app-relative (including \`.dyad/media/<stored-name>\`), or attachment paths like attachments:filename.ext for read_file/list_files/file_stats. write_file accepts app-relative paths only, not attachments: paths. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.`;
 
 function buildMcpAddendum(typeDefsBlock: string): string {
   return `
@@ -255,7 +269,7 @@ export async function buildExecuteSandboxScriptDescription(
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
   if (defs.length === 0) {
-    return FILES_ONLY_PREAMBLE;
+    return BUILT_IN_HOST_FUNCTIONS_PREAMBLE;
   }
   // Search mode: list tool names and point the model at the discovery tools
   // instead of inlining every tool's declarations. `hasGetSchemaTool` defaults
@@ -263,20 +277,24 @@ export async function buildExecuteSandboxScriptDescription(
   // the handler passes false when tool permissions have filtered it out.
   if (options?.useSearch) {
     return (
-      FILES_ONLY_PREAMBLE +
+      BUILT_IN_HOST_FUNCTIONS_PREAMBLE +
       buildMcpSearchAddendum(defs, options.hasGetSchemaTool ?? true)
     );
   }
-  return FILES_ONLY_PREAMBLE + buildMcpAddendum(buildMcpTypeDefsBlock(defs));
+  return (
+    BUILT_IN_HOST_FUNCTIONS_PREAMBLE +
+    buildMcpAddendum(buildMcpTypeDefsBlock(defs))
+  );
 }
 
 export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> =
   {
     name: "execute_sandbox_script",
     description:
-      "Run a MustardScript program in a sandbox. Supports file inspection and MCP tool calls.",
+      "Run a MustardScript program in a sandbox. Supports file inspection, file writes, and MCP tool calls.",
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
+    modifiesState: true,
 
     isEnabled: () =>
       isSandboxSupportedPlatform() &&
@@ -360,6 +378,73 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
     },
   };
 
+function parseWriteFileHostArgs(
+  pathOrArgs: unknown,
+  content?: unknown,
+  description?: unknown,
+) {
+  const args =
+    pathOrArgs !== null &&
+    typeof pathOrArgs === "object" &&
+    !Array.isArray(pathOrArgs)
+      ? pathOrArgs
+      : { path: pathOrArgs, content, description };
+  const parsed = writeFileTool.inputSchema.parse(args);
+  if (parsed.path.startsWith("attachments:")) {
+    throw new DyadError(
+      "write_file cannot write attachment paths from sandbox scripts.",
+      DyadErrorKind.Validation,
+    );
+  }
+  return parsed;
+}
+
+function trackSandboxWriteFile(ctx: AgentContext, path: string): void {
+  if (!ctx.fileEditTracker[path]) {
+    ctx.fileEditTracker[path] = {
+      write_file: 0,
+      search_replace: 0,
+    };
+  }
+  ctx.fileEditTracker[path].write_file++;
+}
+
+function buildWriteFileCapability(ctx: AgentContext) {
+  return async (
+    pathOrArgs: unknown,
+    content?: unknown,
+    description?: unknown,
+  ) => {
+    const args = parseWriteFileHostArgs(pathOrArgs, content, description);
+    if (readSettings().agentToolConsents?.write_file === "never") {
+      throw new DyadError(
+        "write_file is disabled in agent tool permissions.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    const allowed = await ctx.requireConsent({
+      toolName: writeFileTool.name,
+      toolDescription: writeFileTool.description,
+      inputPreview: writeFileTool.getConsentPreview?.(args) ?? null,
+      metadata: writeFileTool.getConsentMetadata?.(args) ?? null,
+    });
+    if (!allowed) {
+      throw new DyadError(
+        `User denied permission for ${writeFileTool.name}`,
+        DyadErrorKind.UserCancelled,
+      );
+    }
+
+    trackSandboxWriteFile(ctx, args.path);
+    const result = await writeFileTool.execute(args, ctx);
+    const xml = writeFileTool.buildXml?.(args, true);
+    if (xml) {
+      ctx.onXmlComplete(xml);
+    }
+    return result;
+  };
+}
+
 /**
  * Run a sandbox script in the main process with both built-in file
  * host functions and (when enabled for the turn) MCP host functions
@@ -386,6 +471,9 @@ async function runInMainThread(params: {
     params.ctx.appPath,
     params.observeHostCall,
   );
+  const writeFileCaps = {
+    write_file: buildWriteFileCapability(params.ctx),
+  };
   const mcpCaps = buildMcpCapabilityMap({
     event: params.ctx.event,
     ctx: params.ctx,
@@ -394,6 +482,7 @@ async function runInMainThread(params: {
   const capabilities = {
     ...(fileCaps as unknown as Record<string, (...args: unknown[]) => unknown>),
     ...mcpCaps,
+    ...writeFileCaps,
   };
 
   return executeSandboxScriptInProcess({

@@ -316,6 +316,27 @@ export class PageObject {
     await this.githubConnector.resetRepos();
   }
 
+  private async pinBuildChatModeForSetup() {
+    await this.page.evaluate(async () => {
+      await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+        selectedChatMode: "build",
+        defaultChatMode: "build",
+      });
+    });
+    await expect
+      .poll(
+        () => ({
+          selectedChatMode: this.settings.recordSettings().selectedChatMode,
+          defaultChatMode: this.settings.recordSettings().defaultChatMode,
+        }),
+        { timeout: Timeout.MEDIUM },
+      )
+      .toEqual({
+        selectedChatMode: "build",
+        defaultChatMode: "build",
+      });
+  }
+
   async setUp({
     autoApprove = false,
     disableNativeGit = false,
@@ -345,11 +366,21 @@ export class PageObject {
     }
     await this.settings.setUpTestProvider();
     await this.settings.setUpTestModel();
+    if (!enableBasicAgent) {
+      await this.pinBuildChatModeForSetup();
+    }
     await this.navigation.goToAppsTab();
     if (!enableBasicAgent) {
       await this.chatActions.selectChatMode("build");
     }
     await this.modelPicker.selectTestModel();
+    if (!enableBasicAgent) {
+      await expect
+        .poll(() => this.settings.recordSettings().selectedChatMode, {
+          timeout: Timeout.MEDIUM,
+        })
+        .toBe("build");
+    }
   }
 
   async setUpDyadPro({
@@ -367,6 +398,9 @@ export class PageObject {
       await this.settings.toggleAutoApprove();
     }
     await this.settings.setUpDyadProvider();
+    if (!localAgent) {
+      await this.pinBuildChatModeForSetup();
+    }
     await this.navigation.goToAppsTab();
     if (!localAgent) {
       await this.chatActions.selectChatMode("build");
@@ -378,6 +412,13 @@ export class PageObject {
         provider: "Anthropic",
         model: "Claude Opus 4.5",
       });
+    }
+    if (!localAgent) {
+      await expect
+        .poll(() => this.settings.recordSettings().selectedChatMode, {
+          timeout: Timeout.MEDIUM,
+        })
+        .toBe("build");
     }
   }
 

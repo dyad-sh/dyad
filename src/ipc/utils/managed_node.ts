@@ -20,7 +20,7 @@ import { isVersionAtLeast } from "@/shared/version_utils";
 
 const logger = log.scope("managed_node");
 
-export const MANAGED_NODE_VERSION = "v22.22.3";
+export const MANAGED_NODE_VERSION = "v24.18.0";
 export const MINIMUM_SYSTEM_NODE_VERSION = "20.0.0";
 const MANAGED_NODE_DIR = "node";
 const NODE_DIST_BASE_URL = `https://nodejs.org/dist/${MANAGED_NODE_VERSION}`;
@@ -43,20 +43,20 @@ const MANAGED_NODE_ARTIFACTS: Record<
   ManagedNodeArtifact
 > = {
   "darwin-arm64": {
-    fileName: "node-v22.22.3-darwin-arm64.tar.gz",
-    sha256: "0da7ff74ef8611328c8212f17943368713a2ad953fb7d89a8c8a0eae87c23207",
+    fileName: "node-v24.18.0-darwin-arm64.tar.gz",
+    sha256: "e1a97e14c99c803e96c7339403282ea05a499c32f8d83defe9ef5ec66f979ed1",
   },
   "darwin-x64": {
-    fileName: "node-v22.22.3-darwin-x64.tar.gz",
-    sha256: "45830ba752fa0d892c6dcd640946669801293cac820a33591ded40ac075198ec",
+    fileName: "node-v24.18.0-darwin-x64.tar.gz",
+    sha256: "dfd0dbd3e721503434df7b7205e719f61b3a3a31b2bcf9729b8b91fea240f080",
   },
   "win32-arm64": {
-    fileName: "node-v22.22.3-win-arm64.zip",
-    sha256: "00be129a09e8872cd52d3bb8bba12412c5733d2224123a482a2dca4a6fbf2586",
+    fileName: "node-v24.18.0-win-arm64.zip",
+    sha256: "f274669adb93b1fd0fbf8f21fd078609e9dcc84333d4f2718d2dde3f9a161a01",
   },
   "win32-x64": {
-    fileName: "node-v22.22.3-win-x64.zip",
-    sha256: "6c8d54f635feff4df76c2ca80f45332eb2ff57d25226edce36592e51a177ee33",
+    fileName: "node-v24.18.0-win-x64.zip",
+    sha256: "0ae68406b42d7725661da979b1403ec9926da205c6770827f33aac9d8f26e821",
   },
 };
 
@@ -530,8 +530,7 @@ async function installFromArchive({
     }
 
     onProgress({ phase: "installing", percent: 99 });
-    await fsp.rm(finalInstallDir, { recursive: true, force: true });
-    await fsp.rename(tempInstallDir, finalInstallDir);
+    await swapManagedNodeInstallDir({ tempInstallDir, finalInstallDir });
     await cleanupOldManagedNodeVersions();
     clearSanitizedPathCache();
     applyManagedNodeToProcessPath();
@@ -549,6 +548,76 @@ async function installFromArchive({
     );
   } finally {
     await fsp.rm(tempExtractDir, { recursive: true, force: true });
+  }
+}
+
+type ManagedNodeInstallDirSwapOptions = {
+  tempInstallDir: string;
+  finalInstallDir: string;
+  backupInstallDir?: string;
+  rename?: typeof fsp.rename;
+  rm?: typeof fsp.rm;
+};
+
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
+export async function swapManagedNodeInstallDir({
+  tempInstallDir,
+  finalInstallDir,
+  backupInstallDir = path.join(
+    path.dirname(finalInstallDir),
+    `.${path.basename(finalInstallDir)}-backup-${Date.now()}`,
+  ),
+  rename = fsp.rename,
+  rm = fsp.rm,
+}: ManagedNodeInstallDirSwapOptions): Promise<void> {
+  let movedExistingInstall = false;
+  let promotedNewInstall = false;
+
+  await rm(backupInstallDir, { recursive: true, force: true });
+
+  try {
+    try {
+      await rename(finalInstallDir, backupInstallDir);
+      movedExistingInstall = true;
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        throw error;
+      }
+    }
+
+    await rename(tempInstallDir, finalInstallDir);
+    promotedNewInstall = true;
+
+    if (movedExistingInstall) {
+      await rm(backupInstallDir, { recursive: true, force: true }).catch(
+        (cleanupError) => {
+          logger.warn(
+            "Failed to remove previous managed Node.js backup:",
+            cleanupError,
+          );
+        },
+      );
+    }
+  } catch (error) {
+    if (movedExistingInstall && !promotedNewInstall) {
+      try {
+        await rm(finalInstallDir, { recursive: true, force: true });
+        await rename(backupInstallDir, finalInstallDir);
+      } catch (rollbackError) {
+        logger.error(
+          "Failed to restore previous managed Node.js installation:",
+          rollbackError,
+        );
+      }
+    }
+    throw error;
   }
 }
 

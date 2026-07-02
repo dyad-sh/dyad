@@ -25,6 +25,7 @@ import {
   isManagedNodeSupported,
   isUsableSystemNodeVersion,
   ManagedNodeInstallError,
+  MANAGED_NODE_VERSION,
   removeManagedNode,
   type NodeRuntimeSource,
 } from "@/ipc/utils/managed_node";
@@ -378,6 +379,30 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
   };
 }
 
+async function getSelectedManagedNodeStatus(nodeDownloadUrl: string) {
+  const settings = readSettings();
+  if (settings.nodeRuntimePreference !== "managed") {
+    return null;
+  }
+
+  const managedNodeVersion = await getManagedNodeVersion();
+  if (!managedNodeVersion) {
+    return null;
+  }
+
+  return {
+    nodeVersion: managedNodeVersion,
+    pnpmVersion: await getPnpmVersionAndScheduleInstall(),
+    nodeDownloadUrl,
+    source: "managed" as const,
+    nodePath: getManagedNodeBinaryPath(),
+    managedNodeInstalled: true,
+    managedNodeVersion,
+    systemNodeTooOld: false,
+    managedNodeSupported: isManagedNodeSupported(),
+  };
+}
+
 // Test-only: Mock state for Node.js installation status
 // null = use real check, true = mock as installed, false = mock as not installed
 let mockNodeInstalled: boolean | null = null;
@@ -390,16 +415,14 @@ function getNodeDownloadUrl(): string {
   }
 
   // Default to mac download url.
-  let nodeDownloadUrl = "https://nodejs.org/dist/v22.22.3/node-v22.22.3.pkg";
+  let nodeDownloadUrl = `https://nodejs.org/dist/${MANAGED_NODE_VERSION}/node-${MANAGED_NODE_VERSION}.pkg`;
   if (platform() == "win32") {
     if (arch() === "arm64" || arch() === "arm") {
-      nodeDownloadUrl =
-        "https://nodejs.org/dist/v22.22.3/node-v22.22.3-arm64.msi";
+      nodeDownloadUrl = `https://nodejs.org/dist/${MANAGED_NODE_VERSION}/node-${MANAGED_NODE_VERSION}-arm64.msi`;
     } else {
       // x64 is the most common architecture for Windows so it's the
       // default download url.
-      nodeDownloadUrl =
-        "https://nodejs.org/dist/v22.22.3/node-v22.22.3-x64.msi";
+      nodeDownloadUrl = `https://nodejs.org/dist/${MANAGED_NODE_VERSION}/node-${MANAGED_NODE_VERSION}-x64.msi`;
     }
   }
   return nodeDownloadUrl;
@@ -432,11 +455,16 @@ export function registerNodeHandlers() {
     if (process.env.NODE_ENV === "development" && devNodejsStatus) {
       logger.log("Using dev Node.js status override:", devNodejsStatus);
       if (devNodejsStatus === "missing") {
+        const managedNodeStatus =
+          await getSelectedManagedNodeStatus(nodeDownloadUrl);
+        if (managedNodeStatus) {
+          return managedNodeStatus;
+        }
         return emptyNodeStatus(nodeDownloadUrl);
       }
       if (devNodejsStatus === "installed") {
         return {
-          nodeVersion: "v22.22.3",
+          nodeVersion: MANAGED_NODE_VERSION,
           pnpmVersion: "9.0.0",
           nodeDownloadUrl,
           source: "system" as const,
@@ -454,7 +482,7 @@ export function registerNodeHandlers() {
       logger.log("Using mock Node.js status:", mockNodeInstalled);
       if (mockNodeInstalled) {
         return {
-          nodeVersion: "v22.22.3",
+          nodeVersion: MANAGED_NODE_VERSION,
           pnpmVersion: "9.0.0",
           nodeDownloadUrl,
           source: "system" as const,

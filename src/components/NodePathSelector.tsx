@@ -43,10 +43,10 @@ export function NodePathSelector() {
     t("general.loading"),
   );
 
-  // Check Node.js status when component mounts or path changes
+  // Check Node.js status when settings load or path changes.
   useEffect(() => {
     checkNodeStatus();
-  }, [settings?.customNodePath]);
+  }, [Boolean(settings), settings?.customNodePath]);
 
   const fetchSystemPath = async () => {
     try {

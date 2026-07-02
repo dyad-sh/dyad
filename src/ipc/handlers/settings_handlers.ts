@@ -1,6 +1,7 @@
 import { createTypedHandler } from "./base";
 import { settingsContracts } from "../types/settings";
 import { writeSettings, readEffectiveSettings } from "../../main/settings";
+import { validateProviderApiKey } from "../services/provider_api_key_validation_service";
 
 export function registerSettingsHandlers() {
   // Note: Settings handlers intentionally use createTypedHandler without logging
@@ -14,4 +15,11 @@ export function registerSettingsHandlers() {
     writeSettings(settings);
     return readEffectiveSettings();
   });
+
+  createTypedHandler(
+    settingsContracts.validateProviderApiKey,
+    async (_, params) => {
+      return validateProviderApiKey(params);
+    },
+  );
 }

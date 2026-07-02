@@ -487,18 +487,70 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
   res.json(lmStudioModels);
 });
 
-["lmstudio", "gateway", "engine", "ollama", "azure"].forEach((provider) => {
-  app.post(
-    `/${provider}/v1/chat/completions`,
-    createChatCompletionHandler(provider),
-  );
-  // Also add responses API endpoints for each provider
-  app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
-  app.post(
-    `/${provider}/v1/messages`,
-    createAnthropicMessagesHandler(provider),
-  );
-});
+app.post(
+  /^\/google\/v1beta\/models\/.+:(streamGenerateContent|generateContent)/,
+  (req, res) => {
+    const apiKeyHeader = req.headers["x-goog-api-key"];
+    const apiKey =
+      typeof apiKeyHeader === "string"
+        ? apiKeyHeader
+        : Array.isArray(apiKeyHeader)
+          ? apiKeyHeader.join(",")
+          : "";
+
+    if (/invalid/i.test(apiKey)) {
+      return res.status(401).json({
+        error: {
+          code: 401,
+          message: "Invalid API key",
+          status: "UNAUTHENTICATED",
+        },
+      });
+    }
+
+    const response = {
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [{ text: "5" }],
+          },
+          finishReason: "STOP",
+        },
+      ],
+      usageMetadata: {
+        promptTokenCount: 8,
+        candidatesTokenCount: 1,
+        totalTokenCount: 9,
+      },
+    };
+
+    if (req.path.includes("streamGenerateContent")) {
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.write(`data: ${JSON.stringify(response)}\n\n`);
+      res.end();
+      return;
+    }
+
+    res.json(response);
+  },
+);
+
+["lmstudio", "gateway", "engine", "ollama", "azure", "openrouter"].forEach(
+  (provider) => {
+    app.post(
+      `/${provider}/v1/chat/completions`,
+      createChatCompletionHandler(provider),
+    );
+    // Also add responses API endpoints for each provider
+    app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
+    app.post(
+      `/${provider}/v1/messages`,
+      createAnthropicMessagesHandler(provider),
+    );
+  },
+);
 
 // Azure-specific endpoints (Azure client uses different URL patterns)
 app.post("/azure/chat/completions", createChatCompletionHandler("azure"));

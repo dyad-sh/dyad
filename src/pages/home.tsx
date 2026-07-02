@@ -301,6 +301,12 @@ export default function HomePage() {
 
   const hasAttemptedAutoResumeRef = useRef(false);
   useEffect(() => {
+    if (!shouldResumeFirstPrompt) {
+      hasAttemptedAutoResumeRef.current = false;
+    }
+  }, [shouldResumeFirstPrompt]);
+
+  useEffect(() => {
     if (
       !shouldResumeFirstPrompt ||
       isLoadingLanguageModelProviders ||
@@ -330,6 +336,10 @@ export default function HomePage() {
         setPendingAttachments([]);
         setPendingSelectedApp(null);
       }
+      // Intentionally do not re-arm on failure: handleSubmit already surfaces
+      // an error toast, and re-arming would re-fire this effect immediately
+      // (inputValue and shouldResumeFirstPrompt are still set), causing an
+      // infinite retry loop. The user can retry manually from the input.
     })();
   }, [
     handleSubmit,

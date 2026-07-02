@@ -1,8 +1,8 @@
 import { dialog, ipcMain } from "electron";
-import { execSync } from "child_process";
 import { platform, arch } from "os";
 import fixPath from "fix-path";
 import { runShellCommand } from "../utils/runShellCommand";
+import { readRefreshedWindowsPath } from "../utils/windows_env_path";
 import log from "electron-log";
 import { existsSync } from "fs";
 import fs from "fs/promises";
@@ -29,12 +29,17 @@ const BRAILLE_SPINNER_PATTERN = /^[\u2800-\u28ff]+$/u;
 let managedPnpmInstallPromise: Promise<string> | null = null;
 let managedPnpmImplicitInstallFailed = false;
 
-function reloadNodePath() {
+async function reloadNodePath() {
   if (platform() === "win32") {
-    const newPath = execSync("cmd /c echo %PATH%", {
-      encoding: "utf8",
-    }).trim();
-    process.env.PATH = newPath;
+    // Re-read PATH from the registry: spawning a child (e.g. `cmd /c echo
+    // %PATH%`) can never observe PATH entries an installer added while Dyad
+    // was running, because children inherit this process's stale copy.
+    const refreshedPath = await readRefreshedWindowsPath(
+      process.env.PATH ?? "",
+    );
+    if (refreshedPath) {
+      process.env.PATH = refreshedPath;
+    }
   } else {
     fixPath();
   }
@@ -268,7 +273,7 @@ export function registerNodeHandlers() {
         : undefined;
       if (testInstallPnpmVersion) {
         process.env.DYAD_TEST_PNPM_VERSION = testInstallPnpmVersion;
-        reloadNodePath();
+        await reloadNodePath();
         return { pnpmVersion: testInstallPnpmVersion };
       }
 
@@ -292,7 +297,7 @@ export function registerNodeHandlers() {
 
   createTypedHandler(systemContracts.reloadEnvPath, async () => {
     logger.debug("Reloading env path, previously:", process.env.PATH);
-    reloadNodePath();
+    await reloadNodePath();
     logger.debug("Reloaded env path, now:", process.env.PATH);
   });
 

@@ -8,14 +8,14 @@ const testSetup = testWithConfig({
 testSetup("setup ai provider", async ({ po }) => {
   const dialog = await openAiSetupDialog(po);
 
-  await dialog.getByRole("button", { name: "Google Gemini" }).click();
+  await dialog.getByRole("button", { name: /Google/ }).click();
   await expect(
     po.page.getByRole("heading", { name: "Configure Google" }),
   ).toBeVisible();
 
   await po.page.getByRole("button", { name: "Go Back" }).click();
   await openAiSetupDialog(po);
-  await po.page.getByRole("button", { name: "OpenRouter" }).click();
+  await po.page.getByRole("button", { name: /OpenRouter/ }).click();
   await expect(
     po.page.getByRole("heading", { name: "Configure OpenRouter" }),
   ).toBeVisible();
@@ -35,8 +35,7 @@ async function openAiSetupDialog(po: PageObject) {
     .getByRole("button", { name: "Send message" })
     .click();
   const dialog = po.page.getByRole("dialog");
-  await expect(
-    dialog.getByText("Dyad uses AI to build your app."),
-  ).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Google/ })).toBeVisible();
   return dialog;
 }

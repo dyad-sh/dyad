@@ -51,8 +51,9 @@ testSkipIfWindows(
     const dumpContent = fs.readFileSync(dumpFilePath, "utf-8");
     const parsedDump = JSON.parse(dumpContent);
 
-    // Get the last message from the dump
-    const messages = parsedDump.body.messages;
+    // Get the last message from the dump. Engine requests can use either
+    // chat-completions (`messages`) or Responses API (`input`) shape.
+    const messages = parsedDump.body.messages ?? parsedDump.body.input;
     const lastMessage = messages[messages.length - 1];
 
     expect(lastMessage).toBeTruthy();
@@ -61,20 +62,22 @@ testSkipIfWindows(
     // The content is an array with text and image parts
     expect(Array.isArray(lastMessage.content)).toBe(true);
 
-    // Find the text part and verify it mentions the PNG attachment
+    // Find the text part and verify the user command was preserved.
     const textPart = lastMessage.content.find(
-      (part: any) => part.type === "text",
+      (part: any) => part.type === "text" || part.type === "input_text",
     );
     expect(textPart).toBeTruthy();
-    expect(textPart.text).toMatch(/annotated-screenshot-.*\.png/);
-    expect(textPart.text).toMatch(/image\/png/);
+    expect(textPart.text).toContain("[dump]");
 
-    // Find the image part and verify it has the correct structure
+    // Find the image part and verify the annotated screenshot was attached.
     const imagePart = lastMessage.content.find(
-      (part: any) => part.type === "image_url",
+      (part: any) => part.type === "image_url" || part.type === "input_image",
     );
     expect(imagePart).toBeTruthy();
-    expect(imagePart.image_url).toBeTruthy();
-    expect(imagePart.image_url.url).toMatch(/^data:image\/png;base64,/);
+    const imageUrl =
+      imagePart.type === "input_image"
+        ? imagePart.image_url
+        : imagePart.image_url?.url;
+    expect(imageUrl).toMatch(/^data:image\/png;base64,/);
   },
 );

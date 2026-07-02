@@ -10,6 +10,15 @@ import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("local-agent - dump request", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
+  await po.page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enableCodeExplorer: false,
+    });
+  });
+  await expect
+    .poll(() => po.settings.recordSettings().enableCodeExplorer)
+    .toBe(false);
+
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 

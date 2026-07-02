@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { BackButton } from "@/components/ui/back-button";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
@@ -33,6 +34,7 @@ interface ProviderSettingsPageProps {
 }
 
 export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
+  const navigate = useNavigate();
   const {
     settings,
     envVars,
@@ -46,6 +48,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     data: allProviders,
     isLoading: providersLoading,
     error: providersError,
+    isAnyProviderSetup,
   } = useLanguageModelProviders();
 
   // Find the specific provider data from the fetched list
@@ -67,6 +70,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showStartBuildingBanner, setShowStartBuildingBanner] = useState(false);
   const queryClient = useQueryClient();
 
   // Use fetched data (or defaults for Dyad)
@@ -143,6 +147,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     setIsSaving(true);
     setSaveError(null);
     try {
+      const isFirstProviderSetup = !isAnyProviderSetup();
       // Check if this is the first time user is setting up Dyad Pro
       const isNewDyadProSetup = isDyad && settings && !hasDyadProKey(settings);
 
@@ -166,6 +171,9 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
+      if (isFirstProviderSetup) {
+        setShowStartBuildingBanner(true);
+      }
 
       // Refetch user budget when Dyad Pro key is saved
       if (isDyad) {
@@ -281,69 +289,100 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     );
   }
 
+  const shouldShowStartBuildingBanner = showStartBuildingBanner && isConfigured;
+
   return (
-    <div className="min-h-screen px-8 py-4">
-      <div className="max-w-4xl mx-auto">
-        <ProviderSettingsHeader
-          providerDisplayName={providerDisplayName}
-          isConfigured={isConfigured}
-          isLoading={settingsLoading}
-          hasFreeTier={hasFreeTier}
-          providerWebsiteUrl={providerWebsiteUrl}
-          isDyad={isDyad}
-        />
-
-        {settingsLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-40 w-full" />
-          </div>
-        ) : settingsError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Error Loading Settings</AlertTitle>
-            <AlertDescription>
-              Could not load configuration data: {settingsError.message}
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <ApiKeyConfiguration
-            provider={provider}
-            providerDisplayName={providerDisplayName}
-            settings={settings}
-            envVars={envVars}
-            envVarName={envVarName}
-            isSaving={isSaving}
-            saveError={saveError}
-            apiKeyInput={apiKeyInput}
-            onApiKeyInputChange={setApiKeyInput}
-            onSaveKey={handleSaveKey}
-            onDeleteKey={handleDeleteKey}
-            isDyad={isDyad}
-            updateSettings={updateSettings}
-          />
-        )}
-
-        {isDyad && !settingsLoading && (
-          <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
-            <div>
-              <h3 className="font-medium">Enable Dyad Pro</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Toggle to enable Dyad Pro
-              </p>
+    <div className="min-h-screen w-full">
+      {shouldShowStartBuildingBanner && (
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/", search: {} })}
+          className="sticky top-0 z-30 w-full border-b border-green-200 bg-green-50/95 px-8 py-5 text-left shadow-md backdrop-blur-sm transition-colors hover:bg-green-100/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:border-green-900/70 dark:bg-green-950/70 dark:hover:bg-green-900/60"
+        >
+          <div className="mx-auto flex max-w-4xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-green-900/70 dark:text-green-300">
+                <CheckCircle2 className="size-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-green-950 dark:text-green-100">
+                  AI access is ready
+                </h2>
+                <p className="mt-1 text-sm text-green-800/80 dark:text-green-200/80">
+                  You can now start building with Dyad.
+                </p>
+              </div>
             </div>
-            <Switch
-              aria-label="Enable Dyad Pro"
-              checked={settings?.enableDyadPro}
-              onCheckedChange={handleToggleDyadPro}
-              disabled={isSaving}
-            />
+            <span className="inline-flex h-11 shrink-0 items-center justify-center rounded-md bg-primary px-8 text-sm font-semibold text-primary-foreground shadow-xs transition-colors">
+              Start building
+            </span>
           </div>
-        )}
+        </button>
+      )}
 
-        {/* Conditionally render CustomModelsSection */}
-        {supportsCustomModels && providerData && (
-          <ModelsSection providerId={providerData.id} />
-        )}
-        <div className="h-24"></div>
+      <div className="px-8 py-4">
+        <div className="max-w-4xl mx-auto">
+          <ProviderSettingsHeader
+            providerDisplayName={providerDisplayName}
+            isConfigured={isConfigured}
+            isLoading={settingsLoading}
+            hasFreeTier={hasFreeTier}
+            providerWebsiteUrl={providerWebsiteUrl}
+            isDyad={isDyad}
+          />
+
+          {settingsLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : settingsError ? (
+            <Alert variant="destructive">
+              <AlertTitle>Error Loading Settings</AlertTitle>
+              <AlertDescription>
+                Could not load configuration data: {settingsError.message}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <ApiKeyConfiguration
+              provider={provider}
+              providerDisplayName={providerDisplayName}
+              settings={settings}
+              envVars={envVars}
+              envVarName={envVarName}
+              isSaving={isSaving}
+              saveError={saveError}
+              apiKeyInput={apiKeyInput}
+              onApiKeyInputChange={setApiKeyInput}
+              onSaveKey={handleSaveKey}
+              onDeleteKey={handleDeleteKey}
+              isDyad={isDyad}
+              updateSettings={updateSettings}
+            />
+          )}
+
+          {isDyad && !settingsLoading && (
+            <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
+              <div>
+                <h3 className="font-medium">Enable Dyad Pro</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Toggle to enable Dyad Pro
+                </p>
+              </div>
+              <Switch
+                aria-label="Enable Dyad Pro"
+                checked={settings?.enableDyadPro}
+                onCheckedChange={handleToggleDyadPro}
+                disabled={isSaving}
+              />
+            </div>
+          )}
+
+          {/* Conditionally render CustomModelsSection */}
+          {supportsCustomModels && providerData && (
+            <ModelsSection providerId={providerData.id} />
+          )}
+          <div className="h-24"></div>
+        </div>
       </div>
     </div>
   );

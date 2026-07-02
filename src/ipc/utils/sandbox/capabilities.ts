@@ -140,7 +140,7 @@ function parseReadOptions(value: unknown): SandboxReadFileOptions {
   };
 }
 
-function assertAllowedGuestPath(guestPath: string): void {
+export function assertAllowedGuestPath(guestPath: string): void {
   if (!guestPath || typeof guestPath !== "string") {
     throw new DyadError("File path is required.", DyadErrorKind.Validation);
   }

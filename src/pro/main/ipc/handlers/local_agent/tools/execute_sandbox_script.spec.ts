@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
 import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
+import { buildSandboxCapabilitiesWithObserver } from "@/ipc/utils/sandbox/capabilities";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
 import {
@@ -8,6 +9,7 @@ import {
   executeSandboxScriptTool,
   isSandboxScriptExecutionEnabled,
 } from "./execute_sandbox_script";
+import { writeFileTool } from "./write_file";
 import type { AgentContext } from "./types";
 import type { McpToolDef } from "./mcp_type_defs";
 
@@ -82,6 +84,10 @@ describe("executeSandboxScriptTool", () => {
     );
   });
 
+  it("is marked as state-modifying because sandbox scripts can call write_file", () => {
+    expect(executeSandboxScriptTool.modifiesState).toBe(true);
+  });
+
   it("includes the generated script in sandbox failure messages", async () => {
     const script = [
       "async function main() {",
@@ -146,6 +152,64 @@ describe("executeSandboxScriptTool", () => {
       "sandbox.script.completed",
       expect.objectContaining({ executionThread: "main" }),
     );
+  });
+
+  it("injects write_file as a main-thread host capability", async () => {
+    vi.mocked(buildSandboxCapabilitiesWithObserver).mockReturnValue({
+      read_file: vi.fn(),
+    } as any);
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+    const writeSpy = vi
+      .spyOn(writeFileTool, "execute")
+      .mockResolvedValue("Successfully wrote src/out.txt");
+
+    try {
+      const ctx = createMockContext();
+      await executeSandboxScriptTool.execute(
+        {
+          script: 'write_file("src/out.txt", "hello");',
+          execution_thread: "main",
+        },
+        ctx,
+      );
+
+      const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+        .calls[0][0].capabilities;
+      const writeFile = capabilities?.write_file;
+      expect(writeFile).toEqual(expect.any(Function));
+
+      vi.mocked(ctx.onXmlComplete).mockClear();
+      const result = await writeFile?.("src/out.txt", "hello", "Create output");
+
+      expect(result).toBe("Successfully wrote src/out.txt");
+      expect(ctx.requireConsent).toHaveBeenCalledWith({
+        toolName: "write_file",
+        toolDescription: writeFileTool.description,
+        inputPreview: "Write to src/out.txt",
+        metadata: null,
+      });
+      expect(ctx.fileEditTracker["src/out.txt"]).toEqual({
+        write_file: 1,
+        search_replace: 0,
+      });
+      expect(writeSpy).toHaveBeenCalledWith(
+        {
+          path: "src/out.txt",
+          content: "hello",
+          description: "Create output",
+        },
+        ctx,
+      );
+      expect(ctx.onXmlComplete).toHaveBeenCalledWith(
+        expect.stringContaining('<dyad-write path="src/out.txt"'),
+      );
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it("with execution_thread: 'worker', invokes runSandboxScript and does not inject MCP capabilities", async () => {

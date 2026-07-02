@@ -6,6 +6,7 @@ import {
 import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
 import {
   assertAllowedGuestPath,
+  assertSandboxWritePathAllowed,
   buildSandboxCapabilitiesWithObserver,
 } from "@/ipc/utils/sandbox/capabilities";
 import { SANDBOX_SCRIPT_SOURCE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
@@ -21,6 +22,12 @@ import {
   escapeXmlContent,
   ToolDefinition,
 } from "./types";
+import {
+  assertAppBlueprintApproved,
+  getToolConsent,
+  requireToolConsentOrThrow,
+  trackFileEditTool,
+} from "./tool_invocation";
 import {
   collectMcpToolDefs,
   buildMcpTypeDefsBlock,
@@ -123,8 +130,11 @@ function buildScriptXml(params: {
   return `<dyad-script ${attrs.join(" ")}>${escapeXmlContent(payload)}</dyad-script>`;
 }
 
+// Fresh per-call read of the write_file consent so a mid-turn flip to
+// "never" takes effect immediately; `ctx.sandboxWriteFileHostEnabled` is the
+// turn-scoped view of the same predicate (via shouldIncludeTool).
 function isWriteFileHostEnabled(): boolean {
-  return readSettings().agentToolConsents?.write_file !== "never";
+  return getToolConsent(writeFileTool) !== "never";
 }
 
 const WRITE_FILE_HOST_DECLARATIONS = `
@@ -279,16 +289,22 @@ ${inventory}
  * read-only / plan-only turns).
  */
 export async function buildExecuteSandboxScriptDescription(
-  precomputedDefs?: McpToolDef[],
-  options?: {
+  precomputedDefs: McpToolDef[] | undefined,
+  options: {
     useSearch?: boolean;
     hasGetSchemaTool?: boolean;
-    includeWriteFile?: boolean;
+    /**
+     * Whether to advertise the write_file host function. Required (no
+     * settings-derived default) because only the caller knows the turn
+     * context — a settings-only fallback could advertise write_file in a
+     * read-only turn where `runInMainThread` never injects it.
+     */
+    includeWriteFile: boolean;
   },
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
   const builtInHostFunctionsPreamble = buildBuiltInHostFunctionsPreamble({
-    includeWriteFile: options?.includeWriteFile ?? isWriteFileHostEnabled(),
+    includeWriteFile: options.includeWriteFile,
   });
   if (defs.length === 0) {
     return builtInHostFunctionsPreamble;
@@ -297,7 +313,7 @@ export async function buildExecuteSandboxScriptDescription(
   // instead of inlining every tool's declarations. `hasGetSchemaTool` defaults
   // to true since get_mcp_tool_schema is normally registered alongside search;
   // the handler passes false when tool permissions have filtered it out.
-  if (options?.useSearch) {
+  if (options.useSearch) {
     return (
       builtInHostFunctionsPreamble +
       buildMcpSearchAddendum(defs, options.hasGetSchemaTool ?? true)
@@ -432,16 +448,6 @@ function parseWriteFileHostArgs(
   return parsed;
 }
 
-function trackSandboxWriteFile(ctx: AgentContext, path: string): void {
-  if (!ctx.fileEditTracker[path]) {
-    ctx.fileEditTracker[path] = {
-      write_file: 0,
-      search_replace: 0,
-    };
-  }
-  ctx.fileEditTracker[path].write_file++;
-}
-
 function buildWriteFileCapability(ctx: AgentContext) {
   return async (
     pathOrArgs: unknown,
@@ -449,26 +455,31 @@ function buildWriteFileCapability(ctx: AgentContext) {
     description?: unknown,
   ) => {
     const args = parseWriteFileHostArgs(pathOrArgs, content, description);
-    if (readSettings().agentToolConsents?.write_file === "never") {
+    if (!isWriteFileHostEnabled()) {
       throw new DyadError(
         "write_file is disabled in agent tool permissions.",
         DyadErrorKind.Precondition,
       );
     }
-    const allowed = await ctx.requireConsent({
+    // Same precondition the tool-set wrapper enforces for state-modifying
+    // tools. Enforced here at the capability layer (execute_sandbox_script
+    // is exempted from the wrapper-level gate) so read-only scripts and MCP
+    // host calls keep working while the blueprint is being drafted.
+    assertAppBlueprintApproved({
       toolName: writeFileTool.name,
-      toolDescription: writeFileTool.description,
-      inputPreview: writeFileTool.getConsentPreview?.(args) ?? null,
-      metadata: writeFileTool.getConsentMetadata?.(args) ?? null,
+      chatId: ctx.chatId,
+      enabled: ctx.enableAppBlueprint !== false,
     });
-    if (!allowed) {
-      throw new DyadError(
-        `User denied permission for ${writeFileTool.name}`,
-        DyadErrorKind.UserCancelled,
-      );
-    }
+    // Reads enforce realpath containment in their sandbox helpers; writes
+    // must too, or a symlinked directory inside the app could redirect the
+    // write outside it.
+    await assertSandboxWritePathAllowed({
+      appPath: ctx.appPath,
+      guestPath: args.path,
+    });
+    await requireToolConsentOrThrow(writeFileTool, args, ctx);
 
-    trackSandboxWriteFile(ctx, args.path);
+    trackFileEditTool(ctx, writeFileTool.name, args);
     const result = await writeFileTool.execute(args, ctx);
     const xml = writeFileTool.buildXml?.(args, true);
     if (xml) {

@@ -174,6 +174,61 @@ function isTextPath(filePath: string): boolean {
   return TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
+/**
+ * Realpath containment for sandbox writes, mirroring the check reads run in
+ * `assertResolvedPathAllowed`. That check requires the target to exist;
+ * writes may create new files, so this resolves the deepest existing
+ * ancestor (and the target itself when it exists, catching file symlinks)
+ * and rejects anything that escapes the app directory through a symlink.
+ * Missing intermediate directories are created as real directories by the
+ * writer, so composing the resolved ancestor with the remaining segments is
+ * the true final location.
+ */
+export async function assertSandboxWritePathAllowed(params: {
+  appPath: string;
+  guestPath: string;
+}): Promise<void> {
+  assertAllowedGuestPath(params.guestPath);
+  const realAppPath = await fs.realpath(params.appPath);
+
+  let existing = safeJoin(params.appPath, params.guestPath);
+  const missingSegments: string[] = [];
+  let realExisting: string;
+  for (;;) {
+    try {
+      realExisting = await fs.realpath(existing);
+      break;
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        throw error;
+      }
+      const parent = path.dirname(existing);
+      if (parent === existing) {
+        // Hit the filesystem root without finding an existing directory.
+        throw error;
+      }
+      missingSegments.unshift(path.basename(existing));
+      existing = parent;
+    }
+  }
+
+  const resolvedTarget = path.join(realExisting, ...missingSegments);
+  const relative = path.relative(realAppPath, resolvedTarget);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new DyadError(
+      `Sandbox scripts cannot write files outside the app: ${params.guestPath}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  const normalized = relative.split(path.sep).join("/");
+  if (DENIED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    throw new DyadError(
+      `Sandbox scripts cannot access protected path: ${params.guestPath}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
 async function resolveSandboxPath(params: {
   appPath: string;
   guestPath: string;

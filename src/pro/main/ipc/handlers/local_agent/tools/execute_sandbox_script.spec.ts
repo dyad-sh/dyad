@@ -4,8 +4,10 @@ import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
 import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
 import {
   assertAllowedGuestPath,
+  assertSandboxWritePathAllowed,
   buildSandboxCapabilitiesWithObserver,
 } from "@/ipc/utils/sandbox/capabilities";
+import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
 import {
@@ -16,7 +18,7 @@ import {
 import { writeFileTool } from "./write_file";
 import type { AgentContext } from "./types";
 import type { McpToolDef } from "./mcp_type_defs";
-import { shouldIncludeTool } from "../tool_definitions";
+import { buildAgentToolSet, shouldIncludeTool } from "../tool_definitions";
 
 vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
@@ -29,7 +31,16 @@ vi.mock("@/ipc/utils/sandbox/runner", () => ({
 
 vi.mock("@/ipc/utils/sandbox/capabilities", () => ({
   assertAllowedGuestPath: vi.fn(),
+  assertSandboxWritePathAllowed: vi.fn(),
   buildSandboxCapabilitiesWithObserver: vi.fn(() => ({})),
+}));
+
+vi.mock("@/ipc/handlers/app_blueprint_handlers", () => ({
+  getAppBlueprintForChat: vi.fn(),
+  setAppBlueprintForChat: vi.fn(),
+  deleteAppBlueprintForChat: vi.fn(),
+  updateAppBlueprintVisuals: vi.fn(),
+  registerAppBlueprintHandlers: vi.fn(),
 }));
 
 vi.mock("@/ipc/utils/telemetry", () => ({
@@ -73,6 +84,9 @@ function createMockContext(): AgentContext {
 function createWritableSandboxContext(): AgentContext {
   const ctx = createMockContext();
   ctx.sandboxWriteFileHostEnabled = true;
+  // Most tests exercise the write host without an app blueprint; disable the
+  // gate the way the handler does for apps that don't need a blueprint.
+  ctx.enableAppBlueprint = false;
   return ctx;
 }
 
@@ -392,6 +406,119 @@ describe("executeSandboxScriptTool", () => {
     });
   });
 
+  it("gates write_file host calls on app blueprint approval", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+    const writeSpy = vi
+      .spyOn(writeFileTool, "execute")
+      .mockResolvedValue("Successfully wrote src/out.txt");
+
+    try {
+      const ctx = createWritableSandboxContext();
+      ctx.enableAppBlueprint = true;
+      await executeSandboxScriptTool.execute(
+        {
+          script: 'write_file("src/out.txt", "hello");',
+          execution_thread: "main",
+        },
+        ctx,
+      );
+
+      const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+        .calls[0][0].capabilities;
+      const writeFile = capabilities?.write_file;
+
+      // No blueprint yet: the write host is blocked without prompting.
+      vi.mocked(getAppBlueprintForChat).mockReturnValue(undefined);
+      await expect(writeFile?.("src/out.txt", "hello")).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+      });
+      expect(ctx.requireConsent).not.toHaveBeenCalled();
+
+      // Unapproved blueprint: still blocked.
+      vi.mocked(getAppBlueprintForChat).mockReturnValue({
+        approved: false,
+      } as any);
+      await expect(writeFile?.("src/out.txt", "hello")).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+      });
+
+      // Approved blueprint: the write goes through.
+      vi.mocked(getAppBlueprintForChat).mockReturnValue({
+        approved: true,
+      } as any);
+      await expect(writeFile?.("src/out.txt", "hello")).resolves.toBe(
+        "Successfully wrote src/out.txt",
+      );
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("is exempt from the wrapper-level blueprint gate so read scripts run pre-approval", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "2",
+      truncated: false,
+      executionMs: 1,
+    });
+    vi.mocked(getAppBlueprintForChat).mockReturnValue(undefined);
+    const ctx = createWritableSandboxContext();
+    ctx.enableAppBlueprint = true;
+    const toolSet = buildAgentToolSet(ctx, { enableAppBlueprint: true });
+
+    // The sandbox tool itself is not blocked pre-approval — the blueprint
+    // precondition lives inside the write_file host capability instead.
+    await expect(
+      toolSet.execute_sandbox_script.execute({
+        script: "1 + 1;",
+        execution_thread: "main",
+      }),
+    ).resolves.toBeDefined();
+
+    // The direct write_file tool stays gated by the wrapper.
+    await expect(
+      toolSet.write_file.execute({ path: "src/out.txt", content: "x" }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+  });
+
+  it("enforces realpath write containment before prompting for consent", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+    const ctx = createWritableSandboxContext();
+    await executeSandboxScriptTool.execute(
+      {
+        script: 'write_file("out/a.txt", "hello");',
+        execution_thread: "main",
+      },
+      ctx,
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    const writeFile = capabilities?.write_file;
+    vi.mocked(assertSandboxWritePathAllowed).mockRejectedValue(
+      new DyadError(
+        "Sandbox scripts cannot write files outside the app: out/a.txt",
+        DyadErrorKind.Precondition,
+      ),
+    );
+
+    await expect(writeFile?.("out/a.txt", "hello")).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+    });
+    expect(assertSandboxWritePathAllowed).toHaveBeenCalledWith({
+      appPath: "/tmp/app",
+      guestPath: "out/a.txt",
+    });
+    expect(ctx.requireConsent).not.toHaveBeenCalled();
+  });
+
   it("with execution_thread: 'worker', invokes runSandboxScript and does not inject MCP capabilities", async () => {
     vi.mocked(runSandboxScript).mockResolvedValue({
       value: "ok",
@@ -471,7 +598,7 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
         def("Sentry", "list_issues"),
         def("Linear", "create_issue"),
       ],
-      { useSearch: true },
+      { useSearch: true, includeWriteFile: false },
     );
 
     // Names are listed up front so the model sees what exists.
@@ -504,7 +631,7 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
   it("omits get_mcp_tool_schema wording when that tool is not registered", async () => {
     const desc = await buildExecuteSandboxScriptDescription(
       [def("Sentry", "get_issue"), def("Linear", "create_issue")],
-      { useSearch: true, hasGetSchemaTool: false },
+      { useSearch: true, hasGetSchemaTool: false, includeWriteFile: false },
     );
 
     // Names are still listed, and search is still offered.

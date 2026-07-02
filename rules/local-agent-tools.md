@@ -45,6 +45,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Sandbox host functions
 
 - When adding a built-in sandbox host function, add its name to `SANDBOX_HOST_CALL_NAMES` in `src/ipc/utils/sandbox/capabilities.ts`. MCP tool collection seeds collision detection from that list so MCP capabilities do not silently shadow built-ins when capability maps are merged.
+- A state-changing host function must enforce cross-cutting preconditions at the capability layer, not via the parent tool's wrapper. `execute_sandbox_script` is exempted from the wrapper-level app-blueprint gate (`CAPABILITY_GATED_BLUEPRINT_TOOLS` in `tool_definitions.ts`) because gating the whole tool would also block read-only scripts and MCP host calls; instead `buildWriteFileCapability` calls `assertAppBlueprintApproved` per write, reading `ctx.enableAppBlueprint`.
+- Host functions that WRITE must run `assertSandboxWritePathAllowed` (realpath containment), not just the lexical `assertAllowedGuestPath`. Reads already resolve symlinks via `assertResolvedPathAllowed`; a write path that skips realpath resolution can follow a symlinked directory or file out of the app.
+- Consent, file-edit tracking, and blueprint gating shared between `buildAgentToolSet` and sandbox capability bridges live in `tools/tool_invocation.ts` — a cycle-free module (`tool_definitions.ts` imports every tool, so tools cannot import back from it). Use those helpers instead of copying the wrapper's blocks.
+- Derive "is this host function enabled" from one predicate: the handler sets `ctx.sandboxWriteFileHostEnabled` via `shouldIncludeTool(writeFileTool, ...)`, and per-call re-checks use `getToolConsent(writeFileTool)` (which honors the tool's `defaultConsent` fallback). Do not read `settings.agentToolConsents` directly — a raw read silently diverges if the default consent changes. `buildExecuteSandboxScriptDescription` requires an explicit `includeWriteFile` for the same reason: only the caller knows the turn context.
 
 ## Attachment manifest lifecycle
 

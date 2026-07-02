@@ -144,6 +144,14 @@ export interface AgentContext {
    * capability injection aligned to this same turn-scoped value.
    */
   sandboxWriteFileHostEnabled?: boolean;
+  /**
+   * Whether the app-blueprint approval flow gates state-modifying work this
+   * turn (settings.enableAppBlueprint && app.needsAppBlueprint), mirroring
+   * BuildAgentToolSetOptions.enableAppBlueprint. Consumed by capability-layer
+   * gates such as the sandbox write_file host function; undefined is treated
+   * as enabled so non-handler callers fail closed.
+   */
+  enableAppBlueprint?: boolean;
 }
 
 // ============================================================================

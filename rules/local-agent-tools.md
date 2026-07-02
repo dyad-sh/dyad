@@ -5,6 +5,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Read-only / plan-only mode
 
 - **`modifiesState: true`** must be set on any tool that writes to disk or modifies external state (files, database, etc.). This flag controls whether the tool is available in read-only (ask) mode and plan-only mode — see `buildAgentToolSet` in `tool_definitions.ts`.
+- If a read/inspection wrapper tool gains a state-changing host function (for example a new sandbox `write_file` capability inside `execute_sandbox_script`), either mark the parent tool `modifiesState: true` or make `modifiesState` a context predicate that returns true whenever the writable host function is exposed. Otherwise read-only / plan-only filtering can still expose writes through the wrapper tool. Prompt descriptions, tool filtering, and runtime capability injection should all derive from the same turn-scoped flag so ask/plan mode can keep the read-only surface without advertising or exposing writes.
 - Similarly, code in the `handleLocalAgentStream` handler that writes to the workspace (e.g., `ensureDyadGitignored`, injecting synthetic todo reminders) should be guarded with `if (!readOnly && !planModeOnly)` checks. Injecting instructions that reference state-changing tools into non-writable runs will confuse the model since those tools are filtered out.
 
 ## Async I/O
@@ -40,6 +41,14 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Search all `e2e-tests/snapshots/` baselines for old tool-description text after regenerating request snapshots. Some request baselines are extensionless files such as `local_agent_explore_code.spec.ts_disabled`, not just `.txt` snapshots.
 - When a local-agent tool is gated by a setting or experiment, keep related user-message hints in sync with the same gate. Request snapshots for the default-disabled path should not advertise or include a tool that `buildAgentToolSet` filters out.
 - In `testing/fake-llm-server`, keep Anthropic local-agent fixture routing in sync with the OpenAI chat-completions route for synthetic continuation messages (`incomplete todo(s)`, persisted unfinished todos, and stream retry prompts). If Anthropic routing misses those markers, multi-pass fixtures fall back to the canned `file1.txt` response mid-flow.
+
+## Sandbox host functions
+
+- When adding a built-in sandbox host function, add its name to `SANDBOX_HOST_CALL_NAMES` in `src/ipc/utils/sandbox/capabilities.ts`. MCP tool collection seeds collision detection from that list so MCP capabilities do not silently shadow built-ins when capability maps are merged.
+- A state-changing host function must enforce cross-cutting preconditions at the capability layer, not via the parent tool's wrapper. `execute_sandbox_script` is exempted from the wrapper-level app-blueprint gate (`CAPABILITY_GATED_BLUEPRINT_TOOLS` in `tool_definitions.ts`) because gating the whole tool would also block read-only scripts and MCP host calls; instead `buildWriteFileCapability` calls `assertAppBlueprintApproved` per write, reading `ctx.enableAppBlueprint`.
+- Host functions that WRITE must run `assertSandboxWritePathAllowed` (realpath containment), not just the lexical `assertAllowedGuestPath`. Reads already resolve symlinks via `assertResolvedPathAllowed`; a write path that skips realpath resolution can follow a symlinked directory or file out of the app.
+- Consent, file-edit tracking, and blueprint gating shared between `buildAgentToolSet` and sandbox capability bridges live in `tools/tool_invocation.ts` — a cycle-free module (`tool_definitions.ts` imports every tool, so tools cannot import back from it). Use those helpers instead of copying the wrapper's blocks.
+- Derive "is this host function enabled" from one predicate: the handler sets `ctx.sandboxWriteFileHostEnabled` via `shouldIncludeTool(writeFileTool, ...)`, and per-call re-checks use `getToolConsent(writeFileTool)` (which honors the tool's `defaultConsent` fallback). Do not read `settings.agentToolConsents` directly — a raw read silently diverges if the default consent changes. `buildExecuteSandboxScriptDescription` requires an explicit `includeWriteFile` for the same reason: only the caller knows the turn context.
 
 ## Attachment manifest lifecycle
 

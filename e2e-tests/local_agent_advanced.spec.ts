@@ -101,6 +101,15 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
  */
 testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
+  await po.page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enableCodeExplorer: false,
+    });
+  });
+  await expect
+    .poll(() => po.settings.recordSettings().enableCodeExplorer)
+    .toBe(false);
+
   await po.navigation.goToSettingsTab();
 
   // Configure the test MCP server.

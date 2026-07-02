@@ -12,6 +12,7 @@ import {
   pruneAttachmentManifest,
 } from "@/ipc/utils/media_path_utils";
 import {
+  assertSandboxWritePathAllowed,
   sandboxFileStats,
   sandboxListFiles,
   sandboxReadFile,
@@ -114,6 +115,58 @@ describe("sandbox capabilities", () => {
     await expect(
       sandboxReadFile(appPath, path.join(appPath, "src", "data.txt")),
     ).rejects.toThrow("Absolute paths");
+  });
+
+  it("rejects sandbox writes that escape the app through symlinks", async () => {
+    const outsideDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-outside-"),
+    );
+    try {
+      // Directory symlink pointing outside the app.
+      await fs.symlink(outsideDir, path.join(appPath, "out"), "dir");
+      await expect(
+        assertSandboxWritePathAllowed({ appPath, guestPath: "out/a.txt" }),
+      ).rejects.toThrow("outside the app");
+      // New nested segments under the symlinked dir escape too.
+      await expect(
+        assertSandboxWritePathAllowed({
+          appPath,
+          guestPath: "out/nested/deep/a.txt",
+        }),
+      ).rejects.toThrow("outside the app");
+
+      // File symlink pointing outside the app.
+      const outsideFile = path.join(outsideDir, "target.txt");
+      await fs.writeFile(outsideFile, "x", "utf8");
+      await fs.symlink(outsideFile, path.join(appPath, "link.txt"), "file");
+      await expect(
+        assertSandboxWritePathAllowed({ appPath, guestPath: "link.txt" }),
+      ).rejects.toThrow("outside the app");
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows sandbox writes to new and existing in-app paths", async () => {
+    // Existing file.
+    await expect(
+      assertSandboxWritePathAllowed({ appPath, guestPath: "src/data.txt" }),
+    ).resolves.toBeUndefined();
+    // New file in an existing directory.
+    await expect(
+      assertSandboxWritePathAllowed({ appPath, guestPath: "src/new.txt" }),
+    ).resolves.toBeUndefined();
+    // New file under directories that don't exist yet.
+    await expect(
+      assertSandboxWritePathAllowed({
+        appPath,
+        guestPath: "brand/new/dir/file.txt",
+      }),
+    ).resolves.toBeUndefined();
+    // Protected paths stay denied even after resolution.
+    await expect(
+      assertSandboxWritePathAllowed({ appPath, guestPath: ".env" }),
+    ).rejects.toThrow("protected path");
   });
 
   it("allows reading and listing under .dyad/", async () => {

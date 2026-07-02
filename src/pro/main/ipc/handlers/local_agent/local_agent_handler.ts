@@ -97,6 +97,7 @@ import {
   buildExecuteSandboxScriptDescription,
   executeSandboxScriptTool,
 } from "./tools/execute_sandbox_script";
+import { writeFileTool } from "./tools/write_file";
 import { collectMcpToolDefs } from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
@@ -723,6 +724,15 @@ export async function handleLocalAgentStream(
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     };
+    // Same inclusion predicate the tool-set builder uses for the write_file
+    // tool, so the sandbox write host can never stay exposed in a turn where
+    // the direct tool is filtered out.
+    ctx.sandboxWriteFileHostEnabled = shouldIncludeTool(
+      writeFileTool,
+      ctx,
+      buildOptions,
+    );
+    ctx.enableAppBlueprint = buildOptions.enableAppBlueprint;
     // search_mcp_tools.isEnabled reads this during the build, so set it up front
     // from the same predicate the builder uses. Off in read-only and plan mode.
     const mcpInSandboxEnabled =
@@ -756,6 +766,7 @@ export async function handleLocalAgentStream(
         await buildExecuteSandboxScriptDescription([], {
           useSearch: useMcpToolSearch,
           hasGetSchemaTool,
+          includeWriteFile: ctx.sandboxWriteFileHostEnabled,
         });
       if (mcpInSandboxEnabled) {
         try {
@@ -769,6 +780,7 @@ export async function handleLocalAgentStream(
             await buildExecuteSandboxScriptDescription(defs, {
               useSearch: useMcpToolSearch,
               hasGetSchemaTool,
+              includeWriteFile: ctx.sandboxWriteFileHostEnabled,
             });
         } catch (e) {
           logger.warn(

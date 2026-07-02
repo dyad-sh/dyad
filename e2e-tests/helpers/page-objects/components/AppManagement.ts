@@ -97,8 +97,12 @@ export class AppManagement {
   }
 
   async clickAppListItem({ appName }: { appName: string }) {
-    await this.showAppList();
-    await this.getAppListItem({ appName }).click();
+    await expect(async () => {
+      await this.showAppList();
+      const appListItem = this.getAppListItem({ appName });
+      await expect(appListItem).toBeVisible({ timeout: Timeout.SHORT });
+      await appListItem.click({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async clickOpenInChatButton() {

@@ -48,15 +48,17 @@ import {
   type ToolDefinition,
   type AgentContext,
   type ToolResult,
-  type FileEditToolName,
-  FILE_EDIT_TOOL_NAMES,
 } from "./tools/types";
+import {
+  assertAppBlueprintApproved,
+  requireToolConsentOrThrow,
+  trackFileEditTool,
+} from "./tools/tool_invocation";
 import type { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
-import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -396,32 +398,6 @@ export interface BuildAgentToolSetOptions {
   enableAppBlueprint?: boolean;
 }
 
-const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
-
-/**
- * Track file edit tool usage for telemetry
- */
-function trackFileEditTool(
-  ctx: AgentContext,
-  toolName: string,
-  args: { file_path?: string; path?: string },
-): void {
-  if (!FILE_EDIT_TOOLS.has(toolName as FileEditToolName)) {
-    return;
-  }
-  const filePath = args.file_path ?? args.path;
-  if (!filePath) {
-    return;
-  }
-  if (!ctx.fileEditTracker[filePath]) {
-    ctx.fileEditTracker[filePath] = {
-      write_file: 0,
-      search_replace: 0,
-    };
-  }
-  ctx.fileEditTracker[filePath][toolName as FileEditToolName]++;
-}
-
 /**
  * Tools that should ONLY be available in plan mode (excluded from normal agent mode).
  * Note: planning_questionnaire is intentionally omitted so it's available in pro agent mode too.
@@ -451,6 +427,29 @@ const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
 
 /**
+ * Tools that enforce the app-blueprint precondition themselves at the
+ * capability layer instead of at the wrapper level. execute_sandbox_script
+ * is state-modifying only because it MAY expose the write_file host
+ * function; gating the whole tool would also block read-only inspection
+ * scripts and MCP host calls during blueprint drafting, so the gate runs
+ * inside the write_file host capability (see buildWriteFileCapability in
+ * execute_sandbox_script.ts).
+ */
+const CAPABILITY_GATED_BLUEPRINT_TOOLS = new Set<string>([
+  "execute_sandbox_script",
+]);
+
+function toolModifiesState(
+  tool: (typeof TOOL_DEFINITIONS)[number],
+  ctx: AgentContext,
+): boolean {
+  if (typeof tool.modifiesState === "function") {
+    return tool.modifiesState(ctx);
+  }
+  return tool.modifiesState === true;
+}
+
+/**
  * Whether a tool belongs in this turn's tool set. Single source of truth for
  * inclusion, so a caller that needs the answer before the set is built (e.g. a
  * tool whose availability depends on another tool) can ask the same question
@@ -467,7 +466,7 @@ export function shouldIncludeTool(
   // In plan mode, skip state-modifying tools unless they're planning-specific.
   if (
     options.planModeOnly &&
-    tool.modifiesState &&
+    toolModifiesState(tool, ctx) &&
     !PLANNING_SPECIFIC_TOOLS.has(tool.name)
   ) {
     return false;
@@ -491,7 +490,7 @@ export function shouldIncludeTool(
     return false;
   }
   // In read-only mode, skip tools that modify state.
-  if (options.readOnly && tool.modifiesState) {
+  if (options.readOnly && toolModifiesState(tool, ctx)) {
     return false;
   }
   if (tool.isEnabled) {
@@ -535,41 +534,22 @@ export function buildAgentToolSet(
           // a model that skips write_app_blueprint can still call e.g.
           // write_file and bypass the required blueprint approval flow.
           if (
-            options.enableAppBlueprint !== false &&
-            tool.modifiesState &&
+            toolModifiesState(tool, ctx) &&
             !APP_BLUEPRINT_TOOLS.has(tool.name) &&
-            !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+            !PLANNING_SPECIFIC_TOOLS.has(tool.name) &&
+            !CAPABILITY_GATED_BLUEPRINT_TOOLS.has(tool.name)
           ) {
-            const plan = getAppBlueprintForChat(ctx.chatId);
-            if (!plan) {
-              throw new DyadError(
-                `App blueprint must be created and approved before running ${tool.name}. Call write_app_blueprint first to present the blueprint for approval.`,
-                DyadErrorKind.Precondition,
-              );
-            }
-            if (!plan.approved) {
-              throw new DyadError(
-                `App blueprint must be approved before running ${tool.name}. Call write_app_blueprint to present the blueprint for approval.`,
-                DyadErrorKind.Precondition,
-              );
-            }
+            assertAppBlueprintApproved({
+              toolName: tool.name,
+              chatId: ctx.chatId,
+              enabled: options.enableAppBlueprint !== false,
+            });
           }
 
           const processedArgs = await processArgPlaceholders(args, ctx);
 
           // Check consent before executing the tool
-          const allowed = await ctx.requireConsent({
-            toolName: tool.name,
-            toolDescription: tool.description,
-            inputPreview: tool.getConsentPreview?.(processedArgs) ?? null,
-            metadata: tool.getConsentMetadata?.(processedArgs) ?? null,
-          });
-          if (!allowed) {
-            throw new DyadError(
-              `User denied permission for ${tool.name}`,
-              DyadErrorKind.UserCancelled,
-            );
-          }
+          await requireToolConsentOrThrow(tool, processedArgs, ctx);
 
           // Track file edit tool usage before execution to capture all attempts
           // (including failures) for retry/fallback telemetry

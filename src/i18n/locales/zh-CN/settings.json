@@ -42,6 +42,7 @@
     "nodeRuntimeSource": {
       "managed": "Dyad 托管",
       "custom": "自定义路径",
+      "detected": "自动检测",
       "system": "系统"
     },
     "systemNodeTooOld": "系统 Node.js 版本过旧",
@@ -51,6 +52,7 @@
     "runtimeSystem": "系统",
     "runtimeManaged": "托管",
     "custom": "自定义",
+    "detected": "自动检测",
     "installManagedNode": "安装托管 Node.js",
     "reinstallManagedNode": "重新安装托管 Node.js",
     "removeManagedNode": "移除托管 Node.js",

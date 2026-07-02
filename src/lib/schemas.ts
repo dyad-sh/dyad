@@ -368,6 +368,10 @@ const BaseUserSettingsFields = {
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
   customNodePath: z.string().optional().nullable(),
+  // How customNodePath was configured: "manual" via Browse for Node.js,
+  // "auto" via probing well-known install locations. Absent means manual
+  // (pre-existing configurations).
+  customNodePathSource: z.enum(["manual", "auto"]).optional().nullable(),
   nodeRuntimePreference: z.enum(["system", "managed"]).optional(),
   customAppsFolder: z.string().optional().nullable(),
   isRunning: z.boolean().optional(),

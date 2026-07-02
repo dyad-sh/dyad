@@ -42,6 +42,7 @@
     "nodeRuntimeSource": {
       "managed": "Dyad-managed",
       "custom": "Custom path",
+      "detected": "Auto-detected",
       "system": "System"
     },
     "systemNodeTooOld": "System Node.js is too old",
@@ -51,6 +52,7 @@
     "runtimeSystem": "System",
     "runtimeManaged": "Managed",
     "custom": "Custom",
+    "detected": "Auto-detected",
     "installManagedNode": "Install managed Node.js",
     "reinstallManagedNode": "Reinstall managed Node.js",
     "removeManagedNode": "Remove managed Node.js",

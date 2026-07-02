@@ -60,7 +60,7 @@ const MANAGED_NODE_ARTIFACTS: Record<
   },
 };
 
-export type NodeRuntimeSource = "system" | "managed" | "custom";
+export type NodeRuntimeSource = "system" | "managed" | "custom" | "detected";
 
 export type ManagedNodeInstallProgress = {
   phase: "downloading" | "verifying" | "extracting" | "installing" | "done";

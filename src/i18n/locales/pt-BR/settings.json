@@ -42,6 +42,7 @@
     "nodeRuntimeSource": {
       "managed": "Gerenciado pelo Dyad",
       "custom": "Caminho personalizado",
+      "detected": "Detectado automaticamente",
       "system": "Sistema"
     },
     "systemNodeTooOld": "O Node.js do sistema é muito antigo",
@@ -51,6 +52,7 @@
     "runtimeSystem": "Sistema",
     "runtimeManaged": "Gerenciado",
     "custom": "Personalizado",
+    "detected": "Detectado automaticamente",
     "installManagedNode": "Instalar Node.js gerenciado",
     "reinstallManagedNode": "Reinstalar Node.js gerenciado",
     "removeManagedNode": "Remover Node.js gerenciado",

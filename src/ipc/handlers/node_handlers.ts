@@ -30,6 +30,7 @@ import {
   type NodeRuntimeSource,
 } from "@/ipc/utils/managed_node";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { probeForNodeCached } from "@/ipc/utils/node_probe";
 import { prependPathSegment, sanitizePathEnv } from "@/ipc/utils/managed_tools";
 import {
   applyManagedPnpmToProcessPath,
@@ -323,7 +324,7 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
   if (customNode) {
     nodePath = customNode.nodePath;
     nodeVersion = customNode.nodeVersion;
-    source = "custom";
+    source = settings.customNodePathSource === "auto" ? "detected" : "custom";
   } else {
     if (settings.customNodePath) {
       logger.warn(
@@ -359,6 +360,40 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
     } else {
       nodeVersion = null;
       nodePath = systemNodePath;
+
+      // PATH-based detection found nothing usable. Probe well-known absolute
+      // install locations (official installer dirs, nvm/fnm/mise/volta,
+      // Homebrew): a GUI app's inherited PATH misses version managers that
+      // register in shell init files, goes stale when an installer runs
+      // while Dyad is open, and a corrupted PATH breaks `shell: true`
+      // spawns entirely. Newest-wins so a stray ancient node (e.g. one
+      // bundled by another app) never shadows a modern install.
+      const probe = await probeForNodeCached();
+      if (
+        probe &&
+        isUsableSystemNodeVersion(probe.version) &&
+        // Respect an explicit Managed selection: reaching this branch with
+        // preference "managed" means the managed runtime is missing on disk,
+        // and a custom path would permanently outrank it once reinstalled.
+        settings.nodeRuntimePreference !== "managed"
+      ) {
+        logger.info(
+          `Auto-configuring Node.js ${probe.version} detected via ${probe.origin} at ${probe.binDir}`,
+        );
+        writeSettings({
+          customNodePath: probe.binDir,
+          customNodePathSource: "auto",
+        });
+        await reloadNodePath();
+        sendTelemetryEvent("node_probe_detected", {
+          origin: probe.origin,
+          node_version: probe.version,
+        });
+        source = "detected";
+        nodeVersion = probe.version;
+        nodePath = probe.nodePath;
+        systemNodeTooOld = false;
+      }
     }
   }
 
@@ -527,13 +562,20 @@ export function registerNodeHandlers() {
       });
       const settings = readSettings();
       const customNode = await getCustomNodeInfo(settings.customNodePath);
+      // An auto-detected custom path is not an explicit user choice: clear it
+      // so it cannot outrank the managed runtime the user just asked for.
+      const keepCustomNode =
+        !!customNode && settings.customNodePathSource !== "auto";
       writeSettings({
-        // Preserve a valid custom path; it remains the most explicit runtime
-        // selection. If there is no valid custom runtime, the install button
-        // switches Dyad to the newly installed managed runtime.
-        nodeRuntimePreference: customNode
+        // Preserve a manually chosen custom path; it remains the most
+        // explicit runtime selection. Otherwise the install button switches
+        // Dyad to the newly installed managed runtime.
+        nodeRuntimePreference: keepCustomNode
           ? (settings.nodeRuntimePreference ?? "system")
           : "managed",
+        ...(customNode && !keepCustomNode
+          ? { customNodePath: null, customNodePathSource: null }
+          : {}),
       });
       await reloadNodePath();
       managedPnpmImplicitInstallFailed = false;

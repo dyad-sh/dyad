@@ -95,7 +95,10 @@ export function NodePathSelector() {
       const result = await ipc.system.selectNodeFolder();
       if (result.path) {
         // Save the custom path to settings
-        await updateSettings({ customNodePath: result.path });
+        await updateSettings({
+          customNodePath: result.path,
+          customNodePathSource: "manual",
+        });
         // Update the environment PATH
         await ipc.system.reloadEnvPath();
         // Recheck Node.js status
@@ -113,7 +116,10 @@ export function NodePathSelector() {
   const handleResetToDefault = async () => {
     try {
       // Clear the custom path
-      await updateSettings({ customNodePath: null });
+      await updateSettings({
+        customNodePath: null,
+        customNodePathSource: null,
+      });
       // Reload environment to use system PATH
       await ipc.system.reloadEnvPath();
       // Recheck Node.js status
@@ -202,7 +208,9 @@ export function NodePathSelector() {
       ? t("general.nodeRuntimeSource.managed")
       : activeRuntime === "custom"
         ? t("general.nodeRuntimeSource.custom")
-        : t("general.nodeRuntimeSource.system");
+        : activeRuntime === "detected"
+          ? t("general.nodeRuntimeSource.detected")
+          : t("general.nodeRuntimeSource.system");
   const activeRuntimeLabel = nodeStatus.version
     ? t("general.nodeRuntimeActiveVersion", {
         version: nodeStatus.version,
@@ -369,7 +377,9 @@ export function NodePathSelector() {
                 </span>
                 {isCustomPath && (
                   <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
-                    {t("general.custom")}
+                    {settings.customNodePathSource === "auto"
+                      ? t("general.detected")
+                      : t("general.custom")}
                   </span>
                 )}
               </div>

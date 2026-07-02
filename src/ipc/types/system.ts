@@ -14,7 +14,7 @@ export const NodeSystemInfoSchema = z.object({
   nodeVersion: z.string().nullable(),
   pnpmVersion: z.string().nullable(),
   nodeDownloadUrl: z.string(),
-  source: z.enum(["system", "managed", "custom"]).nullable(),
+  source: z.enum(["system", "managed", "custom", "detected"]).nullable(),
   nodePath: z.string().nullable(),
   managedNodeInstalled: z.boolean(),
   managedNodeVersion: z.string().nullable(),

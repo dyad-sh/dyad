@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => ({
   attachments: [] as any[],
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
+  effectiveDefaultChatMode: "build",
   inputValue: "Build a notes app",
+  initialChatMode: "build",
   navigate: vi.fn(),
   openPreviewIfSetupRequired: vi.fn(),
   posthogCapture: vi.fn(),
@@ -23,6 +25,10 @@ const mocks = vi.hoisted(() => ({
   setShouldResumeFirstPrompt: vi.fn(),
   shouldResumeFirstPrompt: false,
   streamMessage: vi.fn(),
+  settings: {
+    isTestMode: true,
+    selectedChatMode: "build",
+  } as any,
   updateSettings: vi.fn(),
 }));
 
@@ -84,10 +90,7 @@ vi.mock("@/hooks/useLoadApps", () => ({
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     envVars: {},
-    settings: {
-      isTestMode: true,
-      selectedChatMode: "build",
-    },
+    settings: mocks.settings,
     updateSettings: mocks.updateSettings,
   }),
 }));
@@ -100,7 +103,7 @@ vi.mock("@/hooks/useFreeAgentQuota", () => ({
 }));
 
 vi.mock("@/hooks/useInitialChatMode", () => ({
-  useInitialChatMode: () => "build",
+  useInitialChatMode: () => mocks.initialChatMode,
 }));
 
 vi.mock("@/hooks/useOpenPreviewIfSetupRequired", () => ({
@@ -124,7 +127,7 @@ vi.mock("@/hooks/useLoadApp", () => ({
 }));
 
 vi.mock("@/lib/schemas", () => ({
-  getEffectiveDefaultChatMode: () => "build",
+  getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
 }));
 
 vi.mock("@/client_logic/template_hook", () => ({
@@ -195,7 +198,9 @@ describe("HomePage", () => {
     mocks.attachments = [];
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
+    mocks.effectiveDefaultChatMode = "build";
     mocks.inputValue = "Build a notes app";
+    mocks.initialChatMode = "build";
     mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openPreviewIfSetupRequired.mockReset();
@@ -208,6 +213,10 @@ describe("HomePage", () => {
     mocks.setInputValue.mockReset();
     mocks.setShouldResumeFirstPrompt.mockReset();
     mocks.streamMessage.mockReset();
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
     mocks.updateSettings.mockReset();
     mocks.createApp.mockResolvedValue({
       app: {
@@ -308,6 +317,37 @@ describe("HomePage", () => {
     await waitFor(() => {
       expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
     });
+  });
+
+  it("auto-submits a pending first prompt with the effective home default before settings catch up", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      selectedChatMode: "local-agent",
+    });
+    expect(mocks.createApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialChatMode: "local-agent",
+      }),
+    );
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedChatMode: "local-agent",
+      }),
+    );
   });
 
   it("auto-submits an attachment-only pending first prompt once provider setup is ready", async () => {

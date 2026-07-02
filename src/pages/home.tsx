@@ -13,7 +13,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
 import { SetupBanner } from "@/components/SetupBanner";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
@@ -32,7 +32,7 @@ import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import { getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode, type ChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
@@ -74,6 +74,13 @@ export default function HomePage() {
     useLanguageModelProviders();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const initialChatMode = useInitialChatMode();
+  const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
+    if (!settings || isQuotaLoading) {
+      return initialChatMode;
+    }
+
+    return getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
+  }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -122,18 +129,18 @@ export default function HomePage() {
   // before knowing if quota is actually exceeded
   const hasAppliedDefaultChatMode = useRef(false);
   useEffect(() => {
-    if (settings && !hasAppliedDefaultChatMode.current && !isQuotaLoading) {
+    if (
+      settings &&
+      homeInitialChatMode &&
+      !hasAppliedDefaultChatMode.current &&
+      !isQuotaLoading
+    ) {
       hasAppliedDefaultChatMode.current = true;
-      const effectiveDefaultMode = getEffectiveDefaultChatMode(
-        settings,
-        envVars,
-        !isQuotaExceeded,
-      );
-      if (settings.selectedChatMode !== effectiveDefaultMode) {
-        updateSettings({ selectedChatMode: effectiveDefaultMode });
+      if (settings.selectedChatMode !== homeInitialChatMode) {
+        updateSettings({ selectedChatMode: homeInitialChatMode });
       }
     }
-  }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading, envVars]);
+  }, [homeInitialChatMode, settings, updateSettings, isQuotaLoading]);
 
   const openAiSetupDialog = useCallback(() => {
     posthog.capture("home:ai-setup-dialog-open");
@@ -207,14 +214,14 @@ export default function HomePage() {
           // Existing app flow: create a new chat in the selected app
           chatId = await ipc.chat.createChat({
             appId: selectedApp.id,
-            initialChatMode,
+            initialChatMode: homeInitialChatMode,
           });
           appId = selectedApp.id;
         } else {
           // New app flow (default behavior)
           const result = await ipc.app.createApp({
             name: generateCuteAppName(),
-            initialChatMode,
+            initialChatMode: homeInitialChatMode,
           });
           chatId = result.chatId;
           appId = result.app.id;
@@ -246,7 +253,7 @@ export default function HomePage() {
           chatId,
           appId,
           attachments,
-          requestedChatMode: initialChatMode,
+          requestedChatMode: homeInitialChatMode,
         });
         await new Promise((resolve) =>
           setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
@@ -278,7 +285,7 @@ export default function HomePage() {
     },
     [
       inputValue,
-      initialChatMode,
+      homeInitialChatMode,
       isAnyProviderSetup,
       isLoadingLanguageModelProviders,
       navigate,

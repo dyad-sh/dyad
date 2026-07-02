@@ -1,8 +1,8 @@
 import { dialog, ipcMain } from "electron";
-import { execSync } from "child_process";
 import { platform, arch } from "os";
 import fixPath from "fix-path";
 import { runShellCommand } from "../utils/runShellCommand";
+import { readRefreshedWindowsPath } from "../utils/windows_env_path";
 import log from "electron-log";
 import { existsSync } from "fs";
 import fs from "fs/promises";
@@ -31,10 +31,13 @@ let managedPnpmImplicitInstallFailed = false;
 
 function reloadNodePath() {
   if (platform() === "win32") {
-    const newPath = execSync("cmd /c echo %PATH%", {
-      encoding: "utf8",
-    }).trim();
-    process.env.PATH = newPath;
+    // Re-read PATH from the registry: spawning a child (e.g. `cmd /c echo
+    // %PATH%`) can never observe PATH entries an installer added while Dyad
+    // was running, because children inherit this process's stale copy.
+    const refreshedPath = readRefreshedWindowsPath(process.env.PATH ?? "");
+    if (refreshedPath) {
+      process.env.PATH = refreshedPath;
+    }
   } else {
     fixPath();
   }

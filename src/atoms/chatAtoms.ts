@@ -64,7 +64,13 @@ export const chatInputValueAtom = atom(
   },
 );
 export const homeChatInputValueAtom = atom<string>("");
+homeChatInputValueAtom.debugLabel = "homeChatInputValueAtom";
+
+export const pendingFirstPromptAtom = atom<boolean>(false);
+pendingFirstPromptAtom.debugLabel = "pendingFirstPromptAtom";
+
 export const homeSelectedAppAtom = atom<ListedApp | null>(null);
+homeSelectedAppAtom.debugLabel = "homeSelectedAppAtom";
 
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
@@ -466,6 +472,7 @@ export const removeChatIdFromAllTrackingAtom = atom(
 );
 
 export const attachmentsAtom = atom<FileAttachment[]>([]);
+attachmentsAtom.debugLabel = "attachmentsAtom";
 
 // Tool consent request queue. Holds both agent-tool and MCP-tool consents;
 // `kind` routes the decision back to the right IPC channel.

@@ -1,14 +1,19 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useAtom, useSetAtom } from "jotai";
-import { homeChatInputValueAtom } from "../atoms/chatAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import {
+  attachmentsAtom,
+  homeChatInputValueAtom,
+  homeSelectedAppAtom,
+  pendingFirstPromptAtom,
+} from "../atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
 import { SetupBanner } from "@/components/SetupBanner";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
@@ -27,7 +32,7 @@ import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import { getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode, type ChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
@@ -56,6 +61,11 @@ export interface HomeSubmitOptions {
 export default function HomePage() {
   const { t } = useTranslation("home");
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
+  const [pendingSelectedApp, setPendingSelectedApp] =
+    useAtom(homeSelectedAppAtom);
+  const [pendingAttachments, setPendingAttachments] = useAtom(attachmentsAtom);
+  const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
+  const setShouldResumeFirstPrompt = useSetAtom(pendingFirstPromptAtom);
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
   const { refreshApps } = useLoadApps();
@@ -64,6 +74,13 @@ export default function HomePage() {
     useLanguageModelProviders();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const initialChatMode = useInitialChatMode();
+  const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
+    if (!settings || isQuotaLoading) {
+      return initialChatMode;
+    }
+
+    return getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
+  }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -112,23 +129,41 @@ export default function HomePage() {
   // before knowing if quota is actually exceeded
   const hasAppliedDefaultChatMode = useRef(false);
   useEffect(() => {
-    if (settings && !hasAppliedDefaultChatMode.current && !isQuotaLoading) {
+    if (
+      settings &&
+      homeInitialChatMode &&
+      !hasAppliedDefaultChatMode.current &&
+      !isQuotaLoading
+    ) {
       hasAppliedDefaultChatMode.current = true;
-      const effectiveDefaultMode = getEffectiveDefaultChatMode(
-        settings,
-        envVars,
-        !isQuotaExceeded,
-      );
-      if (settings.selectedChatMode !== effectiveDefaultMode) {
-        updateSettings({ selectedChatMode: effectiveDefaultMode });
+      if (settings.selectedChatMode !== homeInitialChatMode) {
+        updateSettings({ selectedChatMode: homeInitialChatMode });
       }
     }
-  }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading, envVars]);
+  }, [homeInitialChatMode, settings, updateSettings, isQuotaLoading]);
 
   const openAiSetupDialog = useCallback(() => {
     posthog.capture("home:ai-setup-dialog-open");
+    if (inputValue.trim() || pendingAttachments.length > 0) {
+      setShouldResumeFirstPrompt(true);
+    }
     setIsAiSetupDialogOpen(true);
-  }, [posthog]);
+  }, [
+    inputValue,
+    pendingAttachments.length,
+    posthog,
+    setShouldResumeFirstPrompt,
+  ]);
+
+  const handleAiSetupDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setIsAiSetupDialogOpen(open);
+      if (!open) {
+        setShouldResumeFirstPrompt(false);
+      }
+    },
+    [setShouldResumeFirstPrompt],
+  );
 
   useEffect(() => {
     if (
@@ -149,101 +184,172 @@ export default function HomePage() {
     shouldOpenAiSetupDialogWhenProvidersLoad,
   ]);
 
-  const handleSubmit = async (options?: HomeSubmitOptions) => {
-    const attachments = options?.attachments || [];
-    const selectedApp = options?.selectedApp;
+  const handleSubmit = useCallback(
+    async (options?: HomeSubmitOptions) => {
+      const attachments = options?.attachments || [];
+      const selectedApp = options?.selectedApp;
 
-    if (!inputValue.trim() && attachments.length === 0) return false;
+      if (!inputValue.trim() && attachments.length === 0) return false;
 
-    if (!isAnyProviderSetup()) {
-      if (isLoadingLanguageModelProviders) {
-        setShouldOpenAiSetupDialogWhenProvidersLoad(true);
+      if (!isAnyProviderSetup()) {
+        if (isLoadingLanguageModelProviders) {
+          if (inputValue.trim() || attachments.length > 0) {
+            setShouldResumeFirstPrompt(true);
+          }
+          setShouldOpenAiSetupDialogWhenProvidersLoad(true);
+          return false;
+        }
+
+        openAiSetupDialog();
         return false;
       }
 
-      openAiSetupDialog();
-      return false;
+      try {
+        setLoadingMode(selectedApp ? "existing" : "new");
+        setIsLoading(true);
+
+        let chatId: number;
+        let appId: number;
+        if (selectedApp) {
+          // Existing app flow: create a new chat in the selected app
+          chatId = await ipc.chat.createChat({
+            appId: selectedApp.id,
+            initialChatMode: homeInitialChatMode,
+          });
+          appId = selectedApp.id;
+        } else {
+          // New app flow (default behavior)
+          const result = await ipc.app.createApp({
+            name: generateCuteAppName(),
+            initialChatMode: homeInitialChatMode,
+          });
+          chatId = result.chatId;
+          appId = result.app.id;
+
+          if (
+            settings?.selectedTemplateId &&
+            NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
+          ) {
+            await neonTemplateHook({
+              appId: result.app.id,
+              appName: result.app.name,
+            });
+          }
+
+          // Apply selected theme to the new app (if one is set)
+          if (settings?.selectedThemeId) {
+            await ipc.template.setAppTheme({
+              appId: result.app.id,
+              themeId: settings.selectedThemeId || null,
+            });
+          }
+        }
+
+        const openedPreviewSetupPromise = openPreviewIfSetupRequired(appId);
+
+        // Stream the message with attachments
+        streamMessage({
+          prompt: inputValue,
+          chatId,
+          appId,
+          attachments,
+          requestedChatMode: homeInitialChatMode,
+        });
+        await new Promise((resolve) =>
+          setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
+        );
+        const openedPreviewSetup = await openedPreviewSetupPromise;
+
+        setInputValue("");
+        if (!openedPreviewSetup) {
+          setIsPreviewOpen(false);
+        }
+        await refreshApps();
+        await invalidateAppQuery(queryClient, { appId });
+        // Invalidate chats so ChatTabs picks up the new chat immediately.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+        posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
+        // Select newly created first chat so it appears first in tabs.
+        selectChat({ chatId, appId });
+        return true;
+      } catch (error) {
+        console.error("Failed to create chat:", error);
+        showError(
+          t(selectedApp ? "failedCreateChat" : "failedCreateApp", {
+            error: (error as any).toString(),
+          }),
+        );
+        setIsLoading(false);
+        return false;
+      }
+    },
+    [
+      inputValue,
+      homeInitialChatMode,
+      isAnyProviderSetup,
+      isLoadingLanguageModelProviders,
+      navigate,
+      openAiSetupDialog,
+      openPreviewIfSetupRequired,
+      posthog,
+      queryClient,
+      refreshApps,
+      selectChat,
+      setInputValue,
+      setIsPreviewOpen,
+      setShouldResumeFirstPrompt,
+      settings,
+      streamMessage,
+      t,
+    ],
+  );
+
+  const hasAttemptedAutoResumeRef = useRef(false);
+  useEffect(() => {
+    if (
+      !shouldResumeFirstPrompt ||
+      isLoadingLanguageModelProviders ||
+      !isAnyProviderSetup() ||
+      (!inputValue.trim() && pendingAttachments.length === 0) ||
+      isLoading ||
+      hasAttemptedAutoResumeRef.current
+    ) {
+      return;
     }
 
-    try {
-      setLoadingMode(selectedApp ? "existing" : "new");
-      setIsLoading(true);
+    hasAttemptedAutoResumeRef.current = true;
+    setIsAiSetupDialogOpen(false);
+    navigate({ to: "/", search: {}, replace: true });
 
-      let chatId: number;
-      let appId: number;
-      if (selectedApp) {
-        // Existing app flow: create a new chat in the selected app
-        chatId = await ipc.chat.createChat({
-          appId: selectedApp.id,
-          initialChatMode,
-        });
-        appId = selectedApp.id;
-      } else {
-        // New app flow (default behavior)
-        const result = await ipc.app.createApp({
-          name: generateCuteAppName(),
-          initialChatMode,
-        });
-        chatId = result.chatId;
-        appId = result.app.id;
-
-        if (
-          settings?.selectedTemplateId &&
-          NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
-        ) {
-          await neonTemplateHook({
-            appId: result.app.id,
-            appName: result.app.name,
-          });
-        }
-
-        // Apply selected theme to the new app (if one is set)
-        if (settings?.selectedThemeId) {
-          await ipc.template.setAppTheme({
-            appId: result.app.id,
-            themeId: settings.selectedThemeId || null,
-          });
-        }
-      }
-
-      const openedPreviewSetupPromise = openPreviewIfSetupRequired(appId);
-
-      // Stream the message with attachments
-      streamMessage({
-        prompt: inputValue,
-        chatId,
-        appId,
-        attachments,
-        requestedChatMode: initialChatMode,
+    void (async () => {
+      const didSubmit = await handleSubmit({
+        attachments: pendingAttachments,
+        selectedApp: pendingSelectedApp ?? undefined,
       });
-      await new Promise((resolve) =>
-        setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
-      );
-      const openedPreviewSetup = await openedPreviewSetupPromise;
-
-      setInputValue("");
-      if (!openedPreviewSetup) {
-        setIsPreviewOpen(false);
+      // Clear the pending flag even on failure: handleSubmit already surfaces
+      // an error toast and the user can retry manually from the input. Leaving
+      // the flag set would auto-submit whatever is in the input the next time
+      // this page mounts with a provider configured.
+      setShouldResumeFirstPrompt(false);
+      if (didSubmit) {
+        setPendingAttachments([]);
+        setPendingSelectedApp(null);
       }
-      await refreshApps();
-      await invalidateAppQuery(queryClient, { appId });
-      // Invalidate chats so ChatTabs picks up the new chat immediately.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
-      // Select newly created first chat so it appears first in tabs.
-      selectChat({ chatId, appId });
-      return true;
-    } catch (error) {
-      console.error("Failed to create chat:", error);
-      showError(
-        t(selectedApp ? "failedCreateChat" : "failedCreateApp", {
-          error: (error as any).toString(),
-        }),
-      );
-      setIsLoading(false);
-      return false;
-    }
-  };
+    })();
+  }, [
+    handleSubmit,
+    inputValue,
+    isAnyProviderSetup,
+    isLoading,
+    isLoadingLanguageModelProviders,
+    navigate,
+    pendingAttachments,
+    pendingSelectedApp,
+    setPendingAttachments,
+    setPendingSelectedApp,
+    setShouldResumeFirstPrompt,
+    shouldResumeFirstPrompt,
+  ]);
 
   // Loading overlay for app creation
   if (isLoading) {
@@ -332,7 +438,10 @@ export default function HomePage() {
         <PrivacyBanner />
       </div>
       <FeaturedAppShowcase />
-      <Dialog open={isAiSetupDialogOpen} onOpenChange={setIsAiSetupDialogOpen}>
+      <Dialog
+        open={isAiSetupDialogOpen}
+        onOpenChange={handleAiSetupDialogOpenChange}
+      >
         <DialogContent className="p-0 sm:max-w-2xl">
           <DialogHeader className="sr-only">
             <DialogTitle>You're almost ready to build</DialogTitle>

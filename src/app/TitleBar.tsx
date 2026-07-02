@@ -22,13 +22,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatTabs } from "@/components/chat/ChatTabs";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { pendingFirstPromptAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
@@ -37,10 +38,6 @@ export const TitleBar = () => {
   const platform = useSystemPlatform();
   const showWindowControls = platform !== null && platform !== "darwin";
 
-  const showDyadProSuccessDialog = () => {
-    setIsSuccessDialogOpen(true);
-  };
-
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
@@ -48,12 +45,23 @@ export const TitleBar = () => {
         await refreshSettings();
         // Refetch user budget when Dyad Pro key is set via deep link
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
-        showDyadProSuccessDialog();
+        if (shouldResumeFirstPrompt) {
+          navigate({ to: "/", search: {}, replace: true });
+        } else {
+          setIsSuccessDialogOpen(true);
+        }
         clearLastDeepLink();
       }
     };
     handleDeepLink();
-  }, [lastDeepLink?.timestamp]);
+  }, [
+    clearLastDeepLink,
+    lastDeepLink,
+    navigate,
+    queryClient,
+    refreshSettings,
+    shouldResumeFirstPrompt,
+  ]);
 
   const selectedApp = apps.find((app) => app.id === selectedAppId);
   const displayText = selectedApp ? selectedApp.name : "No app selected";

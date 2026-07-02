@@ -1,0 +1,2 @@
+[dump]
+Attachment-only setup resume fixture.

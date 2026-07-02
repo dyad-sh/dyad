@@ -6,6 +6,8 @@ import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useAtomValue } from "jotai";
+import { pendingFirstPromptAtom } from "@/atoms/chatAtoms";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -72,6 +74,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showStartBuildingBanner, setShowStartBuildingBanner] = useState(false);
   const queryClient = useQueryClient();
+  const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
 
   // Use fetched data (or defaults for Dyad)
   const providerDisplayName = isDyad
@@ -171,7 +174,9 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
-      if (isFirstProviderSetup) {
+      if (isFirstProviderSetup && shouldResumeFirstPrompt) {
+        navigate({ to: "/", search: {}, replace: true });
+      } else if (isFirstProviderSetup) {
         setShowStartBuildingBanner(true);
       }
 

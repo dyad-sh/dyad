@@ -7,20 +7,54 @@ import HomePage from "./home";
 const mocks = vi.hoisted(() => ({
   createApp: vi.fn(),
   createChat: vi.fn(),
+  attachments: [] as any[],
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
+  effectiveDefaultChatMode: "build",
+  inputValue: "Build a notes app",
+  initialChatMode: "build",
+  navigate: vi.fn(),
   openPreviewIfSetupRequired: vi.fn(),
   posthogCapture: vi.fn(),
   refreshApps: vi.fn(),
+  selectedApp: null,
+  setHomeSelectedApp: vi.fn(),
   setAtom: vi.fn(),
+  setAttachments: vi.fn(),
+  setInputValue: vi.fn(),
+  setShouldResumeFirstPrompt: vi.fn(),
+  shouldResumeFirstPrompt: false,
   streamMessage: vi.fn(),
+  settings: {
+    isTestMode: true,
+    selectedChatMode: "build",
+  } as any,
   updateSettings: vi.fn(),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
-  useAtom: () => ["Build a notes app", vi.fn()],
-  useSetAtom: () => mocks.setAtom,
+  useAtom: (atom: { debugLabel?: string }) => {
+    if (atom.debugLabel === "homeSelectedAppAtom") {
+      return [mocks.selectedApp, mocks.setHomeSelectedApp];
+    }
+    if (atom.debugLabel === "attachmentsAtom") {
+      return [mocks.attachments, mocks.setAttachments];
+    }
+    return [mocks.inputValue, mocks.setInputValue];
+  },
+  useAtomValue: (atom: { debugLabel?: string }) => {
+    if (atom.debugLabel === "pendingFirstPromptAtom") {
+      return mocks.shouldResumeFirstPrompt;
+    }
+    return undefined;
+  },
+  useSetAtom: (atom: { debugLabel?: string }) => {
+    if (atom.debugLabel === "pendingFirstPromptAtom") {
+      return mocks.setShouldResumeFirstPrompt;
+    }
+    return mocks.setAtom;
+  },
 }));
 
 vi.mock("posthog-js/react", () => ({
@@ -36,7 +70,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mocks.navigate,
   useSearch: () => ({}),
 }));
 
@@ -56,10 +90,7 @@ vi.mock("@/hooks/useLoadApps", () => ({
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     envVars: {},
-    settings: {
-      isTestMode: true,
-      selectedChatMode: "build",
-    },
+    settings: mocks.settings,
     updateSettings: mocks.updateSettings,
   }),
 }));
@@ -72,7 +103,7 @@ vi.mock("@/hooks/useFreeAgentQuota", () => ({
 }));
 
 vi.mock("@/hooks/useInitialChatMode", () => ({
-  useInitialChatMode: () => "build",
+  useInitialChatMode: () => mocks.initialChatMode,
 }));
 
 vi.mock("@/hooks/useOpenPreviewIfSetupRequired", () => ({
@@ -96,7 +127,11 @@ vi.mock("@/hooks/useLoadApp", () => ({
 }));
 
 vi.mock("@/lib/schemas", () => ({
-  getEffectiveDefaultChatMode: () => "build",
+  getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
+}));
+
+vi.mock("@/lib/toast", () => ({
+  showError: vi.fn(),
 }));
 
 vi.mock("@/client_logic/template_hook", () => ({
@@ -121,9 +156,17 @@ vi.mock("@/components/chat/HomeChatInput", () => ({
   HomeChatInput: ({
     onSubmit,
   }: {
-    onSubmit: () => boolean | Promise<boolean>;
+    onSubmit: (options?: any) => boolean | Promise<boolean>;
   }) => (
-    <button type="button" onClick={() => void onSubmit()}>
+    <button
+      type="button"
+      onClick={() =>
+        void onSubmit({
+          attachments: mocks.attachments,
+          selectedApp: mocks.selectedApp ?? undefined,
+        })
+      }
+    >
       Submit home prompt
     </button>
   ),
@@ -156,14 +199,28 @@ vi.mock("@/components/ui/dialog", () => ({
 
 describe("HomePage", () => {
   beforeEach(() => {
+    mocks.attachments = [];
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.inputValue = "Build a notes app";
+    mocks.initialChatMode = "build";
+    mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openPreviewIfSetupRequired.mockReset();
     mocks.openPreviewIfSetupRequired.mockResolvedValue(false);
     mocks.refreshApps.mockReset();
+    mocks.selectedApp = null;
+    mocks.setHomeSelectedApp.mockReset();
     mocks.setAtom.mockReset();
+    mocks.setAttachments.mockReset();
+    mocks.setInputValue.mockReset();
+    mocks.setShouldResumeFirstPrompt.mockReset();
     mocks.streamMessage.mockReset();
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
     mocks.updateSettings.mockReset();
     mocks.createApp.mockResolvedValue({
       app: {
@@ -174,6 +231,7 @@ describe("HomePage", () => {
     });
     mocks.isAnyProviderSetup = false;
     mocks.isLoadingLanguageModelProviders = true;
+    mocks.shouldResumeFirstPrompt = false;
   });
 
   it("blocks submit while provider setup is loading and opens setup once no provider is confirmed", async () => {
@@ -194,6 +252,7 @@ describe("HomePage", () => {
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "home:ai-setup-dialog-open",
     );
+    expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(true);
   });
 
   it("submits while provider data is loading when a provider is already configured", async () => {
@@ -235,6 +294,110 @@ describe("HomePage", () => {
       expect(mocks.streamMessage).toHaveBeenCalled();
     });
     expect(mocks.setAtom).not.toHaveBeenCalledWith(false);
+  });
+
+  it("auto-submits a pending first prompt once provider setup is ready", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/",
+      search: {},
+      replace: true,
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 1,
+        chatId: 2,
+        prompt: "Build a notes app",
+      }),
+    );
+    await waitFor(() => {
+      expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("auto-submits a pending first prompt with the effective home default before settings catch up", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      selectedChatMode: "local-agent",
+    });
+    expect(mocks.createApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialChatMode: "local-agent",
+      }),
+    );
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedChatMode: "local-agent",
+      }),
+    );
+  });
+
+  it("auto-submits an attachment-only pending first prompt once provider setup is ready", async () => {
+    const attachment = {
+      file: new File(["hello"], "notes.txt", { type: "text/plain" }),
+      type: "chat-context",
+    };
+    mocks.attachments = [attachment];
+    mocks.inputValue = "";
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 1,
+        attachments: [attachment],
+        chatId: 2,
+        prompt: "",
+      }),
+    );
+    await waitFor(() => {
+      expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
+    });
+    expect(mocks.setAttachments).toHaveBeenCalledWith([]);
+  });
+
+  it("clears the pending first prompt flag when auto-resume fails", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+    mocks.createApp.mockRejectedValue(new Error("create failed"));
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
+    });
+    expect(mocks.streamMessage).not.toHaveBeenCalled();
+    expect(mocks.setAttachments).not.toHaveBeenCalled();
+    expect(mocks.setHomeSelectedApp).not.toHaveBeenCalled();
   });
 });
 

@@ -1,17 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "events";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   expandWindowsEnvVars,
   mergeWindowsPathSegments,
   parseRegQueryPathOutput,
   readRefreshedWindowsPath,
+  resetWindowsEnvPathReaderStateForTests,
 } from "./windows_env_path";
 
-const spawnSyncMock = vi.hoisted(() => vi.fn());
+const spawnMock = vi.hoisted(() => vi.fn());
 
 vi.mock("child_process", () => ({
-  default: { spawnSync: spawnSyncMock },
-  spawnSync: spawnSyncMock,
+  default: { spawn: spawnMock },
+  spawn: spawnMock,
 }));
 
 vi.mock("electron-log", () => ({
@@ -23,15 +25,57 @@ vi.mock("electron-log", () => ({
 }));
 
 function spawnSuccess(stdout: string) {
-  return { stdout, status: 0, error: undefined };
+  return spawnResult({ stdout, status: 0 });
 }
 
 function spawnFailure() {
-  return { stdout: "", status: 1, error: undefined };
+  return spawnResult({ stdout: "", status: 1 });
+}
+
+function spawnTimeout() {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter & { setEncoding: ReturnType<typeof vi.fn> };
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.stdout = new EventEmitter() as EventEmitter & {
+    setEncoding: ReturnType<typeof vi.fn>;
+  };
+  child.stdout.setEncoding = vi.fn();
+  child.kill = vi.fn(() => true);
+  return child;
+}
+
+function spawnResult({ stdout, status }: { stdout: string; status: number }) {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter & { setEncoding: ReturnType<typeof vi.fn> };
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.stdout = new EventEmitter() as EventEmitter & {
+    setEncoding: ReturnType<typeof vi.fn>;
+  };
+  child.stdout.setEncoding = vi.fn();
+  child.kill = vi.fn(() => {
+    queueMicrotask(() => {
+      child.emit("close", null);
+    });
+    return true;
+  });
+  queueMicrotask(() => {
+    if (stdout) {
+      child.stdout.emit("data", stdout);
+    }
+    child.emit("close", status);
+  });
+  return child;
 }
 
 beforeEach(() => {
-  spawnSyncMock.mockReset();
+  spawnMock.mockReset();
+  resetWindowsEnvPathReaderStateForTests();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("parseRegQueryPathOutput", () => {
@@ -133,21 +177,21 @@ describe("mergeWindowsPathSegments", () => {
 });
 
 describe("readRefreshedWindowsPath", () => {
-  it("uses the PowerShell PATH when available", () => {
-    spawnSyncMock.mockReturnValue(
+  it("uses the PowerShell PATH when available", async () => {
+    spawnMock.mockImplementation(() =>
       spawnSuccess("C:\\Windows\\system32;C:\\Program Files\\nodejs\r\n"),
     );
 
-    expect(readRefreshedWindowsPath("C:\\session-only")).toBe(
+    await expect(readRefreshedWindowsPath("C:\\session-only")).resolves.toBe(
       "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs",
     );
-    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to reg.exe when PowerShell fails", () => {
-    spawnSyncMock
-      .mockReturnValueOnce(spawnFailure())
-      .mockReturnValueOnce(
+  it("falls back to reg.exe when PowerShell fails", async () => {
+    spawnMock
+      .mockImplementationOnce(() => spawnFailure())
+      .mockImplementationOnce(() =>
         spawnSuccess(
           [
             "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
@@ -155,7 +199,7 @@ describe("readRefreshedWindowsPath", () => {
           ].join("\r\n"),
         ),
       )
-      .mockReturnValueOnce(
+      .mockImplementationOnce(() =>
         spawnSuccess(
           [
             "HKEY_CURRENT_USER\\Environment",
@@ -164,16 +208,16 @@ describe("readRefreshedWindowsPath", () => {
         ),
       );
 
-    expect(readRefreshedWindowsPath("C:\\session-only")).toBe(
+    await expect(readRefreshedWindowsPath("C:\\session-only")).resolves.toBe(
       "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs;C:\\Users\\john\\AppData\\Roaming\\npm",
     );
-    expect(spawnSyncMock).toHaveBeenCalledTimes(3);
+    expect(spawnMock).toHaveBeenCalledTimes(3);
   });
 
-  it("falls back to reg.exe when PowerShell returns only separators", () => {
-    spawnSyncMock
-      .mockReturnValueOnce(spawnSuccess(";\r\n"))
-      .mockReturnValueOnce(
+  it("skips PowerShell after a failed PowerShell read", async () => {
+    spawnMock
+      .mockImplementationOnce(() => spawnFailure())
+      .mockImplementationOnce(() =>
         spawnSuccess(
           [
             "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
@@ -181,16 +225,76 @@ describe("readRefreshedWindowsPath", () => {
           ].join("\r\n"),
         ),
       )
-      .mockReturnValueOnce(spawnFailure());
+      .mockImplementationOnce(() => spawnFailure())
+      .mockImplementationOnce(() =>
+        spawnSuccess(
+          [
+            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+            "    Path    REG_SZ    C:\\Windows\\system32;C:\\Program Files\\nodejs",
+          ].join("\r\n"),
+        ),
+      )
+      .mockImplementationOnce(() => spawnFailure());
 
-    expect(readRefreshedWindowsPath("C:\\session-only")).toBe(
+    await expect(readRefreshedWindowsPath("C:\\session-only")).resolves.toBe(
+      "C:\\session-only;C:\\Windows\\system32",
+    );
+    await expect(readRefreshedWindowsPath("C:\\session-only")).resolves.toBe(
+      "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs",
+    );
+
+    expect(spawnMock).toHaveBeenCalledTimes(5);
+    expect(spawnMock.mock.calls[0][0]).toContain("powershell.exe");
+    expect(spawnMock.mock.calls[3][0]).toContain("reg.exe");
+  });
+
+  it("falls back to reg.exe when PowerShell times out without closing", async () => {
+    vi.useFakeTimers();
+    spawnMock
+      .mockImplementationOnce(() => spawnTimeout())
+      .mockImplementationOnce(() =>
+        spawnSuccess(
+          [
+            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+            "    Path    REG_SZ    C:\\Windows\\system32;C:\\Program Files\\nodejs",
+          ].join("\r\n"),
+        ),
+      )
+      .mockImplementationOnce(() => spawnFailure());
+
+    const refreshedPathPromise = readRefreshedWindowsPath("C:\\session-only");
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(refreshedPathPromise).resolves.toBe(
+      "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs",
+    );
+    expect(spawnMock).toHaveBeenCalledTimes(3);
+    expect(spawnMock.mock.results[0].value.kill).toHaveBeenCalled();
+  });
+
+  it("falls back to reg.exe when PowerShell returns only separators", async () => {
+    spawnMock
+      .mockImplementationOnce(() => spawnSuccess(";\r\n"))
+      .mockImplementationOnce(() =>
+        spawnSuccess(
+          [
+            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+            "    Path    REG_SZ    C:\\Windows\\system32",
+          ].join("\r\n"),
+        ),
+      )
+      .mockImplementationOnce(() => spawnFailure());
+
+    await expect(readRefreshedWindowsPath("C:\\session-only")).resolves.toBe(
       "C:\\session-only;C:\\Windows\\system32",
     );
   });
 
-  it("returns null when both registry readers fail", () => {
-    spawnSyncMock.mockReturnValue(spawnFailure());
+  it("returns null when both registry readers fail", async () => {
+    spawnMock.mockImplementation(() => spawnFailure());
 
-    expect(readRefreshedWindowsPath("C:\\session-only")).toBeNull();
+    await expect(
+      readRefreshedWindowsPath("C:\\session-only"),
+    ).resolves.toBeNull();
   });
 });

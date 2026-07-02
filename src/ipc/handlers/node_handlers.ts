@@ -29,12 +29,14 @@ const BRAILLE_SPINNER_PATTERN = /^[\u2800-\u28ff]+$/u;
 let managedPnpmInstallPromise: Promise<string> | null = null;
 let managedPnpmImplicitInstallFailed = false;
 
-function reloadNodePath() {
+async function reloadNodePath() {
   if (platform() === "win32") {
     // Re-read PATH from the registry: spawning a child (e.g. `cmd /c echo
     // %PATH%`) can never observe PATH entries an installer added while Dyad
     // was running, because children inherit this process's stale copy.
-    const refreshedPath = readRefreshedWindowsPath(process.env.PATH ?? "");
+    const refreshedPath = await readRefreshedWindowsPath(
+      process.env.PATH ?? "",
+    );
     if (refreshedPath) {
       process.env.PATH = refreshedPath;
     }
@@ -271,7 +273,7 @@ export function registerNodeHandlers() {
         : undefined;
       if (testInstallPnpmVersion) {
         process.env.DYAD_TEST_PNPM_VERSION = testInstallPnpmVersion;
-        reloadNodePath();
+        await reloadNodePath();
         return { pnpmVersion: testInstallPnpmVersion };
       }
 
@@ -295,7 +297,7 @@ export function registerNodeHandlers() {
 
   createTypedHandler(systemContracts.reloadEnvPath, async () => {
     logger.debug("Reloading env path, previously:", process.env.PATH);
-    reloadNodePath();
+    await reloadNodePath();
     logger.debug("Reloaded env path, now:", process.env.PATH);
   });
 

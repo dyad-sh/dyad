@@ -1,4 +1,4 @@
-import { spawnSync } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
 import log from "electron-log";
 
@@ -7,31 +7,88 @@ const logger = log.scope("windows_env_path");
 const REG_MACHINE_ENV_KEY =
   "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
 const REG_USER_ENV_KEY = "HKCU\\Environment";
+const WINDOWS_COMMAND_TIMEOUT_MS = 5_000;
+
+let shouldSkipPowerShellPathRead = false;
 
 function getSystemRoot(): string {
   return process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows";
 }
 
-function runWindowsCommand(executable: string, args: string[]): string | null {
+async function runWindowsCommand(
+  executable: string,
+  args: string[],
+): Promise<string | null> {
   // No shell, absolute executable path: a corrupted PATH entry must not be
   // able to break the PATH refresh itself with a spawn ENOENT.
-  const result = spawnSync(executable, args, {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 5_000,
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(executable, args, {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+      });
+    } catch (error) {
+      logger.warn(
+        `Failed to run ${executable}:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      resolve(null);
+      return;
+    }
+
+    let stdout = "";
+    let settled = false;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      logger.warn(
+        `${executable} timed out after ${WINDOWS_COMMAND_TIMEOUT_MS}ms`,
+      );
+      child.kill();
+      settle(null);
+    }, WINDOWS_COMMAND_TIMEOUT_MS);
+
+    const settle = (value: string | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve(value);
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.on("error", (error) => {
+      logger.warn(`Failed to run ${executable}:`, error.message);
+      settle(null);
+    });
+    child.on("close", (status) => {
+      if (settled) {
+        return;
+      }
+      if (timedOut) {
+        settle(null);
+        return;
+      }
+      if (status !== 0) {
+        logger.warn(`${executable} exited with status ${status}`);
+        settle(null);
+        return;
+      }
+      settle(stdout);
+    });
   });
-  if (result.error) {
-    logger.warn(`Failed to run ${executable}:`, result.error.message);
-    return null;
-  }
-  if (result.status !== 0) {
-    logger.warn(`${executable} exited with status ${result.status}`);
-    return null;
-  }
-  return result.stdout ?? null;
 }
 
-function readPathViaPowerShell(): string | null {
+async function readPathViaPowerShell(): Promise<string | null> {
+  if (shouldSkipPowerShellPathRead) {
+    return null;
+  }
+
   const powershell = path.join(
     getSystemRoot(),
     "System32",
@@ -39,7 +96,7 @@ function readPathViaPowerShell(): string | null {
     "v1.0",
     "powershell.exe",
   );
-  const stdout = runWindowsCommand(powershell, [
+  const stdout = await runWindowsCommand(powershell, [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
@@ -49,7 +106,12 @@ function readPathViaPowerShell(): string | null {
     "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')",
   ]);
   const value = stdout?.trim().replace(/^;+|;+$/g, "");
-  return value ? value : null;
+  if (value) {
+    return value;
+  }
+
+  shouldSkipPowerShellPathRead = true;
+  return null;
 }
 
 export function parseRegQueryPathOutput(output: string | null): string | null {
@@ -80,15 +142,15 @@ export function expandWindowsEnvVars(
   });
 }
 
-function readPathViaRegQuery(): string | null {
+async function readPathViaRegQuery(): Promise<string | null> {
   const reg = path.join(getSystemRoot(), "System32", "reg.exe");
-  const machine = parseRegQueryPathOutput(
+  const [machineOutput, userOutput] = await Promise.all([
     runWindowsCommand(reg, ["query", REG_MACHINE_ENV_KEY, "/v", "Path"]),
-  );
-  // The user-scope Path value may legitimately not exist.
-  const user = parseRegQueryPathOutput(
+    // The user-scope Path value may legitimately not exist.
     runWindowsCommand(reg, ["query", REG_USER_ENV_KEY, "/v", "Path"]),
-  );
+  ]);
+  const machine = parseRegQueryPathOutput(machineOutput);
+  const user = parseRegQueryPathOutput(userOutput);
   if (machine === null && user === null) {
     return null;
   }
@@ -165,8 +227,11 @@ export function mergeWindowsPathSegments(
  * (and their children) keep the stale copy. Re-reading the registry is the
  * only way to pick up the new entries without restarting Dyad.
  */
-export function readRefreshedWindowsPath(currentPath: string): string | null {
-  const registryPath = readPathViaPowerShell() ?? readPathViaRegQuery();
+export async function readRefreshedWindowsPath(
+  currentPath: string,
+): Promise<string | null> {
+  const registryPath =
+    (await readPathViaPowerShell()) ?? (await readPathViaRegQuery());
   if (!registryPath) {
     logger.warn(
       "Could not read PATH from the Windows registry; keeping the current PATH.",
@@ -174,4 +239,8 @@ export function readRefreshedWindowsPath(currentPath: string): string | null {
     return null;
   }
   return mergeWindowsPathSegments(currentPath, registryPath);
+}
+
+export function resetWindowsEnvPathReaderStateForTests(): void {
+  shouldSkipPowerShellPathRead = false;
 }

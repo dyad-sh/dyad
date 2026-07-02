@@ -1,6 +1,14 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, GiftIcon, Play, Settings } from "lucide-react";
+import { useAtomValue } from "jotai";
+import {
+  CircleCheck,
+  ChevronRight,
+  GiftIcon,
+  Play,
+  Settings,
+} from "lucide-react";
+import { pendingFirstPromptAtom } from "@/atoms/chatAtoms";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
@@ -28,6 +36,7 @@ export function SetupBanner({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
+  const hasPendingPrompt = useAtomValue(pendingFirstPromptAtom);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
 
@@ -98,6 +107,12 @@ export function SetupBanner({
             Dyad uses AI to build your app. Choose one option now; you can
             change it later.
           </p>
+          {variant === "dialog" && hasPendingPrompt && (
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
+              <CircleCheck aria-hidden="true" className="size-4 text-primary" />
+              Your prompt is saved and will be sent as soon as you're connected.
+            </p>
+          )}
         </div>
 
         <button
@@ -130,16 +145,18 @@ export function SetupBanner({
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-muted-foreground">
-            Prefer your own key?
+            Prefer your own key? Google and OpenRouter offer free API keys.
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <ProviderOptionButton
-              label="Google Gemini"
+              label="Google"
+              chip="Free"
               onClick={handleGoogleSetupClick}
               icon={<img src={googleIcon} alt="Google" className="size-4" />}
             />
             <ProviderOptionButton
               label="OpenRouter"
+              chip="Free"
               onClick={handleOpenRouterSetupClick}
               icon={
                 <img src={openrouterLogo} alt="OpenRouter" className="size-4" />
@@ -181,10 +198,12 @@ export function SetupBanner({
 function ProviderOptionButton({
   label,
   icon,
+  chip,
   onClick,
 }: {
   label: string;
   icon: React.ReactNode;
+  chip?: string;
   onClick: () => void;
 }) {
   return (
@@ -199,7 +218,13 @@ function ProviderOptionButton({
         </span>
         <span className="truncate">{label}</span>
       </span>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      {chip ? (
+        <span className="shrink-0 rounded-full border border-emerald-600/25 bg-emerald-500/10 px-1.5 py-px text-[11px] font-semibold text-emerald-700 dark:border-emerald-400/25 dark:text-emerald-300">
+          {chip}
+        </span>
+      ) : (
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      )}
     </button>
   );
 }

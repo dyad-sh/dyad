@@ -44,13 +44,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RefreshCw } from "lucide-react";
-
-const ideaChipStyles = [
-  "border-violet-200/80 bg-violet-50/70 text-violet-950 hover:border-violet-300 hover:bg-violet-100/80 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-100 dark:hover:bg-violet-900/40",
-  "border-sky-200/80 bg-sky-50/70 text-sky-950 hover:border-sky-300 hover:bg-sky-100/80 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-sky-100 dark:hover:bg-sky-900/40",
-  "border-emerald-200/80 bg-emerald-50/70 text-emerald-950 hover:border-emerald-300 hover:bg-emerald-100/80 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-100 dark:hover:bg-emerald-900/40",
-] as const;
+import { RefreshCw, X, Zap } from "lucide-react";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -87,6 +81,7 @@ export default function HomePage() {
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [isAiSetupDialogOpen, setIsAiSetupDialogOpen] = useState(false);
+  const [isSetupPillDismissed, setIsSetupPillDismissed] = useState(false);
   const [
     shouldOpenAiSetupDialogWhenProvidersLoad,
     setShouldOpenAiSetupDialogWhenProvidersLoad,
@@ -401,34 +396,55 @@ export default function HomePage() {
           </div>
           <HomeChatInput onSubmit={handleSubmit} />
 
-          <div className="flex flex-col gap-4 mt-2">
-            <div className="flex flex-wrap gap-4 justify-center">
-              {randomPrompts.map((item, index) => (
-                <button
-                  type="button"
-                  key={item.label}
-                  onClick={() => setInputValue(item.prompt)}
-                  className={`group flex min-w-[13.5rem] max-w-[17rem] flex-1 items-center gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] sm:flex-none ${ideaChipStyles[index % ideaChipStyles.length]}`}
-                >
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/70 shadow-xs transition-transform duration-200 group-hover:scale-105 dark:bg-white/10">
-                    {item.icon}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold leading-5">
-                      {item.label}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs opacity-70">
-                      Try this idea
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
+          {!isSetupPillDismissed &&
+            !isLoadingLanguageModelProviders &&
+            !isAnyProviderSetup() && (
+              <div className="mt-3 flex justify-center">
+                <div className="flex items-center gap-0.5 rounded-full border border-primary/25 bg-primary/5 py-0.5 pl-3 pr-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      posthog.capture("home:setup-pill:click");
+                      openAiSetupDialog();
+                    }}
+                    className="flex cursor-pointer items-center gap-1.5 py-1 text-sm font-medium text-primary transition-colors hover:underline"
+                  >
+                    <Zap aria-hidden="true" className="size-3.5" />
+                    Connect AI to build — takes a minute
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Dismiss"
+                    onClick={() => {
+                      posthog.capture("home:setup-pill:dismiss");
+                      setIsSetupPillDismissed(true);
+                    }}
+                    className="flex size-6 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground"
+                  >
+                    <X aria-hidden="true" className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
 
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {randomPrompts.map((item) => (
+              <button
+                type="button"
+                key={item.label}
+                onClick={() => setInputValue(item.prompt)}
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+              >
+                <span aria-hidden="true" className="[&_svg]:size-4">
+                  {item.icon}
+                </span>
+                {item.label}
+              </button>
+            ))}
             <button
               type="button"
               onClick={() => setRandomPrompts(getRandomPrompts())}
-              className="group self-center flex items-center gap-2 rounded-full border border-border bg-background/70 px-4 py-2 text-sm font-medium text-muted-foreground backdrop-blur-sm transition-all duration-200 hover:border-primary/30 hover:bg-background hover:text-primary hover:shadow-sm active:scale-[0.98]"
+              className="group flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
             >
               <RefreshCw className="size-4 transition-transform duration-200 group-hover:rotate-[-25deg]" />
               {t("moreIdeas")}

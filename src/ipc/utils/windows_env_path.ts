@@ -18,7 +18,7 @@ function runWindowsCommand(executable: string, args: string[]): string | null {
   const result = spawnSync(executable, args, {
     encoding: "utf8",
     windowsHide: true,
-    timeout: 10_000,
+    timeout: 5_000,
   });
   if (result.error) {
     logger.warn(`Failed to run ${executable}:`, result.error.message);
@@ -48,7 +48,7 @@ function readPathViaPowerShell(): string | null {
     // would see them.
     "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')",
   ]);
-  const value = stdout?.trim();
+  const value = stdout?.trim().replace(/^;+|;+$/g, "");
   return value ? value : null;
 }
 
@@ -113,16 +113,34 @@ export function mergeWindowsPathSegments(
   currentPath: string,
   registryPath: string,
 ): string {
-  // Keep the process's current entries first: they include session-only
-  // additions (e.g. a version manager's env from the shell that launched
-  // Dyad) and anything Dyad prepended itself. Registry entries that are new
-  // (e.g. just written by the Node.js installer) are appended.
+  // Keep true session-only additions first (e.g. a version manager's env from
+  // the shell that launched Dyad), then use the freshly read registry ordering
+  // for every registry-known entry. This preserves Windows machine-before-user
+  // precedence when a new machine PATH entry appears while Dyad is running.
   const seen = new Set<string>();
   const segments: string[] = [];
-  for (const segment of [
-    ...currentPath.split(";"),
-    ...registryPath.split(";"),
-  ]) {
+  const currentSegments = currentPath
+    .split(";")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const currentSegmentByKey = new Map<string, string>();
+  for (const segment of currentSegments) {
+    const key = normalizePathSegment(segment);
+    if (!currentSegmentByKey.has(key)) {
+      currentSegmentByKey.set(key, segment);
+    }
+  }
+  const registryKeys = new Set(
+    registryPath
+      .split(";")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map(normalizePathSegment),
+  );
+  const currentOnlySegments = currentSegments.filter(
+    (segment) => segment && !registryKeys.has(normalizePathSegment(segment)),
+  );
+  for (const segment of [...currentOnlySegments, ...registryPath.split(";")]) {
     const trimmed = segment.trim();
     if (!trimmed) {
       continue;
@@ -132,7 +150,7 @@ export function mergeWindowsPathSegments(
       continue;
     }
     seen.add(key);
-    segments.push(trimmed);
+    segments.push(currentSegmentByKey.get(key) ?? trimmed);
   }
   return segments.join(";");
 }

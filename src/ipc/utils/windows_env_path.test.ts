@@ -1,10 +1,38 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   expandWindowsEnvVars,
   mergeWindowsPathSegments,
   parseRegQueryPathOutput,
+  readRefreshedWindowsPath,
 } from "./windows_env_path";
+
+const spawnSyncMock = vi.hoisted(() => vi.fn());
+
+vi.mock("child_process", () => ({
+  default: { spawnSync: spawnSyncMock },
+  spawnSync: spawnSyncMock,
+}));
+
+vi.mock("electron-log", () => ({
+  default: {
+    scope: () => ({
+      warn: vi.fn(),
+    }),
+  },
+}));
+
+function spawnSuccess(stdout: string) {
+  return { stdout, status: 0, error: undefined };
+}
+
+function spawnFailure() {
+  return { stdout: "", status: 1, error: undefined };
+}
+
+beforeEach(() => {
+  spawnSyncMock.mockReset();
+});
 
 describe("parseRegQueryPathOutput", () => {
   it("parses a REG_EXPAND_SZ Path value", () => {
@@ -90,5 +118,79 @@ describe("mergeWindowsPathSegments", () => {
     ).toBe(
       "C:\\Users\\john\\AppData\\Roaming\\fnm\\node-versions\\v22.0.0\\installation;C:\\Windows\\system32",
     );
+  });
+
+  it("uses registry ordering for registry-known entries", () => {
+    expect(
+      mergeWindowsPathSegments(
+        "C:\\session-only;C:\\Users\\john\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Windows\\system32",
+        "C:\\Windows\\system32;C:\\Program Files\\nodejs;C:\\Users\\john\\AppData\\Local\\Microsoft\\WindowsApps",
+      ),
+    ).toBe(
+      "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs;C:\\Users\\john\\AppData\\Local\\Microsoft\\WindowsApps",
+    );
+  });
+});
+
+describe("readRefreshedWindowsPath", () => {
+  it("uses the PowerShell PATH when available", () => {
+    spawnSyncMock.mockReturnValue(
+      spawnSuccess("C:\\Windows\\system32;C:\\Program Files\\nodejs\r\n"),
+    );
+
+    expect(readRefreshedWindowsPath("C:\\session-only")).toBe(
+      "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs",
+    );
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to reg.exe when PowerShell fails", () => {
+    spawnSyncMock
+      .mockReturnValueOnce(spawnFailure())
+      .mockReturnValueOnce(
+        spawnSuccess(
+          [
+            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+            "    Path    REG_SZ    C:\\Windows\\system32;C:\\Program Files\\nodejs",
+          ].join("\r\n"),
+        ),
+      )
+      .mockReturnValueOnce(
+        spawnSuccess(
+          [
+            "HKEY_CURRENT_USER\\Environment",
+            "    Path    REG_SZ    C:\\Users\\john\\AppData\\Roaming\\npm",
+          ].join("\r\n"),
+        ),
+      );
+
+    expect(readRefreshedWindowsPath("C:\\session-only")).toBe(
+      "C:\\session-only;C:\\Windows\\system32;C:\\Program Files\\nodejs;C:\\Users\\john\\AppData\\Roaming\\npm",
+    );
+    expect(spawnSyncMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("falls back to reg.exe when PowerShell returns only separators", () => {
+    spawnSyncMock
+      .mockReturnValueOnce(spawnSuccess(";\r\n"))
+      .mockReturnValueOnce(
+        spawnSuccess(
+          [
+            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+            "    Path    REG_SZ    C:\\Windows\\system32",
+          ].join("\r\n"),
+        ),
+      )
+      .mockReturnValueOnce(spawnFailure());
+
+    expect(readRefreshedWindowsPath("C:\\session-only")).toBe(
+      "C:\\session-only;C:\\Windows\\system32",
+    );
+  });
+
+  it("returns null when both registry readers fail", () => {
+    spawnSyncMock.mockReturnValue(spawnFailure());
+
+    expect(readRefreshedWindowsPath("C:\\session-only")).toBeNull();
   });
 });

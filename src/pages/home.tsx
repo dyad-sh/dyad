@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
+  attachmentsAtom,
   homeChatInputValueAtom,
   homeSelectedAppAtom,
   pendingFirstPromptAtom,
@@ -62,6 +63,7 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const [pendingSelectedApp, setPendingSelectedApp] =
     useAtom(homeSelectedAppAtom);
+  const [pendingAttachments, setPendingAttachments] = useAtom(attachmentsAtom);
   const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
   const setShouldResumeFirstPrompt = useSetAtom(pendingFirstPromptAtom);
   const navigate = useNavigate();
@@ -135,11 +137,16 @@ export default function HomePage() {
 
   const openAiSetupDialog = useCallback(() => {
     posthog.capture("home:ai-setup-dialog-open");
-    if (inputValue.trim()) {
+    if (inputValue.trim() || pendingAttachments.length > 0) {
       setShouldResumeFirstPrompt(true);
     }
     setIsAiSetupDialogOpen(true);
-  }, [inputValue, posthog, setShouldResumeFirstPrompt]);
+  }, [
+    inputValue,
+    pendingAttachments.length,
+    posthog,
+    setShouldResumeFirstPrompt,
+  ]);
 
   const handleAiSetupDialogOpenChange = useCallback(
     (open: boolean) => {
@@ -179,7 +186,7 @@ export default function HomePage() {
 
       if (!isAnyProviderSetup()) {
         if (isLoadingLanguageModelProviders) {
-          if (inputValue.trim()) {
+          if (inputValue.trim() || attachments.length > 0) {
             setShouldResumeFirstPrompt(true);
           }
           setShouldOpenAiSetupDialogWhenProvidersLoad(true);
@@ -296,7 +303,7 @@ export default function HomePage() {
       !shouldResumeFirstPrompt ||
       isLoadingLanguageModelProviders ||
       !isAnyProviderSetup() ||
-      !inputValue.trim() ||
+      (!inputValue.trim() && pendingAttachments.length === 0) ||
       isLoading ||
       hasAttemptedAutoResumeRef.current
     ) {
@@ -309,14 +316,18 @@ export default function HomePage() {
 
     void (async () => {
       const didSubmit = await handleSubmit({
+        attachments: pendingAttachments,
         selectedApp: pendingSelectedApp ?? undefined,
       });
       if (didSubmit) {
         setShouldResumeFirstPrompt(false);
+        setPendingAttachments([]);
         setPendingSelectedApp(null);
-      } else {
-        hasAttemptedAutoResumeRef.current = false;
       }
+      // Intentionally do not re-arm on failure: handleSubmit already surfaces
+      // an error toast, and re-arming would re-fire this effect immediately
+      // (inputValue and shouldResumeFirstPrompt are still set), causing an
+      // infinite retry loop. The user can retry manually from the input.
     })();
   }, [
     handleSubmit,
@@ -325,7 +336,9 @@ export default function HomePage() {
     isLoading,
     isLoadingLanguageModelProviders,
     navigate,
+    pendingAttachments,
     pendingSelectedApp,
+    setPendingAttachments,
     setPendingSelectedApp,
     setShouldResumeFirstPrompt,
     shouldResumeFirstPrompt,

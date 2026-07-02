@@ -7,6 +7,7 @@ import HomePage from "./home";
 const mocks = vi.hoisted(() => ({
   createApp: vi.fn(),
   createChat: vi.fn(),
+  attachments: [] as any[],
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
   inputValue: "Build a notes app",
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   selectedApp: null,
   setHomeSelectedApp: vi.fn(),
   setAtom: vi.fn(),
+  setAttachments: vi.fn(),
   setInputValue: vi.fn(),
   setShouldResumeFirstPrompt: vi.fn(),
   shouldResumeFirstPrompt: false,
@@ -29,6 +31,9 @@ vi.mock("jotai", async (importOriginal) => ({
   useAtom: (atom: { debugLabel?: string }) => {
     if (atom.debugLabel === "homeSelectedAppAtom") {
       return [mocks.selectedApp, mocks.setHomeSelectedApp];
+    }
+    if (atom.debugLabel === "attachmentsAtom") {
+      return [mocks.attachments, mocks.setAttachments];
     }
     return [mocks.inputValue, mocks.setInputValue];
   },
@@ -144,9 +149,17 @@ vi.mock("@/components/chat/HomeChatInput", () => ({
   HomeChatInput: ({
     onSubmit,
   }: {
-    onSubmit: () => boolean | Promise<boolean>;
+    onSubmit: (options?: any) => boolean | Promise<boolean>;
   }) => (
-    <button type="button" onClick={() => void onSubmit()}>
+    <button
+      type="button"
+      onClick={() =>
+        void onSubmit({
+          attachments: mocks.attachments,
+          selectedApp: mocks.selectedApp ?? undefined,
+        })
+      }
+    >
       Submit home prompt
     </button>
   ),
@@ -179,6 +192,7 @@ vi.mock("@/components/ui/dialog", () => ({
 
 describe("HomePage", () => {
   beforeEach(() => {
+    mocks.attachments = [];
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
     mocks.inputValue = "Build a notes app";
@@ -190,6 +204,7 @@ describe("HomePage", () => {
     mocks.selectedApp = null;
     mocks.setHomeSelectedApp.mockReset();
     mocks.setAtom.mockReset();
+    mocks.setAttachments.mockReset();
     mocks.setInputValue.mockReset();
     mocks.setShouldResumeFirstPrompt.mockReset();
     mocks.streamMessage.mockReset();
@@ -293,6 +308,36 @@ describe("HomePage", () => {
     await waitFor(() => {
       expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
     });
+  });
+
+  it("auto-submits an attachment-only pending first prompt once provider setup is ready", async () => {
+    const attachment = {
+      file: new File(["hello"], "notes.txt", { type: "text/plain" }),
+      type: "chat-context",
+    };
+    mocks.attachments = [attachment];
+    mocks.inputValue = "";
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 1,
+        attachments: [attachment],
+        chatId: 2,
+        prompt: "",
+      }),
+    );
+    await waitFor(() => {
+      expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
+    });
+    expect(mocks.setAttachments).toHaveBeenCalledWith([]);
   });
 });
 

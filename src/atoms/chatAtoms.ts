@@ -472,6 +472,7 @@ export const removeChatIdFromAllTrackingAtom = atom(
 );
 
 export const attachmentsAtom = atom<FileAttachment[]>([]);
+attachmentsAtom.debugLabel = "attachmentsAtom";
 
 // Tool consent request queue. Holds both agent-tool and MCP-tool consents;
 // `kind` routes the decision back to the right IPC channel.

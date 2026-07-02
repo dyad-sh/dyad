@@ -20,7 +20,6 @@ import {
   updateNeonEnvVars,
 } from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "../utils/framework_utils";
-import { withLock } from "../utils/lock_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { cleanUpPort, executeApp } from "./app_runtime_service";
 import { getAppPort } from "../../../shared/ports";
@@ -322,7 +321,16 @@ async function restoreEnvFile(
   await fs.promises.writeFile(envPath, snapshot);
 }
 
-/** Stop (if running) and (re)start the app's dev server in place. */
+/**
+ * Stop (if running) and (re)start the app's dev server in place.
+ *
+ * The caller must already hold the per-app lock (`withLock(app.id, …)`): both
+ * call sites here — setup and teardown — run inside the lock the `tests:run`
+ * handler holds across the whole isolation lifecycle. We must NOT re-acquire it
+ * here: `withLock` is promise-chained, not re-entrant, so a nested acquisition
+ * would queue behind the outer run and wait for it to finish while the outer
+ * run is awaiting this restart — a deadlock that Stop can't break.
+ */
 async function restartAppInPlace({
   app,
   appPath,
@@ -332,20 +340,18 @@ async function restartAppInPlace({
   appPath: string;
   event: IpcMainInvokeEvent;
 }): Promise<void> {
-  await withLock(app.id, async () => {
-    const appInfo = runningApps.get(app.id);
-    if (appInfo) {
-      await stopAppByInfo(app.id, appInfo);
-    }
-    await cleanUpPort(getAppPort(app.id));
-    await executeApp({
-      appPath,
-      appId: app.id,
-      event,
-      isNeon: !!app.neonProjectId,
-      installCommand: app.installCommand,
-      startCommand: app.startCommand,
-    });
+  const appInfo = runningApps.get(app.id);
+  if (appInfo) {
+    await stopAppByInfo(app.id, appInfo);
+  }
+  await cleanUpPort(getAppPort(app.id));
+  await executeApp({
+    appPath,
+    appId: app.id,
+    event,
+    isNeon: !!app.neonProjectId,
+    installCommand: app.installCommand,
+    startCommand: app.startCommand,
   });
 }
 

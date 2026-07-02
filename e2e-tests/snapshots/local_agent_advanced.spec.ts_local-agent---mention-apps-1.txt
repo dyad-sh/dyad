@@ -597,7 +597,7 @@
             },
             "execution_thread": {
               "default": "main",
-              "description": "Where to run the script. Default 'main' runs in-process and is the only thread that exposes write_file and MCP tools — use it for any script that writes files or calls MCP host functions, and for small / fast operations. Use 'worker' for compute-heavy work (parsing multi-MB attachments, large aggregations, anything that might take more than a few hundred milliseconds) so chat streaming and other main-process work isn't stalled. write_file and MCP host functions are NOT available on the worker thread.",
+              "description": "Where to run the script. Default 'main' runs in-process and is the only thread that can expose write_file and MCP tools — use it for scripts that write files or call MCP host functions, and for small / fast operations. Use 'worker' for compute-heavy work (parsing multi-MB attachments, large aggregations, anything that might take more than a few hundred milliseconds) so chat streaming and other main-process work isn't stalled. write_file, when enabled, and MCP host functions are NOT available on the worker thread.",
               "type": "string",
               "enum": [
                 "main",

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { executeSandboxScriptInProcess } from "@/ipc/utils/sandbox/execution";
 import { runSandboxScript } from "@/ipc/utils/sandbox/runner";
-import { buildSandboxCapabilitiesWithObserver } from "@/ipc/utils/sandbox/capabilities";
+import {
+  assertAllowedGuestPath,
+  buildSandboxCapabilitiesWithObserver,
+} from "@/ipc/utils/sandbox/capabilities";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { readSettings } from "@/main/settings";
 import {
@@ -23,6 +27,7 @@ vi.mock("@/ipc/utils/sandbox/runner", () => ({
 }));
 
 vi.mock("@/ipc/utils/sandbox/capabilities", () => ({
+  assertAllowedGuestPath: vi.fn(),
   buildSandboxCapabilitiesWithObserver: vi.fn(() => ({})),
 }));
 
@@ -67,6 +72,7 @@ function createMockContext(): AgentContext {
 describe("executeSandboxScriptTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(assertAllowedGuestPath).mockImplementation(() => undefined);
     vi.mocked(readSettings).mockReturnValue({
       enableSandboxScriptExecution: true,
     } as ReturnType<typeof readSettings>);
@@ -185,6 +191,7 @@ describe("executeSandboxScriptTool", () => {
       vi.mocked(ctx.onXmlComplete).mockClear();
       const result = await writeFile?.("src/out.txt", "hello", "Create output");
 
+      expect(assertAllowedGuestPath).toHaveBeenCalledWith("src/out.txt");
       expect(result).toBe("Successfully wrote src/out.txt");
       expect(ctx.requireConsent).toHaveBeenCalledWith({
         toolName: "write_file",
@@ -210,6 +217,160 @@ describe("executeSandboxScriptTool", () => {
     } finally {
       writeSpy.mockRestore();
     }
+  });
+
+  it("rejects attachment paths passed to the write_file host capability", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+
+    await executeSandboxScriptTool.execute(
+      {
+        script: 'write_file("attachments:file.txt", "hello");',
+        execution_thread: "main",
+      },
+      createMockContext(),
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    const writeFile = capabilities?.write_file;
+
+    await expect(
+      writeFile?.("attachments:file.txt", "hello"),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Validation,
+    });
+    expect(assertAllowedGuestPath).not.toHaveBeenCalled();
+  });
+
+  it("wraps invalid write_file host arguments as validation errors", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+
+    await executeSandboxScriptTool.execute(
+      { script: 'write_file("src/out.txt");', execution_thread: "main" },
+      createMockContext(),
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    const writeFile = capabilities?.write_file;
+
+    await expect(writeFile?.("src/out.txt")).rejects.toMatchObject({
+      kind: DyadErrorKind.Validation,
+    });
+  });
+
+  it("propagates sandbox path guard failures for write_file host paths", async () => {
+    vi.mocked(assertAllowedGuestPath).mockImplementation(() => {
+      throw new DyadError(
+        "Sandbox scripts cannot access protected path: .env",
+        DyadErrorKind.Precondition,
+      );
+    });
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+
+    await executeSandboxScriptTool.execute(
+      { script: 'write_file(".env", "SECRET=x");', execution_thread: "main" },
+      createMockContext(),
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    const writeFile = capabilities?.write_file;
+
+    await expect(writeFile?.(".env", "SECRET=x")).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+    });
+    expect(assertAllowedGuestPath).toHaveBeenCalledWith(".env");
+  });
+
+  it("omits the write_file host capability when the tool permission is disabled", async () => {
+    vi.mocked(readSettings).mockReturnValue({
+      enableSandboxScriptExecution: true,
+      agentToolConsents: { write_file: "never" },
+    } as unknown as ReturnType<typeof readSettings>);
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+
+    await executeSandboxScriptTool.execute(
+      {
+        script: 'write_file("src/out.txt", "hello");',
+        execution_thread: "main",
+      },
+      createMockContext(),
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    expect(capabilities).not.toHaveProperty("write_file");
+  });
+
+  it("throws a precondition error if write_file permission is disabled after capability injection", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+
+    await executeSandboxScriptTool.execute(
+      {
+        script: 'write_file("src/out.txt", "hello");',
+        execution_thread: "main",
+      },
+      createMockContext(),
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    const writeFile = capabilities?.write_file;
+    vi.mocked(readSettings).mockReturnValue({
+      enableSandboxScriptExecution: true,
+      agentToolConsents: { write_file: "never" },
+    } as unknown as ReturnType<typeof readSettings>);
+
+    await expect(writeFile?.("src/out.txt", "hello")).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+    });
+  });
+
+  it("throws a user-cancelled error when write_file host consent is denied", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+    const ctx = createMockContext();
+    vi.mocked(ctx.requireConsent).mockResolvedValue(false);
+
+    await executeSandboxScriptTool.execute(
+      {
+        script: 'write_file("src/out.txt", "hello");',
+        execution_thread: "main",
+      },
+      ctx,
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    const writeFile = capabilities?.write_file;
+
+    await expect(writeFile?.("src/out.txt", "hello")).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
   });
 
   it("with execution_thread: 'worker', invokes runSandboxScript and does not inject MCP capabilities", async () => {
@@ -284,6 +445,19 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
     // Search mode must NOT inline the per-tool MCP signatures (the whole
     // point is to keep schemas out of context until requested).
     expect(desc).not.toContain("declare function Sentry__get_issue");
+  });
+
+  it("omits write_file declarations when write_file permission is disabled", async () => {
+    vi.mocked(readSettings).mockReturnValue({
+      enableSandboxScriptExecution: true,
+      agentToolConsents: { write_file: "never" },
+    } as unknown as ReturnType<typeof readSettings>);
+
+    const desc = await buildExecuteSandboxScriptDescription([]);
+
+    expect(desc).not.toContain("declare function write_file");
+    expect(desc).not.toContain("write generated content to files");
+    expect(desc).not.toContain("write_file accepts app-relative paths");
   });
 
   it("omits get_mcp_tool_schema wording when that tool is not registered", async () => {

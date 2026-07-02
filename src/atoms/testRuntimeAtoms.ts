@@ -9,7 +9,15 @@ import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
  * - "running": currently executing (spinner).
  * - "not-run": never executed this session (gray).
  */
-export type TestStatus = TestResult["status"] | "running" | "not-run";
+export type TestStatus =
+  | TestResult["status"]
+  | "partial"
+  | "running"
+  | "not-run";
+
+export type RuntimeTestResult = Omit<TestResult, "status"> & {
+  status: TestResult["status"] | "partial";
+};
 
 /**
  * Phases the Tests panel can be in for a given app. Mirrors the "Key States"
@@ -25,7 +33,7 @@ export interface TestRunState {
   /** Streamed raw output (bootstrap + test runner), newest appended. */
   output: string;
   /** Results keyed by spec file path. */
-  results: Record<string, TestResult>;
+  results: Record<string, RuntimeTestResult>;
   /** Spec files in the current in-flight run (drives per-file spinners). */
   readonly runningFiles: readonly string[];
   /**

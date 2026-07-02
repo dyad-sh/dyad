@@ -140,7 +140,7 @@ declare function write_file(args: {
   content: string;
   description?: string;
 }): Promise<string>;
-`;
+`.trimEnd();
 
 // Built-in sandbox host-function base. Used as-is when no MCP servers are
 // enabled, and as the lead-in to the MCP-augmented description otherwise.

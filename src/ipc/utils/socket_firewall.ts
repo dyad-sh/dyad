@@ -149,10 +149,13 @@ export function getManagedPnpmBinDir(): string {
   return path.join(getManagedPnpmInstallDir(), "node_modules", ".bin");
 }
 
-export function getManagedPnpmExecutablePath(): string {
+export function getManagedPnpmCliScriptPath(): string {
   return path.join(
-    getManagedPnpmBinDir(),
-    process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+    getManagedPnpmInstallDir(),
+    "node_modules",
+    "pnpm",
+    "bin",
+    "pnpm.cjs",
   );
 }
 
@@ -828,14 +831,15 @@ export async function getPnpmMinimumReleaseAgeSupport(
   }
 
   try {
-    const result = await runner(
-      "pnpm",
-      [PNPM_PM_ON_FAIL_IGNORE_ARG, "--version"],
-      {
-        env: getPackageManagerCommandEnv(),
-        timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
-      },
-    );
+    // Probe with bare --version: pnpm 8.x/9.0 reject --config.* flags on
+    // --version ("Unknown option") even though they accept them on real
+    // subcommands, so a flagged probe would misreport a working pnpm as
+    // unavailable. The pm-on-fail setting still applies via
+    // npm_config_pm_on_fail in getPackageManagerCommandEnv().
+    const result = await runner("pnpm", ["--version"], {
+      env: getPackageManagerCommandEnv(),
+      timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+    });
     const version = result.stdout.trim();
     if (isVersionAtLeast(version, PNPM_MINIMUM_RELEASE_AGE_VERSION)) {
       return { available: true, minimumReleaseAgeSupported: true, version };

@@ -14,6 +14,11 @@ import {
   getPnpmMinimumReleaseAgeSupport,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
+import {
+  choosePackageManagerFromSignal,
+  getPackageManagerSignal,
+  signalPrefersPnpm,
+} from "@/ipc/utils/package_manager_selection";
 import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 
@@ -201,14 +206,23 @@ export async function installPackages({
   }
 
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  // Choose from the app's own signals (packageManager field, lockfiles,
+  // node_modules shape) so add-dependency and the run command agree on the
+  // package manager — a pnpm add against an npm-shaped app would purge its
+  // node_modules and write a lockfile the run command ignores.
+  const signal = getPackageManagerSignal(appPath);
+  const packageManager = choosePackageManagerFromSignal({
+    signal,
+    pnpmAvailable: pnpmSupport.available,
+  });
   if (
+    signalPrefersPnpm(signal) &&
     !pnpmSupport.minimumReleaseAgeSupported &&
     pnpmSupport.warningMessage &&
     shouldShowPnpmMinimumReleaseAgeWarning(settings)
   ) {
     warningMessages.push(pnpmSupport.warningMessage);
   }
-  const packageManager = pnpmSupport.available ? "pnpm" : "npm";
   if (packageManager === "pnpm") {
     await commitPnpmAllowBuildsConfigIfChanged(appPath);
   }

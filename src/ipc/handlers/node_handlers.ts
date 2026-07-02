@@ -12,15 +12,14 @@ import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { isVersionAtLeast } from "@/shared/version_utils";
 import {
   applyManagedPnpmToProcessPath,
   getCommandExecutionDisplayDetails,
-  getManagedPnpmExecutablePath,
+  getManagedPnpmCliScriptPath,
   getManagedPnpmInstallDir,
   getPackageManagerCommandEnv,
+  getPnpmMinimumReleaseAgeSupport,
   PNPM_GLOBAL_INSTALL_PACKAGE,
-  PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_MINIMUM_RELEASE_AGE_VERSION,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
@@ -71,32 +70,47 @@ function formatInstallFailureReason(error: unknown): string {
 async function installManagedPnpm(): Promise<string> {
   const managedPnpmInstallDir = getManagedPnpmInstallDir();
   await fs.mkdir(managedPnpmInstallDir, { recursive: true });
+  // Pin npm's project-root discovery to the managed dir: without a
+  // package.json here, npm walks up from cwd and would install into an
+  // ancestor that happens to contain a package.json (e.g. a stray one in
+  // the user's home directory).
+  const managedPackageJsonPath = join(managedPnpmInstallDir, "package.json");
+  if (!existsSync(managedPackageJsonPath)) {
+    await fs.writeFile(
+      managedPackageJsonPath,
+      `${JSON.stringify({ name: "dyad-managed-pnpm", private: true }, null, 2)}\n`,
+    );
+  }
+  // Install via cwd instead of a --prefix argument: on Windows, absolute
+  // paths with spaces (e.g. C:\Users\John Doe) in the argv of a .cmd
+  // invocation get mangled by the cmd.exe quoting that node-pty applies,
+  // while cwd goes straight to the pty API without shell parsing. A local
+  // install into cwd lands in the same node_modules layout --prefix produced.
   await runCommand(
     "npm",
     [
       "install",
-      "--prefix",
-      managedPnpmInstallDir,
       "--force",
       // A user-level .npmrc with bin-links=false would otherwise skip
-      // creating node_modules/.bin/pnpm, which the verification below
-      // (and the managed PATH entry) depend on.
+      // creating node_modules/.bin/pnpm, which the managed PATH entry
+      // depends on.
       "--bin-links=true",
       PNPM_GLOBAL_INSTALL_PACKAGE,
     ],
     {
+      cwd: managedPnpmInstallDir,
       env: getPackageManagerCommandEnv(),
     },
   );
   applyManagedPnpmToProcessPath();
 
-  const result = await runCommand(
-    getManagedPnpmExecutablePath(),
-    [PNPM_PM_ON_FAIL_IGNORE_ARG, "--version"],
-    {
-      env: getPackageManagerCommandEnv(),
-    },
-  );
+  // Verify via `node pnpm.cjs` rather than the pnpm.cmd shim: node is a real
+  // executable, so the space-containing script path survives Windows argument
+  // quoting that breaks for cmd.exe batch invocations.
+  const result = await runCommand("node", [
+    getManagedPnpmCliScriptPath(),
+    "--version",
+  ]);
   const pnpmVersion = result.stdout.trim();
   if (!pnpmVersion) {
     throw new Error("pnpm installed, but its version could not be verified");
@@ -148,16 +162,9 @@ function scheduleManagedPnpmInstall(currentPnpmVersion: string | null): void {
 }
 
 async function getPnpmVersionAndScheduleInstall(): Promise<string | null> {
-  const currentPnpmVersion = await runShellCommand(
-    `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} --version`,
-    {
-      env: getPackageManagerCommandEnv(),
-    },
-  );
-  if (
-    currentPnpmVersion &&
-    isVersionAtLeast(currentPnpmVersion, PNPM_MINIMUM_RELEASE_AGE_VERSION)
-  ) {
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  const currentPnpmVersion = pnpmSupport.version ?? null;
+  if (pnpmSupport.available && pnpmSupport.minimumReleaseAgeSupported) {
     logger.info(
       `Using existing pnpm ${currentPnpmVersion}; no managed install needed.`,
     );

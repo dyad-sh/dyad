@@ -307,6 +307,80 @@ describe("executeApp", () => {
     );
   });
 
+  it("does not warn about old pnpm for apps that explicitly use npm", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writePackageJson(appPath, { packageManager: "npm@10.8.2" });
+      const process = new FakeChildProcess(101);
+      spawnMock.mockReturnValueOnce(process);
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: true,
+        minimumReleaseAgeSupported: false,
+        warningMessage:
+          "Install pnpm 10.16.0 or newer for the strongest protection",
+      });
+      readSettingsMock.mockReturnValue({
+        runtimeMode2: "host",
+        enablePnpmMinimumReleaseAgeWarning: true,
+      });
+
+      await executeApp({
+        appPath,
+        appId: 1,
+        event: createEvent(),
+        isNeon: false,
+      });
+
+      expect(String(spawnMock.mock.calls[0][0]).startsWith("(npm")).toBe(true);
+      expect(safeSendMock).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "app:output",
+        expect.objectContaining({ type: "package-manager-warning" }),
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when a pnpm-preferring app falls back to npm because pnpm is unavailable", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await createMarker(appPath, "pnpm-lock.yaml");
+      const process = new FakeChildProcess(101);
+      spawnMock.mockReturnValueOnce(process);
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: false,
+        minimumReleaseAgeSupported: false,
+        warningMessage:
+          "Install pnpm 10.16.0 or newer for the strongest protection",
+      });
+      readSettingsMock.mockReturnValue({
+        runtimeMode2: "host",
+        enablePnpmMinimumReleaseAgeWarning: true,
+      });
+
+      const event = createEvent();
+      await executeApp({
+        appPath,
+        appId: 1,
+        event,
+        isNeon: false,
+      });
+
+      expect(String(spawnMock.mock.calls[0][0]).startsWith("(npm")).toBe(true);
+      expect(safeSendMock).toHaveBeenCalledWith(
+        event.sender,
+        "app:output",
+        expect.objectContaining({
+          type: "package-manager-warning",
+          message: "Install pnpm 10.16.0 or newer for the strongest protection",
+        }),
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
   it.each<
     [
       string,

@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
@@ -448,6 +451,87 @@ describe("executeAddDependency", () => {
       installResults: "installed via npm",
       warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
     });
+  });
+
+  it("uses npm for npm-shaped apps even when pnpm is available", async () => {
+    const appPath = await mkdtemp(path.join(os.tmpdir(), "dyad-add-dep-"));
+    try {
+      await writeFile(path.join(appPath, "package-lock.json"), "{}");
+      ensureSocketFirewallInstalledMock.mockResolvedValue({
+        available: false,
+        warningMessage: SOCKET_FIREWALL_WARNING_MESSAGE,
+      });
+      runCommandMock.mockResolvedValueOnce({
+        stdout: "installed via npm",
+        stderr: "",
+      });
+
+      const result = await executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath,
+      });
+
+      expect(runCommandMock).toHaveBeenCalledWith(
+        "npm",
+        ["install", "--legacy-peer-deps", "react"],
+        expect.objectContaining({ cwd: appPath }),
+      );
+      expect(commitPnpmAllowBuildsConfigIfChangedMock).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        installResults: "installed via npm",
+      });
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("does not warn about old pnpm for apps that explicitly use npm", async () => {
+    const appPath = await mkdtemp(path.join(os.tmpdir(), "dyad-add-dep-"));
+    try {
+      await writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify({ packageManager: "npm@10.8.2" }),
+      );
+      readEffectiveSettingsMock.mockResolvedValueOnce({
+        blockUnsafeNpmPackages: true,
+        enablePnpmMinimumReleaseAgeWarning: true,
+      });
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: true,
+        minimumReleaseAgeSupported: false,
+        warningMessage:
+          "Install pnpm 10.16.0 or newer for the strongest protection",
+      });
+      ensureSocketFirewallInstalledMock.mockResolvedValue({
+        available: true,
+      });
+      runCommandMock.mockResolvedValueOnce({
+        stdout: "installed via npm",
+        stderr: "",
+      });
+
+      const result = await executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath,
+      });
+
+      expect(result).toMatchObject({
+        installResults: "installed via npm",
+        warningMessages: [],
+      });
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
   });
 
   it("rejects invalid npm package specs before invoking the shell", async () => {

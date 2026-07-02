@@ -16,11 +16,12 @@ import {
   ChevronUp,
   Download,
   FolderOpen,
+  Globe,
   Loader2,
   Logs,
   RefreshCw,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
@@ -177,6 +178,7 @@ export function PreviewPanel() {
               <div className="flex-1 overflow-y-auto">
                 {isNodeMissing ? (
                   <PreviewNodeRequirement
+                    appName={app?.name}
                     nodeDownloadUrl={nodeSystemInfo?.nodeDownloadUrl}
                     isCheckFailed={nodeCheckFailed}
                     onCheckAgain={async () => {
@@ -245,12 +247,16 @@ export function PreviewPanel() {
   );
 }
 
+const NODE_POLL_INTERVAL_MS = 4000;
+
 function PreviewNodeRequirement({
+  appName,
   nodeDownloadUrl,
   isCheckFailed,
   onCheckAgain,
   onSelectNodeFolder,
 }: {
+  appName?: string;
   nodeDownloadUrl?: string;
   isCheckFailed: boolean;
   onCheckAgain: () => Promise<void>;
@@ -259,6 +265,27 @@ function PreviewNodeRequirement({
   const [isCheckingAgain, setIsCheckingAgain] = useState(false);
   const [isSelectingNodeFolder, setIsSelectingNodeFolder] = useState(false);
   const [hasOpenedInstaller, setHasOpenedInstaller] = useState(false);
+
+  // Quietly re-check for Node.js while this state is visible so the preview
+  // starts on its own the moment the installer finishes — no click required.
+  const checkAgainRef = useRef(onCheckAgain);
+  checkAgainRef.current = onCheckAgain;
+  const isPollInFlightRef = useRef(false);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (isPollInFlightRef.current) {
+        return;
+      }
+      isPollInFlightRef.current = true;
+      void checkAgainRef
+        .current()
+        .catch(() => {})
+        .finally(() => {
+          isPollInFlightRef.current = false;
+        });
+    }, NODE_POLL_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   const handleInstallNode = () => {
     if (nodeDownloadUrl) {
@@ -288,103 +315,131 @@ function PreviewNodeRequirement({
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-(--background-lighter) p-6">
-      <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 text-center shadow-sm">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-          <AlertCircle className="size-6" />
-        </div>
-
-        <h3 className="mt-4 text-xl font-semibold tracking-tight text-foreground">
-          Node.js is required for preview
-        </h3>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Dyad needs Node.js to run your app locally. Install it once, then
-          return here to start the preview.
-        </p>
-
-        {isCheckFailed && (
-          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-left text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-            Dyad could not check your Node.js setup.
-          </p>
-        )}
-
-        <div className="mt-6 space-y-2">
-          <Button
-            variant={hasOpenedInstaller ? "outline" : "default"}
-            className="h-11 w-full cursor-pointer"
-            onClick={handleInstallNode}
-            disabled={!nodeDownloadUrl}
-          >
-            <Download className="size-4" />
-            Install Node.js
-          </Button>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Button
-              variant="outline"
-              className={`h-10 cursor-pointer bg-background ${hasOpenedInstaller ? "sm:col-span-2" : ""}`}
-              onClick={handleSelectNodeFolder}
-              disabled={isSelectingNodeFolder}
-            >
-              {isSelectingNodeFolder ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <FolderOpen className="size-4" />
-              )}
-              I already have it
-            </Button>
-            {!hasOpenedInstaller && (
-              <Button
-                variant="outline"
-                className="h-10 cursor-pointer bg-background"
-                onClick={handleCheckAgain}
-                disabled={isCheckingAgain}
-              >
-                {isCheckingAgain ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                Check again
-              </Button>
-            )}
+    <div className="flex min-h-full bg-(--background-lighter) p-4 sm:p-6">
+      <div className="relative flex min-h-[26rem] w-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+        {/* Browser chrome: this panel IS their site's window, one step early */}
+        <div className="flex items-center gap-3 border-b border-border bg-(--background-lighter) px-4 py-2.5">
+          <div className="flex gap-1.5" aria-hidden="true">
+            <span className="size-2.5 rounded-full bg-red-400/70 dark:bg-red-400/50" />
+            <span className="size-2.5 rounded-full bg-amber-400/70 dark:bg-amber-400/50" />
+            <span className="size-2.5 rounded-full bg-green-400/70 dark:bg-green-400/50" />
           </div>
+          <div className="mx-auto flex h-7 w-full min-w-0 max-w-xs items-center justify-center gap-1.5 rounded-full bg-(--background-darker)/70 px-3">
+            <Globe className="size-3 shrink-0 text-muted-foreground" />
+            <span className="truncate text-xs text-muted-foreground">
+              {appName ? `${appName} · localhost` : "Your app · localhost"}
+            </span>
+          </div>
+          <div className="w-13 shrink-0" aria-hidden="true" />
         </div>
 
-        {hasOpenedInstaller && (
-          <div className="mt-4 rounded-lg border border-primary/25 bg-primary/8 px-4 py-4 text-left">
-            <div className="flex flex-col gap-4">
-              <div>
-                <span className="rounded-full bg-background px-2.5 py-1 text-xs font-semibold text-primary">
-                  Next step
-                </span>
-                <p className="mt-3 text-sm font-semibold text-foreground">
-                  Node.js downloaded
+        <div className="relative flex-1 overflow-hidden">
+          {/* Setup card, centered in the waiting browser window */}
+          <div className="absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
+            <div className="w-full max-w-sm rounded-xl border border-border bg-(--background-lightest) p-5 text-center shadow-lg">
+              {hasOpenedInstaller ? (
+                <>
+                  <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                    Finish the Node.js install
+                  </h3>
+                  <ol className="mx-auto mt-3 max-w-xs space-y-1.5 text-left text-sm leading-6 text-foreground/80">
+                    <li>1. Open the installer you just downloaded.</li>
+                    <li>2. Click through with the default settings.</li>
+                  </ol>
+                  {/* Live watching status while polling for the install */}
+                  <div className="mt-4 flex items-center justify-center gap-2.5 rounded-lg bg-(--background-lighter) px-3 py-2.5">
+                    <span
+                      className="relative flex size-2 shrink-0"
+                      aria-hidden="true"
+                    >
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/50 [animation-duration:2.5s] motion-reduce:animate-none" />
+                      <span className="relative inline-flex size-2 rounded-full bg-primary" />
+                    </span>
+                    <p className="text-left text-xs leading-5 text-foreground/80">
+                      Watching for Node.js…
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                    Install Node.js to see your preview
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-foreground/80">
+                    The free engine that runs your app on this computer. About
+                    two minutes to install.
+                  </p>
+                  <Button
+                    className="mt-4 h-10 w-full cursor-pointer"
+                    onClick={handleInstallNode}
+                    disabled={!nodeDownloadUrl}
+                  >
+                    <Download className="size-4" />
+                    Install Node.js
+                  </Button>
+                </>
+              )}
+
+              {isCheckFailed && (
+                <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-left text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  <AlertCircle className="mr-1.5 inline size-3.5 align-[-2px]" />
+                  Dyad couldn't check for Node.js. It will keep trying.
                 </p>
-                <ol className="mt-2 space-y-1 text-sm leading-5 text-muted-foreground">
-                  <li>1. Open the Node.js installer and finish setup.</li>
-                  <li>2. Return to Dyad and click the button.</li>
-                </ol>
+              )}
+
+              <div className="mt-4 flex items-center gap-1 border-t border-border pt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 flex-1 cursor-pointer text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                  onClick={handleSelectNodeFolder}
+                  disabled={isSelectingNodeFolder}
+                >
+                  {isSelectingNodeFolder ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <FolderOpen className="size-3.5" />
+                  )}
+                  I already have Node.js
+                </Button>
+                <div
+                  className="h-4 w-px shrink-0 bg-border"
+                  aria-hidden="true"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 flex-1 cursor-pointer text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                  onClick={handleCheckAgain}
+                  disabled={isCheckingAgain}
+                >
+                  {isCheckingAgain ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  Check now
+                </Button>
               </div>
-              <Button
-                size="lg"
-                className="h-11 w-full cursor-pointer"
-                onClick={handleCheckAgain}
-                disabled={isCheckingAgain}
-              >
-                {isCheckingAgain ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                I installed Node.js
-              </Button>
+
+              {hasOpenedInstaller && (
+                <div className="mt-2 flex items-center justify-center text-xs">
+                  <button
+                    type="button"
+                    onClick={handleInstallNode}
+                    className="cursor-pointer font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+                  >
+                    Reopen download page
+                  </button>
+                </div>
+              )}
+
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                You can install Node.js while your app is building.
+              </p>
             </div>
           </div>
-        )}
-
-        <p className="mt-5 text-xs leading-5 text-muted-foreground">
-          You can keep editing your app while Node.js installs.
-        </p>
+        </div>
       </div>
     </div>
   );

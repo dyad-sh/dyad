@@ -65,7 +65,7 @@ const runRevertGateTest = async (
   // Open the version pane, select the initial version (previews it and reveals
   // its restore button), then attempt to restore it.
   await po.page.getByRole("button", { name: "Version" }).click();
-  await po.page.getByText("Init Dyad app Restore").click();
+  await po.page.getByTestId("version-row-1").click();
   await po.page
     .getByRole("button", { name: "Restore to this version" })
     .click();

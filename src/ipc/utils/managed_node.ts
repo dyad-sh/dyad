@@ -255,20 +255,42 @@ export function isUsableSystemNodeVersion(version: string | null): boolean {
   return !!version && isVersionAtLeast(version, MINIMUM_SYSTEM_NODE_VERSION);
 }
 
-export function getNodeVersionAtPath(nodePath: string): Promise<string | null> {
+const NODE_VERSION_CHECK_TIMEOUT_MS = 5_000;
+
+export function getNodeVersionAtPath(
+  nodePath: string,
+  timeoutMs: number = NODE_VERSION_CHECK_TIMEOUT_MS,
+): Promise<string | null> {
   return new Promise((resolve) => {
     const child = spawn(nodePath, ["--version"], {
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
+    let timer: NodeJS.Timeout | undefined;
+    let settled = false;
+    const settle = (value: string | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    // A pathological candidate (broken shim script, a binary held mid-scan
+    // by antivirus) never emits `close`; without a deadline it would wedge
+    // status resolution for every caller behind the single-flight probe.
+    timer = setTimeout(() => {
+      child.kill();
+      settle(null);
+    }, timeoutMs);
     child.stdout?.on("data", (data) => {
       stdout += data.toString();
     });
-    child.once("error", () => resolve(null));
+    child.once("error", () => settle(null));
     child.once("close", (code) => {
       const version = stdout.trim();
-      resolve(code === 0 && version ? version : null);
+      settle(code === 0 && version ? version : null);
     });
   });
 }

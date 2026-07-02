@@ -3,7 +3,10 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { swapManagedNodeInstallDir } from "./managed_node";
+import {
+  getNodeVersionAtPath,
+  swapManagedNodeInstallDir,
+} from "./managed_node";
 
 vi.mock("electron", () => ({
   net: {
@@ -57,4 +60,36 @@ describe("swapManagedNodeInstallDir", () => {
       fsp.readFile(path.join(tempInstallDir, "runtime.txt"), "utf8"),
     ).resolves.toBe("new");
   });
+});
+
+describe("getNodeVersionAtPath", () => {
+  it("returns the version for a working binary", async () => {
+    // process.execPath is the node binary running this test.
+    await expect(getNodeVersionAtPath(process.execPath)).resolves.toMatch(
+      /^v\d+\.\d+\.\d+/,
+    );
+  });
+
+  it("returns null for a missing binary", async () => {
+    await expect(
+      getNodeVersionAtPath(path.join(os.tmpdir(), "does-not-exist-node")),
+    ).resolves.toBeNull();
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "times out and kills a hanging candidate",
+    async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-node-hang-"));
+      const script = path.join(dir, "node");
+      fs.writeFileSync(script, "#!/bin/sh\nsleep 30\n", { mode: 0o755 });
+      try {
+        const started = Date.now();
+        await expect(getNodeVersionAtPath(script, 250)).resolves.toBeNull();
+        // Must resolve via the timeout, not by waiting out the sleep.
+        expect(Date.now() - started).toBeLessThan(5_000);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

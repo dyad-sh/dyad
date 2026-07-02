@@ -84,6 +84,11 @@ import {
   getManagedPnpmBinDir,
   getManagedPnpmInstallDir,
 } from "./ipc/utils/socket_firewall";
+import {
+  applyManagedNodeToProcessPath,
+  getManagedNodeVersion,
+  maybeUpgradeManagedNode,
+} from "./ipc/utils/managed_node";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -505,9 +510,25 @@ export async function onReady() {
     }
   });
 
+  if (settings.nodeRuntimePreference === "managed") {
+    applyManagedNodeToProcessPath();
+  }
+  void maybeUpgradeManagedNode();
+
   await onFirstRunMaybe(settings);
   createWindow();
   createApplicationMenu();
+
+  void getManagedNodeVersion().then((managedNodeVersion) => {
+    sendTelemetryEvent("runtime_source", {
+      runtime_source:
+        settings.nodeRuntimePreference === "managed" && managedNodeVersion
+          ? "managed"
+          : "system",
+      managed_node_installed: !!managedNodeVersion,
+      managed_node_version: managedNodeVersion,
+    });
+  });
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
   if (settings.enableAutoUpdate) {

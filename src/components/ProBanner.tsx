@@ -59,7 +59,7 @@ export function SetupDyadProButton() {
   return (
     <button
       type="button"
-      className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+      className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
       onClick={() => {
         ipc.system.openExternalUrl("https://academy.dyad.sh/settings");
       }}

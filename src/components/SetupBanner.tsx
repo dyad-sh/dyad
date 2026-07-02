@@ -1,6 +1,14 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, GiftIcon, Play, Settings } from "lucide-react";
+import { useAtomValue } from "jotai";
+import {
+  CircleCheck,
+  ChevronRight,
+  GiftIcon,
+  Play,
+  Settings,
+} from "lucide-react";
+import { pendingFirstPromptAtom } from "@/atoms/chatAtoms";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
@@ -28,6 +36,7 @@ export function SetupBanner({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
+  const hasPendingPrompt = useAtomValue(pendingFirstPromptAtom);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
 
@@ -94,10 +103,19 @@ export function SetupBanner({
               ? "You're almost ready to build"
               : "Connect AI to start building"}
           </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Dyad uses AI to build your app. Choose one option now; you can
-            change it later.
-          </p>
+          {variant === "dialog" && hasPendingPrompt ? (
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-sm leading-6 text-muted-foreground">
+              <CircleCheck
+                aria-hidden="true"
+                className="size-4 shrink-0 text-primary"
+              />
+              Your prompt is saved — it'll send as soon as you're connected.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Dyad uses AI to build your app.
+            </p>
+          )}
         </div>
 
         <button
@@ -110,14 +128,9 @@ export function SetupBanner({
               <img src={logo} alt="Dyad Logo" className="size-6" />
             </div>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-semibold text-primary">
-                  Start free Dyad Pro trial
-                </h3>
-                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                  Recommended
-                </span>
-              </div>
+              <h3 className="text-lg font-semibold text-primary">
+                Start free Dyad Pro trial
+              </h3>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 No API keys. Access leading models instantly.
               </p>
@@ -130,19 +143,25 @@ export function SetupBanner({
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-muted-foreground">
-            Prefer your own key?
+            Or use your own API key
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <ProviderOptionButton
-              label="Google Gemini"
+              label="Google"
+              chip="Free"
               onClick={handleGoogleSetupClick}
               icon={<img src={googleIcon} alt="Google" className="size-4" />}
             />
             <ProviderOptionButton
               label="OpenRouter"
+              chip="Free"
               onClick={handleOpenRouterSetupClick}
               icon={
-                <img src={openrouterLogo} alt="OpenRouter" className="size-4" />
+                <img
+                  src={openrouterLogo}
+                  alt="OpenRouter"
+                  className="size-4 dark:invert"
+                />
               }
             />
             <ProviderOptionButton
@@ -153,7 +172,7 @@ export function SetupBanner({
           </div>
         </div>
 
-        <div className="mt-4 flex w-full flex-col items-center justify-around gap-2 text-sm sm:flex-row">
+        <div className="mt-4 flex w-full flex-col items-center justify-around gap-2 text-xs sm:flex-row">
           <SetupDyadProButton />
           <button
             type="button"
@@ -164,10 +183,10 @@ export function SetupBanner({
             }}
             className="inline-flex cursor-pointer items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
           >
-            <span className="inline-flex h-4 w-5 items-center justify-center rounded-[4px] bg-red-600 text-white">
+            <span className="inline-flex h-3.5 w-4 items-center justify-center rounded-[3px] bg-red-600 text-white">
               <Play
                 aria-hidden="true"
-                className="ml-0.5 size-2.5 fill-current stroke-current"
+                className="ml-0.5 size-2 fill-current stroke-current"
               />
             </span>
             Watch the walkthrough
@@ -181,10 +200,12 @@ export function SetupBanner({
 function ProviderOptionButton({
   label,
   icon,
+  chip,
   onClick,
 }: {
   label: string;
   icon: React.ReactNode;
+  chip?: string;
   onClick: () => void;
 }) {
   return (
@@ -199,7 +220,13 @@ function ProviderOptionButton({
         </span>
         <span className="truncate">{label}</span>
       </span>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      {chip ? (
+        <span className="shrink-0 rounded-full border border-emerald-600/25 bg-emerald-500/10 px-1.5 py-px text-[11px] font-semibold text-emerald-700 dark:border-emerald-400/25 dark:text-emerald-300">
+          {chip}
+        </span>
+      ) : (
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      )}
     </button>
   );
 }
@@ -224,7 +251,11 @@ export const OpenRouterSetupBanner = ({
       }}
       tabIndex={0}
       leadingIcon={
-        <img src={openrouterLogo} alt="OpenRouter" className="w-4 h-4" />
+        <img
+          src={openrouterLogo}
+          alt="OpenRouter"
+          className="w-4 h-4 dark:invert"
+        />
       }
       title="Setup OpenRouter API Key"
       chip={

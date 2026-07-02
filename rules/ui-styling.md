@@ -38,3 +38,9 @@ The project uses **Tailwind v4** (see `tailwindcss: ^4.x` in `package.json`). A 
 - **Arbitrary opacity values:** `bg-primary/8`, `text-muted-foreground/85` — any integer 0–100 works, not just the v3-canonical steps.
 - **Arbitrary widths/sizes:** `w-[17rem]`, `size-[3px]` — use these for fine-grained tweaks instead of inventing config values.
 - **`size-*` shorthand** sets both `width` and `height`.
+
+## Visually verifying component designs without launching Electron
+
+To screenshot a redesigned component without driving the full Electron app (which may require onboarding/app state to reach the surface): build a standalone HTML harness using `@tailwindcss/browser@4` (CDN) with the app's CSS variables copied from `src/styles/globals.css` (including the `.dark` block for dark-mode frames), then screenshot it with the repo's Playwright. Note: import Playwright by absolute path — `import { chromium } from "file:///<repo>/node_modules/playwright/index.mjs"` — because plain `import "playwright"` fails with `ERR_MODULE_NOT_FOUND` when the script lives outside the repo (ESM resolves from the script's location, not cwd).
+
+Related: `npm run start:onboarding` launches the real app with fresh userData and `DYAD_DEV_NODEJS_STATUS=missing` to reproduce first-run / Node-missing states.

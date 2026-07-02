@@ -164,6 +164,23 @@ describe("PreviewPanel", () => {
     render(<PreviewPanel />);
 
     expect(screen.getByText("Preview iframe")).toBeTruthy();
-    expect(screen.queryByText("Node.js is required for preview")).toBeNull();
+    expect(
+      screen.queryByText("Install Node.js to see your preview"),
+    ).toBeNull();
+  });
+
+  it("shows the preview-stage setup and skips running the app when Node.js is missing", () => {
+    mocks.nodeVersion = "";
+
+    render(<PreviewPanel />);
+
+    expect(
+      screen.getByText("Install Node.js to see your preview"),
+    ).toBeTruthy();
+    expect(screen.getByText("Your app · localhost")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Install Node\.js/ }),
+    ).toBeTruthy();
+    expect(mocks.runApp).not.toHaveBeenCalled();
   });
 });

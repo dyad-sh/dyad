@@ -493,18 +493,19 @@ function PreviewNodeRequirement({
               </div>
 
               <div className="mt-2 flex items-center justify-center text-xs">
-                {nodeDownloadUrl && managedNodeSupported && (
-                  <button
-                    type="button"
-                    onClick={handleInstallNode}
-                    disabled={isInstallingManagedNode}
-                    className="cursor-pointer font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
-                  >
-                    {hasOpenedInstaller
-                      ? "Reopen nodejs.org download"
-                      : "Download from nodejs.org instead"}
-                  </button>
-                )}
+                {nodeDownloadUrl &&
+                  (managedNodeSupported || hasOpenedInstaller) && (
+                    <button
+                      type="button"
+                      onClick={handleInstallNode}
+                      disabled={isInstallingManagedNode}
+                      className="cursor-pointer font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+                    >
+                      {hasOpenedInstaller
+                        ? "Reopen nodejs.org download"
+                        : "Download from nodejs.org instead"}
+                    </button>
+                  )}
               </div>
 
               <p className="mt-3 text-xs leading-5 text-muted-foreground">

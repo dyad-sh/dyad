@@ -512,8 +512,15 @@ export async function onReady() {
 
   const shouldUseManagedNode =
     settings.nodeRuntimePreference === "managed" && !settings.customNodePath;
+  const managedNodeVersion = await getManagedNodeVersion();
   if (shouldUseManagedNode) {
-    applyManagedNodeToProcessPath();
+    if (managedNodeVersion) {
+      applyManagedNodeToProcessPath();
+    } else {
+      logger.warn(
+        "Managed Node.js is selected, but no usable managed runtime is installed.",
+      );
+    }
     void maybeUpgradeManagedNode();
   }
 
@@ -521,16 +528,14 @@ export async function onReady() {
   createWindow();
   createApplicationMenu();
 
-  void getManagedNodeVersion().then((managedNodeVersion) => {
-    sendTelemetryEvent("runtime_source", {
-      runtime_source: settings.customNodePath
-        ? "custom"
-        : shouldUseManagedNode && managedNodeVersion
-          ? "managed"
-          : "system",
-      managed_node_installed: !!managedNodeVersion,
-      managed_node_version: managedNodeVersion,
-    });
+  sendTelemetryEvent("runtime_source", {
+    runtime_source: settings.customNodePath
+      ? "custom"
+      : shouldUseManagedNode && managedNodeVersion
+        ? "managed"
+        : "system",
+    managed_node_installed: !!managedNodeVersion,
+    managed_node_version: managedNodeVersion,
   });
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);

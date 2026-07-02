@@ -11,6 +11,10 @@ const sanitizedPathCache = new Map<
   { expiresAt: number; sanitizedPath: string }
 >();
 
+export function clearSanitizedPathCache(): void {
+  sanitizedPathCache.clear();
+}
+
 export function getManagedToolsDir(): string {
   return path.join(getUserDataPath(), MANAGED_TOOLS_DIR);
 }

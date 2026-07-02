@@ -15,8 +15,8 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getPathEnvKey } from "@/ipc/utils/path_env";
 import {
-  applyManagedNodeToProcessPath,
   getManagedNodeBinDir,
+  getManagedNodeBinDirsForInstalledVersions,
   getManagedNodeBinaryPath,
   getManagedNodeVersion,
   getNodeVersionAtPath,
@@ -64,15 +64,31 @@ async function reloadNodePath() {
   }
 
   const settings = readSettings();
-  if (settings.customNodePath) {
-    const nextEnv = prependPathSegment(process.env, settings.customNodePath);
-    const pathKey = getPathEnvKey(process.env);
-    process.env[pathKey] = nextEnv[pathKey] ?? "";
+  const customNode = await getCustomNodeInfo(settings.customNodePath);
+  let nextEnv = removePathSegmentsFromEnv(process.env, [
+    ...getManagedNodeBinDirsForInstalledVersions(),
+    settings.customNodePath,
+  ]);
+
+  if (customNode && settings.customNodePath) {
+    nextEnv = prependPathSegment(nextEnv, settings.customNodePath);
     logger.debug("Added custom Node.js path to PATH:", settings.customNodePath);
-  } else if (settings.nodeRuntimePreference === "managed") {
-    applyManagedNodeToProcessPath();
+  } else if (settings.customNodePath) {
+    logger.warn(
+      "Configured custom Node.js path is not usable; falling back to the selected runtime preference.",
+      settings.customNodePath,
+    );
   }
-  process.env[pathKey] = sanitizePathEnv(process.env)[pathKey] ?? "";
+
+  if (!customNode && settings.nodeRuntimePreference === "managed") {
+    nextEnv = prependPathSegment(nextEnv, getManagedNodeBinDir());
+  } else if (!customNode) {
+    // Intended behavior: "system" is an explicit system-only preference, not
+    // system-first with a managed fallback. Managed is only added when the user
+    // selects the Managed runtime.
+    logger.debug("Using system Node.js preference.");
+  }
+  process.env[pathKey] = sanitizePathEnv(nextEnv)[pathKey] ?? "";
   applyManagedPnpmToProcessPath();
 }
 
@@ -261,9 +277,20 @@ function getSystemNodeProbeEnv(
   customNodePath?: string | null,
 ): NodeJS.ProcessEnv {
   return removePathSegmentsFromEnv(process.env, [
-    getManagedNodeBinDir(),
+    ...getManagedNodeBinDirsForInstalledVersions(),
     customNodePath,
   ]);
+}
+
+async function getCustomNodeInfo(
+  customNodePath?: string | null,
+): Promise<{ nodePath: string; nodeVersion: string } | null> {
+  if (!customNodePath) {
+    return null;
+  }
+  const nodePath = getNodeBinaryFromBinDir(customNodePath);
+  const nodeVersion = await getNodeVersionAtPath(nodePath);
+  return nodeVersion ? { nodePath, nodeVersion } : null;
 }
 
 function emptyNodeStatus(nodeDownloadUrl: string) {
@@ -282,10 +309,8 @@ function emptyNodeStatus(nodeDownloadUrl: string) {
 
 async function getResolvedNodeStatus(nodeDownloadUrl: string) {
   const settings = readSettings();
-  const managedNodeInstalled = await isManagedNodeInstalled();
-  const managedNodeVersion = managedNodeInstalled
-    ? await getManagedNodeVersion()
-    : null;
+  const managedNodeVersion = await getManagedNodeVersion();
+  const managedNodeInstalled = !!managedNodeVersion;
   const managedNodeSupported = isManagedNodeSupported();
 
   let nodeVersion: string | null = null;
@@ -293,11 +318,18 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
   let nodePath: string | null = null;
   let systemNodeTooOld = false;
 
-  if (settings.customNodePath) {
-    nodePath = getNodeBinaryFromBinDir(settings.customNodePath);
-    nodeVersion = await getNodeVersionAtPath(nodePath);
+  const customNode = await getCustomNodeInfo(settings.customNodePath);
+  if (customNode) {
+    nodePath = customNode.nodePath;
+    nodeVersion = customNode.nodeVersion;
     source = "custom";
   } else {
+    if (settings.customNodePath) {
+      logger.warn(
+        "Configured custom Node.js path is not usable; ignoring it for status resolution.",
+        settings.customNodePath,
+      );
+    }
     const systemEnv = getSystemNodeProbeEnv(settings.customNodePath);
     const systemNodeVersion = await runShellCommand("node --version", {
       env: systemEnv,
@@ -306,6 +338,8 @@ async function getResolvedNodeStatus(nodeDownloadUrl: string) {
     systemNodeTooOld =
       !!systemNodeVersion && !isUsableSystemNodeVersion(systemNodeVersion);
 
+    // Intended behavior: when the user selects System, a managed runtime on
+    // disk is not used as a fallback. Managed is only active when selected.
     if (
       settings.nodeRuntimePreference === "managed" &&
       managedNodeInstalled &&
@@ -463,9 +497,15 @@ export function registerNodeHandlers() {
       const nodeVersion = await installManagedNode((progress) => {
         safeSend(event.sender, "managed-node:install-progress", progress);
       });
+      const settings = readSettings();
+      const customNode = await getCustomNodeInfo(settings.customNodePath);
       writeSettings({
-        nodeRuntimePreference: "managed",
-        customNodePath: null,
+        // Preserve a valid custom path; it remains the most explicit runtime
+        // selection. If there is no valid custom runtime, the install button
+        // switches Dyad to the newly installed managed runtime.
+        nodeRuntimePreference: customNode
+          ? (settings.nodeRuntimePreference ?? "system")
+          : "managed",
       });
       await reloadNodePath();
       managedPnpmImplicitInstallFailed = false;
@@ -565,11 +605,13 @@ export function registerNodeHandlers() {
 
   createTypedHandler(systemContracts.getNodePath, async () => {
     const settings = readSettings();
-    if (settings.customNodePath) {
-      return getNodeBinaryFromBinDir(settings.customNodePath);
+    const customNode = await getCustomNodeInfo(settings.customNodePath);
+    if (customNode) {
+      return customNode.nodePath;
     }
     if (settings.nodeRuntimePreference === "managed") {
-      return getManagedNodeBinaryPath();
+      const managedNodeVersion = await getManagedNodeVersion();
+      return managedNodeVersion ? getManagedNodeBinaryPath() : null;
     }
     return getSystemNodePath(getSystemNodeProbeEnv(settings.customNodePath));
   });

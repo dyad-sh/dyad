@@ -1,5 +1,6 @@
 import { net } from "electron";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
@@ -9,6 +10,7 @@ import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import {
+  clearSanitizedPathCache,
   getManagedToolsDir,
   prependPathSegment,
   sanitizePathEnv,
@@ -23,6 +25,7 @@ export const MINIMUM_SYSTEM_NODE_VERSION = "20.0.0";
 const MANAGED_NODE_DIR = "node";
 const NODE_DIST_BASE_URL = `https://nodejs.org/dist/${MANAGED_NODE_VERSION}`;
 const NODE_MIRROR_BASE_URL = `https://registry.npmmirror.com/-/binary/node/${MANAGED_NODE_VERSION}`;
+const DOWNLOAD_STALL_TIMEOUT_MS = 60_000;
 
 type SupportedManagedNodeKey =
   | "darwin-arm64"
@@ -103,17 +106,88 @@ function getManagedNodeBinDirForInstallDir(installDir: string): string {
     : path.join(installDir, "bin");
 }
 
-export function getManagedNodeBinDir(): string {
-  return getManagedNodeBinDirForInstallDir(getManagedNodeInstallDir());
-}
-
-export function getManagedNodeBinaryPath(
-  installDir = getManagedNodeInstallDir(),
-) {
+function getManagedNodeBinaryPathForInstallDir(installDir: string): string {
   return path.join(
     getManagedNodeBinDirForInstallDir(installDir),
     process.platform === "win32" ? "node.exe" : "node",
   );
+}
+
+function isManagedNodeVersionDirName(name: string): boolean {
+  return /^v\d+\.\d+\.\d+(?:-.+)?$/.test(name);
+}
+
+function compareManagedNodeVersionNames(a: string, b: string): number {
+  const aAtLeastB = isVersionAtLeast(a, b);
+  const bAtLeastA = isVersionAtLeast(b, a);
+  if (aAtLeastB && !bAtLeastA) {
+    return 1;
+  }
+  if (bAtLeastA && !aAtLeastB) {
+    return -1;
+  }
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
+function getManagedNodeVersionInstallDirsSync({
+  requireBinary,
+}: {
+  requireBinary: boolean;
+}): string[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(getManagedNodeRootDir(), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter(
+      (entry) => entry.isDirectory() && isManagedNodeVersionDirName(entry.name),
+    )
+    .map((entry) => path.join(getManagedNodeRootDir(), entry.name))
+    .filter(
+      (installDir) =>
+        !requireBinary ||
+        fs.existsSync(getManagedNodeBinaryPathForInstallDir(installDir)),
+    )
+    .sort((a, b) =>
+      compareManagedNodeVersionNames(path.basename(a), path.basename(b)),
+    );
+}
+
+function getActiveManagedNodeInstallDirSync(): string {
+  const pinnedInstallDir = getManagedNodeInstallDir(MANAGED_NODE_VERSION);
+  if (fs.existsSync(getManagedNodeBinaryPathForInstallDir(pinnedInstallDir))) {
+    return pinnedInstallDir;
+  }
+
+  return (
+    getManagedNodeVersionInstallDirsSync({ requireBinary: true }).at(-1) ??
+    pinnedInstallDir
+  );
+}
+
+export function getManagedNodeBinDir(): string {
+  return getManagedNodeBinDirForInstallDir(
+    getActiveManagedNodeInstallDirSync(),
+  );
+}
+
+export function getManagedNodeBinDirsForInstalledVersions(): string[] {
+  const binDirs = [
+    getManagedNodeBinDirForInstallDir(getManagedNodeInstallDir()),
+    ...getManagedNodeVersionInstallDirsSync({ requireBinary: false }).map(
+      getManagedNodeBinDirForInstallDir,
+    ),
+  ];
+  return Array.from(new Set(binDirs));
+}
+
+export function getManagedNodeBinaryPath(
+  installDir = getActiveManagedNodeInstallDirSync(),
+) {
+  return getManagedNodeBinaryPathForInstallDir(installDir);
 }
 
 export function getManagedNodeNpmCommand(): string {
@@ -169,7 +243,7 @@ export async function isManagedNodeInstalled(
 ): Promise<boolean> {
   try {
     await fsp.access(
-      getManagedNodeBinaryPath(getManagedNodeInstallDir(version)),
+      getManagedNodeBinaryPathForInstallDir(getManagedNodeInstallDir(version)),
     );
     return true;
   } catch {
@@ -200,10 +274,14 @@ export function getNodeVersionAtPath(nodePath: string): Promise<string | null> {
 }
 
 export async function getManagedNodeVersion(
-  version = MANAGED_NODE_VERSION,
+  version?: string,
 ): Promise<string | null> {
-  const installDir = getManagedNodeInstallDir(version);
-  return getNodeVersionAtPath(getManagedNodeBinaryPath(installDir));
+  const installDir = version
+    ? getManagedNodeInstallDir(version)
+    : getActiveManagedNodeInstallDirSync();
+  return getNodeVersionAtPath(
+    getManagedNodeBinaryPathForInstallDir(installDir),
+  );
 }
 
 async function calculateSha256(filePath: string): Promise<string> {
@@ -263,12 +341,23 @@ async function downloadFile({
     const request = net.request(url);
     let output: fs.WriteStream | null = null;
     let settled = false;
+    let responseEnded = false;
+    let outputFinished = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    const clearDownloadTimeout = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    };
 
     const resolveOnce = () => {
       if (settled) {
         return;
       }
       settled = true;
+      clearDownloadTimeout();
       resolve();
     };
 
@@ -277,11 +366,31 @@ async function downloadFile({
         return;
       }
       settled = true;
+      clearDownloadTimeout();
       output?.destroy();
+      try {
+        request.abort();
+      } catch {
+        // Best effort only; the promise is already settled with the real error.
+      }
       reject(error);
     };
 
+    const resetDownloadTimeout = () => {
+      clearDownloadTimeout();
+      timeout = setTimeout(() => {
+        handleError(
+          new Error(
+            `Download stalled for ${Math.round(DOWNLOAD_STALL_TIMEOUT_MS / 1000)} seconds.`,
+          ),
+        );
+      }, DOWNLOAD_STALL_TIMEOUT_MS);
+    };
+
+    resetDownloadTimeout();
+
     request.on("response", (response) => {
+      resetDownloadTimeout();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         handleError(new Error(`Download returned HTTP ${response.statusCode}`));
         return;
@@ -291,6 +400,10 @@ async function downloadFile({
       let receivedBytes = 0;
       output = fs.createWriteStream(destination);
       response.on("data", (chunk: Buffer) => {
+        if (settled) {
+          return;
+        }
+        resetDownloadTimeout();
         receivedBytes += chunk.length;
         output?.write(chunk);
         if (totalBytes > 0) {
@@ -304,10 +417,23 @@ async function downloadFile({
         }
       });
       response.on("end", () => {
+        responseEnded = true;
+        resetDownloadTimeout();
         output?.end();
+      });
+      response.on("aborted", () => {
+        handleError(new Error("Download was aborted before it completed."));
+      });
+      (response as unknown as EventEmitter).once("close", () => {
+        if (!responseEnded && !settled) {
+          handleError(
+            new Error("Download connection closed before completion."),
+          );
+        }
       });
       response.on("error", handleError);
       output.on("finish", () => {
+        outputFinished = true;
         output?.close((error) => {
           if (error) {
             handleError(error);
@@ -316,7 +442,15 @@ async function downloadFile({
           resolveOnce();
         });
       });
+      output.on("close", () => {
+        if (!outputFinished && !settled) {
+          handleError(new Error("Download file closed before completion."));
+        }
+      });
       output.on("error", handleError);
+    });
+    request.on("abort", () => {
+      handleError(new Error("Download request was aborted."));
     });
     request.on("error", handleError);
     request.end();
@@ -399,6 +533,7 @@ async function installFromArchive({
     await fsp.rm(finalInstallDir, { recursive: true, force: true });
     await fsp.rename(tempInstallDir, finalInstallDir);
     await cleanupOldManagedNodeVersions();
+    clearSanitizedPathCache();
     applyManagedNodeToProcessPath();
     onProgress({ phase: "done", percent: 100 });
     return verifiedVersion;
@@ -586,10 +721,11 @@ async function installManagedNodeInternal(
 
 export async function removeManagedNode(): Promise<void> {
   await fsp.rm(getManagedNodeRootDir(), { recursive: true, force: true });
+  clearSanitizedPathCache();
 }
 
 export async function maybeUpgradeManagedNode(): Promise<void> {
-  const installed = await isManagedNodeInstalled();
+  const installed = await isManagedNodeInstalled(MANAGED_NODE_VERSION);
   if (!installed) {
     const rootDir = getManagedNodeRootDir();
     const entries = await fsp

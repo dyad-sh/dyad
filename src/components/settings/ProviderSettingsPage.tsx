@@ -32,6 +32,7 @@ import {
   VertexProviderSetting,
   hasDyadProKey,
 } from "@/lib/schemas";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   findInvalidProviderApiKeyCharacter,
   formatInvalidProviderApiKeyMessage,
@@ -46,11 +47,37 @@ interface ProviderSettingsPageProps {
   provider: string;
 }
 
+type ApiKeyValidationDialogState = {
+  message: string;
+  apiKey: string;
+  allowKeepInvalidKey: boolean;
+  errorKind?: DyadErrorKind;
+};
+
 const VALIDATED_API_KEY_PROVIDERS = new Set<string>([
   "google",
   "openrouter",
   "auto",
 ]);
+
+function getErrorKind(error: unknown): DyadErrorKind | undefined {
+  const kind =
+    typeof error === "object" && error !== null
+      ? (error as { kind?: unknown }).kind
+      : undefined;
+  return typeof kind === "string" &&
+    Object.values(DyadErrorKind).includes(kind as DyadErrorKind)
+    ? (kind as DyadErrorKind)
+    : undefined;
+}
+
+function getApiKeyValidationDialogTitle(
+  dialog: ApiKeyValidationDialogState | null,
+) {
+  return dialog?.errorKind === DyadErrorKind.Auth
+    ? "API key rejected"
+    : "Could not verify API key";
+}
 
 export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const navigate = useNavigate();
@@ -93,11 +120,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(
     null,
   );
-  const [apiKeyValidationDialog, setApiKeyValidationDialog] = useState<{
-    message: string;
-    apiKey: string;
-    allowKeepInvalidKey: boolean;
-  } | null>(null);
+  const [apiKeyValidationDialog, setApiKeyValidationDialog] =
+    useState<ApiKeyValidationDialogState | null>(null);
   const [showStartBuildingBanner, setShowStartBuildingBanner] = useState(false);
   const queryClient = useQueryClient();
   const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
@@ -203,6 +227,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               `Dyad could not verify this ${providerDisplayName} API key.`,
             apiKey: normalizedValue,
             allowKeepInvalidKey: true,
+            errorKind: getErrorKind(error),
           });
           return;
         }
@@ -276,6 +301,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           `Dyad could not verify this ${providerDisplayName} API key.`,
         apiKey: normalizedValue,
         allowKeepInvalidKey: false,
+        errorKind: getErrorKind(error),
       });
     } finally {
       setIsTesting(false);
@@ -401,7 +427,9 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>API key check failed</AlertDialogTitle>
+            <AlertDialogTitle>
+              {getApiKeyValidationDialogTitle(apiKeyValidationDialog)}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {apiKeyValidationDialog?.message}
             </AlertDialogDescription>

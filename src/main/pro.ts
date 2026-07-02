@@ -7,6 +7,10 @@ export function handleDyadProReturn({ apiKey }: { apiKey: string }) {
       ...settings.providerSettings,
       auto: {
         ...settings.providerSettings.auto,
+        // Do not validate keys returned by the Dyad Pro deeplink. The purchase
+        // return path is critical, returned keys are very unlikely to be
+        // invalid, and any future outage/regression in API key validation would
+        // otherwise block users immediately after checkout.
         apiKey: {
           value: apiKey,
         },

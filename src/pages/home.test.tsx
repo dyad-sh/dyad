@@ -130,6 +130,10 @@ vi.mock("@/lib/schemas", () => ({
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
 }));
 
+vi.mock("@/lib/toast", () => ({
+  showError: vi.fn(),
+}));
+
 vi.mock("@/client_logic/template_hook", () => ({
   neonTemplateHook: vi.fn(),
 }));
@@ -378,6 +382,22 @@ describe("HomePage", () => {
       expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
     });
     expect(mocks.setAttachments).toHaveBeenCalledWith([]);
+  });
+
+  it("clears the pending first prompt flag when auto-resume fails", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+    mocks.createApp.mockRejectedValue(new Error("create failed"));
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
+    });
+    expect(mocks.streamMessage).not.toHaveBeenCalled();
+    expect(mocks.setAttachments).not.toHaveBeenCalled();
+    expect(mocks.setHomeSelectedApp).not.toHaveBeenCalled();
   });
 });
 

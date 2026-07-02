@@ -326,15 +326,15 @@ export default function HomePage() {
         attachments: pendingAttachments,
         selectedApp: pendingSelectedApp ?? undefined,
       });
+      // Clear the pending flag even on failure: handleSubmit already surfaces
+      // an error toast and the user can retry manually from the input. Leaving
+      // the flag set would auto-submit whatever is in the input the next time
+      // this page mounts with a provider configured.
+      setShouldResumeFirstPrompt(false);
       if (didSubmit) {
-        setShouldResumeFirstPrompt(false);
         setPendingAttachments([]);
         setPendingSelectedApp(null);
       }
-      // Intentionally do not re-arm on failure: handleSubmit already surfaces
-      // an error toast, and re-arming would re-fire this effect immediately
-      // (inputValue and shouldResumeFirstPrompt are still set), causing an
-      // infinite retry loop. The user can retry manually from the input.
     })();
   }, [
     handleSubmit,

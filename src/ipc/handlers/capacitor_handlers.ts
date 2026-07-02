@@ -10,6 +10,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { createTypedHandler } from "./base";
 import { capacitorContracts } from "../types/capacitor";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 
 const logger = log.scope("capacitor_handlers");
 
@@ -83,7 +84,7 @@ export function registerCapacitorHandlers() {
       successMessage: "Capacitor sync completed successfully",
       errorPrefix: "Failed to sync Capacitor",
       env: {
-        ...process.env,
+        ...getPackageManagerCommandEnv(),
         LANG: "en_US.UTF-8",
       },
     });

@@ -14,6 +14,7 @@ import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
 import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
+import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
@@ -39,12 +40,7 @@ function getWindowsSanitizedEnv():
     return undefined;
   }
 
-  // On Windows, the PATH environment variable can be stored with different casings
-  // (e.g., "PATH", "Path", "path"). We need to find the actual key used to avoid
-  // creating duplicate entries with different casings.
-  const pathKey =
-    Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
-    "PATH";
+  const pathKey = getPathEnvKey(process.env);
   const currentPath = process.env[pathKey] ?? "";
   const pathSeparator = ";";
 
@@ -94,9 +90,7 @@ async function execGit(
   // On non-Windows: pass through options unchanged (dugite will use process.env by default)
   if (sanitizedEnv) {
     // Find the PATH key used in the sanitized env
-    const pathKey =
-      Object.keys(sanitizedEnv).find((key) => key.toUpperCase() === "PATH") ??
-      "PATH";
+    const pathKey = getPathEnvKey(sanitizedEnv);
     const execOptions: IGitStringExecutionOptions = {
       ...options,
       env: {

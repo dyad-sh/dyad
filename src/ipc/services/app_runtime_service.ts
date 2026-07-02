@@ -37,8 +37,14 @@ import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   type PackageManager,
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_INSTALL_POLICY_ARGS,
 } from "@/ipc/utils/socket_firewall";
+import {
+  choosePackageManagerFromSignal,
+  getPackageManagerSignal,
+  signalPrefersPnpm,
+} from "@/ipc/utils/package_manager_selection";
 
 const logger = log.scope("app_runtime_service");
 
@@ -80,6 +86,10 @@ function getPnpmInstallCommand(): string {
   return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
 }
 
+function getPnpmRunCommand(): string {
+  return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
+}
+
 function getNpmInstallCommand(): string {
   return "npm install --legacy-peer-deps";
 }
@@ -105,19 +115,31 @@ async function getDefaultCommand({
   if (runtimeMode === "docker") {
     await ensurePnpmAllowBuildsConfigured({ appPath });
     return {
-      command: `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`,
+      command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
       isCustom: false,
       packageManager: "pnpm",
     };
   }
 
   const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  const signal = getPackageManagerSignal(appPath);
+  const packageManager = choosePackageManagerFromSignal({
+    signal,
+    pnpmAvailable: pnpmSupport.available,
+  });
 
-  if (!pnpmSupport.minimumReleaseAgeSupported && pnpmSupport.warningMessage) {
+  // Only warn about pnpm when the app actually wants pnpm — including while
+  // it temporarily falls back to npm because pnpm is missing/too old. Apps
+  // that explicitly select npm should not see pnpm warnings.
+  if (
+    signalPrefersPnpm(signal) &&
+    !pnpmSupport.minimumReleaseAgeSupported &&
+    pnpmSupport.warningMessage
+  ) {
     onPnpmMinimumReleaseAgeWarning?.(pnpmSupport.warningMessage);
   }
 
-  if (!pnpmSupport.available) {
+  if (packageManager === "npm") {
     return {
       command: `(${getNpmInstallCommand()} && npm run dev -- --port ${port})`,
       isCustom: false,
@@ -127,7 +149,7 @@ async function getDefaultCommand({
 
   await ensurePnpmAllowBuildsConfigured({ appPath });
   return {
-    command: `${getPnpmInstallCommand()} && pnpm run dev --port ${port}`,
+    command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
     isCustom: false,
     packageManager: "pnpm",
   };

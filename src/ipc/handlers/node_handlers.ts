@@ -5,6 +5,7 @@ import fixPath from "fix-path";
 import { runShellCommand } from "../utils/runShellCommand";
 import log from "electron-log";
 import { existsSync } from "fs";
+import fs from "fs/promises";
 import { join } from "path";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
@@ -12,14 +13,21 @@ import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  applyManagedPnpmToProcessPath,
   getCommandExecutionDisplayDetails,
+  getManagedPnpmCliScriptPath,
+  getManagedPnpmInstallDir,
   getPackageManagerCommandEnv,
+  getPnpmMinimumReleaseAgeSupport,
   PNPM_GLOBAL_INSTALL_PACKAGE,
+  PNPM_MINIMUM_RELEASE_AGE_VERSION,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
 
 const logger = log.scope("node_handlers");
 const BRAILLE_SPINNER_PATTERN = /^[\u2800-\u28ff]+$/u;
+let managedPnpmInstallPromise: Promise<string> | null = null;
+let managedPnpmImplicitInstallFailed = false;
 
 function reloadNodePath() {
   if (platform() === "win32") {
@@ -37,6 +45,7 @@ function reloadNodePath() {
     process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
     logger.debug("Added custom Node.js path to PATH:", settings.customNodePath);
   }
+  applyManagedPnpmToProcessPath();
 }
 
 function formatInstallFailureReason(error: unknown): string {
@@ -56,6 +65,114 @@ function formatInstallFailureReason(error: unknown): string {
   }
 
   return reason;
+}
+
+async function installManagedPnpm(): Promise<string> {
+  const managedPnpmInstallDir = getManagedPnpmInstallDir();
+  await fs.mkdir(managedPnpmInstallDir, { recursive: true });
+  // Pin npm's project-root discovery to the managed dir: without a
+  // package.json here, npm walks up from cwd and would install into an
+  // ancestor that happens to contain a package.json (e.g. a stray one in
+  // the user's home directory).
+  const managedPackageJsonPath = join(managedPnpmInstallDir, "package.json");
+  if (!existsSync(managedPackageJsonPath)) {
+    await fs.writeFile(
+      managedPackageJsonPath,
+      `${JSON.stringify({ name: "dyad-managed-pnpm", private: true }, null, 2)}\n`,
+    );
+  }
+  // Install via cwd instead of a --prefix argument: on Windows, absolute
+  // paths with spaces (e.g. C:\Users\John Doe) in the argv of a .cmd
+  // invocation get mangled by the cmd.exe quoting that node-pty applies,
+  // while cwd goes straight to the pty API without shell parsing. A local
+  // install into cwd lands in the same node_modules layout --prefix produced.
+  await runCommand(
+    "npm",
+    [
+      "install",
+      "--force",
+      // A user-level .npmrc with bin-links=false would otherwise skip
+      // creating node_modules/.bin/pnpm, which the managed PATH entry
+      // depends on.
+      "--bin-links=true",
+      PNPM_GLOBAL_INSTALL_PACKAGE,
+    ],
+    {
+      cwd: managedPnpmInstallDir,
+      env: getPackageManagerCommandEnv(),
+    },
+  );
+  applyManagedPnpmToProcessPath();
+
+  // Verify via `node pnpm.cjs` rather than the pnpm.cmd shim: node is a real
+  // executable, so the space-containing script path survives Windows argument
+  // quoting that breaks for cmd.exe batch invocations.
+  const result = await runCommand("node", [
+    getManagedPnpmCliScriptPath(),
+    "--version",
+  ]);
+  const pnpmVersion = result.stdout.trim();
+  if (!pnpmVersion) {
+    throw new Error("pnpm installed, but its version could not be verified");
+  }
+
+  return pnpmVersion;
+}
+
+function getManagedPnpmInstallPromise(): Promise<string> {
+  if (!managedPnpmInstallPromise) {
+    managedPnpmInstallPromise = installManagedPnpm().finally(() => {
+      managedPnpmInstallPromise = null;
+    });
+  }
+  return managedPnpmInstallPromise;
+}
+
+function scheduleManagedPnpmInstall(currentPnpmVersion: string | null): void {
+  if (managedPnpmInstallPromise) {
+    logger.info("Dyad-managed pnpm install is already in progress.");
+    return;
+  }
+  if (managedPnpmImplicitInstallFailed) {
+    logger.info(
+      "Skipping implicit Dyad-managed pnpm install because it already failed this session.",
+    );
+    return;
+  }
+
+  if (currentPnpmVersion) {
+    logger.info(
+      `Existing pnpm ${currentPnpmVersion} is older than ${PNPM_MINIMUM_RELEASE_AGE_VERSION}; installing Dyad-managed pnpm in the background.`,
+    );
+  } else {
+    logger.info(
+      "pnpm not found; installing Dyad-managed pnpm in the background.",
+    );
+  }
+
+  void getManagedPnpmInstallPromise()
+    .then((managedPnpmVersion) => {
+      managedPnpmImplicitInstallFailed = false;
+      logger.info(`Installed Dyad-managed pnpm ${managedPnpmVersion}.`);
+    })
+    .catch((error) => {
+      managedPnpmImplicitInstallFailed = true;
+      logger.warn("Failed to implicitly install managed pnpm:", error);
+    });
+}
+
+async function getPnpmVersionAndScheduleInstall(): Promise<string | null> {
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  const currentPnpmVersion = pnpmSupport.version ?? null;
+  if (pnpmSupport.available && pnpmSupport.minimumReleaseAgeSupported) {
+    logger.info(
+      `Using existing pnpm ${currentPnpmVersion}; no managed install needed.`,
+    );
+    return currentPnpmVersion;
+  }
+
+  scheduleManagedPnpmInstall(currentPnpmVersion);
+  return currentPnpmVersion;
 }
 
 // Test-only: Mock state for Node.js installation status
@@ -124,13 +241,7 @@ export function registerNodeHandlers() {
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
       runShellCommand("node --version"),
-      // First, check if pnpm is installed.
-      // If not, try to install it using corepack.
-      // If both fail, then pnpm is not available.
-      runShellCommand(
-        `pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g ${PNPM_GLOBAL_INSTALL_PACKAGE} && pnpm --version)`,
-        { env: getPackageManagerCommandEnv() },
-      ),
+      getPnpmVersionAndScheduleInstall(),
     ]);
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
   });
@@ -146,27 +257,8 @@ export function registerNodeHandlers() {
         return { pnpmVersion: testInstallPnpmVersion };
       }
 
-      // Use --force in case pnpm is already installed, but user
-      // wants to upgrade.
-      await runCommand(
-        "npm",
-        ["install", "-g", "--force", PNPM_GLOBAL_INSTALL_PACKAGE],
-        {
-          env: getPackageManagerCommandEnv(),
-        },
-      );
-      reloadNodePath();
-
-      const result = await runCommand("pnpm", ["--version"], {
-        env: getPackageManagerCommandEnv(),
-      });
-      const pnpmVersion = result.stdout.trim();
-      if (!pnpmVersion) {
-        throw new Error(
-          "pnpm installed, but its version could not be verified",
-        );
-      }
-
+      const pnpmVersion = await getManagedPnpmInstallPromise();
+      managedPnpmImplicitInstallFailed = false;
       return { pnpmVersion };
     } catch (error) {
       logger.error("Failed to install pnpm:", error);

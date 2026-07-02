@@ -38,6 +38,8 @@ This repo's installed `gh pr view` may fail with `unknown flag: --head`. To chec
 
 When a workflow has already identified a target PR number, pass that number explicitly to later `gh pr view`, `gh pr edit`, and `gh pr comment` calls. In workspaces with multiple open PRs or unusual branch associations, bare `gh pr view` can resolve a different PR than the one whose comments or checks are being handled.
 
+If `gh pr view --repo <owner>/<repo> --json ...` fails with `argument required when using the --repo flag`, rerun it with an explicit PR number, URL, or branch argument. If a prior `gh pr edit` printed a PR URL, extract that number and use `gh pr view <number> --repo <owner>/<repo>`.
+
 ## GH auth allowlist and git push
 
 If `gh auth status` succeeds but `git push` fails with `Repo <owner>/<repo> is not allowlisted` followed by `fatal: could not read Username for 'https://github.com/...': Device not configured`, run `gh auth setup-git` first and then push to an allowlisted remote. In some bot workspaces, fork remotes are not allowlisted even when `upstream` is, so retry the push against `upstream` if project policy permits it.

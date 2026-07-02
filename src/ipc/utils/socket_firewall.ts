@@ -11,16 +11,25 @@ import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { isVersionAtLeast } from "@/shared/version_utils";
+import { getUserDataPath } from "@/paths/paths";
+import { getPathEnvKey } from "@/ipc/utils/path_env";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
 export const PNPM_MINIMUM_RELEASE_AGE_VERSION = "10.16.0";
 export const PNPM_GLOBAL_INSTALL_PACKAGE = "pnpm@latest-11";
 export const COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV = "0";
+export const COREPACK_ENABLE_STRICT_DISABLED_ENV = "0";
+export const PNPM_PACKAGE_MANAGER_STRICT_DISABLED_ENV = "false";
+export const PNPM_PM_ON_FAIL_IGNORE_ENV = "ignore";
+export const PNPM_PM_ON_FAIL_IGNORE_ARG = "--config.pm-on-fail=ignore";
+const MANAGED_TOOLS_DIR = "managed-tools";
+const MANAGED_PNPM_DIR = "pnpm";
 const MINIMUM_PACKAGE_RELEASE_AGE_DAYS = 1;
 export const MINIMUM_PACKAGE_RELEASE_AGE_MINUTES =
   MINIMUM_PACKAGE_RELEASE_AGE_DAYS * 24 * 60;
 export const PNPM_INSTALL_POLICY_ARGS = [
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
   "--config.confirmModulesPurge=false",
   "--config.strictDepBuilds=false",
 ];
@@ -101,12 +110,76 @@ export type CommandRunner = (
   options?: CommandExecutionOptions,
 ) => Promise<CommandExecutionResult>;
 
+function prependPathSegment(
+  env: NodeJS.ProcessEnv,
+  segment: string,
+): NodeJS.ProcessEnv {
+  const pathKey = getPathEnvKey(env);
+  const currentPath = env[pathKey] ?? "";
+  const matchesSegment = (value: string) =>
+    process.platform === "win32"
+      ? value.toLowerCase() === segment.toLowerCase()
+      : value === segment;
+  const pathSegments = currentPath
+    .split(path.delimiter)
+    .filter((value) => value.length > 0);
+
+  // Always promote the segment to the front (not just insert when absent):
+  // PATH may already contain it in a non-front position (e.g. after
+  // customNodePath was prepended by reloadNodePath), and precedence must be
+  // deterministic across platforms.
+  if (pathSegments.length > 0 && matchesSegment(pathSegments[0])) {
+    return env;
+  }
+
+  return {
+    ...env,
+    [pathKey]: [
+      segment,
+      ...pathSegments.filter((value) => !matchesSegment(value)),
+    ].join(path.delimiter),
+  };
+}
+
+export function getManagedPnpmInstallDir(): string {
+  return path.join(getUserDataPath(), MANAGED_TOOLS_DIR, MANAGED_PNPM_DIR);
+}
+
+export function getManagedPnpmBinDir(): string {
+  return path.join(getManagedPnpmInstallDir(), "node_modules", ".bin");
+}
+
+export function getManagedPnpmCliScriptPath(): string {
+  return path.join(
+    getManagedPnpmInstallDir(),
+    "node_modules",
+    "pnpm",
+    "bin",
+    "pnpm.cjs",
+  );
+}
+
+function withManagedPnpmPath(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return prependPathSegment(env, getManagedPnpmBinDir());
+}
+
+export function applyManagedPnpmToProcessPath(): void {
+  const pathKey = getPathEnvKey(process.env);
+  const nextEnv = withManagedPnpmPath(process.env);
+  process.env[pathKey] = nextEnv[pathKey] ?? "";
+}
+
 export function getPackageManagerCommandEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return {
-    ...env,
+    ...withManagedPnpmPath(env),
     COREPACK_ENABLE_PROJECT_SPEC: COREPACK_ENABLE_PROJECT_SPEC_DISABLED_ENV,
+    COREPACK_ENABLE_STRICT: COREPACK_ENABLE_STRICT_DISABLED_ENV,
+    npm_config_package_manager_strict: PNPM_PACKAGE_MANAGER_STRICT_DISABLED_ENV,
+    npm_config_pm_on_fail: PNPM_PM_ON_FAIL_IGNORE_ENV,
   };
 }
 
@@ -758,6 +831,11 @@ export async function getPnpmMinimumReleaseAgeSupport(
   }
 
   try {
+    // Probe with bare --version: pnpm 8.x/9.0 reject --config.* flags on
+    // --version ("Unknown option") even though they accept them on real
+    // subcommands, so a flagged probe would misreport a working pnpm as
+    // unavailable. The pm-on-fail setting still applies via
+    // npm_config_pm_on_fail in getPackageManagerCommandEnv().
     const result = await runner("pnpm", ["--version"], {
       env: getPackageManagerCommandEnv(),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,

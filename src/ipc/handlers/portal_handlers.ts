@@ -8,6 +8,7 @@ import { spawn } from "child_process";
 import { gitService } from "../services/git_service";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 
 const logger = log.scope("portal_handlers");
 const handle = createLoggedHandler(logger);
@@ -40,6 +41,7 @@ export function registerPortalHandlers() {
           cwd: appPath,
           shell: true,
           stdio: "pipe",
+          env: getPackageManagerCommandEnv(),
         });
 
         let stdout = "";

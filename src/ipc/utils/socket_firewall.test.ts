@@ -26,6 +26,7 @@ import {
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
+  getManagedPnpmBinDir,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
@@ -64,11 +65,36 @@ beforeEach(() => {
 
 describe("getPackageManagerCommandEnv", () => {
   it("disables Corepack project packageManager pins while preserving the rest of the env", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+
     expect(getPackageManagerCommandEnv({ PATH: "/bin", FOO: "bar" })).toEqual({
-      PATH: "/bin",
+      PATH: [managedPnpmBinDir, "/bin"].join(path.delimiter),
       FOO: "bar",
       COREPACK_ENABLE_PROJECT_SPEC: "0",
+      COREPACK_ENABLE_STRICT: "0",
+      npm_config_package_manager_strict: "false",
+      npm_config_pm_on_fail: "ignore",
     });
+  });
+
+  it("does not duplicate the managed pnpm path segment", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+    const pathValue = [managedPnpmBinDir, "/bin"].join(path.delimiter);
+
+    expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
+      pathValue,
+    );
+  });
+
+  it("promotes a non-front managed pnpm path segment to the front", () => {
+    const managedPnpmBinDir = getManagedPnpmBinDir();
+    const pathValue = ["/custom/node", managedPnpmBinDir, "/bin"].join(
+      path.delimiter,
+    );
+
+    expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
+      [managedPnpmBinDir, "/custom/node", "/bin"].join(path.delimiter),
+    );
   });
 });
 
@@ -82,6 +108,9 @@ describe("detectPreferredPackageManager", () => {
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
       env: expect.objectContaining({
         COREPACK_ENABLE_PROJECT_SPEC: "0",
+        COREPACK_ENABLE_STRICT: "0",
+        npm_config_package_manager_strict: "false",
+        npm_config_pm_on_fail: "ignore",
       }),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
@@ -96,6 +125,9 @@ describe("detectPreferredPackageManager", () => {
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
       env: expect.objectContaining({
         COREPACK_ENABLE_PROJECT_SPEC: "0",
+        COREPACK_ENABLE_STRICT: "0",
+        npm_config_package_manager_strict: "false",
+        npm_config_pm_on_fail: "ignore",
       }),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
@@ -110,6 +142,9 @@ describe("detectPreferredPackageManager", () => {
     expect(runner).toHaveBeenCalledWith("pnpm", ["--version"], {
       env: expect.objectContaining({
         COREPACK_ENABLE_PROJECT_SPEC: "0",
+        COREPACK_ENABLE_STRICT: "0",
+        npm_config_package_manager_strict: "false",
+        npm_config_pm_on_fail: "ignore",
       }),
       timeoutMs: PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
     });
@@ -597,6 +632,7 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -629,6 +665,7 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -662,6 +699,7 @@ describe("buildAddDependencyCommand", () => {
       {
         command: "pnpm",
         args: [
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -689,6 +727,7 @@ describe("buildAddDependencyCommand", () => {
           "--yes",
           "sfw@2.0.4",
           "pnpm",
+          "--config.pm-on-fail=ignore",
           "--config.confirmModulesPurge=false",
           "--config.strictDepBuilds=false",
           "add",
@@ -724,6 +763,9 @@ describe("ensureSocketFirewallInstalled", () => {
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
+          npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
       },
@@ -746,6 +788,9 @@ describe("ensureSocketFirewallInstalled", () => {
       {
         env: expect.objectContaining({
           COREPACK_ENABLE_PROJECT_SPEC: "0",
+          COREPACK_ENABLE_STRICT: "0",
+          npm_config_package_manager_strict: "false",
+          npm_config_pm_on_fail: "ignore",
         }),
         timeoutMs: SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
       },

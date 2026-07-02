@@ -35,9 +35,11 @@ interface ApiKeyConfigurationProps {
   envVarName?: string;
   isSaving: boolean;
   saveError: string | null;
+  testSuccessMessage: string | null;
   apiKeyInput: string;
   onApiKeyInputChange: (value: string) => void;
   onSaveKey: (value: string) => Promise<void>;
+  onTestKey?: (value: string) => Promise<void>;
   onDeleteKey: () => Promise<void>;
   isDyad: boolean;
   updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
@@ -51,9 +53,11 @@ export function ApiKeyConfiguration({
   envVarName,
   isSaving,
   saveError,
+  testSuccessMessage,
   apiKeyInput,
   onApiKeyInputChange,
   onSaveKey,
+  onTestKey,
   onDeleteKey,
   isDyad,
   updateSettings,
@@ -216,8 +220,23 @@ export function ApiKeyConfiguration({
               >
                 {isSaving ? "Saving..." : "Save Key"}
               </Button>
+              {onTestKey && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onTestKey(apiKeyInput || userApiKey || "")}
+                  disabled={isSaving || (!apiKeyInput && !userApiKey)}
+                >
+                  {isSaving ? "Testing..." : "Test Key"}
+                </Button>
+              )}
             </div>
             {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+            {testSuccessMessage && (
+              <p className="text-xs text-green-600 dark:text-green-400">
+                {testSuccessMessage}
+              </p>
+            )}
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Setting a key here will override the environment variable (if
               set).

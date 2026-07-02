@@ -95,6 +95,80 @@ testSetup.describe("Setup Flow", () => {
   );
 
   testSetup(
+    "invalid Google API key can be retried without saving or resuming",
+    async ({ po }) => {
+      await seedFakeModelSelection(po);
+      const prompt = "Build a tiny focus timer";
+      const dialog = await openAiSetupDialog(po, prompt);
+
+      await dialog.getByRole("button", { name: "Google Gemini" }).click();
+      await expect(
+        po.page.getByRole("heading", { name: "Configure Google" }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+      await po.page
+        .getByPlaceholder(/Enter new Google API Key here/)
+        .fill("invalid-google-key");
+      await po.page.getByRole("button", { name: "Save Key" }).click();
+
+      const validationDialog = po.page.getByRole("alertdialog");
+      await expect(
+        validationDialog.getByRole("heading", {
+          name: "API key check failed",
+        }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+      await validationDialog
+        .getByRole("button", { name: "Try another API key" })
+        .click();
+      await expect(validationDialog).toBeHidden({
+        timeout: Timeout.MEDIUM,
+      });
+
+      const settingsAfterRetry = po.settings.recordSettings() as {
+        providerSettings?: Record<string, unknown>;
+      };
+      expect(settingsAfterRetry.providerSettings?.google).toBe(undefined);
+      await expect(
+        po.page.getByRole("heading", { name: "Configure Google" }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+      await po.page.getByRole("button", { name: "Test Key" }).click();
+      await expect(
+        validationDialog.getByRole("heading", {
+          name: "API key check failed",
+        }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+      await expect(
+        validationDialog.getByRole("button", { name: "Keep invalid API key" }),
+      ).toBeHidden();
+      await validationDialog
+        .getByRole("button", { name: "Try another API key" })
+        .click();
+      await expect(validationDialog).toBeHidden({
+        timeout: Timeout.MEDIUM,
+      });
+
+      await po.page.getByRole("button", { name: "Save Key" }).click();
+      await expect(
+        validationDialog.getByRole("heading", {
+          name: "API key check failed",
+        }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+      await validationDialog
+        .getByRole("button", { name: "Keep invalid API key" })
+        .click();
+
+      await expect(
+        po.page.getByTestId("messages-list").getByText(prompt),
+      ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+      await po.chatActions.waitForChatCompletion({
+        timeout: Timeout.EXTRA_LONG,
+      });
+      await expectSelectedApp(po);
+    },
+  );
+
+  testSetup(
     "Google API key setup resumes an attachment-only first prompt",
     async ({ po }) => {
       await seedFakeModelSelection(po);

@@ -2,6 +2,12 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 import { UserSettingsSchema } from "../../lib/schemas";
 
+export const ProviderApiKeyValidationProviderSchema = z.enum([
+  "google",
+  "openrouter",
+  "auto",
+]);
+
 // =============================================================================
 // Settings Contracts
 // =============================================================================
@@ -29,6 +35,18 @@ export const settingsContracts = {
     channel: "set-user-settings",
     input: UserSettingsSchema.partial(),
     output: UserSettingsSchema,
+  }),
+
+  /**
+   * Validate a provider API key without saving it.
+   */
+  validateProviderApiKey: defineContract({
+    channel: "validate-provider-api-key",
+    input: z.object({
+      provider: ProviderApiKeyValidationProviderSchema,
+      apiKey: z.string(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
   }),
 } as const;
 
@@ -68,4 +86,19 @@ export type SetUserSettingsInput = z.infer<
 /** Output type for setUserSettings */
 export type SetUserSettingsOutput = z.infer<
   (typeof settingsContracts)["setUserSettings"]["output"]
+>;
+
+/** Provider IDs supported by validateProviderApiKey */
+export type ProviderApiKeyValidationProvider = z.infer<
+  typeof ProviderApiKeyValidationProviderSchema
+>;
+
+/** Input type for validateProviderApiKey */
+export type ValidateProviderApiKeyInput = z.infer<
+  (typeof settingsContracts)["validateProviderApiKey"]["input"]
+>;
+
+/** Output type for validateProviderApiKey */
+export type ValidateProviderApiKeyOutput = z.infer<
+  (typeof settingsContracts)["validateProviderApiKey"]["output"]
 >;

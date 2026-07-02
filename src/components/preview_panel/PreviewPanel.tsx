@@ -34,6 +34,7 @@ import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
@@ -82,6 +83,7 @@ export function PreviewPanel() {
   const { runApp, loading } = useRunApp();
   const { app } = useLoadApp(selectedAppId);
   const { updateSettings } = useSettings();
+  const queryClient = useQueryClient();
   const key = useAtomValue(currentPreviewReloadTokenAtom);
   const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
   const {
@@ -180,9 +182,20 @@ export function PreviewPanel() {
                   <PreviewNodeRequirement
                     appName={app?.name}
                     nodeDownloadUrl={nodeSystemInfo?.nodeDownloadUrl}
+                    managedNodeSupported={
+                      nodeSystemInfo?.managedNodeSupported ?? false
+                    }
                     isCheckFailed={nodeCheckFailed}
                     onCheckAgain={async () => {
                       await ipc.system.reloadEnvPath();
+                      await refetchNodeStatus();
+                    }}
+                    onInstallManagedNode={async () => {
+                      await ipc.system.installManagedNode();
+                      await ipc.system.reloadEnvPath();
+                      await queryClient.invalidateQueries({
+                        queryKey: queryKeys.settings.user,
+                      });
                       await refetchNodeStatus();
                     }}
                     onSelectNodeFolder={async () => {
@@ -252,19 +265,33 @@ const NODE_POLL_INTERVAL_MS = 4000;
 function PreviewNodeRequirement({
   appName,
   nodeDownloadUrl,
+  managedNodeSupported,
   isCheckFailed,
   onCheckAgain,
+  onInstallManagedNode,
   onSelectNodeFolder,
 }: {
   appName?: string;
   nodeDownloadUrl?: string;
+  managedNodeSupported: boolean;
   isCheckFailed: boolean;
   onCheckAgain: () => Promise<void>;
+  onInstallManagedNode: () => Promise<void>;
   onSelectNodeFolder: () => Promise<void>;
 }) {
   const [isCheckingAgain, setIsCheckingAgain] = useState(false);
+  const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
+  const [installProgress, setInstallProgress] = useState(0);
+  const [installPhase, setInstallPhase] = useState<string>("starting");
   const [isSelectingNodeFolder, setIsSelectingNodeFolder] = useState(false);
   const [hasOpenedInstaller, setHasOpenedInstaller] = useState(false);
+
+  useEffect(() => {
+    return ipc.events.system.onManagedNodeInstallProgress((progress) => {
+      setInstallProgress(progress.percent);
+      setInstallPhase(progress.phase);
+    });
+  }, []);
 
   // Quietly re-check for Node.js while this state is visible so the preview
   // starts on its own the moment the installer finishes — no click required.
@@ -291,6 +318,19 @@ function PreviewNodeRequirement({
     if (nodeDownloadUrl) {
       void ipc.system.openExternalUrl(nodeDownloadUrl);
       setHasOpenedInstaller(true);
+    }
+  };
+
+  const handleInstallManagedNode = async () => {
+    setIsInstallingManagedNode(true);
+    setInstallProgress(0);
+    setInstallPhase("starting");
+    try {
+      await onInstallManagedNode();
+    } catch (error: any) {
+      showError(error.message ?? "Failed to install Dyad-managed Node.js");
+    } finally {
+      setIsInstallingManagedNode(false);
     }
   };
 
@@ -337,7 +377,27 @@ function PreviewNodeRequirement({
           {/* Setup card, centered in the waiting browser window */}
           <div className="absolute inset-0 flex items-center justify-center overflow-y-auto p-4">
             <div className="w-full max-w-sm rounded-xl border border-border bg-(--background-lightest) p-5 text-center shadow-lg">
-              {hasOpenedInstaller ? (
+              {isInstallingManagedNode ? (
+                <>
+                  <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                    Installing Node.js
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-foreground/80">
+                    Dyad is setting up a private Node.js runtime for previews.
+                  </p>
+                  <div className="mt-4">
+                    <div className="h-2 overflow-hidden rounded-full bg-(--background-darker)">
+                      <div
+                        className="h-full rounded-full bg-primary transition-[width]"
+                        style={{ width: `${installProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {installPhase} {installProgress}%
+                    </p>
+                  </div>
+                </>
+              ) : hasOpenedInstaller ? (
                 <>
                   <h3 className="text-lg font-semibold tracking-tight text-foreground">
                     Finish the Node.js install
@@ -369,14 +429,24 @@ function PreviewNodeRequirement({
                     The free engine that runs your app on this computer. About
                     two minutes to install.
                   </p>
-                  <Button
-                    className="mt-4 h-10 w-full cursor-pointer"
-                    onClick={handleInstallNode}
-                    disabled={!nodeDownloadUrl}
-                  >
-                    <Download className="size-4" />
-                    Install Node.js
-                  </Button>
+                  {managedNodeSupported ? (
+                    <Button
+                      className="mt-4 h-10 w-full cursor-pointer"
+                      onClick={handleInstallManagedNode}
+                    >
+                      <Download className="size-4" />
+                      Install Node.js for me (~30 MB)
+                    </Button>
+                  ) : (
+                    <Button
+                      className="mt-4 h-10 w-full cursor-pointer"
+                      onClick={handleInstallNode}
+                      disabled={!nodeDownloadUrl}
+                    >
+                      <Download className="size-4" />
+                      Download Node.js from nodejs.org
+                    </Button>
+                  )}
                 </>
               )}
 
@@ -393,7 +463,7 @@ function PreviewNodeRequirement({
                   size="sm"
                   className="h-8 flex-1 cursor-pointer text-[13px] font-medium text-muted-foreground hover:text-foreground"
                   onClick={handleSelectNodeFolder}
-                  disabled={isSelectingNodeFolder}
+                  disabled={isSelectingNodeFolder || isInstallingManagedNode}
                 >
                   {isSelectingNodeFolder ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -411,7 +481,7 @@ function PreviewNodeRequirement({
                   size="sm"
                   className="h-8 flex-1 cursor-pointer text-[13px] font-medium text-muted-foreground hover:text-foreground"
                   onClick={handleCheckAgain}
-                  disabled={isCheckingAgain}
+                  disabled={isCheckingAgain || isInstallingManagedNode}
                 >
                   {isCheckingAgain ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -422,17 +492,21 @@ function PreviewNodeRequirement({
                 </Button>
               </div>
 
-              {hasOpenedInstaller && (
-                <div className="mt-2 flex items-center justify-center text-xs">
-                  <button
-                    type="button"
-                    onClick={handleInstallNode}
-                    className="cursor-pointer font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
-                  >
-                    Reopen download page
-                  </button>
-                </div>
-              )}
+              <div className="mt-2 flex items-center justify-center text-xs">
+                {nodeDownloadUrl &&
+                  (managedNodeSupported || hasOpenedInstaller) && (
+                    <button
+                      type="button"
+                      onClick={handleInstallNode}
+                      disabled={isInstallingManagedNode}
+                      className="cursor-pointer font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
+                    >
+                      {hasOpenedInstaller
+                        ? "Reopen nodejs.org download"
+                        : "Download from nodejs.org instead"}
+                    </button>
+                  )}
+              </div>
 
               <p className="mt-3 text-xs leading-5 text-muted-foreground">
                 You can install Node.js while your app is building.

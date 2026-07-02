@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PreviewPanel } from "./PreviewPanel";
@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   currentConsoleEntriesAtom: Symbol("currentConsoleEntriesAtom"),
   currentPreviewReloadTokenAtom: Symbol("currentPreviewReloadTokenAtom"),
   nodeCheckFailed: false,
+  managedNodeSupported: true,
   nodeVersion: "v22.14.0",
+  openExternalUrl: vi.fn(),
   previewModeAtom: Symbol("previewModeAtom"),
   refetchNodeStatus: vi.fn(),
   reloadEnvPath: vi.fn(),
@@ -46,11 +48,20 @@ vi.mock("@/atoms/previewRuntimeAtoms", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+  }),
   useQuery: () => ({
     data: {
       nodeDownloadUrl: "https://nodejs.org",
       nodeVersion: mocks.nodeVersion,
       pnpmVersion: "10.15.0",
+      source: "system",
+      nodePath: "node",
+      managedNodeInstalled: false,
+      managedNodeVersion: null,
+      systemNodeTooOld: false,
+      managedNodeSupported: mocks.managedNodeSupported,
     },
     isError: mocks.nodeCheckFailed,
     isLoading: false,
@@ -65,9 +76,15 @@ vi.mock("@/ipc/types", () => ({
     },
     system: {
       getNodejsStatus: vi.fn(),
+      installManagedNode: vi.fn(),
       reloadEnvPath: mocks.reloadEnvPath,
       selectNodeFolder: vi.fn(),
-      openExternalUrl: vi.fn(),
+      openExternalUrl: mocks.openExternalUrl,
+    },
+    events: {
+      system: {
+        onManagedNodeInstallProgress: vi.fn(() => vi.fn()),
+      },
     },
   },
 }));
@@ -150,7 +167,9 @@ vi.mock("./SecurityPanel", () => ({
 describe("PreviewPanel", () => {
   beforeEach(() => {
     mocks.nodeCheckFailed = false;
+    mocks.managedNodeSupported = true;
     mocks.nodeVersion = "v22.14.0";
+    mocks.openExternalUrl.mockReset();
     mocks.refetchNodeStatus.mockReset();
     mocks.reloadEnvPath.mockReset();
     mocks.runApp.mockReset();
@@ -179,8 +198,26 @@ describe("PreviewPanel", () => {
     ).toBeTruthy();
     expect(screen.getByText("Your app · localhost")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: /Install Node\.js/ }),
+      screen.getByRole("button", { name: /Install Node\.js for me/ }),
     ).toBeTruthy();
     expect(mocks.runApp).not.toHaveBeenCalled();
+  });
+
+  it("lets unsupported managed-runtime platforms reopen the manual download page while watching for Node.js", () => {
+    mocks.nodeVersion = "";
+    mocks.managedNodeSupported = false;
+
+    render(<PreviewPanel />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Download Node.js from nodejs.org",
+      }),
+    );
+
+    expect(mocks.openExternalUrl).toHaveBeenCalledWith("https://nodejs.org");
+    expect(
+      screen.getByRole("button", { name: "Reopen nodejs.org download" }),
+    ).toBeTruthy();
   });
 });

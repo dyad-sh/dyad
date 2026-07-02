@@ -4,35 +4,57 @@ import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
-import { FolderOpen, RotateCcw, CheckCircle, AlertCircle } from "lucide-react";
+import { queryKeys } from "@/lib/queryKeys";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  FolderOpen,
+  RotateCcw,
+  CheckCircle,
+  AlertCircle,
+  Download,
+  Trash2,
+  Loader2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { ManagedNodeInstallProgress, NodeSystemInfo } from "@/ipc/types";
 
 export function NodePathSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const queryClient = useQueryClient();
   const [isSelectingPath, setIsSelectingPath] = useState(false);
+  const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
+  const [isRemovingManagedNode, setIsRemovingManagedNode] = useState(false);
+  const [installProgress, setInstallProgress] = useState(0);
+  const [installPhase, setInstallPhase] = useState<
+    ManagedNodeInstallProgress["phase"] | null
+  >(null);
   const [nodeStatus, setNodeStatus] = useState<{
     version: string | null;
     isValid: boolean;
+    info: NodeSystemInfo | null;
   }>({
     version: null,
     isValid: false,
+    info: null,
   });
   const [isCheckingNode, setIsCheckingNode] = useState(false);
-  const [systemPath, setSystemPath] = useState<string>("Loading...");
+  const [systemPath, setSystemPath] = useState<string>(() =>
+    t("general.loading"),
+  );
 
-  // Check Node.js status when component mounts or path changes
+  // Check Node.js status when settings load or path changes.
   useEffect(() => {
     checkNodeStatus();
-  }, [settings?.customNodePath]);
+  }, [Boolean(settings), settings?.customNodePath]);
 
   const fetchSystemPath = async () => {
     try {
       const debugInfo = await ipc.system.getSystemDebugInfo();
-      setSystemPath(debugInfo.nodePath || "System PATH (not available)");
+      setSystemPath(debugInfo.nodePath || t("general.systemPathUnavailable"));
     } catch (err) {
       console.error("Failed to fetch system path:", err);
-      setSystemPath("System PATH (not available)");
+      setSystemPath(t("general.systemPathUnavailable"));
     }
   };
 
@@ -49,14 +71,23 @@ export function NodePathSelector() {
       setNodeStatus({
         version: status.nodeVersion,
         isValid: !!status.nodeVersion,
+        info: status,
       });
     } catch (error) {
       console.error("Failed to check Node.js status:", error);
-      setNodeStatus({ version: null, isValid: false });
+      setNodeStatus({ version: null, isValid: false, info: null });
     } finally {
       setIsCheckingNode(false);
     }
   };
+
+  useEffect(() => {
+    return ipc.events.system.onManagedNodeInstallProgress((progress) => {
+      setInstallProgress(progress.percent);
+      setInstallPhase(progress.phase);
+    });
+  }, []);
+
   const handleSelectNodePath = async () => {
     setIsSelectingPath(true);
     try {
@@ -69,14 +100,12 @@ export function NodePathSelector() {
         await ipc.system.reloadEnvPath();
         // Recheck Node.js status
         await checkNodeStatus();
-        showSuccess("Node.js path updated successfully");
+        showSuccess(t("general.nodePathUpdated"));
       } else if (result.path === null && result.canceled === false) {
-        showError(
-          `Could not find Node.js at the path "${result.selectedPath}"`,
-        );
+        showError(t("general.nodePathNotFound", { path: result.selectedPath }));
       }
     } catch (error: any) {
-      showError(`Failed to set Node.js path: ${error.message}`);
+      showError(t("general.nodePathUpdateFailed", { message: error.message }));
     } finally {
       setIsSelectingPath(false);
     }
@@ -90,9 +119,71 @@ export function NodePathSelector() {
       // Recheck Node.js status
       await fetchSystemPath();
       await checkNodeStatus();
-      showSuccess("Reset to system Node.js path");
+      showSuccess(t("general.resetToSystemNodePath"));
     } catch (error: any) {
-      showError(`Failed to reset Node.js path: ${error.message}`);
+      showError(t("general.resetNodePathFailed", { message: error.message }));
+    }
+  };
+
+  const refreshNodeStatus = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.system.nodejsStatus,
+    });
+    await fetchSystemPath();
+    await checkNodeStatus();
+  };
+
+  const handlePreferenceChange = async (
+    nodeRuntimePreference: "system" | "managed",
+  ) => {
+    if (
+      nodeRuntimePreference === "managed" &&
+      nodeStatus.info?.managedNodeSupported !== true
+    ) {
+      return;
+    }
+    try {
+      await updateSettings({ nodeRuntimePreference });
+      await ipc.system.reloadEnvPath();
+      await refreshNodeStatus();
+    } catch (error: any) {
+      showError(
+        t("general.runtimePreferenceUpdateFailed", {
+          message: error.message,
+        }),
+      );
+    }
+  };
+
+  const handleInstallManagedNode = async () => {
+    setIsInstallingManagedNode(true);
+    setInstallProgress(0);
+    setInstallPhase(null);
+    try {
+      await ipc.system.installManagedNode();
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.user,
+      });
+      await refreshNodeStatus();
+      showSuccess(t("general.managedNodeInstalled"));
+    } catch (error: any) {
+      showError(error.message ?? t("general.managedNodeInstallFailed"));
+    } finally {
+      setIsInstallingManagedNode(false);
+    }
+  };
+
+  const handleRemoveManagedNode = async () => {
+    setIsRemovingManagedNode(true);
+    try {
+      await ipc.system.removeManagedNode();
+      await updateSettings({ nodeRuntimePreference: "system" });
+      await refreshNodeStatus();
+      showSuccess(t("general.managedNodeRemoved"));
+    } catch (error: any) {
+      showError(error.message ?? t("general.managedNodeRemoveFailed"));
+    } finally {
+      setIsRemovingManagedNode(false);
     }
   };
 
@@ -101,8 +192,143 @@ export function NodePathSelector() {
   }
   const currentPath = settings.customNodePath || systemPath;
   const isCustomPath = !!settings.customNodePath;
+  const runtimePreference = settings.nodeRuntimePreference ?? "system";
+  const activeRuntime = nodeStatus.info?.source;
+  const managedInstalled = !!nodeStatus.info?.managedNodeInstalled;
+  const managedSupported = nodeStatus.info?.managedNodeSupported ?? false;
+  const systemTooOld = !!nodeStatus.info?.systemNodeTooOld;
+  const activeRuntimeSource =
+    activeRuntime === "managed"
+      ? t("general.nodeRuntimeSource.managed")
+      : activeRuntime === "custom"
+        ? t("general.nodeRuntimeSource.custom")
+        : t("general.nodeRuntimeSource.system");
+  const activeRuntimeLabel = nodeStatus.version
+    ? t("general.nodeRuntimeActiveVersion", {
+        version: nodeStatus.version,
+        source: activeRuntimeSource,
+      })
+    : systemTooOld
+      ? t("general.systemNodeTooOld")
+      : t("general.noUsableNodeFound");
+  const installPhaseLabel = installPhase
+    ? t(`general.managedNodeInstallPhases.${installPhase}`)
+    : t("general.managedNodeInstallPhases.starting");
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">
+          {t("general.nodeRuntime")}
+        </Label>
+        <div
+          data-testid="node-runtime-settings"
+          className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                {t("general.activeRuntime")}{" "}
+                <span className="font-medium">{activeRuntimeLabel}</span>
+              </p>
+              {systemTooOld && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  {t("general.systemNodeTooOldDescription")}
+                </p>
+              )}
+              {managedInstalled && nodeStatus.info?.managedNodeVersion && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {t("general.managedRuntimeVersion", {
+                    version: nodeStatus.info.managedNodeVersion,
+                  })}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 rounded-md border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
+              <button
+                type="button"
+                className={`h-8 rounded px-3 text-sm ${
+                  runtimePreference === "system"
+                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+                onClick={() => handlePreferenceChange("system")}
+                aria-pressed={runtimePreference === "system"}
+              >
+                {t("general.runtimeSystem")}
+              </button>
+              <button
+                type="button"
+                className={`h-8 rounded px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                  runtimePreference === "managed"
+                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+                onClick={() => handlePreferenceChange("managed")}
+                disabled={!managedSupported}
+                aria-pressed={runtimePreference === "managed"}
+              >
+                {t("general.runtimeManaged")}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              onClick={handleInstallManagedNode}
+              disabled={
+                isInstallingManagedNode ||
+                isRemovingManagedNode ||
+                !managedSupported
+              }
+              variant={managedInstalled ? "outline" : "default"}
+              size="sm"
+            >
+              {isInstallingManagedNode ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {managedInstalled
+                ? t("general.reinstallManagedNode")
+                : t("general.installManagedNode")}
+            </Button>
+            {managedInstalled && (
+              <Button
+                onClick={handleRemoveManagedNode}
+                disabled={isInstallingManagedNode || isRemovingManagedNode}
+                variant="outline"
+                size="sm"
+              >
+                {isRemovingManagedNode ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                {t("general.removeManagedNode")}
+              </Button>
+            )}
+          </div>
+
+          {isInstallingManagedNode && (
+            <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width]"
+                  style={{ width: `${installProgress}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {t("general.installProgress", {
+                  phase: installPhaseLabel,
+                  percent: installProgress,
+                })}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="space-y-2">
         <div className="flex gap-2">
           <Label className="text-sm font-medium">{t("general.nodePath")}</Label>
@@ -143,7 +369,7 @@ export function NodePathSelector() {
                 </span>
                 {isCustomPath && (
                   <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
-                    Custom
+                    {t("general.custom")}
                   </span>
                 )}
               </div>

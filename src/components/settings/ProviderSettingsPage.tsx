@@ -186,7 +186,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     if (!normalizedValue) {
       return;
     }
-    setIsTesting(true);
+    setIsSaving(true);
     setSaveError(null);
     setTestSuccessMessage(null);
     try {
@@ -246,7 +246,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       console.error("Error saving API key:", error);
       setSaveError(error.message || "Failed to save API key.");
     } finally {
-      setIsTesting(false);
+      setIsSaving(false);
     }
   };
 
@@ -260,7 +260,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       return;
     }
 
-    setIsSaving(true);
+    setIsTesting(true);
     setSaveError(null);
     setTestSuccessMessage(null);
     try {
@@ -278,7 +278,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         allowKeepInvalidKey: false,
       });
     } finally {
-      setIsSaving(false);
+      setIsTesting(false);
     }
   };
 

@@ -65,6 +65,14 @@ export async function validateProviderApiKey({
     }, VALIDATION_TIMEOUT_MS);
   });
 
+  // Some providers (e.g. the Dyad engine) report auth failures as an error
+  // event inside an HTTP 200 stream. streamText surfaces those through
+  // onError while its text promise resolves with empty text, so capture
+  // and re-throw them to fail validation. For HTTP-level failures the text
+  // promise rejects with a NoOutputGeneratedError wrapper while onError
+  // receives the underlying APICallError, so the captured error is also the
+  // better one to classify.
+  let streamError: unknown;
   try {
     const stream = streamText({
       output: fastTextOutput(),
@@ -73,15 +81,22 @@ export async function validateProviderApiKey({
       temperature: 0,
       maxRetries: 0,
       abortSignal: controller.signal,
+      onError: ({ error }) => {
+        streamError = error;
+      },
       messages: [{ role: "user", content: VALIDATION_PROMPT }],
     });
 
     const textPromise = Promise.resolve(stream.text);
     textPromise.catch(() => {});
     await Promise.race([textPromise, timeout]);
+    if (streamError !== undefined) {
+      throw streamError;
+    }
     return { ok: true };
   } catch (error) {
-    throw classifyValidationError(error, providerDisplayName);
+    const rootError = isDyadError(error) ? error : (streamError ?? error);
+    throw classifyValidationError(rootError, providerDisplayName);
   } finally {
     if (timer) {
       clearTimeout(timer);
@@ -131,7 +146,7 @@ async function createValidationModel(
           },
         } satisfies UserSettings,
       });
-      return dyad("gemini/gemini-flash-latest", { providerId: "google" });
+      return dyad("dyad/auto", { providerId: "openai" });
     }
   }
 }
@@ -163,7 +178,8 @@ function classifyValidationError(
   }
 
   const errorMessage = extractErrorMessage(error);
-  const statusCode = extractStatusCode(error);
+  const statusCode =
+    extractStatusCode(error) ?? extractStatusCodeFromMessage(errorMessage);
 
   logger.info(
     `Validation failed for ${providerDisplayName}: status=${statusCode ?? "unknown"} authError=${isAuthError(errorMessage)}`,
@@ -219,6 +235,14 @@ function extractStatusCode(error: unknown, depth = 0): number | undefined {
     return status;
   }
   return extractStatusCode(candidate.cause, depth + 1);
+}
+
+// Stream error events (e.g. from the Dyad engine's LiteLLM proxy) are plain
+// strings that lead with the upstream status code, like
+// "401 LiteLLM Virtual Key expected. ...".
+function extractStatusCodeFromMessage(message: string): number | undefined {
+  const match = /^\s*([45]\d{2})\b/.exec(message);
+  return match ? Number(match[1]) : undefined;
 }
 
 function isAuthError(message: string) {

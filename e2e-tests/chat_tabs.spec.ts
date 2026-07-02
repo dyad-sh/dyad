@@ -268,6 +268,72 @@ test("right-click context menu: Reopen closed tab", async ({ po }) => {
   }).toPass({ timeout: Timeout.MEDIUM });
 });
 
+test("group by app: new chat joins its app's group (grouping sticks)", async ({
+  po,
+}) => {
+  await po.setUp({ autoApprove: true });
+
+  // Imported apps are named after their fixture folder (see import_handlers).
+  const appA = "minimal";
+  const appB = "minimal-with-dyad";
+
+  // Reads the app-name line (top line of each tab) in left-to-right order.
+  const readTabAppNames = async () => {
+    const tabs = po.page.locator("div[draggable]");
+    const count = await tabs.count();
+    const names: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const name = await tabs
+        .nth(i)
+        .locator("button")
+        .first()
+        .locator("span")
+        .first()
+        .innerText();
+      names.push(name.trim());
+    }
+    return names;
+  };
+
+  // App A + one chat.
+  await po.importApp(appA);
+  await po.sendPrompt("[dump] app A first chat");
+  await po.chatActions.waitForChatCompletion();
+
+  // App B + one chat. Tabs now span two apps.
+  await po.navigation.goToAppsTab();
+  await po.page.getByRole("button", { name: "New App" }).click();
+  await po.importApp(appB);
+  await po.sendPrompt("[dump] app B first chat");
+  await po.chatActions.waitForChatCompletion();
+
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    expect(await closeButtons.count()).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Enable "Group tabs by app" from a tab's context menu.
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.first().click({ button: "right" });
+  await po.page.getByText("Group tabs by app").click();
+  await po.page.keyboard.press("Escape");
+
+  // Switch back to App A and open a NEW chat there.
+  await po.appManagement.clickAppListItem({ appName: appA });
+  await po.appManagement.clickOpenInChatButton();
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] app A second chat");
+  await po.chatActions.waitForChatCompletion();
+
+  // Grouping sticks: the new App A chat slots into App A's existing group rather
+  // than landing alone at the front. App A's two tabs stay contiguous, ahead of
+  // App B's tab — i.e. [A, A, B], not the ungrouped [A, B, A].
+  await expect(async () => {
+    const names = await readTabAppNames();
+    expect(names).toEqual([appA, appA, appB]);
+  }).toPass({ timeout: Timeout.MEDIUM });
+});
+
 test("only shows tabs for chats opened in current session", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");

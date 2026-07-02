@@ -20,6 +20,7 @@ import {
   closeMultipleTabsAtom,
   hydrateChatTabSessionAtom,
   persistChatTabSessionAtom,
+  groupTabsByAppAtom,
   type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
@@ -227,6 +229,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
   const closedChatIds = useAtomValue(closedChatIdsAtom);
   const sessionOpenedChatIds = useAtomValue(sessionOpenedChatIdsAtom);
+  const groupTabsByApp = useAtomValue(groupTabsByAppAtom);
+  const setGroupTabsByApp = useSetAtom(groupTabsByAppAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
@@ -319,16 +323,24 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [apps],
   );
 
-  const orderedChatIds = useMemo(
-    () =>
-      getOrderedRecentChatIds(
-        recentViewedChatIds,
-        chats,
-        closedChatIds,
-        sessionOpenedChatIds,
-      ),
-    [recentViewedChatIds, chats, closedChatIds, sessionOpenedChatIds],
-  );
+  const orderedChatIds = useMemo(() => {
+    const base = getOrderedRecentChatIds(
+      recentViewedChatIds,
+      chats,
+      closedChatIds,
+      sessionOpenedChatIds,
+    );
+    // When grouping is enabled, re-bucket by app on every render so newly
+    // opened chats automatically join their app's existing group.
+    return groupTabsByApp ? groupChatIdsByApp(base, chatsById) : base;
+  }, [
+    recentViewedChatIds,
+    chats,
+    closedChatIds,
+    sessionOpenedChatIds,
+    groupTabsByApp,
+    chatsById,
+  ]);
 
   const orderedChats = useMemo(
     () =>
@@ -560,11 +572,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     closeTabsAndClearNotifications(idsToClose, fallback);
   };
 
-  const handleGroupByApp = () => {
-    const grouped = groupChatIdsByApp(orderedChatIds, chatsById);
-    if (!isSameIdOrder(orderedChatIds, grouped)) {
-      setRecentViewedChatIds(grouped);
-    }
+  const handleToggleGroupByApp = () => {
+    setGroupTabsByApp((prev) => !prev);
   };
 
   // Check whether tabs span more than one app (used to enable/disable grouping)
@@ -648,7 +657,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                               chat.id,
                             );
                             if (!isSameIdOrder(orderedChatIds, nextIds)) {
+                              // Persist the manual order and drop out of grouped
+                              // mode — a hand-arranged order wins over auto-grouping.
                               setRecentViewedChatIds(nextIds);
+                              setGroupTabsByApp(false);
                             }
                             setDraggingChatId(null);
                           }}
@@ -773,12 +785,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     {t("closeTabsToRight")}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <ContextMenuItem
-                    onClick={handleGroupByApp}
-                    disabled={!hasMultipleApps}
+                  <ContextMenuCheckboxItem
+                    checked={groupTabsByApp}
+                    onCheckedChange={handleToggleGroupByApp}
+                    disabled={!hasMultipleApps && !groupTabsByApp}
                   >
                     {t("groupTabsByApp")}
-                  </ContextMenuItem>
+                  </ContextMenuCheckboxItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem
                     onClick={reopenClosedTab}

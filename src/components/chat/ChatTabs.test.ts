@@ -430,4 +430,15 @@ describe("groupChatIdsByApp", () => {
     // app1 first (chat 1), then unknown (chat 2), then app2 (chat 3)
     expect(result).toEqual([1, 2, 3]);
   });
+
+  it("slots a newly opened chat into its app's existing group", () => {
+    // While grouped, the tabs read: app1 (1, 3), then app2 (2, 4).
+    // Opening a new chat (5) in app2 prepends it to the front, as
+    // pushRecentViewedChatId does. Re-grouping must place it in app2's group
+    // rather than leaving it stranded at the front.
+    const chats = [chat(1, 1), chat(3, 1), chat(2, 2), chat(4, 2), chat(5, 2)];
+    const result = groupChatIdsByApp([5, 1, 3, 2, 4], toMap(chats));
+    // app2 group comes first now (its chat 5 is seen first), new chat leads it.
+    expect(result).toEqual([5, 2, 4, 1, 3]);
+  });
 });

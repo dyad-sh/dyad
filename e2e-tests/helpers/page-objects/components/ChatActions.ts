@@ -195,7 +195,7 @@ export class ChatActions {
   async selectChatMode(
     mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
   ) {
-    await this.page.getByTestId("chat-mode-selector").click();
+    const selector = this.page.getByTestId("chat-mode-selector");
     const mapping: Record<string, string> = {
       build: "Build Generate and edit code",
       ask: "Ask Ask",
@@ -204,12 +204,30 @@ export class ChatActions {
       "basic-agent": "Basic Agent", // For free users
       plan: "Plan.*Design before you build",
     };
+    const selectedLabel: Record<string, RegExp> = {
+      build: /Chat mode: Build/,
+      ask: /Chat mode: Ask/,
+      agent: /Chat mode: Build with MCP|Chat mode: Agent/,
+      "local-agent": /Chat mode: Agent/,
+      "basic-agent": /Chat mode: Basic Agent/,
+      plan: /Chat mode: Plan/,
+    };
     const optionName = mapping[mode];
-    await this.page
-      .getByRole("option", {
-        name: new RegExp(optionName),
-      })
-      .click();
+    await expect(async () => {
+      await selector.click();
+      await this.page
+        .getByRole("option", {
+          name: new RegExp(optionName),
+        })
+        .click({ timeout: 1_000 });
+      await expect(selector).toHaveAttribute(
+        "aria-label",
+        selectedLabel[mode],
+        {
+          timeout: 1_000,
+        },
+      );
+    }).toPass({ timeout: Timeout.MEDIUM });
   }
 
   async selectLocalAgentMode() {

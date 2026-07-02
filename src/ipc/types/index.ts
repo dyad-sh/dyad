@@ -104,8 +104,11 @@ export { terminalClient } from "./terminal";
 export type {
   GetUserSettingsInput,
   GetUserSettingsOutput,
+  ProviderApiKeyValidationProvider,
   SetUserSettingsInput,
   SetUserSettingsOutput,
+  ValidateProviderApiKeyInput,
+  ValidateProviderApiKeyOutput,
 } from "./settings";
 
 // App types

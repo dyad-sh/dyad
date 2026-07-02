@@ -552,7 +552,7 @@ export const CLOUD_PROVIDERS: Record<
   google: {
     displayName: "Google",
     hasFreeTier: true,
-    websiteUrl: "https://aistudio.google.com/app/apikey",
+    websiteUrl: "https://aistudio.google.com/api-keys",
     gatewayPrefix: "gemini/",
   },
   vertex: {

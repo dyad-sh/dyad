@@ -49,6 +49,7 @@ import { RefreshCw, X, Zap } from "lucide-react";
 // Adding an export for attachments
 export interface HomeSubmitOptions {
   attachments?: FileAttachment[];
+  chatMode?: ChatMode;
   selectedApp?: ListedApp;
 }
 
@@ -68,13 +69,16 @@ export default function HomePage() {
     useLanguageModelProviders();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const initialChatMode = useInitialChatMode();
-  const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
+  const effectiveHomeDefaultChatMode = useMemo<ChatMode | undefined>(() => {
     if (!settings || isQuotaLoading) {
       return initialChatMode;
     }
 
     return getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
   }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
+  const homeInitialChatMode = settings?.selectedChatMode
+    ? initialChatMode
+    : effectiveHomeDefaultChatMode;
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -126,16 +130,16 @@ export default function HomePage() {
   useEffect(() => {
     if (
       settings &&
-      homeInitialChatMode &&
+      effectiveHomeDefaultChatMode &&
       !hasAppliedDefaultChatMode.current &&
       !isQuotaLoading
     ) {
       hasAppliedDefaultChatMode.current = true;
-      if (settings.selectedChatMode !== homeInitialChatMode) {
-        updateSettings({ selectedChatMode: homeInitialChatMode });
+      if (settings.selectedChatMode !== effectiveHomeDefaultChatMode) {
+        updateSettings({ selectedChatMode: effectiveHomeDefaultChatMode });
       }
     }
-  }, [homeInitialChatMode, settings, updateSettings, isQuotaLoading]);
+  }, [effectiveHomeDefaultChatMode, settings, updateSettings, isQuotaLoading]);
 
   const openAiSetupDialog = useCallback(() => {
     posthog.capture("home:ai-setup-dialog-open");
@@ -182,6 +186,7 @@ export default function HomePage() {
   const handleSubmit = useCallback(
     async (options?: HomeSubmitOptions) => {
       const attachments = options?.attachments || [];
+      const chatMode = options?.chatMode ?? homeInitialChatMode;
       const selectedApp = options?.selectedApp;
 
       if (!inputValue.trim() && attachments.length === 0) return false;
@@ -209,14 +214,14 @@ export default function HomePage() {
           // Existing app flow: create a new chat in the selected app
           chatId = await ipc.chat.createChat({
             appId: selectedApp.id,
-            initialChatMode: homeInitialChatMode,
+            initialChatMode: chatMode,
           });
           appId = selectedApp.id;
         } else {
           // New app flow (default behavior)
           const result = await ipc.app.createApp({
             name: generateCuteAppName(),
-            initialChatMode: homeInitialChatMode,
+            initialChatMode: chatMode,
           });
           chatId = result.chatId;
           appId = result.app.id;
@@ -248,7 +253,7 @@ export default function HomePage() {
           chatId,
           appId,
           attachments,
-          requestedChatMode: homeInitialChatMode,
+          requestedChatMode: chatMode,
         });
         await new Promise((resolve) =>
           setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
@@ -301,6 +306,12 @@ export default function HomePage() {
 
   const hasAttemptedAutoResumeRef = useRef(false);
   useEffect(() => {
+    if (!shouldResumeFirstPrompt) {
+      hasAttemptedAutoResumeRef.current = false;
+    }
+  }, [shouldResumeFirstPrompt]);
+
+  useEffect(() => {
     if (
       !shouldResumeFirstPrompt ||
       isLoadingLanguageModelProviders ||
@@ -319,6 +330,7 @@ export default function HomePage() {
     void (async () => {
       const didSubmit = await handleSubmit({
         attachments: pendingAttachments,
+        chatMode: effectiveHomeDefaultChatMode ?? homeInitialChatMode,
         selectedApp: pendingSelectedApp ?? undefined,
       });
       // Clear the pending flag even on failure: handleSubmit already surfaces
@@ -330,9 +342,15 @@ export default function HomePage() {
         setPendingAttachments([]);
         setPendingSelectedApp(null);
       }
+      // Intentionally do not re-arm on failure: handleSubmit already surfaces
+      // an error toast, and re-arming would re-fire this effect immediately
+      // (inputValue and shouldResumeFirstPrompt are still set), causing an
+      // infinite retry loop. The user can retry manually from the input.
     })();
   }, [
     handleSubmit,
+    effectiveHomeDefaultChatMode,
+    homeInitialChatMode,
     inputValue,
     isAnyProviderSetup,
     isLoading,

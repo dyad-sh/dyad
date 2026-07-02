@@ -138,6 +138,12 @@ export interface AgentContext {
    * the runtime surface are guaranteed to agree.
    */
   mcpToolDefs?: McpToolDef[];
+  /**
+   * Whether this turn may expose the built-in write_file host function inside
+   * `execute_sandbox_script`. Keep prompt text, tool filtering, and runtime
+   * capability injection aligned to this same turn-scoped value.
+   */
+  sandboxWriteFileHostEnabled?: boolean;
 }
 
 // ============================================================================
@@ -193,8 +199,10 @@ export interface ToolDefinition<T = any> {
   /**
    * If true, this tool modifies state (files, database, etc.).
    * Used to filter out state-modifying tools in read-only mode (e.g., ask mode).
+   * Wrapper tools may use a predicate when their writable capability is
+   * conditionally exposed by the current turn context.
    */
-  readonly modifiesState?: boolean;
+  readonly modifiesState?: boolean | ((ctx: AgentContext) => boolean);
   /**
    * If true, this tool calls a Dyad Engine endpoint outside the main model
    * generation endpoint.

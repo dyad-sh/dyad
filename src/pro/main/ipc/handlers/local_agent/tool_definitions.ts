@@ -450,6 +450,16 @@ const PRO_AGENT_ONLY_TOOLS = new Set<string>();
  */
 const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
 
+function toolModifiesState(
+  tool: (typeof TOOL_DEFINITIONS)[number],
+  ctx: AgentContext,
+): boolean {
+  if (typeof tool.modifiesState === "function") {
+    return tool.modifiesState(ctx);
+  }
+  return tool.modifiesState === true;
+}
+
 /**
  * Whether a tool belongs in this turn's tool set. Single source of truth for
  * inclusion, so a caller that needs the answer before the set is built (e.g. a
@@ -467,7 +477,7 @@ export function shouldIncludeTool(
   // In plan mode, skip state-modifying tools unless they're planning-specific.
   if (
     options.planModeOnly &&
-    tool.modifiesState &&
+    toolModifiesState(tool, ctx) &&
     !PLANNING_SPECIFIC_TOOLS.has(tool.name)
   ) {
     return false;
@@ -491,7 +501,7 @@ export function shouldIncludeTool(
     return false;
   }
   // In read-only mode, skip tools that modify state.
-  if (options.readOnly && tool.modifiesState) {
+  if (options.readOnly && toolModifiesState(tool, ctx)) {
     return false;
   }
   if (tool.isEnabled) {
@@ -536,7 +546,7 @@ export function buildAgentToolSet(
           // write_file and bypass the required blueprint approval flow.
           if (
             options.enableAppBlueprint !== false &&
-            tool.modifiesState &&
+            toolModifiesState(tool, ctx) &&
             !APP_BLUEPRINT_TOOLS.has(tool.name) &&
             !PLANNING_SPECIFIC_TOOLS.has(tool.name)
           ) {

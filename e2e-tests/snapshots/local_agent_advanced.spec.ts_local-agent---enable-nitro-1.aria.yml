@@ -10,9 +10,9 @@
 - paragraph:
   - text: API routes can now live under
   - code: "`server/routes/api/`"
+- 'button "Error Tool ''enable_nitro'' failed: spawn pnpm ENOENT - set SFW_DEBUG=true flag for more info. Copy Fix with AI"'
 - paragraph: Server layer added. Now I'll write the API route.
 - button "Copy"
-- text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

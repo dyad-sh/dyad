@@ -16,6 +16,7 @@ import {
 import { writeFileTool } from "./write_file";
 import type { AgentContext } from "./types";
 import type { McpToolDef } from "./mcp_type_defs";
+import { shouldIncludeTool } from "../tool_definitions";
 
 vi.mock("@/ipc/utils/sandbox/execution", () => ({
   isSandboxSupportedPlatform: vi.fn(() => true),
@@ -69,6 +70,12 @@ function createMockContext(): AgentContext {
   };
 }
 
+function createWritableSandboxContext(): AgentContext {
+  const ctx = createMockContext();
+  ctx.sandboxWriteFileHostEnabled = true;
+  return ctx;
+}
+
 describe("executeSandboxScriptTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,8 +97,20 @@ describe("executeSandboxScriptTool", () => {
     );
   });
 
-  it("is marked as state-modifying because sandbox scripts can call write_file", () => {
-    expect(executeSandboxScriptTool.modifiesState).toBe(true);
+  it("is state-modifying only when the write_file host function is enabled", () => {
+    const readOnlyCtx = createMockContext();
+    const writableCtx = createWritableSandboxContext();
+
+    expect(
+      shouldIncludeTool(executeSandboxScriptTool, readOnlyCtx, {
+        readOnly: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldIncludeTool(executeSandboxScriptTool, writableCtx, {
+        readOnly: true,
+      }),
+    ).toBe(false);
   });
 
   it("includes the generated script in sandbox failure messages", async () => {
@@ -174,7 +193,7 @@ describe("executeSandboxScriptTool", () => {
       .mockResolvedValue("Successfully wrote src/out.txt");
 
     try {
-      const ctx = createMockContext();
+      const ctx = createWritableSandboxContext();
       await executeSandboxScriptTool.execute(
         {
           script: 'write_file("src/out.txt", "hello");',
@@ -231,7 +250,7 @@ describe("executeSandboxScriptTool", () => {
         script: 'write_file("attachments:file.txt", "hello");',
         execution_thread: "main",
       },
-      createMockContext(),
+      createWritableSandboxContext(),
     );
 
     const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
@@ -255,7 +274,7 @@ describe("executeSandboxScriptTool", () => {
 
     await executeSandboxScriptTool.execute(
       { script: 'write_file("src/out.txt");', execution_thread: "main" },
-      createMockContext(),
+      createWritableSandboxContext(),
     );
 
     const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
@@ -282,7 +301,7 @@ describe("executeSandboxScriptTool", () => {
 
     await executeSandboxScriptTool.execute(
       { script: 'write_file(".env", "SECRET=x");', execution_thread: "main" },
-      createMockContext(),
+      createWritableSandboxContext(),
     );
 
     const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
@@ -311,7 +330,7 @@ describe("executeSandboxScriptTool", () => {
         script: 'write_file("src/out.txt", "hello");',
         execution_thread: "main",
       },
-      createMockContext(),
+      createWritableSandboxContext(),
     );
 
     const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
@@ -331,7 +350,7 @@ describe("executeSandboxScriptTool", () => {
         script: 'write_file("src/out.txt", "hello");',
         execution_thread: "main",
       },
-      createMockContext(),
+      createWritableSandboxContext(),
     );
 
     const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
@@ -353,7 +372,7 @@ describe("executeSandboxScriptTool", () => {
       truncated: false,
       executionMs: 3,
     });
-    const ctx = createMockContext();
+    const ctx = createWritableSandboxContext();
     vi.mocked(ctx.requireConsent).mockResolvedValue(false);
 
     await executeSandboxScriptTool.execute(
@@ -411,6 +430,26 @@ describe("executeSandboxScriptTool", () => {
       expect.objectContaining({ executionThread: "worker" }),
     );
   });
+
+  it("does not inject write_file when the turn is read-only", async () => {
+    vi.mocked(executeSandboxScriptInProcess).mockResolvedValue({
+      value: "done",
+      truncated: false,
+      executionMs: 3,
+    });
+
+    await executeSandboxScriptTool.execute(
+      {
+        script: 'typeof write_file === "undefined"',
+        execution_thread: "main",
+      },
+      createMockContext(),
+    );
+
+    const capabilities = vi.mocked(executeSandboxScriptInProcess).mock
+      .calls[0][0].capabilities;
+    expect(capabilities).not.toHaveProperty("write_file");
+  });
 });
 
 describe("buildExecuteSandboxScriptDescription (search mode)", () => {
@@ -453,7 +492,9 @@ describe("buildExecuteSandboxScriptDescription (search mode)", () => {
       agentToolConsents: { write_file: "never" },
     } as unknown as ReturnType<typeof readSettings>);
 
-    const desc = await buildExecuteSandboxScriptDescription([]);
+    const desc = await buildExecuteSandboxScriptDescription([], {
+      includeWriteFile: false,
+    });
 
     expect(desc).not.toContain("declare function write_file");
     expect(desc).not.toContain("write generated content to files");

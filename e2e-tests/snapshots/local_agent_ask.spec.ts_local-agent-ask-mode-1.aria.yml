@@ -5,8 +5,8 @@
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
 - paragraph: tc=local-agent/ask-read-file
-- paragraph: Let me read the file to explain its contents.
-- text: Read src/App.tsx
+- paragraph: Let me inspect the file in a read-only sandbox.
+- button "Script Check App.tsx length [[duration]]"
 - paragraph: This is a simple React component that renders a div with the text 'Minimal imported app'. The component is exported as the default export.
 - button "Copy"
 - button "Copy Request ID"

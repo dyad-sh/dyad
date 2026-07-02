@@ -52,6 +52,7 @@ import {
   AgentToolName,
   buildAgentToolSet,
   shouldIncludeTool,
+  getAgentToolConsent,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
 } from "./tool_definitions";
@@ -723,6 +724,10 @@ export async function handleLocalAgentStream(
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
     };
+    ctx.sandboxWriteFileHostEnabled =
+      !readOnly &&
+      !planModeOnly &&
+      getAgentToolConsent("write_file" as AgentToolName) !== "never";
     // search_mcp_tools.isEnabled reads this during the build, so set it up front
     // from the same predicate the builder uses. Off in read-only and plan mode.
     const mcpInSandboxEnabled =
@@ -756,6 +761,7 @@ export async function handleLocalAgentStream(
         await buildExecuteSandboxScriptDescription([], {
           useSearch: useMcpToolSearch,
           hasGetSchemaTool,
+          includeWriteFile: ctx.sandboxWriteFileHostEnabled,
         });
       if (mcpInSandboxEnabled) {
         try {
@@ -769,6 +775,7 @@ export async function handleLocalAgentStream(
             await buildExecuteSandboxScriptDescription(defs, {
               useSearch: useMcpToolSearch,
               hasGetSchemaTool,
+              includeWriteFile: ctx.sandboxWriteFileHostEnabled,
             });
         } catch (e) {
           logger.warn(

@@ -1,15 +1,17 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "Read a file in ask mode (read-only)",
+  description: "Inspect a file through the sandbox in ask mode (read-only)",
   turns: [
     {
-      text: "Let me read the file to explain its contents.",
+      text: "Let me inspect the file in a read-only sandbox.",
       toolCalls: [
         {
-          name: "read_file",
+          name: "execute_sandbox_script",
           args: {
-            path: "src/App.tsx",
+            script:
+              'const text = await read_file("src/App.tsx"); text.length;',
+            description: "Check App.tsx length",
           },
         },
       ],

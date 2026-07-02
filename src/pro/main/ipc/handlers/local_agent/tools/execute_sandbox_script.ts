@@ -45,14 +45,13 @@ const executeSandboxScriptSchema = z.object({
     .default("main")
     .describe(
       "Where to run the script. Default 'main' runs in-process and is " +
-        "the only thread that can expose write_file and MCP tools — use it " +
-        "for scripts that write files or call MCP host functions, and " +
-        "for small / fast operations. " +
+        "the only thread that can expose main-thread-only host functions — " +
+        "use it for scripts that call MCP host functions and for small / " +
+        "fast operations. " +
         "Use 'worker' for compute-heavy work (parsing multi-MB attachments, " +
         "large aggregations, anything that might take more than a few hundred " +
         "milliseconds) so chat streaming and other main-process work isn't " +
-        "stalled. write_file, when enabled, and MCP host functions are NOT available on " +
-        "the worker thread.",
+        "stalled. MCP host functions are NOT available on the worker thread.",
     ),
 });
 
@@ -281,11 +280,15 @@ ${inventory}
  */
 export async function buildExecuteSandboxScriptDescription(
   precomputedDefs?: McpToolDef[],
-  options?: { useSearch?: boolean; hasGetSchemaTool?: boolean },
+  options?: {
+    useSearch?: boolean;
+    hasGetSchemaTool?: boolean;
+    includeWriteFile?: boolean;
+  },
 ): Promise<string> {
   const defs = precomputedDefs ?? (await collectMcpToolDefs());
   const builtInHostFunctionsPreamble = buildBuiltInHostFunctionsPreamble({
-    includeWriteFile: isWriteFileHostEnabled(),
+    includeWriteFile: options?.includeWriteFile ?? isWriteFileHostEnabled(),
   });
   if (defs.length === 0) {
     return builtInHostFunctionsPreamble;
@@ -312,7 +315,7 @@ export const executeSandboxScriptTool: ToolDefinition<ExecuteSandboxScriptArgs> 
       "Run a MustardScript program in a sandbox. Supports file inspection, file writes, and MCP tool calls.",
     inputSchema: executeSandboxScriptSchema,
     defaultConsent: "always",
-    modifiesState: true,
+    modifiesState: (ctx) => ctx.sandboxWriteFileHostEnabled === true,
 
     isEnabled: () =>
       isSandboxSupportedPlatform() &&
@@ -502,7 +505,7 @@ async function runInMainThread(params: {
     params.observeHostCall,
   );
   const writeFileCaps: Record<string, (...args: unknown[]) => unknown> =
-    isWriteFileHostEnabled()
+    params.ctx.sandboxWriteFileHostEnabled === true && isWriteFileHostEnabled()
       ? { write_file: buildWriteFileCapability(params.ctx) }
       : {};
   const mcpCaps = buildMcpCapabilityMap({

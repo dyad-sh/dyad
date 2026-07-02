@@ -145,6 +145,12 @@ export async function createTempTestUser(
       organizationSlug,
       userId: appData.supabaseTestUserId,
     });
+    if (!priorCleanupOk) {
+      throw new DyadError(
+        `Couldn't clean up the previous Supabase test user for app ${appData.id}. Skipping this run to avoid leaking a test user; it will be retried on the next launch.`,
+        DyadErrorKind.External,
+      );
+    }
   }
 
   const serviceRole = await getServiceRoleKey({ projectId, organizationSlug });
@@ -186,10 +192,8 @@ export async function createTempTestUser(
   // deleting it now — otherwise we'd leak an untracked auth user in the real
   // project.
   //
-  // When the PRIOR user's cleanup failed, leave the column pointing at the
-  // prior user so reconciliation retries it (mirroring the Neon branch path);
-  // this run's own teardown deletes the new user via the returned id, not the
-  // column, so the new user is still cleaned up when the run finishes normally.
+  // Prior-user cleanup failures dead-end above. That keeps this new user
+  // trackable: every created user is persisted before the run can proceed.
   if (priorCleanupOk) {
     try {
       await persistTestUserId(appData.id, created.id);
@@ -269,7 +273,13 @@ export async function reconcileOrphanTestUsers(): Promise<void> {
       `Reconciling ${rows.length} orphaned Supabase test user(s) from a previous session`,
     );
     for (const appData of rows) {
-      await deleteTempTestUser(appData);
+      try {
+        await deleteTempTestUser(appData);
+      } catch (error) {
+        logger.warn(
+          `Failed to reconcile orphaned test user for app ${appData.id}: ${error}`,
+        );
+      }
     }
   } catch (error) {
     logger.error(`Failed to reconcile orphaned test users: ${error}`);
@@ -375,7 +385,7 @@ WHERE table_schema = 'public'
         // regex validation.
         await executeSupabaseSql({
           supabaseProjectId: projectId,
-          query: `DO $$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $$;`,
+          query: `DO $dyad_cleanup$ BEGIN EXECUTE format('DELETE FROM public.%I WHERE %I = %L', '${table}', '${column}', '${userId}'); END $dyad_cleanup$;`,
           organizationSlug,
         });
       } catch (error) {

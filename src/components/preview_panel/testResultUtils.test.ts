@@ -65,6 +65,23 @@ describe("buildSingleTestFileResult", () => {
     expect(second.status).toBe("passed");
     expect(second.tests).toHaveLength(2);
   });
+
+  it("does not use duplicate titles with different lines as coverage", () => {
+    const duplicateKnownTests: TestCase[] = [
+      { title: "saves settings", line: 10 },
+      { title: "saves settings", line: 20 },
+    ];
+
+    const result = buildSingleTestFileResult({
+      file,
+      knownTests: duplicateKnownTests,
+      previous: undefined,
+      incoming: resultFor("saves settings", 10, "passed"),
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.tests).toHaveLength(1);
+  });
 });
 
 describe("reconcileResultFile", () => {

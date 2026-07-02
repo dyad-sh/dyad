@@ -140,7 +140,13 @@ export async function prepareIsolatedTestDatabase({
     if (branchId) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
       // `app` is stale, so pass the branch we actually created.
-      await deleteTempTestBranch({ ...app, neonTestBranchId: branchId });
+      try {
+        await deleteTempTestBranch({ ...app, neonTestBranchId: branchId });
+      } catch (error) {
+        logger.error(
+          `Failed to delete isolated test branch ${branchId} for app ${app.id}: ${error}`,
+        );
+      }
     }
   };
 
@@ -233,7 +239,16 @@ async function prepareSupabaseTestUserIsolation({
   let testUser: TempTestUser | undefined;
   const teardown = async () => {
     if (testUser) {
-      await deleteTempTestUser({ ...app, supabaseTestUserId: testUser.userId });
+      try {
+        await deleteTempTestUser({
+          ...app,
+          supabaseTestUserId: testUser.userId,
+        });
+      } catch (error) {
+        logger.error(
+          `Failed to delete isolated Supabase test user ${testUser.userId} for app ${app.id}: ${error}`,
+        );
+      }
     }
   };
 

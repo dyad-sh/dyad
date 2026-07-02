@@ -165,6 +165,17 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
       hasPassed = true;
       continue;
     }
+    if (test.status === "unexpected") {
+      hasAssertion = true;
+      const errText = resultErrorText(final);
+      if (!error) {
+        error =
+          errText ??
+          "Playwright marked this test as unexpected (for example, a test.fail() expectation passed).";
+      }
+      if (!screenshotPath) screenshotPath = screenshotFromResult(final);
+      continue;
+    }
 
     const status = final.status ?? "";
     if (status === "passed") {

@@ -61,7 +61,8 @@ async function appUsesNeonAuth(appData: AppRow): Promise<boolean> {
   }
 
   try {
-    const envVars = await readEnvVarsOrEmpty({ appPath: appData.path });
+    const appPath = getDyadAppPath(appData.path);
+    const envVars = await readEnvVarsOrEmpty({ appPath });
     return envVars.some(
       (envVar) =>
         envVar.key === "NEON_AUTH_BASE_URL" ||
@@ -71,7 +72,7 @@ async function appUsesNeonAuth(appData: AppRow): Promise<boolean> {
     logger.warn(
       `Couldn't inspect .env.local for Neon Auth markers on app ${appData.id}: ${error}`,
     );
-    return false;
+    return true;
   }
 }
 

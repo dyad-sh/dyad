@@ -1,3 +1,5 @@
+import path from "node:path";
+
 // Mirrors the spec extensions accepted by TEST_FILE_PATTERN / listAppTests in
 // tests_handlers.ts.
 const SPEC_FILE_RE = /\.spec\.(ts|tsx|js|jsx)$/;
@@ -12,8 +14,9 @@ const SPEC_FILE_RE = /\.spec\.(ts|tsx|js|jsx)$/;
  * for a caller that doesn't also run it through `safeJoin`.
  */
 export function normalizeTestPath(rawPath: string): string {
-  const sanitized = rawPath
-    .replace(/\\/g, "/")
+  const normalized = path.posix.normalize(rawPath.replace(/\\/g, "/"));
+  const sanitized = normalized
+    .replace(/^\/+/, "")
     .split("/")
     .filter((segment) => segment !== "" && segment !== "." && segment !== "..")
     .join("/");

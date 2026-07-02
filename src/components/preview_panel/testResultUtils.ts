@@ -33,15 +33,24 @@ export function testKey(file: string, line: number | undefined): string {
   return line != null ? `${file}:${line}` : file;
 }
 
+function sameTestCaseByLineOrTitleFallback(
+  result: { line?: number; title: string },
+  testCase: { line?: number; title: string },
+): boolean {
+  if (result.line != null && testCase.line != null) {
+    return result.line === testCase.line;
+  }
+  return result.title === testCase.title;
+}
+
 /** Find the result for a single test within a file's result, by line then title. */
 export function findCaseResult(
   result: RuntimeTestResult | undefined,
   testCase: TestCase,
 ): TestCaseResult | undefined {
   if (!result?.tests) return undefined;
-  return (
-    result.tests.find((t) => t.line != null && t.line === testCase.line) ??
-    result.tests.find((t) => t.title === testCase.title)
+  return result.tests.find((t) =>
+    sameTestCaseByLineOrTitleFallback(t, testCase),
   );
 }
 
@@ -56,10 +65,8 @@ export function mergeCaseResults(
 ): TestCaseResult[] {
   const merged = [...(existing ?? [])];
   for (const inc of incoming) {
-    const idx = merged.findIndex(
-      (t) =>
-        (t.line != null && inc.line != null && t.line === inc.line) ||
-        t.title === inc.title,
+    const idx = merged.findIndex((t) =>
+      sameTestCaseByLineOrTitleFallback(t, inc),
     );
     if (idx >= 0) merged[idx] = inc;
     else merged.push(inc);
@@ -104,10 +111,8 @@ function allKnownCasesCovered(
 ): boolean {
   if (knownTests.length === 0) return true;
   return knownTests.every((testCase) =>
-    results.some(
-      (result) =>
-        (result.line != null && result.line === testCase.line) ||
-        result.title === testCase.title,
+    results.some((result) =>
+      sameTestCaseByLineOrTitleFallback(result, testCase),
     ),
   );
 }

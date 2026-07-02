@@ -12,6 +12,8 @@ const logger = log.scope("spawn_streaming");
  * produces megabytes of output.
  */
 const MAX_BUFFERED_OUTPUT = 256_000;
+const FORCE_KILL_GRACE_MS = 5_000;
+const WINDOWS_SHELL_META_RE = /[&|<>^%!\r\n]/;
 
 /** Append `chunk` to `buffer`, keeping only the last MAX_BUFFERED_OUTPUT chars. */
 function appendCapped(buffer: string, chunk: string): string {
@@ -19,6 +21,17 @@ function appendCapped(buffer: string, chunk: string): string {
   return next.length > MAX_BUFFERED_OUTPUT
     ? next.slice(-MAX_BUFFERED_OUTPUT)
     : next;
+}
+
+function assertWindowsShellSafe(command: string, args: string[]): void {
+  if (process.platform !== "win32") return;
+  for (const value of [command, ...args]) {
+    if (WINDOWS_SHELL_META_RE.test(value)) {
+      throw new Error(
+        `Unsafe shell metacharacter in command argument: ${value}`,
+      );
+    }
+  }
 }
 
 export interface SpawnStreamingResult {
@@ -80,6 +93,7 @@ export async function spawnStreaming({
     }
 
     logger.info(`Running (streaming): ${command} ${args.join(" ")}`);
+    assertWindowsShellSafe(command, args);
 
     // Pass a copy of the environment rather than the live global object to
     // avoid concurrent mutation side effects.
@@ -110,25 +124,66 @@ export async function spawnStreaming({
     let stderr = "";
     let aborted = false;
     let timedOut = false;
+    let settled = false;
+    let forceKillTimer: NodeJS.Timeout | undefined;
 
-    const killTree = (reason: string) => {
+    const clearTimersAndListeners = () => {
+      if (timer) clearTimeout(timer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+
+    const finish = (result: SpawnStreamingResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimersAndListeners();
+      resolve(result);
+    };
+
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimersAndListeners();
+      reject(err);
+    };
+
+    const killTree = (reason: string, signalName: "SIGTERM" | "SIGKILL") => {
       logger.info(`${reason}: ${command}`);
       // Kill the whole process tree — with a shell (Windows) or fast package
       // managers, the spawned child forks descendants (npx/playwright/chromium)
       // that a plain child.kill() would leave orphaned.
       if (child.pid) {
-        treeKill(child.pid, "SIGTERM", (err) => {
+        treeKill(child.pid, signalName, (err) => {
           if (err) {
             logger.warn(`Failed to tree-kill streaming process: ${err}`);
           }
         });
       } else {
         try {
-          child.kill("SIGTERM");
+          child.kill(signalName);
         } catch (err) {
           logger.warn(`Failed to kill streaming process: ${err}`);
         }
       }
+    };
+
+    const scheduleForceKill = (reason: string) => {
+      if (forceKillTimer) return;
+      forceKillTimer = setTimeout(() => {
+        logger.warn(
+          `${reason}: process did not exit after ${FORCE_KILL_GRACE_MS}ms; forcing kill`,
+        );
+        if (timedOut) {
+          onOutput?.("\nProcess did not stop cleanly — forcing it to exit.\n");
+        }
+        killTree(`${reason} (force)`, "SIGKILL");
+        finish({
+          code: timedOut ? 124 : null,
+          stdout,
+          stderr,
+          aborted,
+        });
+      }, FORCE_KILL_GRACE_MS);
     };
 
     const timer =
@@ -138,13 +193,15 @@ export async function spawnStreaming({
             onOutput?.(
               `\nTimed out after ${Math.round(timeoutMs / 1000)}s — stopping.\n`,
             );
-            killTree("Timed out");
+            killTree("Timed out", "SIGTERM");
+            scheduleForceKill("Timed out");
           }, timeoutMs)
         : undefined;
 
     const onAbort = () => {
       aborted = true;
-      killTree("Aborting");
+      killTree("Aborting", "SIGTERM");
+      scheduleForceKill("Aborting");
     };
 
     if (signal) {
@@ -168,19 +225,15 @@ export async function spawnStreaming({
     });
 
     child.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
       // A timeout kill leaves `code` null (or a signal exit); normalize it to a
       // non-zero code so callers treat it as a failure, not a clean exit.
       const exitCode = timedOut && (code === null || code === 0) ? 124 : code;
-      resolve({ code: exitCode, stdout, stderr, aborted });
+      finish({ code: exitCode, stdout, stderr, aborted });
     });
 
     child.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
       logger.error(`Failed to spawn command: ${command}`, err);
-      reject(err);
+      fail(err);
     });
   });
 }

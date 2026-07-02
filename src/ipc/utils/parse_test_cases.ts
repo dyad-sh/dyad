@@ -6,7 +6,7 @@ import type { TestCase } from "../types/tests";
 // variant is intentionally excluded so group declarations aren't listed as
 // runnable tests. `it(...)` is included since Playwright aliases it.
 const TEST_CALL =
-  /(?:^|[^.\w$])(?:test|it)(?:\.(?:only|skip|fixme|fail))?\s*\(\s*(['"`])((?:\\.|(?!\1).)*)\1/;
+  /(?:^|[^.\w$])(?:test|it)(?:\.(?:only|skip|fixme|fail))?\s*\(\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
 
 /** Unescape a JS string literal body (just the backslash escapes we care about). */
 function unescapeLiteral(raw: string): string {
@@ -78,8 +78,7 @@ export function parseTestCases(source: string): TestCase[] {
     if (!state.inBlock && line.trimStart().startsWith("*")) {
       continue;
     }
-    const match = TEST_CALL.exec(stripComments(line, state));
-    if (match) {
+    for (const match of stripComments(line, state).matchAll(TEST_CALL)) {
       out.push({ title: unescapeLiteral(match[2]), line: i + 1 });
     }
   }

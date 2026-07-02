@@ -238,7 +238,10 @@ function readConfigText(appPath: string): string | null {
 /** True when the existing config drives a system browser via `channel`. */
 function configUsesChannel(appPath: string): boolean {
   const text = readConfigText(appPath);
-  return text != null && /\bchannel:\s*["']/.test(text);
+  return (
+    text != null &&
+    /(?:^|[,{ \t\r\n])(?:channel|["']channel["'])\s*:/.test(text)
+  );
 }
 
 /** True when the existing config is one we generated (safe to regenerate). */

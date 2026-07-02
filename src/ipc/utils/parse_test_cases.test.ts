@@ -31,6 +31,14 @@ describe("parseTestCases", () => {
     ]);
   });
 
+  it("extracts multiple test calls on the same line", () => {
+    const src = `test("first", async () => {}); test("second", async () => {});`;
+    expect(parseTestCases(src)).toEqual([
+      { title: "first", line: 1 },
+      { title: "second", line: 1 },
+    ]);
+  });
+
   it("ignores describe blocks and expect calls", () => {
     const src = [
       `test.describe("a group", () => {`, // 1

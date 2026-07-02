@@ -81,7 +81,7 @@ export async function retryOnLocked<T>(
       const delay = Math.min(baseDelay + jitter, RETRY_CONFIG.maxDelay);
 
       logger.warn(
-        `${context}: Locked error (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
+        `${context}: Retryable Neon API error (locked/rate-limited, attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
       );
 
       await new Promise((resolve) => setTimeout(resolve, delay));

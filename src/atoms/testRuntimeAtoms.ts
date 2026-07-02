@@ -113,3 +113,19 @@ export const setTestRunStateForAppAtom = atom(
     });
   },
 );
+
+export const clearTestRuntimeForAppAtom = atom(
+  null,
+  (_get, set, appId: number) => {
+    set(testSpecsByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+    set(testRunStateByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  },
+);

@@ -122,23 +122,40 @@ describe("createTempTestUser", () => {
     expect(mocks.set).toHaveBeenCalledWith({ supabaseTestUserId: UUID });
   });
 
-  it("keeps the column on the prior user when its cleanup fails", async () => {
+  it("dead-ends when prior user cleanup fails", async () => {
     const PRIOR = "11111111-1111-4111-8111-111111111111";
-    // The prior leaked user's DELETE fails; user creation succeeds. The column
-    // must keep pointing at the prior user so the startup reconciliation sweep
-    // can retry it — persisting the new id would orphan the prior user forever.
-    mockFetch((_url, init) =>
+    // The prior leaked user's DELETE fails. The column must keep pointing at
+    // the prior user, and the run must stop before creating an untracked user.
+    const fetchSpy = mockFetch((_url, init) =>
       init?.method === "DELETE"
         ? new Response("nope", { status: 500 })
         : new Response(JSON.stringify({ id: UUID })),
     );
 
-    const result = await createTempTestUser(
-      makeApp({ supabaseTestUserId: PRIOR }),
+    await expect(
+      createTempTestUser(makeApp({ supabaseTestUserId: PRIOR })),
+    ).rejects.toThrow(/previous Supabase test user/);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(mocks.set).not.toHaveBeenCalledWith({ supabaseTestUserId: UUID });
+  });
+
+  it("deletes a newly-created user if persisting its id fails", async () => {
+    mocks.where.mockRejectedValueOnce(new Error("sqlite locked"));
+    const fetchSpy = mockFetch((_url, init) =>
+      init?.method === "DELETE"
+        ? new Response(null, { status: 200 })
+        : new Response(JSON.stringify({ id: UUID })),
     );
 
-    expect(result.userId).toBe(UUID);
-    expect(mocks.set).not.toHaveBeenCalledWith({ supabaseTestUserId: UUID });
+    await expect(createTempTestUser(makeApp())).rejects.toThrow(
+      /sqlite locked/,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 
   it("throws when the app has no Supabase project", async () => {
@@ -182,7 +199,7 @@ describe("deleteTempTestUser", () => {
     await deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }));
 
     // Scoped DELETE ran against the discovered table/column. The cleanup SQL is
-    // a `DO $$ ... EXECUTE format('DELETE FROM ...') ... $$;` block, so match on
+    // a `DO $dyad_cleanup$ ... EXECUTE format('DELETE FROM ...') ...` block, so match on
     // the DELETE substring rather than the statement prefix.
     const deleteCall = mocks.executeSupabaseSql.mock.calls.find(([arg]) =>
       arg.query.includes("DELETE FROM"),
@@ -191,6 +208,7 @@ describe("deleteTempTestUser", () => {
     expect(deleteCall?.[0].query).toContain(`'todos'`);
     expect(deleteCall?.[0].query).toContain(`'user_id'`);
     expect(deleteCall?.[0].query).toContain(`'${UUID}'`);
+    expect(deleteCall?.[0].query).toContain("DO $dyad_cleanup$");
 
     // User deleted via the admin API, then column cleared.
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -204,6 +222,40 @@ describe("deleteTempTestUser", () => {
     mockFetch(() => new Response("nope", { status: 500 }));
     await deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }));
     expect(mocks.set).not.toHaveBeenCalledWith({ supabaseTestUserId: null });
+  });
+
+  it("skips owner cleanup rows with unsafe table or column names", async () => {
+    mocks.executeSupabaseSql.mockImplementation(
+      async ({ query }: { query: string }) => {
+        if (query.includes("information_schema.columns")) {
+          return JSON.stringify([
+            { table_name: "todos;drop", column_name: "user_id" },
+            { table_name: "todos", column_name: "user$id" },
+            { table_name: "safe_table", column_name: "owner_id" },
+          ]);
+        }
+        return "{}";
+      },
+    );
+    mockFetch(() => new Response(null, { status: 200 }));
+
+    await deleteTempTestUser(makeApp({ supabaseTestUserId: UUID }));
+
+    const deleteCalls = mocks.executeSupabaseSql.mock.calls.filter(([arg]) =>
+      arg.query.includes("DELETE FROM"),
+    );
+    expect(deleteCalls).toHaveLength(1);
+    expect(deleteCalls[0][0].query).toContain("'safe_table'");
+    expect(deleteCalls[0][0].query).toContain("'owner_id'");
+  });
+
+  it("does not run SQL cleanup for a non-UUID user id", async () => {
+    const fetchSpy = mockFetch(() => new Response(null));
+
+    await deleteTempTestUser(makeApp({ supabaseTestUserId: "abc' OR true" }));
+
+    expect(mocks.executeSupabaseSql).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("is a no-op when no test user is set", async () => {
@@ -222,6 +274,22 @@ describe("reconcileOrphanTestUsers", () => {
     await reconcileOrphanTestUsers();
     expect(fetchSpy).toHaveBeenCalledWith(
       `https://proj-1.supabase.co/auth/v1/admin/users/${UUID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("continues reconciling other orphaned users when one delete throws", async () => {
+    const first = makeApp({ id: 1, supabaseTestUserId: UUID });
+    const secondId = "11111111-1111-4111-8111-111111111111";
+    const second = makeApp({ id: 2, supabaseTestUserId: secondId });
+    mocks.selectWhere.mockResolvedValue([first, second]);
+    mocks.where.mockRejectedValueOnce(new Error("db write failed"));
+    const fetchSpy = mockFetch(() => new Response(null, { status: 200 }));
+
+    await reconcileOrphanTestUsers();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `https://proj-1.supabase.co/auth/v1/admin/users/${secondId}`,
       expect.objectContaining({ method: "DELETE" }),
     );
   });

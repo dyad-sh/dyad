@@ -32,7 +32,9 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
@@ -457,6 +459,8 @@ export function TestsPanel() {
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
+  const { app } = useLoadApp(selectedAppId);
+  const { settings } = useSettings();
   const { runApp } = useRunApp();
   const { streamMessage, isStreaming } = useStreamChat();
   const queryClient = useQueryClient();
@@ -508,6 +512,10 @@ export function TestsPanel() {
   }, [isStreaming, queryClient, selectedAppId]);
 
   const loadingSpecs = specsQuery.isLoading && specs.length === 0;
+  const showNeonRestartDisclosure =
+    specs.length > 0 &&
+    !!app?.neonProjectId &&
+    (settings?.runtimeMode2 ?? "host") === "host";
 
   // Subscribe to streamed run output.
   useEffect(() => {
@@ -516,7 +524,7 @@ export function TestsPanel() {
         appId: payload.appId,
         update: (prev) => ({
           ...prev,
-          phase: payload.phase,
+          phase: prev.phase === "idle" ? prev.phase : payload.phase,
           // Cap the accumulated output so a chatty run (verbose reporters,
           // parallel workers) can't grow this string unboundedly and degrade
           // the renderer. The tail is the most useful part for debugging.
@@ -890,6 +898,16 @@ export function TestsPanel() {
           </div>
         )}
 
+      {!isRunning && showNeonRestartDisclosure && (
+        <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
+          <ShieldCheck size={15} className="shrink-0 mt-0.5" />
+          <span className="flex-1">
+            Neon test runs restart the preview to switch to a temporary
+            database, then restart it again afterward.
+          </span>
+        </div>
+      )}
+
       {/* Dev-server gate banner */}
       {!devServerRunning && specs.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
@@ -932,6 +950,25 @@ export function TestsPanel() {
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <Loader2 size={20} className="animate-spin mr-2" />
             Loading tests…
+          </div>
+        ) : specsQuery.isError ? (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+            <AlertTriangle
+              size={28}
+              className="mb-3 text-amber-500 dark:text-amber-400"
+            />
+            <h3 className="text-base font-semibold text-foreground mb-2">
+              Couldn&apos;t load tests
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-sm mb-4">
+              The test list couldn&apos;t be read for this app.
+            </p>
+            <button
+              onClick={() => void specsQuery.refetch()}
+              className="px-3 py-1.5 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium text-amber-900 dark:text-amber-100"
+            >
+              Retry
+            </button>
           </div>
         ) : specs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">

@@ -11,6 +11,10 @@ interface DyadFileTag {
   description?: string;
 }
 
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Parse `<tagName path="..." description="...">content</tagName>` occurrences
  * into file tags. Shared by the identical `<dyad-write>` and
@@ -21,8 +25,9 @@ function parseDyadFileTags(
   fullResponse: string,
   tagName: string,
 ): DyadFileTag[] {
+  const escapedTagName = escapeRegexLiteral(tagName);
   const tagRegex = new RegExp(
-    `<${tagName}([^>]*)>([\\s\\S]*?)</${tagName}>`,
+    `<${escapedTagName}([^>]*)>([\\s\\S]*?)</${escapedTagName}>`,
     "gi",
   );
   const pathRegex = /path="([^"]+)"/;

@@ -21,6 +21,7 @@ import {
 } from "../utils/playwright_bootstrap";
 import { parsePlaywrightReport } from "../utils/playwright_report";
 import { parseTestCases } from "../utils/parse_test_cases";
+import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import {
   prepareIsolatedTestDatabase,
@@ -35,7 +36,12 @@ const logger = log.scope("tests_handlers");
 // relative, under `tests/`, ending in a spec extension, with no traversal or
 // leading dash. This stops a compromised renderer from passing a flag-like
 // value (e.g. `--config=…`) that Playwright would interpret as a CLI option.
-const TEST_FILE_PATTERN = /^tests\/(?!.*\.\.)[\w\-./]+\.spec\.(ts|tsx|js|jsx)$/;
+const TEST_FILE_PATTERN =
+  /^tests\/(?!.*\.\.)(?!(?:-|.*\/-))[\w\-./]+\.spec\.(ts|tsx|js|jsx)$/;
+
+function isNoTestsFoundOutput(output: string): boolean {
+  return /\bno tests found\b/i.test(output);
+}
 
 /**
  * Worker count for a parallel run. Derived from the host's cores (leaving one
@@ -218,14 +224,14 @@ export async function runAppTestsCore({
       command: "npx",
       args,
       cwd: appPath,
-      env: {
+      env: getPackageManagerCommandEnv({
         ...process.env,
         ...testEnv,
         [TEST_BASE_URL_ENV]: baseUrl,
         PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
         // Non-interactive: never try to open/serve an HTML report.
         CI: "true",
-      },
+      }),
       signal,
       onOutput: (chunk) => emit(chunk, "running"),
     });
@@ -275,10 +281,10 @@ export async function runAppTestsCore({
     // a "no tests matched" outcome (e.g. running a single test by line whose
     // selector matched nothing) — not an infra failure, so don't show an amber
     // error. A non-zero exit with an empty report is a real runner failure.
-    if (run.code === 0) {
+    const tail = run.stderr.trim() || run.stdout.trim();
+    if (run.code === 0 || isNoTestsFoundOutput(tail)) {
       return { appId, results: [] };
     }
-    const tail = run.stderr.trim() || run.stdout.trim();
     return {
       appId,
       results,

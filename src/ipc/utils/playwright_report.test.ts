@@ -273,4 +273,35 @@ describe("parsePlaywrightReport", () => {
     expect(result.status).toBe("passed");
     expect(result.tests?.map((t) => t.status)).toEqual(["passed", "passed"]);
   });
+
+  it("treats unexpected Playwright outcomes as failed even when the raw run passed", () => {
+    const report: PwReport = {
+      suites: [
+        {
+          file: "tests/a.spec.ts",
+          specs: [
+            {
+              file: "tests/a.spec.ts",
+              title: "expected to fail but passed",
+              line: 3,
+              tests: [
+                {
+                  status: "unexpected",
+                  results: [{ status: "passed", duration: 10 }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const [result] = parsePlaywrightReport(report, appPath);
+    expect(result.status).toBe("failed");
+    expect(result.tests?.[0]).toMatchObject({
+      title: "expected to fail but passed",
+      status: "failed",
+    });
+    expect(result.error).toContain("unexpected");
+  });
 });

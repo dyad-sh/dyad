@@ -185,6 +185,21 @@ describe("createTempTestBranch", () => {
     expect(result.cookieSecret).toBeUndefined();
   });
 
+  it("fails closed when env inspection for Neon Auth markers fails", async () => {
+    mocks.readEnvVarsOrEmpty.mockRejectedValue(new Error("env read failed"));
+
+    await expect(createTempTestBranch(makeApp())).rejects.toThrow(/Neon Auth/);
+
+    expect(mocks.ensureNeonAuth).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      branchId: "test-new-branch-id",
+    });
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "test-new-branch-id",
+    );
+  });
+
   it("dead-ends when the app uses Neon Auth but provisioning fails", async () => {
     // ensureNeonAuth resolves undefined (default) → auth could not be activated.
     await expect(

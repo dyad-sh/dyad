@@ -9,18 +9,41 @@ const mocks = vi.hoisted(() => ({
   createChat: vi.fn(),
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
+  inputValue: "Build a notes app",
+  navigate: vi.fn(),
   openPreviewIfSetupRequired: vi.fn(),
   posthogCapture: vi.fn(),
   refreshApps: vi.fn(),
+  selectedApp: null,
+  setHomeSelectedApp: vi.fn(),
   setAtom: vi.fn(),
+  setInputValue: vi.fn(),
+  setShouldResumeFirstPrompt: vi.fn(),
+  shouldResumeFirstPrompt: false,
   streamMessage: vi.fn(),
   updateSettings: vi.fn(),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
-  useAtom: () => ["Build a notes app", vi.fn()],
-  useSetAtom: () => mocks.setAtom,
+  useAtom: (atom: { debugLabel?: string }) => {
+    if (atom.debugLabel === "homeSelectedAppAtom") {
+      return [mocks.selectedApp, mocks.setHomeSelectedApp];
+    }
+    return [mocks.inputValue, mocks.setInputValue];
+  },
+  useAtomValue: (atom: { debugLabel?: string }) => {
+    if (atom.debugLabel === "pendingFirstPromptAtom") {
+      return mocks.shouldResumeFirstPrompt;
+    }
+    return undefined;
+  },
+  useSetAtom: (atom: { debugLabel?: string }) => {
+    if (atom.debugLabel === "pendingFirstPromptAtom") {
+      return mocks.setShouldResumeFirstPrompt;
+    }
+    return mocks.setAtom;
+  },
 }));
 
 vi.mock("posthog-js/react", () => ({
@@ -36,7 +59,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mocks.navigate,
   useSearch: () => ({}),
 }));
 
@@ -158,11 +181,17 @@ describe("HomePage", () => {
   beforeEach(() => {
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
+    mocks.inputValue = "Build a notes app";
+    mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openPreviewIfSetupRequired.mockReset();
     mocks.openPreviewIfSetupRequired.mockResolvedValue(false);
     mocks.refreshApps.mockReset();
+    mocks.selectedApp = null;
+    mocks.setHomeSelectedApp.mockReset();
     mocks.setAtom.mockReset();
+    mocks.setInputValue.mockReset();
+    mocks.setShouldResumeFirstPrompt.mockReset();
     mocks.streamMessage.mockReset();
     mocks.updateSettings.mockReset();
     mocks.createApp.mockResolvedValue({
@@ -174,6 +203,7 @@ describe("HomePage", () => {
     });
     mocks.isAnyProviderSetup = false;
     mocks.isLoadingLanguageModelProviders = true;
+    mocks.shouldResumeFirstPrompt = false;
   });
 
   it("blocks submit while provider setup is loading and opens setup once no provider is confirmed", async () => {
@@ -194,6 +224,7 @@ describe("HomePage", () => {
     expect(mocks.posthogCapture).toHaveBeenCalledWith(
       "home:ai-setup-dialog-open",
     );
+    expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(true);
   });
 
   it("submits while provider data is loading when a provider is already configured", async () => {
@@ -235,6 +266,33 @@ describe("HomePage", () => {
       expect(mocks.streamMessage).toHaveBeenCalled();
     });
     expect(mocks.setAtom).not.toHaveBeenCalledWith(false);
+  });
+
+  it("auto-submits a pending first prompt once provider setup is ready", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.shouldResumeFirstPrompt = true;
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/",
+      search: {},
+      replace: true,
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 1,
+        chatId: 2,
+        prompt: "Build a notes app",
+      }),
+    );
+    await waitFor(() => {
+      expect(mocks.setShouldResumeFirstPrompt).toHaveBeenCalledWith(false);
+    });
   });
 });
 

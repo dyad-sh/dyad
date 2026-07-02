@@ -11,6 +11,7 @@ import { readEnvVarsOrEmpty, updateNeonEnvVars } from "./app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
 import { retryOnLocked } from "./retryOnLocked";
 import { ensureNeonAuth, getOrCreateNeonAuthCookieSecret } from "./neon_utils";
+import { withLock } from "./lock_utils";
 import { getDyadAppPath } from "@/paths/paths";
 
 const logger = log.scope("neon_test_branch");
@@ -153,6 +154,13 @@ export async function createTempTestBranch(
   const branch = response.data.branch;
   const connectionUri = response.data.connection_uris?.[0]?.connection_uri;
   if (!branch || !connectionUri) {
+    // Partial success: Neon created the branch but returned no connection URI.
+    // We haven't persisted the branch id yet, so neither teardown nor startup
+    // reconciliation could ever find it — delete it best-effort before throwing
+    // instead of leaking it in the user's Neon project.
+    if (branch) {
+      await deleteBranchBestEffort(projectId, branch.id);
+    }
     throw new DyadError(
       "Neon did not return a connection string for the test branch.",
       DyadErrorKind.External,
@@ -276,11 +284,30 @@ async function deleteBranchBestEffort(
     logger.info(`Deleted test branch ${branchId} for project ${projectId}`);
     return true;
   } catch (error) {
+    // A 404 means Neon has already deleted the branch (e.g. a prior teardown
+    // deleted it but crashed before clearing the column). Treat that as success
+    // so the caller clears the stale id instead of dead-ending on it forever.
+    if (isNotFoundError(error)) {
+      logger.info(
+        `Test branch ${branchId} for project ${projectId} was already gone; treating as deleted`,
+      );
+      return true;
+    }
     logger.warn(
       `Failed to delete test branch ${branchId} for project ${projectId} (will be retried on next launch if still tracked): ${error}`,
     );
     return false;
   }
+}
+
+/** Whether a Neon API error indicates the resource no longer exists (404). */
+function isNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    (error as { response?: { status?: number } }).response?.status === 404
+  );
 }
 
 async function restoreRealBranchEnvVars(appData: AppRow): Promise<boolean> {
@@ -357,11 +384,17 @@ export async function reconcileOrphanTestBranches(): Promise<void> {
       `Reconciling ${rows.length} orphaned Neon test branch(es) from a previous session`,
     );
     for (const appData of rows) {
-      const restored = await restoreRealBranchEnvVars(appData);
-      if (!restored) {
-        continue;
-      }
-      await deleteTempTestBranch(appData);
+      // Serialize against user-initiated test runs on the same app: both this
+      // sweep and a run swap .env.local and restart the dev server, so an
+      // interleaving could leave the run pointed at the real database. The run
+      // path acquires the same per-app lock.
+      await withLock(appData.id, async () => {
+        const restored = await restoreRealBranchEnvVars(appData);
+        if (!restored) {
+          return;
+        }
+        await deleteTempTestBranch(appData);
+      });
     }
   } catch (error) {
     logger.error(`Failed to reconcile orphaned test branches: ${error}`);

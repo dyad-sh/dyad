@@ -12,6 +12,7 @@ import { createTypedHandler } from "./base";
 import { testsContracts } from "../types/tests";
 import type { RunAppTestsResult, TestCase, TestResult } from "../types/tests";
 import { runningApps } from "../utils/process_manager";
+import { withLock } from "../utils/lock_utils";
 import { safeSend } from "../utils/safe_sender";
 import { spawnStreaming } from "../utils/spawn_streaming";
 import {
@@ -283,6 +284,19 @@ export async function runAppTestsCore({
     // error. A non-zero exit with an empty report is a real runner failure.
     const tail = run.stderr.trim() || run.stdout.trim();
     if (run.code === 0 || isNoTestsFoundOutput(tail)) {
+      // When the user explicitly targeted a single test by line, an empty
+      // report means the line no longer points at a test (e.g. it shifted
+      // after an edit). Surface that instead of silently returning to idle
+      // with no visible change.
+      if (testLine && Number.isInteger(testLine) && testLine > 0) {
+        return {
+          appId,
+          results: [],
+          infraError: {
+            message: `No test was found at line ${testLine} — it may have moved. Try running the whole file.`,
+          },
+        };
+      }
       return { appId, results: [] };
     }
     return {
@@ -370,9 +384,10 @@ export function registerTestsHandlers() {
       if (path.extname(resolved).toLowerCase() !== ".png") {
         return { dataUrl: null };
       }
-      if (!fs.existsSync(resolved)) {
-        return { dataUrl: null };
-      }
+      // No existsSync pre-check: the realpathSync below already rejects a
+      // missing path (throws → caught → { dataUrl: null }), and adding a
+      // separate check would open a TOCTOU window where the path could be
+      // swapped for a symlink between the check and the resolve.
       // Resolve symlinks before the containment check: a symlink inside the app
       // dir could otherwise point outside it (e.g. test-results/x.png ->
       // /etc/passwd) and pass a string-only check while the read escapes.
@@ -434,7 +449,6 @@ export function registerTestsHandlers() {
       const emit = (chunk: string, phase: "setup" | "running") =>
         emitOutput(event, appId, chunk, phase);
 
-      let prepared: PreparedIsolation | undefined;
       try {
         // Wait for the prior run's full lifecycle (prepare → run → teardown) to
         // finish before swapping env. Otherwise a Stop-then-Run could race the
@@ -444,58 +458,70 @@ export function registerTestsHandlers() {
           await prior.done.catch(() => {});
         }
 
-        const app = await getApp(appId);
-        const runtimeMode = readSettings().runtimeMode2 ?? "host";
+        // Hold the per-app lock across the whole isolation lifecycle (prepare →
+        // run → teardown). Startup reconciliation (reconcileOrphanTestBranches /
+        // reconcileOrphanTestUsers) takes the same lock, so a rapid Run right
+        // after launch can't interleave its env swap + dev-server restart with
+        // an in-flight reconciliation and end up running against the real DB.
+        return await withLock(appId, async () => {
+          let prepared: PreparedIsolation | undefined;
+          try {
+            const app = await getApp(appId);
+            const runtimeMode = readSettings().runtimeMode2 ?? "host";
 
-        // Set up isolation so the run never mutates the user's real data: Neon
-        // apps get a throwaway copy-on-write branch, Supabase apps get a
-        // throwaway RLS-scoped test user, and no-DB apps run as-is.
-        prepared = await prepareIsolatedTestDatabase({
-          app,
-          event,
-          emit,
-          runtimeMode,
-          signal: controller.signal,
+            // Set up isolation so the run never mutates the user's real data:
+            // Neon apps get a throwaway copy-on-write branch, Supabase apps get
+            // a throwaway RLS-scoped test user, and no-DB apps run as-is.
+            prepared = await prepareIsolatedTestDatabase({
+              app,
+              event,
+              emit,
+              runtimeMode,
+              signal: controller.signal,
+            });
+
+            // Isolation was required but couldn't be set up — dead-end safely
+            // rather than run against real data. teardown still runs in `finally`.
+            if (prepared.infraError) {
+              return {
+                appId,
+                results: [],
+                infraError: prepared.infraError,
+                isolation: prepared.isolation,
+              };
+            }
+
+            const result = await runAppTestsCore({
+              appId,
+              testFile,
+              testLine,
+              headed,
+              parallel,
+              signal: controller.signal,
+              onOutput: emit,
+              testEnv: prepared.testCredentials,
+            });
+            return { ...result, isolation: prepared.isolation };
+          } finally {
+            // Always restore the app to its real database, even on the
+            // infraError early-return, abort, or throw. `teardown` is safe to
+            // call exactly once; on the infraError path it's a NOOP (isolation
+            // already restored).
+            if (prepared) {
+              try {
+                await prepared.teardown();
+              } catch (error) {
+                logger.error(
+                  `Failed to tear down isolated test environment for app ${appId}: ${error}`,
+                );
+              }
+            }
+          }
         });
-
-        // Isolation was required but couldn't be set up — dead-end safely
-        // rather than run against real data. teardown still runs in `finally`.
-        if (prepared.infraError) {
-          return {
-            appId,
-            results: [],
-            infraError: prepared.infraError,
-            isolation: prepared.isolation,
-          };
-        }
-
-        const result = await runAppTestsCore({
-          appId,
-          testFile,
-          testLine,
-          headed,
-          parallel,
-          signal: controller.signal,
-          onOutput: emit,
-          testEnv: prepared.testCredentials,
-        });
-        return { ...result, isolation: prepared.isolation };
       } finally {
-        // Always restore the app to its real database, even on the infraError
-        // early-return, abort, or throw. `teardown` is safe to call exactly
-        // once; on the infraError path it's a NOOP (isolation already restored).
         // A teardown failure must not skip the cleanup below — leaving the
         // controller registered and `done` unresolved would make every future
         // run for this app wait forever on `prior.done`.
-        if (prepared) {
-          try {
-            await prepared.teardown();
-          } catch (error) {
-            logger.error(
-              `Failed to tear down isolated test environment for app ${appId}: ${error}`,
-            );
-          }
-        }
         if (testRunControllers.get(appId)?.controller === controller) {
           testRunControllers.delete(appId);
         }

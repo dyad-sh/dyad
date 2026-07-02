@@ -229,6 +229,21 @@ describe("createTempTestBranch", () => {
     expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 
+  it("deletes a partially-created branch when Neon omits the connection string", async () => {
+    // Neon created the branch but returned no connection_uris. The id was never
+    // persisted, so nothing could ever reconcile it — delete it best-effort.
+    mocks.createProjectBranch.mockResolvedValueOnce({
+      data: { branch: { id: "partial-br" }, connection_uris: [] },
+    });
+    await expect(createTempTestBranch(makeApp())).rejects.toThrow(
+      /connection string/,
+    );
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "partial-br",
+    );
+  });
+
   it("does not overwrite the column when the prior branch cleanup fails", async () => {
     // The prior leaked branch can't be deleted (Neon rejects), so we must keep
     // the column pointing at it for the reconciliation sweep instead of the new
@@ -253,6 +268,25 @@ describe("deleteTempTestBranch", () => {
   it("is a no-op when no test branch is set", async () => {
     await deleteTempTestBranch(makeApp({ neonTestBranchId: null }));
     expect(mocks.deleteProjectBranch).not.toHaveBeenCalled();
+  });
+
+  it("clears the column when Neon reports the branch is already gone (404)", async () => {
+    // A prior teardown deleted the branch but crashed before clearing the
+    // column. Neon now 404s — treat that as success so we stop dead-ending on
+    // the stale id forever.
+    mocks.deleteProjectBranch.mockRejectedValueOnce({
+      response: { status: 404 },
+    });
+    await deleteTempTestBranch(makeApp({ neonTestBranchId: "gone-br" }));
+    expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+
+  it("keeps the column set when the delete fails for a non-404 reason", async () => {
+    mocks.deleteProjectBranch.mockRejectedValueOnce({
+      response: { status: 500 },
+    });
+    await deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" }));
+    expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 });
 

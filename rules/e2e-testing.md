@@ -221,6 +221,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 - If `npx --prefer-offline --yes sfw@... --help` fails during warmup with `Failed to prepare firewall binary: Unable to fetch latest release and no valid cached release found`, keep the fresh per-test cache but add a short bounded retry around the warmup; the failure happens before Electron launches and can be a transient release-download issue.
 - For real-path blocked-package coverage, prefer `axois` over `lodahs`. `lodahs` can resolve to `0.0.1-security` and install successfully under `pnpm`, so it does not reliably reach the blocked-package UI.
 - In package-manager E2E shims, execute the resolved `pnpm` path directly. CI setup can provide a shell wrapper, and running that wrapper through `process.execPath` makes Node parse shell syntax instead of invoking pnpm.
+- Fake package-manager shims must parse subcommands across the full argv, not only `argv[0]`. Dyad can invoke `pnpm` as `pnpm --config.pm-on-fail=ignore --config.confirmModulesPurge=false --config.strictDepBuilds=false install`, so fake pnpm scripts should recognize config-prefixed `install`, `run dev`, and `--version`.
 
 ## Waiting for button state transitions
 

@@ -21,6 +21,10 @@ import { isVersionAtLeast } from "@/shared/version_utils";
 const logger = log.scope("managed_node");
 
 export const MANAGED_NODE_VERSION = "v24.18.0";
+const EXPECTED_MANAGED_NODE_VERSION =
+  IS_TEST_BUILD && process.env.DYAD_TEST_MANAGED_NODE_EXPECTED_VERSION
+    ? process.env.DYAD_TEST_MANAGED_NODE_EXPECTED_VERSION
+    : MANAGED_NODE_VERSION;
 export const MINIMUM_SYSTEM_NODE_VERSION = "20.0.0";
 export const MANAGED_NODE_INSTALL_CANCELLED_MESSAGE =
   "Managed Node.js install was cancelled.";
@@ -616,9 +620,9 @@ async function installFromArchive({
 
     const verifiedVersion = await getManagedNodeVersionFromDir(tempInstallDir);
     throwIfManagedNodeInstallCancelled(signal);
-    if (verifiedVersion !== MANAGED_NODE_VERSION) {
+    if (verifiedVersion !== EXPECTED_MANAGED_NODE_VERSION) {
       throw new ManagedNodeInstallError(
-        `Installed Node.js reported ${verifiedVersion ?? "no version"} instead of ${MANAGED_NODE_VERSION}. Your antivirus may have blocked the executable.`,
+        `Installed Node.js reported ${verifiedVersion ?? "no version"} instead of ${EXPECTED_MANAGED_NODE_VERSION}. Your antivirus may have blocked the executable.`,
         "av-blocked",
       );
     }

@@ -38,6 +38,7 @@ import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
 import { DyadProTrialDialog } from "./DyadProTrialDialog";
+import { SetupDyadProButton } from "./ProBanner";
 
 type NodeInstallStep =
   | "install"
@@ -335,6 +336,9 @@ export function SetupBanner() {
                 subtitle="Unlock the full power of Dyad"
                 chip={<>Recommended</>}
               />
+              <div className="mt-2 flex justify-center">
+                <SetupDyadProButton />
+              </div>
               <div className="mt-2 flex gap-2">
                 <SetupProviderCard
                   className="flex-1"

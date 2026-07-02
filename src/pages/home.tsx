@@ -27,12 +27,8 @@ import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import {
-  ProBanner,
-  ManageDyadProButton,
-  SetupDyadProButton,
-} from "@/components/ProBanner";
-import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { ProBanner } from "@/components/ProBanner";
+import { getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
@@ -217,13 +213,6 @@ export default function HomePage() {
   return (
     <div className="flex min-h-full w-full flex-col pb-28">
       <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
-        <div className="fixed top-16 right-8 z-50">
-          {settings && hasDyadProKey(settings) ? (
-            <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
-          ) : (
-            <SetupDyadProButton />
-          )}
-        </div>
         <SetupBanner />
 
         <div className="w-full">

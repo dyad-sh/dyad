@@ -94,7 +94,14 @@
     "telemetryId": "ID de Telemetria:",
     "enable": "Ativar Telemetria",
     "privacyNotice": "Usamos dados de telemetria anônimos para melhorar o produto. Nenhum dado pessoal é coletado.",
-    "acceptAndContinue": "Aceitar e Continuar"
+    "acceptAndContinue": "Aceitar e Continuar",
+    "shareAnonymousData": "Compartilhar dados anônimos?",
+    "helpImprove": "Ajude a melhorar o Dyad com dados de uso anônimos.",
+    "noCodeOrMessages": "Observação: isso não registra seu código nem suas mensagens.",
+    "learnMore": "Saiba mais",
+    "accept": "Aceitar",
+    "reject": "Recusar",
+    "later": "Mais tarde"
   },
   "integrations": {
     "title": "Integrações"

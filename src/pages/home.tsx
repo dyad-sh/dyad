@@ -215,7 +215,7 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex min-h-full w-full flex-col pb-28">
       <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
         <div className="fixed top-16 right-8 z-50">
           {settings && hasDyadProKey(settings) ? (

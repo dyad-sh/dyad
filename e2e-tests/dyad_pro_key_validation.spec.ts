@@ -18,10 +18,10 @@ test("Dyad Pro key is validated before saving", async ({ po }) => {
 
   const validationDialog = po.page.getByRole("alertdialog");
   await expect(
-    validationDialog.getByRole("heading", { name: "API key check failed" }),
+    validationDialog.getByRole("heading", { name: "API key rejected" }),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
   await expect(
-    validationDialog.getByText(/Dyad rejected this API key/),
+    validationDialog.getByText("Dyad rejected this API key."),
   ).toBeVisible();
   await validationDialog
     .getByRole("button", { name: "Try another API key" })

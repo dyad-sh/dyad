@@ -38,7 +38,7 @@ function ImageAttachmentThumbnail({ file }: { file: File }) {
         <img
           src={objectUrl}
           alt={file.name}
-          className="max-w-[200px] max-h-[200px] object-contain bg-white p-1 rounded shadow-lg"
+          className="max-w-[200px] max-h-[200px] object-contain bg-background p-1 rounded shadow-lg"
         />
       </TooltipContent>
     </Tooltip>

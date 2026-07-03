@@ -26,8 +26,11 @@ import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
-import { useAtomValue } from "jotai";
-import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
+import {
+  chatMessagesByIdAtom,
+  hasManuallySelectedChatModeAtom,
+} from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 import { useEffect, useRef } from "react";
 import {
@@ -51,6 +54,9 @@ export function ChatModeSelector() {
     setChatMode,
     settings,
   } = useChatMode(isChatRoute ? chatId : null);
+  const setHasManuallySelectedChatMode = useSetAtom(
+    hasManuallySelectedChatModeAtom,
+  );
   const fallbackToastKeyRef = useRef<string | null>(null);
 
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
@@ -101,6 +107,11 @@ export function ChatModeSelector() {
     ) {
       toast.error("Dyad Free is not available in Build mode.");
       return;
+    }
+    // An explicit pick outside a chat updates settings.selectedChatMode;
+    // latch so the home page stops syncing it to the effective default.
+    if (!isChatRoute || chatId == null) {
+      setHasManuallySelectedChatMode(true);
     }
     void setChatMode(newMode).catch(() => {});
 

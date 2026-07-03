@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
   effectiveDefaultChatMode: "build",
+  hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
   initialChatMode: "build",
   navigate: vi.fn(),
@@ -46,6 +47,9 @@ vi.mock("jotai", async (importOriginal) => ({
   useAtomValue: (atom: { debugLabel?: string }) => {
     if (atom.debugLabel === "pendingFirstPromptAtom") {
       return mocks.shouldResumeFirstPrompt;
+    }
+    if (atom.debugLabel === "hasManuallySelectedChatModeAtom") {
+      return mocks.hasManuallySelectedChatMode;
     }
     return undefined;
   },
@@ -203,6 +207,7 @@ describe("HomePage", () => {
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
     mocks.effectiveDefaultChatMode = "build";
+    mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
     mocks.initialChatMode = "build";
     mocks.navigate.mockReset();
@@ -392,46 +397,14 @@ describe("HomePage", () => {
     const { rerender } = renderHomePage();
 
     mocks.updateSettings.mockClear();
-    mocks.effectiveDefaultChatMode = "local-agent";
+
+    // User explicitly picks a mode from the selector, which latches the flag.
+    mocks.hasManuallySelectedChatMode = true;
     mocks.settings = {
       isTestMode: true,
       selectedChatMode: "ask",
     };
-    rerenderHomePage(rerender);
-
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
-  });
-
-  it("keeps a manual mode selection when the effective default temporarily matches it", () => {
-    mocks.isAnyProviderSetup = true;
-    mocks.isLoadingLanguageModelProviders = false;
-    mocks.initialChatMode = "local-agent";
     mocks.effectiveDefaultChatMode = "local-agent";
-    mocks.settings = {
-      isTestMode: true,
-      selectedChatMode: "local-agent",
-    };
-
-    const { rerender } = renderHomePage();
-
-    mocks.updateSettings.mockClear();
-
-    // User manually switches from the effective default to Build.
-    mocks.settings = {
-      isTestMode: true,
-      selectedChatMode: "build",
-    };
-    rerenderHomePage(rerender);
-
-    // The effective default later temporarily matches the manual Build choice.
-    mocks.effectiveDefaultChatMode = "build";
-    mocks.settings = { ...mocks.settings };
-    rerenderHomePage(rerender);
-
-    // When the effective default returns to Agent, the manual Build selection
-    // should not be reclassified as auto-applied and overwritten.
-    mocks.effectiveDefaultChatMode = "local-agent";
-    mocks.settings = { ...mocks.settings };
     rerenderHomePage(rerender);
 
     expect(mocks.updateSettings).not.toHaveBeenCalled();

@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   attachmentsAtom,
+  hasManuallySelectedChatModeAtom,
   homeChatInputValueAtom,
   homeSelectedAppAtom,
   pendingFirstPromptAtom,
@@ -119,62 +120,32 @@ export default function HomePage() {
     }
   }, [appId, navigate]);
 
-  // Apply default chat mode when navigating to home page
-  // Wait for quota status to load to avoid race condition where we default to Basic Agent
-  // before knowing if quota is actually exceeded
-  const defaultChatModeSyncState = useRef<{
-    isTrackingDefault: boolean;
-    lastEffectiveDefault?: ChatMode;
-    pendingAutoAppliedDefault?: ChatMode;
-  }>({
-    isTrackingDefault: true,
-  });
+  // Keep the selected chat mode synced to the effective default (which can
+  // change as quota/provider state loads) until the user explicitly picks a
+  // mode. Wait for quota status to load to avoid race condition where we
+  // default to Basic Agent before knowing if quota is actually exceeded.
+  const hasManuallySelectedChatMode = useAtomValue(
+    hasManuallySelectedChatModeAtom,
+  );
   useEffect(() => {
-    if (!settings || !homeInitialChatMode || isQuotaLoading) {
-      return;
-    }
-
-    const syncState = defaultChatModeSyncState.current;
-    const selectedModeChangedManually = syncState.pendingAutoAppliedDefault
-      ? settings.selectedChatMode !== syncState.pendingAutoAppliedDefault &&
-        settings.selectedChatMode !== syncState.lastEffectiveDefault
-      : syncState.lastEffectiveDefault &&
-        settings.selectedChatMode !== syncState.lastEffectiveDefault;
-
-    if (selectedModeChangedManually) {
-      syncState.isTrackingDefault = false;
-      syncState.pendingAutoAppliedDefault = undefined;
-    }
-
     if (
-      !syncState.isTrackingDefault ||
-      settings.selectedChatMode === homeInitialChatMode
+      !settings ||
+      !homeInitialChatMode ||
+      isQuotaLoading ||
+      hasManuallySelectedChatMode
     ) {
-      syncState.lastEffectiveDefault = homeInitialChatMode;
-      syncState.pendingAutoAppliedDefault = undefined;
       return;
     }
-
-    if (syncState.pendingAutoAppliedDefault === homeInitialChatMode) {
-      return;
+    if (settings.selectedChatMode !== homeInitialChatMode) {
+      updateSettings({ selectedChatMode: homeInitialChatMode });
     }
-
-    syncState.pendingAutoAppliedDefault = homeInitialChatMode;
-    void Promise.resolve(
-      updateSettings({ selectedChatMode: homeInitialChatMode }),
-    )
-      .then(() => {
-        if (syncState.pendingAutoAppliedDefault === homeInitialChatMode) {
-          syncState.lastEffectiveDefault = homeInitialChatMode;
-          syncState.pendingAutoAppliedDefault = undefined;
-        }
-      })
-      .catch(() => {
-        if (syncState.pendingAutoAppliedDefault === homeInitialChatMode) {
-          syncState.pendingAutoAppliedDefault = undefined;
-        }
-      });
-  }, [homeInitialChatMode, settings, updateSettings, isQuotaLoading]);
+  }, [
+    homeInitialChatMode,
+    settings,
+    updateSettings,
+    isQuotaLoading,
+    hasManuallySelectedChatMode,
+  ]);
 
   const openAiSetupDialog = useCallback(() => {
     posthog.capture("home:ai-setup-dialog-open");

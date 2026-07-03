@@ -4,7 +4,6 @@ import {
   appendCancelledResponseNotice,
   stripCancelledResponseNotice,
   applyCancellationNoticeToLastAssistantMessage,
-  filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
 
 describe("chatCancellation", () => {
@@ -153,72 +152,6 @@ describe("chatCancellation", () => {
     it("should handle empty messages array", () => {
       const result = applyCancellationNoticeToLastAssistantMessage([]);
       expect(result).toEqual([]);
-    });
-  });
-
-  describe("filterCancelledMessagePairs", () => {
-    it("should filter out cancelled assistant messages", () => {
-      const messages = [
-        { role: "user", content: "Hello" },
-        {
-          role: "assistant",
-          content: "Hi\n\n[Response cancelled by user]",
-        },
-        { role: "user", content: "Try again" },
-        { role: "assistant", content: "Hello!" },
-      ];
-      const result = filterCancelledMessagePairs(messages);
-      expect(result).toEqual([
-        { role: "user", content: "Try again" },
-        { role: "assistant", content: "Hello!" },
-      ]);
-    });
-
-    it("should filter the preceding user message of a cancelled response", () => {
-      const messages = [
-        { role: "user", content: "First question" },
-        {
-          role: "assistant",
-          content: "[Response cancelled by user]",
-        },
-      ];
-      const result = filterCancelledMessagePairs(messages);
-      expect(result).toEqual([]);
-    });
-
-    it("should not filter non-cancelled messages", () => {
-      const messages = [
-        { role: "user", content: "Hello" },
-        { role: "assistant", content: "Hi there" },
-      ];
-      const result = filterCancelledMessagePairs(messages);
-      expect(result).toEqual(messages);
-    });
-
-    it("should handle empty array", () => {
-      expect(filterCancelledMessagePairs([])).toEqual([]);
-    });
-
-    it("should handle multiple cancelled pairs", () => {
-      const messages = [
-        { role: "user", content: "Q1" },
-        {
-          role: "assistant",
-          content: "A1\n\n[Response cancelled by user]",
-        },
-        { role: "user", content: "Q2" },
-        {
-          role: "assistant",
-          content: "[Response cancelled by user]",
-        },
-        { role: "user", content: "Q3" },
-        { role: "assistant", content: "A3" },
-      ];
-      const result = filterCancelledMessagePairs(messages);
-      expect(result).toEqual([
-        { role: "user", content: "Q3" },
-        { role: "assistant", content: "A3" },
-      ]);
     });
   });
 });

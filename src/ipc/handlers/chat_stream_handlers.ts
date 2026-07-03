@@ -93,10 +93,7 @@ import {
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
 import { isCodeExplorerReady } from "../processors/code_explorer";
-import {
-  appendCancelledResponseNotice,
-  filterCancelledMessagePairs,
-} from "@/shared/chatCancellation";
+import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
   extractMentionedAppsCodebasesFromPrompt,
   extractMentionedAppsReferencesFromPrompt,
@@ -874,16 +871,12 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistoryRaw = updatedChat.messages.map((message) => ({
+        const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
-
-        // Filter out cancelled message pairs (user prompt + cancelled assistant response)
-        // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
-        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the

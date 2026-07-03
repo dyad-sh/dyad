@@ -116,6 +116,10 @@ export const RestoreToMessageParamsSchema = z.object({
   appId: z.number(),
   chatId: z.number(),
   messageId: z.number(),
+  // When true (the default), the codebase (and database, if applicable) is
+  // reverted to the version before this message in addition to forking the
+  // chat. When false, only the chat is forked and the codebase is left as-is.
+  restoreCodebase: z.boolean().optional(),
 });
 
 export type RestoreToMessageParams = z.infer<

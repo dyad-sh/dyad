@@ -93,3 +93,94 @@ testSkipIfWindows(
     await expect(messagesList).toContainText("tc=write-index-2");
   },
 );
+
+/**
+ * "Fork chat only" forks the conversation into a new chat but leaves the app's
+ * code untouched.
+ */
+testSkipIfWindows(
+  "restore to message - fork chat only leaves code untouched",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.importApp("minimal");
+
+    const indexPath = async () =>
+      path.join(
+        await po.appManagement.getCurrentAppPath(),
+        "src",
+        "pages",
+        "Index.tsx",
+      );
+
+    await po.sendPrompt("tc=write-index");
+    await po.sendPrompt("tc=write-index-2");
+    expect(fs.readFileSync(await indexPath(), "utf-8")).toContain(
+      "Testing:write-index(2)!",
+    );
+
+    const originalChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
+    expect(originalChatId).toBeTruthy();
+
+    const restoreButtons = po.page.getByTestId("restore-to-message-button");
+    await expect(restoreButtons).toHaveCount(3);
+
+    // Open the dialog on the last user message (turn B) and choose to only fork
+    // the chat.
+    await restoreButtons.nth(2).click();
+    await po.page.getByTestId("fork-chat-button").click();
+
+    // We should navigate to a brand-new chat with only the messages before
+    // turn B.
+    await expect(async () => {
+      const newChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
+      expect(newChatId).toBeTruthy();
+      expect(newChatId).not.toBe(originalChatId);
+    }).toPass({ timeout: Timeout.LONG });
+    await expect(restoreButtons).toHaveCount(2);
+
+    const messagesList = po.page.getByTestId("messages-list");
+    await expect(messagesList).toContainText("tc=write-index");
+    await expect(messagesList).not.toContainText("tc=write-index-2");
+
+    // The app code must NOT be reverted: forking only touches the chat.
+    expect(fs.readFileSync(await indexPath(), "utf-8")).toContain(
+      "Testing:write-index(2)!",
+    );
+  },
+);
+
+/**
+ * Restoring to the very first message is allowed: it restores to "version 1"
+ * (the commit before the first message's changes) and forks a new, empty chat.
+ */
+testSkipIfWindows(
+  "restore to message - first message forks an empty chat",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.importApp("minimal");
+
+    await po.sendPrompt("tc=write-index");
+
+    const originalChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
+    expect(originalChatId).toBeTruthy();
+
+    // The imported "minimal" fixture adds an auto-generated AI_RULES.md user
+    // message followed by turn A, so there are two restore buttons.
+    const restoreButtons = po.page.getByTestId("restore-to-message-button");
+    await expect(restoreButtons).toHaveCount(2);
+
+    // Restore to the FIRST user message. Previously this failed with "Cannot
+    // restore before the first message"; now it forks an empty chat.
+    await restoreButtons.nth(0).click();
+    await po.page.getByTestId("confirm-restore-to-message-button").click();
+
+    // We navigate to a brand-new chat with no prior messages, so no restore
+    // buttons are shown.
+    await expect(async () => {
+      const newChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
+      expect(newChatId).toBeTruthy();
+      expect(newChatId).not.toBe(originalChatId);
+    }).toPass({ timeout: Timeout.LONG });
+    await expect(restoreButtons).toHaveCount(0);
+  },
+);

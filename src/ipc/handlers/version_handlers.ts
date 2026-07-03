@@ -792,7 +792,7 @@ export function registerVersionHandlers() {
   createTypedHandler(
     versionContracts.restoreToMessageVersion,
     async (_, params) => {
-      const { appId, chatId, messageId } = params;
+      const { appId, chatId, messageId, restoreCodebase = true } = params;
       return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
@@ -833,14 +833,10 @@ export function registerVersionHandlers() {
 
         const messagesBefore = chat.messages.slice(0, targetIndex);
 
-        // Restoring to the very first message would preserve no prior messages,
-        // producing an empty "(restored)" chat that gives the user no useful
-        // context. Bail out with a warning instead of creating that empty chat.
-        if (messagesBefore.length === 0) {
-          return {
-            warningMessage: "Cannot restore before the first message.",
-          };
-        }
+        // Restoring to the very first message is allowed: "version 1" is the
+        // commit that existed before the first message's changes were applied,
+        // so we restore to that version and fork an empty chat (no prior
+        // messages to copy). The empty chat starts from the restored version.
 
         // Determine the version that existed right before the target message.
         // Primary signal: the assistant message that responded to the target
@@ -873,28 +869,35 @@ export function registerVersionHandlers() {
           targetCommitHash = chat.initialCommitHash ?? null;
         }
 
-        if (!targetCommitHash) {
-          // No version could be determined, so we don't create a new chat.
-          // Omit `newChatId` so the renderer stays on the current chat instead
-          // of "navigating" to the same one (which would look like a no-op).
-          return {
-            warningMessage:
-              "Could not determine a version to restore to for this message.",
-          };
-        }
+        // When the user chose to also restore the codebase, we need a concrete
+        // version to revert to. Revert the codebase first: if this throws (e.g.
+        // a Git or Neon error), we bail out before touching the database so we
+        // don't leave an orphaned, partially-created chat behind. A
+        // `warningMessage` still means the codebase was reverted (only a
+        // secondary step failed), so we go on to create the new chat in that
+        // case. When the user only forks the chat, we skip the revert entirely.
+        let successMessage = "Forked the chat into a new chat.";
+        let warningMessage = "";
 
-        // Revert the codebase first. If this throws (e.g. a Git or Neon
-        // error), we bail out before touching the database so we don't leave
-        // an orphaned, partially-created chat behind. A `warningMessage` still
-        // means the codebase was reverted (only a secondary step failed), so
-        // we go on to create the new chat in that case.
-        const { successMessage, warningMessage } =
-          await revertCodebaseToVersion({
+        if (restoreCodebase) {
+          if (!targetCommitHash) {
+            // No version could be determined, so we don't create a new chat.
+            // Omit `newChatId` so the renderer stays on the current chat instead
+            // of "navigating" to the same one (which would look like a no-op).
+            return {
+              warningMessage:
+                "Could not determine a version to restore to for this message.",
+            };
+          }
+          const result = await revertCodebaseToVersion({
             appId,
             app,
             appPath,
             previousVersionId: targetCommitHash,
           });
+          successMessage = result.successMessage;
+          warningMessage = result.warningMessage;
+        }
 
         // Carry over the original chat's title (with a suffix) so the forked
         // chat is identifiable in the sidebar instead of showing up as another
@@ -908,14 +911,27 @@ export function registerVersionHandlers() {
           ? `${baseTitle} (restored)`
           : "(restored)";
 
-        // Create the new chat pointing at the target version and copy over the
-        // earlier messages atomically. We insert directly (instead of using the
-        // createChat handler) so `initialCommitHash` is the target version
-        // rather than the current (not-yet-reverted) tree. Wrapping both inserts
-        // in a transaction ensures we never leave behind an orphaned, empty
-        // "(restored)" chat if the messages insert fails after the chat insert.
-        // better-sqlite3 transactions are synchronous, so the callback uses the
-        // sync query API (`.get()`/`.run()`) rather than `await`.
+        // Anchor the forked chat to the version it actually starts from. When we
+        // restored the codebase, that's the target version. When we only forked
+        // the chat (codebase left untouched), the new chat starts from the
+        // current tree, so use the current commit instead of the historical
+        // target — otherwise "changes since chat started" would incorrectly span
+        // everything between the old target and HEAD.
+        const forkInitialCommitHash = restoreCodebase
+          ? targetCommitHash
+          : await getCurrentCommitHash({ path: appPath, ref: "main" }).catch(
+              () => targetCommitHash,
+            );
+
+        // Create the new chat pointing at that version and copy over the earlier
+        // messages atomically. We insert directly (instead of using the
+        // createChat handler) so `initialCommitHash` is the intended version
+        // rather than whatever the createChat handler would capture. Wrapping
+        // both inserts in a transaction ensures we never leave behind an
+        // orphaned, empty "(restored)" chat if the messages insert fails after
+        // the chat insert. better-sqlite3 transactions are synchronous, so the
+        // callback uses the sync query API (`.get()`/`.run()`) rather than
+        // `await`.
         const newChat = db.transaction((tx) => {
           const createdChat = tx
             .insert(chats)
@@ -923,7 +939,7 @@ export function registerVersionHandlers() {
               appId,
               title: restoredTitle,
               chatMode: chat.chatMode,
-              initialCommitHash: targetCommitHash,
+              initialCommitHash: forkInitialCommitHash,
             })
             .returning()
             .get();

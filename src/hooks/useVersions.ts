@@ -181,10 +181,10 @@ export function useVersions(appId: number | null) {
   const restoreToMessageMutation = useMutation<
     RestoreToMessageResponse,
     Error,
-    { chatId: number; messageId: number }
+    { chatId: number; messageId: number; restoreCodebase: boolean }
   >({
     mutationKey: restoreToMessageMutationKey,
-    mutationFn: async ({ chatId, messageId }) => {
+    mutationFn: async ({ chatId, messageId, restoreCodebase }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
         throw new DyadError("App ID is null", DyadErrorKind.External);
@@ -193,6 +193,7 @@ export function useVersions(appId: number | null) {
         appId: currentAppId,
         chatId,
         messageId,
+        restoreCodebase,
       });
     },
     onSuccess: async (result) => {

@@ -42,11 +42,11 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 import { unescapeXmlAttr } from "../../../shared/xmlEscape";
 import {
   isCancelledResponseContent,
@@ -216,7 +216,7 @@ const ChatMessage = ({
   const showRestoreButton =
     message.role === "user" && hasUserText && !isCancelled;
 
-  const handleRestoreToMessage = async () => {
+  const handleRestoreToMessage = async (restoreCodebase: boolean) => {
     if (appId == null || selectedChatId == null) {
       return;
     }
@@ -228,6 +228,7 @@ const ChatMessage = ({
       const result = await restoreToMessage({
         chatId: selectedChatId,
         messageId: message.id,
+        restoreCodebase,
       });
       // A `newChatId` is only returned when a new chat was actually created. If
       // no version could be determined, we stay on the current chat (the user
@@ -266,9 +267,7 @@ const ChatMessage = ({
                         onClick={() => setShowRestoreConfirm(true)}
                         disabled={isAnyVersionMutationPending}
                         aria-label="Restore to this point"
-                        className={`absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200 ${
-                          isRestoringToMessage ? "opacity-100" : ""
-                        }`}
+                        className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 shadow-sm transition-colors duration-200 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200"
                       />
                     }
                   >
@@ -279,7 +278,7 @@ const ChatMessage = ({
                     )}
                   </TooltipTrigger>
                   <TooltipContent>
-                    Restore to before this message in a new chat
+                    Fork or restore to before this message in a new chat
                   </TooltipContent>
                 </Tooltip>
                 <AlertDialog
@@ -291,20 +290,25 @@ const ChatMessage = ({
                       <AlertDialogTitle>
                         Restore to this point?
                       </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {isStreaming
-                          ? "This will stop the current response, then restore your app and chat to the state before this message in a new chat. Your current chat will not be changed."
-                          : "This will restore your app and chat to the state before this message in a new chat. Your current chat will not be changed."}
-                      </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogFooter className="flex-col sm:flex-col sm:justify-normal">
                       <AlertDialogAction
                         data-testid="confirm-restore-to-message-button"
-                        onClick={handleRestoreToMessage}
+                        className="w-full"
+                        onClick={() => handleRestoreToMessage(true)}
                       >
-                        Restore
+                        Restore code & fork chat
                       </AlertDialogAction>
+                      <AlertDialogAction
+                        data-testid="fork-chat-button"
+                        className={`${buttonVariants({ variant: "outline" })} w-full text-foreground`}
+                        onClick={() => handleRestoreToMessage(false)}
+                      >
+                        Fork chat only
+                      </AlertDialogAction>
+                      <AlertDialogCancel className="w-full">
+                        Cancel
+                      </AlertDialogCancel>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>

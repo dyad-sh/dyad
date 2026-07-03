@@ -7,7 +7,10 @@
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart, Todo } from "./tools/types";
-import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
+import {
+  cleanMessage,
+  sanitizeToolCallTranscript,
+} from "@/ipc/utils/ai_messages_utils";
 import { validateImageDimensions } from "./tools/image_utils";
 
 /**
@@ -281,6 +284,31 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
   }
 
   return changed ? result : null;
+}
+
+export function sanitizeStepMessages<T extends ModelMessage>(
+  messages: T[],
+): { messages: T[]; changed: boolean } {
+  const ordered = ensureToolResultOrdering(messages);
+  const beforeSanitize = ordered ?? messages;
+  const sanitized = sanitizeToolCallTranscript(beforeSanitize);
+  const changed =
+    ordered != null || didMessageArrayChange(sanitized, beforeSanitize);
+
+  return {
+    messages: changed ? (sanitized as T[]) : messages,
+    changed,
+  };
+}
+
+function didMessageArrayChange(
+  nextMessages: ModelMessage[],
+  previousMessages: ModelMessage[],
+) {
+  return (
+    nextMessages.length !== previousMessages.length ||
+    nextMessages.some((message, index) => message !== previousMessages[index])
+  );
 }
 
 function isToolCallPart(

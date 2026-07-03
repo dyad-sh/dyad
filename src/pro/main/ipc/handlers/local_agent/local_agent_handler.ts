@@ -84,7 +84,7 @@ import {
   buildTodoReminderMessage,
   hasIncompleteTodos,
   formatTodoSummary,
-  ensureToolResultOrdering,
+  sanitizeStepMessages,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
@@ -1093,25 +1093,20 @@ export async function handleLocalAgentStream(
                 preparedStep ??
                 (stepOptions === options ? undefined : stepOptions);
 
-              // Defensive: ensure injected user messages don't break
-              // tool_use/tool_result pairing. Catches edge cases where
-              // injection indices become stale after compaction.
-              if (result?.messages) {
-                const ordered = ensureToolResultOrdering(result.messages);
-                const beforeSanitize = ordered ?? result.messages;
-                const fixed = sanitizeToolCallTranscript(beforeSanitize);
-                const changed =
-                  ordered != null ||
-                  fixed.length !== beforeSanitize.length ||
-                  fixed.some(
-                    (message, index) => message !== beforeSanitize[index],
-                  );
-                if (changed) {
-                  logger.warn(
-                    `ensureToolResultOrdering fixed misplaced user messages in chat ${req.chatId}`,
-                  );
-                  result = { ...result, messages: fixed };
-                }
+              // Defensive: ensure injected user messages and split tool result
+              // messages don't break tool_use/tool_result pairing. This also
+              // runs when prepareStepMessages had no other changes to apply.
+              const normalizedStep = sanitizeStepMessages(
+                result?.messages ?? stepOptions.messages,
+              );
+              if (normalizedStep.changed) {
+                logger.warn(
+                  `Normalized local-agent tool-call transcript before step for chat ${req.chatId}`,
+                );
+                result = {
+                  ...(result ?? stepOptions),
+                  messages: normalizedStep.messages,
+                };
               }
 
               return result;

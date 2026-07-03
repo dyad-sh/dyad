@@ -115,10 +115,6 @@ export function cleanMessage<T extends ModelMessage>(message: T): T {
   return { ...message, content: cleanedContent } as T;
 }
 
-function cleanMessages(messages: ModelMessage[]): ModelMessage[] {
-  return messages.map(cleanMessage);
-}
-
 /**
  * Anthropic requires every assistant tool-call to be followed immediately by a
  * tool message containing the matching results. Persisted or dynamically
@@ -129,10 +125,11 @@ function cleanMessages(messages: ModelMessage[]): ModelMessage[] {
 export function sanitizeToolCallTranscript(
   messages: ModelMessage[],
 ): ModelMessage[] {
+  const cleaned = messages.map(cleanMessage);
   const sanitized: ModelMessage[] = [];
 
-  for (let i = 0; i < messages.length; i++) {
-    const message = cleanMessage(messages[i]);
+  for (let i = 0; i < cleaned.length; i++) {
+    const message = cleaned[i];
 
     // Tool messages are only valid when consumed by the immediately preceding
     // assistant tool-call branch below. A standalone tool result is dangling.
@@ -147,21 +144,24 @@ export function sanitizeToolCallTranscript(
     }
 
     const expectedToolCallIds = new Set(toolCallIds);
-    const scanEnd = findNextAssistantIndex(messages, i + 1);
+    const scanEnd = findNextAssistantIndex(cleaned, i + 1);
     const collectedToolResults = collectToolResults(
-      messages.slice(i + 1, scanEnd),
+      cleaned.slice(i + 1, scanEnd),
       expectedToolCallIds,
     );
 
     if (hasAllToolResults(collectedToolResults, expectedToolCallIds)) {
       sanitized.push(message);
-      sanitized.push({
-        role: "tool",
-        content: collectedToolResults,
-      } as ModelMessage);
+      sanitized.push(
+        getCanonicalToolMessage(cleaned[i + 1], collectedToolResults) ??
+          ({
+            role: "tool",
+            content: collectedToolResults,
+          } as ModelMessage),
+      );
 
       for (let j = i + 1; j < scanEnd; j++) {
-        const interveningMessage = cleanMessage(messages[j]);
+        const interveningMessage = cleaned[j];
         if (interveningMessage.role !== "tool") {
           sanitized.push(interveningMessage);
         }
@@ -178,6 +178,25 @@ export function sanitizeToolCallTranscript(
   }
 
   return sanitized;
+}
+
+function getCanonicalToolMessage(
+  message: ModelMessage | undefined,
+  collectedToolResults: ToolResultTranscriptPart[],
+): ModelMessage | null {
+  if (message?.role !== "tool" || !Array.isArray(message.content)) {
+    return null;
+  }
+
+  if (message.content.length !== collectedToolResults.length) {
+    return null;
+  }
+
+  return message.content.every(
+    (part, index) => part === collectedToolResults[index],
+  )
+    ? message
+    : null;
 }
 
 function findNextAssistantIndex(messages: ModelMessage[], startIndex: number) {
@@ -345,7 +364,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
       Array.isArray(parsed) &&
       parsed.every((m) => m && typeof m.role === "string")
     ) {
-      return sanitizeToolCallTranscript(cleanMessages(parsed));
+      return sanitizeToolCallTranscript(parsed);
     }
 
     if (
@@ -359,9 +378,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
         (m: ModelMessage) => m && typeof m.role === "string",
       )
     ) {
-      return sanitizeToolCallTranscript(
-        cleanMessages((parsed as AiMessagesJsonV6).messages),
-      );
+      return sanitizeToolCallTranscript((parsed as AiMessagesJsonV6).messages);
     }
   }
 

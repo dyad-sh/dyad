@@ -7,6 +7,7 @@ import {
   hasIncompleteTodos,
   buildTodoReminderMessage,
   ensureToolResultOrdering,
+  sanitizeStepMessages,
   type InjectedMessage,
 } from "@/pro/main/ipc/handlers/local_agent/prepare_step_utils";
 import type {
@@ -1347,6 +1348,98 @@ describe("prepare_step_utils", () => {
       ];
 
       expect(ensureToolResultOrdering(messages)).toBeNull();
+    });
+  });
+
+  describe("sanitizeStepMessages", () => {
+    it("returns unchanged when an existing tool result is already canonical", () => {
+      const messages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              input: { path: "src/App.tsx" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              output: textToolResult("app"),
+            },
+          ],
+        },
+      ];
+
+      const result = sanitizeStepMessages(messages);
+
+      expect(result.changed).toBe(false);
+      expect(result.messages).toBe(messages);
+    });
+
+    it("merges split parallel tool results even without pending injections", () => {
+      const messages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              input: { path: "src/App.tsx" },
+            },
+            {
+              type: "tool-call",
+              toolCallId: "call-2",
+              toolName: "read_file",
+              input: { path: "src/main.tsx" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              output: textToolResult("app"),
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-2",
+              toolName: "read_file",
+              output: textToolResult("main"),
+            },
+          ],
+        },
+      ];
+
+      const result = sanitizeStepMessages(messages);
+
+      expect(result.changed).toBe(true);
+      expect(result.messages).toEqual([
+        messages[0],
+        {
+          role: "tool",
+          content: [
+            (messages[1].content as any[])[0],
+            (messages[2].content as any[])[0],
+          ],
+        },
+      ]);
     });
   });
 

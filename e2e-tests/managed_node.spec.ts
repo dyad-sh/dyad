@@ -6,11 +6,12 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { execFileSync } from "child_process";
 import { testWithConfig, Timeout } from "./helpers/test_helper";
+import type { ElectronApplication } from "playwright";
 
 const MANAGED_NODE_VERSION = "v24.18.0";
 
 function createManagedNodeFixtureArchive(userDataDir: string) {
-  const fixtureDir = path.join(userDataDir, "managed-node-fixture");
+  const fixtureDir = path.join(userDataDir, "managed node fixture");
   const isWindows = process.platform === "win32";
   const rootDir = path.join(
     fixtureDir,
@@ -197,3 +198,60 @@ test("managed Node exposes install, preference, and removal controls in Settings
     runtimeSettings.getByRole("button", { name: "Install managed Node.js" }),
   ).toBeVisible();
 });
+
+test("managed Node install persists after a renderer reload", async ({
+  po,
+  electronApp,
+}) => {
+  await po.setUp();
+  await po.setNodeMock(false);
+  await po.navigation.goToSettingsTab();
+  let runtimeSettings = po.page.getByTestId("node-runtime-settings");
+
+  await expect(
+    runtimeSettings.getByText("No usable Node.js found"),
+  ).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+
+  await runtimeSettings
+    .getByRole("button", { name: "Install managed Node.js" })
+    .click();
+  await expect
+    .poll(() => po.settings.recordSettings().nodeRuntimePreference, {
+      timeout: Timeout.LONG,
+    })
+    .toBe("managed");
+  await expect(
+    runtimeSettings.getByRole("button", { name: "Remove managed Node.js" }),
+  ).toBeVisible({ timeout: Timeout.LONG });
+
+  await reloadRenderer(electronApp);
+  await po.page.waitForLoadState("domcontentloaded");
+  await po.navigation.goToSettingsTab();
+  runtimeSettings = po.page.getByTestId("node-runtime-settings");
+
+  await expect
+    .poll(() => po.settings.recordSettings().nodeRuntimePreference, {
+      timeout: Timeout.MEDIUM,
+    })
+    .toBe("managed");
+  await expect(runtimeSettings.getByText(/Dyad-managed/)).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+  await expect(
+    runtimeSettings.getByRole("button", { name: "Remove managed Node.js" }),
+  ).toBeVisible();
+});
+
+async function reloadRenderer(electronApp: ElectronApplication) {
+  const appPath = await electronApp.evaluate(({ app }) => app.getAppPath());
+  const rendererIndexPath = path.join(
+    appPath,
+    ".vite/renderer/main_window/index.html",
+  );
+  await electronApp.evaluate(async ({ BrowserWindow }, rendererIndexPath) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    await window.loadFile(rendererIndexPath);
+  }, rendererIndexPath);
+}

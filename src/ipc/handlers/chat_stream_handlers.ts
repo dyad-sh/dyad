@@ -163,6 +163,12 @@ export function getActiveStreamCount(): number {
   return activeStreams.size;
 }
 
+// Resolves when a stream's handler has fully unwound (its `finally` block ran,
+// so any in-flight tool/file writes have settled). `cancelStream` awaits this
+// after aborting so callers like restore-to-message don't touch the working
+// tree while a cancelled turn is still flushing partial file writes.
+const streamCompletions = new Map<number, Promise<void>>();
+
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
 
@@ -309,6 +315,15 @@ export function registerChatStreamHandlers() {
     req: ChatStreamParams,
   ) => {
     let attachmentPaths: string[] = [];
+    // Expose a promise that resolves once this handler fully unwinds (see the
+    // `finally` block) so `cancelStream` can await in-flight tool/file writes.
+    let resolveCompletion: () => void = () => {};
+    streamCompletions.set(
+      req.chatId,
+      new Promise<void>((resolve) => {
+        resolveCompletion = resolve;
+      }),
+    );
     try {
       // This legacy stream handler predates createTypedHandler, so enforce the
       // contract explicitly before any attachment string is decoded.
@@ -1862,6 +1877,11 @@ This conversation includes one or more image attachments. When the user uploads 
       safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
       // Unblock any pending MCP consents (their banners are cleared on stream end).
       clearPendingMcpConsentsForChat(req.chatId);
+
+      // Signal any awaiting `cancelStream` call that all writes have settled,
+      // then drop the (now-resolved) completion promise for this chat.
+      streamCompletions.delete(req.chatId);
+      resolveCompletion();
     }
   };
   registerTrustedIpcHandler("chat:stream", chatStreamHandler);
@@ -1869,6 +1889,7 @@ This conversation includes one or more image attachments. When the user uploads 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
     const abortController = activeStreams.get(chatId);
+    const completion = streamCompletions.get(chatId);
 
     if (abortController) {
       // Abort the stream
@@ -1877,6 +1898,14 @@ This conversation includes one or more image attachments. When the user uploads 
       logger.log(`Aborted stream for chat ${chatId}`);
     } else {
       logger.warn(`No active stream found for chat ${chatId}`);
+    }
+
+    // Wait for the in-flight stream handler to fully unwind before returning so
+    // callers (e.g. restore-to-message) know any partial tool/file writes have
+    // settled and won't race a subsequent git revert. The handler logs its own
+    // errors, so a rejected completion here is not actionable.
+    if (completion) {
+      await completion.catch(() => {});
     }
 
     // Send the end event to the renderer with wasCancelled flag

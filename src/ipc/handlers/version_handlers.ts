@@ -362,9 +362,13 @@ async function revertCodebaseToVersion({
         successMessage =
           "Successfully restored to version (including database)";
       } catch (error) {
-        const errorMessage = getNeonErrorMessage(error);
-        logger.error("Error in restoreBranchForCheckout:", errorMessage);
-        warningMessage = `Could not restore database because of error: ${errorMessage}`;
+        logger.error(
+          "Error restoring Neon development branch during revert:",
+          getNeonErrorMessage(error),
+        );
+        // Use the shared helper so the retention-window case gets its
+        // user-friendly explanation instead of a raw error string.
+        warningMessage = getDatabaseRestoreWarning(error);
         // Do not throw, so we can finish switching the postgres branch
         // It might throw because they picked a timestamp that's too old.
       }
@@ -835,6 +839,11 @@ export function registerVersionHandlers() {
           if (messagesBefore.length > 0) {
             tx.insert(messages)
               .values(
+                // IMPORTANT: keep this field list in sync with the `messages`
+                // table schema in db/schema.ts. New columns are NOT copied
+                // automatically — add them here (or make a conscious decision to
+                // omit them, like `usingFreeAgentModeQuota` below) when the
+                // schema changes.
                 messagesBefore.map((m) => ({
                   chatId: createdChat.id,
                   role: m.role,

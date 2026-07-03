@@ -42,6 +42,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -290,6 +291,13 @@ const ChatMessage = ({
                       <AlertDialogTitle>
                         Restore to this point?
                       </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This creates a new chat containing only the messages
+                        before this point. Your current chat is left unchanged.
+                        "Restore code &amp; fork chat" also reverts your
+                        codebase to its state before this message; "Fork chat
+                        only" leaves your files as they are.
+                      </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex-col sm:flex-col sm:justify-normal">
                       <AlertDialogAction

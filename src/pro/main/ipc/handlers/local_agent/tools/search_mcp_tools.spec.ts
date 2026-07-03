@@ -1,13 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { searchMcpToolsTool } from "./search_mcp_tools";
 import type { McpToolDef } from "./mcp_type_defs";
 import type { AgentContext } from "./types";
-
-const readSettingsMock = vi.fn();
-
-vi.mock("@/main/settings", () => ({
-  readSettings: () => readSettingsMock(),
-}));
 
 // Avoid touching the DB if the tool ever falls back to a fresh collection.
 vi.mock("./mcp_type_defs", async (importOriginal) => {
@@ -61,26 +55,19 @@ function makeCtx(defs: McpToolDef[] | undefined): AgentContext {
   } as unknown as AgentContext;
 }
 
-beforeEach(() => {
-  readSettingsMock.mockReturnValue({
-    enableMcpToolSearch: true,
-    enableSandboxScriptExecution: true,
-  });
-});
-
 describe("searchMcpToolsTool.isEnabled", () => {
-  it("is enabled when search mode is active for the turn", () => {
+  it("is enabled when search mode is available for the turn", () => {
     expect(
       searchMcpToolsTool.isEnabled?.({
-        useMcpToolSearch: true,
+        isMcpToolSearchAvailable: true,
       } as unknown as AgentContext),
     ).toBe(true);
   });
 
-  it("is disabled in inline mode (search not active)", () => {
+  it("is disabled in inline mode (search not available)", () => {
     expect(
       searchMcpToolsTool.isEnabled?.({
-        useMcpToolSearch: false,
+        isMcpToolSearchAvailable: false,
       } as unknown as AgentContext),
     ).toBe(false);
     expect(searchMcpToolsTool.isEnabled?.({} as unknown as AgentContext)).toBe(

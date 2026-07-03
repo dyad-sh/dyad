@@ -759,24 +759,28 @@ export async function handleLocalAgentStream(
       }
     }
     // When execute_sandbox_script is active, MCP tools become sandbox host
-    // functions instead of individual LLM tools. Use search mode (list tool
-    // names and let the model fetch schemas on demand) if both of the following
-    // are true:
+    // functions instead of individual LLM tools. Search mode (list tool names
+    // and let the model fetch schemas on demand) is available if both of the
+    // following are true:
     // 1) the tool search setting is on, and
     // 2) inlining every tool declaration would exceed the size threshold.
     // Otherwise inline every declaration in the description.
-    ctx.useMcpToolSearch =
+    ctx.isMcpToolSearchAvailable =
       mcpInSandboxEnabled &&
       !!settings.enableMcpToolSearch &&
       estimateMcpInlineTokens(mcpDefs) > getMcpInlineTokenThreshold();
 
     const agentTools = buildAgentToolSet(ctx, buildOptions);
-    // If tool permissions removed search_mcp_tools, fall back to inline so the
-    // description does not point the model at a tool that is not registered.
-    const useMcpToolSearch =
-      ctx.useMcpToolSearch && agentTools.search_mcp_tools != undefined;
-    // get_mcp_tool_schema can also be removed by tool permissions, so only
-    // advertise it in the description when it actually registered.
+    // search_mcp_tools returns full tool declarations, so it alone is enough for
+    // search mode. If tool permissions removed it, fall back to inline and drop
+    // the now-unused get_mcp_tool_schema tool.
+    let useMcpToolSearch = ctx.isMcpToolSearchAvailable;
+    if (useMcpToolSearch && agentTools.search_mcp_tools == undefined) {
+      useMcpToolSearch = false;
+      delete agentTools.get_mcp_tool_schema;
+    }
+    // get_mcp_tool_schema can also be removed by tool permissions on its own, so
+    // only advertise it in the description when it actually registered.
     const hasGetSchemaTool = agentTools.get_mcp_tool_schema != undefined;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled

@@ -42,8 +42,8 @@ export const getMcpToolSchemaTool: ToolDefinition<GetMcpToolSchemaArgs> = {
   inputSchema: getMcpToolSchemaSchema,
   defaultConsent: "always",
 
-  // Only registered in search mode; see ctx.useMcpToolSearch.
-  isEnabled: (ctx) => !!ctx.useMcpToolSearch,
+  // Only registered in search mode; see ctx.isMcpToolSearchAvailable.
+  isEnabled: (ctx) => !!ctx.isMcpToolSearchAvailable,
 
   getConsentPreview: (args) =>
     `Get schema for MCP tool(s): ${args.tools.join(", ")}`,

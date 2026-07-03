@@ -80,7 +80,40 @@ testSetup.describe("Setup Flow", () => {
         .getByPlaceholder(/Enter new Google API Key here/)
         .fill("test-google-key-12345");
       await po.page.getByRole("button", { name: "Save Key" }).click();
-      await expectGoogleApiKeySaved(po, "test-google-key-12345");
+      await expectProviderApiKeySaved(po, "google", "test-google-key-12345");
+
+      await expect(
+        po.page.getByTestId("messages-list").getByText(prompt),
+      ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+      await po.chatActions.waitForChatCompletion({
+        timeout: Timeout.EXTRA_LONG,
+      });
+      await expect(po.page.getByRole("dialog")).not.toBeVisible();
+      await expectSelectedApp(po);
+    },
+  );
+
+  testSetup(
+    "OpenRouter API key setup resumes the pending first prompt",
+    async ({ po }) => {
+      await seedFakeModelSelection(po);
+      const prompt = "Build a tiny meal planner";
+      const dialog = await openAiSetupDialog(po, prompt);
+
+      await dialog.getByRole("button", { name: "OpenRouter" }).click();
+      await expect(
+        po.page.getByRole("heading", { name: "Configure OpenRouter" }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+      await po.page
+        .getByPlaceholder(/Enter new OpenRouter API Key here/)
+        .fill("test-openrouter-key-12345");
+      await po.page.getByRole("button", { name: "Save Key" }).click();
+      await expectProviderApiKeySaved(
+        po,
+        "openrouter",
+        "test-openrouter-key-12345",
+      );
 
       await expect(
         po.page.getByTestId("messages-list").getByText(prompt),
@@ -116,7 +149,7 @@ testSetup.describe("Setup Flow", () => {
       await po.page
         .getByRole("button", { name: "Paste from clipboard and save" })
         .click();
-      await expectGoogleApiKeySaved(po, apiKey);
+      await expectProviderApiKeySaved(po, "google", apiKey);
 
       await expect(
         po.page.getByTestId("messages-list").getByText(prompt),
@@ -274,7 +307,11 @@ async function expectSelectedApp(po: PageObject) {
     .not.toBe("");
 }
 
-async function expectGoogleApiKeySaved(po: PageObject, expectedApiKey: string) {
+async function expectProviderApiKeySaved(
+  po: PageObject,
+  provider: string,
+  expectedApiKey: string,
+) {
   await expect
     .poll(
       async () => {
@@ -282,7 +319,7 @@ async function expectGoogleApiKeySaved(po: PageObject, expectedApiKey: string) {
           const ipcRenderer = (window as any).electron.ipcRenderer;
           return ipcRenderer.invoke("get-user-settings");
         });
-        return settings.providerSettings?.google?.apiKey?.value;
+        return settings.providerSettings?.[provider]?.apiKey?.value;
       },
       { timeout: Timeout.MEDIUM },
     )

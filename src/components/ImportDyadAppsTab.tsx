@@ -1,20 +1,21 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
+import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
 import { showSuccess, showWarning } from "@/lib/toast";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Info, Loader2, XCircle } from "lucide-react";
 import { useDyadGithubRepos } from "@/hooks/useGithubRepos";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
 import { UnconnectedGitHubConnector } from "@/components/GitHubConnector";
-
-type ImportStatus =
-  | { state: "importing" }
-  | { state: "done" }
-  | { state: "error"; message: string };
+import {
+  importDyadAppStatusesAtom,
+  isImportingDyadAppsAtom,
+  type ImportStatus,
+} from "@/atoms/importDyadAppsAtoms";
 
 export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
   const { t } = useTranslation(["home", "common"]);
@@ -26,8 +27,10 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
   const { refreshApps } = useLoadApps();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [statuses, setStatuses] = useState<Record<string, ImportStatus>>({});
-  const [isImporting, setIsImporting] = useState(false);
+  // Import progress lives in atoms so it survives the dialog being closed —
+  // clones keep running in the background and progress is restored on reopen.
+  const [statuses, setStatuses] = useAtom(importDyadAppStatusesAtom);
+  const [isImporting, setIsImporting] = useAtom(isImportingDyadAppsAtom);
 
   // Pre-select every repo that hasn't been imported on this device yet.
   useEffect(() => {
@@ -68,6 +71,8 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
   };
 
   const handleImportSelected = async () => {
+    // Clear any stale progress from a previous run before starting fresh.
+    setStatuses({});
     setIsImporting(true);
     let imported = 0;
     let failed = 0;
@@ -146,6 +151,13 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
         <p className="text-xs sm:text-sm text-muted-foreground text-center py-4">
           {t("home:noDyadReposFound")}
         </p>
+      )}
+
+      {isImporting && (
+        <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs sm:text-sm text-muted-foreground">
+          <Info className="h-4 w-4 flex-shrink-0" />
+          <span>{t("home:bulkImportBackgroundHint")}</span>
+        </div>
       )}
 
       {repos.length > 0 && (

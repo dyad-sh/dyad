@@ -55,6 +55,7 @@
   "bulkImportComplete_one": "Imported {{count}} app",
   "bulkImportComplete_other": "Imported {{count}} apps",
   "bulkImportCompleteWithErrors": "Imported {{imported}} app(s), {{failed}} failed",
+  "bulkImportBackgroundHint": "You can close this — importing continues in the background.",
   "createNewApp": "Create New App",
   "createAppUsingTemplate": "Create a new app using the {{template}} template.",
   "enterAppName": "Enter app name...",

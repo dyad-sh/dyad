@@ -51,6 +51,7 @@
   "importSelected": "导入所选（{{count}}）",
   "bulkImportComplete_other": "已导入 {{count}} 个应用",
   "bulkImportCompleteWithErrors": "已导入 {{imported}} 个应用，{{failed}} 个失败",
+  "bulkImportBackgroundHint": "可以关闭此窗口，导入将在后台继续。",
   "createNewApp": "创建新应用",
   "createAppUsingTemplate": "使用 {{template}} 模板创建新应用。",
   "enterAppName": "输入应用名称...",

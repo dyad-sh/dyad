@@ -266,6 +266,30 @@ export function buildMcpTypeDefsBlock(defs: McpToolDef[]): string {
   return sections.join("\n");
 }
 
+// The sandbox exposes MCP tools in one of two ways:
+// - inline: every tool's full declaration is listed in the description.
+// - search: only tool names are listed, and the model fetches schemas on
+//   demand via search_mcp_tools / get_mcp_tool_schema.
+// Search is used when inlining every declaration would exceed this many
+// estimated tokens; otherwise the tools are inlined.
+export const MCP_INLINE_TOKEN_THRESHOLD = 20_000;
+
+// Overrides the threshold for tests. 0 forces search on any catalog; a large
+// value forces inline. Invalid values fall back to the default.
+export function getMcpInlineTokenThreshold(): number {
+  const raw = process.env.DYAD_MCP_INLINE_TOKEN_THRESHOLD;
+  if (raw !== undefined) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return MCP_INLINE_TOKEN_THRESHOLD;
+}
+
+// Estimated tokens (chars/4) of inlining every tool's full declaration.
+export function estimateMcpInlineTokens(defs: McpToolDef[]): number {
+  return Math.ceil(buildMcpTypeDefsBlock(defs).length / 4);
+}
+
 /**
  * Build a names-only inventory of every MCP tool, grouped by server. Injected
  * into the search-mode `execute_sandbox_script` description so the model sees

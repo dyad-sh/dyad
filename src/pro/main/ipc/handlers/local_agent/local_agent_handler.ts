@@ -98,7 +98,12 @@ import {
   executeSandboxScriptTool,
 } from "./tools/execute_sandbox_script";
 import { writeFileTool } from "./tools/write_file";
-import { collectMcpToolDefs } from "./tools/mcp_type_defs";
+import {
+  collectMcpToolDefs,
+  estimateMcpInlineTokens,
+  getMcpInlineTokenThreshold,
+  type McpToolDef,
+} from "./tools/mcp_type_defs";
 import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -741,43 +746,59 @@ export async function handleLocalAgentStream(
       shouldIncludeTool(executeSandboxScriptTool, ctx, buildOptions);
     ctx.mcpToolsEnabled = mcpInSandboxEnabled;
 
-    const agentTools = buildAgentToolSet(ctx, buildOptions);
+    // Collect MCP defs before building the tool set so the inline-vs-search
+    // decision is available up front. The same defs build the description and
+    // the sandbox capability map (via ctx.mcpToolDefs).
+    let mcpDefs: McpToolDef[] = [];
+    if (mcpInSandboxEnabled) {
+      try {
+        mcpDefs = await collectMcpToolDefs();
+        ctx.mcpToolDefs = mcpDefs;
+      } catch (e) {
+        logger.warn("Failed to collect MCP tool defs", e);
+      }
+    }
     // When execute_sandbox_script is active, MCP tools become sandbox host
-    // functions instead of individual LLM tools. With tool-search on, the sandbox
-    // description points the model at search_mcp_tools instead of inlining them.
-    const useMcpToolSearch =
+    // functions instead of individual LLM tools. Search mode (list tool names
+    // and let the model fetch schemas on demand) is available if both of the
+    // following are true:
+    // 1) the tool search setting is on, and
+    // 2) inlining every tool declaration would exceed the size threshold.
+    // Otherwise inline every declaration in the description.
+    ctx.isMcpToolSearchAvailable =
       mcpInSandboxEnabled &&
       !!settings.enableMcpToolSearch &&
-      agentTools.search_mcp_tools != undefined;
-    // get_mcp_tool_schema can be filtered out by tool permissions even while
-    // search mode is on, so the description must only advertise it when it's
-    // actually registered this turn.
+      estimateMcpInlineTokens(mcpDefs) > getMcpInlineTokenThreshold();
+
+    const agentTools = buildAgentToolSet(ctx, buildOptions);
+    // search_mcp_tools returns full tool declarations, so it alone is enough for
+    // search mode. If tool permissions removed it, fall back to inline and drop
+    // the now-unused get_mcp_tool_schema tool.
+    let useMcpToolSearch = ctx.isMcpToolSearchAvailable;
+    if (useMcpToolSearch && agentTools.search_mcp_tools == undefined) {
+      useMcpToolSearch = false;
+      delete agentTools.get_mcp_tool_schema;
+    }
+    // get_mcp_tool_schema can also be removed by tool permissions on its own, so
+    // only advertise it in the description when it actually registered.
     const hasGetSchemaTool = agentTools.get_mcp_tool_schema != undefined;
     const mcpToolsForRegistration: ToolSet =
       !readOnly && !planModeOnly && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
     if (agentTools.execute_sandbox_script != undefined) {
-      // Initialize with the MustardScript-only preamble so even a
-      // failure in the MCP collection path below leaves the model with
-      // the syntax + file-inspection docs (rather than the one-line
-      // placeholder from the tool definition).
+      // Start with the file-inspection-only preamble so a failure in the MCP
+      // build below still leaves usable docs.
       agentTools.execute_sandbox_script.description =
         await buildExecuteSandboxScriptDescription([], {
           useSearch: useMcpToolSearch,
           hasGetSchemaTool,
           includeWriteFile: ctx.sandboxWriteFileHostEnabled,
         });
-      if (mcpInSandboxEnabled) {
+      if (mcpInSandboxEnabled && mcpDefs.length > 0) {
         try {
-          // Collect MCP defs once per turn and reuse for both the
-          // description and the sandbox capability map (via
-          // `ctx.mcpToolDefs`). Skips a second DB + MCP-client walk per
-          // sandbox invocation.
-          const defs = await collectMcpToolDefs();
-          ctx.mcpToolDefs = defs;
           agentTools.execute_sandbox_script.description =
-            await buildExecuteSandboxScriptDescription(defs, {
+            await buildExecuteSandboxScriptDescription(mcpDefs, {
               useSearch: useMcpToolSearch,
               hasGetSchemaTool,
               includeWriteFile: ctx.sandboxWriteFileHostEnabled,

@@ -1,6 +1,21 @@
 import path from "path";
 import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { testWithConfigSkipIfWindows } from "./helpers/fixtures";
+
+// MCP tool search only activates once the inlined tool declarations exceed the
+// size threshold. The test MCP server has only a couple of tools, so force
+// search on by setting the threshold to 0 for these cases.
+const testForceMcpSearch = testWithConfigSkipIfWindows({
+  preLaunchHook: async () => {
+    process.env.DYAD_MCP_INLINE_TOKEN_THRESHOLD = "0";
+  },
+  postLaunchHook: async () => {
+    // The launched app already inherited the env var; clear it so later tests
+    // in this worker don't force search.
+    delete process.env.DYAD_MCP_INLINE_TOKEN_THRESHOLD;
+  },
+});
 
 /**
  * Test for security review in local-agent mode
@@ -95,11 +110,12 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
 });
 
 /**
- * Test for the MCP tool search experiment: the model discovers an MCP tool with
- * search_mcp_tools, then calls it from execute_sandbox_script. Sandbox script
- * execution is on by default; this turns on the experiment flag.
+ * Test for MCP tool search: the model discovers an MCP tool with
+ * search_mcp_tools, then calls it from execute_sandbox_script. The setting is
+ * on by default; the threshold override (see testForceMcpSearch) forces search
+ * for this small test catalog.
  */
-testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
+testForceMcpSearch("local-agent - mcp tool search", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
   await po.page.evaluate(async () => {
     await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
@@ -130,9 +146,6 @@ testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
   await po.page.getByRole("button", { name: "Add Server" }).click();
   await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
 
-  // Turn on the MCP tool search experiment (Playwright scrolls to the switch).
-  await po.page.getByRole("switch", { name: "Enable MCP tool search" }).click();
-
   await po.navigation.goToAppsTab();
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
@@ -159,9 +172,9 @@ testSkipIfWindows("local-agent - mcp tool search", async ({ po }) => {
 /**
  * Test for get_mcp_tool_schema: in search mode the model sees tools listed by
  * name, then fetches a tool's signature with get_mcp_tool_schema before
- * calling it. Registered behind the same "Enable MCP tool search" flag.
+ * calling it. Forced on via the threshold override for this small catalog.
  */
-testSkipIfWindows("local-agent - get mcp tool schema", async ({ po }) => {
+testForceMcpSearch("local-agent - get mcp tool schema", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
   await po.navigation.goToSettingsTab();
 
@@ -182,9 +195,6 @@ testSkipIfWindows("local-agent - get mcp tool schema", async ({ po }) => {
     .fill(testMcpServerPath);
   await po.page.getByRole("button", { name: "Add Server" }).click();
   await po.settings.waitForMcpTool("testing-mcp-server", "calculator_add");
-
-  // Same flag that lists tool names and registers get_mcp_tool_schema.
-  await po.page.getByRole("switch", { name: "Enable MCP tool search" }).click();
 
   await po.navigation.goToAppsTab();
   await po.importApp("minimal");

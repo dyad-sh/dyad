@@ -6,7 +6,6 @@ import {
   escapeXmlContent,
 } from "./types";
 import { buildMcpTypeDefsBlock, resolveMcpToolDefs } from "./mcp_type_defs";
-import { readSettings } from "@/main/settings";
 
 const getMcpToolSchemaSchema = z.object({
   tools: z
@@ -43,10 +42,8 @@ export const getMcpToolSchemaTool: ToolDefinition<GetMcpToolSchemaArgs> = {
   inputSchema: getMcpToolSchemaSchema,
   defaultConsent: "always",
 
-  // ctx.mcpToolsEnabled already implies sandbox-script execution is on, so only
-  // the setting flag needs a separate check.
-  isEnabled: (ctx) =>
-    !!ctx.mcpToolsEnabled && !!readSettings().enableMcpToolSearch,
+  // Only registered in search mode; see ctx.isMcpToolSearchAvailable.
+  isEnabled: (ctx) => !!ctx.isMcpToolSearchAvailable,
 
   getConsentPreview: (args) =>
     `Get schema for MCP tool(s): ${args.tools.join(", ")}`,

@@ -102,7 +102,7 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       id: SETTING_IDS.enableMcpToolSearch,
       label: "Enable MCP tool search",
       description:
-        "Let the agent search for MCP tools on demand instead of listing every tool in its context. Requires sandbox script execution",
+        "When many MCP tools are enabled, let the agent search for the tools on demand instead of listing every tool in its context. Requires sandbox script execution",
       keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
       sectionId: SECTION_IDS.experiments,
       sectionLabel: "Experiments",

@@ -5,8 +5,13 @@ import { getSupabaseClient } from "./supabase_management_client";
 import {
   SUPABASE_SCHEMA_QUERY,
   SUPABASE_FUNCTIONS_QUERY,
-  buildSupabaseSchemaQuery,
 } from "./supabase_schema_query";
+import {
+  filterSchemaForTable,
+  getSchema,
+  renderSchemaSql,
+  type DatabaseClient,
+} from "ts-pg-schema-diff";
 
 async function getPublishableKey({
   projectId,
@@ -134,6 +139,95 @@ const TABLE_NAMES_QUERY = `
   ORDER BY table_name;
 `;
 
+type SupabaseClient = Awaited<ReturnType<typeof getSupabaseClient>>;
+
+function buildSupabaseDatabaseClient({
+  supabase,
+  supabaseProjectId,
+}: {
+  supabase: SupabaseClient;
+  supabaseProjectId: string;
+}): DatabaseClient {
+  const query = (async (
+    queryTextOrConfig: string | { text: string; values?: readonly unknown[] },
+    values?: readonly unknown[],
+  ) => {
+    const queryText =
+      typeof queryTextOrConfig === "string"
+        ? queryTextOrConfig
+        : queryTextOrConfig.text;
+    const queryValues =
+      values ??
+      (typeof queryTextOrConfig === "string"
+        ? undefined
+        : queryTextOrConfig.values);
+    const renderedQuery = inlinePostgresQueryParams(
+      queryText,
+      queryValues ?? [],
+    );
+    const result = await retryWithRateLimit(
+      () => supabase.runQuery(supabaseProjectId, renderedQuery),
+      `Run schema introspection query for ${supabaseProjectId}`,
+    );
+    return { rows: normalizeRunQueryRows(result) };
+  }) as DatabaseClient["query"];
+
+  return {
+    query,
+  };
+}
+
+function inlinePostgresQueryParams(
+  query: string,
+  values: readonly unknown[],
+): string {
+  let rendered = query;
+  for (let index = values.length; index >= 1; index -= 1) {
+    rendered = rendered.replaceAll(
+      new RegExp(`\\$${index}(?!\\d)`, "g"),
+      postgresLiteral(values[index - 1]),
+    );
+  }
+  return rendered;
+}
+
+function postgresLiteral(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  if (typeof value === "string") {
+    return `'${value.replaceAll("'", "''")}'`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "boolean") {
+    return value ? "TRUE" : "FALSE";
+  }
+  throw new Error(
+    `Unsupported Supabase schema query parameter: ${String(value)}`,
+  );
+}
+
+function normalizeRunQueryRows(
+  result: unknown,
+): readonly Record<string, unknown>[] {
+  if (Array.isArray(result)) {
+    return result as readonly Record<string, unknown>[];
+  }
+  if (result && typeof result === "object") {
+    const maybeRows = (result as { data?: unknown; result?: unknown }).data;
+    if (Array.isArray(maybeRows)) {
+      return maybeRows as readonly Record<string, unknown>[];
+    }
+    const maybeResultRows = (result as { result?: unknown }).result;
+    if (Array.isArray(maybeResultRows)) {
+      return maybeResultRows as readonly Record<string, unknown>[];
+    }
+  }
+  return [];
+}
+
 /**
  * Get high-level Supabase project info: project ID, publishable key, secret names, and table names.
  * This is a lightweight call that doesn't fetch full schema details.
@@ -236,15 +330,20 @@ export async function getSupabaseTableSchema({
   tableName?: string;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return `[[TEST_TABLE_SCHEMA${tableName ? `:${tableName}` : ""}]]`;
+    return tableName
+      ? `CREATE TABLE "public"."${tableName}" (\n\t"id" bigint NOT NULL\n);`
+      : `CREATE TABLE "public"."users" (\n\t"id" bigint NOT NULL\n);`;
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });
-  const query = buildSupabaseSchemaQuery(tableName);
-  const schemaResult = await retryWithRateLimit(
-    () => supabase.runQuery(supabaseProjectId, query),
-    `Get table schema for ${supabaseProjectId}${tableName ? `:${tableName}` : ""}`,
-  );
-
-  return JSON.stringify(schemaResult);
+  const client = buildSupabaseDatabaseClient({ supabase, supabaseProjectId });
+  const schema = await getSchema(client, { includeSchemas: ["public"] });
+  const filteredSchema = tableName
+    ? filterSchemaForTable(schema, { tableName })
+    : schema;
+  return renderSchemaSql(filteredSchema, {
+    emptySchemaComment: tableName
+      ? `-- No public table named "${tableName}" found.`
+      : "-- No public tables found.",
+  });
 }

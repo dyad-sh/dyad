@@ -6,6 +6,10 @@ import { DuplicateIdentifierError } from "../src/errors.js";
 import { toPublicStatement } from "../src/plan/classify.js";
 import { generatePlan, toSchemaDiffResult } from "../src/plan/generate.js";
 import type { InternalStatement, MigrationHazard } from "../src/plan/types.js";
+import {
+  filterSchemaForTable,
+  renderSchemaSql,
+} from "../src/render/schemaSql.js";
 import { randomPostgresIdentifierToken } from "../src/schema/randomIdentifier.js";
 import {
   escapeIdentifier,
@@ -729,6 +733,132 @@ describe("buildPoolConfig", () => {
       options: "-c statement_timeout=3000 -c lock_timeout=4000",
       ssl: true,
     });
+  });
+});
+
+describe("renderSchemaSql", () => {
+  it("renders an empty schema as a SQL comment", () => {
+    expect(renderSchemaSql(emptySchema())).toBe("-- No schema objects found.");
+  });
+
+  it("renders additive schema statements as semicolon-terminated SQL", () => {
+    const touchFunction = functionSchema("touch_account", "sql");
+    const accounts = table("accounts", [
+      {
+        ...column("id", "bigint", false),
+        default: "nextval('accounts_id_seq'::regclass)",
+      },
+      column("email", "text", false),
+    ]);
+    const schema: Schema = {
+      ...emptySchema(),
+      tables: [
+        {
+          ...accounts,
+          checkConstraints: [
+            {
+              kind: "checkConstraint",
+              name: "accounts_email_check",
+              keyColumns: ["email"],
+              expression: "email <> ''::text",
+              isValid: true,
+              isInheritable: true,
+              dependsOnFunctions: [],
+            },
+          ],
+          policies: [
+            {
+              kind: "policy",
+              escapedName: escapeIdentifier("accounts_select"),
+              isPermissive: true,
+              appliesTo: ["authenticated"],
+              cmd: "r",
+              checkExpression: "",
+              usingExpression: "true",
+              columns: [],
+            },
+          ],
+          rlsEnabled: true,
+        },
+      ],
+      indexes: [
+        {
+          ...index(
+            "accounts_email_idx",
+            "CREATE INDEX accounts_email_idx ON public.accounts USING btree (email)",
+          ),
+          owningRelName: schemaQualifiedName("public", "accounts"),
+        },
+      ],
+      functions: [touchFunction],
+      triggers: [
+        {
+          ...trigger(
+            "accounts_touch",
+            "CREATE TRIGGER accounts_touch BEFORE UPDATE ON public.accounts FOR EACH ROW EXECUTE FUNCTION touch_account()",
+          ),
+          owningTable: schemaQualifiedName("public", "accounts"),
+          functionName: touchFunction.name,
+        },
+      ],
+    };
+
+    expect(renderSchemaSql(schema)).toBe(
+      [
+        'CREATE TABLE "public"."accounts" (\n\t"id" bigint DEFAULT nextval(\'accounts_id_seq\'::regclass) NOT NULL,\n\t"email" text NOT NULL\n);',
+        'ALTER TABLE "public"."accounts" ADD CONSTRAINT "accounts_email_check" CHECK(email <> \'\'::text);',
+        'CREATE POLICY "accounts_select" ON "public"."accounts" AS PERMISSIVE FOR SELECT TO "authenticated" USING (true);',
+        'ALTER TABLE "public"."accounts" ENABLE ROW LEVEL SECURITY;',
+        touchFunction.functionDef + ";",
+        "CREATE INDEX accounts_email_idx ON public.accounts USING btree (email);",
+        "CREATE TRIGGER accounts_touch BEFORE UPDATE ON public.accounts FOR EACH ROW EXECUTE FUNCTION touch_account();",
+      ].join("\n\n"),
+    );
+  });
+
+  it("filters a schema to a table and its directly relevant objects", () => {
+    const touchFunction = functionSchema("touch_account", "sql");
+    const unusedFunction = functionSchema("unused", "sql");
+    const schema: Schema = {
+      ...emptySchema(),
+      tables: [
+        table("accounts", [column("id", "integer", false)]),
+        table("users", [column("id", "integer", false)]),
+      ],
+      indexes: [
+        {
+          ...index(
+            "accounts_id_idx",
+            "CREATE INDEX accounts_id_idx ON public.accounts USING btree (id)",
+          ),
+          owningRelName: schemaQualifiedName("public", "accounts"),
+        },
+        index("users_name_idx"),
+      ],
+      functions: [touchFunction, unusedFunction],
+      triggers: [
+        {
+          ...trigger(
+            "accounts_touch",
+            "CREATE TRIGGER accounts_touch BEFORE UPDATE ON public.accounts FOR EACH ROW EXECUTE FUNCTION touch_account()",
+          ),
+          owningTable: schemaQualifiedName("public", "accounts"),
+          functionName: touchFunction.name,
+        },
+      ],
+    };
+
+    const filteredSql = renderSchemaSql(
+      filterSchemaForTable(schema, { tableName: "accounts" }),
+    );
+
+    expect(filteredSql).toContain('CREATE TABLE "public"."accounts"');
+    expect(filteredSql).toContain("CREATE INDEX accounts_id_idx");
+    expect(filteredSql).toContain(touchFunction.functionDef);
+    expect(filteredSql).toContain("CREATE TRIGGER accounts_touch");
+    expect(filteredSql).not.toContain('CREATE TABLE "public"."users"');
+    expect(filteredSql).not.toContain("users_name_idx");
+    expect(filteredSql).not.toContain(unusedFunction.functionDef);
   });
 });
 

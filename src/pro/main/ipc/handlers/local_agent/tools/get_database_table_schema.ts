@@ -23,7 +23,7 @@ export const getDatabaseTableSchemaTool: ToolDefinition<
 > = {
   name: "get_database_table_schema",
   description:
-    "Get database table schema. If tableName is provided, returns schema for that specific table (columns, policies/constraints, triggers/indexes). If omitted, returns schema for all tables.",
+    "Get database table schema as PostgreSQL SQL/DDL. If tableName is provided, returns schema for that specific table and relevant constraints/indexes/triggers/policies. If omitted, returns schema for all public tables.",
   inputSchema: getDatabaseTableSchemaSchema,
   defaultConsent: "always",
   isEnabled: (ctx) =>

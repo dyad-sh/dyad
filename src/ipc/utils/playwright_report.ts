@@ -165,21 +165,22 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
       hasPassed = true;
       continue;
     }
-    if (test.status === "unexpected") {
-      hasAssertion = true;
-      const errText = resultErrorText(final);
-      if (!error) {
-        error =
-          errText ??
-          "Playwright marked this test as unexpected (for example, a test.fail() expectation passed).";
-      }
-      if (!screenshotPath) screenshotPath = screenshotFromResult(final);
-      continue;
-    }
-
     const status = final.status ?? "";
     if (status === "passed") {
-      hasPassed = true;
+      // A passing run that Playwright still calls "unexpected" is a
+      // `test.fail()` expectation that passed — a real assertion-level failure
+      // despite the green raw status.
+      if (test.status === "unexpected") {
+        hasAssertion = true;
+        if (!error) {
+          error =
+            resultErrorText(final) ??
+            "Playwright marked this test as unexpected (for example, a test.fail() expectation passed).";
+        }
+        if (!screenshotPath) screenshotPath = screenshotFromResult(final);
+      } else {
+        hasPassed = true;
+      }
       continue;
     }
     // A skipped test never executed — don't let it roll up as a green "passed".
@@ -188,6 +189,10 @@ function reduceSpec(spec: PwSpec): TestCaseResult | null {
       continue;
     }
 
+    // NOTE: every genuinely failing test reaches here with test-level status
+    // "unexpected" — that's Playwright's outcome for any real failure,
+    // including timeouts — so the infra-vs-assertion split below must run on
+    // the raw per-run result and never short-circuit on "unexpected".
     const errText = resultErrorText(final);
     const kind =
       status === "timedOut" || status === "interrupted"

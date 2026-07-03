@@ -1,6 +1,6 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlaskConical,
   Play,
@@ -23,6 +23,9 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
 import {
+  appendTestRunOutputAtom,
+  clearTestRunOutputForAppAtom,
+  currentTestRunOutputAtom,
   currentTestSpecsAtom,
   currentTestRunStateAtom,
   setTestSpecsForAppAtom,
@@ -47,8 +50,12 @@ import {
   testKey,
 } from "./testResultUtils";
 
-/** Cap on the accumulated run output kept in the renderer (keeps the tail). */
-const MAX_OUTPUT_LENGTH = 500_000;
+/**
+ * How long streamed output chunks are buffered before one batched atom write.
+ * The chattiest window (npm install / browser download progress) can emit many
+ * chunks per frame; flushing on a cadence keeps that to ~10 renders/second.
+ */
+const OUTPUT_FLUSH_INTERVAL_MS = 100;
 
 function StatusIcon({ status }: { status: TestStatus }) {
   switch (status) {
@@ -458,6 +465,12 @@ export function TestsPanel() {
   const appUrl = useAtomValue(currentAppUrlAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
+  const appendOutput = useSetAtom(appendTestRunOutputAtom);
+  const clearOutput = useSetAtom(clearTestRunOutputForAppAtom);
+  // For lazy, subscription-free reads of the streamed output (askAiToFix runs
+  // long after the chunks arrive; subscribing would re-render the whole panel
+  // on every flush and defeat the point of the separate output atom).
+  const jotaiStore = useStore();
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(selectedAppId);
   const { settings } = useSettings();
@@ -472,12 +485,6 @@ export function TestsPanel() {
   // When enabled, a file's independent tests run concurrently instead of
   // serially (Playwright `--fully-parallel` with multiple workers).
   const [parallel, setParallel] = useState(false);
-  const outputRef = useRef<HTMLPreElement>(null);
-  // Mirror the streamed output into a ref so callbacks that only read it lazily
-  // (e.g. askAiToFix, invoked after a run finishes) don't need to depend on it
-  // and get recreated on every streamed chunk.
-  const latestOutputRef = useRef(runState.output);
-  latestOutputRef.current = runState.output;
 
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
@@ -517,30 +524,41 @@ export function TestsPanel() {
     !!app?.neonProjectId &&
     (settings?.runtimeMode2 ?? "host") === "host";
 
-  // Subscribe to streamed run output.
+  // Subscribe to streamed run output. Chunks are buffered and flushed as one
+  // batched atom write per interval — an atom write per chunk would re-render
+  // every subscriber per chunk during the chattiest window.
   useEffect(() => {
+    const pending = new Map<number, string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      for (const [appId, chunk] of pending) {
+        appendOutput({ appId, chunk });
+      }
+      pending.clear();
+    };
     const unsubscribe = ipc.events.tests.onOutput((payload) => {
+      pending.set(
+        payload.appId,
+        (pending.get(payload.appId) ?? "") + payload.chunk,
+      );
+      timer ??= setTimeout(flush, OUTPUT_FLUSH_INTERVAL_MS);
+      // Phase transitions are rare (setup → running); returning the previous
+      // state on no-change makes this write a no-op for subscribers.
       setRunState({
         appId: payload.appId,
-        update: (prev) => ({
-          ...prev,
-          phase: prev.phase === "idle" ? prev.phase : payload.phase,
-          // Cap the accumulated output so a chatty run (verbose reporters,
-          // parallel workers) can't grow this string unboundedly and degrade
-          // the renderer. The tail is the most useful part for debugging.
-          output: (prev.output + payload.chunk).slice(-MAX_OUTPUT_LENGTH),
-        }),
+        update: (prev) =>
+          prev.phase === "idle" || prev.phase === payload.phase
+            ? prev
+            : { ...prev, phase: payload.phase },
       });
     });
-    return unsubscribe;
-  }, [setRunState]);
-
-  // Auto-scroll output drawer.
-  useEffect(() => {
-    if (outputOpen && outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [runState.output, outputOpen]);
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+      flush();
+    };
+  }, [setRunState, appendOutput]);
 
   const runTests = useCallback(
     async (file?: string, line?: number) => {
@@ -549,12 +567,12 @@ export function TestsPanel() {
       const isSingleTest = file != null && line != null;
       const targetFiles = file ? [file] : specs.map((s) => s.file);
 
+      clearOutput(appId);
       setRunState({
         appId,
         update: (prev) => ({
           ...prev,
           phase: "running",
-          output: "",
           runningFiles: targetFiles,
           runningTests: isSingleTest ? [testKey(file, line)] : [],
           // For a single-test run, keep the file's existing results (siblings
@@ -637,7 +655,7 @@ export function TestsPanel() {
         });
       }
     },
-    [selectedAppId, specs, setRunState, headed, parallel],
+    [selectedAppId, specs, setRunState, clearOutput, headed, parallel],
   );
 
   const stop = useCallback(() => {
@@ -662,9 +680,9 @@ export function TestsPanel() {
         sections.push(`Error:\n\`\`\`\n${error.trim()}\n\`\`\``);
       }
       // Include the tail of the raw run output for extra context (capped). Read
-      // from the ref so this callback doesn't depend on the streamed output and
-      // get recreated (re-rendering every row) on every chunk.
-      const output = latestOutputRef.current.trim();
+      // lazily from the store so this callback doesn't subscribe to the
+      // streamed output and get recreated (re-rendering every row) per flush.
+      const output = jotaiStore.get(currentTestRunOutputAtom).trim();
       if (output) {
         const MAX = 4000;
         const tail =
@@ -674,7 +692,7 @@ export function TestsPanel() {
       streamMessage({ prompt: sections.join("\n\n"), chatId });
       showInfo("Sent to chat — asking the AI to fix the test…");
     },
-    [chatId, streamMessage],
+    [chatId, streamMessage, jotaiStore],
   );
 
   // File-level status: a spinner while the file is part of an in-flight run,
@@ -1008,32 +1026,55 @@ export function TestsPanel() {
         )}
       </div>
 
-      {/* Collapsible raw output drawer */}
-      {runState.output && (
-        <div className="border-t border-border">
-          <button
-            onClick={() => setOutputOpen((v) => !v)}
-            aria-expanded={outputOpen}
-            aria-label="Toggle test output"
-            className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
-          >
-            {outputOpen ? (
-              <ChevronDown size={14} />
-            ) : (
-              <ChevronRight size={14} />
-            )}
-            Output
-          </button>
-          {outputOpen && (
-            <pre
-              ref={outputRef}
-              className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"
-            >
-              {runState.output}
-            </pre>
-          )}
-        </div>
-      )}
+      <OutputDrawer
+        open={outputOpen}
+        onToggle={() => setOutputOpen((v) => !v)}
+      />
     </div>
   );
 }
+
+// Collapsible raw output drawer. The only component that subscribes to the
+// streamed output atom, and memoized so per-flush appends re-render just this
+// drawer (and its auto-scroll) instead of the whole panel and every test row.
+const OutputDrawer = memo(function OutputDrawer({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const output = useAtomValue(currentTestRunOutputAtom);
+  const outputRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll to the newest output.
+  useEffect(() => {
+    if (open && outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [output, open]);
+
+  if (!output) return null;
+
+  return (
+    <div className="border-t border-border">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label="Toggle test output"
+        className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        Output
+      </button>
+      {open && (
+        <pre
+          ref={outputRef}
+          className="text-[11px] whitespace-pre-wrap break-words bg-(--background-darkest) px-4 py-2 max-h-48 overflow-auto"
+        >
+          {output}
+        </pre>
+      )}
+    </div>
+  );
+});

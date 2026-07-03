@@ -37,6 +37,11 @@ vi.mock("drizzle-orm", async (importOriginal) => {
 vi.mock("@/ipc/utils/test_utils", () => ({ IS_TEST_BUILD: false }));
 vi.mock("@/ipc/utils/retryWithRateLimit", () => ({
   retryWithRateLimit: vi.fn((op: () => Promise<unknown>) => op()),
+  // Pass through to global fetch (no retry) so the per-test fetch spies still
+  // observe the admin API calls.
+  fetchWithRetry: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+    fetch(input, init),
+  ),
 }));
 vi.mock("../../supabase_admin/supabase_management_client", () => ({
   getSupabaseClientForOrganization: vi.fn(async () => ({

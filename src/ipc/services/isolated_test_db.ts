@@ -150,6 +150,12 @@ export async function prepareIsolatedTestDatabase({
   };
 
   try {
+    // A run can sit queued behind the prior run's teardown for a while; honor a
+    // Stop pressed during that wait before creating the branch, rewriting
+    // .env.local, and restarting the dev server (twice) for nothing.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
     emit("Setting up isolated test environment…\n", "setup");
 
     // 1. Snapshot the real env so teardown can restore it exactly.
@@ -182,12 +188,22 @@ export async function prepareIsolatedTestDatabase({
       teardown,
     };
   } catch (error) {
+    // Dead-end: restore real data, never run against it.
+    await teardown();
+    // A user Stop surfaces here too (waitForServerReady & co. throw on abort).
+    // That's a deliberate cancellation, not an infra failure — don't show the
+    // misleading "couldn't set up" banner for it.
+    if (signal?.aborted) {
+      return {
+        isolation: { mode: "none", reason: "Test run stopped." },
+        infraError: { message: "Test run stopped." },
+        teardown: NOOP_TEARDOWN,
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.error(
       `Failed to set up isolated test database for app ${app.id}: ${message}`,
     );
-    // Dead-end: restore real data, never run against it.
-    await teardown();
     return {
       isolation: {
         mode: "none",
@@ -270,11 +286,20 @@ async function prepareSupabaseTestUserIsolation({
       teardown,
     };
   } catch (error) {
+    await teardown();
+    // The pre-flight abort check above throws into this catch; a user Stop is
+    // a deliberate cancellation, not a setup failure.
+    if (signal?.aborted) {
+      return {
+        isolation: { mode: "none", reason: "Test run stopped." },
+        infraError: { message: "Test run stopped." },
+        teardown: NOOP_TEARDOWN,
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.error(
       `Failed to set up isolated test user for app ${app.id}: ${message}`,
     );
-    await teardown();
     return {
       isolation: {
         mode: "none",

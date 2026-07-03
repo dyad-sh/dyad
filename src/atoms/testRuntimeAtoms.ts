@@ -30,8 +30,6 @@ export type TestRunPhase =
 
 export interface TestRunState {
   phase: TestRunPhase;
-  /** Streamed raw output (bootstrap + test runner), newest appended. */
-  output: string;
   /** Results keyed by spec file path. */
   results: Record<string, RuntimeTestResult>;
   /** Spec files in the current in-flight run (drives per-file spinners). */
@@ -57,10 +55,49 @@ export interface TestRunState {
 // across apps. Callers must spread into a new object to modify.
 export const EMPTY_TEST_RUN_STATE: TestRunState = Object.freeze({
   phase: "idle",
-  output: "",
   results: Object.freeze({}),
   runningFiles: Object.freeze([]),
 }) as TestRunState;
+
+/** Cap on the accumulated run output kept in the renderer (keeps the tail). */
+const MAX_OUTPUT_LENGTH = 500_000;
+
+// Streamed raw run output (bootstrap + test runner) lives in its own per-app
+// atom, deliberately OUTSIDE TestRunState: output is by far the chattiest
+// field, and keeping it in the state object every panel row subscribes to
+// would re-render the whole Tests panel on every appended chunk.
+export const testRunOutputByAppIdAtom = atom<Map<number, string>>(new Map());
+
+export const currentTestRunOutputAtom = atom((get) => {
+  const appId = get(selectedAppIdAtom);
+  return appId === null ? "" : (get(testRunOutputByAppIdAtom).get(appId) ?? "");
+});
+
+export const appendTestRunOutputAtom = atom(
+  null,
+  (_get, set, { appId, chunk }: { appId: number; chunk: string }) => {
+    set(testRunOutputByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.set(
+        appId,
+        ((prev.get(appId) ?? "") + chunk).slice(-MAX_OUTPUT_LENGTH),
+      );
+      return next;
+    });
+  },
+);
+
+export const clearTestRunOutputForAppAtom = atom(
+  null,
+  (_get, set, appId: number) => {
+    set(testRunOutputByAppIdAtom, (prev) => {
+      if (!prev.has(appId)) return prev;
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  },
+);
 
 // Per-app maps, mirroring previewRunStateByAppIdAtom.
 export const testSpecsByAppIdAtom = atom<Map<number, TestSpec[]>>(new Map());
@@ -107,6 +144,10 @@ export const setTestRunStateForAppAtom = atom(
     set(testRunStateByAppIdAtom, (prev) => {
       const current = prev.get(appId) ?? EMPTY_TEST_RUN_STATE;
       const nextState = typeof update === "function" ? update(current) : update;
+      // An updater may return the previous state to signal "no change" (e.g.
+      // the streamed-output subscriber when the phase is unchanged) — skip the
+      // Map copy so subscribers don't re-render for nothing.
+      if (nextState === current) return prev;
       const next = new Map(prev);
       next.set(appId, nextState);
       return next;
@@ -123,6 +164,11 @@ export const clearTestRuntimeForAppAtom = atom(
       return next;
     });
     set(testRunStateByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+    set(testRunOutputByAppIdAtom, (prev) => {
       const next = new Map(prev);
       next.delete(appId);
       return next;

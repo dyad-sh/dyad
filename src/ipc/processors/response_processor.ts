@@ -6,6 +6,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
 import { normalizeTestPath } from "../utils/normalize_test_path";
+import { SPEC_FILE_RE } from "../types/tests";
 
 import log from "electron-log";
 import {
@@ -605,10 +606,19 @@ export async function processFullResponseActions(
     // writes under the hood; they get a distinct in-chat card + "View in Tests"
     // deep-link, but on disk they behave exactly like a <dyad-write>.
     const dyadGenerateTestTags = getDyadGenerateTestTags(fullResponse);
+    const writtenTestPaths = new Set<string>();
     for (const tag of dyadGenerateTestTags) {
       // Force the path under tests/ (defense-in-depth) so a stray tag can't
       // overwrite app source files.
-      const filePath = normalizeTestPath(tag.path);
+      let filePath = normalizeTestPath(tag.path);
+      // Sibling tags can normalize to the same path (e.g. duplicate names).
+      // Suffix a counter so a later tag can't silently clobber an earlier one
+      // and lose a test.
+      const basePath = filePath;
+      for (let n = 2; writtenTestPaths.has(filePath); n++) {
+        filePath = basePath.replace(SPEC_FILE_RE, `-${n}.spec.$1`);
+      }
+      writtenTestPaths.add(filePath);
       const fullFilePath = safeJoin(appPath, filePath);
 
       // Ensure directory exists

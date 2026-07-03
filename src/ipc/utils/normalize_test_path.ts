@@ -1,34 +1,47 @@
-import path from "node:path";
+import { SPEC_FILE_RE, TEST_SPEC_EXT_ALTERNATION } from "../types/tests";
 
-// Mirrors the spec extensions accepted by TEST_FILE_PATTERN / listAppTests in
-// tests_handlers.ts.
-const SPEC_FILE_RE = /\.spec\.(ts|tsx|js|jsx)$/;
+const STRIPPABLE_EXT_RE = new RegExp(`\\.(${TEST_SPEC_EXT_ALTERNATION})$`);
 
 /**
- * Normalize a test path so it always lands under the app's `tests/` folder.
- * Used by the Build-mode `<dyad-generate-test>` tag processor so a stray tag
- * can't write outside `tests/`.
+ * Normalize a test path so it always lands under the app's `tests/` folder
+ * with a spec extension. Used by the Build-mode `<dyad-generate-test>` tag
+ * processor so a stray tag can't write outside `tests/`, and by the chat card
+ * so it displays the path that is actually written to disk.
  *
- * Defense-in-depth: `.` and `..` segments are stripped before the `tests/`
- * prefix is applied, so the result can never traverse out of `tests/` even
- * for a caller that doesn't also run it through `safeJoin`.
+ * Defense-in-depth: `.` segments are dropped and `..` segments resolve within
+ * the sanitized path (never past its root) before the `tests/` prefix is
+ * applied, so the result can never traverse out of `tests/` even for a caller
+ * that doesn't also run it through `safeJoin`.
+ *
+ * Pure string manipulation (no `node:path`) so the renderer can share it.
  */
 export function normalizeTestPath(rawPath: string): string {
-  const normalized = path.posix.normalize(rawPath.replace(/\\/g, "/"));
-  const sanitized = normalized
-    .replace(/^\/+/, "")
-    .split("/")
-    .filter((segment) => segment !== "" && segment !== "." && segment !== "..")
-    .join("/");
-  // Anything that isn't a concrete spec file falls back to a default filename:
-  //   - empty/all-dots collapses to `tests/`
-  //   - the bare `tests` directory
-  //   - a non-spec file (e.g. `tests/README.md`)
-  // Writing a directory path throws EISDIR in the response processor, and
-  // non-spec files never surface in the Tests panel.
-  if (!sanitized || !SPEC_FILE_RE.test(sanitized)) {
+  const segments: string[] = [];
+  for (const segment of rawPath.replace(/\\/g, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      // Resolve against what we have; a leading ".." has nothing to pop and
+      // simply disappears, so traversal can't escape.
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  const sanitized = segments.join("/");
+
+  // Nothing usable (empty, all dots, or the bare `tests` directory).
+  if (!sanitized || sanitized === "tests") {
     return "tests/generated.spec.ts";
   }
-  if (sanitized.startsWith("tests/")) return sanitized;
-  return `tests/${sanitized}`;
+
+  let specPath = sanitized;
+  if (!SPEC_FILE_RE.test(specPath)) {
+    // Coerce to a spec filename while preserving the tag's own name, so two
+    // sibling tags with valid-but-wrong extensions (login.test.ts,
+    // checkout.test.ts) normalize to distinct files instead of collapsing
+    // onto one shared fallback and silently overwriting each other.
+    specPath = `${specPath.replace(STRIPPABLE_EXT_RE, "")}.spec.ts`;
+  }
+  if (specPath.startsWith("tests/")) return specPath;
+  return `tests/${specPath}`;
 }

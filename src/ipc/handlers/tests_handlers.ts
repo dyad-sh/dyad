@@ -9,7 +9,11 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
-import { testsContracts } from "../types/tests";
+import {
+  TEST_SPEC_EXT_ALTERNATION,
+  TEST_SPEC_GLOB,
+  testsContracts,
+} from "../types/tests";
 import type { RunAppTestsResult, TestCase, TestResult } from "../types/tests";
 import { runningApps } from "../utils/process_manager";
 import { withLock } from "../utils/lock_utils";
@@ -33,12 +37,17 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("tests_handlers");
 
-// A test file must look exactly like the spec paths `listAppTests` produces:
-// relative, under `tests/`, ending in a spec extension, with no traversal or
-// leading dash. This stops a compromised renderer from passing a flag-like
-// value (e.g. `--config=…`) that Playwright would interpret as a CLI option.
-const TEST_FILE_PATTERN =
-  /^tests\/(?!.*\.\.)(?!(?:-|.*\/-))[\w\-./]+\.spec\.(ts|tsx|js|jsx)$/;
+// A test file must look like the spec paths `listAppTests` produces: relative,
+// under `tests/`, ending in a spec extension, with no traversal or leading
+// dash. This stops a compromised renderer from passing a flag-like value
+// (e.g. `--config=…`) that Playwright would interpret as a CLI option. The
+// allowed characters must cover everything the listing glob can surface
+// (spaces, `@`, parentheses, non-ASCII letters), so the guards are negative:
+// no `..`, no segment starting with `-`, and no backslash, colon (reserved for
+// the `file:line` selector), or control characters.
+const TEST_FILE_PATTERN = new RegExp(
+  `^tests/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
+);
 
 function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
@@ -337,7 +346,7 @@ export function registerTestsHandlers() {
     if (!fs.existsSync(testsDir)) {
       return { specs: [] };
     }
-    const matches = await glob("tests/**/*.spec.{ts,tsx,js,jsx}", {
+    const matches = await glob(TEST_SPEC_GLOB, {
       cwd: appPath,
       nodir: true,
       posix: true,
@@ -430,6 +439,17 @@ export function registerTestsHandlers() {
     testsContracts.runAppTests,
     async (event, params): Promise<RunAppTestsResult> => {
       const { appId, testFile, testLine, headed, parallel } = params;
+
+      // Reject an invalid target before the expensive isolation setup (Neon
+      // branch creation, env swap, double dev-server restart) — the same check
+      // in runAppTestsCore would otherwise only fire after all of it.
+      if (testFile !== undefined && !TEST_FILE_PATTERN.test(testFile)) {
+        return {
+          appId,
+          results: [],
+          infraError: { message: `Invalid test file: ${testFile}` },
+        };
+      }
 
       // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
       // run's teardown — so a concurrent invocation sees THIS run as its prior

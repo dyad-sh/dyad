@@ -6,7 +6,10 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
+import {
+  fetchWithRetry,
+  retryWithRateLimit,
+} from "@/ipc/utils/retryWithRateLimit";
 import { withLock } from "@/ipc/utils/lock_utils";
 import {
   executeSupabaseSql,
@@ -155,21 +158,24 @@ export async function createTempTestUser(
   }
 
   const serviceRole = await getServiceRoleKey({ projectId, organizationSlug });
-  const response = await retryWithRateLimit(
-    () =>
-      fetch(`${projectUrl}/auth/v1/admin/users`, {
-        method: "POST",
-        headers: adminHeaders(serviceRole),
-        body: JSON.stringify({
-          email,
-          password,
-          // Confirm immediately so the user can sign in without an email round
-          // trip. Inserting into auth tables directly produces a user that
-          // can't log in — the Admin API avoids that.
-          email_confirm: true,
-          app_metadata: { dyad_test: true, dyad_app_id: appData.id },
-        }),
+  // fetchWithRetry (not a bare fetch in retryWithRateLimit): fetch resolves on
+  // a 429 rather than throwing, so only the throwing wrapper actually retries
+  // when back-to-back runs hit the Auth Admin rate limit.
+  const response = await fetchWithRetry(
+    `${projectUrl}/auth/v1/admin/users`,
+    {
+      method: "POST",
+      headers: adminHeaders(serviceRole),
+      body: JSON.stringify({
+        email,
+        password,
+        // Confirm immediately so the user can sign in without an email round
+        // trip. Inserting into auth tables directly produces a user that
+        // can't log in — the Admin API avoids that.
+        email_confirm: true,
+        app_metadata: { dyad_test: true, dyad_app_id: appData.id },
       }),
+    },
     `Create test user for app ${appData.id}`,
   );
   if (!response.ok) {
@@ -425,12 +431,12 @@ async function deleteUserBestEffort({
       projectId,
       organizationSlug,
     });
-    const response = await retryWithRateLimit(
-      () =>
-        fetch(`${projectUrl}/auth/v1/admin/users/${userId}`, {
-          method: "DELETE",
-          headers: adminHeaders(serviceRole),
-        }),
+    const response = await fetchWithRetry(
+      `${projectUrl}/auth/v1/admin/users/${userId}`,
+      {
+        method: "DELETE",
+        headers: adminHeaders(serviceRole),
+      },
       `Delete test user ${userId}`,
     );
     // A 404 means it's already gone — treat as success so we clear the column.

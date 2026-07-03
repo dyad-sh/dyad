@@ -30,6 +30,7 @@ import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
 import { DyadSecurityFinding } from "./DyadSecurityFinding";
 import { ipc } from "@/ipc/types";
+import { normalizeTestPath } from "@/ipc/utils/normalize_test_path";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import {
@@ -603,37 +604,17 @@ function renderCustomTag(
           {content}
         </DyadThink>
       );
-    case "dyad-write": {
-      // Spec files written via `write_file` (e.g. tests/signup.spec.ts) get the
-      // dedicated test card with a "View in Tests" deep-link, matching how the
-      // Tests panel surfaces them on disk.
-      const writePath = attributes.path || "";
-      // Only spec files under `tests/` get the test card. A component spec like
-      // `src/components/Button.spec.ts` is a unit test, not an E2E test, and
-      // shouldn't get a "View in Tests" deep-link.
-      const isTestSpec =
-        /\.spec\.(ts|tsx|js|jsx)$/.test(writePath) &&
-        (writePath.startsWith("tests/") || writePath.startsWith("tests\\"));
-      if (isTestSpec) {
-        return (
-          <DyadGenerateTest
-            node={{
-              properties: {
-                path: writePath,
-                description: attributes.description || "",
-                state: getState({ isStreaming, inProgress }),
-              },
-            }}
-          >
-            {content}
-          </DyadGenerateTest>
-        );
-      }
+    // Note: a <dyad-write> whose path happens to be a tests/*.spec.* file is
+    // deliberately NOT rerouted to the DyadGenerateTest card — that would
+    // retroactively restyle historical messages, misclassify non-Playwright
+    // specs a user keeps under tests/, and drop DyadWrite's inline Edit
+    // affordance. Only the explicit <dyad-generate-test> tag gets the test card.
+    case "dyad-write":
       return (
         <DyadWrite
           node={{
             properties: {
-              path: writePath,
+              path: attributes.path || "",
               description: attributes.description || "",
               state: getState({ isStreaming, inProgress }),
             },
@@ -642,14 +623,16 @@ function renderCustomTag(
           {content}
         </DyadWrite>
       );
-    }
 
     case "dyad-generate-test":
       return (
         <DyadGenerateTest
           node={{
             properties: {
-              path: attributes.path || "",
+              // Show the path the write loop actually uses (forced under
+              // tests/ with a spec extension), not the raw tag attribute,
+              // which can name a file that is never written there.
+              path: attributes.path ? normalizeTestPath(attributes.path) : "",
               description: attributes.description || "",
               state: getState({ isStreaming, inProgress }),
             },

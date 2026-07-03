@@ -274,6 +274,104 @@ describe("parsePlaywrightReport", () => {
     expect(result.tests?.map((t) => t.status)).toEqual(["passed", "passed"]);
   });
 
+  // Playwright's JSON reporter sets the test-level status to the outcome,
+  // which is "unexpected" for EVERY genuinely failing test — so the
+  // infra-vs-assertion split must still apply to unexpected tests.
+  it("classifies an unexpected timedOut result as inconclusive (infra)", () => {
+    const report: PwReport = {
+      suites: [
+        {
+          file: "tests/a.spec.ts",
+          specs: [
+            {
+              file: "tests/a.spec.ts",
+              title: "hung test",
+              line: 3,
+              tests: [
+                {
+                  status: "unexpected",
+                  results: [
+                    {
+                      status: "timedOut",
+                      duration: 30000,
+                      error: { message: "Test timeout of 30000ms exceeded." },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const [result] = parsePlaywrightReport(report, appPath);
+    expect(result.status).toBe("inconclusive");
+  });
+
+  it("classifies an unexpected failure with an infra error text as inconclusive", () => {
+    const report: PwReport = {
+      suites: [
+        {
+          file: "tests/a.spec.ts",
+          specs: [
+            {
+              file: "tests/a.spec.ts",
+              title: "selector never matched",
+              line: 3,
+              tests: [
+                {
+                  status: "unexpected",
+                  results: [
+                    {
+                      status: "failed",
+                      duration: 5000,
+                      error: {
+                        message: "Timed out 5000ms waiting for locator",
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const [result] = parsePlaywrightReport(report, appPath);
+    expect(result.status).toBe("inconclusive");
+  });
+
+  it("classifies an unexpected assertion failure as failed (red)", () => {
+    const report: PwReport = {
+      suites: [
+        {
+          file: "tests/a.spec.ts",
+          specs: [
+            {
+              file: "tests/a.spec.ts",
+              title: "wrong app behavior",
+              line: 3,
+              tests: [
+                {
+                  status: "unexpected",
+                  results: [
+                    {
+                      status: "failed",
+                      duration: 100,
+                      error: { message: "expect(received).toBe(expected)" },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const [result] = parsePlaywrightReport(report, appPath);
+    expect(result.status).toBe("failed");
+  });
+
   it("treats unexpected Playwright outcomes as failed even when the raw run passed", () => {
     const report: PwReport = {
       suites: [

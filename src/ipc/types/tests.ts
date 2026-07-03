@@ -7,6 +7,29 @@ import {
 } from "../contracts/core";
 
 // =============================================================================
+// E2E spec-file identity
+// =============================================================================
+
+/**
+ * Single source of truth for which file extensions count as an E2E spec.
+ * The glob (`TEST_SPEC_GLOB`), filename regex (`SPEC_FILE_RE`), the main
+ * process' `TEST_FILE_PATTERN`, and the renderer all derive from this list,
+ * so extending spec support (e.g. adding "mts") is a one-line change here.
+ */
+export const TEST_SPEC_EXTENSIONS = ["ts", "tsx", "js", "jsx"] as const;
+
+/** Regex alternation fragment ("ts|tsx|js|jsx") for building spec-path regexes. */
+export const TEST_SPEC_EXT_ALTERNATION = TEST_SPEC_EXTENSIONS.join("|");
+
+/** Glob matching every E2E spec under an app's `tests/` folder. */
+export const TEST_SPEC_GLOB = `tests/**/*.spec.{${TEST_SPEC_EXTENSIONS.join(",")}}`;
+
+/** Matches a filename with a spec extension (any directory). */
+export const SPEC_FILE_RE = new RegExp(
+  `\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
+);
+
+// =============================================================================
 // Tests Schemas
 // =============================================================================
 

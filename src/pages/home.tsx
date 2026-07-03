@@ -34,6 +34,10 @@ import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { getEffectiveDefaultChatMode, type ChatMode } from "@/lib/schemas";
+import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
+  isFreeProBuildModeCombination,
+} from "@/lib/freeProModel";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
@@ -74,7 +78,20 @@ export default function HomePage() {
       return initialChatMode;
     }
 
-    return getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
+    const effectiveDefaultChatMode = getEffectiveDefaultChatMode(
+      settings,
+      envVars,
+      !isQuotaExceeded,
+    );
+    if (
+      isFreeProBuildModeCombination(
+        settings.selectedModel,
+        effectiveDefaultChatMode,
+      )
+    ) {
+      return FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
+    }
+    return effectiveDefaultChatMode;
   }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);

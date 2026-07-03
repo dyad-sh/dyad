@@ -384,6 +384,47 @@ describe("HomePage", () => {
     });
   });
 
+  it("uses the Free Pro fallback when the effective home default resolves to build", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+      selectedModel: {
+        provider: "auto",
+        name: "free-pro",
+      },
+    };
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedChatMode: "local-agent",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit home prompt" }));
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialChatMode: "local-agent",
+        }),
+      );
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedChatMode: "local-agent",
+      }),
+    );
+    expect(mocks.updateSettings).not.toHaveBeenCalledWith({
+      selectedChatMode: "build",
+    });
+  });
+
   it("does not override a manually selected chat mode when the effective home default changes", () => {
     mocks.isAnyProviderSetup = true;
     mocks.isLoadingLanguageModelProviders = false;

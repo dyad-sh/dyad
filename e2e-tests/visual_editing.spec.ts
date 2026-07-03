@@ -13,6 +13,30 @@ async function saveVisualChanges(page: Page) {
   }).toPass({ timeout: Timeout.MEDIUM });
 }
 
+async function applyLatestProposal(page: Page) {
+  const result = (await page.evaluate(async () => {
+    const chatId = Number(new URL(window.location.href).searchParams.get("id"));
+    if (!Number.isFinite(chatId)) {
+      throw new Error("No active chat id found");
+    }
+
+    const proposal = await (window as any).electron.ipcRenderer.invoke(
+      "get-proposal",
+      { chatId },
+    );
+    if (!proposal?.messageId) {
+      throw new Error("No latest proposal message found");
+    }
+
+    return (window as any).electron.ipcRenderer.invoke("approve-proposal", {
+      chatId,
+      messageId: proposal.messageId,
+    });
+  })) as { success?: boolean; error?: string };
+
+  expect(result.success).toBe(true);
+}
+
 testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   await po.setUpDyadPro();
   await po.sendPrompt("tc=basic");
@@ -153,9 +177,20 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 testSkipIfWindows("swap image via URL", async ({ po }) => {
   await po.setUpDyadPro();
   await po.sendPrompt("tc=image-basic");
-  await po.approveProposal();
+  await applyLatestProposal(po.page);
 
-  // Wait for the app to rebuild with the new code
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await expect
+    .poll(
+      () =>
+        fs.readFileSync(
+          path.join(appPath, "src", "pages", "Index.tsx"),
+          "utf-8",
+        ),
+      { timeout: Timeout.MEDIUM },
+    )
+    .toContain('alt="Hero image"');
+
   await po.previewPanel.clickPreviewPickElement();
 
   // Wait for the image element to appear in the iframe after rebuild

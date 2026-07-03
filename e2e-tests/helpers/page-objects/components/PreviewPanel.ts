@@ -9,6 +9,58 @@ import { Timeout } from "../../constants";
 export class PreviewPanel {
   constructor(public page: Page) {}
 
+  private async getPreviewPanelSize() {
+    const sizeAttr = await this.page
+      .locator("#preview-panel")
+      .getAttribute("data-panel-size");
+    const size = Number.parseFloat(sizeAttr ?? "0");
+    return Number.isFinite(size) ? size : 0;
+  }
+
+  private async isPreviewPanelExpanded() {
+    return (await this.getPreviewPanelSize()) >= 5;
+  }
+
+  private async waitForPreviewPanelExpanded({
+    timeout = Timeout.MEDIUM,
+  }: { timeout?: number } = {}) {
+    await this.page.waitForFunction(
+      () => {
+        const el = document.querySelector("#preview-panel");
+        const size = Number.parseFloat(
+          el?.getAttribute("data-panel-size") ?? "0",
+        );
+        const width = el?.getBoundingClientRect().width ?? 0;
+        return size >= 5 && width > 80;
+      },
+      undefined,
+      { timeout },
+    );
+  }
+
+  private async waitForPreviewPanelCollapsed({
+    timeout = Timeout.MEDIUM,
+  }: { timeout?: number } = {}) {
+    await this.page.waitForFunction(
+      () => {
+        const el = document.querySelector("#preview-panel");
+        const size = Number.parseFloat(
+          el?.getAttribute("data-panel-size") ?? "0",
+        );
+        return size < 5;
+      },
+      undefined,
+      { timeout },
+    );
+  }
+
+  private async ensurePreviewPanelExpanded() {
+    if (!(await this.isPreviewPanelExpanded())) {
+      await this.page.getByTestId("toggle-preview-panel-button").click();
+    }
+    await this.waitForPreviewPanelExpanded();
+  }
+
   getPlanContent() {
     return this.page.getByTestId("plan-content");
   }
@@ -78,21 +130,7 @@ export class PreviewPanel {
     // Mode buttons live inside the preview panel, so the panel must be expanded
     // before they're clickable. If the panel is collapsed, the chat panel covers
     // the toolbar and intercepts pointer events.
-    const previewPanel = this.page.locator("#preview-panel");
-    const sizeAttr = await previewPanel.getAttribute("data-panel-size");
-    if (sizeAttr === null || parseFloat(sizeAttr) < 5) {
-      await this.page.getByTestId("toggle-preview-panel-button").click();
-      // Wait for panel-resize transition (chat.tsx uses 100ms transition)
-      await this.page.waitForFunction(
-        () => {
-          const el = document.querySelector("#preview-panel");
-          const v = el?.getAttribute("data-panel-size");
-          return v !== null && v !== undefined && parseFloat(v) >= 5;
-        },
-        undefined,
-        { timeout: Timeout.MEDIUM },
-      );
-    }
+    await this.ensurePreviewPanelExpanded();
 
     // When the toolbar is narrow (< 700px), `configure`, `problems`, and
     // `security` move into an overflow dropdown. Open the dropdown first if
@@ -135,13 +173,26 @@ export class PreviewPanel {
   }
 
   async clickTogglePreviewPanel() {
+    const wasExpanded = await this.isPreviewPanelExpanded();
     await this.page.getByTestId("toggle-preview-panel-button").click();
+    if (wasExpanded) {
+      await this.waitForPreviewPanelCollapsed();
+    } else {
+      await this.waitForPreviewPanelExpanded();
+    }
   }
 
   async clickPreviewPickElement() {
-    await this.page
-      .getByTestId("preview-pick-element-button")
-      .click({ timeout: Timeout.EXTRA_LONG });
+    await this.ensurePreviewPanelExpanded();
+    await this.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
+
+    const pickButton = this.page.getByTestId("preview-pick-element-button");
+    await expect(async () => {
+      await expect(pickButton).toBeVisible({ timeout: 1_000 });
+      await expect(pickButton).toBeEnabled({ timeout: 1_000 });
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
+
+    await pickButton.click({ timeout: Timeout.MEDIUM });
   }
 
   async clickDeselectComponent(options?: { index?: number }) {

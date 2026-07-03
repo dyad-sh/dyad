@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   attachmentsAtom,
+  hasManuallySelectedChatModeAtom,
   homeChatInputValueAtom,
   homeSelectedAppAtom,
   pendingFirstPromptAtom,
@@ -33,6 +34,10 @@ import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { getEffectiveDefaultChatMode, type ChatMode } from "@/lib/schemas";
+import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
+  isFreeProBuildModeCombination,
+} from "@/lib/freeProModel";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
@@ -73,7 +78,20 @@ export default function HomePage() {
       return initialChatMode;
     }
 
-    return getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
+    const effectiveDefaultChatMode = getEffectiveDefaultChatMode(
+      settings,
+      envVars,
+      !isQuotaExceeded,
+    );
+    if (
+      isFreeProBuildModeCombination(
+        settings.selectedModel,
+        effectiveDefaultChatMode,
+      )
+    ) {
+      return FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
+    }
+    return effectiveDefaultChatMode;
   }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -119,23 +137,32 @@ export default function HomePage() {
     }
   }, [appId, navigate]);
 
-  // Apply default chat mode when navigating to home page
-  // Wait for quota status to load to avoid race condition where we default to Basic Agent
-  // before knowing if quota is actually exceeded
-  const hasAppliedDefaultChatMode = useRef(false);
+  // Keep the selected chat mode synced to the effective default (which can
+  // change as quota/provider state loads) until the user explicitly picks a
+  // mode. Wait for quota status to load to avoid race condition where we
+  // default to Basic Agent before knowing if quota is actually exceeded.
+  const hasManuallySelectedChatMode = useAtomValue(
+    hasManuallySelectedChatModeAtom,
+  );
   useEffect(() => {
     if (
-      settings &&
-      homeInitialChatMode &&
-      !hasAppliedDefaultChatMode.current &&
-      !isQuotaLoading
+      !settings ||
+      !homeInitialChatMode ||
+      isQuotaLoading ||
+      hasManuallySelectedChatMode
     ) {
-      hasAppliedDefaultChatMode.current = true;
-      if (settings.selectedChatMode !== homeInitialChatMode) {
-        updateSettings({ selectedChatMode: homeInitialChatMode });
-      }
+      return;
     }
-  }, [homeInitialChatMode, settings, updateSettings, isQuotaLoading]);
+    if (settings.selectedChatMode !== homeInitialChatMode) {
+      updateSettings({ selectedChatMode: homeInitialChatMode });
+    }
+  }, [
+    homeInitialChatMode,
+    settings,
+    updateSettings,
+    isQuotaLoading,
+    hasManuallySelectedChatMode,
+  ]);
 
   const openAiSetupDialog = useCallback(() => {
     posthog.capture("home:ai-setup-dialog-open");

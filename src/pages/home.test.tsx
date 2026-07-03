@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
   effectiveDefaultChatMode: "build",
+  hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
   initialChatMode: "build",
   navigate: vi.fn(),
@@ -46,6 +47,9 @@ vi.mock("jotai", async (importOriginal) => ({
   useAtomValue: (atom: { debugLabel?: string }) => {
     if (atom.debugLabel === "pendingFirstPromptAtom") {
       return mocks.shouldResumeFirstPrompt;
+    }
+    if (atom.debugLabel === "hasManuallySelectedChatModeAtom") {
+      return mocks.hasManuallySelectedChatMode;
     }
     return undefined;
   },
@@ -203,6 +207,7 @@ describe("HomePage", () => {
     mocks.createApp.mockReset();
     mocks.createChat.mockReset();
     mocks.effectiveDefaultChatMode = "build";
+    mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
     mocks.initialChatMode = "build";
     mocks.navigate.mockReset();
@@ -352,6 +357,98 @@ describe("HomePage", () => {
         requestedChatMode: "local-agent",
       }),
     );
+  });
+
+  it("syncs selected chat mode when provider setup changes the effective home default", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+
+    const { rerender } = renderHomePage();
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = { ...mocks.settings };
+    rerenderHomePage(rerender);
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedChatMode: "local-agent",
+      });
+    });
+  });
+
+  it("uses the Free Pro fallback when the effective home default resolves to build", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+      selectedModel: {
+        provider: "auto",
+        name: "free-pro",
+      },
+    };
+
+    renderHomePage();
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedChatMode: "local-agent",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit home prompt" }));
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialChatMode: "local-agent",
+        }),
+      );
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedChatMode: "local-agent",
+      }),
+    );
+    expect(mocks.updateSettings).not.toHaveBeenCalledWith({
+      selectedChatMode: "build",
+    });
+  });
+
+  it("does not override a manually selected chat mode when the effective home default changes", () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+
+    const { rerender } = renderHomePage();
+
+    mocks.updateSettings.mockClear();
+
+    // User explicitly picks a mode from the selector, which latches the flag.
+    mocks.hasManuallySelectedChatMode = true;
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "ask",
+    };
+    mocks.effectiveDefaultChatMode = "local-agent";
+    rerenderHomePage(rerender);
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it("auto-submits an attachment-only pending first prompt once provider setup is ready", async () => {

@@ -72,6 +72,12 @@ pendingFirstPromptAtom.debugLabel = "pendingFirstPromptAtom";
 export const homeSelectedAppAtom = atom<ListedApp | null>(null);
 homeSelectedAppAtom.debugLabel = "homeSelectedAppAtom";
 
+// Latched when the user explicitly picks a chat mode outside a chat. While
+// false, the home page keeps settings.selectedChatMode synced to the
+// effective default chat mode as quota/provider state loads or changes.
+export const hasManuallySelectedChatModeAtom = atom<boolean>(false);
+hasManuallySelectedChatModeAtom.debugLabel = "hasManuallySelectedChatModeAtom";
+
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());

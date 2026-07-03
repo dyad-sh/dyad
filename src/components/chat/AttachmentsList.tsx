@@ -1,5 +1,5 @@
 import { FileText, X, MessageSquare, Upload } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 import type { FileAttachment } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
@@ -10,14 +10,20 @@ interface AttachmentsListProps {
 }
 
 function ImageAttachmentThumbnail({ file }: { file: File }) {
-  // Create the object URL once per file and revoke it on unmount, so the
-  // shared URL stays valid for both the thumbnail and the hover preview
-  // regardless of how quickly the tooltip opens/closes.
-  const objectUrl = useMemo(() => URL.createObjectURL(file), [file]);
+  // Create the object URL inside the effect and revoke the same URL in its
+  // cleanup. This keeps a single shared URL valid for both the thumbnail and
+  // the hover preview (no leak on quick hover), while staying correct under
+  // React StrictMode's mount/unmount/remount cycle — each setup creates a
+  // fresh URL that its own cleanup revokes, so the rendered src is never stale.
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [objectUrl]);
+    const url = URL.createObjectURL(file);
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  if (!objectUrl) return null;
 
   return (
     <Tooltip>

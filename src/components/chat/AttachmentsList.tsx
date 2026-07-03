@@ -1,4 +1,5 @@
 import { FileText, X, MessageSquare, Upload } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import type { FileAttachment } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
@@ -6,6 +7,36 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 interface AttachmentsListProps {
   attachments: FileAttachment[];
   onRemove: (index: number) => void;
+}
+
+function ImageAttachmentThumbnail({ file }: { file: File }) {
+  // Create the object URL once per file and revoke it on unmount, so the
+  // shared URL stays valid for both the thumbnail and the hover preview
+  // regardless of how quickly the tooltip opens/closes.
+  const objectUrl = useMemo(() => URL.createObjectURL(file), [file]);
+
+  useEffect(() => {
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [objectUrl]);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<div className="flex" />}>
+        <img
+          src={objectUrl}
+          alt={file.name}
+          className="w-12 h-12 object-cover rounded-md"
+        />
+      </TooltipTrigger>
+      <TooltipContent className="bg-transparent p-0 [&_[data-slot=tooltip-arrow]]:hidden">
+        <img
+          src={objectUrl}
+          alt={file.name}
+          className="max-w-[200px] max-h-[200px] object-contain bg-white p-1 rounded shadow-lg"
+        />
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function AttachmentsList({
@@ -31,34 +62,7 @@ export function AttachmentsList({
               <MessageSquare size={12} className="text-green-600" />
             )}
             {attachment.file.type.startsWith("image/") ? (
-              <Tooltip>
-                <TooltipTrigger>
-                  <img
-                    src={URL.createObjectURL(attachment.file)}
-                    alt={attachment.file.name}
-                    className="w-12 h-12 object-cover rounded-md"
-                    onLoad={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                    onError={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                  />
-                </TooltipTrigger>
-                <TooltipContent className="bg-transparent p-0">
-                  <img
-                    src={URL.createObjectURL(attachment.file)}
-                    alt={attachment.file.name}
-                    className="max-w-[200px] max-h-[200px] object-contain bg-white p-1 rounded shadow-lg"
-                    onLoad={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                    onError={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                  />
-                </TooltipContent>
-              </Tooltip>
+              <ImageAttachmentThumbnail file={attachment.file} />
             ) : (
               <FileText size={12} />
             )}

@@ -354,6 +354,89 @@ describe("HomePage", () => {
     );
   });
 
+  it("syncs selected chat mode when provider setup changes the effective home default", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+
+    const { rerender } = renderHomePage();
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = { ...mocks.settings };
+    rerenderHomePage(rerender);
+
+    await waitFor(() => {
+      expect(mocks.updateSettings).toHaveBeenCalledWith({
+        selectedChatMode: "local-agent",
+      });
+    });
+  });
+
+  it("does not override a manually selected chat mode when the effective home default changes", () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+
+    const { rerender } = renderHomePage();
+
+    mocks.updateSettings.mockClear();
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "ask",
+    };
+    rerenderHomePage(rerender);
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("keeps a manual mode selection when the effective default temporarily matches it", () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.initialChatMode = "local-agent";
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "local-agent",
+    };
+
+    const { rerender } = renderHomePage();
+
+    mocks.updateSettings.mockClear();
+
+    // User manually switches from the effective default to Build.
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "build",
+    };
+    rerenderHomePage(rerender);
+
+    // The effective default later temporarily matches the manual Build choice.
+    mocks.effectiveDefaultChatMode = "build";
+    mocks.settings = { ...mocks.settings };
+    rerenderHomePage(rerender);
+
+    // When the effective default returns to Agent, the manual Build selection
+    // should not be reclassified as auto-applied and overwritten.
+    mocks.effectiveDefaultChatMode = "local-agent";
+    mocks.settings = { ...mocks.settings };
+    rerenderHomePage(rerender);
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("auto-submits an attachment-only pending first prompt once provider setup is ready", async () => {
     const attachment = {
       file: new File(["hello"], "notes.txt", { type: "text/plain" }),

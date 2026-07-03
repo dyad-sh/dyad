@@ -1000,6 +1000,77 @@ describe("sanitizeToolCallTranscript", () => {
     ]);
   });
 
+  it("preserves completed parallel tool pairs when another result is missing", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Checking the project." },
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "read_file",
+            input: { path: "src/App.tsx" },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-2",
+            toolName: "read_file",
+            input: { path: "src/main.tsx" },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-3",
+            toolName: "list_files",
+            input: { path: "src" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "read_file",
+            output: { type: "text", value: "app" },
+          },
+        ],
+      },
+      { role: "user", content: "Injected context" },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-3",
+            toolName: "list_files",
+            output: { type: "text", value: "files" },
+          },
+        ],
+      },
+    ];
+
+    expect(sanitizeToolCallTranscript(messages)).toEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Checking the project." },
+          (messages[0].content as any[])[1],
+          (messages[0].content as any[])[3],
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          (messages[1].content as any[])[0],
+          (messages[3].content as any[])[0],
+        ],
+      },
+      messages[2],
+    ]);
+  });
+
   it("cleans collected tool-result metadata before merging", () => {
     const messages: ModelMessage[] = [
       {

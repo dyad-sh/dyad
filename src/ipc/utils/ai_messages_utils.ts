@@ -145,13 +145,24 @@ export function sanitizeToolCallTranscript(
 
     const expectedToolCallIds = new Set(toolCallIds);
     const scanEnd = findNextAssistantIndex(cleaned, i + 1);
-    const collectedToolResults = collectToolResults(
-      cleaned.slice(i + 1, scanEnd),
-      expectedToolCallIds,
+    const collectedToolResults = orderToolResultsByCallOrder(
+      toolCallIds,
+      collectToolResults(cleaned.slice(i + 1, scanEnd), expectedToolCallIds),
+    );
+    const completedToolCallIds = new Set(
+      collectedToolResults.map((part) => part.toolCallId),
     );
 
-    if (hasAllToolResults(collectedToolResults, expectedToolCallIds)) {
-      sanitized.push(message);
+    if (completedToolCallIds.size > 0) {
+      const pairedAssistant = keepCompletedToolCalls(
+        message,
+        completedToolCallIds,
+      );
+      if (!pairedAssistant) {
+        continue;
+      }
+
+      sanitized.push(pairedAssistant);
       sanitized.push(
         getCanonicalToolMessage(cleaned[i + 1], collectedToolResults) ??
           ({
@@ -249,24 +260,47 @@ function collectToolResults(
   return results;
 }
 
-function hasAllToolResults(
-  toolResults: Array<{ toolCallId: string }>,
-  expectedToolCallIds: Set<string>,
-) {
-  const resultIds = new Set(toolResults.map((part) => part.toolCallId));
-  return [...expectedToolCallIds].every((toolCallId) =>
-    resultIds.has(toolCallId),
+function orderToolResultsByCallOrder(
+  toolCallIds: string[],
+  toolResults: ToolResultTranscriptPart[],
+): ToolResultTranscriptPart[] {
+  const resultByToolCallId = new Map(
+    toolResults.map((part) => [part.toolCallId, part]),
   );
+
+  return toolCallIds.flatMap((toolCallId) => {
+    const result = resultByToolCallId.get(toolCallId);
+    return result ? [result] : [];
+  });
 }
 
 function stripToolCalls(message: ModelMessage): ModelMessage | null {
+  return keepCompletedToolCalls(message, new Set());
+}
+
+function keepCompletedToolCalls(
+  message: ModelMessage,
+  completedToolCallIds: Set<string>,
+): ModelMessage | null {
   if (!Array.isArray(message.content)) {
     return message;
   }
 
-  const content = message.content.filter((part) => !isToolCallPart(part));
+  let didStripToolCall = false;
+  const content = message.content.filter((part) => {
+    if (!isToolCallPart(part)) {
+      return true;
+    }
+    const shouldKeep = completedToolCallIds.has(part.toolCallId);
+    didStripToolCall ||= !shouldKeep;
+    return shouldKeep;
+  });
   if (content.length === 0) {
     return null;
+  }
+
+  if (!didStripToolCall) {
+    return message;
   }
 
   const cleaned = cleanMessage({ ...message, content } as ModelMessage);
@@ -277,7 +311,7 @@ function stripToolCalls(message: ModelMessage): ModelMessage | null {
   return cleaned;
 }
 
-function isToolCallPart(part: unknown): part is ToolCallTranscriptPart {
+export function isToolCallPart(part: unknown): part is ToolCallTranscriptPart {
   return (
     typeof part === "object" &&
     part !== null &&
@@ -287,7 +321,9 @@ function isToolCallPart(part: unknown): part is ToolCallTranscriptPart {
   );
 }
 
-function isToolResultPart(part: unknown): part is ToolResultTranscriptPart {
+export function isToolResultPart(
+  part: unknown,
+): part is ToolResultTranscriptPart {
   return (
     typeof part === "object" &&
     part !== null &&
@@ -297,12 +333,12 @@ function isToolResultPart(part: unknown): part is ToolResultTranscriptPart {
   );
 }
 
-type ToolCallTranscriptPart = {
+export type ToolCallTranscriptPart = {
   type: "tool-call";
   toolCallId: string;
 };
 
-type ToolResultTranscriptPart = {
+export type ToolResultTranscriptPart = {
   type: "tool-result";
   toolCallId: string;
 };

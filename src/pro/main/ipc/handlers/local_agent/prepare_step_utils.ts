@@ -9,6 +9,8 @@ import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart, Todo } from "./tools/types";
 import {
   cleanMessage,
+  isToolCallPart,
+  isToolResultPart,
   sanitizeToolCallTranscript,
 } from "@/ipc/utils/ai_messages_utils";
 import { validateImageDimensions } from "./tools/image_utils";
@@ -308,29 +310,5 @@ function didMessageArrayChange(
   return (
     nextMessages.length !== previousMessages.length ||
     nextMessages.some((message, index) => message !== previousMessages[index])
-  );
-}
-
-function isToolCallPart(
-  part: unknown,
-): part is { type: "tool-call"; toolCallId: string } {
-  return (
-    typeof part === "object" &&
-    part !== null &&
-    "type" in part &&
-    (part as Record<string, unknown>).type === "tool-call" &&
-    "toolCallId" in part
-  );
-}
-
-function isToolResultPart(
-  part: unknown,
-): part is { type: "tool-result"; toolCallId: string } {
-  return (
-    typeof part === "object" &&
-    part !== null &&
-    "type" in part &&
-    (part as Record<string, unknown>).type === "tool-result" &&
-    "toolCallId" in part
   );
 }

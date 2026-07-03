@@ -1349,6 +1349,36 @@ describe("prepare_step_utils", () => {
 
       expect(ensureToolResultOrdering(messages)).toBeNull();
     });
+
+    it("ignores malformed non-string toolCallId parts", () => {
+      const messages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: 123,
+              toolName: "read_file",
+              input: {},
+            } as any,
+          ],
+        },
+        { role: "user", content: [{ type: "text", text: "Injected" }] },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: 123,
+              toolName: "read_file",
+              output: textToolResult("done"),
+            } as any,
+          ],
+        },
+      ];
+
+      expect(ensureToolResultOrdering(messages)).toBeNull();
+    });
   });
 
   describe("sanitizeStepMessages", () => {

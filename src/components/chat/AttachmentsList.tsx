@@ -16,7 +16,7 @@ export function AttachmentsList({
   if (attachments.length === 0) return null;
 
   return (
-    <div className="px-2 pt-2 flex flex-wrap gap-1">
+    <div className="px-2 pt-2 flex flex-wrap gap-1 max-h-32 overflow-y-auto">
       {attachments.map((attachment, index) => (
         <div
           key={index}

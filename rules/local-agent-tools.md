@@ -32,6 +32,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Stream retries
 
 - When extending `handleLocalAgentStream` retry behavior, do not only match transport errors like `"terminated"`. Providers can emit structured stream errors such as `{ type: "error", error: { type: "server_error", ... } }`, and those transient 5xx / rate-limit failures need explicit retry classification too.
+- Anthropic rejects any assistant `tool_use` unless the immediately following message contains every matching `tool_result`. When changing local-agent history assembly, retry replay, message injection, or `aiMessagesJson` persistence, run the transcript through the shared tool-call sanitizer at the provider/persistence boundary rather than relying only on the injection site to preserve ordering.
 
 ## Metadata-only stop tools
 

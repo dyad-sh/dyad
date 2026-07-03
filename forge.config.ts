@@ -122,6 +122,9 @@ if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    // E2E test builds install local file: dependencies as links on Windows.
+    // Dereference them so packaging does not require symlink privileges in the temp app.
+    derefSymlinks: isEndToEndTestBuild ? true : undefined,
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
     afterCopy: [
       (buildPath, _electronVersion, platform, arch, callback) => {

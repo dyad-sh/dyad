@@ -5,60 +5,99 @@ import os from "os";
 import path from "path";
 import { pathToFileURL } from "url";
 import { execFileSync } from "child_process";
-import { testWithConfigSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { testWithConfig, Timeout } from "./helpers/test_helper";
 
 const MANAGED_NODE_VERSION = "v24.18.0";
 
 function createManagedNodeFixtureArchive(userDataDir: string) {
   const fixtureDir = path.join(userDataDir, "managed-node-fixture");
+  const isWindows = process.platform === "win32";
   const rootDir = path.join(
     fixtureDir,
-    `node-${MANAGED_NODE_VERSION}-${process.platform}-${os.arch()}`,
+    isWindows
+      ? `node-${MANAGED_NODE_VERSION}-win-${os.arch()}`
+      : `node-${MANAGED_NODE_VERSION}-${process.platform}-${os.arch()}`,
   );
-  const binDir = path.join(rootDir, "bin");
+  const binDir = isWindows ? rootDir : path.join(rootDir, "bin");
   fs.mkdirSync(binDir, { recursive: true });
 
-  const nodePath = path.join(binDir, "node");
-  fs.writeFileSync(
-    nodePath,
-    [
-      "#!/bin/sh",
-      `if [ "$1" = "--version" ]; then echo "${MANAGED_NODE_VERSION}"; exit 0; fi`,
-      `exec "${process.execPath.replace(/"/g, '\\"')}" "$@"`,
-      "",
-    ].join("\n"),
-  );
-  fs.chmodSync(nodePath, 0o755);
+  if (isWindows) {
+    fs.copyFileSync(process.execPath, path.join(binDir, "node.exe"));
+    fs.writeFileSync(
+      path.join(binDir, "pnpm.cmd"),
+      [
+        "@echo off",
+        "setlocal EnableDelayedExpansion",
+        'set "previous="',
+        "for %%A in (%*) do (",
+        '  if "%%~A"=="--version" echo 10.15.0 & exit /b 0',
+        '  if "%%~A"=="install" echo Already up to date & exit /b 0',
+        '  if "!previous!"=="run" if "%%~A"=="dev" "%~dp0node.exe" -e "const http=require(\'http\');const server=http.createServer((_req,res)=>res.end(\'managed node ok\'));server.listen(0,()=>console.log(\'http://localhost:\'+server.address().port));" & exit /b 0',
+        '  set "previous=%%~A"',
+        ")",
+        "echo Unsupported fake pnpm command: %* 1>&2",
+        "exit /b 1",
+        "",
+      ].join("\r\n"),
+    );
+  } else {
+    const nodePath = path.join(binDir, "node");
+    fs.writeFileSync(
+      nodePath,
+      [
+        "#!/bin/sh",
+        `if [ "$1" = "--version" ]; then echo "${MANAGED_NODE_VERSION}"; exit 0; fi`,
+        `exec "${process.execPath.replace(/"/g, '\\"')}" "$@"`,
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(nodePath, 0o755);
 
-  const pnpmPath = path.join(binDir, "pnpm");
-  fs.writeFileSync(
-    pnpmPath,
-    [
-      "#!/bin/sh",
-      'previous=""',
-      'for arg in "$@"; do',
-      '  if [ "$arg" = "--version" ]; then echo "10.15.0"; exit 0; fi',
-      '  if [ "$arg" = "install" ]; then echo "Already up to date"; exit 0; fi',
-      '  if [ "$previous" = "run" ] && [ "$arg" = "dev" ]; then',
-      `  exec "${process.execPath.replace(/"/g, '\\"')}" -e "const http=require('http');const server=http.createServer((_req,res)=>res.end('managed node ok'));server.listen(0,()=>console.log('http://localhost:'+server.address().port));"`,
-      "  fi",
-      '  previous="$arg"',
-      "done",
-      'echo "Unsupported fake pnpm command: $@" >&2',
-      "exit 1",
-      "",
-    ].join("\n"),
-  );
-  fs.chmodSync(pnpmPath, 0o755);
+    const pnpmPath = path.join(binDir, "pnpm");
+    fs.writeFileSync(
+      pnpmPath,
+      [
+        "#!/bin/sh",
+        'previous=""',
+        'for arg in "$@"; do',
+        '  if [ "$arg" = "--version" ]; then echo "10.15.0"; exit 0; fi',
+        '  if [ "$arg" = "install" ]; then echo "Already up to date"; exit 0; fi',
+        '  if [ "$previous" = "run" ] && [ "$arg" = "dev" ]; then',
+        `  exec "${process.execPath.replace(/"/g, '\\"')}" -e "const http=require('http');const server=http.createServer((_req,res)=>res.end('managed node ok'));server.listen(0,()=>console.log('http://localhost:'+server.address().port));"`,
+        "  fi",
+        '  previous="$arg"',
+        "done",
+        'echo "Unsupported fake pnpm command: $@" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(pnpmPath, 0o755);
+  }
 
-  const archivePath = path.join(fixtureDir, "managed-node.tar.gz");
-  execFileSync("tar", [
-    "-czf",
-    archivePath,
-    "-C",
+  const archivePath = path.join(
     fixtureDir,
-    path.basename(rootDir),
-  ]);
+    isWindows ? "managed-node.zip" : "managed-node.tar.gz",
+  );
+  if (isWindows) {
+    const quotePowerShellString = (value: string) =>
+      `'${value.replace(/'/g, "''")}'`;
+    execFileSync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      `Compress-Archive -LiteralPath ${quotePowerShellString(rootDir)} -DestinationPath ${quotePowerShellString(archivePath)} -Force`,
+    ]);
+  } else {
+    execFileSync("tar", [
+      "-czf",
+      archivePath,
+      "-C",
+      fixtureDir,
+      path.basename(rootDir),
+    ]);
+  }
   const sha256 = crypto
     .createHash("sha256")
     .update(fs.readFileSync(archivePath))
@@ -67,15 +106,19 @@ function createManagedNodeFixtureArchive(userDataDir: string) {
   process.env.DYAD_TEST_MANAGED_NODE_ARCHIVE_URL =
     pathToFileURL(archivePath).toString();
   process.env.DYAD_TEST_MANAGED_NODE_SHA256 = sha256;
+  process.env.DYAD_TEST_MANAGED_NODE_EXPECTED_VERSION = isWindows
+    ? process.version
+    : MANAGED_NODE_VERSION;
 }
 
-const test = testWithConfigSkipIfWindows({
+const test = testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
     createManagedNodeFixtureArchive(userDataDir);
   },
   postLaunchHook: async () => {
     delete process.env.DYAD_TEST_MANAGED_NODE_ARCHIVE_URL;
     delete process.env.DYAD_TEST_MANAGED_NODE_SHA256;
+    delete process.env.DYAD_TEST_MANAGED_NODE_EXPECTED_VERSION;
   },
 });
 

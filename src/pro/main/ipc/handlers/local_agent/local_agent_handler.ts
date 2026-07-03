@@ -92,6 +92,7 @@ import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
+  sanitizeToolCallTranscript,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
 import {
@@ -929,6 +930,8 @@ export async function handleLocalAgentStream(
               buildTerminatedRetryContinuationInstruction(),
             ]
           : currentMessageHistory;
+        const sanitizedAttemptMessages =
+          sanitizeToolCallTranscript(attemptMessages);
         const attemptToolInputIds = new Set<string>();
         const cleanupAttemptToolStreamingEntries = () => {
           for (const toolCallId of attemptToolInputIds) {
@@ -960,7 +963,7 @@ export async function handleLocalAgentStream(
             temperature,
             maxRetries: 2,
             system: systemPrompt,
-            messages: attemptMessages,
+            messages: sanitizedAttemptMessages,
             tools: allTools,
             stopWhen: [
               stepCountIs(maxToolCallSteps),
@@ -1094,8 +1097,16 @@ export async function handleLocalAgentStream(
               // tool_use/tool_result pairing. Catches edge cases where
               // injection indices become stale after compaction.
               if (result?.messages) {
-                const fixed = ensureToolResultOrdering(result.messages);
-                if (fixed) {
+                const ordered = ensureToolResultOrdering(result.messages);
+                const beforeSanitize = ordered ?? result.messages;
+                const fixed = sanitizeToolCallTranscript(beforeSanitize);
+                const changed =
+                  ordered != null ||
+                  fixed.length !== beforeSanitize.length ||
+                  fixed.some(
+                    (message, index) => message !== beforeSanitize[index],
+                  );
+                if (changed) {
                   logger.warn(
                     `ensureToolResultOrdering fixed misplaced user messages in chat ${req.chatId}`,
                   );

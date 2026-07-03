@@ -119,6 +119,175 @@ function cleanMessages(messages: ModelMessage[]): ModelMessage[] {
   return messages.map(cleanMessage);
 }
 
+/**
+ * Anthropic requires every assistant tool-call to be followed immediately by a
+ * tool message containing the matching results. Persisted or dynamically
+ * injected local-agent messages can occasionally violate that shape after
+ * retries, aborts, or mid-turn message insertion. Normalize the transcript
+ * before saving or sending it to a provider.
+ */
+export function sanitizeToolCallTranscript(
+  messages: ModelMessage[],
+): ModelMessage[] {
+  const sanitized: ModelMessage[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const message = cleanMessage(messages[i]);
+
+    // Tool messages are only valid when consumed by the immediately preceding
+    // assistant tool-call branch below. A standalone tool result is dangling.
+    if (message.role === "tool") {
+      continue;
+    }
+
+    const toolCallIds = getToolCallIds(message);
+    if (message.role !== "assistant" || toolCallIds.length === 0) {
+      sanitized.push(message);
+      continue;
+    }
+
+    const expectedToolCallIds = new Set(toolCallIds);
+    const scanEnd = findNextAssistantIndex(messages, i + 1);
+    const collectedToolResults = collectToolResults(
+      messages.slice(i + 1, scanEnd),
+      expectedToolCallIds,
+    );
+
+    if (hasAllToolResults(collectedToolResults, expectedToolCallIds)) {
+      sanitized.push(message);
+      sanitized.push({
+        role: "tool",
+        content: collectedToolResults,
+      } as ModelMessage);
+
+      for (let j = i + 1; j < scanEnd; j++) {
+        const interveningMessage = cleanMessage(messages[j]);
+        if (interveningMessage.role !== "tool") {
+          sanitized.push(interveningMessage);
+        }
+      }
+
+      i = scanEnd - 1;
+      continue;
+    }
+
+    const strippedAssistant = stripToolCalls(message);
+    if (strippedAssistant) {
+      sanitized.push(strippedAssistant);
+    }
+  }
+
+  return sanitized;
+}
+
+function findNextAssistantIndex(messages: ModelMessage[], startIndex: number) {
+  for (let i = startIndex; i < messages.length; i++) {
+    if (messages[i].role === "assistant") {
+      return i;
+    }
+  }
+  return messages.length;
+}
+
+function getToolCallIds(message: ModelMessage): string[] {
+  if (!Array.isArray(message.content)) {
+    return [];
+  }
+
+  const toolCallIds: string[] = [];
+  for (const part of message.content) {
+    if (isToolCallPart(part)) {
+      toolCallIds.push(part.toolCallId);
+    }
+  }
+  return toolCallIds;
+}
+
+function collectToolResults(
+  messages: ModelMessage[],
+  expectedToolCallIds: Set<string>,
+): ToolResultTranscriptPart[] {
+  const results: ToolResultTranscriptPart[] = [];
+  const seenToolCallIds = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role !== "tool" || !Array.isArray(message.content)) {
+      continue;
+    }
+
+    for (const part of message.content) {
+      if (
+        isToolResultPart(part) &&
+        expectedToolCallIds.has(part.toolCallId) &&
+        !seenToolCallIds.has(part.toolCallId)
+      ) {
+        results.push(part);
+        seenToolCallIds.add(part.toolCallId);
+      }
+    }
+  }
+
+  return results;
+}
+
+function hasAllToolResults(
+  toolResults: Array<{ toolCallId: string }>,
+  expectedToolCallIds: Set<string>,
+) {
+  const resultIds = new Set(toolResults.map((part) => part.toolCallId));
+  return [...expectedToolCallIds].every((toolCallId) =>
+    resultIds.has(toolCallId),
+  );
+}
+
+function stripToolCalls(message: ModelMessage): ModelMessage | null {
+  if (!Array.isArray(message.content)) {
+    return message;
+  }
+
+  const content = message.content.filter((part) => !isToolCallPart(part));
+  if (content.length === 0) {
+    return null;
+  }
+
+  const cleaned = cleanMessage({ ...message, content } as ModelMessage);
+  if (Array.isArray(cleaned.content) && cleaned.content.length === 0) {
+    return null;
+  }
+
+  return cleaned;
+}
+
+function isToolCallPart(part: unknown): part is ToolCallTranscriptPart {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as Record<string, unknown>).type === "tool-call" &&
+    typeof (part as Record<string, unknown>).toolCallId === "string"
+  );
+}
+
+function isToolResultPart(part: unknown): part is ToolResultTranscriptPart {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as Record<string, unknown>).type === "tool-result" &&
+    typeof (part as Record<string, unknown>).toolCallId === "string"
+  );
+}
+
+type ToolCallTranscriptPart = {
+  type: "tool-call";
+  toolCallId: string;
+};
+
+type ToolResultTranscriptPart = {
+  type: "tool-result";
+  toolCallId: string;
+};
+
 /** Maximum size in bytes for ai_messages_json (10MB) */
 export const MAX_AI_MESSAGES_SIZE = 10_000_000;
 
@@ -133,8 +302,13 @@ export function getAiMessagesJsonIfWithinLimit(
     return undefined;
   }
 
+  const sanitizedMessages = sanitizeToolCallTranscript(aiMessages);
+  if (sanitizedMessages.length === 0) {
+    return undefined;
+  }
+
   const payload: AiMessagesJsonV6 = {
-    messages: aiMessages,
+    messages: sanitizedMessages,
     sdkVersion: AI_MESSAGES_SDK_VERSION,
   };
 
@@ -171,7 +345,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
       Array.isArray(parsed) &&
       parsed.every((m) => m && typeof m.role === "string")
     ) {
-      return cleanMessages(parsed);
+      return sanitizeToolCallTranscript(cleanMessages(parsed));
     }
 
     if (
@@ -185,7 +359,9 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
         (m: ModelMessage) => m && typeof m.role === "string",
       )
     ) {
-      return cleanMessages((parsed as AiMessagesJsonV6).messages);
+      return sanitizeToolCallTranscript(
+        cleanMessages((parsed as AiMessagesJsonV6).messages),
+      );
     }
   }
 

@@ -1,6 +1,7 @@
 import { FileText, X, MessageSquare, Upload } from "lucide-react";
 import type { FileAttachment } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
+import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
 
 interface AttachmentsListProps {
   attachments: FileAttachment[];
@@ -30,19 +31,21 @@ export function AttachmentsList({
               <MessageSquare size={12} className="text-green-600" />
             )}
             {attachment.file.type.startsWith("image/") ? (
-              <div className="relative group">
-                <img
-                  src={URL.createObjectURL(attachment.file)}
-                  alt={attachment.file.name}
-                  className="w-12 h-12 object-cover rounded-md"
-                  onLoad={(e) =>
-                    URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                  }
-                  onError={(e) =>
-                    URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                  }
-                />
-                <div className="absolute hidden group-hover:block top-14 left-0 z-10">
+              <Tooltip>
+                <TooltipTrigger>
+                  <img
+                    src={URL.createObjectURL(attachment.file)}
+                    alt={attachment.file.name}
+                    className="w-12 h-12 object-cover rounded-md"
+                    onLoad={(e) =>
+                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
+                    }
+                    onError={(e) =>
+                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
+                    }
+                  />
+                </TooltipTrigger>
+                <TooltipContent className="bg-transparent p-0">
                   <img
                     src={URL.createObjectURL(attachment.file)}
                     alt={attachment.file.name}
@@ -54,8 +57,8 @@ export function AttachmentsList({
                       URL.revokeObjectURL((e.target as HTMLImageElement).src)
                     }
                   />
-                </div>
-              </div>
+                </TooltipContent>
+              </Tooltip>
             ) : (
               <FileText size={12} />
             )}

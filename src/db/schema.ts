@@ -109,6 +109,13 @@ export const apps = sqliteTable("apps", {
   needsAppBlueprint: integer("needs_app_blueprint", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  // Per-app opt-in for the experimental AI E2E testing feature. Off by default:
+  // running tests can mutate the app's real data, so the Tests panel gates all
+  // run/generate controls behind this flag until the user explicitly enables it
+  // (after acknowledging the data-backup warning). See TestsPanel.tsx.
+  testingEnabled: integer("testing_enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
   collectionId: integer("collection_id").references(() => appCollections.id, {
     onDelete: "set null",
   }),

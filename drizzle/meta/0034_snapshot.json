@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "44ff3a2a-9437-491a-bdb2-e019f321e0ed",
+  "id": "420b6742-af57-4a36-8c26-9ba49293ad1d",
   "prevId": "b5003e32-965d-48d8-a807-e252fd088c09",
   "tables": {
     "app_collections": {
@@ -263,6 +263,14 @@
         },
         "needs_app_blueprint": {
           "name": "needs_app_blueprint",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "0"
+        },
+        "testing_enabled": {
+          "name": "testing_enabled",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

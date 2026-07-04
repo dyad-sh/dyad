@@ -370,6 +370,14 @@ ${emitInstruction}
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
 When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
@@ -409,19 +417,18 @@ export const AGENT_TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
   `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
 );
 
-// The test-writing guidance goes AFTER the postfix: the postfix ends with the
-// strong "ONLY use <dyad-write> for ALL code output" mandate, so the test
-// guidance (which tells the model to emit `<dyad-generate-test>` for specs)
-// must come last to carry as the exception — otherwise the postfix reads as the
-// final word and the model may wrap tests in `<dyad-write>`, so they never
-// surface in the Tests panel.
+// The test-writing guidance is appended by `getSystemPromptForChatMode` (only
+// when the app has opted into testing), NOT baked in here. It must go AFTER the
+// postfix: the postfix ends with the strong "ONLY use <dyad-write> for ALL code
+// output" mandate, so the test guidance (which tells the model to emit
+// `<dyad-generate-test>` for specs) must come after it to carry as the
+// exception — otherwise the postfix reads as the final word and the model may
+// wrap tests in `<dyad-write>`, so they never surface in the Tests panel.
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
 
-${BUILD_SYSTEM_POSTFIX}
-
-${TEST_WRITING_GUIDANCE}`;
+${BUILD_SYSTEM_POSTFIX}`;
 
 const DEFAULT_AI_RULES = `# Tech Stack
 - You are building a React application.
@@ -602,6 +609,7 @@ export const constructSystemPrompt = ({
   hasSupabaseProject,
   enableAppBlueprint,
   codeExplorerAvailable,
+  testingEnabled,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -632,6 +640,11 @@ export const constructSystemPrompt = ({
    * TypeScript exploration tool over code_search for broad codebase discovery.
    */
   codeExplorerAvailable?: boolean;
+  /**
+   * Whether the app has opted into E2E testing. Gates the build-mode
+   * test-writing guidance (see `getSystemPromptForChatMode`).
+   */
+  testingEnabled?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -654,6 +667,7 @@ export const constructSystemPrompt = ({
     enableTurboEditsV2,
     frameworkType,
     hasSupabaseProject,
+    testingEnabled,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -673,11 +687,18 @@ export const getSystemPromptForChatMode = ({
   enableTurboEditsV2,
   frameworkType,
   hasSupabaseProject,
+  testingEnabled,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
   frameworkType?: AppFrameworkType | null;
   hasSupabaseProject?: boolean;
+  /**
+   * Whether the app has opted into the E2E testing feature. Test-writing
+   * guidance is only injected when true, so the model doesn't offer to write
+   * tests for apps that haven't enabled testing in the Tests panel.
+   */
+  testingEnabled?: boolean;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
@@ -692,6 +713,9 @@ export const getSystemPromptForChatMode = ({
     frameworkType === "vite" && !hasSupabaseProject;
   const buildPrompt =
     BUILD_SYSTEM_PROMPT_BASE +
+    // Keep the test guidance right after the base (i.e. after the postfix's
+    // "ONLY use <dyad-write>" mandate) so it carries as the exception.
+    (testingEnabled ? `\n\n${TEST_WRITING_GUIDANCE}` : "") +
     (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");
   return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };

@@ -37,6 +37,7 @@ import type { TestCase, TestCaseResult } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useSetTestingEnabled } from "@/hooks/useSetTestingEnabled";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { queryKeys } from "@/lib/queryKeys";
@@ -475,8 +476,21 @@ export function TestsPanel() {
   const { app } = useLoadApp(selectedAppId);
   const { settings } = useSettings();
   const { runApp } = useRunApp();
+  const { setTestingEnabled, isLoading: isTogglingTesting } =
+    useSetTestingEnabled();
   const { streamMessage, isStreaming } = useStreamChat();
   const queryClient = useQueryClient();
+
+  // Per-app opt-in gate. Running tests can mutate the app's real data, so every
+  // run/generate control stays hidden behind the opt-in screen until the user
+  // explicitly enables testing for this app (after seeing the backup warning).
+  const testingEnabled = app?.testingEnabled ?? false;
+  // Provider drives how loud the backup warning is: Neon runs against a
+  // throwaway branch copy (safe, no banner); Supabase runs as an isolated
+  // RLS-scoped test user (safer, but RLS gaps are possible); anything else has
+  // no isolation, so the warning is strongest.
+  const hasNeon = !!app?.neonProjectId;
+  const hasSupabase = !!app?.supabaseProjectId;
 
   const [outputOpen, setOutputOpen] = useState(false);
   // When enabled, runs open a visible browser window so the user can watch the
@@ -695,6 +709,32 @@ export function TestsPanel() {
     [chatId, streamMessage, jotaiStore],
   );
 
+  // Kick off a first test by asking the AI (in chat) to cover a critical flow.
+  // The generated <dyad-generate-test> spec surfaces back in this panel once the
+  // turn finishes (see the invalidate-on-stream-end effect above).
+  const generateTest = useCallback(() => {
+    if (chatId == null) {
+      showInfo("Open a chat to generate a test.");
+      return;
+    }
+    streamMessage({
+      prompt:
+        "Generate an end-to-end test for a critical user journey in this app. First explore the app to find its most important flow, then write a single Playwright test that covers it.",
+      chatId,
+    });
+    showInfo("Sent to chat — generating a test…");
+  }, [chatId, streamMessage]);
+
+  const enableTesting = useCallback(() => {
+    if (selectedAppId == null) return;
+    setTestingEnabled({ appId: selectedAppId, enabled: true });
+  }, [selectedAppId, setTestingEnabled]);
+
+  const disableTesting = useCallback(() => {
+    if (selectedAppId == null) return;
+    setTestingEnabled({ appId: selectedAppId, enabled: false });
+  }, [selectedAppId, setTestingEnabled]);
+
   // File-level status: a spinner while the file is part of an in-flight run,
   // otherwise the parsed run result (or not-run).
   const fileStatus = useCallback(
@@ -765,7 +805,20 @@ export function TestsPanel() {
           Experimental
         </span>
         <div className="flex-1" />
-        {specs.length > 0 && (
+        {testingEnabled && !isRunning && (
+          <button
+            onClick={disableTesting}
+            disabled={isTogglingTesting}
+            aria-label="Disable testing for this app"
+            className={cn(
+              "text-xs px-2 py-1 rounded-md text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer",
+              isTogglingTesting && "opacity-40 cursor-not-allowed",
+            )}
+          >
+            Disable testing
+          </button>
+        )}
+        {testingEnabled && specs.length > 0 && (
           <button
             onClick={() => setParallel((v) => !v)}
             disabled={isRunning}
@@ -790,7 +843,7 @@ export function TestsPanel() {
             {parallel ? "Parallel" : "Serial"}
           </button>
         )}
-        {specs.length > 0 && (
+        {testingEnabled && specs.length > 0 && (
           <button
             onClick={() => setHeaded((v) => !v)}
             disabled={isRunning}
@@ -825,6 +878,7 @@ export function TestsPanel() {
             Stop
           </button>
         ) : (
+          testingEnabled &&
           specs.length > 0 && (
             <button
               onClick={() => runTests()}
@@ -843,128 +897,144 @@ export function TestsPanel() {
         )}
       </div>
 
-      {/* Live counter (aria-live for screen readers) */}
-      {(isRunning ||
-        counts.passed + counts.failed + counts.inconclusive + counts.partial >
-          0) && (
-        <div
-          aria-live="polite"
-          className="px-4 py-1.5 text-xs text-muted-foreground border-b border-border/60"
-        >
-          {isRunning && (
-            <span className="text-blue-600 dark:text-blue-400">
-              {runState.phase === "setup"
-                ? "Setting up testing… "
-                : "Running… "}
-            </span>
-          )}
-          <span className="text-green-600 dark:text-green-500">
-            {counts.passed} passed
-          </span>
-          {counts.failed > 0 && (
-            <span className="text-red-600 dark:text-red-400">
-              {" · "}
-              {counts.failed} failed
-            </span>
-          )}
-          {counts.inconclusive > 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
-              {" · "}
-              {counts.inconclusive} inconclusive
-            </span>
-          )}
-          {counts.partial > 0 && (
-            <span className="text-teal-600 dark:text-teal-400">
-              {" · "}
-              {counts.partial} partial
-            </span>
-          )}
-          {` of ${specs.length} ${specs.length === 1 ? "file" : "files"}`}
-          {!isRunning && runState.isolation?.mode === "neon-branch" && (
-            <span
-              className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
-              title="Tests ran against a temporary copy of your database — your real data was not touched."
+      {/* Run-related status + banners only apply once testing is enabled. */}
+      {testingEnabled && (
+        <>
+          {/* Live counter (aria-live for screen readers) */}
+          {(isRunning ||
+            counts.passed +
+              counts.failed +
+              counts.inconclusive +
+              counts.partial >
+              0) && (
+            <div
+              aria-live="polite"
+              className="px-4 py-1.5 text-xs text-muted-foreground border-b border-border/60"
             >
-              <ShieldCheck size={11} className="shrink-0" />
-              Isolated test data
-            </span>
+              {isRunning && (
+                <span className="text-blue-600 dark:text-blue-400">
+                  {runState.phase === "setup"
+                    ? "Setting up testing… "
+                    : "Running… "}
+                </span>
+              )}
+              <span className="text-green-600 dark:text-green-500">
+                {counts.passed} passed
+              </span>
+              {counts.failed > 0 && (
+                <span className="text-red-600 dark:text-red-400">
+                  {" · "}
+                  {counts.failed} failed
+                </span>
+              )}
+              {counts.inconclusive > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  {" · "}
+                  {counts.inconclusive} inconclusive
+                </span>
+              )}
+              {counts.partial > 0 && (
+                <span className="text-teal-600 dark:text-teal-400">
+                  {" · "}
+                  {counts.partial} partial
+                </span>
+              )}
+              {` of ${specs.length} ${specs.length === 1 ? "file" : "files"}`}
+              {!isRunning && runState.isolation?.mode === "neon-branch" && (
+                <span
+                  className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
+                  title="Tests ran against a temporary copy of your database — your real data was not touched."
+                >
+                  <ShieldCheck size={11} className="shrink-0" />
+                  Isolated test data
+                </span>
+              )}
+              {!isRunning &&
+                runState.isolation?.mode === "supabase-test-user" && (
+                  <span
+                    className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
+                    title="Tests ran as a temporary, isolated test user under Row-Level Security — your real data was not touched."
+                  >
+                    <ShieldCheck size={11} className="shrink-0" />
+                    Isolated test user
+                  </span>
+                )}
+            </div>
           )}
-          {!isRunning && runState.isolation?.mode === "supabase-test-user" && (
-            <span
-              className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
-              title="Tests ran as a temporary, isolated test user under Row-Level Security — your real data was not touched."
-            >
-              <ShieldCheck size={11} className="shrink-0" />
-              Isolated test user
-            </span>
-          )}
-        </div>
-      )}
 
-      {/* Disclosure / warning: either ran against current data (no isolation),
+          {/* Disclosure / warning: either ran against current data (no isolation),
           or ran as an isolated Supabase test user but some tables lack RLS.
           Both surface via `reason`. Calm info, not an error — runs still
           completed. Suppressed when a dead-end infra error is already shown.
           (Neon's fully-isolated path never sets a reason.) */}
-      {!isRunning &&
-        !runState.runError &&
-        runState.isolation?.mode !== "neon-branch" &&
-        runState.isolation?.reason && (
-          <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
-            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-            <span className="flex-1">{runState.isolation.reason}</span>
-          </div>
-        )}
-
-      {!isRunning && showNeonRestartDisclosure && (
-        <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
-          <ShieldCheck size={15} className="shrink-0 mt-0.5" />
-          <span className="flex-1">
-            Neon test runs restart the preview to switch to a temporary
-            database, then restart it again afterward.
-          </span>
-        </div>
-      )}
-
-      {/* Dev-server gate banner */}
-      {!devServerRunning && specs.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
-          <AlertTriangle size={15} className="shrink-0" />
-          <span className="flex-1">Start the app to run tests.</span>
-          <button
-            onClick={() => runApp(selectedAppId)}
-            className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
-          >
-            Start
-          </button>
-        </div>
-      )}
-
-      {/* Run-level infra error (includes the isolation dead-end). Offers a safe
-          Retry — never an option to run against real data. */}
-      {runState.runError && (
-        <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-          <span className="flex-1 whitespace-pre-wrap break-words">
-            {runState.runError.message}
-          </span>
-          <button
-            onClick={() => runTests()}
-            disabled={isRunning || !devServerRunning}
-            className={cn(
-              "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-              (isRunning || !devServerRunning) &&
-                "opacity-40 cursor-not-allowed",
+          {!isRunning &&
+            !runState.runError &&
+            runState.isolation?.mode !== "neon-branch" &&
+            runState.isolation?.reason && (
+              <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                <span className="flex-1">{runState.isolation.reason}</span>
+              </div>
             )}
-          >
-            Retry
-          </button>
-        </div>
+
+          {!isRunning && showNeonRestartDisclosure && (
+            <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
+              <ShieldCheck size={15} className="shrink-0 mt-0.5" />
+              <span className="flex-1">
+                Neon test runs restart the preview to switch to a temporary
+                database, then restart it again afterward.
+              </span>
+            </div>
+          )}
+
+          {/* Dev-server gate banner */}
+          {!devServerRunning && specs.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0" />
+              <span className="flex-1">Start the app to run tests.</span>
+              <button
+                onClick={() => runApp(selectedAppId)}
+                className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
+              >
+                Start
+              </button>
+            </div>
+          )}
+
+          {/* Run-level infra error (includes the isolation dead-end). Offers a safe
+          Retry — never an option to run against real data. */}
+          {runState.runError && (
+            <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span className="flex-1 whitespace-pre-wrap break-words">
+                {runState.runError.message}
+              </span>
+              <button
+                onClick={() => runTests()}
+                disabled={isRunning || !devServerRunning}
+                className={cn(
+                  "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
+                  (isRunning || !devServerRunning) &&
+                    "opacity-40 cursor-not-allowed",
+                )}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
-        {loadingSpecs ? (
+        {!testingEnabled ? (
+          <EnableTestingScreen
+            hasNeon={hasNeon}
+            hasSupabase={hasSupabase}
+            onEnable={enableTesting}
+            isEnabling={isTogglingTesting}
+          />
+        ) : loadingSpecs ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <Loader2 size={20} className="animate-spin mr-2" />
             Loading tests…
@@ -999,10 +1069,23 @@ export function TestsPanel() {
             <h3 className="text-lg font-semibold text-foreground mb-2">
               No tests yet
             </h3>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              Ask the AI in chat to write a test for a feature — generated tests
-              show up here. They're a starting point you can review and re-run.
+            <p className="text-sm text-muted-foreground max-w-sm mb-5">
+              Generate your first test, or ask the AI in chat to write one for a
+              specific feature. Generated tests show up here as a starting point
+              you can review and re-run.
             </p>
+            <button
+              onClick={generateTest}
+              disabled={isStreaming}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium cursor-pointer",
+                "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
+                isStreaming && "opacity-40 cursor-not-allowed",
+              )}
+            >
+              <Sparkles size={16} />
+              Generate a test for a critical user journey
+            </button>
           </div>
         ) : (
           <div>
@@ -1030,6 +1113,77 @@ export function TestsPanel() {
         open={outputOpen}
         onToggle={() => setOutputOpen((v) => !v)}
       />
+    </div>
+  );
+}
+
+/**
+ * Opt-in gate shown until the user enables testing for this app. Explains what
+ * testing does, warns about data safety (scaled to the app's DB provider), and
+ * enables the feature on click.
+ */
+function EnableTestingScreen({
+  hasNeon,
+  hasSupabase,
+  onEnable,
+  isEnabling,
+}: {
+  hasNeon: boolean;
+  hasSupabase: boolean;
+  onEnable: () => void;
+  isEnabling: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+      <div className="w-12 h-12 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center mb-4">
+        <FlaskConical size={22} className="text-teal-600 dark:text-teal-400" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">
+        Enable testing for this app
+      </h3>
+      <p className="text-sm text-muted-foreground max-w-sm mb-5">
+        Let Dyad write and run end-to-end tests that drive your app like a real
+        user. Tests are a starting point you can review, edit, and re-run.
+      </p>
+
+      {/* Data-safety warning, scaled to how well runs are isolated for this
+          app's backend. Neon runs against a throwaway branch copy, so it's safe
+          enough to skip the banner; everything else can touch real data. */}
+      {hasNeon ? (
+        <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-left text-[13px] text-teal-800 dark:text-teal-200">
+          <ShieldCheck size={15} className="shrink-0 mt-0.5" />
+          <span>
+            Tests run against a temporary copy of your Neon database, so your
+            real data isn&apos;t touched.
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-left text-[13px] text-amber-800 dark:text-amber-200">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+          <span>
+            {hasSupabase
+              ? "Tests run as an isolated test user under Row-Level Security, but RLS may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
+              : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}
+          </span>
+        </div>
+      )}
+
+      <button
+        onClick={onEnable}
+        disabled={isEnabling}
+        className={cn(
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium cursor-pointer",
+          "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60",
+          isEnabling && "opacity-40 cursor-not-allowed",
+        )}
+      >
+        {isEnabling ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <FlaskConical size={16} />
+        )}
+        Enable testing for this app
+      </button>
     </div>
   );
 }

@@ -966,6 +966,7 @@ ${componentSnippet}
           enableAppBlueprint:
             settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
           codeExplorerAvailable,
+          testingEnabled: !!updatedChat.app?.testingEnabled,
         });
 
         // Add information about mentioned apps for build mode only.

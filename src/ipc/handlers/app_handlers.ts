@@ -1165,6 +1165,26 @@ export function registerAppHandlers() {
     });
   });
 
+  createTypedHandler(appContracts.setTestingEnabled, async (_, params) => {
+    const { appId, enabled } = params;
+    return withLock(appId, async () => {
+      const updated = await db
+        .update(apps)
+        .set({ testingEnabled: enabled })
+        .where(eq(apps.id, appId))
+        .returning({ testingEnabled: apps.testingEnabled });
+
+      if (updated.length === 0) {
+        throw new DyadError(
+          `App with ID ${appId} not found.`,
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      return { testingEnabled: updated[0].testingEnabled };
+    });
+  });
+
   createTypedHandler(appContracts.renameApp, async (_, params) => {
     const { appId, appName, appPath: newPath } = params;
     return withLock(appId, async () => {

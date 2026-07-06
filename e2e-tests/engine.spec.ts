@@ -8,7 +8,7 @@ testSkipIfWindows("send message to engine", async ({ po }) => {
   });
   await po.sendPrompt("[dump] tc=turbo-edits");
 
-  await po.snapshotServerDump("request");
+  await po.snapshotServerDump("request", { name: "engine-request-google" });
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
@@ -19,7 +19,7 @@ testSkipIfWindows("send message to engine - openai gpt-5", async ({ po }) => {
   await po.modelPicker.selectModel({ provider: "OpenAI", model: "GPT 5" });
   await po.sendPrompt("[dump] tc=turbo-edits");
 
-  await po.snapshotServerDump("request");
+  await po.snapshotServerDump("request", { name: "engine-request-openai" });
 });
 
 testSkipIfWindows(
@@ -34,7 +34,9 @@ testSkipIfWindows(
     });
     await po.sendPrompt("[dump] tc=turbo-edits");
 
-    await po.snapshotServerDump("request");
+    await po.snapshotServerDump("request", {
+      name: "engine-request-anthropic",
+    });
   },
 );
 
@@ -44,7 +46,9 @@ testSkipIfWindows(
     await po.setUpDyadPro();
     await po.sendPrompt("[dump] tc=turbo-edits");
 
-    await po.snapshotServerDump("request");
+    await po.snapshotServerDump("request", {
+      name: "engine-request-smart-auto",
+    });
     await po.snapshotMessages({ replaceDumpPath: true });
   },
 );
@@ -60,7 +64,9 @@ testSkipIfWindows(
     await proModesDialog.close();
     await po.sendPrompt("[dump] tc=turbo-edits");
 
-    await po.snapshotServerDump("request");
+    await po.snapshotServerDump("request", {
+      name: "engine-request-regular-auto",
+    });
     await po.snapshotMessages({ replaceDumpPath: true });
   },
 );

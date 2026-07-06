@@ -1,6 +1,19 @@
+import { createHash } from "node:crypto";
+
 /**
  * Utility functions for normalizing test data to ensure deterministic snapshots.
  */
+
+const MODEL_PLACEHOLDER = "[[MODEL]]";
+const SHAPELESS_SCHEMA_PLACEHOLDER = "[[TOOL_SCHEMA]]";
+const SCHEMA_PLACEHOLDER_PATTERN = /^\[\[TOOL_SCHEMA(?::[a-f0-9]{12})?\]\]$/;
+const SCHEMA_WORDING_KEYS = new Set([
+  "$comment",
+  "default",
+  "description",
+  "examples",
+  "title",
+]);
 
 /**
  * Normalizes item_reference IDs in the input array to be deterministic.
@@ -175,6 +188,101 @@ export function normalizeVersionedFiles(dump: any): void {
       for (const [filePath, id] of Object.entries(pathToId)) {
         pathToId[filePath] = oldToNewId[id] ?? id;
       }
+    }
+  }
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !SCHEMA_WORDING_KEYS.has(key))
+      .sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries
+      .map(([key, child]) => `${JSON.stringify(key)}:${stableStringify(child)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function schemaShapePlaceholder(schema: unknown): string {
+  if (typeof schema === "string" && SCHEMA_PLACEHOLDER_PATTERN.test(schema)) {
+    return schema;
+  }
+  if (!schema || typeof schema !== "object") {
+    return SHAPELESS_SCHEMA_PLACEHOLDER;
+  }
+
+  const shapeHash = createHash("sha256")
+    .update(stableStringify(schema))
+    .digest("hex")
+    .slice(0, 12);
+  return `[[TOOL_SCHEMA:${shapeHash}]]`;
+}
+
+function normalizeToolDefinitionForSnapshot(tool: any): void {
+  if (!tool || typeof tool !== "object") {
+    return;
+  }
+
+  const toolName =
+    typeof tool.name === "string"
+      ? tool.name
+      : typeof tool.function?.name === "string"
+        ? tool.function.name
+        : "unknown";
+
+  if (typeof tool.description === "string") {
+    tool.description = `[[TOOL_DESC:${toolName}]]`;
+  }
+  if (typeof tool.function?.description === "string") {
+    tool.function.description = `[[TOOL_DESC:${toolName}]]`;
+  }
+  if ("input_schema" in tool) {
+    tool.input_schema = schemaShapePlaceholder(tool.input_schema);
+  }
+  if ("parameters" in tool) {
+    tool.parameters = schemaShapePlaceholder(tool.parameters);
+  }
+  if (tool.function && "parameters" in tool.function) {
+    tool.function.parameters = schemaShapePlaceholder(tool.function.parameters);
+  }
+}
+
+/**
+ * Normalizes request-dump fields that churn when providers, model aliases, or
+ * tool prose changes, while preserving structural changes like tool schema shape.
+ */
+export function normalizeRequestSnapshotDetails(dump: any): void {
+  const body = dump?.body;
+  if (!body || typeof body !== "object") {
+    return;
+  }
+
+  if (typeof body.model === "string") {
+    body.model = MODEL_PLACEHOLDER;
+  }
+
+  const configPlaceholders: Record<string, string> = {
+    thinking: "[[THINKING_CONFIG]]",
+    thinking_budget: "[[THINKING_CONFIG]]",
+    thinkingBudget: "[[THINKING_CONFIG]]",
+    reasoning: "[[REASONING_CONFIG]]",
+    reasoning_effort: "[[REASONING_CONFIG]]",
+    reasoningEffort: "[[REASONING_CONFIG]]",
+    output_config: "[[OUTPUT_CONFIG]]",
+  };
+  for (const [key, placeholder] of Object.entries(configPlaceholders)) {
+    if (key in body) {
+      body[key] = placeholder;
+    }
+  }
+
+  if (Array.isArray(body.tools)) {
+    for (const tool of body.tools) {
+      normalizeToolDefinitionForSnapshot(tool);
     }
   }
 }

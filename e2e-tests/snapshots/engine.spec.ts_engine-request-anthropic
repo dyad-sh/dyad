@@ -1,19 +1,27 @@
 {
   "body": {
-    "model": "gpt-5",
-    "temperature": 1,
+    "model": "[[MODEL]]",
+    "max_tokens": 32000,
+    "thinking": "[[THINKING_CONFIG]]",
+    "output_config": "[[OUTPUT_CONFIG]]",
+    "system": [
+      {
+        "type": "text",
+        "text": "[[SYSTEM_MESSAGE]]"
+      }
+    ],
     "messages": [
       {
-        "role": "system",
-        "content": "[[SYSTEM_MESSAGE]]"
-      },
-      {
         "role": "user",
-        "content": "[dump] tc=turbo-edits"
+        "content": [
+          {
+            "type": "text",
+            "text": "[dump] tc=turbo-edits"
+          }
+        ]
       }
     ],
     "stream": true,
-    "reasoning_effort": "medium",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

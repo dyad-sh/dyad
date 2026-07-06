@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "gpt-5.2",
+    "model": "[[MODEL]]",
     "input": [
       {
         "role": "developer",
@@ -35,660 +35,145 @@
       }
     ],
     "max_output_tokens": 32000,
-    "reasoning": {
-      "summary": "detailed",
-      "effort": "medium"
-    },
+    "reasoning": "[[REASONING_CONFIG]]",
     "tools": [
       {
         "type": "function",
         "name": "write_file",
-        "description": "Create or completely overwrite a file in the codebase",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "path": {
-              "type": "string",
-              "description": "The file path relative to the app root"
-            },
-            "content": {
-              "type": "string",
-              "description": "The content to write to the file"
-            },
-            "description": {
-              "description": "Brief description of the change",
-              "type": "string"
-            }
-          },
-          "required": [
-            "path",
-            "content"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:write_file]]",
+        "parameters": "[[TOOL_SCHEMA:267beea4dee7]]"
       },
       {
         "type": "function",
         "name": "search_replace",
-        "description": "Use this tool to propose a search and replace operation on an existing file.\n\nThe tool will replace ONE occurrence of old_string with new_string in the specified file. Matching is line-based: old_string must match whole file lines, not a partial fragment within a line. To edit part of a line, include the entire original line in old_string and the entire edited line in new_string.\n\nCRITICAL REQUIREMENTS FOR USING THIS TOOL:\n\n1. UNIQUENESS: The old_string MUST uniquely identify the specific instance you want to change. This means:\n   - Include AT LEAST 3-5 lines of context BEFORE the change point\n   - Include AT LEAST 3-5 lines of context AFTER the change point\n   - Include all whitespace, indentation, and surrounding code exactly as it appears in the file\n   - Do NOT use only a partial fragment of a line. Include the full line containing the change.\n\n2. SINGLE INSTANCE: This tool can only change ONE instance at a time. If you need to change multiple instances:\n   - Make separate calls to this tool for each instance\n   - Each call must uniquely identify its specific instance using extensive context\n\n3. VERIFICATION: Before using this tool:\n   - If multiple instances exist, gather enough context to uniquely identify each one\n   - Plan separate tool calls for each instance\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "file_path": {
-              "type": "string",
-              "description": "The path to the file you want to search and replace in."
-            },
-            "old_string": {
-              "type": "string",
-              "description": "The text block to replace. Matching is line-based: each line in old_string must match a whole line in the file, not just a substring within a line. To edit part of a line, include the entire original line in old_string and the entire edited line in new_string. The block must be unique within the file."
-            },
-            "new_string": {
-              "type": "string",
-              "description": "The edited text to replace the old_string (must be different from the old_string)"
-            }
-          },
-          "required": [
-            "file_path",
-            "old_string",
-            "new_string"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:search_replace]]",
+        "parameters": "[[TOOL_SCHEMA:bca46cf7a879]]"
       },
       {
         "type": "function",
         "name": "copy_file",
-        "description": "Copy a file from one location to another. Can copy uploaded attachment files (attachments:<name> or .dyad/media paths) into the codebase, or copy files within the codebase.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "from": {
-              "type": "string",
-              "description": "The source file path (can be attachments:<name>, a .dyad/media path, or a path relative to the app root)"
-            },
-            "to": {
-              "type": "string",
-              "description": "The destination file path relative to the app root"
-            },
-            "description": {
-              "description": "Brief description of why the file is being copied",
-              "type": "string"
-            }
-          },
-          "required": [
-            "from",
-            "to"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:copy_file]]",
+        "parameters": "[[TOOL_SCHEMA:3c71afd70760]]"
       },
       {
         "type": "function",
         "name": "delete_file",
-        "description": "Delete a file from the codebase",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "path": {
-              "type": "string",
-              "description": "The file path to delete"
-            }
-          },
-          "required": [
-            "path"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:delete_file]]",
+        "parameters": "[[TOOL_SCHEMA:2f8608730083]]"
       },
       {
         "type": "function",
         "name": "rename_file",
-        "description": "Rename or move a file in the codebase",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "from": {
-              "type": "string",
-              "description": "The current file path"
-            },
-            "to": {
-              "type": "string",
-              "description": "The new file path"
-            }
-          },
-          "required": [
-            "from",
-            "to"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:rename_file]]",
+        "parameters": "[[TOOL_SCHEMA:3c71afd70760]]"
       },
       {
         "type": "function",
         "name": "add_dependency",
-        "description": "Install npm packages",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "packages": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Array of package names to install"
-            }
-          },
-          "required": [
-            "packages"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:add_dependency]]",
+        "parameters": "[[TOOL_SCHEMA:062691048f6d]]"
       },
       {
         "type": "function",
         "name": "read_file",
-        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "path": {
-              "type": "string",
-              "description": "The file path to read"
-            },
-            "app_name": {
-              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to read from instead of the current app. Omit to read from the current app.",
-              "type": "string"
-            },
-            "start_line_one_indexed": {
-              "description": "The one-indexed line number to start reading from (inclusive).",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 9007199254740991
-            },
-            "end_line_one_indexed_inclusive": {
-              "description": "The one-indexed line number to end reading at (inclusive).",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "path"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:read_file]]",
+        "parameters": "[[TOOL_SCHEMA:8bcd6f1c13f0]]"
       },
       {
         "type": "function",
         "name": "list_files",
-        "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. Use include_ignored=true to include git-ignored and hidden paths; recursive ignored listings require directory to be set. Results are capped at 1000 paths.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "directory": {
-              "description": "Optional subdirectory to list",
-              "type": "string"
-            },
-            "app_name": {
-              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to list from instead of the current app. Omit to list the current app.",
-              "type": "string"
-            },
-            "recursive": {
-              "description": "Whether to list files recursively (default: false)",
-              "type": "boolean"
-            },
-            "include_ignored": {
-              "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false).",
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:list_files]]",
+        "parameters": "[[TOOL_SCHEMA:3fbb3bb01048]]"
       },
       {
         "type": "function",
         "name": "grep",
-        "description": "Search for a regex pattern or exact literal text in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use literal=true for exact symbols/snippets with punctuation, e.g. createBooking({, import strings, route paths, or JSX tags\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Use include_ignored=true to search git-ignored and hidden files/directories such as node_modules. Pair it with include_pattern to keep searches scoped.\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "The regex pattern to search for, or the exact text when literal is true"
-            },
-            "app_name": {
-              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
-              "type": "string"
-            },
-            "include_pattern": {
-              "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
-              "type": "string"
-            },
-            "exclude_pattern": {
-              "description": "Glob pattern for files to exclude",
-              "type": "string"
-            },
-            "include_ignored": {
-              "description": "Whether to include git-ignored and hidden files/directories such as node_modules (default: false). Use include_pattern to keep this scoped.",
-              "type": "boolean"
-            },
-            "case_sensitive": {
-              "description": "Whether the search should be case sensitive (default: false)",
-              "type": "boolean"
-            },
-            "literal": {
-              "description": "Search query as exact text instead of a regex. Use this for symbols or snippets containing punctuation such as createBooking({, route paths, JSX tags, or import strings.",
-              "type": "boolean"
-            },
-            "limit": {
-              "description": "Maximum number of matches to return (default: 100, max: 250). Use include_pattern to narrow results if limit is reached.",
-              "type": "number",
-              "minimum": 1,
-              "maximum": 250
-            }
-          },
-          "required": [
-            "query"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:grep]]",
+        "parameters": "[[TOOL_SCHEMA:551fd7d4c4b1]]"
       },
       {
         "type": "function",
         "name": "code_search",
-        "description": "Search the codebase semantically to find files relevant to a query. Use this tool when you need to discover which files contain code related to a specific concept, feature, or functionality. Returns a list of file paths that are most relevant to the search query.\n\n### When to Use This Tool\n\n- Explore unfamiliar codebases\n- Ask \"how / where / what\" questions to understand behavior\n- Find code by meaning rather than exact text\n\n### When NOT to Use\n\nSkip this tool for:\n1. Exact text matches (use `grep`)\n2. Reading known files (use `read_file`)\n3. Simple symbol lookups (use `grep`)\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "Search query to find relevant files"
-            },
-            "app_name": {
-              "description": "Optional. Name of a referenced app (from `@app:Name` mentions in the user's prompt) to search in instead of the current app. Omit to search the current app.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "query"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:code_search]]",
+        "parameters": "[[TOOL_SCHEMA:1004f7baa0aa]]"
       },
       {
         "type": "function",
         "name": "set_chat_summary",
-        "description": "Set the title/summary for this chat. Call this tool exactly once early in the turn, as soon as you understand the user's request well enough to write a short title. Do not wait until the end of the turn.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "summary": {
-              "type": "string",
-              "description": "A short summary/title for the chat"
-            }
-          },
-          "required": [
-            "summary"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:set_chat_summary]]",
+        "parameters": "[[TOOL_SCHEMA:e151521a20f5]]"
       },
       {
         "type": "function",
         "name": "add_integration",
-        "description": "Prompt the user to choose and set up a database provider for the app. Do NOT set the provider parameter unless the user explicitly names a specific provider (e.g. 'Supabase' or 'Neon') in their message. The tool blocks until the user finishes the setup inside the chat and clicks Continue, then returns; you should then proceed with the next step.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "provider": {
-              "description": "Optional preferred database provider. Use 'none' (or omit) if the user did not explicitly name a provider. Only use 'supabase' or 'neon' if the user specifically mentions that provider name in their prompt.",
-              "type": "string",
-              "enum": [
-                "none",
-                "supabase",
-                "neon"
-              ]
-            }
-          },
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:add_integration]]",
+        "parameters": "[[TOOL_SCHEMA:b186fa53e2c2]]"
       },
       {
         "type": "function",
         "name": "enable_nitro",
-        "description": "Add a Nitro server layer to this Vite app so it can run secure server-side code\n(API routes, database clients, secrets, webhooks).\n\nWHEN TO CALL: Before writing any code under server/, before referencing DATABASE_URL\nor any server-only env var, or when the user asks for an API route, webhook, or\nserver-side compute. Skip for client-side fetch with public/anon keys, for use\ncases fully covered by Supabase (anon key + RLS), or when the user explicitly\nsays \"static only\" / \"no backend\".\n\nDATABASE REQUESTS: If the user is asking for a database (or anything that needs\none — auth, persistence, CRUD, etc.) and no provider is set up yet, call\n`add_integration` FIRST and stop. Do NOT call `enable_nitro` in the same turn\n— the user must pick their provider first. Supabase makes Nitro unnecessary.\nNeon automatically sets up the Nitro server layer as part of its integration\nflow, so do NOT call `enable_nitro` after a Neon integration either — Nitro\nwill already be in place when the integration completes. Only call\n`enable_nitro` for non-database server-side needs (API routes, webhooks,\nserver-only secrets) when no provider is involved.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "reason": {
-              "type": "string",
-              "description": "One sentence explaining why server-side code is needed for this prompt."
-            }
-          },
-          "required": [
-            "reason"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:enable_nitro]]",
+        "parameters": "[[TOOL_SCHEMA:63609a95748a]]"
       },
       {
         "type": "function",
         "name": "read_logs",
-        "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "type": {
-              "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
-              "type": "string",
-              "enum": [
-                "all",
-                "client",
-                "server",
-                "edge-function",
-                "network-requests"
-              ]
-            },
-            "level": {
-              "description": "Filter by log level (default: all)",
-              "type": "string",
-              "enum": [
-                "all",
-                "info",
-                "warn",
-                "error"
-              ]
-            },
-            "searchTerm": {
-              "description": "Search for logs containing this text (case-insensitive)",
-              "type": "string"
-            },
-            "limit": {
-              "description": "Maximum number of logs to return (default: 50, max: 200)",
-              "type": "number",
-              "minimum": 1,
-              "maximum": 200
-            }
-          },
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:read_logs]]",
+        "parameters": "[[TOOL_SCHEMA:92475d872d09]]"
       },
       {
         "type": "function",
         "name": "web_search",
-        "description": "\nUse this tool to access real-time information beyond your training data cutoff.\n\nWhen to Search:\n- Current API documentation, library versions, or breaking changes\n- Latest best practices, security advisories, or bug fixes\n- Specific error messages or troubleshooting solutions\n- Recent framework updates or deprecation notices\n\nQuery Tips:\n- Be specific: Include version numbers, exact error messages, or technical terms\n- Add context: \"React 19 useEffect cleanup\" not just \"React hooks\"\n\nExamples:\n\n<example>\nOpenAI GPT-5 API model names\n</example>\n\n<example>\nNextJS 14 app router middleware auth\n</example>\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "The search query to look up on the web"
-            }
-          },
-          "required": [
-            "query"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:web_search]]",
+        "parameters": "[[TOOL_SCHEMA:b592ecc51795]]"
       },
       {
         "type": "function",
         "name": "web_crawl",
-        "description": "\nYou can crawl a website so you can clone it.\n\n### When You MUST Trigger a Crawl\nTrigger a crawl ONLY if BOTH conditions are true:\n\n1. The user's message shows intent to CLONE / COPY / REPLICATE / RECREATE / DUPLICATE / MIMIC a website.\n   - Keywords include: clone, copy, replicate, recreate, duplicate, mimic, build the same, make the same.\n\n2. The user's message contains a URL or something that appears to be a domain name.\n   - e.g. \"example.com\", \"https://example.com\"\n   - Do not require 'http://' or 'https://'.\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "description": "URL to crawl"
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:web_crawl]]",
+        "parameters": "[[TOOL_SCHEMA:d01e2a59ae11]]"
       },
       {
         "type": "function",
         "name": "web_fetch",
-        "description": "Fetch and read the content of a web page as markdown given its URL.\n\n### When to Use This Tool\nUse this tool when the user's message contains a URL (or domain name) and they want to:\n- **Read** the page's content (e.g. documentation, blog post, article)\n- **Reference** information from the page (e.g. API docs, tutorials, guides)\n- **Extract** data or context from a live web page to inform their code\n- **Follow a link** someone shared to understand its contents\n\nExamples:\n- \"Use the docs at docs.example.com/api to set up the client\"\n- \"What does this page say? https://example.com/blog/post\"\n- \"Follow the guide at example.com/tutorial\"\n\n### When NOT to Use This Tool\n- The user wants to **visually clone or replicate** a website → use `web_crawl` instead\n- The user needs to **search the web** for information without a specific URL → use `web_search` instead\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "description": "URL to fetch content from"
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:web_fetch]]",
+        "parameters": "[[TOOL_SCHEMA:d01e2a59ae11]]"
       },
       {
         "type": "function",
         "name": "generate_image",
-        "description": "Generate an image using AI based on a text prompt. The generated image is saved to the project's .dyad/media directory.\n\n### When to Use\n- User requests a custom image, illustration, icon, or graphic for their app\n- User wants a hero image, background, banner, or visual asset\n- Creating images that are more visually relevant than placeholder rectangles\n\n### Prompt Guidelines\nWrite detailed, descriptive prompts. Be specific about:\n- **Subject**: What is in the image (objects, people, scenes)\n- **Style**: Photography, illustration, flat design, 3D render, watercolor, etc.\n- **Composition**: Layout, perspective, framing\n- **Colors**: Specific color palette or mood\n- **Mood**: Cheerful, professional, dramatic, minimal, etc.\n\n### Examples\n- \"A modern flat illustration of a team collaborating around a laptop, using a blue and purple color palette, clean minimal style with subtle gradients, white background\"\n- \"Professional product photography of a sleek smartphone on a marble surface, soft studio lighting, shallow depth of field, warm neutral tones\"\n\n### After Generation\nThe tool returns the file path in .dyad/media. Use the copy_file tool to copy it to the appropriate location in the project (e.g., public/assets/) and reference that path in your code.\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "prompt": {
-              "type": "string",
-              "description": "A detailed, descriptive prompt for the image to generate. Be specific about colors, composition, style, mood, and subject matter. Avoid generic or vague descriptions."
-            }
-          },
-          "required": [
-            "prompt"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:generate_image]]",
+        "parameters": "[[TOOL_SCHEMA:7119b8c8321c]]"
       },
       {
         "type": "function",
         "name": "update_todos",
-        "description": "\n### When to Use This Tool\n\nUse proactively for:\n1. Complex multi-step tasks (3+ distinct steps)\n2. Non-trivial tasks requiring careful planning\n3. User explicitly requests todo list\n4. User provides multiple tasks (numbered/comma-separated)\n5. After completing tasks - mark complete with merge=true and add follow-ups\n6. When starting new tasks - mark as in_progress (ideally only one at a time)\n\n### When NOT to Use\n\nSkip for:\n1. Single, straightforward tasks\n2. Trivial tasks with no organizational benefit\n3. Tasks completable in < 3 trivial steps\n4. Purely conversational/informational requests\n5. Todo items should NOT include operational actions done in service of higher-level tasks.\n\nNEVER INCLUDE THESE IN TODOS: linting; testing; searching or examining the codebase.\n\n### Examples\n\n<example>\nUser: Add dark mode toggle to settings\nAssistant:\n- *Creates todo list:*\n1. Add state management [in_progress]\n2. Implement styles\n3. Create toggle component\n4. Update components\n- [Immediately begins working on todo 1 in the same tool call batch]\n<reasoning>\nMulti-step feature with dependencies.\n</reasoning>\n</example>\n\n<example>\n// User: Implement user registration, product catalog, shopping cart, checkout flow.\nAssistant: *Creates todo list breaking down each feature into specific tasks*\n<reasoning>\nMultiple complex features provided as list requiring organized task management.\n</reasoning>\n</example>\n\n### Task States and Management\n\n1. **Task States:**\n- pending: Not yet started\n- in_progress: Currently working on\n- completed: Finished successfully\n\n2. **Task Management:**\n- Update status in real-time\n- Mark complete IMMEDIATELY after finishing\n- Only ONE task in_progress at a time\n- Complete current tasks before starting new ones\n\n3. **Task Breakdown:**\n- Create specific, actionable items\n- Break complex tasks into manageable steps\n- Use clear, descriptive names\n\n4. **Parallel Todo Writes:**\n- Prefer creating the first todo as in_progress\n- Start working on todos by using tool calls in the same tool call batch as the todo write\n- Batch todo updates with other tool calls for better latency and lower costs for the user\n",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "merge": {
-              "type": "boolean",
-              "description": "Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos."
-            },
-            "todos": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "description": "Unique identifier for the todo item"
-                  },
-                  "content": {
-                    "description": "The description/content of the todo item",
-                    "type": "string"
-                  },
-                  "status": {
-                    "description": "The current status of the todo item",
-                    "type": "string",
-                    "enum": [
-                      "pending",
-                      "in_progress",
-                      "completed"
-                    ]
-                  }
-                },
-                "required": [
-                  "id"
-                ],
-                "additionalProperties": false
-              },
-              "description": "Array of todo items. When merge is true, only include todos that need updates. When merge is false, this is the complete list."
-            }
-          },
-          "required": [
-            "merge",
-            "todos"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:update_todos]]",
+        "parameters": "[[TOOL_SCHEMA:9cc5481f1fea]]"
       },
       {
         "type": "function",
         "name": "run_type_checks",
-        "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "paths": {
-              "description": "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:run_type_checks]]",
+        "parameters": "[[TOOL_SCHEMA:38a3fdb32fd9]]"
       },
       {
         "type": "function",
         "name": "read_guide",
-        "description": "Read a detailed instruction guide. Use this when the system prompt tells you to load a guide before implementing a feature.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "guide": {
-              "type": "string",
-              "description": "Name of the guide to read (e.g. 'add-authentication', 'add-email-verification', 'add-password-reset')"
-            }
-          },
-          "required": [
-            "guide"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:read_guide]]",
+        "parameters": "[[TOOL_SCHEMA:8d8adaf453b5]]"
       },
       {
         "type": "function",
         "name": "execute_sandbox_script",
-        "description": "Run a small program written in a strict, sandboxed subset of JavaScript (MustardScript) to inspect files.\n\nUse this when you need to slice, search, count, aggregate, summarize file contents, or write generated content to files before answering. Return only the concise value you need.\n\nSupported language surface:\n- let/const, functions, closures, arrow functions, async/await, promises, arrays, plain objects, Map, Set, if/switch, loops, break/continue, try/catch/finally, throw, template literals, destructuring, optional chaining, nullish coalescing, JSON, Math, and conservative Array/String/Object/Date/Intl/RegExp helpers.\n- Top-level await is supported. Top-level return is not supported; return the final expression value instead, e.g. `const text = await read_file(\"attachments:data.csv\"); text.length;`.\n- The script has no ambient authority. It can only act through the host functions below.\n\nRecommendations:\n- Avoid defining nested helper functions in the main function.\n\nUnsupported / unavailable:\n- No var, import/export, require, CommonJS, npm packages, Node APIs, browser/DOM APIs, process, module, exports, global, environment variables, subprocesses, network/fetch, fetch, timers, setTimeout, setInterval, eval, Function constructor, with, classes, generators, custom iterator authoring, Symbols, WeakMap, WeakSet, typed arrays, ArrayBuffer, shared memory, atomics, Proxy, accessors, full prototype/property-descriptor semantics, or arbitrary filesystem access.\n- String.prototype.localeCompare is not supported; compare with <, >, or === instead.\n- `console.*` is not available.\n- Unsupported syntax or unsupported built-in behavior fails closed with an error. Rewrite using simpler JavaScript when that happens.\n\nAvoid returning shared references:\n\n```\nconst row = { key: \"x\", total: 1 };\n({ a: row, b: row }); // rejected\n```\n\nUse cloned/plain rows instead:\n\n```\nconst row = { key: \"x\", total: 1 };\n({\n  a: { key: row.key, total: row.total },\n  b: { key: row.key, total: row.total }\n});\n```\n\nExecution thread:\n- 'main' (default) runs in-process. Use for small / fast scripts, write_file, and MCP calls.\n- 'worker' runs on a separate worker thread so chat streaming and other main-process work stay responsive. Use when the script is compute-heavy (parsing multi-MB CSVs, large aggregations). The worker thread exposes read_file, list_files, and file_stats only; write_file and MCP calls are not available.\n\nHost functions:\n```ts\ntype ReadFileOptions = {\n  start?: number; // zero-indexed byte offset\n  length?: number; // max bytes to read\n  encoding?: \"utf8\" | \"base64\";\n};\n\ntype FileStats = {\n  size: number;\n  isText: boolean;\n  mtime: string; // ISO timestamp\n};\n\ndeclare function read_file(\n  path: string,\n  options?: ReadFileOptions,\n): Promise<string>;\n\ndeclare function list_files(dir?: \".\" | \"attachments:\" | string): Promise<string[]>;\n\ndeclare function file_stats(path: string): Promise<FileStats>;\n\ndeclare function write_file(\n  path: string,\n  content: string,\n  description?: string,\n): Promise<string>;\n\ndeclare function write_file(args: {\n  path: string;\n  content: string;\n  description?: string;\n}): Promise<string>;\n```\n\nPaths are app-relative (including `.dyad/media/<stored-name>`), or attachment paths like attachments:filename.ext for read_file/list_files/file_stats. write_file accepts app-relative paths only, not attachments: paths. Prefer range reads, filtering, aggregation, and small summaries over returning entire files.",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "script": {
-              "type": "string",
-              "maxLength": 131072,
-              "description": "Sandboxed JavaScript subset source code to execute."
-            },
-            "description": {
-              "description": "One-line human-readable summary of what the script does.",
-              "type": "string",
-              "maxLength": 160
-            },
-            "execution_thread": {
-              "default": "main",
-              "description": "Where to run the script. Default 'main' runs in-process and is the only thread that can expose main-thread-only host functions — use it for scripts that call MCP host functions and for small / fast operations. Use 'worker' for compute-heavy work (parsing multi-MB attachments, large aggregations, anything that might take more than a few hundred milliseconds) so chat streaming and other main-process work isn't stalled. MCP host functions are NOT available on the worker thread.",
-              "type": "string",
-              "enum": [
-                "main",
-                "worker"
-              ]
-            }
-          },
-          "required": [
-            "script"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:execute_sandbox_script]]",
+        "parameters": "[[TOOL_SCHEMA:19de44120d0f]]"
       },
       {
         "type": "function",
         "name": "planning_questionnaire",
-        "description": "Present a structured questionnaire to gather requirements from the user. The tool displays questions in the UI and waits for the user's responses, returning them as the tool result.\n\n<when_to_use>\nUse this tool when:\n- The user wants to create a NEW app or project\n- The request is vague or open-ended\n- There are multiple reasonable interpretations\nSkip when the request is a specific, concrete change.\n</when_to_use>\n\n<input_schema>\nThe tool accepts ONLY a \"questions\" array.\n\nEach question object has these fields:\n- \"question\" (string, REQUIRED): The question text shown to the user\n- \"type\" (string, REQUIRED): One of \"text\", \"radio\", or \"checkbox\"\n- \"options\" (string array, REQUIRED for radio/checkbox, OMIT for text): 1-3 predefined choices\n- \"id\" (string, optional): Unique identifier, auto-generated if omitted\n- \"required\" (boolean, optional): Defaults to true\n- \"placeholder\" (string, optional): Placeholder for text inputs\n</input_schema>\n\n<correct_example>\nReasoning: The user asked to \"build me a todo app\". I need to clarify the tech stack and key features. I'll use radio for single-choice and checkbox for multi-choice.\n\n{\n  \"questions\": [\n    {\n      \"type\": \"radio\",\n      \"question\": \"What visual style do you prefer?\",\n      \"options\": [\"Minimal & clean\", \"Colorful & playful\", \"Dark & modern\"]\n    },\n    {\n      \"type\": \"checkbox\",\n      \"question\": \"Which features do you want?\",\n      \"options\": [\"Due dates\", \"Categories/tags\", \"Priority levels\"]\n    }\n  ]\n}\n</correct_example>\n\n<incorrect_examples>\nWRONG — Empty questions array:\n{ \"questions\": [] }\n\nWRONG — options on text type:\n{ \"type\": \"text\", \"question\": \"...\", \"options\": [\"a\"] }\n\nWRONG — Empty options array:\n{ \"type\": \"radio\", \"question\": \"...\", \"options\": [] }\n\nWRONG — Missing options for radio:\n{ \"type\": \"radio\", \"question\": \"...\" }\n\nWRONG — More than 3 questions or more than 3 options\n\nWRONG — Array with empty object (missing required \"question\" and \"type\" fields):\n{ \"questions\": [{}] }\n</incorrect_examples>",
-        "parameters": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "questions": {
-              "minItems": 1,
-              "maxItems": 3,
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "description": "Unique identifier for this question (auto-generated if omitted)",
-                    "type": "string"
-                  },
-                  "question": {
-                    "type": "string",
-                    "description": "The question text to display to the user"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "text",
-                      "radio",
-                      "checkbox"
-                    ],
-                    "description": "text for free-form input, radio for single choice, checkbox for multiple choice"
-                  },
-                  "options": {
-                    "description": "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
-                    "minItems": 1,
-                    "maxItems": 3,
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "required": {
-                    "description": "Whether this question requires an answer (defaults to true)",
-                    "type": "boolean"
-                  },
-                  "placeholder": {
-                    "description": "Placeholder text for text inputs",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "question",
-                  "type"
-                ],
-                "additionalProperties": false
-              },
-              "description": "A non empty array of 1-3 questions to present to the user"
-            }
-          },
-          "required": [
-            "questions"
-          ],
-          "additionalProperties": false
-        }
+        "description": "[[TOOL_DESC:planning_questionnaire]]",
+        "parameters": "[[TOOL_SCHEMA:ad2366df8474]]"
       }
     ],
     "tool_choice": "auto",

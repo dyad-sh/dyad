@@ -6,7 +6,10 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "happy-dom",
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: [
+      "src/**/*.{test,spec}.{ts,tsx}",
+      "e2e-tests/helpers/**/*.{test,spec}.{ts,tsx}",
+    ],
     globals: true,
     onConsoleLog(log, _type) {
       // Suppress known noisy logs while allowing useful debugging output

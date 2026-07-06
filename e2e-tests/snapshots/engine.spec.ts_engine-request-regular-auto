@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "dyad/auto",
+    "model": "[[MODEL]]",
     "max_tokens": 32000,
     "temperature": 0,
     "messages": [

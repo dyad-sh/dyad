@@ -15,6 +15,7 @@ import {
   normalizeToolCallIds,
   normalizeMcpCallIds,
   normalizeVersionedFiles,
+  normalizeRequestSnapshotDetails,
   normalizePath,
   prettifyDump,
   normalizeMessagesAriaSnapshot,
@@ -646,7 +647,15 @@ export class PageObject {
 
   async snapshotServerDump(
     type: "all-messages" | "last-message" | "request" = "all-messages",
-    { name = "", dumpIndex = -1 }: { name?: string; dumpIndex?: number } = {},
+    {
+      name = "",
+      dumpIndex = -1,
+      normalizeRequestSnapshot = true,
+    }: {
+      name?: string;
+      dumpIndex?: number;
+      normalizeRequestSnapshot?: boolean;
+    } = {},
   ) {
     await this.chatActions.waitForChatCompletion();
     // Get the text content of the messages list
@@ -741,6 +750,9 @@ export class PageObject {
       normalizeVersionedFiles(parsedDump);
       // Normalize item_reference IDs (e.g., msg_1234567890) to be deterministic
       normalizeItemReferences(parsedDump);
+      if (normalizeRequestSnapshot) {
+        normalizeRequestSnapshotDetails(parsedDump);
+      }
       expect(
         JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
       ).toMatchSnapshot(name);

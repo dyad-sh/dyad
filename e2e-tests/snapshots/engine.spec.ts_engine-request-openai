@@ -1,8 +1,7 @@
 {
   "body": {
     "model": "[[MODEL]]",
-    "max_tokens": 32000,
-    "temperature": 0,
+    "temperature": 1,
     "messages": [
       {
         "role": "system",
@@ -10,10 +9,11 @@
       },
       {
         "role": "user",
-        "content": "[dump]"
+        "content": "[dump] tc=turbo-edits"
       }
     ],
     "stream": true,
+    "reasoning_effort": "[[REASONING_CONFIG]]",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {
@@ -491,7 +491,7 @@
         },
         "hasExternalChanges": true
       },
-      "enable_lazy_edits": false,
+      "enable_lazy_edits": true,
       "enable_smart_files_context": true,
       "smart_context_mode": "deep",
       "app_id": 1

@@ -2,6 +2,7 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { savePlanToDisk } from "@/ipc/handlers/planPersistence";
 
 const logger = log.scope("write_plan");
 
@@ -70,6 +71,22 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
       summary: args.summary,
       plan: args.plan,
     });
+
+    // Persist the plan as a draft so it survives an app restart before the user
+    // accepts it. Best-effort: the plan is still shown in-memory even if the
+    // write fails, so a persistence error must not fail the tool call.
+    try {
+      await savePlanToDisk({
+        appPath: ctx.appPath,
+        chatId: ctx.chatId,
+        title: args.title,
+        summary: args.summary,
+        content: args.plan,
+        status: "draft",
+      });
+    } catch (error) {
+      logger.warn(`Failed to persist plan draft: ${error}`);
+    }
 
     return `Implementation plan "${args.title}" has been presented to the user. They can review it in the preview panel and either accept it or request changes.`;
   },

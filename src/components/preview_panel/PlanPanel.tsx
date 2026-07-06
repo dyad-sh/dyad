@@ -46,8 +46,10 @@ export const PlanPanel: React.FC = () => {
   const currentTitle = planData?.title ?? null;
   const currentSummary = planData?.summary ?? null;
   const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
-  // Plan was already saved if we found it in the filesystem
-  const isSavedPlan = !!savedPlan;
+  // A persisted plan only counts as accepted once its status says so. Drafts
+  // are persisted too (so they survive a restart) but must still offer the
+  // accept buttons.
+  const isAcceptedPlan = savedPlan?.status === "accepted";
 
   // If there's no plan content, switch back to preview mode
   useEffect(() => {
@@ -249,7 +251,7 @@ export const PlanPanel: React.FC = () => {
       )}
 
       <div className="border-t p-4 space-y-4 bg-background">
-        {isAccepted || isSavedPlan ? (
+        {isAccepted || isAcceptedPlan ? (
           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
             <Check size={16} />
             <span className="text-sm font-medium">

@@ -64,6 +64,10 @@ export const PlanSchema = z.object({
   title: z.string(),
   summary: z.string().nullable(),
   content: z.string(),
+  // "draft" while the user is still reviewing the plan, "accepted" once they
+  // choose to implement it. Legacy plans without a status are treated as
+  // "accepted".
+  status: z.enum(["draft", "accepted"]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

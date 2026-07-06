@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useCreateApp } from "@/hooks/useCreateApp";
 import { useCheckName } from "@/hooks/useCheckName";
+import { useAppFolderPreview } from "@/hooks/useAppFolderPreview";
 import { NEON_TEMPLATE_IDS, Template } from "@/shared/templates";
 import { useSelectChat } from "@/hooks/useSelectChat";
 
@@ -36,6 +37,7 @@ export function CreateAppDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createApp } = useCreateApp();
   const { data: nameCheckResult } = useCheckName(appName);
+  const { data: folderPreview } = useAppFolderPreview(appName);
   const { selectChat } = useSelectChat();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +103,15 @@ export function CreateAppDialog({
                   {t("home:appNameAlreadyExists")}
                 </p>
               )}
+              {!nameExists &&
+                folderPreview &&
+                folderPreview !== appName.trim() && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("home:appFolderPreview", {
+                      folderName: folderPreview,
+                    })}
+                  </p>
+                )}
             </div>
           </div>
 

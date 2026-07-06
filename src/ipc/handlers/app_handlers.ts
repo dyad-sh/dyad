@@ -21,6 +21,15 @@ import {
 import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
+import {
+  sanitizeAppDisplayName,
+  slugifyAppFolderName,
+  validateAppFolderName,
+} from "../../shared/app_names";
+import {
+  resolveUniqueAppName,
+  resolveUniqueFolderName,
+} from "../utils/app_name_resolution";
 import { withLock } from "../utils/lock_utils";
 import { getFilesRecursively } from "../utils/file_utils";
 import {
@@ -385,7 +394,23 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
-    const appPath = params.name;
+    const appName = sanitizeAppDisplayName(params.name);
+
+    // The display name the user typed conflicting is a hard error (they can
+    // pick another); folder collisions below auto-resolve with a suffix.
+    const nameConflict = await db.query.apps.findFirst({
+      where: eq(apps.name, appName),
+    });
+    if (nameConflict) {
+      throw new DyadError(
+        `An app named "${appName}" already exists.`,
+        DyadErrorKind.Conflict,
+      );
+    }
+
+    const appPath = await resolveUniqueFolderName(
+      slugifyAppFolderName(appName),
+    );
     const fullAppPath = getDyadAppPath(appPath);
 
     if (!isAppLocationAccessible(fullAppPath)) {
@@ -394,19 +419,12 @@ export function registerAppHandlers() {
       );
     }
 
-    if (fs.existsSync(fullAppPath)) {
-      throw new DyadError(
-        `App already exists at: ${fullAppPath}`,
-        DyadErrorKind.Conflict,
-      );
-    }
     // Create a new app
     const settings = readSettings();
     const [app] = await db
       .insert(apps)
       .values({
-        name: params.name,
-        // Use the name as the path for now
+        name: appName,
         path: appPath,
         needsAppBlueprint: settings.enableAppBlueprint,
       })
@@ -455,9 +473,12 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.copyApp, async (_, params) => {
-    const { appId, newAppName, withHistory } = params;
+    const { appId, withHistory } = params;
+    const newAppName = sanitizeAppDisplayName(params.newAppName);
 
-    // 1. Check if an app with the new name already exists
+    // 1. Check if an app with the new name already exists. The user typed
+    // this name, so a conflict is a hard error; folder collisions below
+    // auto-resolve with a suffix (two distinct names can share a slug).
     const existingApp = await db.query.apps.findFirst({
       where: eq(apps.name, newAppName),
     });
@@ -478,8 +499,11 @@ export function registerAppHandlers() {
       throw new DyadError("Original app not found.", DyadErrorKind.NotFound);
     }
 
+    const newFolderName = await resolveUniqueFolderName(
+      slugifyAppFolderName(newAppName),
+    );
     const originalAppPath = getDyadAppPath(originalApp.path);
-    const newAppPath = getDyadAppPath(newAppName);
+    const newAppPath = getDyadAppPath(newFolderName);
 
     if (!isAppLocationAccessible(newAppPath)) {
       throw new Error(
@@ -518,7 +542,7 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: newAppName,
-        path: newAppName, // Use the new name for the path
+        path: newFolderName,
         // Explicitly set these to null because we don't want to copy them over.
         // Note: we could just leave them out since they're nullable field, but this
         // is to make it explicit we intentionally don't want to copy them over.
@@ -1191,9 +1215,10 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.renameApp, async (_, params) => {
-    const { appId, appName, appPath: newPath } = params;
+    const { appId, autoResolveConflicts } = params;
     return withLock(appId, async () => {
-      let appPath = newPath;
+      let appName = params.appName;
+      let appPath = params.appPath;
       // Check if app exists
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
@@ -1203,57 +1228,77 @@ export function registerAppHandlers() {
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
-      const pathChanged = appPath !== app.path;
-
       // Security: reject NEW absolute paths - rename-app should only accept relative paths for new paths
       // Absolute paths should only be set through change-app-location handler
       // If the path is changing and it's absolute, reject it
-      if (pathChanged && path.isAbsolute(appPath)) {
+      if (appPath !== app.path && path.isAbsolute(appPath)) {
         throw new Error(
           "Absolute paths are not allowed when renaming an app folder. Please use a relative folder name only. To change the storage location, use the 'Change location' button.",
         );
       }
 
-      // Validate path for invalid characters when path changes (only for relative paths)
-      if (pathChanged) {
-        const invalidChars = /[<>:"|?*/\\]/;
-        const hasInvalidChars =
-          invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
+      // Validate the folder name only when the path changes — a
+      // display-name-only rename passes the existing path back unchanged, and
+      // legacy folders that predate the naming policy must keep working.
+      if (appPath !== app.path) {
+        const validationError = validateAppFolderName(appPath);
+        if (validationError) {
+          throw new DyadError(validationError, DyadErrorKind.Validation);
+        }
+      }
 
-        if (hasInvalidChars) {
-          throw new Error(
-            `App path "${appPath}" contains characters that are not allowed in folder names: < > : " | ? * / \\ or control characters. Please use a different path.`,
+      // If the current path is absolute, preserve the directory and only
+      // change the folder name. Otherwise, resolve against the base path.
+      const resolveCandidatePath = (folderName: string) =>
+        path.isAbsolute(app.path)
+          ? path.join(path.dirname(app.path), folderName)
+          : getDyadAppPath(folderName);
+
+      if (autoResolveConflicts) {
+        // Blueprint approval: resolve the display-name suffix first, then
+        // derive the folder from the final name so they track each other.
+        const resolvedName = await resolveUniqueAppName(appName, {
+          excludeAppId: appId,
+        });
+        if (resolvedName !== appName) {
+          appName = resolvedName;
+          appPath = slugifyAppFolderName(resolvedName);
+        }
+        appPath = await resolveUniqueFolderName(appPath, {
+          excludeAppId: appId,
+          resolveCandidate: resolveCandidatePath,
+        });
+      } else {
+        // Check for conflicts with existing apps
+        const nameConflict = await db.query.apps.findFirst({
+          where: eq(apps.name, appName),
+        });
+
+        if (nameConflict && nameConflict.id !== appId) {
+          throw new DyadError(
+            `An app with the name '${appName}' already exists`,
+            DyadErrorKind.Conflict,
           );
         }
       }
 
-      // Check for conflicts with existing apps
-      const nameConflict = await db.query.apps.findFirst({
-        where: eq(apps.name, appName),
-      });
-
-      if (nameConflict && nameConflict.id !== appId) {
-        throw new DyadError(
-          `An app with the name '${appName}' already exists`,
-          DyadErrorKind.Conflict,
-        );
-      }
-
-      // If the current path is absolute, preserve the directory and only change the folder name
-      // Otherwise, resolve the new path using the default base path
+      const pathChanged = appPath !== app.path;
       const currentResolvedPath = getDyadAppPath(app.path);
-      const newAppPath = path.isAbsolute(app.path)
-        ? path.join(path.dirname(app.path), appPath)
-        : getDyadAppPath(appPath);
+      const newAppPath = resolveCandidatePath(appPath);
 
       let hasPathConflict = false;
-      if (pathChanged) {
+      if (!autoResolveConflicts && pathChanged) {
         const allApps = await db.query.apps.findMany();
+        // Compare case-insensitively: macOS and Windows filesystems are
+        // case-insensitive by default, so `My-App` and `my-app` collide.
         hasPathConflict = allApps.some((existingApp) => {
           if (existingApp.id === appId) {
             return false;
           }
-          return getDyadAppPath(existingApp.path) === newAppPath;
+          return (
+            getDyadAppPath(existingApp.path).toLowerCase() ===
+            newAppPath.toLowerCase()
+          );
         });
       }
 
@@ -1278,8 +1323,28 @@ export function registerAppHandlers() {
       }
 
       const oldAppPath = currentResolvedPath;
+      // A case-only rename (e.g. `MyApp` -> `myapp`) targets the same
+      // physical directory on case-insensitive filesystems (macOS/Windows
+      // defaults), so copy-then-delete would destroy the app. fs.rename
+      // handles case-only changes correctly on those filesystems.
+      const isCaseOnlyRename =
+        newAppPath !== oldAppPath &&
+        newAppPath.toLowerCase() === oldAppPath.toLowerCase();
       // Only move files if needed
-      if (newAppPath !== oldAppPath) {
+      if (isCaseOnlyRename) {
+        try {
+          await fsPromises.rename(oldAppPath, newAppPath);
+        } catch (error: any) {
+          logger.error(
+            `Error renaming app directory from ${oldAppPath} to ${newAppPath}:`,
+            error,
+          );
+          throw new DyadError(
+            `Failed to move app files: ${error.message}`,
+            DyadErrorKind.External,
+          );
+        }
+      } else if (newAppPath !== oldAppPath) {
         // Move app files
         try {
           // Check if destination directory already exists
@@ -1353,10 +1418,19 @@ export function registerAppHandlers() {
           .where(eq(apps.id, appId))
           .returning();
 
-        return;
+        return { name: appName, path: pathToStore };
       } catch (error: any) {
         // Attempt to rollback the file move
-        if (newAppPath !== oldAppPath) {
+        if (isCaseOnlyRename) {
+          try {
+            await fsPromises.rename(newAppPath, oldAppPath);
+          } catch (rollbackError) {
+            logger.error(
+              `Failed to rollback case-only rename during rename error:`,
+              rollbackError,
+            );
+          }
+        } else if (newAppPath !== oldAppPath) {
           try {
             // Copy back from new to old
             await copyDir(newAppPath, oldAppPath, undefined, {
@@ -1379,6 +1453,24 @@ export function registerAppHandlers() {
         );
       }
     });
+  });
+
+  // Resolves a display name to the exact folder name it would produce
+  // (slug + collision suffix), so the UI can preview it before submitting.
+  createTypedHandler(appContracts.previewAppFolderName, async (_, params) => {
+    const displayName = sanitizeAppDisplayName(params.name);
+    const app = params.appId
+      ? await db.query.apps.findFirst({ where: eq(apps.id, params.appId) })
+      : undefined;
+    const resolveCandidate =
+      app && path.isAbsolute(app.path)
+        ? (folderName: string) => path.join(path.dirname(app.path), folderName)
+        : undefined;
+    const folderName = await resolveUniqueFolderName(
+      slugifyAppFolderName(displayName),
+      { excludeAppId: params.appId, resolveCandidate },
+    );
+    return { folderName };
   });
 
   createTypedHandler(systemContracts.resetAll, async () => {

@@ -16,7 +16,8 @@ import { withLock } from "../utils/lock_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { createFromTemplate } from "./createFromTemplate";
 import { ensureDyadGitignored } from "./gitignoreUtils";
-import { slugifyAppPath } from "@/shared/slugify";
+import { slugifyAppFolderName } from "@/shared/app_names";
+import { resolveUniqueFolderName } from "../utils/app_name_resolution";
 import { getGitUncommittedFiles } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
 
@@ -51,27 +52,13 @@ async function allocateNewAppPath({
   appId: number;
   newName: string;
 }): Promise<{ newSlug: string; newAbsPath: string }> {
-  const desired = slugifyAppPath(newName);
-  const allApps = await db.query.apps.findMany();
-
-  for (let i = 0; i < 1000; i++) {
-    const trial = i === 0 ? desired : `${desired}-${i}`;
-    const trialAbs = getDyadAppPath(trial);
-
-    const conflictDb = allApps.some(
-      (a) => a.id !== appId && getDyadAppPath(a.path) === trialAbs,
-    );
-    if (conflictDb) continue;
-
-    if (fs.existsSync(trialAbs)) continue;
-
-    return { newSlug: trial, newAbsPath: trialAbs };
-  }
-
-  throw new DyadError(
-    `Could not allocate a unique app path for "${newName}"`,
-    DyadErrorKind.Conflict,
-  );
+  // Shared app-naming policy: lowercase slug plus collision suffix, probed
+  // against the DB and filesystem. Excluding the app itself means a folder
+  // that is already the canonical slug is returned unchanged (no path swap).
+  const newSlug = await resolveUniqueFolderName(slugifyAppFolderName(newName), {
+    excludeAppId: appId,
+  });
+  return { newSlug, newAbsPath: getDyadAppPath(newSlug) };
 }
 
 async function copyPreservedEntries({

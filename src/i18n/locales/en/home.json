@@ -50,6 +50,7 @@
   "createAppUsingTemplate": "Create a new app using the {{template}} template.",
   "enterAppName": "Enter app name...",
   "appNameAlreadyExists": "An app with this name already exists",
+  "appFolderPreview": "Folder name: {{folderName}}",
   "createApp": "Create App",
   "forceCloseDetected": "Force Close Detected",
   "forceCloseDescription": "The app was not closed properly the last time it was running. This could indicate a crash or unexpected termination.",

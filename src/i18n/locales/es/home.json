@@ -50,6 +50,7 @@
   "createAppUsingTemplate": "Crear una nueva aplicación usando la plantilla {{template}}.",
   "enterAppName": "Introduce el nombre de la aplicación...",
   "appNameAlreadyExists": "Ya existe una aplicación con este nombre",
+  "appFolderPreview": "Nombre de la carpeta: {{folderName}}",
   "createApp": "Crear Aplicación",
   "forceCloseDetected": "Cierre Forzado Detectado",
   "forceCloseDescription": "La aplicación no se cerró correctamente la última vez que estuvo ejecutándose. Esto podría indicar un fallo o un cierre inesperado.",

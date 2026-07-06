@@ -47,6 +47,7 @@
   "createAppUsingTemplate": "使用 {{template}} 模板创建新应用。",
   "enterAppName": "输入应用名称...",
   "appNameAlreadyExists": "此名称的应用已存在",
+  "appFolderPreview": "文件夹名称：{{folderName}}",
   "createApp": "创建应用",
   "forceCloseDetected": "检测到强制关闭",
   "forceCloseDescription": "上次运行时应用未正常关闭。这可能表示崩溃或意外终止。",

@@ -779,6 +779,28 @@ export function registerVersionHandlers() {
                 "Could not determine a version to restore to for this message.",
             };
           }
+          // The hash was resolved from stored DB fields, so a garbage-collected
+          // or stale value would otherwise surface as an opaque git error from
+          // `gitStageToRevert`. Validate it exists first (mirroring the
+          // `revertVersion` flow) and return a user-friendly warning instead of
+          // creating the forked chat if it doesn't.
+          try {
+            await assertVersionExists({
+              appPath,
+              versionId: targetCommitHash,
+            });
+          } catch (error) {
+            if (
+              error instanceof DyadError &&
+              error.kind === DyadErrorKind.NotFound
+            ) {
+              return {
+                warningMessage:
+                  "Could not restore the codebase because the target version no longer exists in the repository.",
+              };
+            }
+            throw error;
+          }
           const result = await revertCodebaseToVersion({
             appId,
             app,
@@ -813,6 +835,42 @@ export function registerVersionHandlers() {
               () => targetCommitHash,
             );
 
+        // Compile-time guard so a new column added to the `messages` schema in
+        // db/schema.ts isn't silently dropped when copying messages into the
+        // forked chat. Every column must be classified below as either copied
+        // (in the `.map` further down) or intentionally excluded; adding a
+        // column to the schema without listing it here becomes a type error.
+        type CopiedMessageColumn =
+          | "role"
+          | "content"
+          | "approvalState"
+          | "sourceCommitHash"
+          | "commitHash"
+          | "requestId"
+          | "maxTokensUsed"
+          | "model"
+          | "aiMessagesJson"
+          | "isCompactionSummary"
+          | "createdAt";
+        // Deliberately not copied from the source message:
+        //  - `id`: autoIncrement primary key, generated per inserted row.
+        //  - `chatId`: set to the newly created chat below.
+        //  - `usingFreeAgentModeQuota`: reset to false (see note below).
+        type ExcludedMessageColumn =
+          | "id"
+          | "chatId"
+          | "usingFreeAgentModeQuota";
+        // If a column is neither copied nor excluded, this `Exclude` is no
+        // longer `never` and the assignment fails to compile, flagging the
+        // unclassified column.
+        const _assertAllMessageColumnsHandled: Exclude<
+          keyof typeof messages.$inferSelect,
+          CopiedMessageColumn | ExcludedMessageColumn
+        > extends never
+          ? true
+          : never = true;
+        void _assertAllMessageColumnsHandled;
+
         // Create the new chat pointing at that version and copy over the earlier
         // messages atomically. We insert directly (instead of using the
         // createChat handler) so `initialCommitHash` is the intended version
@@ -843,7 +901,8 @@ export function registerVersionHandlers() {
                 // table schema in db/schema.ts. New columns are NOT copied
                 // automatically — add them here (or make a conscious decision to
                 // omit them, like `usingFreeAgentModeQuota` below) when the
-                // schema changes.
+                // schema changes. The `_assertAllMessageColumnsHandled` guard
+                // above enforces this classification at compile time.
                 messagesBefore.map((m) => ({
                   chatId: createdChat.id,
                   role: m.role,

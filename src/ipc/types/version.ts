@@ -114,8 +114,11 @@ export const VersionMetadataResultSchema = z.object({
 
 export const RestoreToMessageParamsSchema = z.object({
   appId: z.number(),
-  chatId: z.number(),
-  messageId: z.number(),
+  // Constrain to positive integers: these are autoIncrement primary keys, so
+  // negative, zero, and float values are always invalid and should fail fast
+  // with a descriptive error rather than silently matching no row.
+  chatId: z.number().int().positive(),
+  messageId: z.number().int().positive(),
   // When true (the default), the codebase (and database, if applicable) is
   // reverted to the version before this message in addition to forking the
   // chat. When false, only the chat is forked and the codebase is left as-is.

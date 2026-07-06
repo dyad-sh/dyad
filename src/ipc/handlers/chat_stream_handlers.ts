@@ -301,6 +301,7 @@ export function registerChatStreamHandlers() {
     }
     activeStreams.clear();
     partialResponses.clear();
+    streamCompletions.clear();
   });
 
   createTypedHandler(
@@ -1879,9 +1880,11 @@ This conversation includes one or more image attachments. When the user uploads 
       clearPendingMcpConsentsForChat(req.chatId);
 
       // Signal any awaiting `cancelStream` call that all writes have settled,
-      // then drop the (now-resolved) completion promise for this chat.
-      streamCompletions.delete(req.chatId);
+      // then drop the (now-resolved) completion promise for this chat. Resolve
+      // before deleting so a reader that consults the map after the abort still
+      // observes a settled promise rather than a missing entry.
       resolveCompletion();
+      streamCompletions.delete(req.chatId);
     }
   };
   registerTrustedIpcHandler("chat:stream", chatStreamHandler);

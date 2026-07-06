@@ -39,9 +39,7 @@ describe("normalizeTestPath", () => {
       "tests/checkout.test.spec.ts",
     );
     expect(normalizeTestPath("tests/signup.tsx")).toBe("tests/signup.spec.ts");
-    expect(normalizeTestPath("tests/README.md")).toBe(
-      "tests/README.md.spec.ts",
-    );
+    expect(normalizeTestPath("tests/README.md")).toBe("tests/README.spec.ts");
   });
 
   it("preserves already-valid spec paths", () => {

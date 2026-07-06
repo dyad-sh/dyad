@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyErrorText,
   parsePlaywrightReport,
+  PLAYWRIGHT_REPORT_ERROR_FILE,
   type PwReport,
 } from "./playwright_report";
 
@@ -401,5 +402,22 @@ describe("parsePlaywrightReport", () => {
       status: "failed",
     });
     expect(result.error).toContain("unexpected");
+  });
+
+  it("surfaces report-level errors as an inconclusive runner result", () => {
+    const report: PwReport = {
+      suites: specResult("tests/a.spec.ts", "passed"),
+      errors: [{ message: "global teardown failed" }],
+    };
+
+    const results = parsePlaywrightReport(report, appPath);
+    expect(results).toHaveLength(2);
+    expect(results).toContainEqual(
+      expect.objectContaining({
+        file: PLAYWRIGHT_REPORT_ERROR_FILE,
+        status: "inconclusive",
+        error: "global teardown failed",
+      }),
+    );
   });
 });

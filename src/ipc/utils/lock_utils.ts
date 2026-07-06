@@ -9,6 +9,10 @@ export function getFileWriteKey(filePath: string): string {
   return `filewrite:${filePath}`;
 }
 
+export function isLockHeld(lockId: number | string): boolean {
+  return locks.has(lockId);
+}
+
 /**
  * Executes a function with a lock on the lock ID.
  * Uses promise-chaining so that queued operations execute serially,

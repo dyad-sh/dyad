@@ -50,6 +50,8 @@ export interface PwReport {
   errors?: { message?: string }[];
 }
 
+export const PLAYWRIGHT_REPORT_ERROR_FILE = "__playwright_runner__";
+
 /**
  * Heuristic infra-vs-assertion classifier for a Playwright error message.
  *
@@ -316,6 +318,24 @@ export function parsePlaywrightReport(
   for (const [file, tests] of byFile) {
     tests.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
     results.push(aggregateTestResults(file, tests));
+  }
+
+  const reportErrors =
+    report.errors?.map((e) => e.message).filter((m): m is string => !!m) ?? [];
+  if (reportErrors.length > 0) {
+    const error = reportErrors.join("\n");
+    results.push({
+      file: PLAYWRIGHT_REPORT_ERROR_FILE,
+      status: "inconclusive",
+      error,
+      tests: [
+        {
+          title: "Playwright runner error",
+          status: "inconclusive",
+          error,
+        },
+      ],
+    });
   }
 
   results.sort((a, b) => a.file.localeCompare(b.file));

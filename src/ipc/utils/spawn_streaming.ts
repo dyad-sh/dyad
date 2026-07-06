@@ -17,7 +17,7 @@ const FORCE_KILL_GRACE_MS = 5_000;
 // parentheses. A double/single quote can break out of Node's arg quoting under
 // `shell: true`, and `()` are grouping operators — omitting them would leave a
 // defense-in-depth hole for any future caller that forwards untrusted input.
-const WINDOWS_SHELL_META_RE = /[&|<>^%!()"'\r\n]/;
+const WINDOWS_SHELL_META_RE = /[&|<>^%!()"'`\r\n]/;
 
 /** Append `chunk` to `buffer`, keeping only the last MAX_BUFFERED_OUTPUT chars. */
 function appendCapped(buffer: string, chunk: string): string {

@@ -195,6 +195,7 @@ function RunButton({
       onClick={onRun}
       disabled={disabled}
       aria-label={label}
+      title="During database-isolated runs, other app operations may wait until the run finishes."
       className={cn(
         "flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all cursor-pointer",
         "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
@@ -491,6 +492,9 @@ export function TestsPanel() {
   // no isolation, so the warning is strongest.
   const hasNeon = !!app?.neonProjectId;
   const hasSupabase = !!app?.supabaseProjectId;
+  const hasNeonIsolation =
+    hasNeon && (settings?.runtimeMode2 ?? "host") === "host";
+  const hasSupabaseIsolation = hasSupabase && !!app?.supabaseOrganizationSlug;
 
   const [outputOpen, setOutputOpen] = useState(false);
   // When enabled, runs open a visible browser window so the user can watch the
@@ -537,26 +541,45 @@ export function TestsPanel() {
     specs.length > 0 &&
     !!app?.neonProjectId &&
     (settings?.runtimeMode2 ?? "host") === "host";
+  const pendingOutputRef = useRef(new Map<number, string>());
+  const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const flushPendingOutput = useCallback(
+    (appId?: number) => {
+      const pending = pendingOutputRef.current;
+      const entries =
+        appId === undefined
+          ? Array.from(pending.entries())
+          : pending.has(appId)
+            ? [[appId, pending.get(appId)!] as const]
+            : [];
+      for (const [pendingAppId, chunk] of entries) {
+        appendOutput({ appId: pendingAppId, chunk });
+        pending.delete(pendingAppId);
+      }
+      if (pending.size === 0 && outputFlushTimerRef.current) {
+        clearTimeout(outputFlushTimerRef.current);
+        outputFlushTimerRef.current = null;
+      }
+    },
+    [appendOutput],
+  );
 
   // Subscribe to streamed run output. Chunks are buffered and flushed as one
   // batched atom write per interval — an atom write per chunk would re-render
   // every subscriber per chunk during the chattiest window.
   useEffect(() => {
-    const pending = new Map<number, string>();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const flush = () => {
-      timer = null;
-      for (const [appId, chunk] of pending) {
-        appendOutput({ appId, chunk });
-      }
-      pending.clear();
-    };
     const unsubscribe = ipc.events.tests.onOutput((payload) => {
+      const pending = pendingOutputRef.current;
       pending.set(
         payload.appId,
         (pending.get(payload.appId) ?? "") + payload.chunk,
       );
-      timer ??= setTimeout(flush, OUTPUT_FLUSH_INTERVAL_MS);
+      outputFlushTimerRef.current ??= setTimeout(() => {
+        outputFlushTimerRef.current = null;
+        flushPendingOutput();
+      }, OUTPUT_FLUSH_INTERVAL_MS);
       // Phase transitions are rare (setup → running); returning the previous
       // state on no-change makes this write a no-op for subscribers.
       setRunState({
@@ -569,10 +592,13 @@ export function TestsPanel() {
     });
     return () => {
       unsubscribe();
-      if (timer) clearTimeout(timer);
-      flush();
+      if (outputFlushTimerRef.current) {
+        clearTimeout(outputFlushTimerRef.current);
+        outputFlushTimerRef.current = null;
+      }
+      flushPendingOutput();
     };
-  }, [setRunState, appendOutput]);
+  }, [setRunState, flushPendingOutput]);
 
   const runTests = useCallback(
     async (file?: string, line?: number) => {
@@ -581,6 +607,7 @@ export function TestsPanel() {
       const isSingleTest = file != null && line != null;
       const targetFiles = file ? [file] : specs.map((s) => s.file);
 
+      flushPendingOutput(appId);
       clearOutput(appId);
       setRunState({
         appId,
@@ -669,7 +696,15 @@ export function TestsPanel() {
         });
       }
     },
-    [selectedAppId, specs, setRunState, clearOutput, headed, parallel],
+    [
+      selectedAppId,
+      specs,
+      flushPendingOutput,
+      clearOutput,
+      setRunState,
+      headed,
+      parallel,
+    ],
   );
 
   const stop = useCallback(() => {
@@ -734,6 +769,9 @@ export function TestsPanel() {
     if (selectedAppId == null) return;
     setTestingEnabled({ appId: selectedAppId, enabled: false });
   }, [selectedAppId, setTestingEnabled]);
+  const toggleOutput = useCallback(() => {
+    setOutputOpen((v) => !v);
+  }, []);
 
   // File-level status: a spinner while the file is part of an in-flight run,
   // otherwise the parsed run result (or not-run).
@@ -883,6 +921,7 @@ export function TestsPanel() {
             <button
               onClick={() => runTests()}
               disabled={!devServerRunning}
+              title="During database-isolated runs, other app operations may wait until the run finishes."
               aria-label="Run all tests"
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
@@ -1029,8 +1068,9 @@ export function TestsPanel() {
       <div className="flex-1 overflow-y-auto">
         {!testingEnabled ? (
           <EnableTestingScreen
-            hasNeon={hasNeon}
-            hasSupabase={hasSupabase}
+            hasNeonIsolation={hasNeonIsolation}
+            hasSupabaseIsolation={hasSupabaseIsolation}
+            hasManagedDatabase={hasNeon || hasSupabase}
             onEnable={enableTesting}
             isEnabling={isTogglingTesting}
           />
@@ -1109,10 +1149,7 @@ export function TestsPanel() {
         )}
       </div>
 
-      <OutputDrawer
-        open={outputOpen}
-        onToggle={() => setOutputOpen((v) => !v)}
-      />
+      <OutputDrawer open={outputOpen} onToggle={toggleOutput} />
     </div>
   );
 }
@@ -1123,13 +1160,15 @@ export function TestsPanel() {
  * enables the feature on click.
  */
 function EnableTestingScreen({
-  hasNeon,
-  hasSupabase,
+  hasNeonIsolation,
+  hasSupabaseIsolation,
+  hasManagedDatabase,
   onEnable,
   isEnabling,
 }: {
-  hasNeon: boolean;
-  hasSupabase: boolean;
+  hasNeonIsolation: boolean;
+  hasSupabaseIsolation: boolean;
+  hasManagedDatabase: boolean;
   onEnable: () => void;
   isEnabling: boolean;
 }) {
@@ -1149,7 +1188,7 @@ function EnableTestingScreen({
       {/* Data-safety warning, scaled to how well runs are isolated for this
           app's backend. Neon runs against a throwaway branch copy, so it's safe
           enough to skip the banner; everything else can touch real data. */}
-      {hasNeon ? (
+      {hasNeonIsolation ? (
         <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-left text-[13px] text-teal-800 dark:text-teal-200">
           <ShieldCheck size={15} className="shrink-0 mt-0.5" />
           <span>
@@ -1161,9 +1200,11 @@ function EnableTestingScreen({
         <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-left text-[13px] text-amber-800 dark:text-amber-200">
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
-            {hasSupabase
+            {hasSupabaseIsolation
               ? "Tests run as an isolated test user under Row-Level Security, but RLS may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
-              : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}
+              : hasManagedDatabase
+                ? "Dyad can't isolate this database in the current setup. These tests can create, update, or delete current data, so we strongly recommend enabling data backups before running them."
+                : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}
           </span>
         </div>
       )}

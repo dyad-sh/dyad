@@ -23,7 +23,6 @@ describe("test runtime atoms", () => {
       appId: 1,
       update: {
         phase: "running",
-        output: "running",
         results: {},
         runningFiles: ["tests/a.spec.ts"],
       },

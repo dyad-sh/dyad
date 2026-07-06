@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import log from "electron-log/main";
 import { spawnStreaming } from "./spawn_streaming";
@@ -195,13 +196,82 @@ const BROWSER_MARKER = path.join(
   ".dyad-playwright-chromium-installed",
 );
 
+function playwrightPackageVersion(appPath: string): string | null {
+  try {
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          appPath,
+          "node_modules",
+          "@playwright",
+          "test",
+          "package.json",
+        ),
+        "utf8",
+      ),
+    ) as { version?: unknown };
+    return typeof packageJson.version === "string" ? packageJson.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function chromiumExecutablePath(appPath: string): string | null {
+  try {
+    const requireFromApp = createRequire(path.join(appPath, "package.json"));
+    const playwright = requireFromApp("playwright") as {
+      chromium?: { executablePath?: () => string };
+    };
+    const executablePath = playwright.chromium?.executablePath?.();
+    return typeof executablePath === "string" ? executablePath : null;
+  } catch (error) {
+    logger.warn(`Failed to resolve Playwright Chromium executable: ${error}`);
+    return null;
+  }
+}
+
 export function isPlaywrightBrowserInstalled(appPath: string): boolean {
-  return fs.existsSync(path.join(appPath, BROWSER_MARKER));
+  const markerPath = path.join(appPath, BROWSER_MARKER);
+  if (!fs.existsSync(markerPath)) {
+    return false;
+  }
+
+  const currentVersion = playwrightPackageVersion(appPath);
+  if (!currentVersion) {
+    return false;
+  }
+
+  let marker: { playwrightVersion?: unknown; executablePath?: unknown };
+  try {
+    marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as {
+      playwrightVersion?: unknown;
+      executablePath?: unknown;
+    };
+  } catch {
+    return false;
+  }
+
+  if (marker.playwrightVersion !== currentVersion) {
+    return false;
+  }
+
+  const executablePath =
+    typeof marker.executablePath === "string"
+      ? marker.executablePath
+      : chromiumExecutablePath(appPath);
+  return !!executablePath && fs.existsSync(executablePath);
 }
 
 function markBrowserInstalled(appPath: string): void {
   try {
-    fs.writeFileSync(path.join(appPath, BROWSER_MARKER), "ok");
+    const marker = {
+      playwrightVersion: playwrightPackageVersion(appPath),
+      executablePath: chromiumExecutablePath(appPath),
+    };
+    fs.writeFileSync(
+      path.join(appPath, BROWSER_MARKER),
+      `${JSON.stringify(marker, null, 2)}\n`,
+    );
   } catch (err) {
     logger.warn(`Failed to write browser marker: ${err}`);
   }

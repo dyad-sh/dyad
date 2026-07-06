@@ -123,9 +123,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -315,9 +325,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -506,9 +526,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -681,9 +711,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -873,9 +913,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -1147,9 +1197,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -1325,9 +1385,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 
@@ -1487,9 +1557,19 @@ When the user asks you to write an end-to-end (e2e) test for a feature or flow, 
 - Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
 - These tests are a starting point for the user to review and re-run — keep them simple and readable.
 
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 

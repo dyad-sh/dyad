@@ -380,7 +380,9 @@ The error message and test output usually reference these paths directly — ope
 
 ## Isolated test data (database-connected apps)
 
-When the app is connected to a database, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
 
 Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
 

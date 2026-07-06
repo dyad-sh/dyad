@@ -1,6 +1,7 @@
 import { SPEC_FILE_RE, TEST_SPEC_EXT_ALTERNATION } from "../types/tests";
 
 const STRIPPABLE_EXT_RE = new RegExp(`\\.(${TEST_SPEC_EXT_ALTERNATION})$`);
+const LAST_EXT_RE = /\.[^/.]+$/;
 
 /**
  * Normalize a test path so it always lands under the app's `tests/` folder
@@ -40,7 +41,8 @@ export function normalizeTestPath(rawPath: string): string {
     // sibling tags with valid-but-wrong extensions (login.test.ts,
     // checkout.test.ts) normalize to distinct files instead of collapsing
     // onto one shared fallback and silently overwriting each other.
-    specPath = `${specPath.replace(STRIPPABLE_EXT_RE, "")}.spec.ts`;
+    const withoutKnownExt = specPath.replace(STRIPPABLE_EXT_RE, "");
+    specPath = `${withoutKnownExt === specPath ? specPath.replace(LAST_EXT_RE, "") : withoutKnownExt}.spec.ts`;
   }
   if (specPath.startsWith("tests/")) return specPath;
   return `tests/${specPath}`;

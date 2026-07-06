@@ -16,7 +16,7 @@ import {
 } from "../types/tests";
 import type { RunAppTestsResult, TestCase, TestResult } from "../types/tests";
 import { runningApps } from "../utils/process_manager";
-import { withLock } from "../utils/lock_utils";
+import { isLockHeld, withLock } from "../utils/lock_utils";
 import { safeSend } from "../utils/safe_sender";
 import { spawnStreaming } from "../utils/spawn_streaming";
 import {
@@ -24,7 +24,10 @@ import {
   TEST_BASE_URL_ENV,
   TEST_RESULTS_JSON,
 } from "../utils/playwright_bootstrap";
-import { parsePlaywrightReport } from "../utils/playwright_report";
+import {
+  parsePlaywrightReport,
+  PLAYWRIGHT_REPORT_ERROR_FILE,
+} from "../utils/playwright_report";
 import { parseTestCases } from "../utils/parse_test_cases";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { sendTelemetryEvent } from "../utils/telemetry";
@@ -48,6 +51,11 @@ const logger = log.scope("tests_handlers");
 const TEST_FILE_PATTERN = new RegExp(
   `^tests/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
 );
+
+function normalizeRunTestFile(testFile: string): string | null {
+  const normalized = path.posix.normalize(testFile.replace(/\\/g, "/"));
+  return TEST_FILE_PATTERN.test(normalized) ? normalized : null;
+}
 
 function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
@@ -151,10 +159,12 @@ export async function runAppTestsCore({
   const appPath = getDyadAppPath(app.path);
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
+  const normalizedTestFile =
+    testFile === undefined ? undefined : normalizeRunTestFile(testFile);
 
   // Reject anything that doesn't look like one of our spec paths before it
   // reaches the Playwright CLI (the Zod schema only checks it's a string).
-  if (testFile !== undefined && !TEST_FILE_PATTERN.test(testFile)) {
+  if (testFile !== undefined && !normalizedTestFile) {
     return {
       appId,
       results: [],
@@ -208,14 +218,20 @@ export async function runAppTestsCore({
   // single test; the line is validated to be a positive integer at the IPC
   // boundary, so it can't smuggle a flag.
   const args = ["playwright", "test"];
-  if (testFile) {
+  if (normalizedTestFile) {
     const target =
       testLine && Number.isInteger(testLine) && testLine > 0
-        ? `${testFile}:${testLine}`
-        : testFile;
+        ? `${normalizedTestFile}:${testLine}`
+        : normalizedTestFile;
     args.push(target);
+  } else {
+    // Existing user configs can point at a different testDir. Dyad's panel only
+    // lists specs under tests/, so an all-run must target that directory
+    // explicitly instead of executing every spec the user's config knows about.
+    args.push("tests/");
   }
   args.push("--reporter=list,json");
+  args.push("--base-url", baseUrl);
   // `--headed` opens a visible browser window so the user can watch the run.
   // It overrides the headless default (and the CI=true env set below).
   if (headed) {
@@ -315,6 +331,21 @@ export async function runAppTestsCore({
         message:
           tail.slice(-1500) ||
           "The test runner didn't produce a report. Check the output for details.",
+      },
+    };
+  }
+
+  const reportLevelError = results.find(
+    (r) => r.file === PLAYWRIGHT_REPORT_ERROR_FILE,
+  );
+  if (reportLevelError) {
+    return {
+      appId,
+      results,
+      infraError: {
+        message:
+          reportLevelError.error ||
+          "Playwright reported a runner-level error. Check the output for details.",
       },
     };
   }
@@ -439,11 +470,13 @@ export function registerTestsHandlers() {
     testsContracts.runAppTests,
     async (event, params): Promise<RunAppTestsResult> => {
       const { appId, testFile, testLine, headed, parallel } = params;
+      const normalizedTestFile =
+        testFile === undefined ? undefined : normalizeRunTestFile(testFile);
 
       // Reject an invalid target before the expensive isolation setup (Neon
       // branch creation, env swap, double dev-server restart) — the same check
       // in runAppTestsCore would otherwise only fire after all of it.
-      if (testFile !== undefined && !TEST_FILE_PATTERN.test(testFile)) {
+      if (testFile !== undefined && !normalizedTestFile) {
         return {
           appId,
           results: [],
@@ -483,6 +516,15 @@ export function registerTestsHandlers() {
         // reconcileOrphanTestUsers) takes the same lock, so a rapid Run right
         // after launch can't interleave its env swap + dev-server restart with
         // an in-flight reconciliation and end up running against the real DB.
+        if (isLockHeld(appId)) {
+          logger.info(
+            `Test run for app ${appId} is waiting for another app operation to finish before isolation setup`,
+          );
+          emit(
+            "Waiting for a previous test cleanup or app operation to finish…\n",
+            "setup",
+          );
+        }
         return await withLock(appId, async () => {
           let prepared: PreparedIsolation | undefined;
           try {
@@ -513,7 +555,7 @@ export function registerTestsHandlers() {
 
             const result = await runAppTestsCore({
               appId,
-              testFile,
+              testFile: normalizedTestFile ?? undefined,
               testLine,
               headed,
               parallel,

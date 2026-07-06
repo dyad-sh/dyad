@@ -80,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.runningApps.clear();
   mocks.checkRls.mockResolvedValue({ tablesWithoutRls: [] });
+  mocks.readEnvFileIfExists.mockResolvedValue(null);
   mocks.createTempTestUser.mockResolvedValue({
     userId: "user-1",
     email: "dyad-test+1@dyad.test",
@@ -222,6 +223,43 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
       await prepared.teardown();
       expect(mocks.deleteTempTestBranch).toHaveBeenCalledWith(
         expect.objectContaining({ neonTestBranchId: "test-br" }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("keeps the branch tracked when restoring .env.local fails", async () => {
+    mocks.readEnvFileIfExists.mockResolvedValue("POSTGRES_URL=real\n");
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+      cookieSecret: "secret",
+    });
+    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("ok"));
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        event,
+        emit,
+        runtimeMode: "host",
+      });
+
+      mocks.deleteTempTestBranch.mockClear();
+      mocks.executeApp.mockClear();
+      emit.mockClear();
+
+      await prepared.teardown();
+
+      expect(mocks.executeApp).not.toHaveBeenCalled();
+      expect(mocks.deleteTempTestBranch).not.toHaveBeenCalled();
+      expect(emit).toHaveBeenCalledWith(
+        expect.stringMatching(/temporary Neon branch was kept tracked/i),
+        "setup",
       );
     } finally {
       fetchSpy.mockRestore();

@@ -1526,6 +1526,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 freeModelMode,
                 frameworkType,
                 hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
+                testingEnabled: !!updatedChat.app?.testingEnabled,
               }),
               files: files,
               dyadDisableFiles: true,

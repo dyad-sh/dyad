@@ -159,16 +159,19 @@ export const clearTestRuntimeForAppAtom = atom(
   null,
   (_get, set, appId: number) => {
     set(testSpecsByAppIdAtom, (prev) => {
+      if (!prev.has(appId)) return prev;
       const next = new Map(prev);
       next.delete(appId);
       return next;
     });
     set(testRunStateByAppIdAtom, (prev) => {
+      if (!prev.has(appId)) return prev;
       const next = new Map(prev);
       next.delete(appId);
       return next;
     });
     set(testRunOutputByAppIdAtom, (prev) => {
+      if (!prev.has(appId)) return prev;
       const next = new Map(prev);
       next.delete(appId);
       return next;

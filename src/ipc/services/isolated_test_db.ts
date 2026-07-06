@@ -116,6 +116,7 @@ export async function prepareIsolatedTestDatabase({
   // Build a teardown that restores whatever we changed. Captured branchId/env
   // are read at call time so a partial failure still restores correctly.
   const teardown = async () => {
+    let envRestored = true;
     // Only touch the env file / restart the dev server if we actually swapped
     // the env. If setup failed before the env swap (e.g. during branch
     // creation), restoring and restarting would be a pointless, user-visible
@@ -124,19 +125,33 @@ export async function prepareIsolatedTestDatabase({
       try {
         await restoreEnvFile(appPath, envSnapshot);
       } catch (error) {
+        envRestored = false;
         logger.error(
           `Failed to restore .env.local for app ${app.id}: ${error}`,
         );
-      }
-      try {
-        await restartAppInPlace({ app, appPath, event });
-      } catch (error) {
-        logger.error(
-          `Failed to restart app ${app.id} back onto its real branch: ${error}`,
+        emit(
+          "Warning: Dyad couldn't restore your real database settings, so the temporary Neon branch was kept tracked for retry. Restore .env.local before running more tests.\n",
+          "setup",
         );
+      }
+      if (envRestored) {
+        try {
+          await restartAppInPlace({ app, appPath, event });
+        } catch (error) {
+          logger.error(
+            `Failed to restart app ${app.id} back onto its real branch: ${error}`,
+          );
+          emit(
+            "Warning: Dyad restored your real database settings, but couldn't restart the preview. Restart the app manually before continuing.\n",
+            "setup",
+          );
+        }
       }
     }
     if (branchId) {
+      if (!envRestored) {
+        return;
+      }
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
       // `app` is stale, so pass the branch we actually created.
       try {
@@ -180,8 +195,8 @@ export async function prepareIsolatedTestDatabase({
     // 4. Restart so the dev server reads the throwaway branch, then wait until
     //    it's serving again before Playwright points at it.
     emit("Starting the app against the isolated test database…\n", "setup");
-    await restartAppInPlace({ app, appPath, event });
-    await waitForServerReady(app.id, signal);
+    const processId = await restartAppInPlace({ app, appPath, event });
+    await waitForServerReady(app.id, signal, processId);
 
     return {
       isolation: { mode: "neon-branch" },
@@ -364,7 +379,7 @@ async function restartAppInPlace({
   app: AppRow;
   appPath: string;
   event: IpcMainInvokeEvent;
-}): Promise<void> {
+}): Promise<number | undefined> {
   const appInfo = runningApps.get(app.id);
   if (appInfo) {
     await stopAppByInfo(app.id, appInfo);
@@ -378,6 +393,7 @@ async function restartAppInPlace({
     installCommand: app.installCommand,
     startCommand: app.startCommand,
   });
+  return runningApps.get(app.id)?.processId;
 }
 
 /**
@@ -388,13 +404,22 @@ async function restartAppInPlace({
 async function waitForServerReady(
   appId: number,
   signal?: AbortSignal,
+  expectedProcessId?: number,
 ): Promise<void> {
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (signal?.aborted) {
       throw new Error("Test run stopped.");
     }
-    const baseUrl = runningApps.get(appId)?.proxyUrl;
+    const appInfo = runningApps.get(appId);
+    if (
+      expectedProcessId !== undefined &&
+      appInfo?.processId !== expectedProcessId
+    ) {
+      await delay(SERVER_READY_POLL_MS, signal);
+      continue;
+    }
+    const baseUrl = appInfo?.proxyUrl;
     if (baseUrl && (await isResponding(baseUrl, signal))) {
       return;
     }

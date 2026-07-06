@@ -48,6 +48,12 @@ const SAFE_IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 // cleanup of rows the test user created in tables that don't cascade.
 const OWNER_COLUMNS = ["user_id", "owner_id", "created_by", "author_id", "uid"];
 
+for (const column of OWNER_COLUMNS) {
+  if (!SAFE_IDENT_RE.test(column)) {
+    throw new Error(`Unsafe Supabase test-user owner column: ${column}`);
+  }
+}
+
 function projectUrlFor(ref: string): string {
   return `https://${ref}.supabase.co`;
 }

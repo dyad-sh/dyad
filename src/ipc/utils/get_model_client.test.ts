@@ -59,7 +59,7 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
       case "dyad/auto/google":
         return {
           providerId: "google",
-          apiName: "gemini-3-flash-preview",
+          apiName: "gemini-3.5-flash",
         };
       default:
         return null;
@@ -119,7 +119,7 @@ describe("getModelClient", () => {
     expect(fallbackModels.map((model) => model.modelId)).toEqual([
       "gpt-5.5",
       "anthropic/claude-sonnet-4-20250514",
-      "gemini/gemini-3-flash-preview",
+      "gemini/gemini-3.5-flash",
     ]);
   });
 

@@ -20,6 +20,7 @@ export const GPT_5_5_MODEL_NAME = "gpt-5.5";
 export const SONNET_4_6 = "claude-sonnet-4-6";
 export const OPUS_4_6 = "claude-opus-4-6";
 export const OPUS_4_8 = "claude-opus-4-8";
+export const GEMINI_3_5_FLASH = "gemini-3.5-flash";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
 export const GPT_5_NANO = "gpt-5-nano";
@@ -169,6 +170,19 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Recommended by Google: https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#temperature
       temperature: 1.0,
       dollarSigns: 4,
+    },
+    // Mirrors the production catalog entry for Gemini 3.5 Flash.
+    {
+      name: GEMINI_3_5_FLASH,
+      displayName: "Gemini 3.5 Flash",
+      description: "Google's high-quality Flash model",
+      // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
+      maxOutputTokens: 65_536 - 1,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
+      // Recommended by Google: https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#temperature
+      temperature: 1.0,
+      dollarSigns: 3,
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
     {

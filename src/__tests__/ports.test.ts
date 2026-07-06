@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAppPort,
   getAppProxyPort,
+  getProxyFallbackPortStart,
   PROXY_FALLBACK_PORT_START,
   PROXY_PORT_BASE,
   PROXY_PORT_RANGE,
@@ -27,5 +28,26 @@ describe("ports", () => {
   it("keeps app and proxy ports in separate deterministic ranges", () => {
     expect(getAppPort(123)).toBe(32223);
     expect(getAppProxyPort(123)).toBe(42223);
+  });
+
+  it("isolates app, proxy, and fallback ports by E2E worker block", () => {
+    const previous = process.env.DYAD_E2E_PORT_BLOCK_INDEX;
+    try {
+      process.env.DYAD_E2E_PORT_BLOCK_INDEX = "0";
+      expect(getAppPort(1)).toBe(32101);
+      expect(getAppProxyPort(1)).toBe(33101);
+      expect(getProxyFallbackPortStart()).toBe(34100);
+
+      process.env.DYAD_E2E_PORT_BLOCK_INDEX = "1";
+      expect(getAppPort(1)).toBe(34151);
+      expect(getAppProxyPort(1)).toBe(35151);
+      expect(getProxyFallbackPortStart()).toBe(36150);
+    } finally {
+      if (previous == null) {
+        delete process.env.DYAD_E2E_PORT_BLOCK_INDEX;
+      } else {
+        process.env.DYAD_E2E_PORT_BLOCK_INDEX = previous;
+      }
+    }
   });
 });

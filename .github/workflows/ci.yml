@@ -371,6 +371,9 @@ jobs:
         env:
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
           PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
+          # Pilot two workers only on self-hosted macOS shards. Keep GitHub-hosted
+          # macOS and Windows serial while preview-heavy specs shake out.
+          PLAYWRIGHT_PARALLELISM: ${{ contains(matrix.os.image, 'self-hosted') && '2' || '1' }}
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities

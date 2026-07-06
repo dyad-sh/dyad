@@ -5,8 +5,8 @@ import path from "path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
-  PROXY_FALLBACK_PORT_START,
   PROXY_FALLBACK_MAX_ATTEMPTS,
+  getProxyFallbackPortStart,
 } from "../../../shared/ports";
 
 const logger = log.scope("start_proxy_server");
@@ -26,6 +26,7 @@ export async function startProxy(
       DyadErrorKind.Validation,
     );
   const { port, onStarted, onError, fixedHeaders } = opts;
+  const fallbackPortStart = getProxyFallbackPortStart();
   logger.info("Starting proxy on port", port);
 
   const worker = new Worker(
@@ -34,7 +35,7 @@ export async function startProxy(
       workerData: {
         targetOrigin,
         port,
-        fallbackPortStart: PROXY_FALLBACK_PORT_START,
+        fallbackPortStart,
         maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
         fixedHeaders,
       },
@@ -50,7 +51,7 @@ export async function startProxy(
       logger.error("[proxy] failed to bind:", m);
       onError?.(
         new DyadError(
-          `Could not start the preview proxy: every port from ${port} to ${PROXY_FALLBACK_PORT_START + PROXY_FALLBACK_MAX_ATTEMPTS - 1} is in use. Free up a port and restart the app.`,
+          `Could not start the preview proxy: every port from ${port} to ${fallbackPortStart + PROXY_FALLBACK_MAX_ATTEMPTS - 1} is in use. Free up a port and restart the app.`,
           DyadErrorKind.Conflict,
         ),
       );

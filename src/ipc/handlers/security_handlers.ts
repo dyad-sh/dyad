@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { chats, messages, security_fix_chats } from "../../db/schema";
 import { eq, and, like, desc } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { securityContracts } from "../types/security";
 import type { SecurityFinding } from "../types/security";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { createChatForApp } from "../utils/chat_creation_utils";
 
 export function registerSecurityHandlers() {
   createTypedHandler(
@@ -58,6 +60,73 @@ export function registerSecurityHandlers() {
       };
     },
   );
+
+  createTypedHandler(
+    securityContracts.getOrCreateSecurityFixChat,
+    async (_, { appId, reviewChatId, findings }) => {
+      const findingKey = computeFindingKey(findings);
+
+      const findExisting = async () =>
+        db.query.security_fix_chats.findFirst({
+          where: and(
+            eq(security_fix_chats.appId, appId),
+            eq(security_fix_chats.reviewChatId, reviewChatId),
+            eq(security_fix_chats.findingKey, findingKey),
+          ),
+        });
+
+      const existing = await findExisting();
+      if (existing) {
+        return { chatId: existing.fixChatId, created: false };
+      }
+
+      const title =
+        findings.length === 1
+          ? `Fix: ${findings[0].title}`
+          : `Fix ${findings.length} security issues`;
+
+      const chatId = await createChatForApp({ appId, title });
+
+      // The unique index on (appId, reviewChatId, findingKey) makes this safe
+      // against concurrent clicks: only one insert wins.
+      const inserted = await db
+        .insert(security_fix_chats)
+        .values({ appId, reviewChatId, findingKey, fixChatId: chatId })
+        .onConflictDoNothing()
+        .returning();
+
+      if (inserted.length === 0) {
+        // Lost the race; discard the chat we just created and reuse the winner's.
+        await db.delete(chats).where(eq(chats.id, chatId));
+        const winner = await findExisting();
+        if (!winner) {
+          throw new DyadError(
+            "Failed to create security fix chat",
+            DyadErrorKind.Internal,
+          );
+        }
+        return { chatId: winner.fixChatId, created: false };
+      }
+
+      return { chatId, created: true };
+    },
+  );
+}
+
+function computeFindingKey(findings: SecurityFinding[]): string {
+  const hashes = findings
+    .map((finding) =>
+      createHash("sha256")
+        .update(
+          `${finding.title.trim()}|${finding.level}|${finding.description.trim()}`,
+        )
+        .digest("hex"),
+    )
+    .sort();
+  if (hashes.length === 1) {
+    return hashes[0];
+  }
+  return createHash("sha256").update(hashes.join("|")).digest("hex");
 }
 
 function parseSecurityFindings(content: string): SecurityFinding[] {

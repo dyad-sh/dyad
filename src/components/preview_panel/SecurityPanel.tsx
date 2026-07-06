@@ -1,5 +1,6 @@
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { useSecurityReview } from "@/hooks/useSecurityReview";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -26,12 +27,34 @@ import type {
 } from "@/ipc/types/security";
 import { useState, useEffect } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
-import { showSuccess, showWarning } from "@/lib/toast";
+import { showSuccess, showWarning, toast } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSelectChat } from "@/hooks/useSelectChat";
 
 const DESCRIPTION_PREVIEW_LENGTH = 150;
+
+const buildFixPrompt = (findings: SecurityFinding[]): string => {
+  if (findings.length === 1) {
+    const finding = findings[0];
+    return `Please fix the following security issue in a simple and effective way:
+
+**${finding.title}** (${finding.level} severity)
+
+${finding.description}`;
+  }
+
+  const issuesList = findings
+    .map(
+      (finding, index) =>
+        `${index + 1}. **${finding.title}** (${finding.level} severity)\n${finding.description}`,
+    )
+    .join("\n\n");
+
+  return `Please fix the following ${findings.length} security issues in a simple and effective way:
+
+${issuesList}`;
+};
 
 const createFindingKey = (finding: {
   title: string;
@@ -653,6 +676,7 @@ function FindingDetailsDialog({
 
 export const SecurityPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const setIsChatPanelHidden = useSetAtom(isChatPanelHiddenAtom);
   const { selectChat } = useSelectChat();
   const queryClient = useQueryClient();
   const { streamMessage } = useStreamChat({ hasChatId: false });
@@ -739,6 +763,7 @@ export const SecurityPanel = () => {
       const chatId = await ipc.chat.createChat(selectedAppId);
 
       // Select the new chat (updates session/recent tracking and navigates)
+      setIsChatPanelHidden(false);
       selectChat({ chatId, appId: selectedAppId });
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
 
@@ -758,40 +783,83 @@ export const SecurityPanel = () => {
     }
   };
 
-  const handleFixIssue = async (finding: SecurityFinding) => {
-    if (!selectedAppId) {
+  // Opens the fix chat for the given findings, creating it (and sending the
+  // fix prompt) only if one doesn't already exist for this review + findings.
+  // Returns true if a fix chat was opened.
+  const openFixChat = async ({
+    findingsToFix,
+    setFixing,
+  }: {
+    findingsToFix: SecurityFinding[];
+    setFixing: (fixing: boolean) => void;
+  }): Promise<boolean> => {
+    if (!selectedAppId || !data) {
       showError("No app selected");
-      return;
+      return false;
     }
 
+    setFixing(true);
     try {
-      const key = createFindingKey(finding);
-      setFixingFindingKey(key);
-
-      const chatId = await ipc.chat.createChat(selectedAppId);
-
-      // Select the new chat (updates session/recent tracking and navigates)
-      selectChat({ chatId, appId: selectedAppId });
-      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-
-      const prompt = `Please fix the following security issue in a simple and effective way:
-
-**${finding.title}** (${finding.level} severity)
-
-${finding.description}`;
-
-      await streamMessage({
-        prompt,
-        chatId,
-        appId: selectedAppId,
-        onSettled: () => {
-          setFixingFindingKey(null);
+      const { chatId, created } = await ipc.security.getOrCreateSecurityFixChat(
+        {
+          appId: selectedAppId,
+          reviewChatId: data.chatId,
+          findings: findingsToFix,
         },
-      });
+      );
+
+      // Make sure the user can see the fix chat
+      setIsChatPanelHidden(false);
+      selectChat({ chatId, appId: selectedAppId });
+
+      const sendFixPrompt = async () => {
+        setFixing(true);
+        try {
+          await streamMessage({
+            prompt: buildFixPrompt(findingsToFix),
+            chatId,
+            appId: selectedAppId,
+            onSettled: () => {
+              setFixing(false);
+            },
+          });
+        } catch (err) {
+          showError(`Failed to run fix: ${err}`);
+          setFixing(false);
+        }
+      };
+
+      if (created) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+        await sendFixPrompt();
+      } else {
+        setFixing(false);
+        toast.info("Opened existing fix chat", {
+          duration: 10_000,
+          action: {
+            label: "Re-run fix",
+            onClick: () => {
+              void sendFixPrompt();
+            },
+          },
+        });
+      }
+      return true;
     } catch (err) {
       showError(`Failed to create fix chat: ${err}`);
-      setFixingFindingKey(null);
+      setFixing(false);
+      return false;
     }
+  };
+
+  const handleFixIssue = async (finding: SecurityFinding) => {
+    const key = createFindingKey(finding);
+    await openFixChat({
+      findingsToFix: [finding],
+      setFixing: (fixing) => {
+        setFixingFindingKey(fixing ? key : null);
+      },
+    });
   };
 
   const handleToggleSelection = (findingKey: string) => {
@@ -829,45 +897,17 @@ ${finding.description}`;
       return;
     }
 
-    try {
-      setIsFixingSelected(true);
+    // Get the selected findings
+    const findingsToFix = data.findings.filter((finding) =>
+      selectedFindings.has(createFindingKey(finding)),
+    );
 
-      // Get the selected findings
-      const findingsToFix = data.findings.filter((finding) =>
-        selectedFindings.has(createFindingKey(finding)),
-      );
-
-      // Create a new chat
-      const chatId = await ipc.chat.createChat(selectedAppId);
-
-      // Select the new chat (updates session/recent tracking and navigates)
-      selectChat({ chatId, appId: selectedAppId });
-      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-
-      // Build a comprehensive prompt for all selected issues
-      const issuesList = findingsToFix
-        .map(
-          (finding, index) =>
-            `${index + 1}. **${finding.title}** (${finding.level} severity)\n${finding.description}`,
-        )
-        .join("\n\n");
-
-      const prompt = `Please fix the following ${findingsToFix.length} security issue${findingsToFix.length !== 1 ? "s" : ""} in a simple and effective way:
-
-${issuesList}`;
-
-      await streamMessage({
-        prompt,
-        chatId,
-        appId: selectedAppId,
-        onSettled: () => {
-          setIsFixingSelected(false);
-          setSelectedFindings(new Set());
-        },
-      });
-    } catch (err) {
-      showError(`Failed to create fix chat: ${err}`);
-      setIsFixingSelected(false);
+    const opened = await openFixChat({
+      findingsToFix,
+      setFixing: setIsFixingSelected,
+    });
+    if (opened) {
+      setSelectedFindings(new Set());
     }
   };
 

@@ -198,6 +198,34 @@ export const versions = sqliteTable(
   ],
 );
 
+export const security_fix_chats = sqliteTable(
+  "security_fix_chats",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    reviewChatId: integer("review_chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    // Hash of the normalized finding(s) the fix chat was created for
+    findingKey: text("finding_key").notNull(),
+    fixChatId: integer("fix_chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("security_fix_chats_unique").on(
+      table.appId,
+      table.reviewChatId,
+      table.findingKey,
+    ),
+  ],
+);
+
 // Define relations
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),

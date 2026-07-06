@@ -111,18 +111,34 @@ export function registerPlanHandlers() {
       // A chat normally has a single stable-slug plan file, but legacy
       // timestamped files may coexist. Pick the most recently updated one so
       // filename ordering can't surface a stale plan over a newer draft.
-      const parsed = await Promise.all(
+      // A single unreadable file (concurrent deletion, permission issue, etc.)
+      // must not prevent the chat from loading its other plans, so read each
+      // file defensively and drop the ones that fail.
+      const parsedResults = await Promise.all(
         matches.map(async (file) => {
-          const raw = await fs.promises.readFile(
-            path.join(planDir, file),
-            "utf-8",
-          );
-          return { slug: file.replace(/\.md$/, ""), ...parsePlanFile(raw) };
+          try {
+            const raw = await fs.promises.readFile(
+              path.join(planDir, file),
+              "utf-8",
+            );
+            return { slug: file.replace(/\.md$/, ""), ...parsePlanFile(raw) };
+          } catch (err) {
+            logger.warn(`Failed to read plan file ${file}:`, err);
+            return null;
+          }
         }),
       );
-      parsed.sort((a, b) =>
-        (a.meta.updatedAt ?? "").localeCompare(b.meta.updatedAt ?? ""),
+      const parsed = parsedResults.filter(
+        (p): p is NonNullable<typeof p> => p !== null,
       );
+      if (parsed.length === 0) return null;
+      // Fall back to createdAt (then empty) so a missing updatedAt can't sort a
+      // stale legacy plan ahead of a newer one.
+      parsed.sort((a, b) => {
+        const aTime = a.meta.updatedAt || a.meta.createdAt || "";
+        const bTime = b.meta.updatedAt || b.meta.createdAt || "";
+        return aTime.localeCompare(bTime);
+      });
       const { slug, meta, content } = parsed[parsed.length - 1];
 
       return {

@@ -85,7 +85,7 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
         status: "draft",
       });
     } catch (error) {
-      logger.warn(`Failed to persist plan draft: ${error}`);
+      logger.warn("Failed to persist plan draft", error);
     }
 
     return `Implementation plan "${args.title}" has been presented to the user. They can review it in the preview panel and either accept it or request changes.`;

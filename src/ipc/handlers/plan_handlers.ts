@@ -8,22 +8,26 @@ import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { planContracts } from "../types/plan";
 import { questionnaireResolver } from "../../pro/main/ipc/handlers/local_agent/userInputResolvers";
+import { buildFrontmatter, validatePlanId, parsePlanFile } from "./planUtils";
 import {
-  slugify,
-  buildFrontmatter,
-  validatePlanId,
-  parsePlanFile,
-} from "./planUtils";
+  normalizePlanStatus,
+  planDirForAppPath,
+  savePlanToDisk,
+} from "./planPersistence";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("plan_handlers");
 
-async function getPlanDir(appId: number): Promise<string> {
+async function getAppPath(appId: number): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
-  const planDir = path.join(appPath, ".dyad", "plans");
+  return getDyadAppPath(app.path);
+}
+
+async function getPlanDir(appId: number): Promise<string> {
+  const appPath = await getAppPath(appId);
+  const planDir = planDirForAppPath(appPath);
   await fs.promises.mkdir(planDir, { recursive: true });
   await ensureDyadGitignored(appPath);
   return planDir;
@@ -32,24 +36,26 @@ async function getPlanDir(appId: number): Promise<string> {
 export function registerPlanHandlers() {
   createTypedHandler(planContracts.createPlan, async (_, params) => {
     const { appId, chatId, title, summary, content } = params;
-    const planDir = await getPlanDir(appId);
-    const now = new Date().toISOString();
-    const slug = `chat-${chatId}-${slugify(title)}-${Date.now()}`;
-    validatePlanId(slug);
-
-    const meta: Record<string, string> = {
+    const appPath = await getAppPath(appId);
+    // Accepting a plan promotes the (possibly already-persisted) draft to
+    // "accepted" and returns its stable per-chat slug.
+    const slug = await savePlanToDisk({
+      appPath,
+      chatId,
       title,
-      summary: summary ?? "",
-      chatId: String(chatId),
-      createdAt: now,
-      updatedAt: now,
-    };
-    const frontmatter = buildFrontmatter(meta);
+      summary,
+      content,
+      status: "accepted",
+    });
 
-    const filePath = path.join(planDir, `${slug}.md`);
-    await fs.promises.writeFile(filePath, frontmatter + content, "utf-8");
-
-    logger.info("Created plan:", slug, "for app:", appId, "with title:", title);
+    logger.info(
+      "Accepted plan:",
+      slug,
+      "for app:",
+      appId,
+      "with title:",
+      title,
+    );
 
     return slug;
   });
@@ -79,6 +85,7 @@ export function registerPlanHandlers() {
       title: meta.title ?? "",
       summary: meta.summary || null,
       content,
+      status: normalizePlanStatus(meta.status),
       createdAt: meta.createdAt ?? new Date().toISOString(),
       updatedAt: meta.updatedAt ?? new Date().toISOString(),
     };
@@ -100,14 +107,40 @@ export function registerPlanHandlers() {
       const prefix = `chat-${chatId}-`;
       const matches = mdFiles.filter((f) => f.startsWith(prefix));
       if (matches.length === 0) return null;
-      // Sort to get the latest plan (filenames contain timestamps)
-      matches.sort();
-      const match = matches[matches.length - 1];
 
-      const filePath = path.join(planDir, match);
-      const raw = await fs.promises.readFile(filePath, "utf-8");
-      const { meta, content } = parsePlanFile(raw);
-      const slug = match.replace(/\.md$/, "");
+      // A chat normally has a single stable-slug plan file, but legacy
+      // timestamped files may coexist. Pick the most recently updated one so
+      // filename ordering can't surface a stale plan over a newer draft.
+      // A single unreadable file (concurrent deletion, permission issue, etc.)
+      // must not prevent the chat from loading its other plans, so read each
+      // file defensively and drop the ones that fail.
+      const parsedResults = await Promise.all(
+        matches.map(async (file) => {
+          try {
+            const raw = await fs.promises.readFile(
+              path.join(planDir, file),
+              "utf-8",
+            );
+            return { slug: file.replace(/\.md$/, ""), ...parsePlanFile(raw) };
+          } catch (err) {
+            logger.warn(`Failed to read plan file ${file}:`, err);
+            return null;
+          }
+        }),
+      );
+      const parsed = parsedResults.filter(
+        (p): p is NonNullable<typeof p> => p !== null,
+      );
+      if (parsed.length === 0) return null;
+      // Fall back to createdAt (then empty) so a missing updatedAt can't sort a
+      // stale legacy plan ahead of a newer one.
+      parsed.sort((a, b) => {
+        const aTime = a.meta.updatedAt || a.meta.createdAt || "";
+        const bTime = b.meta.updatedAt || b.meta.createdAt || "";
+        return aTime.localeCompare(bTime);
+      });
+      const { slug, meta, content } = parsed[parsed.length - 1];
+
       return {
         id: slug,
         appId,
@@ -115,6 +148,7 @@ export function registerPlanHandlers() {
         title: meta.title ?? "",
         summary: meta.summary || null,
         content,
+        status: normalizePlanStatus(meta.status),
         createdAt: meta.createdAt ?? new Date().toISOString(),
         updatedAt: meta.updatedAt ?? new Date().toISOString(),
       };

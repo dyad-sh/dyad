@@ -46,8 +46,18 @@ export const PlanPanel: React.FC = () => {
   const currentTitle = planData?.title ?? null;
   const currentSummary = planData?.summary ?? null;
   const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
-  // Plan was already saved if we found it in the filesystem
-  const isSavedPlan = !!savedPlan;
+  // A persisted plan only counts as accepted once its status says so. Drafts
+  // are persisted too (so they survive a restart) but must still offer the
+  // accept buttons. We also require the saved-plan content to match what's
+  // currently displayed: after a chat receives a newer draft, the cached
+  // savedPlan may still report "accepted" for older content, and we must not
+  // keep hiding the accept buttons for the new draft.
+  const isAcceptedPlan =
+    savedPlan != null &&
+    savedPlan.status === "accepted" &&
+    savedPlan.content === currentPlan &&
+    savedPlan.title === currentTitle &&
+    (savedPlan.summary ?? null) === (currentSummary ?? null);
 
   // If there's no plan content, switch back to preview mode
   useEffect(() => {
@@ -249,13 +259,17 @@ export const PlanPanel: React.FC = () => {
       )}
 
       <div className="border-t p-4 space-y-4 bg-background">
-        {isAccepted || isSavedPlan ? (
+        {isAccepted || isAcceptedPlan ? (
           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
             <Check size={16} />
             <span className="text-sm font-medium">
-              {acceptedInNewChat === false
-                ? "Plan accepted — implementation started in this chat"
-                : "Plan accepted — implementation started in a new chat"}
+              {acceptedInNewChat === null
+                ? // After a restart the in-memory choice is lost, so we can't
+                  // say whether implementation started here or in a new chat.
+                  "Plan accepted"
+                : acceptedInNewChat === false
+                  ? "Plan accepted — implementation started in this chat"
+                  : "Plan accepted — implementation started in a new chat"}
             </span>
           </div>
         ) : (

@@ -94,6 +94,65 @@ testSetup.describe("Setup Flow", () => {
   );
 
   testSetup(
+    "Enter-key submit resumes the pending first prompt after Google API key setup",
+    async ({ po }) => {
+      await seedFakeModelSelection(po);
+      const prompt = "Build a tiny recipe box";
+
+      // Same as openAiSetupDialog(), but submit with the Enter key instead of
+      // the send button. The Enter path goes through LexicalChatInput's
+      // internal handleSubmit, which clears the editor unconditionally — even
+      // when the submit was rejected and queued as a pending first prompt.
+      await po.navigation.goToAppsTab();
+      const chatInput = po.chatActions.getChatInput();
+      await expect(chatInput).toBeVisible({ timeout: Timeout.MEDIUM });
+      await expect(async () => {
+        await chatInput.fill(prompt, { timeout: 1_000 });
+        await expect(chatInput).toContainText(prompt, { timeout: 1_000 });
+        await expect(
+          po.chatActions
+            .getHomeChatInputContainer()
+            .getByRole("button", { name: "Send message" }),
+        ).toBeEnabled({ timeout: 1_000 });
+      }).toPass({ timeout: Timeout.MEDIUM });
+
+      await chatInput.press("Enter");
+
+      const dialog = po.page.getByRole("dialog");
+      await expect(
+        dialog.getByText("Your prompt is saved — it'll send as soon as"),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+      // The queued prompt must survive while the user configures a provider;
+      // if it's wiped here, the auto-resume effect on the home page has
+      // nothing to submit and silently arms itself on the next keystroke.
+      await expect(chatInput).toContainText(prompt, {
+        timeout: Timeout.MEDIUM,
+      });
+
+      await dialog.getByRole("button", { name: "Google" }).click();
+      await expect(
+        po.page.getByRole("heading", { name: "Configure Google" }),
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+      await po.page
+        .getByPlaceholder(/Enter new Google API Key here/)
+        .fill("test-google-key-12345");
+      await po.page.getByRole("button", { name: "Save Key" }).click();
+      await expectProviderApiKeySaved(po, "google", "test-google-key-12345");
+
+      await expect(
+        po.page.getByTestId("messages-list").getByText(prompt),
+      ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+      await po.chatActions.waitForChatCompletion({
+        timeout: Timeout.EXTRA_LONG,
+      });
+      await expect(po.page.getByRole("dialog")).not.toBeVisible();
+      await expectSelectedApp(po);
+    },
+  );
+
+  testSetup(
     "OpenRouter API key setup resumes the pending first prompt",
     async ({ po }) => {
       await seedFakeModelSelection(po);

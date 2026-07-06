@@ -510,11 +510,6 @@ export function LexicalChatInput({
     [onChange, apps, prompts, appFiles, mediaApps, selectedAppId],
   );
 
-  const handleSubmit = useCallback(() => {
-    onSubmit();
-    setShouldClear(true);
-  }, [onSubmit]);
-
   const handleCleared = useCallback(() => {
     setShouldClear(false);
   }, []);
@@ -555,7 +550,7 @@ export function LexicalChatInput({
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
         <EnterKeyPlugin
-          onSubmit={handleSubmit}
+          onSubmit={onSubmit}
           disableSendButton={disableSendButton}
         />
         <ExternalValueSyncPlugin

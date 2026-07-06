@@ -14,15 +14,8 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import {
-  Shield,
-  AlertTriangle,
-  AlertCircle,
-  Info,
-  ChevronDown,
-  Pencil,
-  Wrench,
-} from "lucide-react";
+import { Shield, ChevronDown, Pencil, Wrench } from "lucide-react";
+import { getSeverityIcon, SeverityBadge } from "@/components/security/severity";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
@@ -37,32 +30,6 @@ import { showSuccess, showWarning } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSelectChat } from "@/hooks/useSelectChat";
-
-const getSeverityColor = (level: SecurityFinding["level"]) => {
-  switch (level) {
-    case "critical":
-      return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800";
-    case "high":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 border-orange-200 dark:border-orange-800";
-    case "medium":
-      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800";
-    case "low":
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300 border-gray-200 dark:border-gray-800";
-  }
-};
-
-const getSeverityIcon = (level: SecurityFinding["level"]) => {
-  switch (level) {
-    case "critical":
-      return <AlertTriangle className="h-4 w-4" />;
-    case "high":
-      return <AlertCircle className="h-4 w-4" />;
-    case "medium":
-      return <AlertCircle className="h-4 w-4" />;
-    case "low":
-      return <Info className="h-4 w-4" />;
-  }
-};
 
 const DESCRIPTION_PREVIEW_LENGTH = 150;
 
@@ -112,18 +79,6 @@ const getSeverityOrder = (level: SecurityFinding["level"]): number => {
       return 4;
   }
 };
-
-function SeverityBadge({ level }: { level: SecurityFinding["level"] }) {
-  return (
-    <Badge
-      variant="outline"
-      className={`${getSeverityColor(level)} uppercase text-xs font-semibold flex items-center gap-1 w-fit`}
-    >
-      <span className="flex-shrink-0">{getSeverityIcon(level)}</span>
-      <span>{level}</span>
-    </Badge>
-  );
-}
 
 function RunReviewButton({
   isRunning,

@@ -40,6 +40,11 @@ vi.mock("../shared/language_model_helpers", () => ({
       gatewayPrefix: "gemini/",
       type: "cloud",
     },
+    {
+      id: "openrouter",
+      name: "OpenRouter",
+      type: "cloud",
+    },
   ]),
 }));
 
@@ -60,6 +65,11 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
         return {
           providerId: "google",
           apiName: "gemini-3.5-flash",
+        };
+      case "dyad/auto/openrouter":
+        return {
+          providerId: "openrouter",
+          apiName: "nvidia/nemotron-3-super-120b-a12b:free",
         };
       default:
         return null;
@@ -121,6 +131,31 @@ describe("getModelClient", () => {
       "anthropic/claude-sonnet-4-20250514",
       "gemini/gemini-3.5-flash",
     ]);
+  });
+
+  test("uses OpenRouter free alias as regular auto fallback only outside Dyad Pro", async () => {
+    const { modelClient, isEngineEnabled } = await getModelClient(
+      {
+        provider: "auto",
+        name: "auto",
+      },
+      {
+        enableDyadPro: false,
+        providerSettings: {
+          openrouter: {
+            apiKey: {
+              value: "openrouter-key",
+            },
+          },
+        },
+      } as unknown as UserSettings,
+    );
+
+    expect((modelClient.model as { modelId: string }).modelId).toBe(
+      "nvidia/nemotron-3-super-120b-a12b:free",
+    );
+    expect(modelClient.builtinProviderId).toBe("openrouter");
+    expect(isEngineEnabled).toBeFalsy();
   });
 
   test("routes Dyad Free through its dedicated engine model", async () => {

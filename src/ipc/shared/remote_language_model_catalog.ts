@@ -17,6 +17,7 @@ import {
   GPT_5_5_MODEL_NAME,
   GPT_5_NANO,
   MODEL_OPTIONS,
+  NEMOTRON_3_SUPER_FREE,
   OPUS_4_6,
   OPUS_4_8,
   PROVIDER_TO_ENV_VAR,
@@ -77,6 +78,7 @@ const KNOWN_BUILTIN_MODEL_ALIASES = [
   "dyad/auto/openai",
   "dyad/auto/anthropic",
   "dyad/auto/google",
+  "dyad/auto/openrouter",
   "dyad/help-bot/default",
 ] as const;
 
@@ -222,6 +224,15 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
           apiName: GEMINI_3_5_FLASH,
         },
         displayName: "Auto Google",
+        purpose: "auto-mode",
+      },
+      {
+        id: "dyad/auto/openrouter",
+        resolvedModel: {
+          providerId: "openrouter",
+          apiName: NEMOTRON_3_SUPER_FREE,
+        },
+        displayName: "Auto OpenRouter",
         purpose: "auto-mode",
       },
       {

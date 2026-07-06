@@ -23,6 +23,7 @@ export const OPUS_4_8 = "claude-opus-4-8";
 export const GEMINI_3_5_FLASH = "gemini-3.5-flash";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
+export const NEMOTRON_3_SUPER_FREE = "nvidia/nemotron-3-super-120b-a12b:free";
 export const GPT_5_NANO = "gpt-5-nano";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
@@ -250,6 +251,16 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
         "Uses one of the free OpenRouter models (data may be used for training)",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 0,
+    },
+    // https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free
+    {
+      name: NEMOTRON_3_SUPER_FREE,
+      displayName: "Nemotron 3 Super (Free)",
+      description: "NVIDIA's open 120B MoE model with a 1M context window",
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
       temperature: 0,
       dollarSigns: 0,
     },

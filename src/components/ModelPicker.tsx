@@ -115,8 +115,11 @@ export function ModelPicker() {
   const { data: modelsByProviders, isLoading: modelsByProvidersLoading } =
     useLanguageModelsByProviders();
 
-  const { data: providers, isLoading: providersLoading } =
-    useLanguageModelProviders();
+  const {
+    data: providers,
+    isLoading: providersLoading,
+    isProviderSetup,
+  } = useLanguageModelProviders();
 
   const loading = modelsByProvidersLoading || providersLoading;
   const dyadProEnabled = settings ? isDyadProEnabled(settings) : false;
@@ -298,6 +301,18 @@ export function ModelPicker() {
       selectedModel.name === model.apiName;
     const isAutoProviderRow = providerId === "auto";
     const isFreeProRow = isFreeProLanguageModel(providerId, model.apiName);
+    const isFreeProviderRow =
+      model.apiName.endsWith(":free") || model.apiName.endsWith("/free");
+    const isAutoOpenRouterFreeRow =
+      isAutoProviderRow && model.apiName === "free";
+    const shouldShowDataSharingDisclosure =
+      isFreeProRow ||
+      isFreeProviderRow ||
+      isAutoOpenRouterFreeRow ||
+      (isAutoProviderRow &&
+        model.apiName === "auto" &&
+        !dyadProEnabled &&
+        isProviderSetup("openrouter"));
     const freeProResetTimeLabel = freeModelQuota.resetTime
       ? new Intl.DateTimeFormat(undefined, {
           hour: "numeric",
@@ -361,41 +376,41 @@ export function ModelPicker() {
               <CheckIcon className="size-3.5 text-primary shrink-0" />
             )}
             {isFreeProRow && (
-              <>
-                <span
-                  className={cn(
-                    PILL_CLASS,
-                    freeModelQuota.isQuotaExceeded
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-                  )}
-                  title={
-                    freeProResetTimeLabel
-                      ? `Resets at ${freeProResetTimeLabel}`
-                      : undefined
+              <span
+                className={cn(
+                  PILL_CLASS,
+                  freeModelQuota.isQuotaExceeded
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                )}
+                title={
+                  freeProResetTimeLabel
+                    ? `Resets at ${freeProResetTimeLabel}`
+                    : undefined
+                }
+              >
+                {freeProQuotaLabel}
+              </span>
+            )}
+            {shouldShowDataSharingDisclosure && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className={cn(
+                        PILL_CLASS,
+                        "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                      )}
+                    >
+                      Data sharing
+                    </span>
                   }
-                >
-                  {freeProQuotaLabel}
-                </span>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span
-                        className={cn(
-                          PILL_CLASS,
-                          "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-                        )}
-                      >
-                        Data sharing
-                      </span>
-                    }
-                  />
-                  <TooltipContent side="right" align="start">
-                    Data may be shared with the AI provider and used for
-                    training models.
-                  </TooltipContent>
-                </Tooltip>
-              </>
+                />
+                <TooltipContent side="right" align="start">
+                  Data may be shared with the AI provider and used for training
+                  models.
+                </TooltipContent>
+              </Tooltip>
             )}
           </span>
         </div>

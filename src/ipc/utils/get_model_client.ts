@@ -38,10 +38,15 @@ import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
-const AUTO_MODEL_ALIASES = [
+const AUTO_DYAD_PRO_MODEL_ALIASES = [
   "dyad/auto/openai",
   "dyad/auto/anthropic",
   "dyad/auto/google",
+] as const;
+
+const AUTO_MODEL_ALIASES = [
+  ...AUTO_DYAD_PRO_MODEL_ALIASES,
+  "dyad/auto/openrouter",
 ] as const;
 
 export interface ModelClient {
@@ -232,9 +237,9 @@ async function getProModelClient({
   ) {
     const providers = await getLanguageModelProviders();
     const fallbackModels = await Promise.all(
-      AUTO_MODEL_ALIASES.map(async (aliasId) => {
+      AUTO_DYAD_PRO_MODEL_ALIASES.map(async (aliasId) => {
         const resolvedModel = await resolveBuiltinModelAlias(aliasId);
-        if (!resolvedModel) {
+        if (!resolvedModel || resolvedModel.apiName.endsWith(":free")) {
           return null;
         }
 

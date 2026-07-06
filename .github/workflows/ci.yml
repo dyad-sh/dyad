@@ -365,8 +365,6 @@ jobs:
       - name: Extract macOS app bundle
         if: contains(matrix.os.name, 'macos')
         run: tar -xvf out-macos.tar
-      - name: Install Chromium browser for Playwright
-        run: npx playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
           # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)

@@ -11,6 +11,7 @@ import {
 } from "@/ipc/types/templates";
 import {
   CLOUD_PROVIDERS,
+  GEMINI_3_5_FLASH,
   GEMINI_3_1_PRO_PREVIEW,
   GPT_5_2_MODEL_NAME,
   GPT_5_5_MODEL_NAME,
@@ -19,7 +20,6 @@ import {
   OPUS_4_6,
   OPUS_4_8,
   PROVIDER_TO_ENV_VAR,
-  GEMINI_3_FLASH,
 } from "./language_model_constants";
 
 const logger = log.scope("remote_language_model_catalog");
@@ -219,7 +219,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         id: "dyad/auto/google",
         resolvedModel: {
           providerId: "google",
-          apiName: GEMINI_3_FLASH,
+          apiName: GEMINI_3_5_FLASH,
         },
         displayName: "Auto Google",
         purpose: "auto-mode",

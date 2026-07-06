@@ -6,7 +6,7 @@ If you would need to mock a lot of things to unit test a feature, prefer to writ
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 
-**IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application binary, not the source code. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests, otherwise you'll be testing the old version of the application.
+**IMPORTANT: You MUST run `npm run build` before the first E2E test run in each agent session.** E2E tests run against the built application binary, not the source code, and you cannot assume the existing `out/` build is current at session start. After that initial build, if you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests again; otherwise you'll be testing the old version of the application.
 
 ```sh
 npm run build
@@ -187,7 +187,6 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 - **Manual git commits inside app repos**: If an E2E helper runs `git commit` directly, configure `user.email`, `user.name`, and `commit.gpgsign=false` in that app repo first. Windows CI runners may not have a git identity, causing `Author identity unknown` before UI assertions run.
 - **Toast-obscured clicks**: Sonner toasts can intercept clicks after settings saves. Prefer waiting for the expected toast/state transition and clicking a scoped stable target; avoid relying on forced DOM removal when app state may re-render immediately afterward.
 - **Visual image swap URLs**: Use a reachable fake-server image URL for visual editing URL-swap tests. Broken external URLs (for example `example.com/*.png`) trigger `dyad-image-load-error`, remove the pending image change, and make "component modified" assertions time out.
-- **Visual image swap setup**: Do not treat an `Approved` chat badge as proof that a generated image fixture has updated app files. If the approval button is hidden, apply the latest proposal through `approve-proposal` IPC and poll `src/pages/Index.tsx` before selecting the image in the preview iframe.
 - **Preview loading screen assertions**: Use `po.previewPanel.locatePreviewLoadingScreen()` / `locateLoadingAppPreview()` test IDs instead of asserting exact loading copy. The user-facing status text can change independently of the loading state contract.
 - **Blank preview after restart**: If a restart E2E trace shows `ERR_CONNECTION_REFUSED`, then a later `proxy-server-start`, and the failure screenshot has a blank preview, check whether the renderer reloads the iframe on the proxy-ready app-output event. A longer snapshot timeout will not fix a frame that already navigated to the dead proxy URL.
 - **Preview error fixtures**: If a fixture only needs to remove the dev script, use targeted `dyad-search-replace` against `package.json`; rewriting the whole file can create `ERR_PNPM_OUTDATED_LOCKFILE` and mask the intended preview error.

@@ -134,7 +134,7 @@ If `npm test` fails in files unrelated to your change, verify the failure is pre
 
 ### E2E testing
 
-> **IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application, not the dev server. If you have changed any application code (i.e. anything outside of test files), you MUST re-run `npm run build` before running the tests, otherwise the tests will run against stale code and results will be misleading. Only changes to test code itself (e.g. files in `e2e-tests/`) do not require a rebuild.
+> **IMPORTANT: You MUST run `npm run build` before the first E2E test run in each agent session.** E2E tests run against the built application, not the dev server, and you cannot assume the existing `out/` build is current at session start. After that initial build, if you change any application code (i.e. anything outside of test files), you MUST re-run `npm run build` before running E2E tests again; otherwise the tests will run against stale code and results will be misleading. Only changes to test code itself (e.g. files in `e2e-tests/`) do not require another rebuild after the session's initial build.
 
 See [rules/e2e-testing.md](rules/e2e-testing.md) for full E2E testing guidance, including Playwright tips and fixture setup.
 

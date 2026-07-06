@@ -277,12 +277,15 @@ export default function HomePage() {
           attachments,
           requestedChatMode: homeInitialChatMode,
         });
+        // The prompt is committed once streamMessage is dispatched; clearing
+        // must happen before the awaits below so a rejection can't leave the
+        // already-sent prompt in the box to be resubmitted.
+        setInputValue("");
         await new Promise((resolve) =>
           setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
         );
         const openedPreviewSetup = await openedPreviewSetupPromise;
 
-        setInputValue("");
         if (!openedPreviewSetup) {
           setIsPreviewOpen(false);
         }

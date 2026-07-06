@@ -179,6 +179,7 @@ export const test = base.extend<{
       const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
 
       process.env.FAKE_LLM_PORT = String(fakeLlmPort);
+      process.env.DYAD_E2E_PORT_BLOCK_INDEX = String(testInfo.parallelIndex);
       process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
       process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;

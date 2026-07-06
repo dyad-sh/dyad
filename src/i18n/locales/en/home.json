@@ -234,6 +234,9 @@
     "errorLoadingChanges": "Couldn't load changes for this version.",
     "noChangesInVersion": "No file changes in this version",
     "viewingVersionChanges": "Viewing changes in this version",
+    "noStagedChanges": "No staged changes",
+    "viewingStagedChanges": "Viewing staged changes",
+    "backToEditor": "Back to editor",
     "sendToChat": "Send to chat",
     "systemMessages": "System Messages",
     "consoleFilters": {

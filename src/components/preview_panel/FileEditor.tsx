@@ -281,6 +281,11 @@ export const FileEditor = ({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId: saveAppId }),
       });
+      // Saves stage the file, so refresh the staged/uncommitted files list
+      // right away rather than waiting for its polling interval.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId: saveAppId }),
+      });
       if (settings?.enableAutoFixProblems) {
         checkProblems();
       }

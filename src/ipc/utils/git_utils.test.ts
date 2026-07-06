@@ -26,6 +26,7 @@ import {
   ensureGitLineEndingPolicy,
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
+  countChangedLines,
 } from "@/ipc/utils/git_utils";
 import { readSettings } from "@/main/settings";
 
@@ -237,6 +238,59 @@ describe("getGitUncommittedFiles", () => {
 
     await expect(
       getGitUncommittedFilesWithStatus({ path: repoDir }),
-    ).resolves.toEqual([{ path: "src.ts", status: "added" }]);
+    ).resolves.toEqual([
+      { path: "src.ts", status: "added", additions: 1, deletions: 0 },
+    ]);
+  });
+
+  it("reports added/deleted line counts for a modified file (native)", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@example.com"]);
+    await runGit(repoDir, ["config", "user.name", "Test"]);
+    await fs.promises.writeFile(path.join(repoDir, "src.ts"), "a\nb\nc\n");
+    await runGit(repoDir, ["add", "."]);
+    await runGit(repoDir, ["commit", "-m", "init"]);
+
+    // Keep line "a", change "b" -> "B", drop "c", add "d": +2 / -2 vs HEAD.
+    await fs.promises.writeFile(path.join(repoDir, "src.ts"), "a\nB\nd\n");
+
+    await expect(
+      getGitUncommittedFilesWithStatus({ path: repoDir }),
+    ).resolves.toEqual([
+      { path: "src.ts", status: "modified", additions: 2, deletions: 2 },
+    ]);
+  });
+});
+
+describe("countChangedLines", () => {
+  it("counts additions and deletions like git numstat", () => {
+    expect(countChangedLines("a\nb\nc\n", "a\nB\nd\n")).toEqual({
+      additions: 2,
+      deletions: 2,
+    });
+  });
+
+  it("counts a new file as all additions", () => {
+    expect(countChangedLines("", "x\ny\n")).toEqual({
+      additions: 2,
+      deletions: 0,
+    });
+  });
+
+  it("counts a cleared file as all deletions", () => {
+    expect(countChangedLines("x\ny\nz\n", "")).toEqual({
+      additions: 0,
+      deletions: 3,
+    });
+  });
+
+  it("returns zero for identical content", () => {
+    expect(countChangedLines("same\n", "same\n")).toEqual({
+      additions: 0,
+      deletions: 0,
+    });
   });
 });

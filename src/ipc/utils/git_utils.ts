@@ -843,8 +843,152 @@ export async function getGitUncommittedFiles({
   }
 }
 
+function countLines(content: string): number {
+  if (!content) return 0;
+  const lines = content.split("\n");
+  // A single trailing newline terminates the last line rather than starting a
+  // new empty one, so drop it to match how git counts lines.
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines.length;
+}
+
+function lcsLength(a: string[], b: string[]): number {
+  // `b` is the inner (shorter) dimension to keep the rolling arrays small.
+  const bLen = b.length;
+  let prev: number[] = Array.from({ length: bLen + 1 }, () => 0);
+  let curr: number[] = Array.from({ length: bLen + 1 }, () => 0);
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= bLen; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        curr[j] = prev[j - 1] + 1;
+      } else {
+        curr[j] = curr[j - 1] >= prev[j] ? curr[j - 1] : prev[j];
+      }
+    }
+    const tmp = prev;
+    prev = curr;
+    curr = tmp;
+    curr.fill(0);
+  }
+  return prev[bLen];
+}
+
+function approximateLineDiff(
+  oldLines: string[],
+  newLines: string[],
+): { additions: number; deletions: number } {
+  // For very large files, approximate common lines via multiset intersection
+  // instead of a full LCS to avoid quadratic time/memory.
+  const counts = new Map<string, number>();
+  for (const line of oldLines) counts.set(line, (counts.get(line) ?? 0) + 1);
+  let common = 0;
+  for (const line of newLines) {
+    const remaining = counts.get(line);
+    if (remaining && remaining > 0) {
+      counts.set(line, remaining - 1);
+      common++;
+    }
+  }
+  return {
+    additions: newLines.length - common,
+    deletions: oldLines.length - common,
+  };
+}
+
 /**
- * Get uncommitted files with their status (added, modified, deleted, renamed).
+ * Counts added/deleted lines between two versions of a file, matching the
+ * insertions/deletions reported by `git diff --numstat` (both equal the line
+ * count minus the longest common subsequence of lines).
+ */
+export function countChangedLines(
+  oldContent: string,
+  newContent: string,
+): { additions: number; deletions: number } {
+  if (oldContent === newContent) return { additions: 0, deletions: 0 };
+  const oldLines = oldContent ? oldContent.split("\n") : [];
+  const newLines = newContent ? newContent.split("\n") : [];
+  if (oldLines.length && oldLines[oldLines.length - 1] === "") oldLines.pop();
+  if (newLines.length && newLines[newLines.length - 1] === "") newLines.pop();
+
+  const n = oldLines.length;
+  const m = newLines.length;
+  if (n === 0) return { additions: m, deletions: 0 };
+  if (m === 0) return { additions: 0, deletions: n };
+  if (n * m > 4_000_000) return approximateLineDiff(oldLines, newLines);
+
+  const lcs =
+    m <= n ? lcsLength(oldLines, newLines) : lcsLength(newLines, oldLines);
+  return { additions: m - lcs, deletions: n - lcs };
+}
+
+async function readWorkingFileContent(
+  dir: string,
+  filePath: string,
+): Promise<string> {
+  try {
+    return await fsPromises.readFile(
+      pathModule.join(dir, normalizePath(filePath)),
+      "utf-8",
+    );
+  } catch {
+    return "";
+  }
+}
+
+async function getFileLineStats({
+  path,
+  file,
+}: {
+  path: string;
+  file: { path: string; status: UncommittedFileStatus };
+}): Promise<{ additions: number; deletions: number }> {
+  try {
+    if (file.status === "deleted") {
+      const head = await getFileAtCommit({
+        path,
+        filePath: file.path,
+        commitHash: "HEAD",
+      });
+      return { additions: 0, deletions: countLines(head ?? "") };
+    }
+    const newContent = await readWorkingFileContent(path, file.path);
+    // A renamed file has no HEAD blob under its new path, so treat it like an
+    // add and count its contents as additions.
+    const head =
+      file.status === "renamed"
+        ? null
+        : await getFileAtCommit({
+            path,
+            filePath: file.path,
+            commitHash: "HEAD",
+          });
+    if (head == null)
+      return { additions: countLines(newContent), deletions: 0 };
+    return countChangedLines(head, newContent);
+  } catch (error) {
+    logger.warn(`Failed to compute line stats for '${file.path}'`, error);
+    return { additions: 0, deletions: 0 };
+  }
+}
+
+async function attachLineStats({
+  path,
+  files,
+}: {
+  path: string;
+  files: Array<{ path: string; status: UncommittedFileStatus }>;
+}): Promise<UncommittedFile[]> {
+  return Promise.all(
+    files.map(async (file) => ({
+      ...file,
+      ...(await getFileLineStats({ path, file })),
+    })),
+  );
+}
+
+/**
+ * Get uncommitted files with their status (added, modified, deleted, renamed)
+ * along with per-file added/deleted line counts relative to HEAD.
  * This parses git status --porcelain output to determine the file status.
  */
 export async function getGitUncommittedFilesWithStatus({
@@ -859,7 +1003,7 @@ export async function getGitUncommittedFilesWithStatus({
         DyadErrorKind.Conflict,
       );
     }
-    return result.stdout
+    const files = result.stdout
       .toString()
       .split("\n")
       .filter((line) => line.trim() !== "")
@@ -901,6 +1045,7 @@ export async function getGitUncommittedFilesWithStatus({
 
         return { path: filePath, status };
       });
+    return attachLineStats({ path, files });
   } else {
     // For isomorphic-git, we use the status matrix
     // [filepath, HEAD, WORKDIR, STAGE]
@@ -908,7 +1053,7 @@ export async function getGitUncommittedFilesWithStatus({
     // WORKDIR: 0=absent, 1=identical to HEAD, 2=modified
     // STAGE: 0=absent, 1=identical to HEAD, 2=added, 3=modified
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
-    return statusMatrix
+    const files = statusMatrix
       .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
       .filter((row) => isUserVisibleGitPath(row[0]))
       .map((row) => {
@@ -931,6 +1076,7 @@ export async function getGitUncommittedFilesWithStatus({
 
         return { path: filePath, status };
       });
+    return attachLineStats({ path, files });
   }
 }
 

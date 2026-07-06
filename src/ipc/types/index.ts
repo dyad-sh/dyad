@@ -174,6 +174,8 @@ export type {
   CommitChangesParams,
   UncommittedFile,
   UncommittedFileStatus,
+  GetUncommittedFileDiffParams,
+  UncommittedFileDiff,
   GithubSyncOptions,
   CloneRepoParams,
   GithubRepository,

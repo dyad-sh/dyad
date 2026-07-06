@@ -19,9 +19,12 @@ import {
   isGitRebaseInProgress,
   getGitUncommittedFilesWithStatus,
   gitDiscardAllChanges,
+  getFileAtCommit,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
 import { getDyadAppPath } from "../../paths/paths";
+import { safeJoin } from "../utils/path_utils";
+import { promises as fsPromises } from "node:fs";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -37,6 +40,8 @@ import type {
   GitBranchParams,
   RenameGitBranchParams,
   UncommittedFile,
+  GetUncommittedFileDiffParams,
+  UncommittedFileDiff,
 } from "../types/github";
 
 const logger = log.scope("git_branch_handlers");
@@ -371,6 +376,33 @@ async function handleGetUncommittedFiles(
   return getGitUncommittedFilesWithStatus({ path: appPath });
 }
 
+async function handleGetUncommittedFileDiff(
+  _event: IpcMainInvokeEvent,
+  { appId, filePath }: GetUncommittedFileDiffParams,
+): Promise<UncommittedFileDiff> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
+  const appPath = getDyadAppPath(app.path);
+
+  // "before" side: the file at HEAD. Missing (newly added file) → empty.
+  const oldContent =
+    (await getFileAtCommit({ path: appPath, filePath, commitHash: "HEAD" })) ??
+    "";
+
+  // "after" side: the current working-tree contents. Missing (deleted) → empty.
+  let newContent = "";
+  try {
+    newContent = await fsPromises.readFile(
+      safeJoin(appPath, filePath),
+      "utf-8",
+    );
+  } catch {
+    newContent = "";
+  }
+
+  return { path: filePath, oldContent, newContent };
+}
+
 async function withAppGitOp<T>(
   appId: number,
   operation: string,
@@ -490,6 +522,10 @@ export function registerGithubBranchHandlers() {
   createTypedHandler(
     gitContracts.getUncommittedFiles,
     handleGetUncommittedFiles,
+  );
+  createTypedHandler(
+    gitContracts.getUncommittedFileDiff,
+    handleGetUncommittedFileDiff,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
   createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);

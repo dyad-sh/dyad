@@ -71,6 +71,24 @@ export class GitService {
   }
 
   /**
+   * Stages a single file without committing. Used when file saves should
+   * accumulate as staged changes to be committed together later, rather than
+   * producing one commit per save.
+   *
+   * `gitAdd` skips files ignored by .gitignore (e.g. `.env.local`), so staging
+   * one of those is a no-op rather than an error.
+   */
+  async stageFile({
+    path,
+    filepath,
+  }: {
+    path: string;
+    filepath: string;
+  }): Promise<void> {
+    await gitAdd({ path, filepath });
+  }
+
+  /**
    * Stages a single file and commits it. Returns the commit hash, or null
    * when there was nothing to commit.
    *

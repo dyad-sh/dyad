@@ -103,6 +103,17 @@ describe("GitService", () => {
     expect(mocks.gitCommit).not.toHaveBeenCalled();
   });
 
+  it("stageFile stages the file without committing", async () => {
+    await service.stageFile({ path: "/repo", filepath: "src/a.ts" });
+
+    expect(callOrder).toEqual(["gitAdd"]);
+    expect(mocks.gitAdd).toHaveBeenCalledWith({
+      path: "/repo",
+      filepath: "src/a.ts",
+    });
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
+  });
+
   it("commitFile stages the file before committing", async () => {
     const hash = await service.commitFile({
       path: "/repo",

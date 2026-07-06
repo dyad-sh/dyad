@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   selectedMode: "build",
   isTrial: false,
+  renderSubContent: false,
+  envVars: {} as Record<string, string | undefined>,
   freeModelQuota: {
     quotaStatus: {
       messagesUsed: 3,
@@ -38,6 +40,11 @@ const mocks = vi.hoisted(() => ({
           value: "dyad-pro-key",
         },
       },
+      openrouter: {
+        apiKey: {
+          value: "",
+        },
+      },
     },
     selectedModel: {
       name: "auto",
@@ -58,6 +65,7 @@ vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     settings: mocks.settings,
     updateSettings: mocks.updateSettings,
+    envVars: mocks.envVars,
   }),
 }));
 
@@ -101,7 +109,7 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
         },
         {
           apiName: "free",
-          displayName: "Free",
+          displayName: "Free (OpenRouter)",
           description: "Free model",
           type: "cloud",
         },
@@ -175,6 +183,15 @@ vi.mock("@/hooks/useLanguageModelsByProviders", () => ({
 vi.mock("@/hooks/useLanguageModelProviders", () => ({
   useLanguageModelProviders: () => ({
     isLoading: false,
+    isProviderSetup: (provider: string) => {
+      if (provider === "openrouter") {
+        return Boolean(
+          mocks.settings.providerSettings.openrouter.apiKey.value ||
+          mocks.envVars.OPENROUTER_API_KEY,
+        );
+      }
+      return false;
+    },
     data: [
       {
         id: "auto",
@@ -260,7 +277,8 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuSubTrigger: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
-  DropdownMenuSubContent: () => null,
+  DropdownMenuSubContent: ({ children }: { children: React.ReactNode }) =>
+    mocks.renderSubContent ? <div>{children}</div> : null,
 }));
 
 describe("ModelPicker", () => {
@@ -270,8 +288,11 @@ describe("ModelPicker", () => {
     mocks.setChatMode.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
     mocks.selectedMode = "build";
+    mocks.renderSubContent = false;
+    mocks.envVars = {};
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
+    mocks.settings.providerSettings.openrouter.apiKey.value = "";
     mocks.settings.selectedChatMode = "build";
     mocks.settings.defaultChatMode = "build";
     mocks.isTrial = false;
@@ -341,6 +362,64 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("GPT 5")).toBeNull();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
     expect(screen.queryByText("Dyad Free")).toBeNull();
+  });
+
+  it("shows data sharing disclosure on Auto for non-Pro users with an OpenRouter key", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settings.providerSettings.openrouter.apiKey.value = "openrouter-key";
+
+    render(<ModelPicker />);
+
+    expect(
+      screen.getAllByText("Auto")[1].closest("button")?.textContent,
+    ).toContain("Data sharing");
+  });
+
+  it("shows data sharing disclosure on Auto for non-Pro users with OPENROUTER_API_KEY", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.envVars.OPENROUTER_API_KEY = "openrouter-env-key";
+
+    render(<ModelPicker />);
+
+    expect(
+      screen.getAllByText("Auto")[1].closest("button")?.textContent,
+    ).toContain("Data sharing");
+  });
+
+  it("does not show data sharing disclosure on Auto without an OpenRouter key", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    expect(
+      screen.getAllByText("Auto")[1].closest("button")?.textContent,
+    ).not.toContain("Data sharing");
+  });
+
+  it("shows data sharing disclosure on the top-level Free OpenRouter model", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    expect(
+      screen.getAllByText("Free (OpenRouter)")[0].closest("button")
+        ?.textContent,
+    ).toContain("Data sharing");
+  });
+
+  it("shows data sharing disclosure on explicit free OpenRouter provider models", () => {
+    mocks.renderSubContent = true;
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    expect(screen.getAllByText("Free (OpenRouter)").length).toBe(2);
+    expect(screen.getAllByText("Data sharing").length).toBeGreaterThan(1);
   });
 
   it("selects flat Pro models with their source provider", () => {

@@ -149,7 +149,7 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
 testSkipIfWindows("select component next.js", async ({ po }) => {
   await po.setUp();
 
-  await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+  await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
   await po.chatActions.selectChatMode("build");
   // Next.js apps take longer to build on the first prompt, use LONG timeout
   await po.sendPrompt("tc=basic", { timeout: Timeout.LONG });

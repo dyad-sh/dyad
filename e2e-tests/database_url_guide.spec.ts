@@ -5,7 +5,7 @@ testSkipIfWindows(
   "unified database section shows env vars for development and production",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+    await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
     await po.chatActions.selectChatMode("build");
     await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
     await po.sendPrompt("tc=add-neon");

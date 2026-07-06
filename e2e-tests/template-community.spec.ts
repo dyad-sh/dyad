@@ -1,7 +1,7 @@
 import { test } from "./helpers/test_helper";
 
 test("template - community", async ({ po }) => {
-  await po.navigation.goToHubTab();
+  await po.navigation.goToTemplatesTab();
   // This is a community template, so we should see the consent dialog
   const beforeSettings1 = po.settings.recordSettings();
   await po.navigation.selectTemplate("Angular");

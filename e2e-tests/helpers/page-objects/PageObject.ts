@@ -33,6 +33,7 @@ import { ModelPicker } from "./components/ModelPicker";
 import { Settings } from "./components/Settings";
 import { AppManagement } from "./components/AppManagement";
 import { PromptLibrary } from "./components/PromptLibrary";
+import { Plugins } from "./components/Plugins";
 import { BrowserNotifications } from "./components/BrowserNotifications";
 
 // Import dialog page objects
@@ -172,6 +173,7 @@ export class PageObject {
   public settings: Settings;
   public appManagement: AppManagement;
   public promptLibrary: PromptLibrary;
+  public plugins: Plugins;
   public browserNotifications: BrowserNotifications;
   private stableMessageSnapshotIndex = 0;
 
@@ -201,6 +203,7 @@ export class PageObject {
     this.settings = new Settings(this.page, userDataDir, fakeLlmPort);
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
+    this.plugins = new Plugins(this.page);
     this.browserNotifications = new BrowserNotifications(this.page);
   }
 

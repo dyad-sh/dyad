@@ -60,14 +60,15 @@ testSkipIfWindows("mcp - oauth connects and calls a tool", async ({ po }) => {
     await po.navigation.goToSettingsTab();
     await po.settings.scrollToSettingsSection("experiments");
     await po.settings.toggleEnableMcpServersForBuildMode();
-    await po.settings.scrollToSettingsSection("tools-mcp");
+    await po.navigation.goToPluginsTab();
+    await po.plugins.openAddPluginDialog();
 
     await po.page
       .getByRole("textbox", { name: "My MCP Server" })
       .fill("testing-mcp-server");
     await po.page.getByTestId("mcp-transport-select").selectOption("http");
     await po.page.getByPlaceholder("http://localhost:3000").fill(`${base}/mcp`);
-    await po.page.getByRole("button", { name: "Add Server" }).click();
+    await po.plugins.submitAddPluginDialog();
     await expect(po.page.getByText("OAuth: connected")).toBeVisible({
       timeout: 15_000,
     });
@@ -160,7 +161,8 @@ testSkipIfWindows(
       await po.navigation.goToSettingsTab();
       await po.settings.scrollToSettingsSection("experiments");
       await po.settings.toggleEnableMcpServersForBuildMode();
-      await po.settings.scrollToSettingsSection("tools-mcp");
+      await po.navigation.goToPluginsTab();
+      await po.plugins.openAddPluginDialog();
 
       await po.page
         .getByRole("textbox", { name: "My MCP Server" })
@@ -177,7 +179,7 @@ testSkipIfWindows(
       await po.page
         .getByPlaceholder("Pre-registered client secret")
         .fill(clientSecret);
-      await po.page.getByRole("button", { name: "Add Server" }).click();
+      await po.plugins.submitAddPluginDialog();
 
       await expect(po.page.getByText("OAuth: connected")).toBeVisible({
         timeout: 15_000,
@@ -262,7 +264,8 @@ testSkipIfWindows(
       await po.navigation.goToSettingsTab();
       await po.settings.scrollToSettingsSection("experiments");
       await po.settings.toggleEnableMcpServersForBuildMode();
-      await po.settings.scrollToSettingsSection("tools-mcp");
+      await po.navigation.goToPluginsTab();
+      await po.plugins.openAddPluginDialog();
 
       await po.page
         .getByRole("textbox", { name: "My MCP Server" })
@@ -271,7 +274,7 @@ testSkipIfWindows(
       await po.page
         .getByPlaceholder("http://localhost:3000")
         .fill(`${base}/mcp`);
-      await po.page.getByRole("button", { name: "Add Server" }).click();
+      await po.plugins.submitAddPluginDialog();
 
       // Toast fires once at registration and auto-dismisses; assert it
       // before the persistent panel below.
@@ -369,7 +372,8 @@ testSkipIfWindows(
       await po.navigation.goToSettingsTab();
       await po.settings.scrollToSettingsSection("experiments");
       await po.settings.toggleEnableMcpServersForBuildMode();
-      await po.settings.scrollToSettingsSection("tools-mcp");
+      await po.navigation.goToPluginsTab();
+      await po.plugins.openAddPluginDialog();
 
       await po.page
         .getByRole("textbox", { name: "My MCP Server" })
@@ -382,7 +386,7 @@ testSkipIfWindows(
       // of auto-connect; this is the entry point for the unauthorized
       // retry flow.
       await po.page.getByRole("switch", { name: "Use OAuth" }).click();
-      await po.page.getByRole("button", { name: "Add Server" }).click();
+      await po.plugins.submitAddPluginDialog();
 
       await po.toastNotifications.waitForToastWithText(
         "Server connection failed. This server requires authentication. Try enabling OAuth.",

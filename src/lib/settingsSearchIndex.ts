@@ -6,7 +6,6 @@ export const SECTION_IDS = {
   telemetry: "telemetry",
   integrations: "integrations",
   agentPermissions: "agent-permissions",
-  toolsMcp: "tools-mcp",
   advanced: "advanced",
   experiments: "experiments",
   dangerZone: "danger-zone",
@@ -369,22 +368,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     ],
     sectionId: SECTION_IDS.agentPermissions,
     sectionLabel: "Agent Permissions",
-  },
-
-  // Tools (MCP)
-  {
-    id: SECTION_IDS.toolsMcp,
-    label: "Tools (MCP)",
-    description: "Configure MCP servers and environment variables",
-    keywords: [
-      "mcp",
-      "tools",
-      "server",
-      "model context protocol",
-      "environment",
-    ],
-    sectionId: SECTION_IDS.toolsMcp,
-    sectionLabel: "Tools (MCP)",
   },
 
   // Advanced

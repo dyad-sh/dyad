@@ -28,7 +28,6 @@ import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
-import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
@@ -149,17 +148,6 @@ export default function SettingsPage() {
               Agent Permissions (Pro)
             </h2>
             <AgentToolsSettings />
-          </div>
-
-          {/* Tools (MCP) */}
-          <div
-            id={SECTION_IDS.toolsMcp}
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
-          >
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Tools (MCP)
-            </h2>
-            <ToolsMcpSettings />
           </div>
 
           {/* Advanced Section */}

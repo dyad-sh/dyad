@@ -125,12 +125,15 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
             autoSaveId="code-view-file-tree"
             className="flex-1 overflow-hidden"
           >
-            <Panel defaultSize={33} minSize={15} collapsible>
-              <div className="h-full border-r overflow-hidden flex flex-col min-h-0">
+            <Panel defaultSize={33} minSize={15}>
+              <div className="h-full overflow-hidden flex flex-col min-h-0">
                 <FileTree appId={app.id ?? null} files={app.files ?? []} />
               </div>
             </Panel>
-            <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors cursor-col-resize" />
+            <PanelResizeHandle
+              aria-label="Resize file tree"
+              className="w-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors cursor-col-resize"
+            />
             <Panel defaultSize={67} minSize={30}>
               {selectedFile ? (
                 <FileEditor

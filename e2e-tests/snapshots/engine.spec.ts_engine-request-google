@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "gemini/gemini-2.5-pro",
+    "model": "[[MODEL]]",
     "max_tokens": 65535,
     "temperature": 0,
     "messages": [
@@ -14,11 +14,7 @@
       }
     ],
     "stream": true,
-    "thinking": {
-      "type": "enabled",
-      "include_thoughts": true,
-      "budget_tokens": 4000
-    },
+    "thinking": "[[THINKING_CONFIG]]",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

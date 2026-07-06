@@ -16,7 +16,7 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
   po.settings.snapshotSettingsDelta(beforeSettings1);
   await po.page.getByText("Go Back").click();
   await po.sendPrompt("[dump] hi");
-  await po.snapshotServerDump("request");
+  await po.snapshotServerDump("request", { normalizeRequestSnapshot: false });
 
   // Medium
   await po.navigation.goToSettingsTab();
@@ -26,7 +26,7 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
   po.settings.snapshotSettingsDelta(beforeSettings2);
   await po.page.getByText("Go Back").click();
   await po.sendPrompt("[dump] hi");
-  await po.snapshotServerDump("request");
+  await po.snapshotServerDump("request", { normalizeRequestSnapshot: false });
 
   // High
   await po.navigation.goToSettingsTab();
@@ -36,5 +36,5 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
   po.settings.snapshotSettingsDelta(beforeSettings3);
   await po.page.getByText("Go Back").click();
   await po.sendPrompt("[dump] hi");
-  await po.snapshotServerDump("request");
+  await po.snapshotServerDump("request", { normalizeRequestSnapshot: false });
 });

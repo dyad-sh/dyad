@@ -13,6 +13,7 @@ import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 interface App {
   id?: number;
@@ -119,11 +120,18 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         {isVersionDiffMode ? (
           <VersionDiffView appId={app.id!} versionId={selectedVersionId} />
         ) : (
-          <div className="flex flex-1 overflow-hidden">
-            <div className="w-1/3 border-r overflow-hidden flex flex-col min-h-0">
-              <FileTree appId={app.id ?? null} files={app.files ?? []} />
-            </div>
-            <div className="w-2/3">
+          <PanelGroup
+            direction="horizontal"
+            autoSaveId="code-view-file-tree"
+            className="flex-1 overflow-hidden"
+          >
+            <Panel defaultSize={33} minSize={15} collapsible>
+              <div className="h-full border-r overflow-hidden flex flex-col min-h-0">
+                <FileTree appId={app.id ?? null} files={app.files ?? []} />
+              </div>
+            </Panel>
+            <PanelResizeHandle className="w-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors cursor-col-resize" />
+            <Panel defaultSize={67} minSize={30}>
               {selectedFile ? (
                 <FileEditor
                   key={`${app.id ?? "unknown"}:${selectedFile.path}`}
@@ -136,8 +144,8 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                   {t("preview.selectFileToView")}
                 </div>
               )}
-            </div>
-          </div>
+            </Panel>
+          </PanelGroup>
         )}
       </div>
     );

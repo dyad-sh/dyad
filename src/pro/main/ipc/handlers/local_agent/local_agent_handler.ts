@@ -108,10 +108,7 @@ import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
-import {
-  appendCancelledResponseNotice,
-  filterCancelledMessagePairs,
-} from "@/shared/chatCancellation";
+import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
   isChatPendingCompaction,
   performCompaction,
@@ -250,11 +247,7 @@ function buildChatMessageHistory(
     .filter((msg) => !excludedIds?.has(msg.id))
     .filter((msg) => msg.content || msg.aiMessagesJson);
 
-  // Filter out cancelled message pairs (user prompt + cancelled assistant response)
-  // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
-  return filterCancelledMessagePairs(filtered).flatMap((msg) =>
-    parseAiMessagesJson(msg),
-  );
+  return filtered.flatMap((msg) => parseAiMessagesJson(msg));
 }
 
 /**

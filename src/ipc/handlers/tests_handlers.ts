@@ -231,7 +231,8 @@ export async function runAppTestsCore({
     args.push("tests/");
   }
   args.push("--reporter=list,json");
-  args.push("--base-url", baseUrl);
+  // baseURL is passed via the DYAD_TEST_BASE_URL env var, not a CLI flag —
+  // `playwright test` has no `--base-url` option.
   // `--headed` opens a visible browser window so the user can watch the run.
   // It overrides the headless default (and the CI=true env set below).
   if (headed) {

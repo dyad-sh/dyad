@@ -6,20 +6,35 @@ export { FAKE_LLM_BASE_PORT };
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-// Single worker + one fake LLM server: parallel workers were flaky (shared state / timing).
+const playwrightParallelism = parseInt(
+  process.env.PLAYWRIGHT_PARALLELISM ?? "1",
+  10,
+);
+const workerCount =
+  Number.isFinite(playwrightParallelism) && playwrightParallelism > 0
+    ? playwrightParallelism
+    : 1;
+
 function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
-  return {
-    // Server runs build to avoid race conditions with concurrent webServer starts
-    command: `cd testing/fake-llm-server && npm run build && npm start -- --port=${FAKE_LLM_BASE_PORT}`,
-    url: `http://localhost:${FAKE_LLM_BASE_PORT}/health`,
-    // In CI, always start a fresh server; locally, reuse if one is already running
-    reuseExistingServer: !process.env.CI,
-  };
+  return Array.from({ length: workerCount }, (_, index) => {
+    const port = FAKE_LLM_BASE_PORT + index;
+    const command =
+      index === 0
+        ? `cd testing/fake-llm-server && npm run build && npm start -- --port=${port}`
+        : `while ! curl -fsS http://localhost:${FAKE_LLM_BASE_PORT}/health >/dev/null; do sleep 1; done; cd testing/fake-llm-server && npm start -- --port=${port}`;
+
+    return {
+      command,
+      url: `http://localhost:${port}/health`,
+      // In CI, always start a fresh server; locally, reuse if one is already running
+      reuseExistingServer: !process.env.CI,
+    };
+  });
 }
 
 const config: PlaywrightTestConfig = {
   testDir: "./e2e-tests",
-  workers: 1,
+  workers: workerCount,
   retries: parseInt(
     process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? "2" : "0"),
     10,

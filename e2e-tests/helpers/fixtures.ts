@@ -193,7 +193,10 @@ export const test = base.extend<{
         delete process.env.OPENAI_API_KEY;
       }
       const baseTmpDir = os.tmpdir();
-      const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);
+      const userDataDir = path.join(
+        baseTmpDir,
+        `dyad-e2e-tests-worker-${testInfo.parallelIndex}-${Date.now()}`,
+      );
       if (electronConfig.preLaunchHook) {
         await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
       }

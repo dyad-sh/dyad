@@ -206,6 +206,23 @@ export default function HomePage() {
     shouldOpenAiSetupDialogWhenProvidersLoad,
   ]);
 
+  // Honor a manually picked mode (e.g. "plan") on submit; otherwise fall back
+  // to the effective default so it still tracks provider/quota state. Apply the
+  // Free Pro fallback for an invalid build-mode + free-pro-model combination.
+  const homeSubmitChatMode = useMemo<ChatMode | undefined>(() => {
+    const selected =
+      hasManuallySelectedChatMode && settings?.selectedChatMode
+        ? settings.selectedChatMode
+        : homeInitialChatMode;
+    if (
+      settings &&
+      isFreeProBuildModeCombination(settings.selectedModel, selected)
+    ) {
+      return FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
+    }
+    return selected;
+  }, [settings, homeInitialChatMode, hasManuallySelectedChatMode]);
+
   const handleSubmit = useCallback(
     async (options?: HomeSubmitOptions) => {
       const attachments = options?.attachments || [];
@@ -236,14 +253,14 @@ export default function HomePage() {
           // Existing app flow: create a new chat in the selected app
           chatId = await ipc.chat.createChat({
             appId: selectedApp.id,
-            initialChatMode: homeInitialChatMode,
+            initialChatMode: homeSubmitChatMode,
           });
           appId = selectedApp.id;
         } else {
           // New app flow (default behavior)
           const result = await ipc.app.createApp({
             name: generateCuteAppName(),
-            initialChatMode: homeInitialChatMode,
+            initialChatMode: homeSubmitChatMode,
           });
           chatId = result.chatId;
           appId = result.app.id;
@@ -275,7 +292,7 @@ export default function HomePage() {
           chatId,
           appId,
           attachments,
-          requestedChatMode: homeInitialChatMode,
+          requestedChatMode: homeSubmitChatMode,
         });
         await new Promise((resolve) =>
           setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
@@ -307,7 +324,7 @@ export default function HomePage() {
     },
     [
       inputValue,
-      homeInitialChatMode,
+      homeSubmitChatMode,
       isAnyProviderSetup,
       isLoadingLanguageModelProviders,
       navigate,

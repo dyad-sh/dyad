@@ -451,6 +451,39 @@ describe("HomePage", () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
+  it("submits with the manually selected chat mode instead of the effective default", async () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+    // Effective default differs from what the user actually picked.
+    mocks.initialChatMode = "build";
+    mocks.effectiveDefaultChatMode = "local-agent";
+    // User latched a manual "plan" selection via the selector.
+    mocks.hasManuallySelectedChatMode = true;
+    mocks.settings = {
+      isTestMode: true,
+      selectedChatMode: "plan",
+    };
+
+    renderHomePage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit home prompt" }));
+
+    await waitFor(() => {
+      expect(mocks.createApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialChatMode: "plan",
+        }),
+      );
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedChatMode: "plan",
+      }),
+    );
+    // The latched manual selection must not be overwritten by the sync effect.
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("auto-submits an attachment-only pending first prompt once provider setup is ready", async () => {
     const attachment = {
       file: new File(["hello"], "notes.txt", { type: "text/plain" }),

@@ -61,7 +61,7 @@ and 0.7 are new work items.
 
 | Spec                                                                                                              | Blocking extension                                                                                                                                                           |
 | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mcp.spec.ts`, `mcp_auto_consent.spec.ts`, `mcp_out_of_order.spec.ts`, `local_agent_advanced.spec.ts` (MCP cases) | **0.6 MCP fake-server bootstrapping** — the biggest single unlock (4 specs)                                                                                                  |
+| `mcp.spec.ts`, `mcp_auto_consent.spec.ts`, `mcp_out_of_order.spec.ts`, `local_agent_advanced.spec.ts` (MCP cases) | **covered** by `harness.mcp` helpers that seed stdio/http fake MCP servers through the real `mcp:*` IPC handlers and drive consent/tool cards through real ChatPanel UI      |
 | `local_agent_large_attachment.spec.ts`, `queued_message.spec.ts` (attachment cases)                               | **covered** by `setChatAttachments` bridge-level injection into the real ChatInput attachment state; `queued_message` also uses `pressEnterInChat` for queue-while-streaming |
 | `chat_image_generation.spec.ts`                                                                                   | **covered** by the existing `/chat` mount and auxiliary-actions dropdown drivers                                                                                             |
 | `version_search.spec.ts`                                                                                          | **covered** by the existing `/chat` mount: `ChatHeader` opens the real `VersionPane`, so no new surface was needed                                                           |
@@ -70,10 +70,18 @@ and 0.7 are new work items.
 
 ### 0.6 MCP fake-server bootstrapping (new)
 
-Stand up the same fake MCP servers the e2e suite uses (stdio/http) in-process
-under vitest, plus settings-driven MCP config seeding. Unknowns: whether the
-stdio transport spawns cleanly from a vitest fork; timebox a spike before
-committing. Unlocks 4 specs.
+Implemented as `harness.mcp` in
+`src/testing/hybrid_chat_harness.tsx`. It creates/deletes MCP server rows
+through the real `mcp:*` IPC handlers, waits for live tool discovery through
+`mcp:list-tools`, uses the same `testing/fake-stdio-mcp-server.mjs` stdio server
+the e2e suite used, and spawns `testing/fake-http-mcp-server.mjs` on an
+ephemeral loopback port for HTTP transport coverage. HTTP child processes are
+tracked and killed during harness teardown.
+
+The fake LLM server's MCP auto-consent classifier shortcut now exists on both
+responses and chat-completions paths, so local-agent classifier tests exercise
+the same safe/destructive decisions regardless of which fake model route the
+harness-selected engine model uses.
 
 ### 0.7 Attachment injection via the bridge (new)
 
@@ -89,7 +97,16 @@ params, and `.dyad/media` persistence on the real production path. The harness
 also exposes `setSelectedComponents` for queue edit/restore assertions that only
 need ChatInput state; real iframe component picking stays in E2E.
 
-**Migrated CP2 coverage so far**: `chat_image_generation.spec.ts` is covered in
+**Migrated CP2 coverage so far**: `mcp.spec.ts`,
+`mcp_auto_consent.spec.ts`, `mcp_out_of_order.spec.ts`, and the MCP cases from
+`local_agent_advanced.spec.ts` are covered in
+`src/ipc/handlers/__tests__/mcp.integration.test.tsx`, which seeds stdio and
+HTTP MCP servers via production IPC, drives build-mode MCP consent/tool cards,
+asserts merged out-of-order parallel tool cards, exercises local-agent MCP
+auto-consent safe/destructive/manual/pending-classifier paths, and renders MCP
+tool-search/schema cards in forced search mode. The fully migrated MCP e2e specs
+and their snapshots are deleted; `local_agent_advanced.spec.ts` is slimmed to
+its remaining non-MCP cases. `chat_image_generation.spec.ts` is covered in
 `src/ipc/handlers/__tests__/chat_image_generation.integration.test.tsx`, which
 drives the chat auxiliary-actions dropdown -> real `ImageGeneratorDialog` ->
 real `generate-image` IPC handler against the fake engine image endpoint, then

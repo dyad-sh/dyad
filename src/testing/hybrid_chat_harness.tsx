@@ -1,3 +1,7 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import net from "node:net";
+import path from "node:path";
+
 /**
  * setupHybridChatHarness — the "hybrid" chat-flow harness: the real React
  * <ChatPanel> (React Testing Library under happy-dom) wired to the REAL
@@ -84,7 +88,11 @@ import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
-import type { ComponentSelection, FileAttachment } from "@/ipc/types";
+import type {
+  ComponentSelection,
+  FileAttachment,
+  McpServer,
+} from "@/ipc/types";
 import { setModelClientFetchForTesting } from "@/ipc/utils/get_model_client";
 // Import from the dedicated schema module, NOT "@/routes/chat": the route file
 // statically imports ChatPage -> PreviewPanel -> Monaco, which would load into
@@ -363,6 +371,28 @@ export interface HybridChatHarness extends ChatFlowHarness {
     clearPushEvents: () => Promise<void>;
     resetRepos: () => Promise<void>;
   };
+
+  mcp: {
+    fakeStdioServerPath: string;
+    resetServers: () => Promise<void>;
+    addStdioServer: (opts?: {
+      name?: string;
+      env?: Record<string, string>;
+    }) => Promise<McpServer>;
+    addHttpServer: (opts?: {
+      name?: string;
+      headers?: Record<string, string>;
+    }) => Promise<{
+      server: McpServer;
+      url: string;
+      stop: () => Promise<void>;
+    }>;
+    waitForTool: (
+      serverId: number,
+      toolName: string,
+      timeoutMs?: number,
+    ) => Promise<void>;
+  };
 }
 
 /** Bridge sentEvents store `{ channel, args }`; the payload is `args[0]`. */
@@ -388,6 +418,41 @@ function restoreHybridEnv(snapshot: Map<string, string | undefined>): void {
       process.env[key] = value;
     }
   }
+}
+
+async function findFreeLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Could not allocate a port")));
+        return;
+      }
+      const port = address.port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+function stopChildProcess(
+  child: ChildProcessWithoutNullStreams,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve();
+    }, 2_000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
 }
 
 function encodeSearch(search: Record<string, unknown>): string {
@@ -506,6 +571,17 @@ export async function setupHybridChatHarness(
     };
 
     let activeRouter: HybridRouter | undefined;
+    const mcpHttpProcesses = new Set<ChildProcessWithoutNullStreams>();
+    const fakeStdioServerPath = path.join(
+      process.cwd(),
+      "testing",
+      "fake-stdio-mcp-server.mjs",
+    );
+    const fakeHttpServerPath = path.join(
+      process.cwd(),
+      "testing",
+      "fake-http-mcp-server.mjs",
+    );
 
     const getActiveRouter = (): HybridRouter => {
       if (!activeRouter) {
@@ -1066,6 +1142,119 @@ export async function setupHybridChatHarness(
       },
     };
 
+    const resetMcpServers = async (): Promise<void> => {
+      const servers = await ipc.mcp.listServers();
+      for (const server of servers) {
+        await ipc.mcp.deleteServer(server.id);
+      }
+    };
+
+    const waitForMcpTool = async (
+      serverId: number,
+      toolName: string,
+      timeoutMs = 10_000,
+    ): Promise<void> => {
+      await waitFor(
+        async () => {
+          const result = await ipc.mcp.listTools(serverId);
+          expect(result.status).toBe("ok");
+          expect(result.tools.map((tool) => tool.name)).toContain(toolName);
+        },
+        { timeout: timeoutMs },
+      );
+    };
+
+    const addStdioMcpServer = async (opts?: {
+      name?: string;
+      env?: Record<string, string>;
+    }): Promise<McpServer> => {
+      const server = await ipc.mcp.createServer({
+        name: opts?.name ?? "testing-mcp-server",
+        transport: "stdio",
+        command: "node",
+        args: [fakeStdioServerPath],
+        envJson: opts?.env ?? null,
+        enabled: true,
+      });
+      await waitForMcpTool(server.id, "calculator_add");
+      return server;
+    };
+
+    const addHttpMcpServer = async (opts?: {
+      name?: string;
+      headers?: Record<string, string>;
+    }): Promise<{
+      server: McpServer;
+      url: string;
+      stop: () => Promise<void>;
+    }> => {
+      const port = await findFreeLoopbackPort();
+      const child = spawn("node", [fakeHttpServerPath], {
+        env: { ...process.env, PORT: String(port) },
+        stdio: "pipe",
+      });
+      mcpHttpProcesses.add(child);
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(
+              `HTTP MCP server failed to start on port ${port} within timeout`,
+            ),
+          );
+        }, 10_000);
+        child.stdout.on("data", (data: Buffer) => {
+          if (data.toString().includes("HTTP MCP server running")) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+        child.stderr.on("data", (data: Buffer) => {
+          const text = data.toString().trim();
+          if (text) {
+            // Surface the server's own startup/runtime errors in vitest output.
+            console.error(`HTTP MCP server stderr: ${text}`);
+          }
+        });
+        child.once("error", (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+        child.once("exit", (code, signal) => {
+          clearTimeout(timeout);
+          reject(
+            new Error(
+              `HTTP MCP server exited before ready: code=${code} signal=${signal}`,
+            ),
+          );
+        });
+      });
+
+      const url = `http://localhost:${port}/mcp`;
+      const server = await ipc.mcp.createServer({
+        name: opts?.name ?? "testing-mcp-server",
+        transport: "http",
+        url,
+        headersJson: opts?.headers ?? null,
+        enabled: true,
+      });
+      await waitForMcpTool(server.id, "calculator_add");
+
+      const stop = async () => {
+        mcpHttpProcesses.delete(child);
+        await stopChildProcess(child);
+      };
+      return { server, url, stop };
+    };
+
+    const mcp = {
+      fakeStdioServerPath,
+      resetServers: resetMcpServers,
+      addStdioServer: addStdioMcpServer,
+      addHttpServer: addHttpMcpServer,
+      waitForTool: waitForMcpTool,
+    };
+
     const dispose = async (): Promise<void> => {
       // Teardown ordering is load-bearing (see HYBRID_HARNESS.md "Race-free
       // teardown"):
@@ -1096,6 +1285,10 @@ export async function setupHybridChatHarness(
         activeStore = undefined;
         activeRouter = undefined;
         bridge.uninstall();
+        await Promise.all(
+          Array.from(mcpHttpProcesses, (child) => stopChildProcess(child)),
+        );
+        mcpHttpProcesses.clear();
         await nodeHarness.dispose();
       } catch (error) {
         teardownError = error;
@@ -1151,6 +1344,7 @@ export async function setupHybridChatHarness(
       selectChatMode,
       createChat,
       github,
+      mcp,
       dispose,
     };
   } catch (error) {

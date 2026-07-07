@@ -506,6 +506,36 @@ export default Index;
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
     }
+    // The MCP auto-consent classifier payload (buildUserPayload) carries these
+    // labels. Detect it off the user text, then decide off the tool name so
+    // hybrid/e2e tests can exercise both the allow and ask paths regardless of
+    // whether the selected fake model uses chat-completions or responses.
+    const lastUserText = lastMessage ? getTextContent(lastMessage) : "";
+    const isConsent =
+      lastUserText.includes("MCP server:") &&
+      lastUserText.includes("Tool:") &&
+      lastUserText.includes("Arguments:");
+    if (isConsent) {
+      const risky = /(delete|drop|danger|destroy|remove)/i.test(lastUserText);
+      messageContent = JSON.stringify({
+        reason: risky ? "destructive tool" : "safe tool",
+        decision: risky ? "ask" : "allow",
+      });
+      if (lastUserText.includes("Tool: print_envs")) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            req.off("close", onClose);
+            resolve();
+          }, 4000);
+          const onClose = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          req.on("close", onClose);
+        });
+        if (req.destroyed) return;
+      }
+    }
     const isToolCall = !!(
       lastMessage &&
       lastMessage.content &&

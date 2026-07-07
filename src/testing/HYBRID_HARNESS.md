@@ -104,6 +104,7 @@ plus:
 | ------------------------- | ------- | ------------------------------------------------------------------------------------------ |
 | `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act". |
 | `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                        |
+| `testBuild`               | `false` | Set `E2E_TEST_BUILD` / `FAKE_LLM_PORT` before importing IPC handlers for test-only fakes.  |
 
 Common option recipes:
 
@@ -146,6 +147,10 @@ harness.confirmDialog(dialog, button)    // click dialog action and wait for clo
 harness.setSwitch(element, checked)       // click a Base UI switch and wait for checked state
 harness.selectChatMode("build" | "ask" | "plan" | "local-agent") // open the chat-mode selector + pick
 harness.createChat(appId?)            // insert a chats row -> new chatId
+harness.mcp.resetServers()            // delete all MCP servers through real mcp:* IPC
+harness.mcp.addStdioServer({ env? })   // add testing/fake-stdio-mcp-server.mjs + wait for calculator_add
+harness.mcp.addHttpServer({ headers? }) // spawn fake HTTP MCP server on an ephemeral port + add it
+harness.mcp.waitForTool(serverId, name) // poll real mcp:list-tools until a tool is discovered
 harness.dispose()                     // race-free teardown (see §6)
 ```
 
@@ -204,6 +209,15 @@ harness.dispose()                     // race-free teardown (see §6)
 - **Seeding selected components**: use `setSelectedComponents(components)` for
   queue edit/restore assertions that only need ChatInput state. Keep Playwright
   coverage for picking a component inside the real preview iframe.
+- **Seeding MCP servers**: use `harness.mcp.addStdioServer()` /
+  `harness.mcp.addHttpServer()` rather than driving the Settings page when the
+  test's subject is ChatPanel MCP behavior. These helpers still go through the
+  real `mcp:create-server` and `mcp:list-tools` handlers, use the same fake MCP
+  servers as E2E, and wait for live discovery before the prompt is sent. Call
+  `harness.mcp.resetServers()` in `beforeEach` when multiple tests need the
+  canonical `testing-mcp-server` name so stored consent and duplicate sanitized
+  tool names do not leak between cases. Consent itself should be exercised
+  through the rendered banner buttons.
 
 ---
 

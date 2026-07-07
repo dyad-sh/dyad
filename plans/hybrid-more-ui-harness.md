@@ -64,7 +64,7 @@ and 0.7 are new work items.
 | `mcp.spec.ts`, `mcp_auto_consent.spec.ts`, `mcp_out_of_order.spec.ts`, `local_agent_advanced.spec.ts` (MCP cases) | **0.6 MCP fake-server bootstrapping** — the biggest single unlock (4 specs)                                                                                                 |
 | `local_agent_large_attachment.spec.ts`, `queued_message.spec.ts` (attachment cases)                               | **0.7 attachment injection** via the bridge (file-picker seeding); `queued_message`'s queue-while-streaming timing is already solved (`pressEnterInChat`)                   |
 | `chat_image_generation.spec.ts`                                                                                   | in-chat image-generator dialog — needs only the 0.3 dialog drivers (it opens from the chat aux menu, inside ChatPanel)                                                      |
-| `version_search.spec.ts`                                                                                          | version-history pane mount — a 0.1 `mountSurface` target (add the versions pane alongside `/chat`)                                                                          |
+| `version_search.spec.ts`                                                                                          | **covered** by the existing `/chat` mount: `ChatHeader` opens the real `VersionPane`, so no new surface was needed                                                          |
 | `supabase_stale_ui.spec.ts`                                                                                       | fake-supabase connect trigger — settings seeding the way `supabase_branch.integration.test.ts` does, plus a connect-state toggle helper                                     |
 | `local_agent_explore_code.spec.ts`                                                                                | **defer** — needs the code-explorer/tsc worker backend, which isn't available under vitest (worker bundling); migrate as node-harness payload test or keep e2e until solved |
 
@@ -81,6 +81,14 @@ A harness helper that seeds attachments the way the real file-picker handoff
 does (bridge-level injection into the chat input's attachment state), so
 attachment-carrying prompts can be sent through the real submit path. Unlocks
 2 specs.
+
+**Migrated CP2 coverage so far**: `version_search.spec.ts` is covered in
+`src/ipc/handlers/__tests__/version_search.integration.test.tsx`, which drives
+`ChatHeader` -> `VersionPane` through the existing `/chat` mount and asserts
+version-number/message/note search, empty results, clear, favorite-only
+filtering, note persistence, favorite persistence, and close/reopen reset
+behavior. `e2e-tests/version_search.spec.ts` is deleted on the same
+consolidated migration PR.
 
 ---
 

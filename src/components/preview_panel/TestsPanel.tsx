@@ -570,6 +570,9 @@ export function TestsPanel() {
   // batched atom write per interval — an atom write per chunk would re-render
   // every subscriber per chunk during the chattiest window.
   useEffect(() => {
+    // All test activity lives behind the opt-in gate; don't register the IPC
+    // listener (or accumulate output) for apps that haven't enabled testing.
+    if (!testingEnabled) return;
     const unsubscribe = ipc.events.tests.onOutput((payload) => {
       const pending = pendingOutputRef.current;
       pending.set(
@@ -598,7 +601,7 @@ export function TestsPanel() {
       }
       flushPendingOutput();
     };
-  }, [setRunState, flushPendingOutput]);
+  }, [setRunState, flushPendingOutput, testingEnabled]);
 
   const runTests = useCallback(
     async (file?: string, line?: number) => {

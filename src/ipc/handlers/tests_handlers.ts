@@ -457,6 +457,14 @@ export function registerTestsHandlers() {
       if (!insideApp) {
         return { dataUrl: null };
       }
+      // Only serve screenshots Playwright writes under `test-results/`, not any
+      // arbitrary PNG in the app (design assets, etc.). Narrows the IPC surface
+      // to exactly what this feature needs. Use split rather than a string
+      // prefix so a sibling like `test-results-foo/` can't slip through.
+      const [firstSegment] = rel.split(path.sep);
+      if (firstSegment !== "test-results") {
+        return { dataUrl: null };
+      }
       try {
         const buf = fs.readFileSync(realPath);
         return { dataUrl: `data:image/png;base64,${buf.toString("base64")}` };

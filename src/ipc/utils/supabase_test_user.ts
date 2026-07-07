@@ -388,6 +388,13 @@ WHERE table_schema = 'public'
       if (!SAFE_IDENT_RE.test(table) || !SAFE_IDENT_RE.test(column)) {
         continue;
       }
+      // Belt-and-suspenders: the static `$dyad_cleanup$` dollar-quote tag below
+      // is only safe as long as no interpolated value can contain `$`. SAFE_IDENT_RE
+      // already forbids it, but enforce the invariant explicitly here so relaxing
+      // that regex can never silently open a dollar-quote breakout.
+      if (table.includes("$") || column.includes("$")) {
+        continue;
+      }
       try {
         // SECURITY: the regex guards above (SAFE_IDENT_RE for table/column,
         // UUID_RE for userId) are the LOAD-BEARING injection defense here, not

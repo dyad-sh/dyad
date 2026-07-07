@@ -203,8 +203,16 @@ export async function prepareIsolatedTestDatabase({
       teardown,
     };
   } catch (error) {
-    // Dead-end: restore real data, never run against it.
-    await teardown();
+    // Dead-end: restore real data, never run against it. Guard the teardown so a
+    // failure here (e.g. restoreEnvFile) can't replace the original error and
+    // hide the real failure reason (e.g. "branch creation failed") from callers.
+    try {
+      await teardown();
+    } catch (teardownError) {
+      logger.error(
+        `Teardown failed during error recovery for app ${app.id}: ${teardownError}`,
+      );
+    }
     // A user Stop surfaces here too (waitForServerReady & co. throw on abort).
     // That's a deliberate cancellation, not an infra failure — don't show the
     // misleading "couldn't set up" banner for it.

@@ -90,6 +90,12 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  // Promo clicks are only ever fired by non-Pro users; sampling would drop
+  // 90% of them and make conversion funnels unreadable.
+  if (eventName === "promo_click") {
+    return true;
+  }
+
   return (
     eventName === "$exception" ||
     eventName?.toLowerCase().includes("error") === true ||

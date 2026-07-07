@@ -40,6 +40,8 @@ When a workflow has already identified a target PR number, pass that number expl
 
 If `gh pr view --repo <owner>/<repo> --json ...` fails with `argument required when using the --repo flag`, rerun it with an explicit PR number, URL, or branch argument. If a prior `gh pr edit` printed a PR URL, extract that number and use `gh pr view <number> --repo <owner>/<repo>`.
 
+When using `gh pr list --json headRepository` to match PRs by head repo, do not rely on `headRepository.nameWithOwner`; some installed `gh` versions return it as an empty string. Request `headRepositoryOwner` too and compose `<owner>/<repo>` from `headRepositoryOwner.login` plus `headRepository.name`.
+
 ## GH auth allowlist and git push
 
 If `gh auth status` succeeds but `git push` fails with `Repo <owner>/<repo> is not allowlisted` followed by `fatal: could not read Username for 'https://github.com/...': Device not configured`, run `gh auth setup-git` first and then push to an allowlisted remote. In some bot workspaces, fork remotes are not allowlisted even when `upstream` is, so retry the push against `upstream` if project policy permits it.

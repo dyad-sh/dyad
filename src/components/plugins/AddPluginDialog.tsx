@@ -174,6 +174,7 @@ export function AddPluginDialog({
         wantsOAuth && typeof callbackPort === "number" ? callbackPort : null,
     });
     setName("");
+    setTransport("stdio");
     setCommand("");
     setArgs("");
     setUrl("");

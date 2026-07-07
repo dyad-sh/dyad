@@ -46,7 +46,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { createStore, Provider } from "jotai";
-import React, { useEffect } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import { Toaster } from "sonner";
 import { fetch as undiciFetch } from "undici";
 import { expect } from "vitest";
@@ -66,7 +66,13 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { chatInputValuesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
+import { usePlanEvents } from "@/hooks/usePlanEvents";
+import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { ChatPanel } from "@/components/ChatPanel";
+import { PlanPanel } from "@/components/preview_panel/PlanPanel";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { TitleBar } from "@/app/TitleBar";
+import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
@@ -75,6 +81,7 @@ import { setModelClientFetchForTesting } from "@/ipc/utils/get_model_client";
 // statically imports ChatPage -> PreviewPanel -> Monaco, which would load into
 // every hybrid test and throw "Canceled" rejections on teardown.
 import { chatSearchSchema } from "@/routes/chatSearchSchema";
+import { appDetailsSearchSchema } from "@/routes/appDetailsSearchSchema";
 
 import {
   installRendererIpcBridge,
@@ -87,9 +94,27 @@ const SECOND_SETUP_ERROR =
 
 let activeHybridChatHarness = false;
 type JotaiStore = ReturnType<typeof createStore>;
+type HybridLocation = {
+  href: string;
+  pathname: string;
+  search: Record<string, unknown>;
+};
+type HybridRouter = {
+  state: { location: HybridLocation };
+  navigate: (opts: unknown) => unknown;
+};
 type HybridBridgeDiagnosticGlobal = typeof globalThis & {
   __DYAD_HYBRID_BRIDGE__?: RendererIpcBridge;
 };
+
+const LazyAppDetailsPage = lazy(() => import("@/pages/app-details"));
+const LazySettingsPage = lazy(() => import("@/pages/settings"));
+const LazyMediaPage = lazy(() => import("@/pages/media"));
+const LazyProviderSettingsPage = lazy(() =>
+  import("@/components/settings/ProviderSettingsPage").then((module) => ({
+    default: module.ProviderSettingsPage,
+  })),
+);
 
 export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
   /**
@@ -106,7 +131,22 @@ export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
    * intentionally exercising that failure path.
    */
   assertNoMissingChannels?: boolean;
+  /**
+   * Emulate the E2E test build's import-time feature gates before importing
+   * the main-process IPC graph. This routes GitHub/Neon handlers to the
+   * harness fake server.
+   */
+  testBuild?: boolean;
 }
+
+export type HybridSurfaceRoute =
+  | "/"
+  | "/chat"
+  | "/app-details"
+  | "/settings"
+  | "/settings/providers/$provider"
+  | "/library/media"
+  | "/media";
 
 export interface MountOptions {
   /** Chat to load. Default: the harness's default chat. */
@@ -115,6 +155,19 @@ export interface MountOptions {
   appId?: number;
   /** Install the same main->renderer listeners AppRoot registers. Default true. */
   wireAppEvents?: boolean;
+  /** Render the plan preview panel alongside ChatPanel for plan-mode tests. */
+  withPlanPanel?: boolean;
+}
+
+export interface MountSurfaceOptions extends MountOptions {
+  /** Route to mount. Default: "/chat". */
+  route?: HybridSurfaceRoute;
+  /** Route search params. Defaults are filled for chat/app-details. */
+  search?: Record<string, unknown>;
+  /** Route params, e.g. `{ provider: "auto" }` for provider settings. */
+  params?: Record<string, string>;
+  /** Render the real title bar above the mounted route. */
+  withTitleBar?: boolean;
 }
 
 export interface TypeInChatResult {
@@ -137,11 +190,32 @@ export interface HybridChatHarness extends ChatFlowHarness {
   mount: (opts?: MountOptions) => RenderResult;
 
   /**
+   * Render a supported app surface with the same query/jotai/theme/router
+   * scaffolding as `mount()`, backed by the real IPC handlers.
+   */
+  mountSurface: (opts?: MountSurfaceOptions) => RenderResult;
+
+  /** The most recently mounted private router. */
+  router: () => HybridRouter;
+
+  /** Current private router location, for navigation assertions. */
+  currentLocation: () => HybridRouter["state"]["location"];
+
+  /** Set the active selected app in the mounted Jotai store. */
+  setSelectedAppId: (appId: number | null) => void;
+
+  /**
    * Seed the chat input the way LexicalChatInput's onChange does (happy-dom
    * can't type into its contenteditable), then wait for Send to enable. Returns
    * the button and a `send()` click helper.
    */
   typeInChat: (text: string, opts?: MountOptions) => Promise<TypeInChatResult>;
+
+  /**
+   * Seed the chat input without waiting for Send to enable. Use this when the
+   * scenario expects Send to stay disabled, e.g. while a proposal is pending.
+   */
+  setChatInputValue: (text: string, opts?: MountOptions) => void;
 
   /**
    * Seed the chat input, then submit via the Lexical Enter command (a real
@@ -220,11 +294,49 @@ export interface HybridChatHarness extends ChatFlowHarness {
 
   /** Insert a new chat row (same app by default) and return its id. */
   createChat: (appId?: number) => Promise<number>;
+
+  github: {
+    pushEvents: () => Promise<unknown>;
+    clearPushEvents: () => Promise<void>;
+    resetRepos: () => Promise<void>;
+  };
 }
 
 /** Bridge sentEvents store `{ channel, args }`; the payload is `args[0]`. */
 function eventPayload(e: { args: unknown[] }): unknown {
   return e.args[0];
+}
+
+const HYBRID_EXTRA_ENV_KEYS = [
+  "DYAD_SKIP_MANAGED_PNPM_INSTALL",
+  "E2E_TEST_BUILD",
+  "FAKE_LLM_PORT",
+] as const;
+
+function snapshotHybridEnv(): Map<string, string | undefined> {
+  return new Map(HYBRID_EXTRA_ENV_KEYS.map((key) => [key, process.env[key]]));
+}
+
+function restoreHybridEnv(snapshot: Map<string, string | undefined>): void {
+  for (const [key, value] of snapshot) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+function encodeSearch(search: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(search)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    params.set(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 function HybridAppEventWiring({
@@ -253,6 +365,8 @@ function HybridAppEventWiring({
 // logic.
 function HybridAppShellHooks() {
   useQueueProcessor();
+  usePlanEvents();
+  useAppBlueprintEvents();
   return null;
 }
 
@@ -264,19 +378,11 @@ export async function setupHybridChatHarness(
   }
   activeHybridChatHarness = true;
 
-  // Prevent the UI's `nodejs-status` query from kicking off the real
-  // `npm install pnpm` background side effect (gated in node_handlers.ts).
-  // Snapshot the prior value so dispose can restore it instead of leaking it
-  // to everything else in this worker process.
-  const priorSkipPnpmInstall = process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL;
-  const restoreSkipPnpmInstall = () => {
-    if (priorSkipPnpmInstall === undefined) {
-      delete process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL;
-    } else {
-      process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = priorSkipPnpmInstall;
-    }
-  };
+  const envSnapshot = snapshotHybridEnv();
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
+  if (options.testBuild) {
+    process.env.E2E_TEST_BUILD = "true";
+  }
   setModelClientFetchForTesting(
     undiciFetch as unknown as Parameters<
       typeof setModelClientFetchForTesting
@@ -294,6 +400,10 @@ export async function setupHybridChatHarness(
       registerChatStreamHandlers: false,
     });
     const nodeHarness = node;
+
+    if (options.testBuild) {
+      process.env.FAKE_LLM_PORT = String(nodeHarness.fakeLlmPort);
+    }
 
     // Register every handler the UI invokes (the node harness only registers
     // chat_stream). Same code path as main.ts. Imported dynamically (after the
@@ -332,21 +442,39 @@ export async function setupHybridChatHarness(
       return activeStore;
     };
 
-    const mount = (opts: MountOptions = {}): RenderResult => {
+    let activeRouter: HybridRouter | undefined;
+
+    const getActiveRouter = (): HybridRouter => {
+      if (!activeRouter) {
+        throw new Error(
+          "setupHybridChatHarness.mountSurface() must be called before reading the router",
+        );
+      }
+      return activeRouter;
+    };
+
+    const mountSurface = (opts: MountSurfaceOptions = {}): RenderResult => {
       const chatId = opts.chatId ?? nodeHarness.chatId;
       const appId = opts.appId ?? nodeHarness.appId;
+      const route = opts.route ?? "/chat";
       const store = createStore();
       activeStore = store;
 
       store.set(selectedAppIdAtom, appId);
-      store.set(selectedChatIdAtom, chatId);
+      store.set(selectedChatIdAtom, route === "/chat" ? chatId : null);
 
-      // A private route tree: useStreamChat/ChatInput call useSearch({from:"/chat"}),
-      // so a real "/chat" route is required. It imports the REAL search schema from
-      // src/routes/chat.tsx (chatSearchSchema) so this replica can't drift from
-      // production. It renders ChatPanel directly — mounting the real ChatPage would
-      // drag in PreviewPanel (Monaco, iframe runtime).
-      const rootRoute = createRootRoute({ component: Outlet });
+      const RootComponent = () => (
+        <div data-testid="hybrid-surface-root">
+          {opts.wireAppEvents !== false && <HybridAppShellHooks />}
+          {opts.withTitleBar && <TitleBar />}
+          <Outlet />
+        </div>
+      );
+
+      // Private route tree: the harness uses the same route paths/search
+      // schemas that route consumers address, but renders narrow route
+      // components so mounting a surface does not pull in the full app shell.
+      const rootRoute = createRootRoute({ component: RootComponent });
       const chatTestRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: "/chat",
@@ -354,20 +482,111 @@ export async function setupHybridChatHarness(
         component: function HybridChatRoute() {
           const search = chatTestRoute.useSearch();
           return (
-            <ChatPanel
-              chatId={search.id}
-              isPreviewOpen={false}
-              onTogglePreview={() => {}}
-            />
+            <>
+              <ChatPanel
+                chatId={search.id}
+                isPreviewOpen={!!opts.withPlanPanel}
+                onTogglePreview={() => {}}
+              />
+              {opts.withPlanPanel && <PlanPanel />}
+            </>
           );
         },
       });
+      const appDetailsTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/app-details",
+        validateSearch: appDetailsSearchSchema,
+        component: function HybridAppDetailsRoute() {
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyAppDetailsPage />
+            </Suspense>
+          );
+        },
+      });
+      const settingsTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/settings",
+        component: function HybridSettingsRoute() {
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazySettingsPage />
+            </Suspense>
+          );
+        },
+      });
+      const providerSettingsTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/settings/providers/$provider",
+        params: {
+          parse: (params: { provider: string }) => ({
+            provider: params.provider,
+          }),
+        },
+        component: function HybridProviderSettingsRoute() {
+          const params = providerSettingsTestRoute.useParams() as {
+            provider: string;
+          };
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyProviderSettingsPage provider={params.provider} />
+            </Suspense>
+          );
+        },
+      });
+      const mediaTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/library/media",
+        component: function HybridMediaRoute() {
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyMediaPage />
+            </Suspense>
+          );
+        },
+      });
+      const homeLiteRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/",
+        component: function HybridHomeLiteRoute() {
+          return <div data-testid="hybrid-home-lite" />;
+        },
+      });
+
+      const routeTree = rootRoute.addChildren([
+        homeLiteRoute,
+        chatTestRoute,
+        appDetailsTestRoute,
+        settingsTestRoute,
+        providerSettingsTestRoute,
+        mediaTestRoute,
+      ]);
+
+      const search = opts.search ?? {};
+      let initialPath: string;
+      if (route === "/chat") {
+        initialPath = `/chat${encodeSearch({ id: chatId, appId, ...search })}`;
+      } else if (route === "/app-details") {
+        initialPath = `/app-details${encodeSearch({ appId, ...search })}`;
+      } else if (route === "/settings/providers/$provider") {
+        const provider = opts.params?.provider ?? "auto";
+        initialPath = `/settings/providers/${provider}${encodeSearch(search)}`;
+      } else if (route === "/media" || route === "/library/media") {
+        initialPath = `/library/media${encodeSearch(search)}`;
+      } else if (route === "/settings") {
+        initialPath = `/settings${encodeSearch(search)}`;
+      } else {
+        initialPath = `/${encodeSearch(search)}`;
+      }
+
       const router = createRouter({
-        routeTree: rootRoute.addChildren([chatTestRoute]),
+        routeTree,
         history: createMemoryHistory({
-          initialEntries: [`/chat?id=${chatId}&appId=${appId}`],
+          initialEntries: [initialPath],
         }),
       });
+      activeRouter = router as unknown as HybridRouter;
 
       const queryClient = new QueryClient({
         defaultOptions: {
@@ -381,22 +600,33 @@ export async function setupHybridChatHarness(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
             <ThemeProvider>
-              {opts.wireAppEvents !== false && (
-                <>
-                  <HybridAppEventWiring
-                    store={store}
-                    queryClient={queryClient}
-                  />
-                  <HybridAppShellHooks />
-                </>
-              )}
-              <RouterProvider router={router as never} />
-              <Toaster richColors expand duration={500} />
+              <DeepLinkProvider>
+                <SidebarProvider defaultOpen={false}>
+                  {opts.wireAppEvents !== false && (
+                    <HybridAppEventWiring
+                      store={store}
+                      queryClient={queryClient}
+                    />
+                  )}
+                  <RouterProvider router={router as never} />
+                  <Toaster richColors expand duration={500} />
+                </SidebarProvider>
+              </DeepLinkProvider>
             </ThemeProvider>
           </Provider>
         </QueryClientProvider>,
       );
       return result;
+    };
+
+    const mount = (opts: MountOptions = {}): RenderResult =>
+      mountSurface({ ...opts, route: "/chat" });
+
+    const setSelectedAppId = (appId: number | null) => {
+      const store = getActiveStore();
+      act(() => {
+        store.set(selectedAppIdAtom, appId);
+      });
     };
 
     // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
@@ -418,7 +648,9 @@ export async function setupHybridChatHarness(
     ): Promise<TypeInChatResult> => {
       seedChatInput(text, opts);
 
-      const sendButton = await screen.findByLabelText("sendMessage");
+      const sendButton = await screen.findByLabelText(
+        /^(sendMessage|Send message)$/,
+      );
       await waitFor(() => {
         expect((sendButton as HTMLButtonElement).hasAttribute("disabled")).toBe(
           false,
@@ -631,6 +863,37 @@ export async function setupHybridChatHarness(
       return screen.getAllByText(matcher);
     };
 
+    const githubFetch = async (path: string, init?: RequestInit) => {
+      const response = await undiciFetch(`${nodeHarness.fakeLlmUrl}${path}`, {
+        ...init,
+        headers: {
+          Accept: "application/json",
+          ...init?.headers,
+        },
+      } as Parameters<typeof undiciFetch>[1]);
+      if (!response.ok) {
+        throw new Error(
+          `Fake GitHub helper failed ${path}: ${response.status} ${response.statusText}`,
+        );
+      }
+      return response;
+    };
+
+    const github = {
+      pushEvents: async (): Promise<unknown> => {
+        const response = await githubFetch("/github/api/test/push-events");
+        return response.json();
+      },
+      clearPushEvents: async (): Promise<void> => {
+        await githubFetch("/github/api/test/clear-push-events", {
+          method: "POST",
+        });
+      },
+      resetRepos: async (): Promise<void> => {
+        await githubFetch("/github/api/test/reset-repos", { method: "POST" });
+      },
+    };
+
     const dispose = async (): Promise<void> => {
       // Teardown ordering is load-bearing (see HYBRID_HARNESS.md "Race-free
       // teardown"):
@@ -659,6 +922,7 @@ export async function setupHybridChatHarness(
           qc.clear();
         }
         activeStore = undefined;
+        activeRouter = undefined;
         bridge.uninstall();
         await nodeHarness.dispose();
       } catch (error) {
@@ -670,7 +934,7 @@ export async function setupHybridChatHarness(
         }
         activeHybridChatHarness = false;
         setModelClientFetchForTesting(undefined);
-        restoreSkipPnpmInstall();
+        restoreHybridEnv(envSnapshot);
       }
 
       if (settleError) {
@@ -692,6 +956,11 @@ export async function setupHybridChatHarness(
       ...nodeHarness,
       bridge,
       mount,
+      mountSurface,
+      router: getActiveRouter,
+      currentLocation: () => getActiveRouter().state.location,
+      setSelectedAppId,
+      setChatInputValue: seedChatInput,
       typeInChat,
       pressEnterInChat,
       waitForStreamEnd,
@@ -702,12 +971,13 @@ export async function setupHybridChatHarness(
       selectFromBaseUiSelect,
       selectChatMode,
       createChat,
+      github,
       dispose,
     };
   } catch (error) {
     activeHybridChatHarness = false;
     setModelClientFetchForTesting(undefined);
-    restoreSkipPnpmInstall();
+    restoreHybridEnv(envSnapshot);
     if (node) {
       await node.dispose();
     }

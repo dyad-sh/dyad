@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { screen } from "@testing-library/react";
+
 import { setupHybridChatHarness } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 
@@ -13,6 +15,45 @@ type TestWindow = Window &
   };
 
 describe("hybrid chat harness guards", () => {
+  it("mounts non-chat surfaces without pulling preview UI into the DOM", async () => {
+    const surfaceCases = [
+      {
+        route: "/app-details" as const,
+        testId: "app-details-page",
+        withTitleBar: true,
+      },
+      { route: "/settings" as const, text: "Settings" },
+      {
+        route: "/settings/providers/$provider" as const,
+        text: "Configure Dyad",
+      },
+      { route: "/library/media" as const, text: "Media" },
+    ];
+
+    for (const surface of surfaceCases) {
+      const harness = await setupHybridChatHarness({
+        electronMock: h,
+        settings: { isTestMode: true },
+      });
+      try {
+        harness.mountSurface({
+          route: surface.route,
+          withTitleBar: surface.withTitleBar,
+        });
+
+        if (surface.testId) {
+          expect(await screen.findByTestId(surface.testId)).toBeTruthy();
+        } else if (surface.text) {
+          expect(await screen.findByText(surface.text)).toBeTruthy();
+        }
+        expect(screen.queryByTestId("preview-iframe-element")).toBeNull();
+        expect(screen.queryByTestId("file-editor")).toBeNull();
+      } finally {
+        await harness.dispose();
+      }
+    }
+  }, 120_000);
+
   it("fails dispose on missing renderer channels and clears the setup guard", async () => {
     const harness = await setupHybridChatHarness({
       electronMock: h,

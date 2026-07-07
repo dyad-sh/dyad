@@ -1,19 +1,11 @@
 import { expect } from "@playwright/test";
 import { test } from "./helpers/test_helper";
 
-test("default chat mode - pro user defaults and setting change applies to new chat", async ({
+test("default chat mode - settings dropdown change applies to new chat", async ({
   po,
 }) => {
   await po.setUpDyadPro({ localAgent: true, autoApprove: true });
 
-  // Pro users should default to local-agent mode
-  await expect(
-    po.chatActions
-      .getHomeChatInputContainer()
-      .getByTestId("chat-mode-selector"),
-  ).toHaveText("Agent");
-
-  // Change default chat mode to "Build" in settings
   await po.navigation.goToSettingsTab();
   const beforeSettings = po.settings.recordSettings();
   await po.page.getByLabel("Default Chat Mode").click();
@@ -29,15 +21,4 @@ test("default chat mode - pro user defaults and setting change applies to new ch
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
     "Build",
   );
-});
-
-test("default chat mode - non-pro user defaults to build", async ({ po }) => {
-  await po.setUp();
-
-  // Non-pro users should default to build mode
-  await expect(
-    po.chatActions
-      .getHomeChatInputContainer()
-      .getByTestId("chat-mode-selector"),
-  ).toHaveText("Build");
 });

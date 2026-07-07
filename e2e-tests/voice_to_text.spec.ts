@@ -2,31 +2,6 @@ import { test } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import { Timeout } from "./helpers/constants";
 
-test("voice-to-text button visible for pro users", async ({ po }) => {
-  await po.setUpDyadPro();
-
-  // Navigate to an app to get the ChatInput
-  await po.importApp("minimal");
-
-  // The mic button should be visible (Pro user)
-  const micButton = po.page.getByRole("button", { name: "Voice to text" });
-  await expect(micButton).toBeVisible({ timeout: Timeout.SHORT });
-  await expect(micButton).toBeEnabled();
-});
-
-test("voice-to-text button shows lock for non-pro users", async ({ po }) => {
-  await po.setUp();
-
-  // Navigate to an app to get the ChatInput
-  await po.importApp("minimal");
-
-  // The locked mic button should be visible (non-Pro user)
-  const lockedMicButton = po.page.getByRole("button", {
-    name: "Voice to text (Pro)",
-  });
-  await expect(lockedMicButton).toBeVisible({ timeout: Timeout.SHORT });
-});
-
 test("voice-to-text button shows lock on home page for non-pro users", async ({
   po,
 }) => {

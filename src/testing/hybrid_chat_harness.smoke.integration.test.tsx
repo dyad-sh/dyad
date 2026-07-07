@@ -108,7 +108,9 @@ describe("hybrid chat harness (smoke)", () => {
     first.unmount();
 
     const second = harness.mount();
-    const remountedSendButton = await screen.findByLabelText("sendMessage");
+    const remountedSendButton = await screen.findByLabelText(
+      /^(sendMessage|Send message)$/,
+    );
     await waitFor(() => {
       expect(
         (remountedSendButton as HTMLButtonElement).hasAttribute("disabled"),

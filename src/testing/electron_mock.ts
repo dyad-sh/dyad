@@ -149,7 +149,12 @@ export function createElectronMock(shared: ElectronMockShared) {
     },
     BrowserWindow: {
       getAllWindows: vi.fn(() => []),
-      fromWebContents: vi.fn(() => null),
+      fromWebContents: vi.fn(() => ({
+        isDestroyed: () => false,
+        webContents: {
+          send: vi.fn(),
+        },
+      })),
     },
     safeStorage: {
       isEncryptionAvailable: vi.fn(() => false),

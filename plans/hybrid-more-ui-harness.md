@@ -9,6 +9,10 @@ drive through **the real trigger UI**, keeping the harness's deep assertions
 - **Beyond-ChatPanel (17 specs)** — the trigger UI lives in the title bar,
   settings pages, or connector panels; needs the Phase 0 surface extensions.
 
+Delivery model: land this as one consolidated PR with reviewable sections or
+commits, not a series of small PRs. Each migrated e2e spec is deleted or
+slimmed in the same PR as its replacement integration coverage.
+
 Beyond-ChatPanel flows, grouped by the surface that must become mountable:
 
 | Family                         | Specs                                                                                                                                         | New surface(s)                                                                                              |
@@ -23,9 +27,10 @@ Beyond-ChatPanel flows, grouped by the surface that must become mountable:
 
 These drive surfaces the harness already mounts (chat input, message cards,
 banners, queue header, aux menus). Same migration discipline as everything
-else: one small PR per 1–2 specs, expect-by-expect checklist, delete the e2e
-spec in the same PR. Where a spec has a case outside ChatPanel, the case that
-stays e2e is named here explicitly.
+else: keep the expect-by-expect migration checklist, delete each e2e spec in
+the same consolidated PR as its replacement, and group the work into reviewable
+commits/sections instead of many small PRs. Where a spec has a case outside
+ChatPanel, the case that stays e2e is named here explicitly.
 
 | Spec                           | Drive / assert                                                                                                | Stays e2e                                       |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -42,7 +47,7 @@ stays e2e is named here explicitly.
 | `theme_selection.spec.ts`      | chat-input themes menu, selection + settings persistence                                                      | home-page variant                               |
 | `voice_to_text.spec.ts`        | mic button pro-gating/enabled states in chat input                                                            | real getUserMedia recording case                |
 
-**Deliverables**: 12 integration tests; 7 e2e specs deleted outright, 5
+**Deliverables**: 12 integration tests; 6 e2e specs deleted outright, 6
 slimmed to their named remaining case(s).
 
 ## Phase CP2 — ChatPanel specs needing an extension first (10)
@@ -327,16 +332,26 @@ snapshots of full-app layout, Lexical keystroke fidelity, and the home-page
 
 ## Sequencing
 
-1. **Phase 0** (harness core) — one PR; no spec deletions; all 16 existing
-   hybrid tests + new guard tests green.
-2. **Phase 1** — one PR per 1–2 specs (small, reviewable; deletes each e2e
-   spec in the same PR as its replacement).
-3. **Phase 2** — parallelizable with Phase 1 after 0.1/0.4 land (no
-   `testBuild` dependency except pro-key validation, which needs only the
-   existing `engine: true`).
-4. **Phase 3** — after 0.2; `github` first (proves device flow + fake routes),
+Ship this as **one consolidated PR**, not a series of many small PRs. Keep the
+phases as the internal implementation and review order, with commits/sections
+that make the large diff navigable:
+
+1. **Phase 0** (harness core) first; no spec deletions until the harness guard
+   tests are green and the existing hybrid tests still pass.
+2. **Phase 1** next; delete the title-bar/app-list/dialog e2e specs in the same
+   consolidated PR as their integration replacements.
+3. **Phase 2** can proceed once 0.1/0.4 are in place (no `testBuild`
+   dependency except pro-key validation, which needs only the existing
+   `engine: true`).
+4. **Phase 3** follows 0.2; `github` first (proves device flow + fake routes),
    then `git_collaboration` (reuses it), then neon pair, `media_library`,
    `github-import` last (dialog-direct mount is independent).
+
+Before opening the PR, run the full relevant verification once across the final
+combined diff: existing hybrid tests, new guard tests, and every migrated
+integration spec. The PR description should include the migration checklist
+mapping each removed e2e assertion to its new integration assertion or named
+keep/drop note.
 
 End state: 15 of the 17 specs fully deleted from `e2e-tests/`, 2 slimmed to a
 single named native-dependent test each, and every migrated flow driven

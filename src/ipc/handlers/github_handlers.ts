@@ -62,22 +62,37 @@ export function normalizeGitHubRepoName(repoName: string): string {
 // TODO: Fetch this securely, e.g., from environment variables or a config file
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
 
-// Use test server URLs when in test mode
+function isGitHubTestBuild() {
+  return IS_TEST_BUILD || process.env.E2E_TEST_BUILD === "true";
+}
 
-const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
+function getGitHubTestServerBase() {
+  return `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
+}
 
-const GITHUB_DEVICE_CODE_URL = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/github/login/device/code`
-  : "https://github.com/login/device/code";
-const GITHUB_ACCESS_TOKEN_URL = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/github/login/oauth/access_token`
-  : "https://github.com/login/oauth/access_token";
-const GITHUB_API_BASE = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/github/api`
-  : "https://api.github.com";
-const GITHUB_GIT_BASE = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/github/git`
-  : "https://github.com";
+function getGitHubDeviceCodeUrl() {
+  return isGitHubTestBuild()
+    ? `${getGitHubTestServerBase()}/github/login/device/code`
+    : "https://github.com/login/device/code";
+}
+
+function getGitHubAccessTokenUrl() {
+  return isGitHubTestBuild()
+    ? `${getGitHubTestServerBase()}/github/login/oauth/access_token`
+    : "https://github.com/login/oauth/access_token";
+}
+
+function getGitHubApiBase() {
+  return isGitHubTestBuild()
+    ? `${getGitHubTestServerBase()}/github/api`
+    : "https://api.github.com";
+}
+
+function getGitHubGitBase() {
+  return isGitHubTestBuild()
+    ? `${getGitHubTestServerBase()}/github/git`
+    : "https://github.com";
+}
 
 const GITHUB_SCOPES = "repo,user,workflow"; // Define the scopes needed
 
@@ -107,7 +122,7 @@ export async function getGithubUser(): Promise<GithubUser | null> {
   try {
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) return null;
-    const res = await fetch(`${GITHUB_API_BASE}/user/emails`, {
+    const res = await fetch(`${getGitHubApiBase()}/user/emails`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
@@ -348,7 +363,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
   });
 
   try {
-    const response = await fetch(GITHUB_ACCESS_TOKEN_URL, {
+    const response = await fetch(getGitHubAccessTokenUrl(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -494,7 +509,7 @@ function handleStartGithubFlow(
     message: "Requesting device code from GitHub...",
   });
 
-  fetch(GITHUB_DEVICE_CODE_URL, {
+  fetch(getGitHubDeviceCodeUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -565,7 +580,7 @@ async function handleListGithubRepos(): Promise<
 
     // Fetch user's repositories
     const response = await fetch(
-      `${GITHUB_API_BASE}/user/repos?per_page=100&sort=updated`,
+      `${getGitHubApiBase()}/user/repos?per_page=100&sort=updated`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -609,7 +624,7 @@ async function handleGetRepoBranches(
 
     // Fetch repository branches
     const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${owner}/${repo}/branches`,
+      `${getGitHubApiBase()}/repos/${owner}/${repo}/branches`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -655,13 +670,13 @@ async function handleIsRepoAvailable(
     // If org is empty, use the authenticated user
     const owner =
       org ||
-      (await fetch(`${GITHUB_API_BASE}/user`, {
+      (await fetch(`${getGitHubApiBase()}/user`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
         .then((r) => r.json() as Promise<{ login?: string }>)
         .then((u) => u.login ?? ""));
     // Check if repo exists (using normalized name)
-    const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
+    const url = `${getGitHubApiBase()}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -701,7 +716,7 @@ async function handleCreateRepo(
   // If org is empty, create for the authenticated user
   let owner = org;
   if (!owner) {
-    const userRes = await fetch(`${GITHUB_API_BASE}/user`, {
+    const userRes = await fetch(`${getGitHubApiBase()}/user`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const user = (await userRes.json()) as { login?: string };
@@ -709,8 +724,8 @@ async function handleCreateRepo(
   }
   // Create repo
   const createUrl = org
-    ? `${GITHUB_API_BASE}/orgs/${owner}/repos`
-    : `${GITHUB_API_BASE}/user/repos`;
+    ? `${getGitHubApiBase()}/orgs/${owner}/repos`
+    : `${getGitHubApiBase()}/user/repos`;
   const res = await fetch(createUrl, {
     method: "POST",
     headers: {
@@ -767,7 +782,7 @@ async function handleCreateRepo(
   // Set up remote URL before preparing branch.
   // The URL is stored without credentials; auth is injected per-invocation
   // via environment variables in git_utils.
-  const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`;
+  const remoteUrl = `${getGitHubGitBase()}/${owner}/${normalizedRepo}.git`;
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
@@ -806,7 +821,7 @@ async function handleConnectToExistingRepo(
 
     // Verify the repository exists and user has access
     const repoResponse = await fetch(
-      `${GITHUB_API_BASE}/repos/${owner}/${repo}`,
+      `${getGitHubApiBase()}/repos/${owner}/${repo}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -824,7 +839,7 @@ async function handleConnectToExistingRepo(
 
     // Set up remote URL before preparing branch (credentials are never
     // stored in the URL; auth is injected per-invocation in git_utils)
-    const remoteUrl = `${GITHUB_GIT_BASE}/${owner}/${repo}.git`;
+    const remoteUrl = `${getGitHubGitBase()}/${owner}/${repo}.git`;
 
     // Prepare local branch with remote URL set up
     await prepareLocalBranch({
@@ -877,7 +892,7 @@ async function handlePushToGithub(
   // Set up remote URL (credentials are never stored in the URL; auth is
   // injected per-invocation in git_utils). Re-setting it on every push also
   // scrubs tokens that older versions embedded in .git/config.
-  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
+  const remoteUrl = `${getGitHubGitBase()}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -989,7 +1004,7 @@ async function handleRebaseFromGithub(
 
   // Set up remote URL (credentials are never stored in the URL; auth is
   // injected per-invocation in git_utils)
-  const remoteUrl = `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`;
+  const remoteUrl = `${getGitHubGitBase()}/${app.githubOrg}/${app.githubRepo}.git`;
   // Set or update remote URL using git config
   await gitSetRemoteUrl({
     path: appPath,
@@ -1063,7 +1078,7 @@ async function handleListCollaborators(
     }
 
     const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators`,
+      `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}/collaborators`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -1139,7 +1154,7 @@ async function handleInviteCollaborator(
 
     // GitHub API to add a collaborator (sends an invitation)
     const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(trimmedUsername)}`,
+      `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(trimmedUsername)}`,
       {
         method: "PUT",
         headers: {
@@ -1186,7 +1201,7 @@ async function handleRemoveCollaborator(
     }
 
     const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(username)}`,
+      `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(username)}`,
       {
         method: "DELETE",
         headers: {
@@ -1273,7 +1288,7 @@ async function handleCloneRepoFromUrl(
     const [, owner, repoName] = match;
     if (accessToken) {
       const repoResponse = await fetch(
-        `${GITHUB_API_BASE}/repos/${owner}/${repoName}`,
+        `${getGitHubApiBase()}/repos/${owner}/${repoName}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -1312,7 +1327,7 @@ async function handleCloneRepoFromUrl(
     }
     // Always clone with a credential-free URL; if a token exists it is
     // injected per-invocation in git_utils.
-    const cloneUrl = `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`;
+    const cloneUrl = `${getGitHubGitBase()}/${owner}/${repoName}.git`;
     try {
       await gitClone({
         path: appPath,

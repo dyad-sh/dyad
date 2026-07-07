@@ -2,7 +2,6 @@ import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import path from "node:path";
-import { execFileSync, execSync } from "node:child_process";
 
 const VERSION_INTEGRITY_FILES = [
   ".gitignore",
@@ -16,34 +15,6 @@ const VERSION_INTEGRITY_FILES = [
   "to-be-deleted.txt",
   "to-be-edited.txt",
 ];
-
-async function amendRuntimeWorkspaceIntoCurrentCommit(po: PageObject) {
-  const appPath = await po.appManagement.getCurrentAppPath();
-  if (!appPath) {
-    throw new Error("No app path found");
-  }
-
-  let status = "";
-  for (let i = 0; i < 20; i++) {
-    status = execSync("git status --short -- pnpm-workspace.yaml", {
-      cwd: appPath,
-      encoding: "utf-8",
-    }).trim();
-    if (status) break;
-    await po.page.waitForTimeout(250);
-  }
-  if (!status) {
-    return;
-  }
-
-  await po.appManagement.configureGitUser();
-  execFileSync("git", ["add", "--", "pnpm-workspace.yaml"], {
-    cwd: appPath,
-  });
-  execFileSync("git", ["commit", "--amend", "--no-edit", "--no-gpg-sign"], {
-    cwd: appPath,
-  });
-}
 
 const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
   await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
@@ -73,7 +44,6 @@ const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
   // Move a file
   await po.sendPrompt("tc=version-integrity-move-file");
   await po.snapshotAppFiles({ name: "v3", files: VERSION_INTEGRITY_FILES });
-  await amendRuntimeWorkspaceIntoCurrentCommit(po);
 
   // Open version pane
   await po.page.getByRole("button", { name: "Version 3" }).click();

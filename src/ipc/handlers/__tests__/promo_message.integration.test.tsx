@@ -3,12 +3,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   cleanup,
   fireEvent,
+  render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
+import {
+  pickPromoMessage,
+  PromoMessage,
+  type PromoMessageConfig,
+} from "@/components/chat/PromoMessage";
 import { language_models } from "@/db/schema";
 import type { UserBudgetInfo } from "@/ipc/types";
 import { writeSettings } from "@/main/settings";
@@ -25,12 +31,6 @@ const USER_BUDGET: NonNullable<UserBudgetInfo> = {
   redactedUserId: "****1234",
   isTrial: false,
 };
-
-const URL_CTA_LABELS = [
-  "Star on GitHub",
-  "Join r/dyadbuilders",
-  "Follow @dyad_sh",
-] as const;
 
 async function setContextWindow(
   harness: HybridChatHarness,
@@ -65,6 +65,17 @@ async function sendFixtureTurn(
   const { send } = await harness.typeInChat(fixture, { chatId });
   send();
   await harness.waitForStreamEnd(chatId);
+}
+
+function findPromoSeed(
+  predicate: (message: PromoMessageConfig) => boolean,
+): number {
+  for (let seed = 0; seed < 10_000; seed++) {
+    if (predicate(pickPromoMessage(seed))) {
+      return seed;
+    }
+  }
+  throw new Error("Unable to find a promo seed matching predicate");
 }
 
 describe("promo message (integration)", () => {
@@ -170,57 +181,42 @@ describe("promo message (integration)", () => {
   }, 60_000);
 
   it("opens the trial dialog from a Pro promo CTA", async () => {
-    resetNonProSettings();
-    setBudgetHandler(harness, null);
-    const chatId = await harness.createChat();
-    harness.mount({ chatId });
-
-    await sendFixtureTurn(harness, chatId);
+    const seed = findPromoSeed(
+      (message) => message.target.type === "trial-dialog",
+    );
+    const message = pickPromoMessage(seed);
+    render(<PromoMessage seed={seed} />);
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: /Start Free Trial|Get Dyad Pro|Unlock Dyad Pro/,
+        name: message.cta,
       }),
     );
     expect(await screen.findByText("Unlock Dyad Pro")).toBeTruthy();
   }, 60_000);
 
   it("opens an external URL from a community promo CTA", async () => {
-    resetNonProSettings();
-    setBudgetHandler(harness, null);
-    const chatId = await harness.createChat();
-    harness.mount({ chatId });
+    const seed = findPromoSeed((message) => message.target.type === "url");
+    const message = pickPromoMessage(seed);
+    render(<PromoMessage seed={seed} />);
 
-    let clickedLabel: string | undefined;
-    for (let attempt = 0; attempt < 16 && !clickedLabel; attempt++) {
-      await sendFixtureTurn(harness, chatId);
-      const promo = await screen.findByTestId(
-        "promo-message",
-        {},
-        { timeout: 15_000 },
-      );
-      for (const label of URL_CTA_LABELS) {
-        const button = within(promo).queryByRole("button", { name: label });
-        if (button) {
-          fireEvent.click(button);
-          clickedLabel = label;
-          break;
-        }
-      }
-    }
+    const previousOpenExternalCallCount = harness.bridge.invokeLog.filter(
+      (entry) => entry.channel === "open-external-url",
+    ).length;
+    fireEvent.click(screen.getByRole("button", { name: message.cta }));
 
-    expect(clickedLabel).toBeDefined();
-    let openExternalCall = harness.bridge.invokeLog
-      .filter((entry) => entry.channel === "open-external-url")
-      .at(-1);
+    let openExternalCalls = harness.bridge.invokeLog.filter(
+      (entry) => entry.channel === "open-external-url",
+    );
     await waitFor(() => {
-      openExternalCall = harness.bridge.invokeLog
-        .filter((entry) => entry.channel === "open-external-url")
-        .at(-1);
-      expect(openExternalCall?.status).toBe("fulfilled");
+      openExternalCalls = harness.bridge.invokeLog.filter(
+        (entry) => entry.channel === "open-external-url",
+      );
+      expect(openExternalCalls).toHaveLength(previousOpenExternalCallCount + 1);
+      expect(openExternalCalls.at(-1)?.status).toBe("fulfilled");
     });
-    expect(openExternalCall?.args[0]).toMatch(
-      /^https:\/\/(github\.com\/dyad-sh\/dyad|www\.reddit\.com\/r\/dyadbuilders\/|x\.com\/dyad_sh)/,
+    expect(openExternalCalls.at(-1)?.args[0]).toBe(
+      message.target.type === "url" ? message.target.url : undefined,
     );
   }, 120_000);
 });

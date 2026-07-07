@@ -121,6 +121,11 @@ export function registerSecurityHandlers() {
           .returning();
       } catch (error) {
         await cleanupCreatedChat();
+        if (!isSqliteForeignKeyConstraintError(error)) {
+          throw error;
+        }
+        // If the review chat was cascade-deleted between validation and
+        // insert, surface a user-friendly NotFound instead of a raw FK error.
         const currentReviewChat = await db.query.chats.findFirst({
           where: and(eq(chats.id, reviewChatId), eq(chats.appId, appId)),
           columns: { id: true },
@@ -149,6 +154,14 @@ export function registerSecurityHandlers() {
 
       return { chatId, created: true };
     },
+  );
+}
+
+function isSqliteForeignKeyConstraintError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("FOREIGN KEY constraint failed") ||
+    message.includes("SQLITE_CONSTRAINT_FOREIGNKEY")
   );
 }
 

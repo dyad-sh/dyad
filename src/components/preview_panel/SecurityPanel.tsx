@@ -25,7 +25,7 @@ import type {
   SecurityFinding,
   SecurityReviewResult,
 } from "@/ipc/types/security";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { showSuccess, showWarning, toast } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
@@ -694,6 +694,7 @@ export const SecurityPanel = () => {
     new Set(),
   );
   const [isFixingSelected, setIsFixingSelected] = useState(false);
+  const activeFixStreamChatIdsRef = useRef<Set<number>>(new Set());
 
   const {
     content: fetchedRules,
@@ -789,21 +790,23 @@ export const SecurityPanel = () => {
   const openFixChat = async ({
     findingsToFix,
     setFixing,
+    onFixSettled,
   }: {
     findingsToFix: SecurityFinding[];
     setFixing: (fixing: boolean) => void;
-  }): Promise<boolean> => {
+    onFixSettled?: () => void;
+  }): Promise<"created" | "existing" | null> => {
     if (!selectedAppId) {
       showError("No app selected");
-      return false;
+      return null;
     }
     if (!data) {
       showError("No security review loaded");
-      return false;
+      return null;
     }
     if (findingsToFix.length === 0) {
       showError("No valid issues selected");
-      return false;
+      return null;
     }
 
     setFixing(true);
@@ -821,17 +824,26 @@ export const SecurityPanel = () => {
       selectChat({ chatId, appId: selectedAppId });
 
       const sendFixPrompt = async () => {
+        if (activeFixStreamChatIdsRef.current.has(chatId)) {
+          return;
+        }
         setFixing(true);
+        setIsChatPanelHidden(false);
+        selectChat({ chatId, appId: selectedAppId });
+        activeFixStreamChatIdsRef.current.add(chatId);
         try {
           await streamMessage({
             prompt: buildFixPrompt(findingsToFix),
             chatId,
             appId: selectedAppId,
             onSettled: () => {
+              activeFixStreamChatIdsRef.current.delete(chatId);
               setFixing(false);
+              onFixSettled?.();
             },
           });
         } catch (err) {
+          activeFixStreamChatIdsRef.current.delete(chatId);
           showError(`Failed to run fix: ${err}`);
           setFixing(false);
         }
@@ -852,11 +864,11 @@ export const SecurityPanel = () => {
           },
         });
       }
-      return true;
+      return created ? "created" : "existing";
     } catch (err) {
       showError(`Failed to create fix chat: ${err}`);
       setFixing(false);
-      return false;
+      return null;
     }
   };
 
@@ -922,11 +934,14 @@ export const SecurityPanel = () => {
       return;
     }
 
-    const opened = await openFixChat({
+    const result = await openFixChat({
       findingsToFix,
       setFixing: setIsFixingSelected,
+      onFixSettled: () => {
+        setSelectedFindings(new Set());
+      },
     });
-    if (opened) {
+    if (result === "existing") {
       setSelectedFindings(new Set());
     }
   };

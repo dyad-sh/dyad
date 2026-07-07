@@ -425,14 +425,27 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                 if (renamed.name !== effectiveAppName) {
                   // Persist the suffixed name back into the blueprint so the
                   // blueprint, app row, and agent all agree on the name.
-                  const persisted = await handleFieldEdit(
-                    "appName",
-                    renamed.name,
-                  );
-                  if (!persisted) {
+                  try {
+                    await ipc.appBlueprint.editField({
+                      chatId,
+                      field: "appName",
+                      value: renamed.name,
+                    });
+                    setAppBlueprintState((prev) => {
+                      const nextPlans = new Map(prev.plansByChatId);
+                      const existing = nextPlans.get(chatId);
+                      if (existing) {
+                        nextPlans.set(chatId, {
+                          ...existing,
+                          appName: renamed.name,
+                        });
+                      }
+                      return { ...prev, plansByChatId: nextPlans };
+                    });
+                  } catch (error) {
                     recordApplyError(
                       `The app was renamed to "${renamed.name}" but the blueprint could not be updated to match.`,
-                      undefined,
+                      error,
                     );
                   }
                 }

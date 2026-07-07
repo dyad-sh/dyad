@@ -337,6 +337,31 @@ describe("app naming handlers", () => {
       );
     });
 
+    it("sanitizes the display name before conflict checks and persistence", async () => {
+      seedAppWithFolder("My App", "my-app");
+      const appId = seedAppWithFolder("Other", "other");
+
+      await expect(
+        harness.invokeHandler("rename-app", {
+          appId,
+          appName: " My\u0000 App ",
+          appPath: "other",
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
+
+      const result = await harness.invokeHandler<{
+        name: string;
+        path: string;
+      }>("rename-app", {
+        appId,
+        appName: " Clean\u0000 Name ",
+        appPath: "other",
+      });
+
+      expect(result.name).toBe("Clean Name");
+      expect(getAppRow(appId)?.name).toBe("Clean Name");
+    });
+
     it("rejects path conflicts case-insensitively", async () => {
       seedAppWithFolder("Other", "Taken-Folder");
       const appId = seedAppWithFolder("My App", "my-app");

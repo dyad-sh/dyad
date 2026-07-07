@@ -29,6 +29,12 @@ function shouldPreservePath(name: string): boolean {
   return PRESERVED_TEMPLATE_PATHS.has(name) || name.startsWith(".env");
 }
 
+function pathsEqualCaseInsensitive(left: string, right: string): boolean {
+  return (
+    path.normalize(left).toLowerCase() === path.normalize(right).toLowerCase()
+  );
+}
+
 async function clearAppDirectoryForTemplateSwap(appPath: string) {
   const entries = await fsPromises.readdir(appPath, { withFileTypes: true });
   await Promise.all(
@@ -185,7 +191,7 @@ export function registerTemplateHandlers() {
           appId,
           newName: appRecord.name,
         });
-        if (allocated.newAbsPath !== oldAbsPath) {
+        if (!pathsEqualCaseInsensitive(allocated.newAbsPath, oldAbsPath)) {
           newSlug = allocated.newSlug;
           newAbsPath = allocated.newAbsPath;
           didPathSwap = true;

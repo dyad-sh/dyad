@@ -1,8 +1,11 @@
 import fs from "node:fs";
 
 import { db } from "@/db";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getDyadAppPath } from "@/paths/paths";
 import { appFolderNameWithSuffix } from "@/shared/app_names";
+
+const MAX_COLLISION_SUFFIX_ATTEMPTS = 1000;
 
 /**
  * Resolves a display name to one not taken by another app, appending a
@@ -23,12 +26,16 @@ export async function resolveUniqueAppName(
   if (!takenNames.has(desiredName)) {
     return desiredName;
   }
-  for (let suffix = 2; ; suffix++) {
+  for (let suffix = 2; suffix <= MAX_COLLISION_SUFFIX_ATTEMPTS; suffix++) {
     const candidate = `${desiredName} ${suffix}`;
     if (!takenNames.has(candidate)) {
       return candidate;
     }
   }
+  throw new DyadError(
+    `Could not find an available app name for "${desiredName}" after ${MAX_COLLISION_SUFFIX_ATTEMPTS} attempts.`,
+    DyadErrorKind.Conflict,
+  );
 }
 
 /**
@@ -62,7 +69,7 @@ export async function resolveUniqueFolderName(
     }
   }
 
-  for (let suffix = 1; ; suffix++) {
+  for (let suffix = 1; suffix <= MAX_COLLISION_SUFFIX_ATTEMPTS; suffix++) {
     const candidate = appFolderNameWithSuffix(baseFolderName, suffix);
     const resolvedPath = resolveCandidate(candidate);
     const comparablePath = resolvedPath.toLowerCase();
@@ -74,4 +81,8 @@ export async function resolveUniqueFolderName(
     }
     return candidate;
   }
+  throw new DyadError(
+    `Could not find an available app folder for "${baseFolderName}" after ${MAX_COLLISION_SUFFIX_ATTEMPTS} attempts.`,
+    DyadErrorKind.Conflict,
+  );
 }

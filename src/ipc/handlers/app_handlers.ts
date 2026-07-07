@@ -136,6 +136,27 @@ import { readAppFileForEditor } from "../utils/bounded_text_file";
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
 
+async function renameDirectoryWithCaseHop(fromPath: string, toPath: string) {
+  const tempPath = path.join(
+    path.dirname(fromPath),
+    `.dyad-rename-${path.basename(fromPath)}-${process.pid}-${Date.now()}`,
+  );
+  await fsPromises.rename(fromPath, tempPath);
+  try {
+    await fsPromises.rename(tempPath, toPath);
+  } catch (error) {
+    try {
+      await fsPromises.rename(tempPath, fromPath);
+    } catch (rollbackError) {
+      logger.error(
+        `Failed to restore ${fromPath} after case-hop rename failure:`,
+        rollbackError,
+      );
+    }
+    throw error;
+  }
+}
+
 function sanitizeSnippetText(text: string) {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -1217,7 +1238,7 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.renameApp, async (_, params) => {
     const { appId, autoResolveConflicts } = params;
     return withLock(appId, async () => {
-      let appName = params.appName;
+      let appName = sanitizeAppDisplayName(params.appName);
       let appPath = params.appPath;
       // Check if app exists
       const app = await db.query.apps.findFirst({
@@ -1333,7 +1354,7 @@ export function registerAppHandlers() {
       // Only move files if needed
       if (isCaseOnlyRename) {
         try {
-          await fsPromises.rename(oldAppPath, newAppPath);
+          await renameDirectoryWithCaseHop(oldAppPath, newAppPath);
         } catch (error: any) {
           logger.error(
             `Error renaming app directory from ${oldAppPath} to ${newAppPath}:`,
@@ -1423,7 +1444,7 @@ export function registerAppHandlers() {
         // Attempt to rollback the file move
         if (isCaseOnlyRename) {
           try {
-            await fsPromises.rename(newAppPath, oldAppPath);
+            await renameDirectoryWithCaseHop(newAppPath, oldAppPath);
           } catch (rollbackError) {
             logger.error(
               `Failed to rollback case-only rename during rename error:`,

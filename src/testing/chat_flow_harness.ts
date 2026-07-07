@@ -91,6 +91,11 @@ export interface ChatFlowHarnessOptions {
    * true (matches the e2e setup). Set false to leave the env var untouched.
    */
   useFakeCatalog?: boolean;
+  /**
+   * Point Dyad Engine and Gateway calls at this harness's fake LLM server.
+   * Useful for Pro/local-agent fixtures without import-time env relay setup.
+   */
+  engine?: boolean;
   /** Show the fake-LLM server's per-request logs. Default false (quiet). */
   verboseFakeLlm?: boolean;
 }
@@ -211,6 +216,10 @@ export async function setupChatFlowHarness(
 
     if (options.useFakeCatalog !== false) {
       process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
+    }
+    if (options.engine) {
+      process.env.DYAD_ENGINE_URL = `${fakeLlmUrl}/engine/v1`;
+      process.env.DYAD_GATEWAY_URL = `${fakeLlmUrl}/gateway/v1`;
     }
 
     // 2. Real sqlite db (drizzle migrations) in the temp userData dir.

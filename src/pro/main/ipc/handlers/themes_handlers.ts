@@ -38,6 +38,7 @@ import {
   resolveBuiltinModelAlias,
 } from "@/ipc/shared/remote_language_model_catalog";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
@@ -846,9 +847,6 @@ Modern theme extracted from website for testing.
       // Crawl the website
       logger.log(`Crawling website for theme: ${params.url}`);
 
-      const DYAD_ENGINE_URL =
-        process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
-
       // Create AbortController for timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(
@@ -858,16 +856,19 @@ Modern theme extracted from website for testing.
 
       let crawlResponse: Response;
       try {
-        crawlResponse = await fetch(`${DYAD_ENGINE_URL}/tools/web-crawl`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "X-Dyad-Request-Id": `theme-crawl-${uuidv4()}`,
+        crawlResponse = await fetch(
+          `${getDyadEngineBaseUrl()}/tools/web-crawl`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+              "X-Dyad-Request-Id": `theme-crawl-${uuidv4()}`,
+            },
+            body: JSON.stringify({ url: params.url }),
+            signal: controller.signal,
           },
-          body: JSON.stringify({ url: params.url }),
-          signal: controller.signal,
-        });
+        );
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           throw new Error(

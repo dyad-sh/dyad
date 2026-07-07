@@ -7,18 +7,9 @@
 // the (fake) Dyad Engine /tools/code-search endpoint, and the resulting
 // <dyad-code-search> XML with the relevant files lands in the assistant
 // message — now also asserted as the rendered Code Search tool card in the
-// DOM. code_search requires Dyad Pro, and the engine fetch captures
-// DYAD_ENGINE_URL at module load — hence the vi.hoisted engine server.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const engineServer = await vi.hoisted(async () => {
-  const { startFakeLlmServer } =
-    await import("../../../../testing/fake-llm-server/index");
-  const engineServer = await startFakeLlmServer();
-  process.env.DYAD_ENGINE_URL = `${engineServer.url}/engine/v1`;
-  process.env.DYAD_GATEWAY_URL = `${engineServer.url}/gateway/v1`;
-  return engineServer;
-});
+// DOM. code_search requires Dyad Pro and uses the harness fake server via
+// `engine: true`.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 
@@ -34,6 +25,7 @@ describe("local-agent code_search (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       chatMode: "local-agent",
       settings: {
         isTestMode: true,
@@ -48,7 +40,6 @@ describe("local-agent code_search (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
-    await engineServer.close();
   });
 
   it("searches the codebase via the engine code-search endpoint", async () => {

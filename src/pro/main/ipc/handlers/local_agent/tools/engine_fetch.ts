@@ -6,9 +6,7 @@
 import { readSettings } from "@/main/settings";
 import type { AgentContext } from "./types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-
-export const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 
 export interface EngineFetchOptions extends Omit<RequestInit, "headers"> {
   /** Additional headers to include */
@@ -39,7 +37,7 @@ export async function engineFetch(
 
   const { headers: extraHeaders, ...restOptions } = options;
 
-  return fetch(`${DYAD_ENGINE_URL}${endpoint}`, {
+  return fetch(`${getDyadEngineBaseUrl()}${endpoint}`, {
     ...restOptions,
     headers: {
       "Content-Type": "application/json",

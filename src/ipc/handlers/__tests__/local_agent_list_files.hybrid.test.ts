@@ -13,21 +13,9 @@
 // data-testid="dyad-list-files"), and the same listing is still asserted
 // from the persisted assistant message content, as in the node version.
 //
-// Dyad Pro engine setup: the pro model client captures DYAD_ENGINE_URL at
-// module load, so a dedicated fake-LLM server is started inside vi.hoisted
-// (before any app module is imported) and the env var pointed at it. The
-// harness's own server still serves the catalog and dump endpoints; both are
-// the same in-process express app and share fixture/dump env resolution.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const engineServer = await vi.hoisted(async () => {
-  const { startFakeLlmServer } =
-    await import("../../../../testing/fake-llm-server/index");
-  const engineServer = await startFakeLlmServer();
-  process.env.DYAD_ENGINE_URL = `${engineServer.url}/engine/v1`;
-  process.env.DYAD_GATEWAY_URL = `${engineServer.url}/gateway/v1`;
-  return engineServer;
-});
+// Dyad Pro engine/gateway calls are routed to the harness fake server via
+// `engine: true`.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -49,6 +37,7 @@ describe("local-agent list_files (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       chatMode: "local-agent",
       settings: {
         isTestMode: true,
@@ -61,7 +50,6 @@ describe("local-agent list_files (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
-    await engineServer.close();
   });
 
   it("lists files non-recursively then recursively", async () => {

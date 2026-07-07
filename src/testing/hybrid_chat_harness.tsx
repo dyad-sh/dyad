@@ -23,34 +23,9 @@
  * appearing, an approval control, input clearing, a banner) or about a flow that
  * can only be driven through real UI events. See HYBRID_HARNESS.md.
  *
- * Required test-file preamble (cannot live in this helper — `vi.mock` and the
- * environment pragmas are hoisted per-file):
- *
- *   // @vitest-environment happy-dom
- *   // @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
- *   import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
- *
- *   const h = vi.hoisted(() => {
- *     process.env.NODE_ENV = "development";
- *     return { ipcHandlers: new Map() };
- *   });
- *   vi.mock("electron", async () => {
- *     const { createElectronMock } = await import("@/testing/electron_mock");
- *     return createElectronMock(h);
- *   });
- *   vi.mock("posthog-js/react", () => ({ usePostHog: () => ({ capture: vi.fn() }) }));
- *   vi.mock("react-i18next", () => ({
- *     useTranslation: () => ({
- *       t: (key: string, fallback?: unknown) =>
- *         typeof fallback === "string" ? fallback : key,
- *       i18n: { language: "en", changeLanguage: async () => {} },
- *     }),
- *     Trans: ({ children }: { children?: unknown }) => children ?? null,
- *     initReactI18next: { type: "3rdParty", init: () => {} },
- *   }));
- *
- * Parallel safety mirrors the node harness: ONE harness per test file, run under
- * the default forks pool (process-per-file). See CHAT_FLOW_HARNESS.md §6.
+ * Hybrid tests run under the `hybrid` Vitest project, which supplies happy-dom,
+ * the shared electron/posthog/i18n mocks, and the hoisted electron mock handle
+ * exported from `src/testing/hybrid.setup.ts`.
  */
 import {
   act,
@@ -73,6 +48,7 @@ import {
 import { createStore, Provider } from "jotai";
 import React, { useEffect } from "react";
 import { Toaster } from "sonner";
+import { fetch as undiciFetch } from "undici";
 import { expect } from "vitest";
 
 // IMPORTANT: `./chat_flow_harness` must be imported BEFORE `@/components/ChatPanel`.
@@ -93,6 +69,7 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
+import { setModelClientFetchForTesting } from "@/ipc/utils/get_model_client";
 // Import from the dedicated schema module, NOT "@/routes/chat": the route file
 // statically imports ChatPage -> PreviewPanel -> Monaco, which would load into
 // every hybrid test and throw "Canceled" rejections on teardown.
@@ -109,6 +86,9 @@ const SECOND_SETUP_ERROR =
 
 let activeHybridChatHarness = false;
 type JotaiStore = ReturnType<typeof createStore>;
+type HybridBridgeDiagnosticGlobal = typeof globalThis & {
+  __DYAD_HYBRID_BRIDGE__?: RendererIpcBridge;
+};
 
 export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
   /**
@@ -197,6 +177,16 @@ export interface HybridChatHarness extends ChatFlowHarness {
   ) => Promise<RendererEvent>;
 
   /**
+   * Wait until matching rendered text exists and the match count is stable
+   * across two wait ticks. Useful around stream end, where streamed and
+   * persisted renderings can briefly overlap.
+   */
+  waitForRenderedText: (
+    matcher: string | RegExp,
+    timeoutMs?: number,
+  ) => Promise<HTMLElement[]>;
+
+  /**
    * Drive a Base UI `<Select>` (Radix-style) to an option in happy-dom, where a
    * bare click does nothing. Focuses + ArrowDown to open the popup, then
    * pointerDown+pointerUp+click+Enter on the matched option to commit it.
@@ -254,6 +244,11 @@ export async function setupHybridChatHarness(
   // Prevent the UI's `nodejs-status` query from kicking off the real
   // `npm install pnpm` background side effect (gated in node_handlers.ts).
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
+  setModelClientFetchForTesting(
+    undiciFetch as unknown as Parameters<
+      typeof setModelClientFetchForTesting
+    >[0],
+  );
 
   let node: ChatFlowHarness | undefined;
 
@@ -282,6 +277,8 @@ export async function setupHybridChatHarness(
           }
         : undefined,
     });
+    (globalThis as HybridBridgeDiagnosticGlobal).__DYAD_HYBRID_BRIDGE__ =
+      bridge;
 
     let activeStore: JotaiStore | undefined;
     const queryClients: QueryClient[] = [];
@@ -389,19 +386,19 @@ export async function setupHybridChatHarness(
       predicate?: (payload: unknown) => boolean,
       timeoutMs = 20_000,
     ): Promise<RendererEvent> => {
-      let match: { channel: string; args: unknown[] } | undefined;
-      await waitFor(
-        () => {
-          match = bridge.sentEvents.find(
-            (e) =>
-              e.channel === channel &&
-              (!predicate || predicate(eventPayload(e))),
-          );
-          expect(match).toBeTruthy();
-        },
-        { timeout: timeoutMs },
+      const existing = bridge.sentEvents.find(
+        (e) =>
+          e.channel === channel && (!predicate || predicate(eventPayload(e))),
       );
-      return { channel, payload: eventPayload(match!) };
+      if (existing) {
+        return { channel, payload: eventPayload(existing) };
+      }
+      const event = await bridge.once(
+        channel,
+        (e) => !predicate || predicate(eventPayload(e)),
+        timeoutMs,
+      );
+      return { channel, payload: eventPayload(event) };
     };
 
     // Predicate that keeps only chat:response:end events for a given chatId (or
@@ -440,18 +437,22 @@ export async function setupHybridChatHarness(
       // stale end from a prior turn can't satisfy the wait; resolve on the first
       // matching end past the baseline.
       const baseline = matchingStreamEnds(chatId).length;
-      let found: { channel: string; args: unknown[] } | undefined;
-      return waitFor(
-        () => {
-          const matches = matchingStreamEnds(chatId);
-          expect(matches.length).toBeGreaterThan(baseline);
-          found = matches[matches.length - 1];
-        },
-        { timeout: timeoutMs },
-      ).then(() => ({
-        channel: "chat:response:end",
-        payload: eventPayload(found!),
-      }));
+      return bridge
+        .once(
+          "chat:response:end",
+          (event) => {
+            const predicate = streamEndPredicate(chatId);
+            return (
+              (!predicate || predicate(eventPayload(event))) &&
+              matchingStreamEnds(chatId).length > baseline
+            );
+          },
+          timeoutMs,
+        )
+        .then((event) => ({
+          channel: "chat:response:end",
+          payload: eventPayload(event),
+        }));
     };
 
     const selectFromBaseUiSelect = async (
@@ -498,6 +499,29 @@ export async function setupHybridChatHarness(
       return row.id;
     };
 
+    const waitForRenderedText = async (
+      matcher: string | RegExp,
+      timeoutMs = 20_000,
+    ): Promise<HTMLElement[]> => {
+      let previousCount = -1;
+      let stableTicks = 0;
+      await waitFor(
+        () => {
+          const matches = screen.queryAllByText(matcher);
+          expect(matches.length).toBeGreaterThan(0);
+          if (matches.length === previousCount) {
+            stableTicks += 1;
+          } else {
+            previousCount = matches.length;
+            stableTicks = 0;
+          }
+          expect(stableTicks).toBeGreaterThan(0);
+        },
+        { timeout: timeoutMs },
+      );
+      return screen.getAllByText(matcher);
+    };
+
     const dispose = async (): Promise<void> => {
       // Teardown ordering is load-bearing (see HYBRID_HARNESS.md "Race-free
       // teardown"):
@@ -523,7 +547,12 @@ export async function setupHybridChatHarness(
       } catch (error) {
         teardownError = error;
       } finally {
+        const diagnosticGlobal = globalThis as HybridBridgeDiagnosticGlobal;
+        if (diagnosticGlobal.__DYAD_HYBRID_BRIDGE__ === bridge) {
+          delete diagnosticGlobal.__DYAD_HYBRID_BRIDGE__;
+        }
         activeHybridChatHarness = false;
+        setModelClientFetchForTesting(undefined);
       }
 
       if (teardownError) {
@@ -547,6 +576,7 @@ export async function setupHybridChatHarness(
       waitForNextStreamEnd,
       eventCount,
       waitForEvent,
+      waitForRenderedText,
       selectFromBaseUiSelect,
       selectChatMode,
       createChat,
@@ -554,6 +584,7 @@ export async function setupHybridChatHarness(
     };
   } catch (error) {
     activeHybridChatHarness = false;
+    setModelClientFetchForTesting(undefined);
     if (node) {
       await node.dispose();
     }

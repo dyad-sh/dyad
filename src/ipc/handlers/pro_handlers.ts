@@ -9,6 +9,7 @@ import { z } from "zod";
 import { audioContracts } from "../types/audio";
 import type { TranscribeAudioParams } from "../types/audio";
 import { transcribeWithDyadEngine } from "../utils/llm_engine_provider";
+import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
 
 export const UserInfoResponseSchema = z.object({
   usedCredits: z.number(),
@@ -22,8 +23,6 @@ export type UserInfoResponse = z.infer<typeof UserInfoResponseSchema>;
 const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
 const typedHandle = createLoggedTypedHandler(logger);
-
-const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
 export function registerProHandlers() {
   // This method should try to avoid throwing errors because this is auxiliary
@@ -122,7 +121,7 @@ export function registerProHandlers() {
         input.requestId,
         {
           apiKey,
-          baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+          baseURL: getDyadEngineBaseUrl(),
           dyadOptions: {},
           settings,
         },

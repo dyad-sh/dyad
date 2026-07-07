@@ -8,11 +8,9 @@
 // renders the "Cancelled" indicator in the message list, and a follow-up
 // request KEEPS the cancelled turn in the context sent to the LLM.
 //
-// The node version invoked the chat:cancel handler directly and asserted its
-// {ok: true, value: true} envelope; here the real Cancel click consumes that
-// envelope (ipc.chat.cancelStream unwraps it and would throw on error), and
-// the renderer-observable outcome — the chat:response:end event with
-// wasCancelled: true for this chat — is asserted instead, exactly as before.
+// The real Cancel click consumes the chat:cancel result, but the bridge keeps
+// the raw invoke envelope so this test can assert both the handler result and
+// the renderer-observable cancelled end event.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -85,6 +83,13 @@ describe("cancelled message (integration)", () => {
       chatId: harness.chatId,
       wasCancelled: true,
     });
+    await waitFor(() =>
+      expect(harness.bridge.lastInvoke("chat:cancel")).toMatchObject({
+        channel: "chat:cancel",
+        status: "fulfilled",
+        result: { ok: true, value: true },
+      }),
+    );
 
     // The "Cancelled" indicator renders (on both the cancelled prompt and the
     // cancelled assistant message — same as the real UI).

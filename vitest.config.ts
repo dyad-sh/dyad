@@ -35,7 +35,7 @@ export default defineConfig({
           name: "unit",
           environment: "happy-dom",
           include: ["src/**/*.{test,spec}.{ts,tsx}"],
-          exclude: [...configDefaults.exclude, "src/**/*.hybrid.test.ts"],
+          exclude: [...configDefaults.exclude, "src/**/*.hybrid.test.{ts,tsx}"],
         },
       },
       {
@@ -52,7 +52,7 @@ export default defineConfig({
               },
             },
           },
-          include: ["src/**/*.hybrid.test.ts"],
+          include: ["src/**/*.hybrid.test.{ts,tsx}"],
           setupFiles: ["src/testing/hybrid.setup.ts"],
           pool: "forks",
         },

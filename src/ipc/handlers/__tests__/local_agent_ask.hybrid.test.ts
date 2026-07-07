@@ -7,22 +7,12 @@
 // (execute_sandbox_script) that reads src/App.tsx; the completed <dyad-script>
 // card renders in the DOM (data-testid="dyad-script-card") and the XML lands
 // in the assistant message. Part 2: a fresh chat sends [dump] and the request
-// payload must contain ONLY the read-only toolset (body payload assertions —
-// header assertions would NOT survive happy-dom and are not made here).
+// payload must contain ONLY the read-only toolset and preserve the engine auth
+// header through the hybrid harness's Node fetch seam.
 //
-// Dyad Pro engine setup: the pro model client captures DYAD_ENGINE_URL at
-// module load, so a dedicated fake-LLM server is started inside vi.hoisted
-// (before any app module is imported) and the env var pointed at it.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const engineServer = await vi.hoisted(async () => {
-  const { startFakeLlmServer } =
-    await import("../../../../testing/fake-llm-server/index");
-  const engineServer = await startFakeLlmServer();
-  process.env.DYAD_ENGINE_URL = `${engineServer.url}/engine/v1`;
-  process.env.DYAD_GATEWAY_URL = `${engineServer.url}/gateway/v1`;
-  return engineServer;
-});
+// Dyad Pro engine/gateway calls are routed to the harness fake server via
+// `engine: true`.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 
@@ -40,6 +30,7 @@ describe("local-agent ask mode (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       chatMode: "ask",
       settings: {
         isTestMode: true,
@@ -52,7 +43,6 @@ describe("local-agent ask mode (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
-    await engineServer.close();
   });
 
   it("runs read-only tools (sandbox read of App.tsx)", async () => {
@@ -174,6 +164,7 @@ describe("local-agent ask mode (integration)", () => {
     ).toHaveLength(0);
 
     const req = harness.getServerDump({ type: "request" });
+    expect(req.parsed.headers.authorization).toBe("Bearer testdyadkey");
     expect(req.parsed.body.model).toBe("[[MODEL]]");
 
     const tools = (req.parsed.body.tools ?? []) as Array<{

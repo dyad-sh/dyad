@@ -7,10 +7,9 @@
 // and calls the real revert-version IPC — then asserts files, git log, db
 // messages, and the message list DOM shrinking.
 //
-// The node version's `result === {successMessage: "Restored version"}` assert
-// on the revert-version return is consumed by the real UI (the mutation would
-// surface an error otherwise); the observable outcomes — the revert commit in
-// the git log, restored files, and deleted messages — are all still asserted.
+// The harness mounts the real Toaster, so the UI-visible
+// "Restored version" success toast is asserted alongside the revert commit,
+// restored files, and deleted messages.
 //
 // Covers all three e2e tests:
 //   - "undo" (isomorphic git)
@@ -103,6 +102,9 @@ describe("undo (integration)", () => {
     // First undo: back to the write-index version; the undone turn's messages
     // are deleted (from the db AND from the rendered messages list).
     await clickUndo();
+    await waitFor(() =>
+      expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
+    );
     await waitFor(
       () => expect(screen.queryByText("tc=write-index-2")).toBeNull(),
       { timeout: 15_000 },
@@ -122,6 +124,9 @@ describe("undo (integration)", () => {
     // scaffold's "Welcome to Your Blank App" page; in the minimal fixture the
     // page written by the LLM simply doesn't exist initially).
     await clickUndo();
+    await waitFor(() =>
+      expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
+    );
     await waitFor(
       () => expect(screen.queryByText("tc=write-index")).toBeNull(),
       { timeout: 15_000 },
@@ -195,6 +200,9 @@ describe("undo (integration)", () => {
 
     // Undo should work even though the first assistant had no commit.
     await clickUndo();
+    await waitFor(() =>
+      expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
+    );
     await waitFor(
       () => expect(screen.queryByText("tc=write-index")).toBeNull(),
       { timeout: 15_000 },

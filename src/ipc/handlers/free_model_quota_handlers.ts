@@ -6,9 +6,9 @@ import { freeModelQuotaContracts } from "../types/free_model_quota";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { isDyadProEnabled } from "@/lib/schemas";
+import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
 
 const logger = log.scope("free_model_quota_handlers");
-const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
 const EngineFreeQuotaResponseSchema = z.object({
   used: z.number(),
@@ -35,10 +35,7 @@ export async function getFreeModelQuotaStatus() {
     );
   }
 
-  const baseURL = (dyadEngineUrl ?? "https://engine.dyad.sh/v1").replace(
-    /\/$/,
-    "",
-  );
+  const baseURL = getDyadEngineBaseUrl().replace(/\/$/, "");
   let response: Awaited<ReturnType<typeof fetch>>;
   try {
     response = await fetch(`${baseURL}/free/quota`, {

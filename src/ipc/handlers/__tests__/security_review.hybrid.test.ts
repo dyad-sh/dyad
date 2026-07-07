@@ -21,16 +21,7 @@
 // UI-only assertions from the e2e spec that live outside the chat panel
 // (findings-table aria snapshot, chat tab counts, checkbox multi-select
 // interactions in SecurityPanel) are intentionally dropped.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-// The review markdown contains code spans, which render through
-// CodeHighlight -> useTheme. The harness mounts <ChatPanel> without the app's
-// ThemeProvider (renderer.tsx provides it in production), so supply a minimal
-// theme context here.
-vi.mock("@/contexts/ThemeContext", () => ({
-  ThemeProvider: ({ children }: { children?: unknown }) => children ?? null,
-  useTheme: () => ({ theme: "light", isDarkMode: false, setTheme: () => {} }),
-}));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";

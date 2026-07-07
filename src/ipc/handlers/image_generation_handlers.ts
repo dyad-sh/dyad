@@ -16,14 +16,12 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
 
 const logger = log.scope("image_generation_handlers");
 
 // Track active generation controllers so they can be cancelled from the renderer
 const activeControllers = new Map<string, AbortController>();
-
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
 const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -74,7 +72,7 @@ export function registerImageGenerationHandlers() {
 
       let response: Response;
       try {
-        response = await fetch(`${DYAD_ENGINE_URL}/images/generations`, {
+        response = await fetch(`${getDyadEngineBaseUrl()}/images/generations`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

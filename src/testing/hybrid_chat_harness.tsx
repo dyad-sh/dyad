@@ -118,6 +118,11 @@ const LazyProviderSettingsPage = lazy(() =>
     default: module.ProviderSettingsPage,
   })),
 );
+const LazyImportAppDialog = lazy(() =>
+  import("@/components/ImportAppDialog").then((module) => ({
+    default: module.ImportAppDialog,
+  })),
+);
 const LazyDatabaseSection = lazy(() =>
   import("@/components/preview_panel/DatabaseSection").then((module) => ({
     default: module.DatabaseSection,
@@ -152,6 +157,7 @@ export type HybridSurfaceRoute =
   | "/chat"
   | "/app-details"
   | "/database"
+  | "/import-app"
   | "/settings"
   | "/settings/providers/$provider"
   | "/library/media"
@@ -593,6 +599,22 @@ export async function setupHybridChatHarness(
           );
         },
       });
+      const importAppTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/import-app",
+        component: function HybridImportAppRoute() {
+          const [open, setOpen] = React.useState(true);
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyImportAppDialog
+                isOpen={open}
+                onClose={() => setOpen(false)}
+              />
+              {!open && <div data-testid="import-app-dialog-closed" />}
+            </Suspense>
+          );
+        },
+      });
       const homeLiteRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: "/",
@@ -609,6 +631,7 @@ export async function setupHybridChatHarness(
         settingsTestRoute,
         providerSettingsTestRoute,
         mediaTestRoute,
+        importAppTestRoute,
       ]);
 
       const search = opts.search ?? {};
@@ -624,6 +647,8 @@ export async function setupHybridChatHarness(
         initialPath = `/settings/providers/${provider}${encodeSearch(search)}`;
       } else if (route === "/media" || route === "/library/media") {
         initialPath = `/library/media${encodeSearch(search)}`;
+      } else if (route === "/import-app") {
+        initialPath = `/import-app${encodeSearch(search)}`;
       } else if (route === "/settings") {
         initialPath = `/settings${encodeSearch(search)}`;
       } else {

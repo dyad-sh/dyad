@@ -24,7 +24,6 @@ jobs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
       should_run_schema_diff_tests: ${{ steps.check.outputs.should_run_schema_diff_tests }}
       should_run_schema_classifier_tests: ${{ steps.check.outputs.should_run_schema_classifier_tests }}
-      build_os: ${{ steps.matrix.outputs.build_os }}
       e2e_os: ${{ steps.matrix.outputs.e2e_os }}
       e2e_shard: ${{ steps.matrix.outputs.e2e_shard }}
       e2e_shard_total: ${{ steps.matrix.outputs.e2e_shard_total }}
@@ -120,35 +119,43 @@ jobs:
               ;;
           esac
 
-      # Sets the dynamic matrix for the build and e2e-tests jobs based on the PR author.
+      # Sets the dynamic matrix for the build-e2e-artifacts and e2e-tests jobs based on the PR author.
       # The "image" field is a JSON-encoded array string so that fromJSON() in runs-on
       # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
       #
       # Privileged authors (wwwillchen, keppo-bot/keppo-bot[bot], dyad-assistant, azizmejri1, ryangroch):
-      #   - Self-hosted macOS ARM64 runners, no Windows, 4 shards.
+      #   - Build E2E artifact on self-hosted macOS ARM64.
+      #   - E2E on self-hosted macOS ARM64, 4 shards.
+      #   - Unit tests on GitHub-hosted macOS + Windows.
       #
-      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shards 1-4) ──> merge-reports
+      #   build-e2e-artifacts (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shards 1-4) ──> merge-reports
+      #   unit-tests-macos (macOS GitHub-hosted)
+      #   unit-tests-windows (Windows GitHub-hosted)
       #
       # All other authors:
-      #   - GitHub-hosted runners for macOS + Windows, 4 shards each.
+      #   - Build E2E artifacts and run E2E on GitHub-hosted macOS + Windows, 4 shards each.
+      #   - Unit tests on GitHub-hosted macOS + Windows.
       #
-      #   build (macOS) ──┐
-      #   build (Windows) ┼──> e2e-tests (macOS shards 1-4)    ──┐
-      #                   │    e2e-tests (Windows shards 1-4)  ──┼──> merge-reports
-      #                   └──────────────────────────────────────┘
+      #   build-e2e-artifacts (macOS)   ──> e2e-tests (macOS shards 1-4)    ──┐
+      #   build-e2e-artifacts (Windows) ──> e2e-tests (Windows shards 1-4)  ──┼──> merge-reports
+      #                                                                       ┘
+      #   unit-tests-macos (macOS GitHub-hosted)
+      #   unit-tests-windows (Windows GitHub-hosted)
       - name: Set CI matrix
         id: matrix
         run: |
           if [ "${{ steps.author-check.outputs.is_privileged }}" = "true" ]; then
-            echo 'build_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
+            {
+              echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]'
+              echo 'e2e_shard=[1,2,3,4]'
+              echo 'e2e_shard_total=[4]'
+            } >> "$GITHUB_OUTPUT"
           else
-            echo 'build_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
+            {
+              echo 'e2e_os=[{"name":"windows","image":"[\"windows-2022\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]'
+              echo 'e2e_shard=[1,2,3,4]'
+              echo 'e2e_shard_total=[4]'
+            } >> "$GITHUB_OUTPUT"
           fi
 
   ts-pg-schema-diff-tests:
@@ -228,7 +235,7 @@ jobs:
       - name: Unit tests
         run: npm --prefix packages/pg-schema-classifier test
 
-  build:
+  build-e2e-artifacts:
     needs: [check-changes]
     if: needs.check-changes.outputs.should_run_tests == 'true'
     # Why Mac and Windows?
@@ -238,7 +245,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.check-changes.outputs.build_os) }}
+        os: ${{ fromJSON(needs.check-changes.outputs.e2e_os) }}
     runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
@@ -259,24 +266,8 @@ jobs:
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Presubmit check (e.g. lint, format)
-        # do not run this on Windows (it fails and not necessary)
-        if: contains(matrix.os.name, 'macos')
-        run: npm run presubmit
-      # Must run before type-checking and unit tests: the vitest integration
-      # harness imports the fake-llm-server in-process, so its own
-      # node_modules (express 4 + @types) must be installed for both tsc and
-      # vitest to resolve the right packages.
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -
-      - name: Type-checking
-        # do not run this on windows (it's redundant)
-        if: contains(matrix.os.name, 'macos')
-        run: npm run ts
-      - name: Unit tests
-        # do not run this on windows (it's redundant)
-        if: contains(matrix.os.name, 'macos')
-        run: npm run test
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -310,8 +301,72 @@ jobs:
         if: always() && contains(matrix.os.image, 'self-hosted')
         run: bash scripts/ci-cleanup-macos.sh
 
+  unit-tests-macos:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_tests == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Presubmit check (e.g. lint, format)
+        run: npm run presubmit
+      # Must run before type-checking and unit tests: the vitest integration
+      # harness imports the fake-llm-server in-process, so its own
+      # node_modules (express 4 + @types) must be installed for both tsc and
+      # vitest to resolve the right packages.
+      - name: Prep test server
+        run: cd testing/fake-llm-server && npm install && npm run build && cd -
+      - name: Type-checking
+        run: npm run ts
+      - name: Unit tests
+        run: npm run test
+
+  unit-tests-windows:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_tests == 'true'
+    runs-on: windows-2022
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prep test server
+        run: cd testing/fake-llm-server && npm install && npm run build && cd -
+      - name: Unit tests
+        run: npm run test
+
   e2e-tests:
-    needs: [check-changes, build]
+    needs: [check-changes, build-e2e-artifacts]
     strategy:
       fail-fast: false
       matrix:

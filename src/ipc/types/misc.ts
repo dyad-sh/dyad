@@ -273,6 +273,8 @@ export const SessionDebugBundleSchema = z.object({
   codebase: z.string(),
   /** Application logs (last 1000 lines) */
   logs: z.string(),
+  /** Auto-updater failure details (last in-process error + Squirrel log tail on Windows). Null if none. */
+  updaterLogs: z.string().nullable(),
 });
 
 export type SessionDebugBundle = z.infer<typeof SessionDebugBundleSchema>;

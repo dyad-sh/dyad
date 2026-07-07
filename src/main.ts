@@ -1,5 +1,6 @@
 import {
   app,
+  autoUpdater,
   BrowserWindow,
   dialog,
   Menu,
@@ -31,6 +32,7 @@ import {
   clearRendererCrashRecord,
   setInitialLoadIsFirstSession,
 } from "./main/settings";
+import { recordUpdaterError } from "./main/updater_state";
 import { sendTelemetryEvent } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
@@ -546,6 +548,13 @@ export async function onReady() {
     const postfix = settings.releaseChannel === "beta" ? "beta" : "stable";
     const host = `https://api.dyad.sh/v1/update/${postfix}`;
     logger.info("Auto-update release channel=", postfix);
+    // update-electron-app logs updater errors at info level, which the
+    // warn-filtered bug-report logs drop — leaving only the orphaned stack
+    // trace tail. Log at error level and record for debug bundles.
+    autoUpdater.on("error", (error) => {
+      logger.error("Auto-updater error:", error);
+      recordUpdaterError(error);
+    });
     updateElectronApp({
       logger,
       updateInterval: "60 minutes",

@@ -106,10 +106,19 @@ function formatSystemInfoSection(
 }
 
 function formatLogsSection(debugInfo: SystemDebugInfo): string {
+  // Keep the updater section small: the issue body travels in the GitHub URL.
+  const updaterSection = debugInfo.updaterLogs
+    ? `
+
+## Auto-Updater Logs
+\`\`\`
+${debugInfo.updaterLogs.slice(-1_200)}
+\`\`\``
+    : "";
   return `## Logs
 \`\`\`
 ${debugInfo.logs.slice(-3_500) || "No logs available"}
-\`\`\``;
+\`\`\`${updaterSection}`;
 }
 
 function openGitHubIssue(params: {

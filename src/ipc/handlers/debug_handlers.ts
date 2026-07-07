@@ -30,6 +30,40 @@ import {
   getPackageManagerCommandEnv,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "@/ipc/utils/socket_firewall";
+import { getLastUpdaterError } from "../../main/updater_state";
+
+/**
+ * Collects auto-updater failure details: the last updater error seen this
+ * session, plus (on Windows) the tail of Squirrel's own log files, which
+ * persist the full .NET exception chain across app restarts.
+ */
+function readUpdaterLogs(): string | null {
+  const sections: string[] = [];
+
+  const lastError = getLastUpdaterError();
+  if (lastError) {
+    sections.push(`Last updater error (this session):\n${lastError}`);
+  }
+
+  if (process.platform === "win32") {
+    try {
+      // Squirrel's Update.exe lives one level above the app-x.y.z directory
+      // and writes SquirrelSetup.log (and friends) next to itself.
+      const squirrelDir = path.resolve(path.dirname(process.execPath), "..");
+      const squirrelLogs = fs
+        .readdirSync(squirrelDir)
+        .filter((f) => f.startsWith("Squirrel") && f.endsWith(".log"));
+      for (const file of squirrelLogs) {
+        const content = fs.readFileSync(path.join(squirrelDir, file), "utf8");
+        sections.push(`${file} (tail):\n${content.slice(-4_000)}`);
+      }
+    } catch (err) {
+      sections.push(`Error reading Squirrel logs: ${err}`);
+    }
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
 
 // Shared function to get system debug info
 async function getSystemDebugInfo({
@@ -132,6 +166,7 @@ async function getSystemDebugInfo({
     platform: process.platform,
     architecture: arch(),
     logs,
+    updaterLogs: readUpdaterLogs(),
   };
 }
 
@@ -454,6 +489,7 @@ export function registerDebugHandlers() {
 
         codebase,
         logs,
+        updaterLogs: readUpdaterLogs(),
       };
 
       return bundle;

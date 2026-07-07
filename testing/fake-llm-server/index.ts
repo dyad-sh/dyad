@@ -246,6 +246,22 @@ export function createFakeLlmApp(getPort: () => number) {
       );
   });
 
+  // Fake api.dyad.sh user info (Dyad Pro budget). Tests point
+  // DYAD_USER_INFO_URL here so get-user-budget never hits the real API.
+  app.get("/api/user/info", (req, res) => {
+    if (!req.headers.authorization?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    res.json({
+      usedCredits: 100,
+      totalCredits: 1000,
+      budgetResetDate: "2099-01-01T00:00:00.000Z",
+      userId: "user_fake1234",
+      isTrial: false,
+    });
+  });
+
   app.get("/api/language-model-catalog", (req, res) => {
     res.json({
       version: "e2e-test-catalog-v1",
@@ -597,6 +613,20 @@ export function createFakeLlmApp(getPort: () => number) {
 
   // GitHub Git endpoints - intercept all paths with /github/git prefix
   app.all("/github/git/*", handleGitPush);
+
+  // Dyad Engine free-model quota endpoint (free_model_quota_handlers).
+  app.get("/engine/v1/free/quota", (req, res) => {
+    if (!req.headers.authorization?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    res.json({
+      used: 5,
+      limit: 25,
+      remaining: 20,
+      resetAt: "2099-01-01T00:00:00.000Z",
+    });
+  });
 
   // Dyad Engine code-search endpoint for code_search tool
   app.post("/engine/v1/tools/code-search", (req, res) => {

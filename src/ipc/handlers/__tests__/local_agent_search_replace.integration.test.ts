@@ -25,6 +25,7 @@ describe("local agent search_replace (hybrid)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       chatMode: "local-agent",
       settings: {
         isTestMode: true,

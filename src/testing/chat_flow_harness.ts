@@ -71,6 +71,7 @@ const HARNESS_ENV_KEYS = [
   "DYAD_LANGUAGE_MODEL_CATALOG_URL",
   "DYAD_ENGINE_URL",
   "DYAD_GATEWAY_URL",
+  "DYAD_USER_INFO_URL",
 ] as const;
 
 function snapshotHarnessEnv(): Map<string, string | undefined> {
@@ -250,6 +251,10 @@ export async function setupChatFlowHarness(
     if (options.useFakeCatalog !== false) {
       process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
     }
+    // Always fake the Dyad Pro user-info endpoint: any test that configures an
+    // auto API key would otherwise send get-user-budget requests to the real
+    // api.dyad.sh.
+    process.env.DYAD_USER_INFO_URL = `${fakeLlmUrl}/api/user/info`;
     if (options.engine) {
       process.env.DYAD_ENGINE_URL = `${fakeLlmUrl}/engine/v1`;
       process.env.DYAD_GATEWAY_URL = `${fakeLlmUrl}/gateway/v1`;

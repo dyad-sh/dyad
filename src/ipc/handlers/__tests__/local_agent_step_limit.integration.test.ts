@@ -11,7 +11,7 @@
 // directly), after which further prompts run normally.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -48,7 +48,7 @@ describe("local agent step limit (integration)", () => {
     await harness?.dispose();
   });
 
-  it("pauses after 100 tool calls with a dyad-step-limit notice", async () => {
+  it("pauses after 100 tool calls, holds a queued prompt, and drains it after Continue", async () => {
     harness.mount();
     await waitFor(
       () => {
@@ -60,6 +60,15 @@ describe("local agent step limit (integration)", () => {
 
     const { send } = await harness.typeInChat("tc=local-agent/step-limit");
     send();
+
+    // While the step-limit turn is streaming (the Cancel control is up),
+    // submit a second prompt via the real Lexical Enter path — it QUEUES
+    // instead of sending, exactly like the e2e's mid-stream Enter press.
+    await screen.findByLabelText("cancelGeneration", {}, { timeout: 15_000 });
+    await harness.pressEnterInChat("tc=local-agent/simple-response");
+    await waitFor(() => expect(screen.getByText("1 Queued")).toBeTruthy(), {
+      timeout: 15_000,
+    });
 
     // The DyadStepLimit pause card renders in the DOM — the same surface the
     // e2e asserted — with the real Continue control.
@@ -83,10 +92,18 @@ describe("local agent step limit (integration)", () => {
       ),
     ).toHaveLength(0);
 
-    // The Continue button is rendered on the finished pause card.
+    // The pause holds the queue: the "Paused" chip renders and the queued
+    // prompt has NOT been sent (not in the messages list, not in the db).
+    await waitFor(
+      () => expect(screen.getByText("Paused", { exact: true })).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+    expect(screen.getByText("1 Queued")).toBeTruthy();
     expect(
-      await screen.findByRole("button", { name: /Continue/ }),
-    ).toBeTruthy();
+      within(screen.getByTestId("messages-list")).queryByText(
+        "tc=local-agent/simple-response",
+      ),
+    ).toBeNull();
 
     const messages = await loadMessages();
     const assistant = messages.filter((m) => m.role === "assistant").at(-1)!;
@@ -99,29 +116,18 @@ describe("local agent step limit (integration)", () => {
     expect(assistant.content).not.toContain("All steps completed.");
     // The fixture's final turn text never rendered either.
     expect(screen.queryByText(/All steps completed\./)).toBeNull();
-  }, 120_000);
-
-  it("continues after the pause and processes the next prompt", async () => {
-    harness.mount();
-
-    // The persisted step-limit pause card re-renders with its Continue button.
-    const continueButton = await screen.findByRole(
-      "button",
-      { name: /Continue/ },
-      { timeout: 15_000 },
-    );
+    expect(
+      messages.some((m) => m.content === "tc=local-agent/simple-response"),
+    ).toBe(false);
 
     // Click the REAL DyadStepLimit "Continue" button — it streams a plain
-    // "Continue" prompt. Baseline-aware end gate: the previous it already
-    // produced a chat:response:end on this bridge.
-    const continueEnd = harness.waitForNextStreamEnd(harness.chatId, 90_000);
+    // "Continue" prompt (the step-limit turn's end was consumed above, so
+    // this waitForStreamEnd gates on the continue turn).
+    const continueButton = await screen.findByRole("button", {
+      name: /Continue/,
+    });
     fireEvent.click(continueButton);
-    await continueEnd;
-    expect(
-      harness.bridge.sentEvents.filter(
-        (e) => e.channel === "chat:response:error",
-      ),
-    ).toHaveLength(0);
+    await harness.waitForStreamEnd(harness.chatId, 90_000);
 
     const continueMessages = await loadMessages();
     const continueAssistant = continueMessages
@@ -129,12 +135,18 @@ describe("local agent step limit (integration)", () => {
       .at(-1)!;
     expect(continueAssistant.content).not.toContain("<dyad-step-limit");
 
-    // The queued follow-up prompt from the e2e test then runs normally.
-    const followUpEnd = harness.waitForNextStreamEnd(harness.chatId, 90_000);
-    const { send } = await harness.typeInChat("tc=local-agent/simple-response");
-    send();
-
-    // The follow-up's streamed response renders in the DOM.
+    // Continue resumes the queue: the queued prompt drains and streams as its
+    // own turn — the queue×step-limit interaction unique to this test.
+    await waitFor(
+      () =>
+        expect(
+          within(screen.getByTestId("messages-list")).getByText(
+            "tc=local-agent/simple-response",
+          ),
+        ).toBeTruthy(),
+      { timeout: 30_000 },
+    );
+    await harness.waitForStreamEnd(harness.chatId, 90_000);
     await waitFor(
       () =>
         expect(
@@ -144,23 +156,55 @@ describe("local agent step limit (integration)", () => {
         ).toBeTruthy(),
       { timeout: 20_000 },
     );
-
-    await followUpEnd;
+    // The queue chip is gone once drained.
+    await waitFor(() => expect(screen.queryByText(/\d+ Queued/)).toBeNull(), {
+      timeout: 15_000,
+    });
     expect(
       harness.bridge.sentEvents.filter(
         (e) => e.channel === "chat:response:error",
       ),
     ).toHaveLength(0);
 
-    const followUpMessages = await loadMessages();
-    const followUpAssistant = followUpMessages
+    const drainedMessages = await loadMessages();
+    expect(
+      drainedMessages.some(
+        (m) =>
+          m.role === "user" && m.content === "tc=local-agent/simple-response",
+      ),
+    ).toBe(true);
+    const drainedAssistant = drainedMessages
       .filter((m) => m.role === "assistant")
       .at(-1)!;
-    expect(followUpAssistant.content).toContain(
+    expect(drainedAssistant.content).toContain(
       "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
     );
 
     // Every channel the UI invoked had a real handler.
     expect([...harness.bridge.missingChannels]).toEqual([]);
-  }, 120_000);
+  }, 240_000);
+
+  it("re-renders the persisted step-limit card after a remount", async () => {
+    // A fresh mount = a fresh jotai store (like an app restart): the queue is
+    // ephemeral, but the persisted conversation — including the step-limit
+    // notice card — renders from the db.
+    harness.mount();
+
+    await waitFor(
+      () =>
+        expect(screen.getByText("Paused after 100 tool calls")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(
+            /This is a simple response from the Basic Agent mode\./,
+          ),
+        ).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+    // The queue did not leak across the remount.
+    expect(screen.queryByText(/\d+ Queued/)).toBeNull();
+  }, 60_000);
 });

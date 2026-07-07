@@ -129,6 +129,7 @@ re-exported unchanged (`db`, `appDir`, `appId`, `chatId`, `userDataDir`,
 harness.bridge          // RendererIpcBridge: missingChannels, sentEvents, settleInFlight, pendingCount
 harness.mount(opts?)    // render <ChatPanel>; opts: { chatId?, appId? }. Returns RTL RenderResult.
 harness.typeInChat(text, opts?)       // seed input + wait for Send enabled -> { sendButton, send() }
+harness.pressEnterInChat(text, opts?) // seed input + Lexical Enter submit (QUEUES while streaming)
 harness.waitForStreamEnd(chatId?, ms?)      // consume the NEXT unconsumed chat:response:end (per chatId)
 harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end past the call point
 harness.eventCount(channel)                 // how many events on `channel` the bridge has seen (a baseline)

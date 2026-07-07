@@ -65,6 +65,7 @@ import type { RendererEvent } from "./electron_mock";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { chatInputValuesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
+import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
@@ -141,6 +142,15 @@ export interface HybridChatHarness extends ChatFlowHarness {
    * the button and a `send()` click helper.
    */
   typeInChat: (text: string, opts?: MountOptions) => Promise<TypeInChatResult>;
+
+  /**
+   * Seed the chat input, then submit via the Lexical Enter command (a real
+   * keydown on the contenteditable, handled by EnterKeyPlugin ->
+   * ChatInput.handleSubmit). This is the only submit path available while a
+   * stream is active — the Send button is swapped for Cancel — and submitting
+   * during a stream QUEUES the prompt, exactly like pressing Enter in the app.
+   */
+  pressEnterInChat: (text: string, opts?: MountOptions) => Promise<void>;
 
   /**
    * Resolve with the next NOT-YET-CONSUMED `chat:response:end` event
@@ -233,6 +243,16 @@ function HybridAppEventWiring({
       }),
     [queryClient, store],
   );
+  return null;
+}
+
+// The real app runs the queue processor at the layout level
+// (src/app/layout.tsx), above the chat route — so queued prompts drain even
+// when the chat page is closed. Mount the SAME hook here (hasChatId: false
+// internally, so it needs no router context) rather than replicating its
+// logic.
+function HybridAppShellHooks() {
+  useQueueProcessor();
   return null;
 }
 
@@ -362,7 +382,13 @@ export async function setupHybridChatHarness(
           <Provider store={store}>
             <ThemeProvider>
               {opts.wireAppEvents !== false && (
-                <HybridAppEventWiring store={store} queryClient={queryClient} />
+                <>
+                  <HybridAppEventWiring
+                    store={store}
+                    queryClient={queryClient}
+                  />
+                  <HybridAppShellHooks />
+                </>
               )}
               <RouterProvider router={router as never} />
               <Toaster richColors expand duration={500} />
@@ -373,20 +399,24 @@ export async function setupHybridChatHarness(
       return result;
     };
 
-    const typeInChat = async (
-      text: string,
-      opts: MountOptions = {},
-    ): Promise<TypeInChatResult> => {
+    // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
+    // the atom write re-renders ChatInput (enabling Send).
+    const seedChatInput = (text: string, opts: MountOptions = {}) => {
       const chatId = opts.chatId ?? nodeHarness.chatId;
       const store = getActiveStore();
-      // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
-      // the atom write re-renders ChatInput (enabling Send).
       const current = store.get(chatInputValuesByIdAtom);
       const next = new Map(current);
       next.set(chatId, text);
       act(() => {
         store.set(chatInputValuesByIdAtom, next);
       });
+    };
+
+    const typeInChat = async (
+      text: string,
+      opts: MountOptions = {},
+    ): Promise<TypeInChatResult> => {
+      seedChatInput(text, opts);
 
       const sendButton = await screen.findByLabelText("sendMessage");
       await waitFor(() => {
@@ -398,6 +428,24 @@ export async function setupHybridChatHarness(
         sendButton,
         send: () => fireEvent.click(sendButton),
       };
+    };
+
+    const pressEnterInChat = async (
+      text: string,
+      opts: MountOptions = {},
+    ): Promise<void> => {
+      seedChatInput(text, opts);
+      const container = screen.getByTestId("chat-input-container");
+      const editable = container.querySelector('[contenteditable="true"]');
+      if (!editable) {
+        throw new Error(
+          "pressEnterInChat: no contenteditable found inside chat-input-container",
+        );
+      }
+      // Lexical's root keydown listener dispatches KEY_ENTER_COMMAND, which
+      // EnterKeyPlugin routes to ChatInput.handleSubmit — send when idle,
+      // queue while streaming.
+      fireEvent.keyDown(editable, { key: "Enter", keyCode: 13 });
     };
 
     const waitForEvent = async (
@@ -645,6 +693,7 @@ export async function setupHybridChatHarness(
       bridge,
       mount,
       typeInChat,
+      pressEnterInChat,
       waitForStreamEnd,
       waitForNextStreamEnd,
       eventCount,

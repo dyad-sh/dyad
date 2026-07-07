@@ -104,10 +104,11 @@ describe("cancelled message (integration)", () => {
       }),
     );
 
-    // The "Cancelled" indicator renders (on both the cancelled prompt and the
-    // cancelled assistant message — same as the real UI).
+    // The "Cancelled" indicator renders on exactly two surfaces: the
+    // cancelled prompt and the cancelled assistant message (the count the
+    // retired e2e spec asserted).
     await waitFor(
-      () => expect(screen.getAllByText("Cancelled").length).toBeGreaterThan(0),
+      () => expect(screen.getAllByText("Cancelled")).toHaveLength(2),
       { timeout: 20_000 },
     );
 

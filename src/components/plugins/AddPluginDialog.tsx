@@ -21,7 +21,7 @@ import { useMcp, type Transport } from "@/hooks/useMcp";
 import type { McpServer } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "@/ipc/types/mcp";
-import { showError, showInfo } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
@@ -190,6 +190,9 @@ export function AddPluginDialog({
         wantsOAuth,
         callbackPort: typeof callbackPort === "number" ? callbackPort : null,
       });
+    } else if (created) {
+      // http servers get feedback from the OAuth/probe flow above.
+      showSuccess(`Added "${created.name}"`);
     }
   };
 

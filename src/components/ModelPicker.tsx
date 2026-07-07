@@ -87,6 +87,9 @@ const PRICE_TIERS: Tier[] = [
   },
 ];
 
+const isFreeOpenRouterModelName = (apiName: string) =>
+  apiName.endsWith(":free") || apiName.endsWith("/free");
+
 function tierFor(dollarSigns: number | undefined): Tier {
   const ds = dollarSigns ?? Number.NEGATIVE_INFINITY;
   return (
@@ -96,7 +99,7 @@ function tierFor(dollarSigns: number | undefined): Tier {
 }
 
 export function ModelPicker() {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, loading: settingsLoading } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
   const chatId = routerState.location.search.id as number | undefined;
@@ -275,10 +278,7 @@ export function ModelPicker() {
         // Free OpenRouter models stay out of the flat tier list: Pro routes to
         // paid models, and non-Pro users reach them via the top-level Free row
         // or the OpenRouter submenu under "More models".
-        if (
-          model.apiName.endsWith(":free") ||
-          model.apiName.endsWith("/free")
-        ) {
+        if (isFreeOpenRouterModelName(model.apiName)) {
           return [];
         }
         return [{ providerId, model, providerIndex, modelIndex }];
@@ -304,8 +304,10 @@ export function ModelPicker() {
   // Non-Pro users can still use any cloud model with their own API key, so a
   // model is only locked when neither Dyad Pro nor a provider key can run it.
   // Custom and local providers are never locked: Pro doesn't unlock those.
+  // While settings/env vars are still loading we can't tell whether a key
+  // exists, so fail open rather than flash a lock at env-var-configured users.
   const isModelLocked = (providerId: string) => {
-    if (dyadProEnabled || providerId === "auto") {
+    if (settingsLoading || dyadProEnabled || providerId === "auto") {
       return false;
     }
     const provider = providers?.find((p) => p.id === providerId);
@@ -361,6 +363,13 @@ export function ModelPicker() {
     });
   };
 
+  const unlockTargetIsFreeModel = unlockTarget
+    ? isFreeOpenRouterModelName(unlockTarget.model.apiName)
+    : false;
+  const unlockTargetProviderName = unlockTarget
+    ? getProviderDisplayName(unlockTarget.providerId)
+    : "";
+
   const handleCloudModelSelect = (providerId: string, model: LanguageModel) => {
     if (isModelLocked(providerId)) {
       handleLockedModelClick(providerId, model);
@@ -399,8 +408,7 @@ export function ModelPicker() {
     const isLocked = isModelLocked(providerId);
     const isAutoProviderRow = providerId === "auto";
     const isFreeProRow = isFreeProLanguageModel(providerId, model.apiName);
-    const isFreeProviderRow =
-      model.apiName.endsWith(":free") || model.apiName.endsWith("/free");
+    const isFreeProviderRow = isFreeOpenRouterModelName(model.apiName);
     const isAutoOpenRouterFreeRow =
       isAutoProviderRow && model.apiName === "free";
     const shouldShowDataSharingDisclosure =
@@ -429,6 +437,13 @@ export function ModelPicker() {
       <DropdownMenuItem
         key={`${providerId}-${model.apiName}`}
         data-locked={isLocked || undefined}
+        aria-label={
+          isLocked
+            ? isFreeProviderRow
+              ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
+              : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
+            : undefined
+        }
         disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
         className={cn(
           "relative px-2 py-1.5",
@@ -543,10 +558,7 @@ export function ModelPicker() {
     models: LanguageModel[],
   ) => {
     const visibleModels = models.filter((model) => {
-      if (
-        dyadProEnabled &&
-        (model.apiName.endsWith(":free") || model.apiName.endsWith("/free"))
-      ) {
+      if (dyadProEnabled && isFreeOpenRouterModelName(model.apiName)) {
         return false;
       }
       return true;
@@ -995,34 +1007,57 @@ export function ModelPicker() {
           className="sm:max-w-md"
           data-testid="unlock-model-dialog"
         >
-          <DialogHeader>
-            <DialogTitle>
-              Unlock {unlockTarget?.model.displayName} with Dyad Pro
-            </DialogTitle>
-            <DialogDescription>
-              Dyad Pro gives you {unlockTarget?.model.displayName} and every
-              other leading AI model with one subscription — no API keys needed.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <Button
-              className="cursor-pointer w-full"
-              onClick={handleUnlockDialogUpgradeClick}
-            >
-              Get Dyad Pro
-            </Button>
-            <button
-              type="button"
-              className="cursor-pointer text-sm text-primary hover:underline underline-offset-4"
-              onClick={handleUnlockDialogOwnKeyClick}
-            >
-              Or use your own{" "}
-              {unlockTarget
-                ? getProviderDisplayName(unlockTarget.providerId)
-                : ""}{" "}
-              API key
-            </button>
-          </div>
+          {/* Free models aren't a Pro feature, so don't sell Pro for them —
+              they just need the user's own (free) provider API key. */}
+          {unlockTargetIsFreeModel ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  Use {unlockTarget?.model.displayName} with your own{" "}
+                  {unlockTargetProviderName} API key
+                </DialogTitle>
+                <DialogDescription>
+                  Free models run through your own {unlockTargetProviderName}{" "}
+                  account. Add an API key in provider settings to use this
+                  model.
+                </DialogDescription>
+              </DialogHeader>
+              <Button
+                className="cursor-pointer w-full"
+                onClick={handleUnlockDialogOwnKeyClick}
+              >
+                Add {unlockTargetProviderName} API key
+              </Button>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  Unlock {unlockTarget?.model.displayName} with Dyad Pro
+                </DialogTitle>
+                <DialogDescription>
+                  Dyad Pro gives you {unlockTarget?.model.displayName} and every
+                  other leading AI model with one subscription — no API keys
+                  needed.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-3">
+                <Button
+                  className="cursor-pointer w-full"
+                  onClick={handleUnlockDialogUpgradeClick}
+                >
+                  Get Dyad Pro
+                </Button>
+                <button
+                  type="button"
+                  className="cursor-pointer text-sm text-primary hover:underline underline-offset-4"
+                  onClick={handleUnlockDialogOwnKeyClick}
+                >
+                  Or use your own {unlockTargetProviderName} API key
+                </button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>

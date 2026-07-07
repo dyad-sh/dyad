@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   selectedMode: "build",
   isTrial: false,
   renderSubContent: false,
+  settingsLoading: false,
   envVars: {} as Record<string, string | undefined>,
   freeModelQuota: {
     quotaStatus: {
@@ -69,6 +70,7 @@ vi.mock("@/hooks/useSettings", () => ({
     settings: mocks.settings,
     updateSettings: mocks.updateSettings,
     envVars: mocks.envVars,
+    loading: mocks.settingsLoading,
   }),
 }));
 
@@ -229,7 +231,7 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
       if (provider === "openrouter") {
         return Boolean(
           mocks.settings.providerSettings.openrouter.apiKey.value ||
-          mocks.envVars.OPENROUTER_API_KEY,
+            mocks.envVars.OPENROUTER_API_KEY,
         );
       }
       return false;
@@ -334,6 +336,7 @@ describe("ModelPicker", () => {
     mocks.openExternalUrl.mockReset();
     mocks.selectedMode = "build";
     mocks.renderSubContent = false;
+    mocks.settingsLoading = false;
     mocks.envVars = {};
     mocks.settings.enableDyadPro = true;
     mocks.settings.providerSettings.auto.apiKey.value = "dyad-pro-key";
@@ -498,6 +501,55 @@ describe("ModelPicker", () => {
         provider: "openrouter",
       }),
     });
+  });
+
+  it("does not lock models while settings and env vars are still loading", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settingsLoading = true;
+
+    render(<ModelPicker />);
+
+    expect(document.querySelector("[data-locked]")).toBeNull();
+  });
+
+  it("labels locked models for assistive tech", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    expect(
+      screen.getByText("GPT 5").closest("button")?.getAttribute("aria-label"),
+    ).toBe("GPT 5 — requires Dyad Pro or an API key from OpenAI");
+  });
+
+  it("points locked free models at an OpenRouter key instead of Pro", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.renderSubContent = true;
+
+    render(<ModelPicker />);
+
+    // Index 0 is the top-level auto "Free (OpenRouter)" row (never locked);
+    // index 1 is the OpenRouter submenu's free model.
+    fireEvent.click(
+      screen.getAllByText("Free (OpenRouter)")[1].closest("button")!,
+    );
+
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "model-picker:locked-model-click",
+      { provider: "openrouter", model: "openrouter/free" },
+    );
+    expect(screen.queryByText("Get Dyad Pro")).toBeNull();
+
+    fireEvent.click(screen.getByText("Add OpenRouter API key"));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings/providers/$provider",
+      params: { provider: "openrouter" },
+    });
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
   });
 
   it("shows the unlock-all footer only for non-Pro users", () => {

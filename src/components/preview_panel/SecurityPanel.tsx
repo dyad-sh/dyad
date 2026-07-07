@@ -793,8 +793,16 @@ export const SecurityPanel = () => {
     findingsToFix: SecurityFinding[];
     setFixing: (fixing: boolean) => void;
   }): Promise<boolean> => {
-    if (!selectedAppId || !data) {
+    if (!selectedAppId) {
       showError("No app selected");
+      return false;
+    }
+    if (!data) {
+      showError("No security review loaded");
+      return false;
+    }
+    if (findingsToFix.length === 0) {
+      showError("No valid issues selected");
       return false;
     }
 
@@ -892,8 +900,16 @@ export const SecurityPanel = () => {
   };
 
   const handleFixSelected = async () => {
-    if (!selectedAppId || selectedFindings.size === 0 || !data?.findings) {
+    if (!selectedAppId) {
+      showError("No app selected");
+      return;
+    }
+    if (selectedFindings.size === 0) {
       showError("No issues selected");
+      return;
+    }
+    if (!data?.findings) {
+      showError("No security review loaded");
       return;
     }
 
@@ -901,6 +917,10 @@ export const SecurityPanel = () => {
     const findingsToFix = data.findings.filter((finding) =>
       selectedFindings.has(createFindingKey(finding)),
     );
+    if (findingsToFix.length === 0) {
+      showError("No valid issues selected");
+      return;
+    }
 
     const opened = await openFixChat({
       findingsToFix,

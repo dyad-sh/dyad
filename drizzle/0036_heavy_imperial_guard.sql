@@ -1,0 +1,2 @@
+CREATE INDEX `security_fix_chats_review_chat_id_idx` ON `security_fix_chats` (`review_chat_id`);--> statement-breakpoint
+CREATE INDEX `security_fix_chats_fix_chat_id_idx` ON `security_fix_chats` (`fix_chat_id`);

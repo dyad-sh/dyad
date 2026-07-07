@@ -7,6 +7,9 @@ import { securityContracts } from "../types/security";
 import type { SecurityFinding } from "../types/security";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createChatForApp } from "../utils/chat_creation_utils";
+import log from "electron-log";
+
+const logger = log.scope("security_handlers");
 
 export function registerSecurityHandlers() {
   createTypedHandler(
@@ -65,6 +68,16 @@ export function registerSecurityHandlers() {
     securityContracts.getOrCreateSecurityFixChat,
     async (_, { appId, reviewChatId, findings }) => {
       const findingKey = computeFindingKey(findings);
+      const reviewChat = await db.query.chats.findFirst({
+        where: and(eq(chats.id, reviewChatId), eq(chats.appId, appId)),
+        columns: { id: true },
+      });
+      if (!reviewChat) {
+        throw new DyadError(
+          "Security review chat not found for this app",
+          DyadErrorKind.NotFound,
+        );
+      }
 
       const findExisting = async () =>
         db.query.security_fix_chats.findFirst({
@@ -86,18 +99,44 @@ export function registerSecurityHandlers() {
           : `Fix ${findings.length} security issues`;
 
       const chatId = await createChatForApp({ appId, title });
+      const cleanupCreatedChat = async () => {
+        try {
+          await db.delete(chats).where(eq(chats.id, chatId));
+        } catch (cleanupError) {
+          logger.error("Failed to clean up orphaned security fix chat", {
+            chatId,
+            cleanupError,
+          });
+        }
+      };
 
       // The unique index on (appId, reviewChatId, findingKey) makes this safe
       // against concurrent clicks: only one insert wins.
-      const inserted = await db
-        .insert(security_fix_chats)
-        .values({ appId, reviewChatId, findingKey, fixChatId: chatId })
-        .onConflictDoNothing()
-        .returning();
+      let inserted: Array<typeof security_fix_chats.$inferSelect>;
+      try {
+        inserted = await db
+          .insert(security_fix_chats)
+          .values({ appId, reviewChatId, findingKey, fixChatId: chatId })
+          .onConflictDoNothing()
+          .returning();
+      } catch (error) {
+        await cleanupCreatedChat();
+        const currentReviewChat = await db.query.chats.findFirst({
+          where: and(eq(chats.id, reviewChatId), eq(chats.appId, appId)),
+          columns: { id: true },
+        });
+        if (!currentReviewChat) {
+          throw new DyadError(
+            "Security review chat not found for this app",
+            DyadErrorKind.NotFound,
+          );
+        }
+        throw error;
+      }
 
       if (inserted.length === 0) {
         // Lost the race; discard the chat we just created and reuse the winner's.
-        await db.delete(chats).where(eq(chats.id, chatId));
+        await cleanupCreatedChat();
         const winner = await findExisting();
         if (!winner) {
           throw new DyadError(
@@ -118,7 +157,11 @@ function computeFindingKey(findings: SecurityFinding[]): string {
     .map((finding) =>
       createHash("sha256")
         .update(
-          `${finding.title.trim()}|${finding.level}|${finding.description.trim()}`,
+          JSON.stringify([
+            finding.title.trim(),
+            finding.level,
+            finding.description.trim(),
+          ]),
         )
         .digest("hex"),
     )

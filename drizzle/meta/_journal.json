@@ -253,6 +253,13 @@
       "when": 1783529797988,
       "tag": "0035_slim_mariko_yashida",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1783392587239,
+      "tag": "0036_heavy_imperial_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -65,7 +65,7 @@ and 0.7 are new work items.
 | `local_agent_large_attachment.spec.ts`, `queued_message.spec.ts` (attachment cases)                               | **0.7 attachment injection** via the bridge (file-picker seeding); `queued_message`'s queue-while-streaming timing is already solved (`pressEnterInChat`)                   |
 | `chat_image_generation.spec.ts`                                                                                   | **covered** by the existing `/chat` mount and auxiliary-actions dropdown drivers                                                                                            |
 | `version_search.spec.ts`                                                                                          | **covered** by the existing `/chat` mount: `ChatHeader` opens the real `VersionPane`, so no new surface was needed                                                          |
-| `supabase_stale_ui.spec.ts`                                                                                       | fake-supabase connect trigger — settings seeding the way `supabase_branch.integration.test.ts` does, plus a connect-state toggle helper                                     |
+| `supabase_stale_ui.spec.ts`                                                                                       | **covered** by the `/app-details?provider=supabase` surface plus the test-build fake Supabase connect path                                                                  |
 | `local_agent_explore_code.spec.ts`                                                                                | **defer** — needs the code-explorer/tsc worker backend, which isn't available under vitest (worker bundling); migrate as node-harness payload test or keep e2e until solved |
 
 ### 0.6 MCP fake-server bootstrapping (new)
@@ -93,9 +93,14 @@ message attachment tag. `version_search.spec.ts` is covered in
 `ChatHeader` -> `VersionPane` through the existing `/chat` mount and asserts
 version-number/message/note search, empty results, clear, favorite-only
 filtering, note persistence, favorite persistence, and close/reopen reset
-behavior. `e2e-tests/chat_image_generation.spec.ts` and
-`e2e-tests/version_search.spec.ts` are deleted on the same consolidated
-migration PR.
+behavior. `supabase_stale_ui.spec.ts` is covered in
+`src/ipc/handlers/__tests__/supabase_stale_ui.integration.test.tsx`, which
+connects Supabase for one app through the real app-details connector, navigates
+the same mounted route to a second app, and asserts the first app's connected
+project card does not leak into the second app's setup UI.
+`e2e-tests/chat_image_generation.spec.ts`,
+`e2e-tests/version_search.spec.ts`, and `e2e-tests/supabase_stale_ui.spec.ts`
+are deleted on the same consolidated migration PR.
 
 ---
 

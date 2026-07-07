@@ -120,6 +120,10 @@ export function AddPluginDialog({
   };
 
   const runOnCreate = async () => {
+    if (transport === "stdio" && !command.trim()) {
+      showError("Command is required for stdio MCP servers.");
+      return;
+    }
     if (transport === "http") {
       const trimmedUrl = url.trim();
       if (!trimmedUrl) {

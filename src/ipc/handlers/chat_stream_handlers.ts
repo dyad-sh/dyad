@@ -254,7 +254,7 @@ async function processStreamChunks({
 
     // If the stream was aborted, exit early
     if (abortController.signal.aborted) {
-      logger.debug(`Stream for chat ${chatId} was aborted`);
+      logger.log(`Stream for chat ${chatId} was aborted`);
       break;
     }
   }
@@ -840,7 +840,7 @@ ${componentSnippet}
           // Anything besides balanced will use deep context.
           settings.proSmartContextOption !== "balanced" &&
           referencedAppsForAgent.length === 0;
-        logger.debug(`isDeepContextEnabled: ${isDeepContextEnabled}`);
+        logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
 
         // Combine current app codebase with mentioned apps' codebases.
         // In agent/ask/plan modes we skip the full codebase injection — the
@@ -857,13 +857,13 @@ ${componentSnippet}
 
           otherAppsCodebaseInfo = mentionedAppsSection;
 
-          logger.debug(
+          logger.log(
             `Added ${mentionedAppsCodebases.length} mentioned app codebases`,
           );
         }
 
-        logger.debug(`Extracted codebase information from ${appPath}`);
-        logger.debug(
+        logger.log(`Extracted codebase information from ${appPath}`);
+        logger.log(
           "codebaseInfo: length",
           codebaseInfo.length,
           "estimated tokens",
@@ -932,7 +932,7 @@ ${componentSnippet}
 
           limitedMessageHistory = [...recentMessages];
 
-          logger.debug(
+          logger.log(
             `Limiting chat history from ${messageHistory.length} to ${limitedMessageHistory.length} messages (max ${maxChatTurns} turns)`,
           );
         }
@@ -941,7 +941,7 @@ ${componentSnippet}
 
         // Get theme prompt for the app (null themeId means "no theme")
         const themePrompt = await getThemePromptById(updatedChat.app.themeId);
-        logger.debug(
+        logger.log(
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
@@ -1205,12 +1205,12 @@ This conversation includes one or more image attachments. When the user uploads 
           dyadDisableFiles?: boolean;
         }) => {
           if (isEngineEnabled) {
-            logger.debug(
+            logger.log(
               "sending AI request to engine with request id:",
               dyadRequestId,
             );
           } else {
-            logger.debug("sending AI request");
+            logger.log("sending AI request");
           }
           let versionedFiles: VersionedFiles | undefined;
           if (isDeepContextEnabled) {
@@ -1272,11 +1272,11 @@ This conversation includes one or more image attachments. When the user uploads 
                     );
                   });
 
-                logger.debug(
+                logger.log(
                   `Total tokens used (aggregated for message ${placeholderAssistantMessage.id}): ${maxTokensUsed}`,
                 );
               } else {
-                logger.debug("Total tokens used: unknown");
+                logger.log("Total tokens used: unknown");
               }
             },
             onError: (error: any) => {
@@ -1699,7 +1699,7 @@ ${formattedSearchReplaceIssues}`,
               for await (const part of contStream) {
                 // If the stream was aborted, exit early
                 if (abortController.signal.aborted) {
-                  logger.debug(`Stream for chat ${req.chatId} was aborted`);
+                  logger.log(`Stream for chat ${req.chatId} was aborted`);
                   break;
                 }
                 if (part.type !== "text-delta") continue; // ignore reasoning for continuation
@@ -1847,7 +1847,7 @@ ${problemReport.problems
                 })
                 .where(eq(messages.id, placeholderAssistantMessage.id));
 
-              logger.debug(
+              logger.log(
                 `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
               );
               partialResponses.delete(req.chatId);
@@ -1989,7 +1989,7 @@ ${problemReport.problems
       // Abort the stream
       abortController.abort();
       activeStreams.delete(chatId);
-      logger.debug(`Aborted stream for chat ${chatId}`);
+      logger.log(`Aborted stream for chat ${chatId}`);
     } else {
       logger.warn(`No active stream found for chat ${chatId}`);
     }
@@ -2065,7 +2065,7 @@ async function replaceTextAttachmentWithContent(
         `Full content of ${fileName}:\n\`\`\`\n${fullContent}\n\`\`\``,
       );
 
-      logger.debug(
+      logger.log(
         `Replaced text attachment content for: ${fileName} - length before: ${text.length} - length after: ${replacedText.length}`,
       );
       return replacedText;
@@ -2138,7 +2138,7 @@ async function prepareMessageWithAttachments(
             mediaType: mimeType,
           });
 
-          logger.debug(`Added image attachment: ${filePath}`);
+          logger.log(`Added image attachment: ${filePath}`);
         } catch (error) {
           logger.error(`Error reading image file: ${error}`);
         }

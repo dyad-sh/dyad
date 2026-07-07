@@ -65,9 +65,6 @@ jobs:
       - name: Install nextjs-template dependencies
         run: cd nextjs-template && pnpm install
 
-      - name: Install Chromium browser for Playwright
-        run: npx playwright install chromium --with-deps
-
       - name: Build fake LLM server
         run: cd testing/fake-llm-server && npm install && npm run build
 

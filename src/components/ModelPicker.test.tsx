@@ -451,7 +451,7 @@ describe("ModelPicker", () => {
     render(<ModelPicker />);
 
     fireEvent.click(screen.getByText("GPT 5").closest("button")!);
-    fireEvent.click(screen.getByText("Try Dyad Pro"));
+    fireEvent.click(screen.getByText("Get Dyad Pro"));
 
     expect(mocks.openExternalUrl).toHaveBeenCalledWith(
       expect.stringContaining("utm_campaign=model-picker-locked-model"),
@@ -464,7 +464,7 @@ describe("ModelPicker", () => {
         model: "gpt-5",
       },
     );
-    expect(screen.queryByText("Try Dyad Pro")).toBeNull();
+    expect(screen.queryByText("Get Dyad Pro")).toBeNull();
   });
 
   it("navigates to provider settings from the unlock dialog own-key link", () => {

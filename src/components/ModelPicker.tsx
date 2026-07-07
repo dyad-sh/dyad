@@ -1006,14 +1006,14 @@ export function ModelPicker() {
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <Button
-              className="cursor-pointer w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="cursor-pointer w-full"
               onClick={handleUnlockDialogUpgradeClick}
             >
-              Try Dyad Pro
+              Get Dyad Pro
             </Button>
             <button
               type="button"
-              className="cursor-pointer text-xs text-muted-foreground hover:text-primary hover:underline"
+              className="cursor-pointer text-sm text-primary hover:underline underline-offset-4"
               onClick={handleUnlockDialogOwnKeyClick}
             >
               Or use your own{" "}

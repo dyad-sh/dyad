@@ -72,7 +72,12 @@ export default function HomePage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
   const { refreshApps } = useLoadApps();
-  const { settings, updateSettings, envVars } = useSettings();
+  const {
+    settings,
+    updateSettings,
+    envVars,
+    loading: isSettingsLoading,
+  } = useSettings();
   const { isAnyProviderSetup, isLoading: isLoadingLanguageModelProviders } =
     useLanguageModelProviders();
   const hasDyadProApiKey = settings ? hasDyadProKey(settings) : false;
@@ -459,27 +464,29 @@ export default function HomePage() {
           </div>
           <HomeChatInput onSubmit={handleSubmit} />
 
-          {!hasDyadProApiKey && (
-            <div className="-mt-2 flex justify-end px-4">
-              <button
-                type="button"
-                onClick={() => {
-                  posthog.capture("home:setup-pill:click");
-                  openAiSetupDialog();
-                }}
-                className={
-                  hasConfiguredAiProvider
-                    ? "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground hover:underline"
-                    : "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline"
-                }
-              >
-                <Zap aria-hidden="true" className="size-3.5" />
-                {hasConfiguredAiProvider
-                  ? "Manage AI setup"
-                  : "Connect AI to build — takes a minute"}
-              </button>
-            </div>
-          )}
+          {!isSettingsLoading &&
+            !isLoadingLanguageModelProviders &&
+            !hasDyadProApiKey && (
+              <div className="-mt-2 flex justify-end px-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    posthog.capture("home:setup-pill:click");
+                    openAiSetupDialog();
+                  }}
+                  className={
+                    hasConfiguredAiProvider
+                      ? "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground hover:underline"
+                      : "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline"
+                  }
+                >
+                  <Zap aria-hidden="true" className="size-3.5" />
+                  {hasConfiguredAiProvider
+                    ? "Manage AI setup"
+                    : "Connect AI to build — takes a minute"}
+                </button>
+              </div>
+            )}
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {randomPrompts.map((item) => (
@@ -514,9 +521,15 @@ export default function HomePage() {
       >
         <DialogContent className="p-0 sm:max-w-2xl">
           <DialogHeader className="sr-only">
-            <DialogTitle>You're almost ready to build</DialogTitle>
+            <DialogTitle>
+              {hasConfiguredAiProvider
+                ? "Manage AI setup"
+                : "You're almost ready to build"}
+            </DialogTitle>
             <DialogDescription>
-              Choose how Dyad should access AI before generating your app.
+              {hasConfiguredAiProvider
+                ? "Change how Dyad accesses AI."
+                : "Choose how Dyad should access AI before generating your app."}
             </DialogDescription>
           </DialogHeader>
           <SetupBanner variant="dialog" forceShow />

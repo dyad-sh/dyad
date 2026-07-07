@@ -74,12 +74,12 @@ export function SetupBanner({
     settingsScrollAndNavigateTo(SECTION_IDS.providers);
   };
 
+  const hasProviderSetup = isAnyProviderSetup();
+
   const itemsNeedAction: string[] = [];
-  if (!isAnyProviderSetup() && !loading) {
+  if (!hasProviderSetup && !loading) {
     itemsNeedAction.push("ai-setup");
   }
-
-  const hasProviderSetup = isAnyProviderSetup();
 
   if (itemsNeedAction.length === 0 && !forceShow) {
     if (variant === "dialog") {
@@ -103,7 +103,7 @@ export function SetupBanner({
       >
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            {variant === "dialog" && hasProviderSetup
+            {hasProviderSetup
               ? "Manage AI setup"
               : variant === "dialog"
                 ? "You're almost ready to build"

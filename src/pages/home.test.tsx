@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   attachments: [] as any[],
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
+  isSettingsLoading: false,
   effectiveDefaultChatMode: "build",
   hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
@@ -94,6 +95,7 @@ vi.mock("@/hooks/useLoadApps", () => ({
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     envVars: {},
+    loading: mocks.isSettingsLoading,
     settings: mocks.settings,
     updateSettings: mocks.updateSettings,
   }),
@@ -213,6 +215,7 @@ describe("HomePage", () => {
     mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
     mocks.initialChatMode = "build";
+    mocks.isSettingsLoading = false;
     mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openPreviewIfSetupRequired.mockReset();
@@ -289,7 +292,7 @@ describe("HomePage", () => {
 
   it("shows the setup pill for non-Pro users without a configured provider", () => {
     mocks.isAnyProviderSetup = false;
-    mocks.isLoadingLanguageModelProviders = true;
+    mocks.isLoadingLanguageModelProviders = false;
 
     renderHomePage();
 
@@ -297,6 +300,25 @@ describe("HomePage", () => {
       screen.getByRole("button", { name: /Connect AI to build/ }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  });
+
+  it("hides the setup pill while settings or providers are loading", () => {
+    mocks.isAnyProviderSetup = false;
+    mocks.isLoadingLanguageModelProviders = true;
+
+    const { rerender } = renderHomePage();
+
+    expect(
+      screen.queryByRole("button", { name: /Connect AI to build/ }),
+    ).toBeNull();
+
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.isSettingsLoading = true;
+    rerenderHomePage(rerender);
+
+    expect(
+      screen.queryByRole("button", { name: /Connect AI to build/ }),
+    ).toBeNull();
   });
 
   it("de-emphasizes the setup pill when an AI provider is configured", () => {

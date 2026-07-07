@@ -59,6 +59,8 @@ const AUTO_MODEL_ALIASES = [
   "dyad/auto/openrouter",
 ] as const;
 
+const OPENROUTER_FREE_MODEL_NAME = "openrouter/free";
+
 export interface ModelClient {
   model: LanguageModel;
   builtinProviderId?: string;
@@ -82,6 +84,9 @@ export async function getModelClient(
         "Dyad",
       )
     : undefined;
+  const isDyadProEnabledForRequest = Boolean(
+    dyadApiKey && settings.enableDyadPro,
+  );
 
   // --- Handle specific provider ---
   const providerConfig = allProviders.find((p) => p.id === model.provider);
@@ -101,7 +106,7 @@ export async function getModelClient(
   }
 
   // Handle Dyad Pro override
-  if (dyadApiKey && settings.enableDyadPro) {
+  if (isDyadProEnabledForRequest) {
     const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
@@ -204,6 +209,20 @@ export async function getModelClient(
         logger.log(
           `Using provider: ${resolvedModel.providerId} model: ${resolvedModel.apiName}`,
         );
+        if (
+          resolvedModel.providerId === "openrouter" &&
+          !isDyadProEnabledForRequest &&
+          providerInfo
+        ) {
+          return {
+            modelClient: getOpenRouterAutoFallbackModelClient({
+              primaryModelName: resolvedModel.apiName,
+              settings,
+              providerConfig: providerInfo,
+            }),
+            isEngineEnabled: false,
+          };
+        }
         // Recursively call with the specific model found
         return await getModelClient(
           {
@@ -220,6 +239,34 @@ export async function getModelClient(
     );
   }
   return getRegularModelClient(model, settings, providerConfig);
+}
+
+function getOpenRouterAutoFallbackModelClient({
+  primaryModelName,
+  settings,
+  providerConfig,
+}: {
+  primaryModelName: string;
+  settings: UserSettings;
+  providerConfig: LanguageModelProvider;
+}): ModelClient {
+  const modelNames = Array.from(
+    new Set([primaryModelName, OPENROUTER_FREE_MODEL_NAME]),
+  );
+
+  return {
+    model: createFallback({
+      models: modelNames.map(
+        (name) =>
+          getRegularModelClient(
+            { provider: "openrouter", name },
+            settings,
+            providerConfig,
+          ).modelClient.model,
+      ),
+    }),
+    builtinProviderId: "openrouter",
+  };
 }
 
 async function getProModelClient({

@@ -134,7 +134,7 @@ describe("getModelClient", () => {
     ]);
   });
 
-  test("uses OpenRouter free alias as regular auto fallback only outside Dyad Pro", async () => {
+  test("adds OpenRouter free as a regular auto fallback only outside Dyad Pro", async () => {
     const { modelClient, isEngineEnabled } = await getModelClient(
       {
         provider: "auto",
@@ -152,9 +152,16 @@ describe("getModelClient", () => {
       } as unknown as UserSettings,
     );
 
-    expect((modelClient.model as { modelId: string }).modelId).toBe(
+    const fallbackModels = (
+      modelClient.model as unknown as {
+        settings: { models: Array<{ modelId: string }> };
+      }
+    ).settings.models;
+
+    expect(fallbackModels.map((model) => model.modelId)).toEqual([
       "nvidia/nemotron-3-super-120b-a12b:free",
-    );
+      "openrouter/free",
+    ]);
     expect(modelClient.builtinProviderId).toBe("openrouter");
     expect(isEngineEnabled).toBeFalsy();
   });

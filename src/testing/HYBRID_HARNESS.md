@@ -129,8 +129,8 @@ re-exported unchanged (`db`, `appDir`, `appId`, `chatId`, `userDataDir`,
 harness.bridge          // RendererIpcBridge: missingChannels, sentEvents, settleInFlight, pendingCount
 harness.mount(opts?)    // render <ChatPanel>; opts: { chatId?, appId? }. Returns RTL RenderResult.
 harness.typeInChat(text, opts?)       // seed input + wait for Send enabled -> { sendButton, send() }
-harness.waitForStreamEnd(chatId?, ms?)      // resolve on the FIRST chat:response:end (turn 1 only)
-harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end (turn 2+, retries)
+harness.waitForStreamEnd(chatId?, ms?)      // consume the NEXT unconsumed chat:response:end (per chatId)
+harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end past the call point
 harness.eventCount(channel)                 // how many events on `channel` the bridge has seen (a baseline)
 harness.waitForEvent(channel, predicate?, ms?) // resolve on the first matching bridge event
 harness.waitForRenderedText(textOrRegex, ms?)  // wait for text with stable match count
@@ -152,13 +152,14 @@ harness.dispose()                     // race-free teardown (see §6)
 - `waitForEvent`/`waitForStreamEnd`/`waitForNextStreamEnd` use the bridge's
   event-driven `once()` subscription while keeping `bridge.sentEvents` available
   for debugging/baselines. The payload is `event.args[0]`.
-- **Second turn / retry in one `it`? Use `waitForNextStreamEnd`.**
-  `waitForStreamEnd` matches the FIRST `chat:response:end`, so a second turn or a
-  retry resolves **immediately** on the previous turn's stale event and your
-  main-side asserts race the real work. `waitForNextStreamEnd(chatId?)` snapshots
-  the current end-count **synchronously** and resolves only when a NEW one
-  arrives. Call it (or capture its promise) **before** the action that starts the
-  new turn:
+- **`waitForStreamEnd` consumes.** Each call (keyed by `chatId`) hands out the
+  next not-yet-consumed `chat:response:end`: the first call in a test resolves
+  on turn 1's end even if it already arrived; a second call genuinely waits for
+  turn 2's end. A stale prior-turn event can never satisfy a later wait, so
+  sequential multi-turn tests can just call it once per turn. For an explicit
+  pre-action baseline (e.g. a Retry click where you want to capture the promise
+  before acting), `waitForNextStreamEnd(chatId?)` snapshots the current
+  end-count **synchronously** and resolves only when a NEW one arrives:
   ```ts
   const nextEnd = harness.waitForNextStreamEnd(harness.chatId); // snapshot baseline now
   fireEvent.click(retryButton); // start the new turn

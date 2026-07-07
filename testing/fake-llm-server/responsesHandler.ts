@@ -22,7 +22,14 @@ function generateDump(req: Request): string {
     fs.mkdirSync(generatedDir, { recursive: true });
   }
 
-  const dumpFilePath = path.join(generatedDir, `${timestamp}.json`);
+  // Include a random suffix so parallel processes writing in the same
+  // millisecond cannot collide on the dump filename (same scheme as
+  // chatCompletionHandler.ts; the harness relies on names being unique and
+  // lexically sortable by time).
+  const dumpFilePath = path.join(
+    generatedDir,
+    `${timestamp}-${Math.random().toString(36).slice(2, 8)}.json`,
+  );
 
   try {
     fs.writeFileSync(

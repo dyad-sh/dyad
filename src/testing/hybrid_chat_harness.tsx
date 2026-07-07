@@ -143,10 +143,13 @@ export interface HybridChatHarness extends ChatFlowHarness {
   typeInChat: (text: string, opts?: MountOptions) => Promise<TypeInChatResult>;
 
   /**
-   * Resolve with the FIRST `chat:response:end` event (optionally for a chatId).
-   * WARNING: for a second turn/retry in the same `it`, this resolves immediately
-   * on the previous turn's stale event. Use `waitForNextStreamEnd` for any turn
-   * after the first. See HYBRID_HARNESS.md §5.
+   * Resolve with the next NOT-YET-CONSUMED `chat:response:end` event
+   * (optionally for a chatId). Each call consumes one matching event: the
+   * first call in a test resolves on the first turn's end (even if it already
+   * arrived), a second call genuinely waits for the second turn's end — a
+   * stale prior-turn event can never satisfy a later wait. For capturing an
+   * explicit pre-action baseline (e.g. before a Retry click), use
+   * `waitForNextStreamEnd`.
    */
   waitForStreamEnd: (
     chatId?: number,
@@ -243,6 +246,16 @@ export async function setupHybridChatHarness(
 
   // Prevent the UI's `nodejs-status` query from kicking off the real
   // `npm install pnpm` background side effect (gated in node_handlers.ts).
+  // Snapshot the prior value so dispose can restore it instead of leaking it
+  // to everything else in this worker process.
+  const priorSkipPnpmInstall = process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL;
+  const restoreSkipPnpmInstall = () => {
+    if (priorSkipPnpmInstall === undefined) {
+      delete process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL;
+    } else {
+      process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = priorSkipPnpmInstall;
+    }
+  };
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
   setModelClientFetchForTesting(
     undiciFetch as unknown as Parameters<
@@ -253,7 +266,13 @@ export async function setupHybridChatHarness(
   let node: ChatFlowHarness | undefined;
 
   try {
-    node = await setupChatFlowHarness(options);
+    // registerIpcHandlers() below registers the chat:stream handlers; the node
+    // harness must not register them too (the electron mock, like real
+    // Electron, throws on a duplicate ipcMain.handle).
+    node = await setupChatFlowHarness({
+      ...options,
+      registerChatStreamHandlers: false,
+    });
     const nodeHarness = node;
 
     // Register every handler the UI invokes (the node harness only registers
@@ -423,11 +442,53 @@ export async function setupHybridChatHarness(
     const eventCount = (channel: string): number =>
       bridge.sentEvents.filter((e) => e.channel === channel).length;
 
-    const waitForStreamEnd = (
+    // Per-chatId count of stream-end events already handed out by
+    // waitForStreamEnd, so a second call waits for the second turn instead of
+    // resolving instantly on the first turn's recorded event.
+    const consumedStreamEnds = new Map<number | "any", number>();
+
+    const waitForStreamEnd = async (
       chatId?: number,
       timeoutMs = 20_000,
-    ): Promise<RendererEvent> =>
-      waitForEvent("chat:response:end", streamEndPredicate(chatId), timeoutMs);
+    ): Promise<RendererEvent> => {
+      const key = chatId ?? "any";
+      const index = consumedStreamEnds.get(key) ?? 0;
+
+      const resolveAt = (): RendererEvent | undefined => {
+        const matches = matchingStreamEnds(chatId);
+        return matches.length > index
+          ? {
+              channel: "chat:response:end",
+              payload: eventPayload(matches[index]),
+            }
+          : undefined;
+      };
+
+      const existing = resolveAt();
+      if (existing) {
+        consumedStreamEnds.set(key, index + 1);
+        return existing;
+      }
+      await bridge.once(
+        "chat:response:end",
+        (event) => {
+          const predicate = streamEndPredicate(chatId);
+          return (
+            (!predicate || predicate(eventPayload(event))) &&
+            matchingStreamEnds(chatId).length > index
+          );
+        },
+        timeoutMs,
+      );
+      const arrived = resolveAt();
+      if (!arrived) {
+        throw new Error(
+          "waitForStreamEnd: matching event disappeared after arrival (bug)",
+        );
+      }
+      consumedStreamEnds.set(key, index + 1);
+      return arrived;
+    };
 
     const waitForNextStreamEnd = (
       chatId?: number,
@@ -533,10 +594,18 @@ export async function setupHybridChatHarness(
       // Closing the db before (2) throws "Database not initialized" from
       // still-resolving background queries (proposals, token counts).
       let teardownError: unknown;
+      // A settle timeout (a handler hung past the budget) must FAIL the test,
+      // but the rest of teardown still runs so the db/temp dir/env don't leak
+      // into the next file's worker.
+      let settleError: unknown;
       let missingChannels: string[] = [];
       try {
         cleanup();
-        await bridge.settleInFlight();
+        try {
+          await bridge.settleInFlight();
+        } catch (error) {
+          settleError = error;
+        }
         missingChannels = [...bridge.missingChannels];
         for (const qc of queryClients) {
           qc.clear();
@@ -553,8 +622,12 @@ export async function setupHybridChatHarness(
         }
         activeHybridChatHarness = false;
         setModelClientFetchForTesting(undefined);
+        restoreSkipPnpmInstall();
       }
 
+      if (settleError) {
+        throw settleError;
+      }
       if (teardownError) {
         throw teardownError;
       }
@@ -585,6 +658,7 @@ export async function setupHybridChatHarness(
   } catch (error) {
     activeHybridChatHarness = false;
     setModelClientFetchForTesting(undefined);
+    restoreSkipPnpmInstall();
     if (node) {
       await node.dispose();
     }

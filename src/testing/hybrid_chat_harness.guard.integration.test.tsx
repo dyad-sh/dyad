@@ -19,13 +19,22 @@ describe("hybrid chat harness guards", () => {
       settings: { isTestMode: true },
     });
 
-    await expect(
+    // A channel OUTSIDE the preload whitelist throws synchronously, exactly
+    // like preload.ts does in the packaged app.
+    expect(() =>
       (window as TestWindow).electron.ipcRenderer.invoke(
         "missing:test-channel",
       ),
-    ).rejects.toThrow("missing:test-channel");
+    ).toThrow("Invalid channel: missing:test-channel");
 
-    await expect(harness.dispose()).rejects.toThrow("missing:test-channel");
+    // A whitelisted channel with no registered handler (the test:* channels
+    // are always whitelisted but only registered in E2E builds) rejects and
+    // is recorded in missingChannels, failing dispose.
+    await expect(
+      (window as TestWindow).electron.ipcRenderer.invoke("test:set-node-mock"),
+    ).rejects.toThrow("test:set-node-mock");
+
+    await expect(harness.dispose()).rejects.toThrow("test:set-node-mock");
 
     const nextHarness = await setupHybridChatHarness({
       electronMock: h,

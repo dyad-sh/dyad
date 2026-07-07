@@ -2,7 +2,14 @@
 
 Use Vitest integration tests for cross-module behavior that can run inside the
 test process with deterministic fakes. Name these files
-`*.integration.test.ts` or `*.integration.test.tsx`.
+`*.integration.test.ts` or `*.integration.test.tsx` — any such file under
+`src/` is routed to the `integration` Vitest project (happy-dom, the shared
+electron/posthog/react-i18next mocks from `src/testing/hybrid.setup.ts`, and
+the forks pool). One deliberate exception: node-layer harness tests that
+self-manage their environment (an `@vitest-environment node` pragma plus their
+own `vi.mock("electron")`, e.g. `src/testing/chat_flow_harness.smoke.test.ts`)
+keep a plain `.test.ts` suffix and run in the unit project, because the
+integration project's setup mocks would conflict with theirs.
 
 Prefer a Vitest integration test over Playwright E2E when the test can prove the
 behavior through real IPC handlers, sqlite, git, fake LLM/Engine/Gateway routes,

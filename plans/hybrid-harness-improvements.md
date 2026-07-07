@@ -1,5 +1,31 @@
 # Hybrid harness improvements — implementation plan
 
+> **STATUS (2026-07-07): SHIPPED — this document is historical.**
+> All nine items below were implemented on the `hybrid-chat-harness` branch
+> (PR #3807 / #3809) and the "Problem" descriptions no longer reflect the code:
+>
+> - **1 (real Node fetch)** — shipped: `setModelClientFetchForTesting` +
+>   undici injection (seam now in `src/ipc/utils/test_fetch_override.ts`).
+> - **2 (vitest project + setup file)** — shipped: `src/testing/hybrid.setup.ts`
+>   - the `integration` project in `vitest.config.ts`; per-test preambles gone.
+> - **3 (per-mount jotai store)** — shipped: `mount()` creates a fresh
+>   `createStore()` behind a `<Provider>`; there is no atom reset list.
+> - **4 (ThemeProvider + Toaster)** — shipped in `mount()`.
+> - **5 (event-driven bridge + invoke log + settle diagnostics)** — shipped:
+>   `bridge.once`/`invokeLog`/`lastInvoke`; `settleInFlight` now THROWS on
+>   timeout (hybrid-harness-cleanup).
+> - **6 (call-time engine/gateway env reads)** — shipped:
+>   `getDyadEngineBaseUrl()` etc.
+> - **7 (shared AppRoot wiring)** — shipped:
+>   `src/app_wiring/registerRendererIpcListeners.ts`.
+> - **8 (post-stream double-render)** — shipped: `waitForRenderedText`.
+> - **9 (guardrails)** — shipped: double-setup throw, `assertNoMissingChannels`.
+>
+> Follow-up fixes from the adversarial review of #3807 (strict electron mock,
+> preload whitelist + structured clone in the bridge, consuming stream-end
+> waits, env restore on dispose, test-env gating of production hooks) live in
+> `plans/hybrid-harness-cleanup.md`. Do not implement anything from this file.
+
 Plan for items 1–9 from the critical evaluation of the hybrid renderer+IPC
 harness (PR #3807; shared node-layer infra also in #3801). Each item has
 motivation with evidence, a concrete design, files, verification, effort, and

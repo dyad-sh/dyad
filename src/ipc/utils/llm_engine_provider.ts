@@ -10,6 +10,7 @@ import {
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getExtraProviderOptionsForEngine } from "./thinking_utils";
+import { getTestFetchOption } from "./test_fetch_override";
 import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
@@ -377,7 +378,7 @@ export async function transcribeWithDyadEngine(
   formData.append("file", blob, filename);
   formData.append("model", "gpt-4o-mini-transcribe");
 
-  const fetchFn = options.fetch || fetch;
+  const fetchFn = options.fetch || getTestFetchOption().fetch || fetch;
   const response = await fetchFn(`${baseURL}/audio/transcriptions`, {
     method: "POST",
     headers: {

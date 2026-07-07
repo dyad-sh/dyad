@@ -21,8 +21,6 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 describe("cancelled message (integration)", () => {
   let harness: HybridChatHarness;
 
@@ -63,9 +61,24 @@ describe("cancelled message (integration)", () => {
       { timeout: 15_000 },
     );
 
-    // Give the handler time to register the active stream + start the request
-    // (same 1.5s grace the node version used before invoking chat:cancel).
-    await sleep(1_500);
+    // Deterministic pre-cancel gate (replaces a fixed 1.5s sleep): the stream
+    // is registered (chat:stream:start fires synchronously at handler entry)
+    // and both db rows exist — the user prompt and the assistant placeholder
+    // that the cancel path annotates with "[Response cancelled by user]".
+    await harness.waitForEvent(
+      "chat:stream:start",
+      (payload) =>
+        !!payload &&
+        typeof payload === "object" &&
+        (payload as { chatId?: number }).chatId === harness.chatId,
+    );
+    await waitFor(
+      async () => {
+        const messages = await harness.db.query.messages.findMany();
+        expect(messages.length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 15_000 },
+    );
 
     // Click the real Cancel control (ChatInput.handleCancel -> chat:cancel).
     fireEvent.click(cancelButton);

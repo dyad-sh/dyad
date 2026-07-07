@@ -62,6 +62,31 @@ const SECOND_SETUP_ERROR =
 
 let activeChatFlowHarness = false;
 
+/** Every env var the harness may write; snapshotted at setup, restored at dispose. */
+const HARNESS_ENV_KEYS = [
+  "DYAD_DEV_USER_DATA_DIR",
+  "FAKE_LLM_DUMP_DIR",
+  "FAKE_LLM_FIXTURES_DIR",
+  "FAKE_LLM_QUIET",
+  "DYAD_LANGUAGE_MODEL_CATALOG_URL",
+  "DYAD_ENGINE_URL",
+  "DYAD_GATEWAY_URL",
+] as const;
+
+function snapshotHarnessEnv(): Map<string, string | undefined> {
+  return new Map(HARNESS_ENV_KEYS.map((key) => [key, process.env[key]]));
+}
+
+function restoreHarnessEnv(snapshot: Map<string, string | undefined>): void {
+  for (const [key, value] of snapshot) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
 export interface ChatFlowHarnessOptions {
   /**
    * The hoisted electron-mock shared object (the SAME one passed to
@@ -98,6 +123,13 @@ export interface ChatFlowHarnessOptions {
   engine?: boolean;
   /** Show the fake-LLM server's per-request logs. Default false (quiet). */
   verboseFakeLlm?: boolean;
+  /**
+   * Register the chat:stream handlers (default true). The hybrid harness sets
+   * false because `registerIpcHandlers()` registers them — and the electron
+   * mock, like real Electron, throws on a second `ipcMain.handle` for the
+   * same channel.
+   */
+  registerChatStreamHandlers?: boolean;
 }
 
 export interface StreamChatResult {
@@ -167,6 +199,7 @@ export async function setupChatFlowHarness(
   activeChatFlowHarness = true;
 
   const { electronMock } = options;
+  const envSnapshot = snapshotHarnessEnv();
   let fakeLlm: FakeLlmServerHandle | undefined;
   let tmpRoot: string | undefined;
 
@@ -270,7 +303,9 @@ export async function setupChatFlowHarness(
       .values({ appId: appRow.id })
       .returning();
 
-    registerChatStreamHandlers();
+    if (options.registerChatStreamHandlers !== false) {
+      registerChatStreamHandlers();
+    }
 
     const appId = appRow.id;
     const chatId = chatRow.id;
@@ -365,6 +400,14 @@ export async function setupChatFlowHarness(
         }
         fs.rmSync(tmpRootPath, { recursive: true, force: true });
       } finally {
+        // Simulate the Electron process exiting: drop every registered
+        // handler/listener so a sequential harness can re-register (the mock,
+        // like real Electron, throws on duplicate ipcMain.handle), and restore
+        // the env this harness overwrote so a later harness (or test) can't
+        // inherit URLs pointing at this harness's now-closed ephemeral port.
+        electronMock.ipcHandlers.clear();
+        electronMock.ipcListeners?.clear();
+        restoreHarnessEnv(envSnapshot);
         activeChatFlowHarness = false;
       }
     };
@@ -403,6 +446,9 @@ export async function setupChatFlowHarness(
     if (tmpRoot) {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
+    electronMock.ipcHandlers.clear();
+    electronMock.ipcListeners?.clear();
+    restoreHarnessEnv(envSnapshot);
     throw error;
   }
 }

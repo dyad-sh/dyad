@@ -30,6 +30,7 @@ import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 import { getDyadEngineBaseUrl } from "./dyad_engine_url";
+import { getTestFetchOption } from "./test_fetch_override";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -38,19 +39,13 @@ import {
 } from "@/lib/providerApiKey";
 import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
 
-let testFetchOverride: FetchFunction | undefined;
-
-export function setModelClientFetchForTesting(
-  fetchImpl: FetchFunction | undefined,
-): void {
-  if (process.env.NODE_ENV === "production") {
-    return;
-  }
-  testFetchOverride = fetchImpl;
-}
+// The test-only fetch seam lives in ./test_fetch_override (dependency-free,
+// so secondary factories can use it without import cycles). Re-exported here
+// for existing importers.
+export { setModelClientFetchForTesting } from "./test_fetch_override";
 
 function getModelClientFetchOption(): { fetch?: FetchFunction } {
-  return testFetchOverride ? { fetch: testFetchOverride } : {};
+  return getTestFetchOption();
 }
 
 const AUTO_DYAD_PRO_MODEL_ALIASES = [

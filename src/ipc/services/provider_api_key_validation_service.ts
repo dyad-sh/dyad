@@ -16,6 +16,7 @@ import { createDyadEngine } from "@/ipc/utils/llm_engine_provider";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
+import { getTestFetchOption } from "@/ipc/utils/test_fetch_override";
 
 const logger = log.scope("provider_api_key_validation");
 
@@ -114,6 +115,7 @@ async function createValidationModel(
       const google = createGoogle({
         apiKey,
         baseURL: getGoogleBaseUrl(),
+        ...getTestFetchOption(),
       });
       return google("gemini-flash-latest");
     }
@@ -122,6 +124,7 @@ async function createValidationModel(
         name: "openrouter",
         apiKey,
         baseURL: getOpenRouterBaseUrl(),
+        ...getTestFetchOption(),
       });
       return openrouter("openrouter/free");
     }
@@ -130,6 +133,7 @@ async function createValidationModel(
       const dyad = createDyadEngine({
         apiKey,
         baseURL: getDyadEngineBaseUrl(),
+        ...getTestFetchOption(),
         dyadOptions: {
           enableLazyEdits: false,
           enableSmartFilesContext: false,

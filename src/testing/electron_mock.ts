@@ -107,11 +107,29 @@ export function createElectronMock(shared: ElectronMockShared) {
       exit: vi.fn(),
     },
     ipcMain: {
+      // Match real Electron: registering a second handler for a channel is a
+      // hard error, not a silent overwrite. Harness dispose() clears the map
+      // (the moral equivalent of the Electron process exiting), so sequential
+      // harnesses in one process still work.
       handle: vi.fn((channel: string, fn: IpcHandler) => {
+        if (shared.ipcHandlers.has(channel)) {
+          throw new Error(
+            `Attempted to register a second handler for '${channel}'`,
+          );
+        }
         shared.ipcHandlers.set(channel, fn);
       }),
       handleOnce: vi.fn((channel: string, fn: IpcHandler) => {
-        shared.ipcHandlers.set(channel, fn);
+        if (shared.ipcHandlers.has(channel)) {
+          throw new Error(
+            `Attempted to register a second handler for '${channel}'`,
+          );
+        }
+        // Real handleOnce deregisters after the first invocation.
+        shared.ipcHandlers.set(channel, (event, input) => {
+          shared.ipcHandlers.delete(channel);
+          return fn(event, input);
+        });
       }),
       removeHandler: vi.fn((channel: string) => {
         shared.ipcHandlers.delete(channel);

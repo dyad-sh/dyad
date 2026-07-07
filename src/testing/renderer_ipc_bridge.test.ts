@@ -14,13 +14,18 @@ type TestIpcRenderer = {
   on: (channel: string, listener: (...args: unknown[]) => void) => () => void;
 };
 
-function createBridge(): {
+function createBridge(options?: { validateChannels?: boolean }): {
   bridge: RendererIpcBridge;
   shared: ElectronMockShared;
   ipcRenderer: TestIpcRenderer;
 } {
   const shared: ElectronMockShared = { ipcHandlers: new Map() };
-  const bridge = installRendererIpcBridge(shared);
+  // These unit tests exercise bridge mechanics with synthetic channel names,
+  // so channel validation (on by default, mirroring preload) is opted out
+  // unless a test asks for it.
+  const bridge = installRendererIpcBridge(shared, {
+    validateChannels: options?.validateChannels ?? false,
+  });
   const ipcRenderer = (
     window as unknown as { electron: { ipcRenderer: TestIpcRenderer } }
   ).electron.ipcRenderer;
@@ -125,21 +130,72 @@ describe("installRendererIpcBridge", () => {
     expect(entry?.settledAt).toEqual(expect.any(Number));
   });
 
-  it("warns with pending channels when settleInFlight times out", async () => {
+  it("throws with pending channels when settleInFlight times out", async () => {
     const setup = createBridge();
     bridge = setup.bridge;
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     setup.shared.ipcHandlers.set("never:settles", () => new Promise(() => {}));
 
     void setup.ipcRenderer.invokeEnvelope("never:settles");
-    await bridge.settleInFlight(1);
-
-    expect(warn).toHaveBeenCalledOnce();
-    const message = String(warn.mock.calls[0][0]);
-    expect(message).toContain("settleInFlight timed out");
-    expect(message).toContain("never:settles");
+    await expect(bridge.settleInFlight(1)).rejects.toThrow(
+      /settleInFlight timed out.*never:settles/s,
+    );
     expect(bridge.pendingCount).toBe(1);
+  });
+
+  it("enforces the preload channel whitelist when validation is on", async () => {
+    const setup = createBridge({ validateChannels: true });
+    bridge = setup.bridge;
+    const { shared, ipcRenderer } = setup;
+
+    // A handler for a channel outside the contract-derived whitelist: works
+    // main-side, but the renderer bridge must reject it like preload does.
+    shared.ipcHandlers.set("rogue:channel", () => "ok");
+    expect(() => ipcRenderer.invoke("rogue:channel")).toThrow(
+      "Invalid channel: rogue:channel",
+    );
+    expect(() => ipcRenderer.on("rogue:event", () => {})).toThrow(
+      "Invalid channel: rogue:event",
+    );
+
+    // Whitelisted channels pass validation; a missing handler is still a
+    // rejection collected in missingChannels (not a whitelist error).
+    await expect(ipcRenderer.invoke("chat:cancel", 1)).rejects.toThrow(
+      "no ipcMain handler registered for 'chat:cancel'",
+    );
+    expect([...bridge.missingChannels]).toEqual(["chat:cancel"]);
+  });
+
+  it("structured-clones across the fake process boundary like real IPC", async () => {
+    const setup = createBridge();
+    bridge = setup.bridge;
+    const { shared, ipcRenderer } = setup;
+
+    // Non-cloneable result: real invoke would reject ("An object could not be
+    // cloned"); the bridge must too.
+    shared.ipcHandlers.set("returns:function", () => ({ cb: () => {} }));
+    await expect(ipcRenderer.invoke("returns:function")).rejects.toThrow(
+      /not structured-cloneable/,
+    );
+
+    // Cloned args: the handler mutating its input must not alias the
+    // renderer's object.
+    const rendererArg = { nested: { value: 1 } };
+    shared.ipcHandlers.set("mutates:input", (_event, input) => {
+      (input as { nested: { value: number } }).nested.value = 999;
+      return "done";
+    });
+    await expect(
+      ipcRenderer.invoke("mutates:input", rendererArg),
+    ).resolves.toBe("done");
+    expect(rendererArg.nested.value).toBe(1);
+
+    // Cloned event payloads: main mutating a sent payload after the fact must
+    // not change what the renderer recorded.
+    const payload = { status: "before" };
+    bridge.send("some:event", payload);
+    payload.status = "after";
+    expect(bridge.sentEvents[0].args[0]).toEqual({ status: "before" });
   });
 
   it("keeps draining when an in-flight handler dispatch schedules another invoke", async () => {

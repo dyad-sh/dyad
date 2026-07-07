@@ -19,11 +19,20 @@
  *  - Main-process `event.sender.send(channel, payload)` fans out to every
  *    subscribed renderer listener, matching webContents.send -> ipcRenderer.on.
  *
- * The bridge does NOT validate channels against the preload whitelist — the
- * real handlers are the source of truth. Unknown channels reject with a clear
- * error (collected in `missingChannels` for diagnostics).
+ * Fidelity: the bridge enforces the SAME channel whitelist preload does
+ * (VALID_INVOKE_CHANNELS / VALID_RECEIVE_CHANNELS, throwing the same
+ * "Invalid channel" error) and structured-clones invoke args, results, and
+ * event payloads, matching Electron's serialization — a handler returning a
+ * function or class instance fails here like it would in production. Unit
+ * tests exercising bridge mechanics with synthetic channel names can pass
+ * `validateChannels: false`. Whitelisted channels with no registered handler
+ * still reject and are collected in `missingChannels` for diagnostics.
  */
 import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "@/ipc/contracts/core";
+import {
+  VALID_INVOKE_CHANNELS,
+  VALID_RECEIVE_CHANNELS,
+} from "@/ipc/preload/channels";
 import type { ElectronMockShared } from "./electron_mock";
 
 type Listener = (...args: unknown[]) => void;
@@ -59,6 +68,19 @@ export interface InstallRendererIpcBridgeOptions {
    * Defaults to calling the dispatch directly (bridge stays React-agnostic).
    */
   wrapDispatch?: (dispatch: () => void) => void;
+  /**
+   * Enforce the preload channel whitelist (default true), throwing the same
+   * `Invalid channel: <name>` error preload.ts throws. Bridge unit tests that
+   * use synthetic channel names set false.
+   */
+  validateChannels?: boolean;
+}
+
+/** Mirrors preload.ts's dynamic terminal-stream allowance exactly. */
+function isValidDynamicReceiveChannel(channel: string): boolean {
+  return (
+    channel.startsWith("terminal:data:") || channel.startsWith("terminal:exit:")
+  );
 }
 
 export interface RendererIpcBridge {
@@ -121,6 +143,35 @@ export function installRendererIpcBridge(
   const inFlight = new Map<Promise<unknown>, RendererIpcBridgeInvokeLogEntry>();
   const dispatchWrapper =
     options.wrapDispatch ?? ((dispatch: () => void) => dispatch());
+  const validateChannels = options.validateChannels ?? true;
+
+  // Same checks preload.ts performs, throwing the same error, so a channel
+  // that would fail in the packaged app fails here too.
+  const assertValidInvokeChannel = (channel: string) => {
+    if (!validateChannels) return;
+    if (!(VALID_INVOKE_CHANNELS as readonly string[]).includes(channel)) {
+      throw new Error(`Invalid channel: ${channel}`);
+    }
+  };
+  const isValidReceiveChannel = (channel: string): boolean =>
+    !validateChannels ||
+    (VALID_RECEIVE_CHANNELS as readonly string[]).includes(channel) ||
+    isValidDynamicReceiveChannel(channel);
+
+  // Electron structured-clones everything that crosses the process boundary.
+  // Reproduce that: non-cloneable values (functions, class instances) throw
+  // here exactly like "An object could not be cloned" would in production,
+  // and mutation aliasing across the fake boundary is impossible.
+  const cloneAcrossBoundary = <T>(value: T, context: string): T => {
+    try {
+      return structuredClone(value);
+    } catch (error) {
+      throw new Error(
+        `[renderer-ipc-bridge] value for '${context}' is not structured-cloneable ` +
+          `(real Electron IPC would throw "An object could not be cloned"): ${String(error)}`,
+      );
+    }
+  };
 
   const removeOnceWaiter = (channel: string, waiter: OnceWaiter) => {
     const waiters = onceWaiters.get(channel);
@@ -154,7 +205,11 @@ export function installRendererIpcBridge(
   };
 
   const send = (channel: string, ...args: unknown[]) => {
-    const event = { channel, args };
+    // webContents.send structured-clones its payload; so do we.
+    const event = {
+      channel,
+      args: cloneAcrossBoundary(args, `send ${channel}`),
+    };
     sentEvents.push(event);
     const subs = listeners.get(channel);
     const waiters = onceWaiters.get(channel);
@@ -181,9 +236,13 @@ export function installRendererIpcBridge(
   };
 
   const invokeRaw = (channel: string, ...args: unknown[]) => {
+    assertValidInvokeChannel(channel);
+    // ipcRenderer.invoke structured-clones args main-ward and the result
+    // renderer-ward; reproduce both directions.
+    const clonedArgs = cloneAcrossBoundary(args, `invoke ${channel} args`);
     const entry: RendererIpcBridgeInvokeLogEntry = {
       channel,
-      args,
+      args: clonedArgs,
       status: "pending",
     };
     invokeLog.push(entry);
@@ -201,7 +260,11 @@ export function installRendererIpcBridge(
     }
     let promise: Promise<unknown>;
     try {
-      promise = Promise.resolve(handler(fakeEvent, ...(args as [unknown])));
+      promise = Promise.resolve(
+        handler(fakeEvent, ...(clonedArgs as [unknown])),
+      ).then((result) =>
+        cloneAcrossBoundary(result, `invoke ${channel} result`),
+      );
     } catch (error) {
       promise = Promise.reject(error);
     }
@@ -225,15 +288,19 @@ export function installRendererIpcBridge(
   };
 
   const ipcRenderer = {
-    invoke: async (channel: string, ...args: unknown[]) => {
-      const response = await invokeRaw(channel, ...args);
-      return isIpcInvokeEnvelope(response)
-        ? unwrapIpcEnvelope(response)
-        : response;
-    },
+    // Not async: preload's invoke throws synchronously on an invalid channel,
+    // and invokeRaw's whitelist check must propagate the same way.
+    invoke: (channel: string, ...args: unknown[]) =>
+      invokeRaw(channel, ...args).then((response) =>
+        isIpcInvokeEnvelope(response) ? unwrapIpcEnvelope(response) : response,
+      ),
     invokeEnvelope: (channel: string, ...args: unknown[]) =>
       invokeRaw(channel, ...args),
     on: (channel: string, listener: Listener) => {
+      if (!isValidReceiveChannel(channel)) {
+        // Same behavior as preload.ts's `on`.
+        throw new Error(`Invalid channel: ${channel}`);
+      }
       let subs = listeners.get(channel);
       if (!subs) {
         subs = new Set();
@@ -244,10 +311,13 @@ export function installRendererIpcBridge(
         subs.delete(listener);
       };
     },
+    // preload.ts silently ignores invalid channels for the removal APIs.
     removeListener: (channel: string, listener: Listener) => {
+      if (!isValidReceiveChannel(channel)) return;
       listeners.get(channel)?.delete(listener);
     },
     removeAllListeners: (channel: string) => {
+      if (!isValidReceiveChannel(channel)) return;
       listeners.delete(channel);
     },
   };
@@ -304,30 +374,31 @@ export function installRendererIpcBridge(
   const pendingChannels = (): string[] =>
     Array.from(inFlight.values()).map((entry) => entry.channel);
 
-  const warnSettleTimeout = (timeoutMs: number) => {
-    console.warn(
+  const settleTimeoutError = (timeoutMs: number) =>
+    new Error(
       `[renderer-ipc-bridge] settleInFlight timed out after ${timeoutMs}ms; ` +
-        `pending channels: ${JSON.stringify(pendingChannels())}`,
+        `pending channels: ${JSON.stringify(pendingChannels())}. A hung ` +
+        `handler at teardown is a real bug — do not close the db under it.`,
     );
-  };
 
   const settleInFlight = async (timeoutMs = 5_000): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
     // A settling invoke can schedule follow-up invokes (a query's onSuccess,
     // a dependent query), so drain repeatedly until the set stays empty.
+    // On timeout this THROWS (listing the stuck channels) instead of
+    // returning: a silent success here made a deadlocked handler
+    // indistinguishable from a clean teardown.
     while (inFlight.size > 0) {
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        warnSettleTimeout(timeoutMs);
-        return;
+        throw settleTimeoutError(timeoutMs);
       }
       const didSettle = await waitForBatchOrTimeout(
         Array.from(inFlight.keys()),
         remainingMs,
       );
       if (!didSettle && inFlight.size > 0) {
-        warnSettleTimeout(timeoutMs);
-        return;
+        throw settleTimeoutError(timeoutMs);
       }
     }
   };

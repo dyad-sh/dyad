@@ -26,7 +26,7 @@ export interface PromoMessageConfig {
 export const PROMO_MESSAGES: PromoMessageConfig[] = [
   {
     id: "pro-trial",
-    text: "Build more with Dyad Pro — free for 3 days.",
+    text: "Build more with Dyad Pro — free for 7 days.",
     cta: "Start Free Trial",
     target: { type: "trial-dialog" },
     weight: 3,

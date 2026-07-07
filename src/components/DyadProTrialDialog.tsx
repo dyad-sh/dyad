@@ -19,7 +19,7 @@ export function DyadProTrialDialog({
 
   const handleStartTrial = () => {
     ipc.system.openExternalUrl(
-      `https://academy.dyad.sh/redirect-to-checkout?trialCode=1PRO30&${utmParams}`,
+      `https://academy.dyad.sh/redirect-to-checkout?trialCode=7PRO30&${utmParams}`,
     );
     onClose();
   };
@@ -60,7 +60,7 @@ export function DyadProTrialDialog({
               Unlock Dyad Pro
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Start your free 3-day trial today
+              Start your free 7-day trial today
             </p>
           </div>
         </div>

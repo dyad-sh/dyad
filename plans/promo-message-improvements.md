@@ -16,7 +16,7 @@
 - 12 messages rotate randomly by hash; **only 2 of 12 are Pro promos** (~17% of impressions). The rest are community/docs tips (Reddit, GitHub star, roadmap, report-a-bug).
 - **Zero analytics**: no PostHog impression/click events, no UTM params on the promo links (every other upgrade surface in the app has `utm_campaign`). We can't measure CTR or conversion per message.
 - No frequency capping, no dismiss, no targeting — the same random banner on every stream forever → banner blindness.
-- Messaging is feature-jargon-led ("Turbo Edits", "Smart Context") with no offer. Meanwhile the app _has_ a 3-day free trial (`trialCode=1PRO30`, used by DyadProTrialDialog/SetupBanner) that none of these messages mention.
+- Messaging is feature-jargon-led ("Turbo Edits", "Smart Context") with no offer. Meanwhile the app _has_ a 7-day free trial (`trialCode=7PRO30`, used by DyadProTrialDialog/SetupBanner) that none of these messages mention.
 
 ## Why it underperforms
 
@@ -44,7 +44,7 @@
 
 ### P1 — Offer-led, quantified copy
 
-- Lead with the trial: "Try Dyad Pro free for 3 days" beats "Get Dyad Pro".
+- Lead with the trial: "Try Dyad Pro free for 7 days" beats "Get Dyad Pro".
 - Use real numbers from the session where possible (tokens sent → Smart Context savings; elapsed stream time → speed; error/retry detected → Agent mode auto-debugging).
 - Benefit language, not feature names: "Stop juggling API keys — one plan with GPT-5.5 + Claude Opus", "Fix errors automatically with Agent mode".
 
@@ -65,5 +65,5 @@
 ## Link destination: dyad.sh/pro vs academy sign-in→checkout
 
 - **Education-style messages** (user may not know what Pro is) → `https://www.dyad.sh/pro?utm_...` — consideration page, low bounce.
-- **Direct-offer messages** ("Start your free 3-day trial") → `https://academy.dyad.sh/redirect-to-checkout?trialCode=1PRO30&utm_...` — same pattern the app already uses. Prefer this over hardcoding `/sign-in?redirect_url=...`: the redirect endpoint owns the auth flow (survives auth changes) and carries the trial code.
+- **Direct-offer messages** ("Start your free 7-day trial") → `https://academy.dyad.sh/redirect-to-checkout?trialCode=7PRO30&utm_...` — same pattern the app already uses. Prefer this over hardcoding `/sign-in?redirect_url=...`: the redirect endpoint owns the auth flow (survives auth changes) and carries the trial code.
 - **Best of both**: click → in-app `DyadProTrialDialog`, which offers "Start Free Trial" (checkout) and "Learn more" (/pro). Warm the user before the sign-in wall.

@@ -22,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { closeDatabase, db, initializeDatabase } from "@/db";
 import {
@@ -33,6 +34,11 @@ import {
 } from "@/db/schema";
 import { registerChatStreamHandlers } from "@/ipc/handlers/chat_stream_handlers";
 import type { ChatStreamParams } from "@/ipc/types";
+import {
+  runningApps,
+  stopAppByInfo,
+  stopAppGarbageCollection,
+} from "@/ipc/utils/process_manager";
 import { writeSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
 import { asc, eq } from "drizzle-orm";
@@ -83,6 +89,29 @@ function restoreHarnessEnv(snapshot: Map<string, string | undefined>): void {
       delete process.env[key];
     } else {
       process.env[key] = value;
+    }
+  }
+}
+
+async function stopRunningAppsForHarness(): Promise<void> {
+  stopAppGarbageCollection();
+  const appsToStop = Array.from(runningApps.entries());
+  await Promise.allSettled(
+    appsToStop.map(([appId, appInfo]) => stopAppByInfo(appId, appInfo)),
+  );
+}
+
+async function removeHarnessTempRoot(tmpRootPath: string): Promise<void> {
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      fs.rmSync(tmpRootPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      await delay(100 * attempt);
     }
   }
 }
@@ -388,6 +417,7 @@ export async function setupChatFlowHarness(
 
     const dispose = async (): Promise<void> => {
       try {
+        await stopRunningAppsForHarness();
         try {
           await fakeLlmHandle.close();
         } catch {
@@ -398,7 +428,7 @@ export async function setupChatFlowHarness(
         } catch {
           // ignore
         }
-        fs.rmSync(tmpRootPath, { recursive: true, force: true });
+        await removeHarnessTempRoot(tmpRootPath);
       } finally {
         // Simulate the Electron process exiting: drop every registered
         // handler/listener so a sequential harness can re-register (the mock,
@@ -444,7 +474,8 @@ export async function setupChatFlowHarness(
       // ignore
     }
     if (tmpRoot) {
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
+      await stopRunningAppsForHarness();
+      await removeHarnessTempRoot(tmpRoot);
     }
     electronMock.ipcHandlers.clear();
     electronMock.ipcListeners?.clear();

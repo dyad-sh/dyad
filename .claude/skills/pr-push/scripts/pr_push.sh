@@ -44,7 +44,7 @@ remember_staged_files() {
   local file existing committed_file
   while IFS= read -r file; do
     existing="no"
-    for committed_file in "${COMMITTED_FILES[@]}"; do
+    for committed_file in "${COMMITTED_FILES[@]+"${COMMITTED_FILES[@]}"}"; do
       if [[ "$committed_file" == "$file" ]]; then
         existing="yes"
         break
@@ -110,6 +110,7 @@ stage_relevant_changes() {
 
     if is_ignored_file "$path"; then
       IGNORED_FILES+=("$path")
+      git restore --staged -- "$path" 2>/dev/null || true
       continue
     fi
 
@@ -191,16 +192,16 @@ commit_if_needed() {
 
 run_checks() {
   log "Running formatter"
-  npm run fmt
+  npm run fmt || die "Formatter failed; fix the issues above and rerun"
 
   log "Running lint fix"
-  npm run lint:fix
+  npm run lint:fix || die "Lint failed; fix the issues above and rerun"
 
   log "Running typecheck"
-  npm run ts
+  npm run ts || die "Typecheck failed; fix the issues above and rerun"
 
   log "Running tests"
-  npm test
+  npm test || die "Tests failed; fix the issues above and rerun"
 }
 
 amend_or_commit_check_changes() {
@@ -256,6 +257,18 @@ has_remote() {
   git remote get-url "$1" >/dev/null 2>&1
 }
 
+remote_for_owner_repo() {
+  local owner_repo="$1" remote
+  while IFS= read -r remote; do
+    if [[ "$(remote_owner_repo "$remote")" == "$owner_repo" ]]; then
+      printf '%s\n' "$remote"
+      return 0
+    fi
+  done < <(git remote)
+
+  return 1
+}
+
 no_pr_found_error() {
   grep -qiE 'no (open )?pull requests? found|no pull request found' <<<"$1"
 }
@@ -293,7 +306,7 @@ push_with_fallback() {
   fi
 
   local pr_head_repo pr_view_output matched_remote
-  if pr_view_output="$(gh pr view --json headRepository --jq .headRepository.nameWithOwner 2>&1)"; then
+  if pr_view_output="$(gh pr view "$branch" --repo "$BASE_REPO" --json headRepository --jq .headRepository.nameWithOwner 2>&1)"; then
     pr_head_repo="$pr_view_output"
     while IFS= read -r remote; do
       if [[ "$(remote_owner_repo "$remote")" == "$pr_head_repo" ]]; then
@@ -368,17 +381,37 @@ pr_body() {
   fi
 }
 
+base_comparison_ref() {
+  local base_remote
+  if base_remote="$(remote_for_owner_repo "$BASE_REPO")"; then
+    printf '%s/%s\n' "$base_remote" "$BASE_BRANCH"
+  else
+    printf '%s\n' "$BASE_BRANCH"
+  fi
+}
+
 branch_has_commits_ahead() {
-  local count
-  count="$(git rev-list --count "$BASE_BRANCH"..HEAD 2>/dev/null || true)"
-  [[ -z "$count" || "$count" != "0" ]]
+  local base_ref count
+  base_ref="$(base_comparison_ref)"
+  if ! count="$(git rev-list --count "$base_ref"..HEAD 2>/dev/null)"; then
+    PR_SKIPPED_REASON="could not determine commit count against $base_ref"
+    return 1
+  fi
+
+  if [[ "$count" == "0" ]]; then
+    PR_SKIPPED_REASON="branch has no commits ahead of $base_ref"
+    return 1
+  fi
+
+  return 0
 }
 
 create_or_update_pr() {
-  local view_output branch head_owner title body
+  local view_output branch head_owner title body create_error create_error_file
 
-  if PR_NUMBER="$(gh pr view --json number --jq .number 2>&1)"; then
-    PR_URL="$(gh pr view --json url --jq .url)"
+  branch="$(current_branch)"
+  if PR_NUMBER="$(gh pr view "$branch" --repo "$BASE_REPO" --json number --jq .number 2>&1)"; then
+    PR_URL="$(gh pr view "$branch" --repo "$BASE_REPO" --json url --jq .url)"
     log "PR already exists: $PR_URL"
   else
     view_output="$PR_NUMBER"
@@ -389,12 +422,10 @@ create_or_update_pr() {
     fi
 
     if ! branch_has_commits_ahead; then
-      PR_SKIPPED_REASON="branch has no commits ahead of $BASE_BRANCH"
       log "Skipping PR creation because $PR_SKIPPED_REASON"
       return
     fi
 
-    branch="$(current_branch)"
     head_owner="${PUSH_OWNER_REPO%%/*}"
     title="$(pr_title)"
     body="$(pr_body)"
@@ -408,13 +439,17 @@ create_or_update_pr() {
     fi
 
     log "Creating PR against $BASE_REPO"
+    mkdir -p .claude/tmp
+    create_error_file=".claude/tmp/pr-push-create-error.$$"
     if ! PR_URL="$(gh pr create \
       --repo "$BASE_REPO" \
       --head "${head_owner}:${branch}" \
       --base "$BASE_BRANCH" \
       --title "$title" \
-      --body "$body" 2>&1)"; then
-      if grep -qi 'fork collab' <<<"$PR_URL"; then
+      --body "$body" 2>"$create_error_file")"; then
+      create_error="$(cat "$create_error_file")"
+      rm -f "$create_error_file"
+      if grep -qi 'fork collab' <<<"$create_error"; then
         log "Retrying PR creation without maintainer edits"
         PR_URL="$(gh pr create \
           --repo "$BASE_REPO" \
@@ -424,10 +459,11 @@ create_or_update_pr() {
           --body "$body" \
           --no-maintainer-edit)"
       else
-        printf '%s\n' "$PR_URL" >&2
+        printf '%s\n' "$create_error" >&2
         die "Unable to create PR"
       fi
     fi
+    rm -f "$create_error_file"
     PR_NUMBER="${PR_URL##*/}"
   fi
 
@@ -445,13 +481,13 @@ print_summary() {
   if ((${#COMMITTED_FILES[@]} == 0)); then
     printf -- '- none\n'
   else
-    printf -- '- %s\n' "${COMMITTED_FILES[@]}"
+    printf -- '- %s\n' "${COMMITTED_FILES[@]+"${COMMITTED_FILES[@]}"}"
   fi
   printf 'Ignored files:\n'
   if ((${#IGNORED_FILES[@]} == 0)); then
     printf -- '- none\n'
   else
-    printf -- '- %s\n' "${IGNORED_FILES[@]}"
+    printf -- '- %s\n' "${IGNORED_FILES[@]+"${IGNORED_FILES[@]}"}"
   fi
   printf 'Automated check changes: %s\n' "$LINT_CHANGED"
   printf 'Checks: passed\n'

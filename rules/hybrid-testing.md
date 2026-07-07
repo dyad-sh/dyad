@@ -38,3 +38,8 @@ When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 before app imports. `setupHybridChatHarness({ testBuild: true })` sets the flag
 before dynamic IPC registration, but it cannot fix static imports that already
 loaded modules such as the Neon management client.
+
+If a chat-flow or hybrid harness suite passes all tests but fails during
+`dispose()` with `ENOTEMPTY` for a `dyad-chat-flow-*` temp directory, look for a
+launched app process still writing under that root (often `pnpm install`). Stop
+running apps and await process closure before removing the harness temp dir.

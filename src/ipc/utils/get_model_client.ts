@@ -7,6 +7,7 @@ import { createAzure } from "@ai-sdk/azure";
 import type { LanguageModel } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import type { FetchFunction } from "@ai-sdk/provider-utils";
 import type {
   LargeLanguageModel,
   UserSettings,
@@ -24,10 +25,11 @@ import {
   type DyadEngineProvider,
 } from "./llm_engine_provider";
 
-import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
+import { getLmStudioBaseUrl } from "./lm_studio_utils";
 import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
+import { getDyadEngineBaseUrl } from "./dyad_engine_url";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -36,7 +38,20 @@ import {
 } from "@/lib/providerApiKey";
 import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
 
-const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
+let testFetchOverride: FetchFunction | undefined;
+
+export function setModelClientFetchForTesting(
+  fetchImpl: FetchFunction | undefined,
+): void {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+  testFetchOverride = fetchImpl;
+}
+
+function getModelClientFetchOption(): { fetch?: FetchFunction } {
+  return testFetchOverride ? { fetch: testFetchOverride } : {};
+}
 
 const AUTO_DYAD_PRO_MODEL_ALIASES = [
   "dyad/auto/openai",
@@ -92,6 +107,7 @@ export async function getModelClient(
 
   // Handle Dyad Pro override
   if (dyadApiKey && settings.enableDyadPro) {
+    const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
@@ -100,7 +116,8 @@ export async function getModelClient(
       const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
       const provider = createDyadEngine({
         apiKey: dyadApiKey,
-        baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+        baseURL: getDyadEngineBaseUrl(),
+        ...getModelClientFetchOption(),
         dyadOptions: {
           enableLazyEdits:
             settings.selectedChatMode === "ask"
@@ -335,7 +352,10 @@ function getRegularModelClient(
   // Create client based on provider ID or type
   switch (providerId) {
     case "openai": {
-      const provider = createOpenAI({ apiKey });
+      const provider = createOpenAI({
+        apiKey,
+        ...getModelClientFetchOption(),
+      });
       return {
         modelClient: {
           model: provider.responses(model.name),
@@ -345,7 +365,10 @@ function getRegularModelClient(
       };
     }
     case "anthropic": {
-      const provider = createAnthropic({ apiKey });
+      const provider = createAnthropic({
+        apiKey,
+        ...getModelClientFetchOption(),
+      });
       return {
         modelClient: {
           model: provider(model.name),
@@ -355,7 +378,10 @@ function getRegularModelClient(
       };
     }
     case "xai": {
-      const provider = createXai({ apiKey });
+      const provider = createXai({
+        apiKey,
+        ...getModelClientFetchOption(),
+      });
       return {
         modelClient: {
           model: provider(model.name),
@@ -365,7 +391,10 @@ function getRegularModelClient(
       };
     }
     case "google": {
-      const provider = createGoogle({ apiKey });
+      const provider = createGoogle({
+        apiKey,
+        ...getModelClientFetchOption(),
+      });
       return {
         modelClient: {
           model: provider(model.name),
@@ -391,6 +420,7 @@ function getRegularModelClient(
         project,
         location,
         baseURL,
+        ...getModelClientFetchOption(),
         googleAuthOptions: serviceAccountKey
           ? {
               // Expecting the user to paste the full JSON of the service account key
@@ -418,6 +448,7 @@ function getRegularModelClient(
         name: "openrouter",
         baseURL: "https://openrouter.ai/api/v1",
         apiKey,
+        ...getModelClientFetchOption(),
       });
       return {
         modelClient: {
@@ -438,6 +469,7 @@ function getRegularModelClient(
           name: "azure-test",
           baseURL: testAzureBaseUrl,
           apiKey: "fake-api-key-for-testing",
+          ...getModelClientFetchOption(),
         });
         return {
           modelClient: {
@@ -483,6 +515,7 @@ function getRegularModelClient(
       const provider = createAzure({
         resourceName,
         apiKey: azureApiKey,
+        ...getModelClientFetchOption(),
       });
 
       return {
@@ -494,7 +527,10 @@ function getRegularModelClient(
       };
     }
     case "ollama": {
-      const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
+      const provider = createOllamaProvider({
+        baseURL: getOllamaApiUrl(),
+        ...getModelClientFetchOption(),
+      });
       return {
         modelClient: {
           model: provider(model.name),
@@ -505,10 +541,11 @@ function getRegularModelClient(
     }
     case "lmstudio": {
       // LM Studio uses OpenAI compatible API
-      const baseURL = providerConfig.apiBaseUrl || LM_STUDIO_BASE_URL + "/v1";
+      const baseURL = providerConfig.apiBaseUrl || getLmStudioBaseUrl() + "/v1";
       const provider = createOpenAICompatible({
         name: "lmstudio",
         baseURL,
+        ...getModelClientFetchOption(),
       });
       return {
         modelClient: {
@@ -523,6 +560,7 @@ function getRegularModelClient(
       const provider = createAmazonBedrock({
         apiKey: apiKey,
         region: getEnvVar("AWS_REGION") || "us-east-1",
+        ...getModelClientFetchOption(),
       });
       return {
         modelClient: {
@@ -537,6 +575,7 @@ function getRegularModelClient(
         name: "minimax",
         baseURL: "https://api.minimax.io/v1",
         apiKey,
+        ...getModelClientFetchOption(),
       });
       return {
         modelClient: {
@@ -559,6 +598,7 @@ function getRegularModelClient(
           name: providerConfig.id,
           baseURL: providerConfig.apiBaseUrl,
           apiKey,
+          ...getModelClientFetchOption(),
         });
         return {
           modelClient: {

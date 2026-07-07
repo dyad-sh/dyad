@@ -33,6 +33,7 @@ export function createOllamaProvider(
     name: "ollama",
     baseURL: v1Base,
     headers: options?.headers,
+    fetch: options?.fetch,
   });
   return (modelId: OllamaChatModelId) => provider(modelId);
 }

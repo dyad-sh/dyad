@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Migrated from e2e-tests/context_compaction.spec.ts, then converted from the
 // node chat-flow harness to the HYBRID harness (real <ChatPanel> over the real
 // IPC stack). The describe/it names are kept identical to the node version on
@@ -19,37 +16,9 @@
 // summary, the follow-up response text) plus the masked [dump] transcript sent
 // to the LLM afterwards. Note the local-agent chat handler returns undefined
 // (not the chatId), so success is asserted via the stored messages / absence
-// of a stream error. DYAD_ENGINE_URL is captured at app-module import, so the
-// engine server starts in the hoisted block (before any app import).
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = await vi.hoisted(async () => {
-  process.env.NODE_ENV = "development";
-  const { startFakeLlmServer } =
-    await import("../../../../testing/fake-llm-server/index");
-  const engineServer = await startFakeLlmServer();
-  process.env.DYAD_ENGINE_URL = `${engineServer.url}/engine/v1`;
-  return { ipcHandlers: new Map(), engineServer };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
+// of a stream error. Dyad Engine calls are routed to the harness fake server
+// via `engine: true`.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 
@@ -57,6 +26,7 @@ import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 
 describe("context compaction (integration)", () => {
   let harness: HybridChatHarness;
@@ -69,6 +39,7 @@ describe("context compaction (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       // The e2e picks a non-OpenAI model for local agent mode (OpenAI models
       // go to the responses API); Claude Opus 4.5 comes from the fake catalog.
       selectedModel: { provider: "anthropic", name: "claude-opus-4-5" },
@@ -87,7 +58,6 @@ describe("context compaction (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
-    await h.engineServer.close();
   });
 
   const loadChatMessages = (chatId: number) =>
@@ -120,16 +90,8 @@ describe("context compaction (integration)", () => {
     // and marking the chat for compaction on the next message.
     await sendTurn("tc=local-agent/compaction-trigger", harness.chatId);
     expect(errorEvents()).toHaveLength(0);
-    // The fixture's response renders in the messages list... (getAllByText:
-    // the same text can legitimately appear more than once around stream end,
-    // e.g. streamed + persisted renderings.)
-    await waitFor(
-      () =>
-        expect(
-          screen.getAllByText(/I've completed the initial analysis/).length,
-        ).toBeGreaterThan(0),
-      { timeout: 20_000 },
-    );
+    // The fixture's response renders in the messages list.
+    await harness.waitForRenderedText(/I've completed the initial analysis/);
     // ...and is persisted (original node assertion).
     const firstMessages = await loadChatMessages(harness.chatId);
     expect(
@@ -145,24 +107,10 @@ describe("context compaction (integration)", () => {
 
     // The compaction card renders in the DOM — the surface the e2e asserted:
     // the "Conversation compacted" indicator with the summary underneath.
-    await waitFor(
-      () => {
-        expect(
-          screen.getAllByText("Conversation compacted").length,
-        ).toBeGreaterThan(0);
-        expect(
-          screen.getAllByText(/Key Decisions Made/).length,
-        ).toBeGreaterThan(0);
-      },
-      { timeout: 20_000 },
-    );
-    await waitFor(
-      () =>
-        expect(
-          screen.getAllByText(/simple response from the Basic Agent mode/)
-            .length,
-        ).toBeGreaterThan(0),
-      { timeout: 20_000 },
+    await harness.waitForRenderedText("Conversation compacted");
+    await harness.waitForRenderedText(/Key Decisions Made/);
+    await harness.waitForRenderedText(
+      /simple response from the Basic Agent mode/,
     );
 
     const secondMessages = await loadChatMessages(harness.chatId);
@@ -212,17 +160,8 @@ describe("context compaction (integration)", () => {
 
     // The compaction card renders mid-conversation, and the agent still
     // finishes the same turn in the DOM.
-    await waitFor(
-      () => {
-        expect(
-          screen.getAllByText("Conversation compacted").length,
-        ).toBeGreaterThan(0);
-        expect(
-          screen.getAllByText(/END OF COMPACTED TURN/).length,
-        ).toBeGreaterThan(0);
-      },
-      { timeout: 20_000 },
-    );
+    await harness.waitForRenderedText("Conversation compacted");
+    await harness.waitForRenderedText(/END OF COMPACTED TURN/);
 
     const messages = await loadChatMessages(chatId);
     const contents = messages.map((m) => m.content).join("\n");

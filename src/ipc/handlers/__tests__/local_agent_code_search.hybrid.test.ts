@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Migrated from e2e-tests/local_agent_code_search.spec.ts, then converted from
 // the node chat-flow harness to the HYBRID harness (real <ChatPanel> over the
 // real IPC stack).
@@ -10,38 +7,9 @@
 // the (fake) Dyad Engine /tools/code-search endpoint, and the resulting
 // <dyad-code-search> XML with the relevant files lands in the assistant
 // message — now also asserted as the rendered Code Search tool card in the
-// DOM. code_search requires Dyad Pro, and the engine fetch captures
-// DYAD_ENGINE_URL at module load — hence the vi.hoisted engine server.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = await vi.hoisted(async () => {
-  process.env.NODE_ENV = "development";
-  const { startFakeLlmServer } =
-    await import("../../../../testing/fake-llm-server/index");
-  const engineServer = await startFakeLlmServer();
-  process.env.DYAD_ENGINE_URL = `${engineServer.url}/engine/v1`;
-  process.env.DYAD_GATEWAY_URL = `${engineServer.url}/gateway/v1`;
-  return { ipcHandlers: new Map(), engineServer };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
+// DOM. code_search requires Dyad Pro and uses the harness fake server via
+// `engine: true`.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 
@@ -49,6 +17,7 @@ import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 
 describe("local-agent code_search (integration)", () => {
   let harness: HybridChatHarness;
@@ -56,6 +25,7 @@ describe("local-agent code_search (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       chatMode: "local-agent",
       settings: {
         isTestMode: true,
@@ -70,7 +40,6 @@ describe("local-agent code_search (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
-    await h.engineServer.close();
   });
 
   it("searches the codebase via the engine code-search endpoint", async () => {

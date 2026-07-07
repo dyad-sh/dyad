@@ -23,8 +23,9 @@ the two migrated specs under `src/ipc/handlers/__tests__/`.
 > renders the real `<ChatPanel>` (React Testing Library under happy-dom) over
 > this same real IPC stack, so clicking the real Send button drives the whole
 > flow and the streamed message lands in the DOM. See
-> [HYBRID_HARNESS.md](./HYBRID_HARNESS.md). Prefer this node harness whenever a
-> test only needs files / git / db / `[dump]` assertions.
+> [HYBRID_HARNESS.md](./HYBRID_HARNESS.md). Hybrid files use the
+> `*.hybrid.test.ts` suffix. Prefer this node harness whenever a test only needs
+> files / git / db / `[dump]` assertions.
 
 > ⚠️ **Migration agents MUST NOT edit the harness files**
 > (`chat_flow_harness.ts`, `electron_mock.ts`, `server_dump.ts`, or anything in
@@ -103,6 +104,7 @@ describe("my feature (integration)", () => {
 | `model`           | `{ displayName/apiName:"test-model", maxOutputTokens:8192, contextWindow:128000 }` | Custom model row.                                                  |
 | `settings`        | `{}`                                                                               | Arbitrary `Partial<UserSettings>` overrides (highest precedence).  |
 | `useFakeCatalog`  | `true`                                                                             | Point `DYAD_LANGUAGE_MODEL_CATALOG_URL` at the fake server.        |
+| `engine`          | `false`                                                                            | Point `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` at the fake server.   |
 | `verboseFakeLlm`  | `false`                                                                            | Show the fake server's per-request logs (else quiet).              |
 
 ### Harness object
@@ -282,13 +284,10 @@ Harness-only additions (configurable, on by default):
   `require` + `ts-node/register`) load fine in-process under vitest — the
   `local_agent_*` and `context_compaction` integration tests exercise them,
   including through the engine anthropic route.
-- **Dyad Pro / engine routing**: `get_model_client` reads `DYAD_ENGINE_URL` /
-  `DYAD_GATEWAY_URL` (and `lm_studio_utils` reads `LM_STUDIO_BASE_URL_FOR_TESTING`)
-  at module-import time — before the harness's ephemeral port exists. Tests that
-  need these routes start a second fake-LLM server (or a small relay) inside
-  `vi.hoisted` and set the env vars before importing app modules; see
-  `thinking_budget` / `engine` / `lm_studio` integration tests for the pattern.
-  A first-class harness option for this is a welcome follow-up.
+- **Dyad Pro / engine routing**: pass `engine: true` to point
+  `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` at the harness fake server. Model-client
+  and LM Studio URL reads happen at call time, so tests no longer need a hoisted
+  relay just to know the fake server's ephemeral port.
 - `streamChat({ chatId })` with a chat other than the harness default still
   returns `messages` for the default chat — query `harness.db` directly for
   other chats.

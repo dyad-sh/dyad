@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Migrated from e2e-tests/local_agent_read_logs.spec.ts, then converted from
 // the node chat-flow harness to the HYBRID harness (real <ChatPanel> over the
 // real IPC stack).
@@ -14,44 +11,9 @@
 // cards in the DOM (asserted below), and the tool XML + narration text is also
 // asserted from the persisted message content, as in the node version.
 //
-// Dyad Pro engine setup: the pro model client captures DYAD_ENGINE_URL at
-// module load, so a dedicated fake-LLM server is started inside vi.hoisted
-// (before any app module is imported) and the env var pointed at it. The
-// harness's own server still serves the catalog and dump endpoints; both are
-// the same in-process express app and share fixture/dump env resolution.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = await vi.hoisted(async () => {
-  process.env.NODE_ENV = "development";
-  const { startFakeLlmServer } =
-    await import("../../../../testing/fake-llm-server/index");
-  const engineServer = await startFakeLlmServer();
-  process.env.DYAD_ENGINE_URL = `${engineServer.url}/engine/v1`;
-  process.env.DYAD_GATEWAY_URL = `${engineServer.url}/gateway/v1`;
-  return { ipcHandlers: new Map(), engineServer };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-// Keep telemetry offline.
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-// The app initializes i18next in renderer.tsx (not imported here); a minimal
-// mock keeps every component's `t()` working.
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
+// Dyad Pro engine/gateway calls are routed to the harness fake server via
+// `engine: true`.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 
@@ -59,6 +21,7 @@ import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 
 describe("local-agent read_logs (integration)", () => {
   let harness: HybridChatHarness;
@@ -66,6 +29,7 @@ describe("local-agent read_logs (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      engine: true,
       chatMode: "local-agent",
       settings: {
         isTestMode: true,
@@ -78,7 +42,6 @@ describe("local-agent read_logs (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
-    await h.engineServer.close();
   });
 
   it("reads logs with various filters", async () => {

@@ -28,43 +28,22 @@ If a test would pass with the node harness, use the node harness.
 
 ---
 
-## 2. Test-file preamble (copy verbatim)
+## 2. Test-file skeleton
 
-The environment pragmas, `vi.hoisted`, and the three `vi.mock`s are hoisted
-per-file and **cannot** live inside the helper.
+Hybrid tests are named `*.hybrid.test.ts`. The Vitest `hybrid` project supplies
+the happy-dom environment, `disableSameOriginPolicy`, the shared `electron` /
+PostHog / i18n mocks, `NODE_ENV=development`, and failure DOM dumps via
+`src/testing/hybrid.setup.ts`.
 
 ```tsx
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  return { ipcHandlers: new Map() };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 
 describe("my UI feature (hybrid)", () => {
   let harness: HybridChatHarness;
@@ -91,19 +70,23 @@ describe("my UI feature (hybrid)", () => {
 });
 ```
 
-Notes on the preamble:
+Notes:
 
-- **Environment is `happy-dom`, not `node`** (RTL needs a DOM). This is the
-  opposite of the node harness. Keep the pragmas at the **very top of the file**
-  — vitest only reads the env docblock from the first comment; a JSDoc above it
-  swallows the `-options` line.
 - `settings: { isTestMode: true }` makes `MessagesList` render a plain
   (non-Virtuoso) list — the same path the Playwright suite renders and the one
   `screen.getByText` can see.
-- The three mocks are the **only** ones needed: `electron` (the shared node-mock),
+- The setup file's three mocks are the **only** shared mocks needed: `electron`
+  (the shared node-mock),
   `posthog-js/react` (offline telemetry), `react-i18next` (so `t()` works without
   the renderer's i18next bootstrap). Lexical, framer-motion, and Virtuoso mount
   cleanly — do not mock them.
+- If a test needs genuinely import-time env such as `E2E_TEST_BUILD`, keep a
+  small local `vi.hoisted` block before app imports and still pass
+  `electronMock: h` from `@/testing/hybrid.setup`.
+- On test failure, `src/testing/hybrid.setup.ts` prints
+  `prettyDOM(document.body, 20_000)`. Bridge event history is still available on
+  `harness.bridge.sentEvents`; automatic failure printing of those events needs
+  a future harness/bridge hook to expose the active bridge to the setup file.
 
 ---
 
@@ -116,9 +99,10 @@ Notes on the preamble:
 `selectedModel`, `provider`, `model`, `settings`, … all pass straight through),
 plus:
 
-| Option               | Default | Purpose                                                                                    |
-| -------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| `silenceActWarnings` | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act". |
+| Option                    | Default | Purpose                                                                                    |
+| ------------------------- | ------- | ------------------------------------------------------------------------------------------ |
+| `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act". |
+| `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                        |
 
 Common option recipes:
 
@@ -130,6 +114,8 @@ Common option recipes:
   mode selector in the UI.
 - **multiple chats** — `const c2 = await harness.createChat()` then
   `harness.mount({ chatId: c2 })`.
+- **Dyad Pro / engine routes** — pass `engine: true` so
+  `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` point at the harness fake server.
 
 ### The harness object
 
@@ -146,22 +132,25 @@ harness.waitForStreamEnd(chatId?, ms?)      // resolve on the FIRST chat:respons
 harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end (turn 2+, retries)
 harness.eventCount(channel)                 // how many events on `channel` the bridge has seen (a baseline)
 harness.waitForEvent(channel, predicate?, ms?) // resolve on the first matching bridge event
+harness.waitForRenderedText(textOrRegex, ms?)  // wait for text with stable match count
 harness.selectFromBaseUiSelect(trigger, optionMatcher)  // drive a Base UI <Select> in happy-dom
 harness.selectChatMode("build" | "ask" | "plan" | "local-agent") // open the chat-mode selector + pick
 harness.createChat(appId?)            // insert a chats row -> new chatId
 harness.dispose()                     // race-free teardown (see §6)
 ```
 
-- `mount()` seeds the jotai default store (`selectedAppIdAtom`,
-  `selectedChatIdAtom`) and builds a private tanstack route tree with a `/chat`
-  route at `/chat?id=<chatId>&appId=<appId>`, because `useStreamChat`/`ChatInput`
-  call `useSearch({ from: "/chat" })`. It imports the REAL search schema
-  (`chatSearchSchema` from `src/routes/chatSearchSchema.ts`) so the replica can't
-  drift from production. It renders `<ChatPanel>` directly — **not** `<ChatPage>`,
-  which would drag in `PreviewPanel` (Monaco, iframe runtime).
-- `waitForEvent`/`waitForStreamEnd`/`waitForNextStreamEnd` read
-  `bridge.sentEvents` (every `event.sender.send` the main process pushed to the
-  renderer). The payload is `event.args[0]`.
+- `mount()` creates a fresh Jotai store, seeds `selectedAppIdAtom` /
+  `selectedChatIdAtom`, wires the same renderer IPC listeners as the app root,
+  mounts the real `ThemeProvider` + `Toaster`, and builds a private tanstack
+  route tree with a `/chat` route at `/chat?id=<chatId>&appId=<appId>`, because
+  `useStreamChat`/`ChatInput` call `useSearch({ from: "/chat" })`. It imports the
+  REAL search schema (`chatSearchSchema` from `src/routes/chatSearchSchema.ts`)
+  so the replica can't drift from production. It renders `<ChatPanel>` directly
+  — **not** `<ChatPage>`, which would drag in `PreviewPanel` (Monaco, iframe
+  runtime).
+- `waitForEvent`/`waitForStreamEnd`/`waitForNextStreamEnd` use the bridge's
+  event-driven `once()` subscription while keeping `bridge.sentEvents` available
+  for debugging/baselines. The payload is `event.args[0]`.
 - **Second turn / retry in one `it`? Use `waitForNextStreamEnd`.**
   `waitForStreamEnd` matches the FIRST `chat:response:end`, so a second turn or a
   retry resolves **immediately** on the previous turn's stale event and your
@@ -223,7 +212,7 @@ same `__snapshots__/*.snap` file. The snapshot key is derived from those names,
 so the existing (node-written) snapshot now also gates the UI-driven payload —
 proving that clicking the real Send button sends the LLM **exactly** the same
 `getServerDump()` bytes the node harness did. A drift shows up as a snapshot
-diff. `chat_mode.integration.test.ts` does this: its
+diff. `chat_mode.hybrid.test.ts` does this: its
 `chat-mode-build-all-messages` / `chat-mode-ask-all-messages` snapshots are
 unchanged from the node era. Do not rewrite or `-u` these on conversion — an
 unchanged snapshot is the whole point.
@@ -271,13 +260,14 @@ closed db:
 2. `bridge.settleInFlight()` — await every in-flight `invoke` (the UI fires
    background queries — proposals, token counts, codebase scans — whose handlers
    read the db);
-3. `queryClient.clear()` for each mounted tree + reset the shared jotai store;
+3. `queryClient.clear()` for each mounted tree + drop the per-mount Jotai store;
 4. `bridge.uninstall()` (remove `window.electron`);
 5. the node harness `dispose()` (closes the db, removes the temp dir).
 
-You just call `await harness.dispose()` in `afterAll`. Because the jotai default
-store and the app `db` are process singletons, the same rule as the node harness
-applies: **one harness per test file**, run under the default forks pool.
+You just call `await harness.dispose()` in `afterAll`. The app `db` is a process
+singleton, so the same rule as the node harness applies: **one harness per test
+file**, run under the default forks pool. Both harnesses throw on a second setup
+before the active one fully disposes.
 
 ---
 
@@ -285,8 +275,6 @@ applies: **one harness per test file**, run under the default forks pool.
 
 - **Missing `waitForStreamEnd` before main-side asserts** → flaky files/git/db
   and teardown "Database not initialized". See §5.
-- **Env docblock not at the very top** → the `-options` line is ignored. Keep the
-  two `// @vitest-environment*` lines as the first thing in the file.
 - **Mounting `ChatPage` instead of `ChatPanel`** → pulls in Monaco/iframe and
   hangs. Always mount via `harness.mount()`.
 - **Trying to type into the editor** → happy-dom can't. Use `typeInChat`. See §4.
@@ -325,57 +313,24 @@ fire during a hybrid run. Both are inert in production/dev/E2E and must stay:
 
 ---
 
-## 9. Pro / engine routing (import-time env)
+## 9. Pro / engine routing
 
-Same limitation as the node harness (see
-[CHAT_FLOW_HARNESS.md §7](./CHAT_FLOW_HARNESS.md#7-known-gaps-and-quirks)):
-`get_model_client` reads `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` at
-module-import time, before the harness's ephemeral fake-server port exists. To
-exercise engine/gateway routes, start a second fake-LLM server (or relay) inside
-`vi.hoisted` and set the env vars there, before any app module imports:
-
-```tsx
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  // Point engine/gateway at a relay started here, before app modules load.
-  // process.env.DYAD_ENGINE_URL = "http://127.0.0.1:<relayPort>/engine";
-  return { ipcHandlers: new Map() };
-});
-```
-
-A first-class harness option for this is a welcome follow-up; for now the
-`vi.hoisted` relay is the pattern for both harnesses.
+Pass `engine: true` to route Dyad Engine and Gateway calls to the harness fake
+server. `get_model_client` and LM Studio URL reads happen at call time, so tests
+no longer need a hoisted relay just to know the fake server's ephemeral port.
 
 ---
 
 ## 10. Limitations: assertions that must stay on the node harness
 
-- **Request-header assertions are node-only.** The hybrid env enables fetch via
-  `disableSameOriginPolicy`, but happy-dom's fetch still **strips
-  CORS-forbidden request headers** (notably `Authorization`) before the
-  main-process HTTP call goes out. So a test that asserts on the request headers
-  the fake server received — e.g. engine/gateway auth via
-  `getServerDump().headers` / `dump.headers` — will see them missing under the
-  hybrid harness even though production sends them. Keep those assertions on the
-  **node** `setupChatFlowHarness` (no DOM, real Node fetch, headers intact). The
-  hybrid harness is for asserting on the rendered UI, not on outbound auth
-  headers.
-- **Cancel-mid-stream tests are node-only.** Aborting the chat's
-  `AbortController` does not reliably tear down an in-flight happy-dom fetch to
-  the fake server — the abort is only observed when the next chunk arrives, so
-  a stalled/slow fixture keeps the stream (and teardown) alive for tens of
-  seconds. Tests that cancel while a response is still streaming (e.g.
-  `local_agent_cancel_todos`) stay on the node harness. (A cancel that races a
-  short, fast response — `cancelled_message` — works because the stream ends
-  promptly either way.)
 - **`chatMode` option trap.** The harness `chatMode` option only seeds
   `settings.selectedChatMode`; `ChatInput` submits the chat row's mode /
   effective default, and with Dyad Pro enabled the effective default is
   `local-agent`. An ask-mode hybrid test silently runs in local-agent mode
   unless it drives the real selector: `await harness.selectChatMode("ask")`
-  (see `local_agent_ask.integration.test.ts`).
+  (see `local_agent_ask.hybrid.test.ts`).
 - **Post-stream DOM duplication.** Around stream end, assistant text can
   transiently render in two nodes (streamed + persisted renderings), so
   `getByText` may throw "found multiple elements". Use
-  `getAllByText(...).length > 0` in `waitFor` for text that lands near
-  `chat:response:end` (see `context_compaction.integration.test.ts`).
+  `harness.waitForRenderedText(...)` for text that lands near
+  `chat:response:end` (see `context_compaction.hybrid.test.ts`).

@@ -15,6 +15,7 @@ import type { UserSettings } from "@/lib/schemas";
 import { createDyadEngine } from "@/ipc/utils/llm_engine_provider";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 
 const logger = log.scope("provider_api_key_validation");
 
@@ -163,10 +164,6 @@ function getOpenRouterBaseUrl() {
     return `http://localhost:${process.env.FAKE_LLM_PORT}/openrouter/v1`;
   }
   return "https://openrouter.ai/api/v1";
-}
-
-function getDyadEngineBaseUrl() {
-  return process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 }
 
 function classifyValidationError(

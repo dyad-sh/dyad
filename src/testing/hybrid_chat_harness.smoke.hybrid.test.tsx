@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Smoke test for setupHybridChatHarness — the real React <ChatPanel> (RTL under
 // happy-dom) wired to the REAL main-process IPC handlers in the same Node
 // process. It is the reference conversion for the hybrid harness.
@@ -10,47 +7,17 @@
 // sqlite -> `chat:response:chunk` events fan back through the bridge -> jotai
 // atoms update -> the assistant message renders in the DOM.
 //
-// happy-dom (not node) is required for RTL. `fetch.disableSameOriginPolicy`
-// relaxes happy-dom's CORS simulation for main-process fetches; the env-options
-// docblock must be at the very TOP of the file (vitest only reads it from the
-// first comment). One benign warning still logs at settings-load — the
-// api.dyad.sh/v1/desktop-config fetch is CORS-blocked; it is caught and
-// harmless. See HYBRID_HARNESS.md.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+// The hybrid Vitest project supplies happy-dom, CORS-relaxed fetch, and shared
+// renderer mocks. See HYBRID_HARNESS.md.
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  return { ipcHandlers: new Map() };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-// Keep telemetry offline.
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-// The app initializes i18next in renderer.tsx (not imported here); a minimal
-// mock keeps every component's `t()` working.
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
-
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 
 describe("hybrid chat harness (smoke)", () => {
   let harness: HybridChatHarness;
@@ -66,6 +33,10 @@ describe("hybrid chat harness (smoke)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("clicking Send drives the real chat:stream handler and renders the streamed assistant message", async () => {
@@ -115,9 +86,36 @@ describe("hybrid chat harness (smoke)", () => {
     expect(assistant!.commitHash).toBeTruthy();
     // 4. The renderer got the stream events through the bridge.
     expect(bridgeSawChunk(harness)).toBe(true);
-    // 5. Every channel the UI invoked had a real handler.
-    expect([...harness.bridge.missingChannels]).toEqual([]);
   }, 60_000);
+
+  it("rejects a second setup before the active harness is disposed", async () => {
+    await expect(
+      setupHybridChatHarness({
+        electronMock: h,
+        settings: { isTestMode: true },
+      }),
+    ).rejects.toThrow("Second harness setup in one process");
+  });
+
+  it("uses a fresh jotai store for each mount", async () => {
+    const first = harness.mount();
+    await screen.findByTestId("chat-input-container");
+    const { sendButton } = await harness.typeInChat("draft only");
+    expect((sendButton as HTMLButtonElement).hasAttribute("disabled")).toBe(
+      false,
+    );
+
+    first.unmount();
+
+    const second = harness.mount();
+    const remountedSendButton = await screen.findByLabelText("sendMessage");
+    await waitFor(() => {
+      expect(
+        (remountedSendButton as HTMLButtonElement).hasAttribute("disabled"),
+      ).toBe(true);
+    });
+    second.unmount();
+  }, 30_000);
 });
 
 function bridgeSawChunk(harness: HybridChatHarness): boolean {

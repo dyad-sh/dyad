@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Migrated from e2e-tests/undo.spec.ts, then converted from the node
 // chat-flow harness to the HYBRID harness (real <ChatPanel> over the real IPC
 // stack). The node version invoked `list-versions` + `revert-version` directly
@@ -10,40 +7,15 @@
 // and calls the real revert-version IPC — then asserts files, git log, db
 // messages, and the message list DOM shrinking.
 //
-// The node version's `result === {successMessage: "Restored version"}` assert
-// on the revert-version return is consumed by the real UI (the mutation would
-// surface an error otherwise); the observable outcomes — the revert commit in
-// the git log, restored files, and deleted messages — are all still asserted.
+// The harness mounts the real Toaster, so the UI-visible
+// "Restored version" success toast is asserted alongside the revert commit,
+// restored files, and deleted messages.
 //
 // Covers all three e2e tests:
 //   - "undo" (isomorphic git)
 //   - "undo with native git"
 //   - "undo after assistant with no code"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  return { ipcHandlers: new Map() };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 
@@ -51,6 +23,7 @@ import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 import { writeSettings } from "@/main/settings";
 import { messages as messagesTable } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
@@ -129,6 +102,9 @@ describe("undo (integration)", () => {
     // First undo: back to the write-index version; the undone turn's messages
     // are deleted (from the db AND from the rendered messages list).
     await clickUndo();
+    await waitFor(() =>
+      expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
+    );
     await waitFor(
       () => expect(screen.queryByText("tc=write-index-2")).toBeNull(),
       { timeout: 15_000 },
@@ -148,6 +124,9 @@ describe("undo (integration)", () => {
     // scaffold's "Welcome to Your Blank App" page; in the minimal fixture the
     // page written by the LLM simply doesn't exist initially).
     await clickUndo();
+    await waitFor(() =>
+      expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
+    );
     await waitFor(
       () => expect(screen.queryByText("tc=write-index")).toBeNull(),
       { timeout: 15_000 },
@@ -221,6 +200,9 @@ describe("undo (integration)", () => {
 
     // Undo should work even though the first assistant had no commit.
     await clickUndo();
+    await waitFor(() =>
+      expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
+    );
     await waitFor(
       () => expect(screen.queryByText("tc=write-index")).toBeNull(),
       { timeout: 15_000 },

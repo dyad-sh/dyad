@@ -28,6 +28,29 @@ import type { ElectronMockShared } from "./electron_mock";
 
 type Listener = (...args: unknown[]) => void;
 
+export interface RendererIpcBridgeEvent {
+  channel: string;
+  args: unknown[];
+}
+
+export interface RendererIpcBridgeInvokeLogEntry {
+  channel: string;
+  args: unknown[];
+  status: "pending" | "fulfilled" | "rejected";
+  result?: unknown;
+  error?: unknown;
+  settledAt?: number;
+}
+
+type OncePredicate = (event: RendererIpcBridgeEvent) => boolean;
+
+interface OnceWaiter {
+  predicate?: OncePredicate;
+  resolve: (event: RendererIpcBridgeEvent) => void;
+  reject: (error: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export interface InstallRendererIpcBridgeOptions {
   /**
    * Wraps every main->renderer event dispatch. The hybrid harness passes React
@@ -52,7 +75,19 @@ export interface RendererIpcBridge {
   /** Channels invoked by the renderer that had no registered handler. */
   missingChannels: Set<string>;
   /** Every event delivered to the renderer, for debugging/assertions. */
-  sentEvents: Array<{ channel: string; args: unknown[] }>;
+  sentEvents: RendererIpcBridgeEvent[];
+  /** Every renderer->main invoke, including result/error metadata. */
+  invokeLog: RendererIpcBridgeInvokeLogEntry[];
+  /** Resolve with the next matching main->renderer event. */
+  once: (
+    channel: string,
+    predicate?: OncePredicate,
+    timeoutMs?: number,
+  ) => Promise<RendererIpcBridgeEvent>;
+  /** Return the latest invoke log entry for `channel`, if any. */
+  lastInvoke: (channel: string) => RendererIpcBridgeInvokeLogEntry | undefined;
+  /** How many events on `channel` have been delivered so far. */
+  eventCount: (channel: string) => number;
   /**
    * Resolve once every in-flight `invoke`/`invokeEnvelope` has settled. Teardown
    * must await this BEFORE closing the db: the UI fires background queries
@@ -79,20 +114,56 @@ export function installRendererIpcBridge(
   }
 
   const listeners = new Map<string, Set<Listener>>();
+  const onceWaiters = new Map<string, Set<OnceWaiter>>();
   const missingChannels = new Set<string>();
-  const sentEvents: Array<{ channel: string; args: unknown[] }> = [];
-  const inFlight = new Set<Promise<unknown>>();
+  const sentEvents: RendererIpcBridgeEvent[] = [];
+  const invokeLog: RendererIpcBridgeInvokeLogEntry[] = [];
+  const inFlight = new Map<Promise<unknown>, RendererIpcBridgeInvokeLogEntry>();
   const dispatchWrapper =
     options.wrapDispatch ?? ((dispatch: () => void) => dispatch());
 
+  const removeOnceWaiter = (channel: string, waiter: OnceWaiter) => {
+    const waiters = onceWaiters.get(channel);
+    if (!waiters) return;
+    waiters.delete(waiter);
+    clearTimeout(waiter.timer);
+    if (waiters.size === 0) {
+      onceWaiters.delete(channel);
+    }
+  };
+
+  const notifyOnceWaiters = (event: RendererIpcBridgeEvent) => {
+    const waiters = onceWaiters.get(event.channel);
+    if (!waiters) return;
+
+    for (const waiter of Array.from(waiters)) {
+      let matches = false;
+      try {
+        matches = waiter.predicate ? waiter.predicate(event) : true;
+      } catch (error) {
+        removeOnceWaiter(event.channel, waiter);
+        waiter.reject(error);
+        continue;
+      }
+
+      if (matches) {
+        removeOnceWaiter(event.channel, waiter);
+        waiter.resolve(event);
+      }
+    }
+  };
+
   const send = (channel: string, ...args: unknown[]) => {
-    sentEvents.push({ channel, args });
+    const event = { channel, args };
+    sentEvents.push(event);
     const subs = listeners.get(channel);
-    if (!subs) return;
+    const waiters = onceWaiters.get(channel);
+    if (!subs?.size && !waiters?.size) return;
     dispatchWrapper(() => {
+      notifyOnceWaiters(event);
       // Copy (Array.from, not spread, so `oxlint --fix` can't strip it): a
       // listener may unsubscribe or subscribe during dispatch.
-      for (const cb of Array.from(subs)) {
+      for (const cb of Array.from(subs ?? [])) {
         cb(...args);
       }
     });
@@ -110,18 +181,46 @@ export function installRendererIpcBridge(
   };
 
   const invokeRaw = (channel: string, ...args: unknown[]) => {
+    const entry: RendererIpcBridgeInvokeLogEntry = {
+      channel,
+      args,
+      status: "pending",
+    };
+    invokeLog.push(entry);
+
     const handler = shared.ipcHandlers.get(channel);
     if (!handler) {
       missingChannels.add(channel);
-      return Promise.reject(
-        new Error(
-          `[renderer-ipc-bridge] no ipcMain handler registered for '${channel}'`,
-        ),
+      const error = new Error(
+        `[renderer-ipc-bridge] no ipcMain handler registered for '${channel}'`,
       );
+      entry.status = "rejected";
+      entry.error = error;
+      entry.settledAt = Date.now();
+      return Promise.reject(error);
     }
-    const promise = Promise.resolve(handler(fakeEvent, ...(args as [unknown])));
-    inFlight.add(promise);
-    void promise.finally(() => inFlight.delete(promise));
+    let promise: Promise<unknown>;
+    try {
+      promise = Promise.resolve(handler(fakeEvent, ...(args as [unknown])));
+    } catch (error) {
+      promise = Promise.reject(error);
+    }
+
+    inFlight.set(promise, entry);
+    void promise.then(
+      (result) => {
+        entry.status = "fulfilled";
+        entry.result = result;
+        entry.settledAt = Date.now();
+        inFlight.delete(promise);
+      },
+      (error) => {
+        entry.status = "rejected";
+        entry.error = error;
+        entry.settledAt = Date.now();
+        inFlight.delete(promise);
+      },
+    );
     return promise;
   };
 
@@ -165,16 +264,92 @@ export function installRendererIpcBridge(
     globalThis as unknown as { window: { electron?: unknown } }
   ).window.electron = electron;
 
+  const once = (
+    channel: string,
+    predicate?: OncePredicate,
+    timeoutMs = 20_000,
+  ): Promise<RendererIpcBridgeEvent> =>
+    new Promise((resolve, reject) => {
+      const waiter: OnceWaiter = {
+        predicate,
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          removeOnceWaiter(channel, waiter);
+          reject(
+            new Error(
+              `[renderer-ipc-bridge] timed out waiting for event '${channel}'`,
+            ),
+          );
+        }, timeoutMs),
+      };
+
+      const waiters = onceWaiters.get(channel) ?? new Set<OnceWaiter>();
+      waiters.add(waiter);
+      onceWaiters.set(channel, waiters);
+    });
+
+  const waitForBatchOrTimeout = (
+    batch: Promise<unknown>[],
+    timeoutMs: number,
+  ): Promise<boolean> =>
+    new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      void Promise.allSettled(batch).then(() => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+
+  const pendingChannels = (): string[] =>
+    Array.from(inFlight.values()).map((entry) => entry.channel);
+
+  const warnSettleTimeout = (timeoutMs: number) => {
+    console.warn(
+      `[renderer-ipc-bridge] settleInFlight timed out after ${timeoutMs}ms; ` +
+        `pending channels: ${JSON.stringify(pendingChannels())}`,
+    );
+  };
+
   const settleInFlight = async (timeoutMs = 5_000): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
     // A settling invoke can schedule follow-up invokes (a query's onSuccess,
     // a dependent query), so drain repeatedly until the set stays empty.
     while (inFlight.size > 0) {
-      if (Date.now() > deadline) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        warnSettleTimeout(timeoutMs);
         return;
       }
-      await Promise.allSettled(inFlight);
+      const didSettle = await waitForBatchOrTimeout(
+        Array.from(inFlight.keys()),
+        remainingMs,
+      );
+      if (!didSettle && inFlight.size > 0) {
+        warnSettleTimeout(timeoutMs);
+        return;
+      }
     }
+  };
+
+  const clearOnceWaiters = () => {
+    for (const waiters of Array.from(onceWaiters.values())) {
+      for (const waiter of Array.from(waiters)) {
+        clearTimeout(waiter.timer);
+      }
+    }
+    onceWaiters.clear();
+  };
+
+  const lastInvoke = (
+    channel: string,
+  ): RendererIpcBridgeInvokeLogEntry | undefined => {
+    for (let i = invokeLog.length - 1; i >= 0; i--) {
+      if (invokeLog[i].channel === channel) {
+        return invokeLog[i];
+      }
+    }
+    return undefined;
   };
 
   return {
@@ -182,11 +357,17 @@ export function installRendererIpcBridge(
     fakeEvent,
     missingChannels,
     sentEvents,
+    invokeLog,
+    once,
+    lastInvoke,
+    eventCount: (channel: string) =>
+      sentEvents.filter((event) => event.channel === channel).length,
     settleInFlight,
     get pendingCount() {
       return inFlight.size;
     },
     uninstall: () => {
+      clearOnceWaiters();
       const win = (globalThis as unknown as { window: { electron?: unknown } })
         .window;
       if (win.electron === electron) {

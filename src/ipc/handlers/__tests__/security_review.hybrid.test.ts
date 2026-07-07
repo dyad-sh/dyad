@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Migrated from e2e-tests/security_review.spec.ts, then converted from the
 // node chat-flow harness to the HYBRID harness (real <ChatPanel> over the real
 // IPC stack). The describe/it names are kept identical to the node version on
@@ -24,40 +21,7 @@
 // UI-only assertions from the e2e spec that live outside the chat panel
 // (findings-table aria snapshot, chat tab counts, checkbox multi-select
 // interactions in SecurityPanel) are intentionally dropped.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  return { ipcHandlers: new Map() };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
-
-// The review markdown contains code spans, which render through
-// CodeHighlight -> useTheme. The harness mounts <ChatPanel> without the app's
-// ThemeProvider (renderer.tsx provides it in production), so supply a minimal
-// theme context here.
-vi.mock("@/contexts/ThemeContext", () => ({
-  ThemeProvider: ({ children }: { children?: unknown }) => children ?? null,
-  useTheme: () => ({ theme: "light", isDarkMode: false, setTheme: () => {} }),
-}));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -69,6 +33,7 @@ import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 import { messages as messagesTable } from "@/db/schema";
 import type { SecurityFinding } from "@/ipc/types/security";
 import { asc, eq } from "drizzle-orm";

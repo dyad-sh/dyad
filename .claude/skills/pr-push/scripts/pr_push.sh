@@ -79,7 +79,7 @@ restore_spurious_package_lock() {
   if path_is_dirty "package-lock.json" && ! package_json_dirty; then
     log "Discarding package-lock.json because package.json is unchanged"
     git restore --staged package-lock.json 2>/dev/null || true
-    git restore package-lock.json
+    git restore package-lock.json 2>/dev/null || true
     IGNORED_FILES+=("package-lock.json (spurious without package.json)")
   fi
 }
@@ -124,7 +124,7 @@ staged_file_list() {
 
 default_branch_name() {
   local files joined
-  files="$(git_status_paths | tr '\0' '\n' | head -5 | tr '\n' ' ')"
+  files="$(git_status_paths | awk -v RS='\0' 'NR <= 5 { printf "%s ", $0 }')"
 
   case "$files" in
     *".claude/skills/pr-push"*) joined="fast-pr-push-skill" ;;
@@ -235,16 +235,23 @@ remote_owner_repo() {
   url="$(git remote get-url --push "$remote" 2>/dev/null || git remote get-url "$remote")"
 
   url="${url%.git}"
-  parsed="$(printf '%s' "$url" | sed -E 's#^[[:alpha:]][[:alnum:].+-]*://##; s#^[^@/]+@##; s#^github.com[:/]##; s#^git@github.com[:/]##')"
-  if [[ "$parsed" != "$url" && "$parsed" == */* ]]; then
-    printf '%s\n' "$parsed"
-    return
-  fi
-
   case "$url" in
+    *://*)
+      parsed="${url#*://}"
+      parsed="${parsed#*@}"
+      case "$parsed" in
+        github.com/* | github.com:*/* | ssh.github.com/* | ssh.github.com:*/*)
+          parsed="${parsed#*/}"
+          if [[ "$parsed" == */* ]]; then
+            printf '%s\n' "$parsed"
+            return
+          fi
+          ;;
+      esac
+      ;;
     git@github.com:*) printf '%s\n' "${url#git@github.com:}" ;;
-    https://github.com/*) printf '%s\n' "${url#https://github.com/}" ;;
-    https://*@github.com/*) printf '%s\n' "${url#*@github.com/}" ;;
+    github.com:*) printf '%s\n' "${url#github.com:}" ;;
+    github.com/*) printf '%s\n' "${url#github.com/}" ;;
     *) printf '%s\n' "$url" ;;
   esac
 }
@@ -269,29 +276,56 @@ remote_for_owner_repo() {
   return 1
 }
 
-find_existing_pr_for_branch() {
-  local branch="$1" number_output url_output
+list_existing_prs_for_branch() {
+  local branch="$1" list_output
 
-  if ! number_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json number --jq '.[0].number // empty' 2>&1)"; then
-    printf '%s\n' "$number_output" >&2
+  if ! list_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json number,url,headRepository,headRepositoryOwner --jq '.[] | [.number, .url, (((.headRepositoryOwner.login // "") + "/" + (.headRepository.name // "")) | select(. != "/"))] | @tsv' 2>&1)"; then
+    printf '%s\n' "$list_output" >&2
     die "Unable to list existing PRs"
   fi
 
-  [[ -n "$number_output" ]] || return 1
-
-  if ! url_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json url --jq '.[0].url // empty' 2>&1)"; then
-    printf '%s\n' "$url_output" >&2
-    die "Unable to read existing PR URL"
-  fi
-
-  PR_NUMBER="$number_output"
-  PR_URL="$url_output"
-  return 0
+  printf '%s\n' "$list_output"
 }
 
-pr_head_repo() {
-  local pr_number="$1"
-  gh api "repos/$BASE_REPO/pulls/$pr_number" --jq .head.repo.full_name
+find_existing_pr_for_branch() {
+  local branch="$1" head_owner="${2:-}"
+  local list_output number url head_repo
+
+  list_output="$(list_existing_prs_for_branch "$branch")"
+  [[ -n "$list_output" ]] || return 1
+
+  while IFS=$'\t' read -r number url head_repo; do
+    [[ -n "$number" ]] || continue
+    if [[ -n "$head_owner" && "$head_repo" != "$head_owner/"* ]]; then
+      continue
+    fi
+
+    PR_NUMBER="$number"
+    PR_URL="$url"
+    return 0
+  done <<<"$list_output"
+
+  return 1
+}
+
+find_existing_pr_head_repo_for_local_remote() {
+  local branch="$1"
+  local list_output number url head_repo
+
+  list_output="$(list_existing_prs_for_branch "$branch")"
+  [[ -n "$list_output" ]] || return 1
+
+  while IFS=$'\t' read -r number url head_repo; do
+    [[ -n "$number" && -n "$head_repo" ]] || continue
+    if remote_for_owner_repo "$head_repo" >/dev/null; then
+      PR_NUMBER="$number"
+      PR_URL="$url"
+      printf '%s\n' "$head_repo"
+      return 0
+    fi
+  done <<<"$list_output"
+
+  return 1
 }
 
 push_with_fallback() {
@@ -326,13 +360,8 @@ push_with_fallback() {
     git branch --unset-upstream >/dev/null 2>&1 || true
   fi
 
-  local pr_head_repo_name pr_view_output matched_remote
-  if find_existing_pr_for_branch "$branch"; then
-    pr_view_output="$(pr_head_repo "$PR_NUMBER" 2>&1)" || {
-      printf '%s\n' "$pr_view_output" >&2
-      die "Unable to check existing PR head repository before push"
-    }
-    pr_head_repo_name="$pr_view_output"
+  local pr_head_repo_name matched_remote
+  if pr_head_repo_name="$(find_existing_pr_head_repo_for_local_remote "$branch")"; then
     while IFS= read -r remote; do
       if [[ "$(remote_owner_repo "$remote")" == "$pr_head_repo_name" ]]; then
         matched_remote="$remote"
@@ -393,8 +422,9 @@ pr_body() {
     return
   fi
 
-  local files_line
-  files_line="$( (git diff --name-only "$BASE_BRANCH"...HEAD 2>/dev/null || true) | head -6 | awk 'BEGIN { sep="" } { printf "%s%s", sep, $0; sep=", " }')"
+  local base_ref files_line
+  base_ref="$(base_comparison_ref)"
+  files_line="$(git diff --name-only "$base_ref"...HEAD 2>/dev/null | awk 'NR <= 6 { printf "%s%s", sep, $0; sep=", " }' || true)"
 
   printf '## Summary\n'
   printf -- '- %s\n' "$(git log -1 --pretty=%s)"
@@ -439,7 +469,8 @@ create_or_update_pr() {
   local branch head_owner title body create_error create_error_file
 
   branch="$(current_branch)"
-  if find_existing_pr_for_branch "$branch"; then
+  head_owner="${PUSH_OWNER_REPO%%/*}"
+  if find_existing_pr_for_branch "$branch" "$head_owner"; then
     log "PR already exists: $PR_URL"
   else
     if ! branch_has_commits_ahead; then
@@ -447,7 +478,6 @@ create_or_update_pr() {
       return
     fi
 
-    head_owner="${PUSH_OWNER_REPO%%/*}"
     title="$(pr_title)"
     body="$(pr_body)"
     SUGGESTED_TITLE="$title"
@@ -460,8 +490,7 @@ create_or_update_pr() {
     fi
 
     log "Creating PR against $BASE_REPO"
-    mkdir -p .claude/tmp
-    create_error_file=".claude/tmp/pr-push-create-error.$$"
+    create_error_file="$(mktemp "${TMPDIR:-/tmp}/pr-push-create-error.XXXXXX")"
     if ! PR_URL="$(gh pr create \
       --repo "$BASE_REPO" \
       --head "${head_owner}:${branch}" \
@@ -536,4 +565,6 @@ main() {
   print_summary
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

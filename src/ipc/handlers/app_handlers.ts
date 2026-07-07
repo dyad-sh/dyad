@@ -654,6 +654,8 @@ export function registerAppHandlers() {
         envVars[provider.envVarName] = getEnvVar(provider.envVarName);
       }
     }
+    // Azure setup detection needs the resource name in addition to its API key.
+    envVars["AZURE_RESOURCE_NAME"] = getEnvVar("AZURE_RESOURCE_NAME");
     return envVars;
   });
 

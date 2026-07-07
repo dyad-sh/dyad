@@ -24,6 +24,9 @@ testWithRealCatalog(
       timeout: Timeout.MEDIUM,
     });
 
+    // Provider submenus now live under "More models"
+    await po.page.getByText("More models", { exact: true }).click();
+
     // Verify primary providers appear from the real catalog
     await expect(po.page.getByText("OpenAI", { exact: true })).toBeVisible();
     await expect(po.page.getByText("Anthropic", { exact: true })).toBeVisible();

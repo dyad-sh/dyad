@@ -220,6 +220,7 @@ export function KeyValueEditor({
                       value={editingKeyValue}
                       onChange={(e) => setEditingKeyValue(e.target.value)}
                       placeholder="Key"
+                      aria-label="Key"
                       className="h-8"
                       disabled={disabled || isSaving}
                     />
@@ -227,6 +228,7 @@ export function KeyValueEditor({
                       value={editingValue}
                       onChange={(e) => setEditingValue(e.target.value)}
                       placeholder="Value"
+                      aria-label="Value"
                       className="h-8"
                       disabled={disabled || isSaving}
                     />

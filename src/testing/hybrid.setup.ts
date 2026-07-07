@@ -1,10 +1,12 @@
-import { prettyDOM } from "@testing-library/dom";
+import { configure, prettyDOM } from "@testing-library/dom";
 import { afterEach, vi } from "vitest";
 import type { RendererIpcBridge } from "./renderer_ipc_bridge";
 
 type HybridBridgeDiagnosticGlobal = typeof globalThis & {
   __DYAD_HYBRID_BRIDGE__?: RendererIpcBridge;
 };
+
+configure({ asyncUtilTimeout: 5_000 });
 
 const h = vi.hoisted(() => {
   process.env.NODE_ENV = "development";

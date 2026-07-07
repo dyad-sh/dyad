@@ -1051,6 +1051,10 @@ export async function setupHybridChatHarness(
       // happy-dom won't open a Base UI Select on a bare click. Focus + ArrowDown
       // opens the popup; then pointer events + click + Enter on the option commit
       // the value (a bare click alone does nothing).
+      await waitFor(() => {
+        expect((trigger as HTMLButtonElement).disabled).toBe(false);
+        expect(trigger.getAttribute("aria-disabled")).not.toBe("true");
+      });
       trigger.focus();
       fireEvent.keyDown(trigger, { key: "ArrowDown" });
       const option = await screen.findByRole("option", { name: optionMatcher });

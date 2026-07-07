@@ -143,6 +143,9 @@ describe("version search (integration)", () => {
     await screen.findByTestId("version-row-2");
     expect(screen.queryByTestId("version-row-1")).toBeNull();
 
+    fireEvent.click(screen.getByRole("button", { name: "Show all versions" }));
+    await screen.findByTestId("version-row-1");
+
     await closeVersionPane();
     await openVersionPane();
     await screen.findByTestId("version-row-1");

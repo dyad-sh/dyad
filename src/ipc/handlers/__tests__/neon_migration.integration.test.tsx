@@ -116,8 +116,8 @@ describe("Neon migration actions (integration)", () => {
     await seedNeonApp({ activeBranchId: "test-development-branch-id" });
     mountDatabaseSection();
 
-    const databaseSection = await screen.findByTestId("database-section");
-    expect(databaseSection.textContent).toContain(
+    await screen.findByTestId("database-section");
+    await screen.findByText(
       "Pick the database your deployed app should connect to.",
     );
 

@@ -11,7 +11,13 @@
 // directly), after which further prompts run normally.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -195,14 +201,11 @@ describe("local agent step limit (integration)", () => {
       "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
     );
 
-    // Every channel the UI invoked had a real handler.
-    expect([...harness.bridge.missingChannels]).toEqual([]);
-  }, 240_000);
-
-  it("re-renders the persisted step-limit card after a remount", async () => {
     // A fresh mount = a fresh jotai store (like an app restart): the queue is
     // ephemeral, but the persisted conversation — including the step-limit
-    // notice card — renders from the db.
+    // notice card — renders from the db. Same test as the flow that produced
+    // that conversation so it can't be orphaned by test reordering.
+    cleanup();
     harness.mount();
 
     await waitFor(
@@ -221,5 +224,8 @@ describe("local agent step limit (integration)", () => {
     );
     // The queue did not leak across the remount.
     expect(screen.queryByText(/\d+ Queued/)).toBeNull();
-  }, 60_000);
+
+    // Every channel the UI invoked had a real handler.
+    expect([...harness.bridge.missingChannels]).toEqual([]);
+  }, 240_000);
 });

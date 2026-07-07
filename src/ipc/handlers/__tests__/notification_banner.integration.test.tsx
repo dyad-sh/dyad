@@ -14,6 +14,11 @@ type TestNotificationConstructor = typeof Notification & {
   requestPermission: () => Promise<NotificationPermission>;
 };
 
+const originalNotificationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "Notification",
+);
+
 function installGrantedNotification() {
   const TestNotification =
     function TestNotification() {} as unknown as TestNotificationConstructor;
@@ -23,6 +28,18 @@ function installGrantedNotification() {
     value: TestNotification,
     configurable: true,
   });
+}
+
+function restoreNotification() {
+  if (originalNotificationDescriptor) {
+    Object.defineProperty(
+      window,
+      "Notification",
+      originalNotificationDescriptor,
+    );
+  } else {
+    delete (window as { Notification?: unknown }).Notification;
+  }
 }
 
 describe("notification banner (integration)", () => {
@@ -38,6 +55,7 @@ describe("notification banner (integration)", () => {
 
   afterEach(() => {
     cleanup();
+    restoreNotification();
     writeSettings({
       enableChatEventNotifications: false,
       skipNotificationBanner: false,

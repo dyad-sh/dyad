@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
@@ -15,6 +15,19 @@ import { h } from "@/testing/hybrid.setup";
 
 describe("local-agent grep cards (integration)", () => {
   let harness: HybridChatHarness;
+
+  // sentEvents accumulates for the harness lifetime; baseline per test so an
+  // error in one test doesn't also fail every later test in the file.
+  let errorEventsBaseline = 0;
+  const errorEvents = () =>
+    harness.bridge.sentEvents.filter(
+      (e) => e.channel === "chat:response:error",
+    );
+  const newErrorEvents = () => errorEvents().slice(errorEventsBaseline);
+
+  beforeEach(() => {
+    errorEventsBaseline = harness ? errorEvents().length : 0;
+  });
 
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
@@ -54,11 +67,7 @@ describe("local-agent grep cards (integration)", () => {
     expect(cards[1].getAttribute("aria-expanded")).toBe("true");
 
     await harness.waitForStreamEnd(harness.chatId);
-    expect(
-      harness.bridge.sentEvents.filter(
-        (e) => e.channel === "chat:response:error",
-      ),
-    ).toHaveLength(0);
+    expect(newErrorEvents()).toHaveLength(0);
 
     const storedMessages = await harness.db.query.messages.findMany({
       where: eq(messages.chatId, harness.chatId),
@@ -109,10 +118,6 @@ describe("local-agent grep cards (integration)", () => {
     expect(storedMessages.at(-1)?.content).toContain(
       "node_modules/ignored-pkg/index.js",
     );
-    expect(
-      harness.bridge.sentEvents.filter(
-        (e) => e.channel === "chat:response:error",
-      ),
-    ).toHaveLength(0);
+    expect(newErrorEvents()).toHaveLength(0);
   }, 60_000);
 });

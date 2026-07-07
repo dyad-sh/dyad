@@ -102,6 +102,10 @@ describe("supabase migrations (integration)", () => {
     });
 
     await sendPrompt("tc=execute-sql-1");
+    // Drain any work still in flight after chat:response:end before asserting
+    // absence, so a late (buggy) migration write fails this check instead of
+    // slipping past it.
+    await harness.bridge.settleInFlight();
     expect(migrationFiles()).toHaveLength(0);
 
     writeSettings({ enableSupabaseWriteSqlMigration: true });

@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import {
   cleanup,
@@ -51,6 +52,25 @@ function git(appDir: string, ...args: string[]): string {
 
 function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+// For git commands that talk to the in-process fake GitHub server
+// (clone/fetch/push): a synchronous git call would block the event loop the
+// server needs to respond, deadlocking the test.
+async function gitAsync(cwd: string, ...args: string[]): Promise<void> {
+  await promisify(execFile)(
+    "git",
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Test User",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
+  );
 }
 
 function gitStatus(appDir: string): string {
@@ -411,6 +431,26 @@ describe("Git collaboration actions (integration)", () => {
     git(app.appDir, "add", testFile);
     git(app.appDir, "commit", "-m", "Add pull test file");
 
+    // Seed a REMOTE-side commit (clone the fake remote, commit, push back) so
+    // the pull below has something real to fetch — without it the pull
+    // trivially succeeds without exercising fetch/merge. The clone/push MUST
+    // be async: the fake GitHub server runs in this process, so a sync git
+    // call deadlocks the event loop the server needs to answer it.
+    const remoteUrl = git(app.appDir, "remote", "get-url", "origin").trim();
+    const seedDir = path.join(path.dirname(app.appDir), "pull-remote-seed");
+    await gitAsync(path.dirname(app.appDir), "clone", remoteUrl, seedDir);
+    const remoteFile = "remote-change.txt";
+    const remoteContent = "Content committed on the remote";
+    fs.writeFileSync(path.join(seedDir, remoteFile), remoteContent);
+    git(seedDir, "add", remoteFile);
+    git(seedDir, "commit", "-m", "Remote-side change");
+    await gitAsync(
+      seedDir,
+      "push",
+      "origin",
+      `HEAD:${currentBranch(app.appDir)}`,
+    );
+
     await openDropdown(
       await screen.findByTestId("branch-actions-menu-trigger"),
     );
@@ -419,6 +459,14 @@ describe("Git collaboration actions (integration)", () => {
     await screen.findByText("Pulled latest changes from remote", undefined, {
       timeout: 10_000,
     });
+    // The remote commit arrived (merged with the local one)...
+    await waitFor(() => {
+      expect(fs.existsSync(path.join(app.appDir, remoteFile))).toBe(true);
+    });
+    expect(fs.readFileSync(path.join(app.appDir, remoteFile), "utf-8")).toBe(
+      remoteContent,
+    );
+    // ...and the local commit survived.
     expect(fs.existsSync(testFilePath)).toBe(true);
     expect(fs.readFileSync(testFilePath, "utf-8")).toBe(fileContent);
     expect(gitStatus(app.appDir)).toBe("");

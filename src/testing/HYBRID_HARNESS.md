@@ -100,11 +100,11 @@ Notes:
 `selectedModel`, `provider`, `model`, `settings`, … all pass straight through),
 plus:
 
-| Option                    | Default | Purpose                                                                                    |
-| ------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act". |
-| `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                        |
-| `testBuild`               | `false` | Set `E2E_TEST_BUILD` / `FAKE_LLM_PORT` before importing IPC handlers for test-only fakes.  |
+| Option                    | Default | Purpose                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act".                                                                                                                                                                                                                                                                                    |
+| `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                                                                                                                                                                                                                                                                                                           |
+| `testBuild`               | `false` | Set `E2E_TEST_BUILD` / `FAKE_LLM_PORT` for handlers that re-read the env at call time (GitHub, remote model catalog). Does **not** reach import-time `IS_TEST_BUILD` snapshots (Neon, Supabase, Vercel, provider key validation) — those also need a `vi.hoisted(() => { process.env.E2E_TEST_BUILD = "true"; })` block above the imports; the harness warns if it's missing. |
 
 Common option recipes:
 
@@ -328,6 +328,12 @@ before the active one fully disposes.
   app module first initializes `tslib`'s CJS interop, without which ChatPanel's
   transitive `react-remove-scroll` throws `tslib_1.__importStar is not a function`
   at load. Don't reorder those imports.
+- **Sync subprocesses that talk to the fake server deadlock.** The fake
+  LLM/GitHub/Neon server runs in the test's own process, so `execFileSync("git",
+["clone", <fake remote>...])` blocks the event loop the server needs to answer
+  the request — the test hangs until timeout. Use an async `execFile` (and
+  `await` it) for any child process that hits `localhost:<fakeLlmPort>`; sync is
+  fine for purely local git/fs commands.
 - **`get-proposal` / `checkProblems` / cloud-sandbox / desktop-config log lines**
   are benign. Registering the full handler set means the UI polls handlers that
   have nothing to do (no tsc worker in the vitest bundle, no Pro key, a

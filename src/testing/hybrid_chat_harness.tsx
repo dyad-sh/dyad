@@ -1,5 +1,4 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import net from "node:net";
 import path from "node:path";
 
 /**
@@ -38,8 +37,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
   type RenderResult,
 } from "@testing-library/react";
+import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -159,9 +160,20 @@ export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
    */
   assertNoMissingChannels?: boolean;
   /**
-   * Emulate the E2E test build's import-time feature gates before importing
-   * the main-process IPC graph. This routes GitHub/Neon handlers to the
-   * harness fake server.
+   * Set E2E_TEST_BUILD/FAKE_LLM_PORT so main-process code that re-reads the
+   * environment at call time (GitHub handlers, the remote model catalog)
+   * routes to the harness fake server.
+   *
+   * This does NOT reach code that snapshots `IS_TEST_BUILD` at import time
+   * (Neon, Supabase, Vercel, provider key validation): those modules load with
+   * the harness's own static imports, before this option can set the env. A
+   * test that needs them must hoist the env var above all imports:
+   *
+   *   vi.hoisted(() => {
+   *     process.env.E2E_TEST_BUILD = "true";
+   *   });
+   *
+   * The harness warns when `testBuild: true` is passed without that hoist.
    */
   testBuild?: boolean;
 }
@@ -420,22 +432,6 @@ function restoreHybridEnv(snapshot: Map<string, string | undefined>): void {
   }
 }
 
-async function findFreeLoopbackPort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("Could not allocate a port")));
-        return;
-      }
-      const port = address.port;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
 function stopChildProcess(
   child: ChildProcessWithoutNullStreams,
 ): Promise<void> {
@@ -509,6 +505,16 @@ export async function setupHybridChatHarness(
   const envSnapshot = snapshotHybridEnv();
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
   if (options.testBuild) {
+    if (!IS_TEST_BUILD) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[hybrid harness] testBuild: true, but IS_TEST_BUILD was already " +
+          "snapshotted as false at import time. Neon/Supabase/Vercel " +
+          "handlers will hit REAL endpoints. If this test needs them, add " +
+          '`vi.hoisted(() => { process.env.E2E_TEST_BUILD = "true"; });` ' +
+          "above the imports. See the testBuild JSDoc.",
+      );
+    }
     process.env.E2E_TEST_BUILD = "true";
   }
   setModelClientFetchForTesting(
@@ -827,6 +833,10 @@ export async function setupHybridChatHarness(
       });
     };
 
+    // Popovers and dropdown menus render different data-slot values.
+    const OPEN_POPUP_SELECTOR =
+      '[data-slot="popover-content"], [data-slot="dropdown-menu-content"]';
+
     const openPopover = async (trigger: HTMLElement): Promise<void> => {
       trigger.focus();
       fireEvent.pointerDown(trigger);
@@ -834,16 +844,19 @@ export async function setupHybridChatHarness(
       fireEvent.click(trigger);
       fireEvent.keyDown(trigger, { key: "ArrowDown" });
       await waitFor(() => {
-        expect(
-          document.querySelector('[data-slot="popover-content"]'),
-        ).toBeTruthy();
+        expect(document.querySelector(OPEN_POPUP_SELECTOR)).toBeTruthy();
       });
     };
 
     const clickMenuItem = async (
       name: string | RegExp,
     ): Promise<HTMLElement> => {
-      const item = await screen.findByRole("button", { name });
+      // Scope to the open popup when there is one so a same-named button
+      // elsewhere in the page (e.g. a dialog's confirm) can't be matched.
+      const popup = document.querySelector<HTMLElement>(OPEN_POPUP_SELECTOR);
+      const item = popup
+        ? await within(popup).findByRole("button", { name })
+        : await screen.findByRole("button", { name });
       fireEvent.pointerDown(item);
       fireEvent.pointerUp(item);
       fireEvent.click(item);
@@ -858,7 +871,9 @@ export async function setupHybridChatHarness(
       buttonName: string | RegExp,
     ): Promise<void> => {
       const dialog = await findDialog(dialogName);
-      const button = await screen.findByRole("button", { name: buttonName });
+      const button = await within(dialog).findByRole("button", {
+        name: buttonName,
+      });
       fireEvent.click(button);
       await waitFor(() => expect(dialog.isConnected).toBe(false));
     };
@@ -1192,25 +1207,27 @@ export async function setupHybridChatHarness(
       url: string;
       stop: () => Promise<void>;
     }> => {
-      const port = await findFreeLoopbackPort();
+      // PORT=0 lets the OS pick a free port race-free; the child reports the
+      // bound port in its startup line and we parse it from there.
       const child = spawn("node", [fakeHttpServerPath], {
-        env: { ...process.env, PORT: String(port) },
+        env: { ...process.env, PORT: "0" },
         stdio: "pipe",
       });
       mcpHttpProcesses.add(child);
 
-      await new Promise<void>((resolve, reject) => {
+      const port = await new Promise<number>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(
-            new Error(
-              `HTTP MCP server failed to start on port ${port} within timeout`,
-            ),
-          );
+          reject(new Error(`HTTP MCP server failed to start within timeout`));
         }, 10_000);
+        let stdoutBuffer = "";
         child.stdout.on("data", (data: Buffer) => {
-          if (data.toString().includes("HTTP MCP server running")) {
+          stdoutBuffer += data.toString();
+          const match = stdoutBuffer.match(
+            /HTTP MCP server running on http:\/\/localhost:(\d+)\/mcp/,
+          );
+          if (match) {
             clearTimeout(timeout);
-            resolve();
+            resolve(Number(match[1]));
           }
         });
         child.stderr.on("data", (data: Buffer) => {
@@ -1289,6 +1306,12 @@ export async function setupHybridChatHarness(
         activeStore = undefined;
         activeRouter = undefined;
         bridge.uninstall();
+        // Server ids restart at 1 in the next harness's fresh db, so a cached
+        // client left here would be silently reused for a different server.
+        // Dynamic import: static top-level imports of the handler graph break
+        // module-load ordering (see the ipc_host import above).
+        const { mcpManager } = await import("@/ipc/utils/mcp_manager");
+        mcpManager.disposeAll();
         await Promise.all(
           Array.from(mcpHttpProcesses, (child) => stopChildProcess(child)),
         );

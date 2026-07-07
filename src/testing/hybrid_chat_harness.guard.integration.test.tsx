@@ -49,7 +49,9 @@ describe("hybrid chat harness guards", () => {
           expect(await screen.findByText(surface.text)).toBeTruthy();
         }
         expect(screen.queryByTestId("preview-iframe-element")).toBeNull();
-        expect(screen.queryByTestId("file-editor")).toBeNull();
+        // FileEditor has no root testid; its header save button renders
+        // unconditionally, so it proxies "FileEditor mounted".
+        expect(screen.queryByTestId("save-file-button")).toBeNull();
       } finally {
         await harness.dispose();
       }

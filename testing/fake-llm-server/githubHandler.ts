@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import { spawn } from "child_process";
 
 const gitHttpMiddlewareFactory = require("git-http-mock-server/middleware");
 
@@ -15,6 +16,44 @@ interface PushEvent {
 }
 
 const pushEvents: PushEvent[] = [];
+
+// Parse the git receive-pack protocol body for ref updates
+// ("old-sha new-sha refs/heads/branch-name") and record them for the
+// /github/api/test/push-events endpoint.
+function recordPushEvents(repoName: string, body: string) {
+  try {
+    const lines = body.split("\n");
+    lines.forEach((line) => {
+      const refMatch = line.match(
+        // eslint-disable-next-line
+        /([0-9a-f]{40})\s+([0-9a-f]{40})\s+refs\/heads\/([^\s\u0000]+)/,
+      );
+      if (refMatch) {
+        const [, oldSha, newSha, branchName] = refMatch;
+        const isDelete = newSha === "0".repeat(40);
+        const isCreate = oldSha === "0".repeat(40);
+
+        let operation: "push" | "create" | "delete" = "push";
+        if (isDelete) operation = "delete";
+        else if (isCreate) operation = "create";
+
+        pushEvents.push({
+          timestamp: new Date(),
+          repo: repoName,
+          branch: branchName,
+          operation,
+          commitSha: isDelete ? oldSha : newSha,
+        });
+
+        console.log(
+          `* Recorded ${operation} to ${repoName}/${branchName}, commit: ${isDelete ? oldSha : newSha}`,
+        );
+      }
+    });
+  } catch (error) {
+    console.error("* Error parsing git protocol:", error);
+  }
+}
 
 // Mock data for testing
 const mockAccessToken = "fake_access_token_12345";
@@ -400,52 +439,6 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
 
   if (repoName) {
     console.log(`* Git operation for repo: ${repoName}`);
-    // Track push events if this is a git-receive-pack (push) operation
-    if (req.url.includes("/git-receive-pack") && req.method === "POST") {
-      console.log("* Git PUSH operation detected for repo:", repoName);
-      // Collect request body to parse git protocol
-      let body = "";
-      req.on("data", (chunk) => {
-        body += chunk.toString();
-      });
-      req.on("end", () => {
-        try {
-          // Parse git pack protocol for branch refs
-          // Git protocol sends refs in format: "old-sha new-sha refs/heads/branch-name"
-          const lines = body.split("\n");
-          lines.forEach((line) => {
-            // Look for lines containing refs/heads/
-            const refMatch = line.match(
-              // eslint-disable-next-line
-              /([0-9a-f]{40})\s+([0-9a-f]{40})\s+refs\/heads\/([^\s\u0000]+)/,
-            );
-            if (refMatch) {
-              const [, oldSha, newSha, branchName] = refMatch;
-              const isDelete = newSha === "0".repeat(40);
-              const isCreate = oldSha === "0".repeat(40);
-
-              let operation: "push" | "create" | "delete" = "push";
-              if (isDelete) operation = "delete";
-              else if (isCreate) operation = "create";
-
-              pushEvents.push({
-                timestamp: new Date(),
-                repo: repoName,
-                branch: branchName,
-                operation,
-                commitSha: isDelete ? oldSha : newSha,
-              });
-
-              console.log(
-                `* Recorded ${operation} to ${repoName}/${branchName}, commit: ${isDelete ? oldSha : newSha}`,
-              );
-            }
-          });
-        } catch (error) {
-          console.error("* Error parsing git protocol:", error);
-        }
-      });
-    }
     // Ensure the bare git repository exists for this repo
     const bareRepoPath = path.join(mockReposRoot, `${repoName}.git`);
     if (!fs.existsSync(bareRepoPath)) {
@@ -539,6 +532,51 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         });
       }
     }
+    // Handle pushes (git-receive-pack POST) ourselves against the REAL bare
+    // repo. The git-http-mock-server middleware would run receive-pack against
+    // a throwaway fixturez COPY of it, so pushes over HTTP would never update
+    // the repo — later clones/pulls would see stale (usually empty) history.
+    // Buffering the body also lets us parse push events without racing the
+    // middleware's own `req.pipe(...)` for the stream.
+    if (req.url.includes("/git-receive-pack") && req.method === "POST") {
+      console.log("* Git PUSH operation detected for repo:", repoName);
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => {
+        chunks.push(Buffer.from(chunk));
+      });
+      req.on("end", () => {
+        const rawBody = Buffer.concat(chunks);
+        recordPushEvents(repoName, rawBody.toString("latin1"));
+
+        const env = req.headers["git-protocol"]
+          ? {
+              ...process.env,
+              GIT_PROTOCOL: String(req.headers["git-protocol"]),
+            }
+          : process.env;
+        res.setHeader("content-type", "application/x-git-receive-pack-result");
+        const ps = spawn(
+          "git-receive-pack",
+          ["--stateless-rpc", bareRepoPath],
+          { env },
+        );
+        ps.on("error", (error) => {
+          console.error("* git-receive-pack failed to spawn:", error);
+          if (!res.headersSent) {
+            res.status(500);
+          }
+          res.end();
+        });
+        ps.stdin.write(rawBody);
+        ps.stdin.end();
+        ps.stdout.pipe(res);
+        console.log(
+          `* [git-http-server] 200 POST    ${req.url} (persistent receive-pack)`,
+        );
+      });
+      return;
+    }
+
     // Rewrite the URL to match what the middleware expects
     // Change /github/git/testuser/test-repo.git/... to /github/git/test-repo.git/...
     const rewrittenUrl = req.url.replace(

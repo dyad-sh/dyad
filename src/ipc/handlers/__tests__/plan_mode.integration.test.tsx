@@ -8,15 +8,20 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
+import type { PlanUpdatePayload } from "@/ipc/types/plan";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 
-const TEST_PLAN = {
+// Expected plan values produced by the `local-agent/accept-plan` fixture's
+// `write_plan` tool call, which every plan test below streams to drive the real
+// `plan:update` emission. Typed against the production `PlanUpdatePayload`
+// contract so a drift in the emitted shape fails to compile here.
+const EXPECTED_PLAN: Omit<PlanUpdatePayload, "chatId"> = {
   title: "Test Plan",
-  summary: "A test implementation plan for integration testing.",
+  summary: "A test implementation plan for E2E testing.",
   plan: "## Overview\n\nThis is a test plan.\n\n## Steps\n\n1. Step one\n2. Step two",
 };
 
@@ -81,8 +86,26 @@ describe("plan mode (integration)", () => {
     return { appId: appRow.id, chatId: chatRow.id, appDir };
   }
 
-  function sendPlanUpdate(chatId: number) {
-    harness.bridge.send("plan:update", { chatId, ...TEST_PLAN });
+  // Stream the `local-agent/accept-plan` fixture, which issues a real
+  // `write_plan` tool call. That drives the production emission path
+  // (`writePlanTool` -> `plan:update`) so the plan panel is populated by the
+  // real payload rather than a synthetic bridge send. Returns after the turn
+  // that presents the plan has fully streamed.
+  async function streamRealPlan(chatId: number) {
+    const { send } = await harness.typeInChat("tc=local-agent/accept-plan", {
+      chatId,
+    });
+    send();
+    const event = await harness.waitForEvent(
+      "plan:update",
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as PlanUpdatePayload).chatId === chatId,
+      30_000,
+    );
+    await harness.waitForStreamEnd(chatId);
+    return event.payload as PlanUpdatePayload;
   }
 
   async function waitForChatSurface() {
@@ -100,7 +123,7 @@ describe("plan mode (integration)", () => {
         path.join(planDir, mdFiles[0]),
         "utf-8",
       );
-      expect(planContent).toContain(TEST_PLAN.title);
+      expect(planContent).toContain(EXPECTED_PLAN.title);
     });
   }
 
@@ -134,7 +157,14 @@ describe("plan mode (integration)", () => {
       withPlanPanel: true,
     });
     await waitForChatSurface();
-    sendPlanUpdate(app.chatId);
+    // Drive the real streamed plan-generation path instead of a synthetic
+    // bridge send: the plan panel below is populated by the production
+    // `write_plan` -> `plan:update` emission.
+    const planUpdate = await streamRealPlan(app.chatId);
+    expect(planUpdate).toMatchObject({
+      chatId: app.chatId,
+      title: EXPECTED_PLAN.title,
+    });
 
     const acceptButton = await screen.findByTestId("accept-plan-new-chat");
     fireEvent.click(acceptButton);
@@ -168,7 +198,7 @@ describe("plan mode (integration)", () => {
       withPlanPanel: true,
     });
     await waitForChatSurface();
-    sendPlanUpdate(app.chatId);
+    await streamRealPlan(app.chatId);
 
     fireEvent.click(await screen.findByTestId("accept-plan-continue-here"));
 
@@ -205,7 +235,7 @@ describe("plan mode (integration)", () => {
     });
     await waitForChatSurface();
     harness.setSelectedAppId(stale.appId);
-    sendPlanUpdate(source.chatId);
+    await streamRealPlan(source.chatId);
 
     fireEvent.click(await screen.findByTestId("accept-plan-new-chat"));
 

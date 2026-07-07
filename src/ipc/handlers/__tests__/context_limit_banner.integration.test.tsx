@@ -123,11 +123,23 @@ describe("context limit banner (integration)", () => {
       "tc=context-limit-response [high-tokens=50000]",
       { chatId },
     );
+    const countTokensCallsBeforeSend = harness.bridge.invokeLog.filter(
+      (entry) => entry.channel === "chat:count-tokens",
+    ).length;
     send();
 
     await harness.waitForStreamEnd(chatId);
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // The banner renders off the chat:count-tokens query that refetches after
+    // the stream ends. Wait for that round-trip to complete (a wall-clock
+    // sleep here lets the absence check pass vacuously under load).
+    await waitFor(() => {
+      const settledAfterSend = harness.bridge.invokeLog.filter(
+        (entry) =>
+          entry.channel === "chat:count-tokens" && entry.status !== "pending",
+      ).length;
+      expect(settledAfterSend).toBeGreaterThan(countTokensCallsBeforeSend);
+    });
     expect(screen.queryByTestId("context-limit-banner")).toBeNull();
   }, 60_000);
 });

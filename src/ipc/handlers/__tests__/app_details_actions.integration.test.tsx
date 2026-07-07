@@ -222,7 +222,11 @@ describe("app details actions (integration)", () => {
       });
       expect(row).toBeUndefined();
     });
-    expect(fs.existsSync(app.appDir)).toBe(false);
+    // The handler deletes the db row before fs.rm (which retries for up to
+    // ~1s), so the directory can outlive the row briefly.
+    await waitFor(() => {
+      expect(fs.existsSync(app.appDir)).toBe(false);
+    });
     await waitFor(() => {
       expect(harness.currentLocation().pathname).toBe("/");
     });

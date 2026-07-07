@@ -79,6 +79,21 @@ class McpManager {
       this.clients.delete(serverId);
     }
   }
+
+  // Close every cached client. Server ids are only unique per database, so
+  // anything that swaps databases (the test harness) must clear the cache or
+  // a new server can silently reuse a stale client keyed to the same id.
+  disposeAll() {
+    for (const client of this.clients.values()) {
+      try {
+        client.close();
+      } catch {
+        // Best-effort: a client whose transport already died must not block
+        // closing the rest.
+      }
+    }
+    this.clients.clear();
+  }
 }
 
 export const mcpManager = McpManager.instance;

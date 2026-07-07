@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
@@ -11,9 +11,7 @@ import { apps, chats, messages } from "@/db/schema";
 import {
   deleteAppBlueprintForChat,
   getAppBlueprintForChat,
-  setAppBlueprintForChat,
 } from "@/ipc/handlers/app_blueprint_handlers";
-import type { AppBlueprintData } from "@/ipc/types/app_blueprint";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -89,11 +87,20 @@ describe("local-agent basic flows (integration)", () => {
     return { appId: appRow.id, chatId: chatRow.id, appDir };
   }
 
-  function errorEvents() {
+  // sentEvents accumulates for the harness lifetime; baseline per test so an
+  // error in one test doesn't also fail every later test in the file.
+  let errorEventsBaseline = 0;
+  function allErrorEvents() {
     return harness.bridge.sentEvents.filter(
       (e) => e.channel === "chat:response:error",
     );
   }
+  function errorEvents() {
+    return allErrorEvents().slice(errorEventsBaseline);
+  }
+  beforeEach(() => {
+    errorEventsBaseline = harness ? allErrorEvents().length : 0;
+  });
 
   it("reads a file, edits it, and persists the result", async () => {
     const app = await createMinimalApp({ name: "Read Edit" });
@@ -217,51 +224,48 @@ describe("local-agent basic flows (integration)", () => {
       name: "Blueprint Template",
       needsAppBlueprint: true,
     });
-    const blueprint: AppBlueprintData = {
-      appName: "React Template Trial",
-      userPrompt: "Build me a polished notes app",
-      templateId: "next",
-      themeId: "default",
-      designDirection:
-        "Simple and professional with strong focus on readability.",
-      primaryColor: "#2563EB",
-      visuals: [
-        {
-          id: "visual_logo",
-          type: "logo",
-          description: "App logo for the notes dashboard",
-          prompt: "Minimal notes app logo in cobalt blue",
-        },
-      ],
-      attachments: [],
-    };
-    setAppBlueprintForChat(app.chatId, blueprint);
-    await harness.db.insert(messages).values({
-      chatId: app.chatId,
-      role: "assistant",
-      content:
-        'I drafted an app blueprint.\n\n<dyad-app-blueprint app-name="React Template Trial" template="next" theme="default" design-direction="Simple and professional with strong focus on readability." primary-color="#2563EB" complete="true"></dyad-app-blueprint>',
-    });
-
     harness.mount({ chatId: app.chatId, appId: app.appId });
-    harness.bridge.send("app-blueprint:update", {
-      chatId: app.chatId,
-      data: blueprint,
-    });
 
-    const templateSelect = (await screen.findByTestId(
-      "app-blueprint-template-select",
-      undefined,
-      { timeout: 20_000 },
-    )) as HTMLSelectElement;
-    fireEvent.change(templateSelect, { target: { value: "react" } });
+    // Draft the blueprint through the real streamed path (write_app_blueprint ->
+    // app-blueprint:update + <dyad-app-blueprint> assistant message) instead of
+    // seeding state + a hand-inserted message + a synthetic bridge send.
+    const { send } = await harness.typeInChat(
+      "tc=local-agent/app-blueprint-rename",
+      { chatId: app.chatId },
+    );
+    send();
+
+    await screen.findByTestId("app-blueprint-template-select", undefined, {
+      timeout: 20_000,
+    });
+    await harness.waitForStreamEnd(app.chatId);
+
+    // The fixture drafts the blueprint with the "react" template; switching it
+    // exercises the edit-field persistence path.
+    expect(getAppBlueprintForChat(app.chatId)?.templateId).toBe("react");
+    // Re-query the select after the stream settles (post-stream re-renders can
+    // replace the node) and wait for the alternate option, which only appears
+    // once the official template list loads.
     await waitFor(() =>
-      expect(getAppBlueprintForChat(app.chatId)?.templateId).toBe("react"),
+      expect(
+        (
+          screen.getByTestId(
+            "app-blueprint-template-select",
+          ) as HTMLSelectElement
+        ).querySelector('option[value="next"]'),
+      ).not.toBeNull(),
+    );
+    const templateSelect = screen.getByTestId(
+      "app-blueprint-template-select",
+    ) as HTMLSelectElement;
+    fireEvent.change(templateSelect, { target: { value: "next" } });
+    await waitFor(() =>
+      expect(getAppBlueprintForChat(app.chatId)?.templateId).toBe("next"),
     );
     expect(
       harness.bridge.lastInvoke("app-blueprint:edit-field")?.args[0],
-    ).toEqual({ chatId: app.chatId, field: "templateId", value: "react" });
-    expect(getAppBlueprintForChat(app.chatId)?.templateId).toBe("react");
+    ).toEqual({ chatId: app.chatId, field: "templateId", value: "next" });
+    expect(getAppBlueprintForChat(app.chatId)?.templateId).toBe("next");
     deleteAppBlueprintForChat(app.chatId);
     expect(errorEvents()).toHaveLength(0);
   }, 60_000);

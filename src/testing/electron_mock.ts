@@ -149,11 +149,12 @@ export function createElectronMock(shared: ElectronMockShared) {
     },
     BrowserWindow: {
       getAllWindows: vi.fn(() => []),
-      fromWebContents: vi.fn(() => ({
+      // Return the caller's own webContents so sends keep flowing to the
+      // bridge sink — a stub `send` here would silently swallow messages
+      // (e.g. main/settings.ts drains queued error toasts through this path).
+      fromWebContents: vi.fn((webContents: { send?: unknown }) => ({
         isDestroyed: () => false,
-        webContents: {
-          send: vi.fn(),
-        },
+        webContents,
       })),
     },
     safeStorage: {

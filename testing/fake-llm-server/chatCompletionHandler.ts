@@ -13,6 +13,10 @@ import {
 } from "./exploreCodeFixtures";
 import { fakeLlmLog } from "./log";
 import { resolveDumpDir, resolveFixturesDir } from "./paths";
+import {
+  matchConsentClassifierPayload,
+  SLOW_CONSENT_TOOL,
+} from "./consentClassifier";
 
 let globalCounter = 0;
 
@@ -506,22 +510,13 @@ export default Index;
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
     }
-    // The MCP auto-consent classifier payload (buildUserPayload) carries these
-    // labels. Detect it off the user text, then decide off the tool name so
-    // hybrid/e2e tests can exercise both the allow and ask paths regardless of
-    // whether the selected fake model uses chat-completions or responses.
+    // See consentClassifier.ts: fake decisions for the MCP auto-consent
+    // classifier, shared with the responses fake route.
     const lastUserText = lastMessage ? getTextContent(lastMessage) : "";
-    const isConsent =
-      lastUserText.includes("MCP server:") &&
-      lastUserText.includes("Tool:") &&
-      lastUserText.includes("Arguments:");
-    if (isConsent) {
-      const risky = /(delete|drop|danger|destroy|remove)/i.test(lastUserText);
-      messageContent = JSON.stringify({
-        reason: risky ? "destructive tool" : "safe tool",
-        decision: risky ? "ask" : "allow",
-      });
-      if (lastUserText.includes("Tool: print_envs")) {
+    const consentMatch = matchConsentClassifierPayload(lastUserText);
+    if (consentMatch) {
+      messageContent = consentMatch.content;
+      if (consentMatch.toolName === SLOW_CONSENT_TOOL) {
         await new Promise<void>((resolve) => {
           const timer = setTimeout(() => {
             req.off("close", onClose);

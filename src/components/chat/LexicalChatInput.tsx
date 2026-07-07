@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   $getRoot,
   $createParagraphNode,
@@ -173,32 +173,6 @@ function EnterKeyPlugin({
   return null;
 }
 
-// Plugin to clear editor content
-function ClearEditorPlugin({
-  shouldClear,
-  onCleared,
-}: {
-  shouldClear: boolean;
-  onCleared: () => void;
-}) {
-  const [editor] = useLexicalComposerContext();
-
-  useEffect(() => {
-    if (shouldClear) {
-      editor.update(() => {
-        const root = $getRoot();
-        root.clear();
-        const paragraph = $createParagraphNode();
-        root.append(paragraph);
-        paragraph.select();
-      });
-      onCleared();
-    }
-  }, [editor, shouldClear, onCleared]);
-
-  return null;
-}
-
 // Plugin to sync external value prop into the editor
 function ExternalValueSyncPlugin({
   value,
@@ -327,7 +301,6 @@ export function LexicalChatInput({
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
   const { mediaApps } = useAppMediaFiles();
-  const [shouldClear, setShouldClear] = useState(false);
   const historyTriggerActiveRef = useRef(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
@@ -510,17 +483,6 @@ export function LexicalChatInput({
     [onChange, apps, prompts, appFiles, mediaApps, selectedAppId],
   );
 
-  const handleCleared = useCallback(() => {
-    setShouldClear(false);
-  }, []);
-
-  // Update editor content when value changes externally (like clearing)
-  useEffect(() => {
-    if (value === "") {
-      setShouldClear(true);
-    }
-  }, [value]);
-
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <div className="relative flex-1">
@@ -558,10 +520,6 @@ export function LexicalChatInput({
           promptsById={Object.fromEntries(
             (prompts || []).map((p) => [p.id, p.title]),
           )}
-        />
-        <ClearEditorPlugin
-          shouldClear={shouldClear}
-          onCleared={handleCleared}
         />
         <HistoryNavigation
           messageHistory={messageHistory}

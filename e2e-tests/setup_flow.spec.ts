@@ -3,7 +3,7 @@ import {
   Timeout,
   type PageObject,
 } from "./helpers/test_helper";
-import { expect } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import type { ElectronApplication } from "playwright";
 import * as fs from "fs";
 
@@ -71,25 +71,7 @@ testSetup.describe("Setup Flow", () => {
       const prompt = "Build a tiny habit tracker";
       const dialog = await openAiSetupDialog(po, prompt);
 
-      await dialog.getByRole("button", { name: "Google" }).click();
-      await expect(
-        po.page.getByRole("heading", { name: "Configure Google" }),
-      ).toBeVisible({ timeout: Timeout.MEDIUM });
-
-      await po.page
-        .getByPlaceholder(/Enter new Google API Key here/)
-        .fill("test-google-key-12345");
-      await po.page.getByRole("button", { name: "Save Key" }).click();
-      await expectProviderApiKeySaved(po, "google", "test-google-key-12345");
-
-      await expect(
-        po.page.getByTestId("messages-list").getByText(prompt),
-      ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
-      await po.chatActions.waitForChatCompletion({
-        timeout: Timeout.EXTRA_LONG,
-      });
-      await expect(po.page.getByRole("dialog")).not.toBeVisible();
-      await expectSelectedApp(po);
+      await setupGoogleKeyAndExpectResume(po, dialog, prompt);
     },
   );
 
@@ -99,56 +81,19 @@ testSetup.describe("Setup Flow", () => {
       await seedFakeModelSelection(po);
       const prompt = "Build a tiny recipe box";
 
-      // Same as openAiSetupDialog(), but submit with the Enter key instead of
-      // the send button. The Enter path goes through LexicalChatInput's
-      // internal handleSubmit, which clears the editor unconditionally — even
-      // when the submit was rejected and queued as a pending first prompt.
-      await po.navigation.goToAppsTab();
-      const chatInput = po.chatActions.getChatInput();
-      await expect(chatInput).toBeVisible({ timeout: Timeout.MEDIUM });
-      await expect(async () => {
-        await chatInput.fill(prompt, { timeout: 1_000 });
-        await expect(chatInput).toContainText(prompt, { timeout: 1_000 });
-        await expect(
-          po.chatActions
-            .getHomeChatInputContainer()
-            .getByRole("button", { name: "Send message" }),
-        ).toBeEnabled({ timeout: 1_000 });
-      }).toPass({ timeout: Timeout.MEDIUM });
-
-      await chatInput.press("Enter");
-
-      const dialog = po.page.getByRole("dialog");
-      await expect(
-        dialog.getByText("Your prompt is saved — it'll send as soon as"),
-      ).toBeVisible({ timeout: Timeout.MEDIUM });
+      // Submit with the Enter key instead of the send button: the Enter path
+      // goes through EnterKeyPlugin, which once cleared the editor even when
+      // the submit was rejected and queued as a pending first prompt.
+      const dialog = await openAiSetupDialog(po, prompt, { submit: "enter" });
 
       // The queued prompt must survive while the user configures a provider;
       // if it's wiped here, the auto-resume effect on the home page has
       // nothing to submit and silently arms itself on the next keystroke.
-      await expect(chatInput).toContainText(prompt, {
+      await expect(po.chatActions.getChatInput()).toContainText(prompt, {
         timeout: Timeout.MEDIUM,
       });
 
-      await dialog.getByRole("button", { name: "Google" }).click();
-      await expect(
-        po.page.getByRole("heading", { name: "Configure Google" }),
-      ).toBeVisible({ timeout: Timeout.MEDIUM });
-
-      await po.page
-        .getByPlaceholder(/Enter new Google API Key here/)
-        .fill("test-google-key-12345");
-      await po.page.getByRole("button", { name: "Save Key" }).click();
-      await expectProviderApiKeySaved(po, "google", "test-google-key-12345");
-
-      await expect(
-        po.page.getByTestId("messages-list").getByText(prompt),
-      ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
-      await po.chatActions.waitForChatCompletion({
-        timeout: Timeout.EXTRA_LONG,
-      });
-      await expect(po.page.getByRole("dialog")).not.toBeVisible();
-      await expectSelectedApp(po);
+      await setupGoogleKeyAndExpectResume(po, dialog, prompt);
     },
   );
 
@@ -354,6 +299,32 @@ testSetup.describe("Setup Flow", () => {
   );
 });
 
+async function setupGoogleKeyAndExpectResume(
+  po: PageObject,
+  dialog: Locator,
+  prompt: string,
+) {
+  await dialog.getByRole("button", { name: "Google" }).click();
+  await expect(
+    po.page.getByRole("heading", { name: "Configure Google" }),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+  await po.page
+    .getByPlaceholder(/Enter new Google API Key here/)
+    .fill("test-google-key-12345");
+  await po.page.getByRole("button", { name: "Save Key" }).click();
+  await expectProviderApiKeySaved(po, "google", "test-google-key-12345");
+
+  await expect(
+    po.page.getByTestId("messages-list").getByText(prompt),
+  ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+  await po.chatActions.waitForChatCompletion({
+    timeout: Timeout.EXTRA_LONG,
+  });
+  await expect(po.page.getByRole("dialog")).not.toBeVisible();
+  await expectSelectedApp(po);
+}
+
 async function expectSelectedApp(po: PageObject) {
   await expect
     .poll(
@@ -420,7 +391,12 @@ async function triggerDyadProReturnDeepLink(electronApp: ElectronApplication) {
 async function openAiSetupDialog(
   po: PageObject,
   prompt = "Build a todo app",
-  options: { beforeSubmit?: () => Promise<void> } = {},
+  options: {
+    beforeSubmit?: () => Promise<void>;
+    // Enter and the send button are distinct code paths (EnterKeyPlugin vs
+    // the button's click handler — see rules/e2e-testing.md).
+    submit?: "button" | "enter";
+  } = {},
 ) {
   await po.navigation.goToAppsTab();
   const chatInput = po.chatActions.getChatInput();
@@ -447,10 +423,14 @@ async function openAiSetupDialog(
       .getByRole("button", { name: "Send message" }),
   ).toBeEnabled({ timeout: Timeout.MEDIUM });
 
-  await po.chatActions
-    .getHomeChatInputContainer()
-    .getByRole("button", { name: "Send message" })
-    .click();
+  if (options.submit === "enter") {
+    await chatInput.press("Enter");
+  } else {
+    await po.chatActions
+      .getHomeChatInputContainer()
+      .getByRole("button", { name: "Send message" })
+      .click();
+  }
 
   const dialog = po.page.getByRole("dialog");
   await expect(

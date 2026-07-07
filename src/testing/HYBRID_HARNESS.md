@@ -100,10 +100,11 @@ Notes:
 `selectedModel`, `provider`, `model`, `settings`, … all pass straight through),
 plus:
 
-| Option                    | Default | Purpose                                                                                    |
-| ------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act". |
-| `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                        |
+| Option                    | Default | Purpose                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act".                                                                                                                                                                                                                                                                                    |
+| `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                                                                                                                                                                                                                                                                                                           |
+| `testBuild`               | `false` | Set `E2E_TEST_BUILD` / `FAKE_LLM_PORT` for handlers that re-read the env at call time (GitHub, remote model catalog). Does **not** reach import-time `IS_TEST_BUILD` snapshots (Neon, Supabase, Vercel, provider key validation) — those also need a `vi.hoisted(() => { process.env.E2E_TEST_BUILD = "true"; })` block above the imports; the harness warns if it's missing. |
 
 Common option recipes:
 
@@ -128,16 +129,28 @@ re-exported unchanged (`db`, `appDir`, `appId`, `chatId`, `userDataDir`,
 ```ts
 harness.bridge          // RendererIpcBridge: missingChannels, sentEvents, settleInFlight, pendingCount
 harness.mount(opts?)    // render <ChatPanel>; opts: { chatId?, appId? }. Returns RTL RenderResult.
+harness.mountSurface(opts?) // render /chat, /app-details, /settings, /media, etc.
 harness.typeInChat(text, opts?)       // seed input + wait for Send enabled -> { sendButton, send() }
 harness.pressEnterInChat(text, opts?) // seed input + Lexical Enter submit (QUEUES while streaming)
+harness.setChatAttachments([{ name, content, mimeType?, type? }]) // seed real File attachments into ChatInput
+harness.setSelectedComponents(components) // seed selected preview components into ChatInput
 harness.waitForStreamEnd(chatId?, ms?)      // consume the NEXT unconsumed chat:response:end (per chatId)
 harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end past the call point
 harness.eventCount(channel)                 // how many events on `channel` the bridge has seen (a baseline)
 harness.waitForEvent(channel, predicate?, ms?) // resolve on the first matching bridge event
 harness.waitForRenderedText(textOrRegex, ms?)  // wait for text with stable match count
 harness.selectFromBaseUiSelect(trigger, optionMatcher)  // drive a Base UI <Select> in happy-dom
+harness.openPopover(trigger)             // drive a Base UI popover/menu trigger in happy-dom
+harness.clickMenuItem(name)              // click a button item in an open popup/dialog
+harness.findDialog(name)                 // find a named Base UI Dialog
+harness.confirmDialog(dialog, button)    // click dialog action and wait for close
+harness.setSwitch(element, checked)       // click a Base UI switch and wait for checked state
 harness.selectChatMode("build" | "ask" | "plan" | "local-agent") // open the chat-mode selector + pick
 harness.createChat(appId?)            // insert a chats row -> new chatId
+harness.mcp.resetServers()            // delete all MCP servers through real mcp:* IPC
+harness.mcp.addStdioServer({ env? })   // add testing/fake-stdio-mcp-server.mjs + wait for calculator_add
+harness.mcp.addHttpServer({ headers? }) // spawn fake HTTP MCP server on an ephemeral port + add it
+harness.mcp.waitForTool(serverId, name) // poll real mcp:list-tools until a tool is discovered
 harness.dispose()                     // race-free teardown (see §6)
 ```
 
@@ -169,6 +182,17 @@ harness.dispose()                     // race-free teardown (see §6)
   ```
   `eventCount(channel)` is the general-purpose baseline primitive if you need it
   for a non-end channel.
+- **Driving Base UI popovers/dialogs**: use `openPopover(trigger)` before
+  clicking items in overflow menus such as app-details more options. Use
+  `clickMenuItem(/Copy app/)` for button-like menu items, `findDialog(/Copy/)`
+  to wait for Base UI dialogs, and `confirmDialog(/Delete/, /Delete App/)` when
+  the assertion should wait for the dialog to close. These helpers reproduce the
+  pointer/focus sequence happy-dom needs; a bare click can leave Base UI popups
+  closed.
+- **Driving Base UI switches**: use `setSwitch(element, checked)` rather than a
+  bare click when the assertion depends on a persisted settings update. It only
+  clicks when the switch is not already in the requested state and waits for the
+  `aria-checked` state to settle.
 - **Driving a Base UI (Radix) `<Select>`** (the chat-mode selector, model picker,
   etc.): a bare `fireEvent.click` on the trigger or option does nothing in
   happy-dom. Use `selectFromBaseUiSelect(trigger, /OptionText/)`, which focuses +
@@ -176,6 +200,24 @@ harness.dispose()                     // race-free teardown (see §6)
   matched option to commit. `selectChatMode(mode)` wraps it for the chat-mode
   selector and waits for the trigger's `aria-label` to reflect the pick (which is
   what persists `chatMode` onto the chat row).
+- **Seeding attachments**: use `setChatAttachments([{ name, content, mimeType }])`
+  after `mount()` and before `typeInChat()` / `pressEnterInChat()`. It writes the
+  same `attachmentsAtom` shape that the file picker/drop/paste paths store:
+  browser `File` objects plus the `chat-context` / `upload-to-codebase` type.
+  Submit still runs through the real `ChatInput` path, including `FileReader`
+  conversion to IPC attachments and `.dyad/media` persistence.
+- **Seeding selected components**: use `setSelectedComponents(components)` for
+  queue edit/restore assertions that only need ChatInput state. Keep Playwright
+  coverage for picking a component inside the real preview iframe.
+- **Seeding MCP servers**: use `harness.mcp.addStdioServer()` /
+  `harness.mcp.addHttpServer()` rather than driving the Settings page when the
+  test's subject is ChatPanel MCP behavior. These helpers still go through the
+  real `mcp:create-server` and `mcp:list-tools` handlers, use the same fake MCP
+  servers as E2E, and wait for live discovery before the prompt is sent. Call
+  `harness.mcp.resetServers()` in `beforeEach` when multiple tests need the
+  canonical `testing-mcp-server` name so stored consent and duplicate sanitized
+  tool names do not leak between cases. Consent itself should be exercised
+  through the rendered banner buttons.
 
 ---
 
@@ -286,6 +328,12 @@ before the active one fully disposes.
   app module first initializes `tslib`'s CJS interop, without which ChatPanel's
   transitive `react-remove-scroll` throws `tslib_1.__importStar is not a function`
   at load. Don't reorder those imports.
+- **Sync subprocesses that talk to the fake server deadlock.** The fake
+  LLM/GitHub/Neon server runs in the test's own process, so `execFileSync("git",
+["clone", <fake remote>...])` blocks the event loop the server needs to answer
+  the request — the test hangs until timeout. Use an async `execFile` (and
+  `await` it) for any child process that hits `localhost:<fakeLlmPort>`; sync is
+  fine for purely local git/fs commands.
 - **`get-proposal` / `checkProblems` / cloud-sandbox / desktop-config log lines**
   are benign. Registering the full handler set means the UI polls handlers that
   have nothing to do (no tsc worker in the vitest bundle, no Pro key, a

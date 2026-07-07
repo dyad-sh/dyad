@@ -21,8 +21,10 @@ export async function createFromTemplate({
   const templateId = requestedTemplateId ?? settings.selectedTemplateId;
 
   if (templateId === "react") {
+    const sourceScaffoldPath = path.join(__dirname, "..", "..", "scaffold");
+    const repoScaffoldPath = path.join(process.cwd(), "scaffold");
     await copyDirectoryRecursive(
-      path.join(__dirname, "..", "..", "scaffold"),
+      fs.existsSync(sourceScaffoldPath) ? sourceScaffoldPath : repoScaffoldPath,
       fullAppPath,
     );
     return;

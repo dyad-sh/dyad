@@ -79,6 +79,8 @@ npm run lint:fix
 
 > **WARNING: Do NOT run `npx eslint` directly.** The project uses **oxlint** (not eslint) via `npm run lint`. Running `npx eslint <file>` produces spurious `import/no-unresolved` errors for `@/...` path aliases and other false positives — ignore those and rely on `npm run lint` / `npm run lint:fix`.
 
+> **WARNING: Never run `npx oxlint --fix` or `npx oxfmt` before `node_modules` is installed.** Without the pinned local binary, `npx` downloads the _latest_ version, which can rewrite files repo-wide differently from the pinned version (observed: de-indented code blocks inside `e2e-tests/fixtures/*.md` and reflowed unrelated `src/` files). Use the lockfile-pinned `./node_modules/.bin/oxlint` / `./node_modules/.bin/oxfmt`, and check `git status` for collateral edits after any repo-wide `--fix` run.
+
 **Type-checks**
 
 ```sh

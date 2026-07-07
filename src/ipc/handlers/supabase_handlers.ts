@@ -18,6 +18,7 @@ import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { assertNoNeonProject } from "../utils/neon_utils";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -95,6 +96,15 @@ export function registerSupabaseHandlers() {
   createTypedHandler(supabaseContracts.listAllProjects, async () => {
     const settings = readSettings();
     const organizations = settings.supabase?.organizations ?? {};
+    if (IS_TEST_BUILD) {
+      return Object.keys(organizations).map((organizationSlug) => ({
+        id: "fake-project-id",
+        name: "Fake Supabase Project",
+        region: "us-east-1",
+        organizationSlug,
+      }));
+    }
+
     const allProjects: Array<{
       id: string;
       name: string;

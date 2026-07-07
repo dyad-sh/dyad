@@ -13,6 +13,10 @@ import {
 } from "./exploreCodeFixtures";
 import { fakeLlmLog } from "./log";
 import { resolveDumpDir, resolveFixturesDir } from "./paths";
+import {
+  matchConsentClassifierPayload,
+  SLOW_CONSENT_TOOL,
+} from "./consentClassifier";
 
 let globalCounter = 0;
 
@@ -505,6 +509,27 @@ export default Index;
     ) {
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
+    }
+    // See consentClassifier.ts: fake decisions for the MCP auto-consent
+    // classifier, shared with the responses fake route.
+    const lastUserText = lastMessage ? getTextContent(lastMessage) : "";
+    const consentMatch = matchConsentClassifierPayload(lastUserText);
+    if (consentMatch) {
+      messageContent = consentMatch.content;
+      if (consentMatch.toolName === SLOW_CONSENT_TOOL) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            req.off("close", onClose);
+            resolve();
+          }, 4000);
+          const onClose = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          req.on("close", onClose);
+        });
+        if (req.destroyed) return;
+      }
     }
     const isToolCall = !!(
       lastMessage &&

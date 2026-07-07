@@ -210,17 +210,14 @@ export function registerMcpHandlers() {
         DyadErrorKind.NotFound,
       );
     // Config may have changed; dispose the cached client so the next
-    // use rebuilds the transport with the updated row.
-    try {
-      mcpManager.dispose(params.id);
-    } catch {}
+    // use rebuilds the transport with the updated row. Fire-and-forget: a
+    // hung transport's close must not block the handler.
+    void mcpManager.dispose(params.id).catch(() => {});
     return toMcpServer(result[0]);
   });
 
   createTypedHandler(mcpContracts.deleteServer, async (_, id) => {
-    try {
-      mcpManager.dispose(id);
-    } catch {}
+    void mcpManager.dispose(id).catch(() => {});
     await db.delete(mcpServers).where(eq(mcpServers.id, id));
     return { success: true };
   });
@@ -268,10 +265,9 @@ export function registerMcpHandlers() {
     } catch (e) {
       clearTimeout(timeoutId);
       // Tear down the cached client so a hung transport doesn't leak
-      // an FD on every subsequent poll.
-      try {
-        mcpManager.dispose(serverId);
-      } catch {}
+      // an FD on every subsequent poll. Fire-and-forget: awaiting a hung
+      // transport's close would hang this handler.
+      void mcpManager.dispose(serverId).catch(() => {});
       const message =
         e instanceof Error ? `${e.name}: ${e.message}` : String(e);
       logger.error(`Failed to list tools for server ${serverId}: ${message}`);
@@ -392,9 +388,7 @@ export function registerMcpHandlers() {
       await client.tools();
       return { status: "ok" as const, error: null };
     } catch (err) {
-      try {
-        mcpManager.dispose(serverId);
-      } catch {}
+      void mcpManager.dispose(serverId).catch(() => {});
       const message = err instanceof Error ? err.message : String(err);
       if (looksLikeUnauthorized(message)) {
         return { status: "unauthorized" as const, error: message };

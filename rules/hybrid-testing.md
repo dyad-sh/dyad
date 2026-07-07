@@ -37,3 +37,9 @@ Full `npm test` runs can fail inside the Codex sandbox before test logic runs
 when OAuth, proxy, or hybrid harness suites bind/connect to loopback ports. If
 the failure is `listen EPERM` or `connect EPERM` for `127.0.0.1`, `localhost`,
 or `::1`, re-run the same command outside the sandbox before debugging tests.
+
+When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
+`process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block
+before app imports. `setupHybridChatHarness({ testBuild: true })` sets the flag
+before dynamic IPC registration, but it cannot fix static imports that already
+loaded modules such as the Neon management client.

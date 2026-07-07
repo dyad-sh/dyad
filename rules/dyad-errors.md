@@ -26,6 +26,10 @@ Use `DyadError` from `src/errors/dyad_error.ts` when throwing from **main proces
 
 Prefer **`DyadError`** over growing `FILTERED_EXCEPTION_MESSAGES` in `telemetry.ts` when the failure is stable and classified.
 
+## Non-Pro event sampling (renderer)
+
+The renderer PostHog `before_send` (in `src/renderer.tsx`) drops ~90% of events for **non-Pro** users. Any event whose audience is primarily free users (conversion funnels like `promo_click`, upgrade CTAs) must be added to `shouldBypassNonProTelemetrySampling` in `src/lib/posthogTelemetry.ts`, or it will be silently undercounted 10x. Errors, `app:initial-load`, and `sandbox.script.*` already bypass sampling.
+
 ## IPC handlers
 
 - **`createTypedHandler` / `createLoggedTypedHandler`** rethrow the original error after telemetry — `DyadError` is preserved.

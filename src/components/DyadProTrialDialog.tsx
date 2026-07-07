@@ -6,23 +6,26 @@ import { ipc } from "@/ipc/types";
 interface DyadProTrialDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Attributes checkout/learn-more traffic to the surface that opened the dialog. */
+  utmCampaign?: string;
 }
 
 export function DyadProTrialDialog({
   isOpen,
   onClose,
+  utmCampaign = "setup-dialog-v2",
 }: DyadProTrialDialogProps) {
+  const utmParams = `utm_source=dyad-app&utm_medium=app&utm_campaign=${encodeURIComponent(utmCampaign)}`;
+
   const handleStartTrial = () => {
     ipc.system.openExternalUrl(
-      "https://academy.dyad.sh/redirect-to-checkout?trialCode=1PRO30&utm_source=dyad-app&utm_medium=app&utm_campaign=setup-dialog-v2",
+      `https://academy.dyad.sh/redirect-to-checkout?trialCode=1PRO30&${utmParams}`,
     );
     onClose();
   };
 
   const handleLearnMore = () => {
-    ipc.system.openExternalUrl(
-      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=setup-dialog-v2",
-    );
+    ipc.system.openExternalUrl(`https://www.dyad.sh/pro?${utmParams}`);
   };
 
   const features = [

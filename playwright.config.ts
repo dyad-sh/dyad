@@ -19,6 +19,7 @@ function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
 
 const config: PlaywrightTestConfig = {
   testDir: "./e2e-tests",
+  testMatch: "**/*.spec.ts",
   workers: 1,
   retries: parseInt(
     process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? "2" : "0"),

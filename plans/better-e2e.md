@@ -33,6 +33,7 @@ are renderer flows collapsible into a few consolidated smoke specs; only **36 (2
 genuinely need** the Electron shell, real preview dev-server, subprocesses, or pty.
 
 **Both prototypes succeeded:**
+
 - The real `chat:stream` handler + tag processor + git + sqlite run under plain-node
   vitest with only a `vi.mock("electron")` shim — **no main-process refactors**. The
   `dyad_tags_parsing` equivalent runs in **~1.3–2s vs 30–90s** in Playwright.
@@ -55,6 +56,7 @@ Ordered by leverage (impact ÷ effort). 1–4 are quick wins landable this week;
 the structural wins; 7–10 are cleanups that compound.
 
 ### 1. Deflake or quarantine `visual_editing` + `cloud_sandbox` — stop red main
+
 **Impact: removes ~14–20 min/run of retry tax and ~100% of recent main e2e failures. Effort: S–M.**
 These 5 tests are the single source of recent red-main e2e. Root-cause them (all four
 `visual_editing` failures reproduce in CI traces); until fixed, quarantine via
@@ -63,7 +65,9 @@ non-blocking nightly job. A red main that engineers learn to ignore costs more t
 coverage of 5 tests.
 
 ### 2. Mask volatile content in request-dump snapshots — kill the churn center
+
 **Impact: neutralizes the top-4 churniest files and most of the ~9 maintenance commits/month. Effort: S (localized to `PageObject.snapshotServerDump` ~L647–760 + `helpers/utils/normalization.ts`).**
+
 - Replace `body.tools[i].description` with `[[TOOL_DESC:<name>]]` and collapse
   `input_schema` to a stable shape hash — same policy already applied to system
   messages. Keep an opt-out for the rare test that genuinely asserts wording.
@@ -74,6 +78,7 @@ coverage of 5 tests.
   verifies.
 
 ### 3. Seed test setup via IPC instead of UI clicks — ~20–30% suite-wide
+
 **Impact: every test pays 5–8s for `setUp()` clicking through Settings → provider →
 model forms; avg quick test is ~12.8s, so setup is ~half of most tests. Effort: M.**
 Seed provider/model/settings through the existing `set-user-settings` IPC path (the
@@ -82,6 +87,7 @@ one e2e that still exercises the real onboarding UI. This is orthogonal to paral
 and compounds with it.
 
 ### 4. Enable `workers=2` on self-hosted mac shards — ~1.6–1.75× per shard
+
 **Impact: e2e shard wall time ~0.6× with zero extra runners. Effort: S — the patch exists in the worktree.**
 The prototype adds opt-in `PLAYWRIGHT_PARALLELISM` (default 1 = no behavior change),
 one fake-LLM server per worker (entry 0 builds; secondaries wait on primary `/health`,
@@ -94,9 +100,11 @@ fallback should already cope, but it's untested under contention). If stable for
 week, try 3 workers.
 
 ### 5. Land the vitest chat-flow harness and migrate the payload-snapshot cluster (~18 specs)
+
 **Impact: each migrated spec goes from 30–90s of e2e to ~1–2s of vitest; shrinks the
 e2e suite where 223 × 16s lives. Effort: ~1 day harness + incremental migrations.**
 The spike proved feasibility with zero main-process refactors. Productionize as:
+
 - `src/testing/chat_flow_harness.ts` — `setupChatFlowHarness()` returning
   `{ db, appDir, chatId, streamChat(prompt), rendererEvents, dispose }` (temp userData
   via `DYAD_DEV_USER_DATA_DIR`, app's own `initializeDatabase()`, fixture-app + git
@@ -108,12 +116,13 @@ The spike proved feasibility with zero main-process refactors. Productionize as:
 - Refactor `testing/fake-llm-server` to export `createApp(fixturesDir)` without
   `listen()` so vitest and Playwright share one implementation (until then the spike's
   ~60-line SSE stub covers the chat-completions path).
-First migrations (each deletes or demotes an e2e spec): `dyad_tags_parsing`,
-`dump_messages`, `smart_context_balanced/deep`, `thinking_budget`,
-`context_window/manage/compaction`, `chat_mode`, `cancelled_message` — the whole
-"assert the LLM request payload" cluster shares this one seam.
+  First migrations (each deletes or demotes an e2e spec): `dyad_tags_parsing`,
+  `dump_messages`, `smart_context_balanced/deep`, `thinking_budget`,
+  `context_window/manage/compaction`, `chat_mode`, `cancelled_message` — the whole
+  "assert the LLM request payload" cluster shares this one seam.
 
 ### 6. Continue migrating MOVABLE-IPC families as they're touched (~74 specs total)
+
 **Impact: long-term ceiling — roughly half the suite. Effort: L, incremental.**
 After the payload cluster: the `local_agent_*` tool-loop family (~24 specs;
 `local_agent_handler.test.ts` already proves the pattern — keep the 4 with real
@@ -125,6 +134,7 @@ or needs a snapshot rebase, migrate it instead of patching it. Optionally contin
 lighter, but the spike shows it is not a prerequisite.
 
 ### 7. Scrub scaffold/template versions from app-file snapshots
+
 **Impact: kills the churn class where template upgrades rewrite `copy_app`/`capacitor`/
 engine snapshots (8+ changes each). Effort: S.**
 Extend `generateAppFilesSnapshotData.ts`'s `package.json` handling to `<scrubbed>` all
@@ -132,6 +142,7 @@ dependency versions (today only `packageManager` + `@capacitor/*`), and route te
 files whose contents aren't asserted through `STABLE_PLACEHOLDER_FILES`.
 
 ### 8. Consolidate the 44 UI-SMOKE specs into ~8–12 sweep specs
+
 **Impact: fewer Electron boots for low-risk coverage (44 boots → ~10); less file sprawl. Effort: M.**
 Natural groupings: settings-toggle sweep (~11 specs), provider/model-form sweep (~8),
 nav/gallery/dialog sweep (~15), chat-input/queue sweep (~7), version-pane sweep (2).
@@ -139,7 +150,9 @@ One app boot per sweep, sequential steps inside. Combine with #3 so each sweep s
 from IPC-seeded state.
 
 ### 9. CI plumbing: drop redundant Chromium install, slim setup, balance shards
+
 **Impact: ~2m40s fixed cost/shard (~21 machine-min/run). Effort: S.**
+
 - Remove `playwright install` from e2e shards — tests drive the packaged Electron app,
   not Chromium.
 - Cache `node_modules` keyed on the lockfile (npm ci is 38s/shard) and slim the 130 MB
@@ -150,7 +163,9 @@ from IPC-seeded state.
   base per job (e.g. from `RUNNER_NAME`).
 
 ### 10. Guardrails so churn doesn't regrow
+
 **Impact: keeps #2/#7 wins permanent. Effort: S.**
+
 - Convention: request-dump tests assert the properties that matter (tool names offered,
   `stream: true`, message roles/order) rather than `toMatchSnapshot` on whole bodies —
   snapshots are the wrong tool when ~95% of captured bytes aren't the contract.
@@ -163,12 +178,12 @@ from IPC-seeded state.
 
 ## Suggested sequencing
 
-| When | Items | Expected effect |
-|---|---|---|
-| Week 1 | #1 quarantine/fix flakes, #2 snapshot masking, #9 Chromium-install removal | main goes green; churn drops immediately |
-| Week 2 | #3 IPC-seeded setup, #4 workers=2 pilot on self-hosted | shard wall time roughly halves (0.7–0.8 × 0.6) |
-| Weeks 3–4 | #5 vitest harness + payload cluster (~18 specs), #7 scaffold scrubbing | suite shrinks; payload tests run in seconds locally |
-| Ongoing | #6 migrate-on-touch, #8 smoke consolidation, #10 guardrails | e2e converges on the 36 specs that earn Electron |
+| When      | Items                                                                      | Expected effect                                     |
+| --------- | -------------------------------------------------------------------------- | --------------------------------------------------- |
+| Week 1    | #1 quarantine/fix flakes, #2 snapshot masking, #9 Chromium-install removal | main goes green; churn drops immediately            |
+| Week 2    | #3 IPC-seeded setup, #4 workers=2 pilot on self-hosted                     | shard wall time roughly halves (0.7–0.8 × 0.6)      |
+| Weeks 3–4 | #5 vitest harness + payload cluster (~18 specs), #7 scaffold scrubbing     | suite shrinks; payload tests run in seconds locally |
+| Ongoing   | #6 migrate-on-touch, #8 smoke consolidation, #10 guardrails                | e2e converges on the 36 specs that earn Electron    |
 
 ## Artifacts
 
@@ -181,5 +196,5 @@ from IPC-seeded state.
   `e2e-tests/helpers/fixtures.ts`, `package.json`
 - CI data: runs `28552805130` (green, per-step timings), `28817566121` (per-test
   durations, 273 tests). Note: report artifacts expire in 1–3 days.
-- Churn data window: 2026-01-06 → 2026-07-06 (821 commits; 271 touching e2e-tests/**;
+- Churn data window: 2026-01-06 → 2026-07-06 (821 commits; 271 touching e2e-tests/\*\*;
   37 pure-snapshot commits; 65 deflake/rebaseline-labeled).

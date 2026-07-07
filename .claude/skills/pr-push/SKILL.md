@@ -13,7 +13,7 @@ Use this skill to publish the current work to GitHub. It must complete autonomou
 2. Run the bundled script from the repository root:
 
    ```bash
-   .claude/skills/pr-push/scripts/pr_push.sh
+   bash .claude/skills/pr-push/scripts/pr_push.sh
    ```
 
 3. If the script reports a fixable failure, fix it and rerun the script. Do not manually replay the full workflow unless the script itself is broken.

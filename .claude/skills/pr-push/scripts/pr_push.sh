@@ -17,6 +17,7 @@ PR_CREATION_LINK=""
 SUGGESTED_TITLE=""
 SUGGESTED_BODY=""
 CREATED_COMMIT="no"
+PR_SKIPPED_REASON=""
 
 log() {
   printf '==> %s\n' "$*"
@@ -37,6 +38,20 @@ current_branch() {
 
 has_changes() {
   [[ -n "$(git status --porcelain -uall)" ]]
+}
+
+remember_staged_files() {
+  local file existing committed_file
+  while IFS= read -r file; do
+    existing="no"
+    for committed_file in "${COMMITTED_FILES[@]}"; do
+      if [[ "$committed_file" == "$file" ]]; then
+        existing="yes"
+        break
+      fi
+    done
+    [[ "$existing" == "yes" ]] || COMMITTED_FILES+=("$file")
+  done < <(staged_file_list)
 }
 
 is_ignored_file() {
@@ -69,12 +84,28 @@ restore_spurious_package_lock() {
   fi
 }
 
+git_status_paths() {
+  local record xy path
+  while IFS= read -r -d '' record; do
+    xy="${record:0:2}"
+    path="${record:3}"
+    [[ -z "$path" ]] && continue
+
+    printf '%s\0' "$path"
+
+    case "$xy" in
+      R* | C* | *R | *C)
+        IFS= read -r -d '' _ || true
+        ;;
+    esac
+  done < <(git status --porcelain=v1 -z -uall)
+}
+
 stage_relevant_changes() {
   restore_spurious_package_lock
 
-  local status path
-  while IFS= read -r status; do
-    path="${status:3}"
+  local path
+  while IFS= read -r -d '' path; do
     [[ -z "$path" ]] && continue
 
     if is_ignored_file "$path"; then
@@ -82,8 +113,8 @@ stage_relevant_changes() {
       continue
     fi
 
-    git add -- "$path"
-  done < <(git status --porcelain -uall)
+    git add -A -- "$path"
+  done < <(git_status_paths)
 }
 
 staged_file_list() {
@@ -92,7 +123,7 @@ staged_file_list() {
 
 default_branch_name() {
   local files joined
-  files="$(git status --porcelain -uall | awk '{print $2}' | head -5 | tr '\n' ' ')"
+  files="$(git_status_paths | tr '\0' '\n' | head -5 | tr '\n' ' ')"
 
   case "$files" in
     *".claude/skills/pr-push"*) joined="fast-pr-push-skill" ;;
@@ -150,9 +181,7 @@ commit_if_needed() {
     return
   fi
 
-  while IFS= read -r file; do
-    COMMITTED_FILES+=("$file")
-  done < <(staged_file_list)
+  remember_staged_files
   local message
   message="$(commit_message_from_staged_files)"
   log "Committing staged changes: $message"
@@ -188,6 +217,7 @@ amend_or_commit_check_changes() {
     return
   fi
 
+  remember_staged_files
   if [[ "$CREATED_COMMIT" == "yes" ]]; then
     log "Amending automated check changes into previous commit"
     git commit --amend --no-edit
@@ -200,10 +230,16 @@ amend_or_commit_check_changes() {
 
 remote_owner_repo() {
   local remote="$1"
-  local url
+  local url parsed
   url="$(git remote get-url --push "$remote" 2>/dev/null || git remote get-url "$remote")"
 
   url="${url%.git}"
+  parsed="$(printf '%s' "$url" | sed -E 's#^[[:alpha:]][[:alnum:].+-]*://##; s#^[^@/]+@##; s#^github.com[:/]##; s#^git@github.com[:/]##')"
+  if [[ "$parsed" != "$url" && "$parsed" == */* ]]; then
+    printf '%s\n' "$parsed"
+    return
+  fi
+
   case "$url" in
     git@github.com:*) printf '%s\n' "${url#git@github.com:}" ;;
     https://github.com/*) printf '%s\n' "${url#https://github.com/}" ;;
@@ -212,28 +248,48 @@ remote_owner_repo() {
   esac
 }
 
+is_permission_push_error() {
+  grep -qiE 'permission|denied|403|not allowlisted|could not read Username' <<<"$1"
+}
+
+has_remote() {
+  git remote get-url "$1" >/dev/null 2>&1
+}
+
+no_pr_found_error() {
+  grep -qiE 'no (open )?pull requests? found|no pull request found' <<<"$1"
+}
+
 push_with_fallback() {
-  local upstream push_output
+  local branch upstream upstream_branch push_output
+  branch="$(current_branch)"
 
   if upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; then
     PUSH_REMOTE="${upstream%%/*}"
-    log "Pushing to tracked upstream $upstream"
-    if push_output="$(git push --force-with-lease 2>&1)"; then
-      printf '%s\n' "$push_output"
-      PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
-      return
+    upstream_branch="${upstream#*/}"
+
+    if [[ "$upstream_branch" != "main" && "$upstream_branch" != "master" ]]; then
+      log "Pushing to tracked upstream $upstream"
+      if push_output="$(git push --force-with-lease 2>&1)"; then
+        printf '%s\n' "$push_output"
+        PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
+        return
+      fi
+
+      printf '%s\n' "$push_output" >&2
+      if is_permission_push_error "$push_output"; then
+        log "Tracked push failed with permission-like error; falling back to $DEFAULT_REMOTE"
+        PUSH_REMOTE="$DEFAULT_REMOTE"
+        git push --force-with-lease -u "$DEFAULT_REMOTE" HEAD
+        PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
+        return
+      fi
+
+      die "Push to tracked upstream failed"
     fi
 
-    printf '%s\n' "$push_output" >&2
-    if grep -qiE 'permission|denied|403|not allowlisted' <<<"$push_output"; then
-      log "Tracked push failed with permission-like error; falling back to $DEFAULT_REMOTE"
-      PUSH_REMOTE="$DEFAULT_REMOTE"
-      git push --force-with-lease -u "$DEFAULT_REMOTE" HEAD
-      PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
-      return
-    fi
-
-    die "Push to tracked upstream failed"
+    log "Ignoring tracked upstream $upstream because it points at the base branch"
+    git branch --unset-upstream >/dev/null 2>&1 || true
   fi
 
   local pr_head_repo pr_view_output matched_remote
@@ -245,33 +301,37 @@ push_with_fallback() {
         break
       fi
     done < <(git remote)
-  elif ! grep -qiE 'no pull requests found|no pull request found' <<<"$pr_view_output"; then
+  elif ! no_pr_found_error "$pr_view_output"; then
     printf '%s\n' "$pr_view_output" >&2
     die "Unable to check existing PR before push"
   fi
 
   PUSH_REMOTE="${matched_remote:-$DEFAULT_REMOTE}"
   log "Pushing to $PUSH_REMOTE"
-  if git push --force-with-lease -u "$PUSH_REMOTE" HEAD; then
+  if push_output="$(git push --force-with-lease -u "$PUSH_REMOTE" HEAD 2>&1)"; then
+    printf '%s\n' "$push_output"
     PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
     return
   fi
 
-  if [[ "$PUSH_REMOTE" != "upstream" ]]; then
-    log "Push to $PUSH_REMOTE failed; trying upstream as fallback"
+  printf '%s\n' "$push_output" >&2
+  if [[ "$PUSH_REMOTE" != "upstream" ]] && has_remote "upstream" && is_permission_push_error "$push_output"; then
+    log "Push to $PUSH_REMOTE failed with permission-like error; trying upstream as fallback"
     PUSH_REMOTE="upstream"
-    git push --force-with-lease -u upstream HEAD
-    PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
-    return
+    if push_output="$(git push --force-with-lease -u upstream "HEAD:$branch" 2>&1)"; then
+      printf '%s\n' "$push_output"
+      PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
+      return
+    fi
+    printf '%s\n' "$push_output" >&2
   fi
 
   die "Push failed"
 }
 
 active_account_is_bot() {
-  local status account
-  status="$(gh auth status 2>&1)"
-  account="$(sed -nE 's/.*Logged in to github.com account ([^ ]+).*/\1/p' <<<"$status" | head -1)"
+  local account
+  account="$(gh api user --jq .login 2>/dev/null || true)"
   [[ "$account" == *"[bot]" ]]
 }
 
@@ -283,17 +343,7 @@ pr_title() {
 
   local subject
   subject="$(git log -1 --pretty=%s)"
-  local lower_subject
-  lower_subject="$(printf '%s' "$subject" | tr '[:upper:]' '[:lower:]')"
-  case "$lower_subject" in
-    chore:\ *) subject="${subject#*: }" ;;
-    fix:\ *) subject="${subject#*: }" ;;
-    feat:\ *) subject="${subject#*: }" ;;
-    docs:\ *) subject="${subject#*: }" ;;
-    ci:\ *) subject="${subject#*: }" ;;
-    test:\ *) subject="${subject#*: }" ;;
-    refactor:\ *) subject="${subject#*: }" ;;
-  esac
+  subject="$(printf '%s' "$subject" | sed -E 's/^[[:alpha:]]+(\([^)]*\))?!?:[[:space:]]+//')"
 
   if [[ -z "$subject" ]]; then
     printf 'Update project files\n'
@@ -309,7 +359,7 @@ pr_body() {
   fi
 
   local files_line
-  files_line="$(git diff --name-only "$BASE_BRANCH"...HEAD 2>/dev/null | head -6 | awk 'BEGIN { sep="" } { printf "%s%s", sep, $0; sep=", " }')"
+  files_line="$( (git diff --name-only "$BASE_BRANCH"...HEAD 2>/dev/null || true) | head -6 | awk 'BEGIN { sep="" } { printf "%s%s", sep, $0; sep=", " }')"
 
   printf '## Summary\n'
   printf -- '- %s\n' "$(git log -1 --pretty=%s)"
@@ -318,17 +368,30 @@ pr_body() {
   fi
 }
 
-create_or_update_pr() {
-  local view_output body_file branch head_owner title body
+branch_has_commits_ahead() {
+  local count
+  count="$(git rev-list --count "$BASE_BRANCH"..HEAD 2>/dev/null || true)"
+  [[ -z "$count" || "$count" != "0" ]]
+}
 
-  if view_output="$(gh pr view --json number,url 2>&1)"; then
-    PR_NUMBER="$(jq -r .number <<<"$view_output")"
-    PR_URL="$(jq -r .url <<<"$view_output")"
+create_or_update_pr() {
+  local view_output branch head_owner title body
+
+  if PR_NUMBER="$(gh pr view --json number --jq .number 2>&1)"; then
+    PR_URL="$(gh pr view --json url --jq .url)"
     log "PR already exists: $PR_URL"
   else
-    if ! grep -qiE 'no pull requests found|no pull request found' <<<"$view_output"; then
+    view_output="$PR_NUMBER"
+    PR_NUMBER=""
+    if ! no_pr_found_error "$view_output"; then
       printf '%s\n' "$view_output" >&2
       die "Unable to check PR state"
+    fi
+
+    if ! branch_has_commits_ahead; then
+      PR_SKIPPED_REASON="branch has no commits ahead of $BASE_BRANCH"
+      log "Skipping PR creation because $PR_SKIPPED_REASON"
+      return
     fi
 
     branch="$(current_branch)"
@@ -344,18 +407,27 @@ create_or_update_pr() {
       return
     fi
 
-    mkdir -p .claude/tmp
-    body_file="$(mktemp .claude/tmp/pr-push-body.XXXXXX)"
-    printf '%s\n' "$body" >"$body_file"
-
     log "Creating PR against $BASE_REPO"
-    PR_URL="$(gh pr create \
+    if ! PR_URL="$(gh pr create \
       --repo "$BASE_REPO" \
       --head "${head_owner}:${branch}" \
       --base "$BASE_BRANCH" \
       --title "$title" \
-      --body-file "$body_file")"
-    rm -f "$body_file"
+      --body "$body" 2>&1)"; then
+      if grep -qi 'fork collab' <<<"$PR_URL"; then
+        log "Retrying PR creation without maintainer edits"
+        PR_URL="$(gh pr create \
+          --repo "$BASE_REPO" \
+          --head "${head_owner}:${branch}" \
+          --base "$BASE_BRANCH" \
+          --title "$title" \
+          --body "$body" \
+          --no-maintainer-edit)"
+      else
+        printf '%s\n' "$PR_URL" >&2
+        die "Unable to create PR"
+      fi
+    fi
     PR_NUMBER="${PR_URL##*/}"
   fi
 
@@ -386,6 +458,8 @@ print_summary() {
   printf 'Pushed remote: %s (%s)\n' "$PUSH_REMOTE" "$PUSH_OWNER_REPO"
   if [[ -n "$PR_URL" ]]; then
     printf 'PR: %s\n' "$PR_URL"
+  elif [[ -n "$PR_SKIPPED_REASON" ]]; then
+    printf 'PR creation skipped: %s\n' "$PR_SKIPPED_REASON"
   elif [[ -n "$PR_CREATION_LINK" ]]; then
     printf 'PR creation skipped for bot account.\n'
     printf 'Create PR: %s\n' "$PR_CREATION_LINK"

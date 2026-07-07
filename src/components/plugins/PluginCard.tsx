@@ -1,5 +1,6 @@
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
@@ -115,9 +116,16 @@ export function PluginCard({
             checked={!!s.enabled}
             onCheckedChange={() => onToggleEnabled(s.id, !!s.enabled)}
           />
-          <Button variant="outline" onClick={() => onDelete(s.id)}>
-            Delete
-          </Button>
+          <DeleteConfirmationDialog
+            itemName={s.name}
+            itemType="Plugin"
+            onDelete={() => onDelete(s.id)}
+            trigger={
+              <span className={buttonVariants({ variant: "outline" })}>
+                Delete
+              </span>
+            }
+          />
         </div>
       </div>
       {s.transport === "stdio" && (

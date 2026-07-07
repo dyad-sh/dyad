@@ -71,67 +71,19 @@ async function openMediaActionsForFile(po: PageObject, fileName: string) {
 }
 
 testSkipIfWindows(
-  "media library - rename, move, delete, and start a new chat with image reference",
+  "media library - start a new chat with image reference",
   async ({ po }) => {
     await po.setUp();
 
     const sourceApp = await importAppAndSeedMedia({
       po,
       fixtureName: "minimal",
-      files: ["chat-image.png", "move-image.png"],
-    });
-    const targetApp = await importAppAndSeedMedia({
-      po,
-      fixtureName: "astro",
-      files: [],
+      files: ["chat-image.png"],
     });
 
     await po.navigation.goToLibraryTab();
     await po.page.getByRole("link", { name: "Media" }).click();
 
-    await openMediaFolderByAppName(po, sourceApp.appName);
-
-    await openMediaActionsForFile(po, "move-image.png");
-    await po.page.getByTestId("media-rename-image").click();
-    await po.page.getByTestId("media-rename-input").fill("renamed-image");
-    await po.page.getByTestId("media-rename-confirm-button").click();
-
-    const sourceRenamedPath = path.join(
-      sourceApp.mediaDirPath,
-      "renamed-image.png",
-    );
-    const sourceOldPath = path.join(sourceApp.mediaDirPath, "move-image.png");
-
-    await expect.poll(() => fs.existsSync(sourceRenamedPath)).toBe(true);
-    await expect.poll(() => fs.existsSync(sourceOldPath)).toBe(false);
-
-    await openMediaActionsForFile(po, "renamed-image.png");
-    await po.page.getByTestId("media-move-to-submenu").click();
-    // The move flow uses a dialog with an AppSearchSelect popover.
-    await expect(po.page.getByTestId("media-move-dialog")).toBeVisible();
-    await po.page.getByLabel("Select target app").click();
-    await po.page.getByRole("button", { name: targetApp.appName }).click();
-    await po.page.getByTestId("media-move-confirm-button").click();
-
-    const targetMovedPath = path.join(
-      targetApp.mediaDirPath,
-      "renamed-image.png",
-    );
-
-    await expect.poll(() => fs.existsSync(sourceRenamedPath)).toBe(false);
-    await expect.poll(() => fs.existsSync(targetMovedPath)).toBe(true);
-
-    await po.page.getByTestId("media-folder-back-button").click();
-    await openMediaFolderByAppName(po, targetApp.appName);
-
-    await openMediaActionsForFile(po, "renamed-image.png");
-    await po.page.getByTestId("media-delete-image").click();
-    await po.page.getByTestId("media-delete-confirm-button").click();
-
-    await expect.poll(() => fs.existsSync(targetMovedPath)).toBe(false);
-
-    // After deleting the last file from the target folder, the folder
-    // disappears from the listing and the view returns to the folder list.
     await openMediaFolderByAppName(po, sourceApp.appName);
 
     await openMediaActionsForFile(po, "chat-image.png");

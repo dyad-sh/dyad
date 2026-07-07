@@ -16,7 +16,7 @@ Use this skill to publish the current work to GitHub. It must complete autonomou
    PR_PUSH_COMMIT_MESSAGE="<descriptive commit message>" bash .claude/skills/pr-push/scripts/pr_push.sh
    ```
 
-3. If the script reports a fixable failure, fix it and rerun the script. When fixing issues, do not run `git pull` from fork remotes; only pull from the upstream repo (`dyad-sh/dyad`) if needed. Do not manually replay the full workflow unless the script itself is broken.
+3. If the script reports a fixable failure, fix it and rerun the script. When fixing issues, do not run `git pull` from fork remotes; only pull from the upstream repo configured by `PR_PUSH_BASE_REPO` (default `dyad-sh/dyad`) if needed. Do not manually replay the full workflow unless the script itself is broken.
 4. Summarize the script's final output, including the branch, committed files, ignored files, checks, pushed remote, and PR URL or bot-account PR creation link.
 
 ## Script Behavior

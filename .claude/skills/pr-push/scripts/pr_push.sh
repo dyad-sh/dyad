@@ -79,7 +79,11 @@ restore_spurious_package_lock() {
   if path_is_dirty "package-lock.json" && ! package_json_dirty; then
     log "Discarding package-lock.json because package.json is unchanged"
     git restore --staged package-lock.json 2>/dev/null || true
-    git restore package-lock.json 2>/dev/null || true
+    if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+      git restore package-lock.json 2>/dev/null || true
+    else
+      rm -f package-lock.json
+    fi
     IGNORED_FILES+=("package-lock.json (spurious without package.json)")
   fi
 }
@@ -101,9 +105,7 @@ git_status_paths() {
   done < <(git status --porcelain=v1 -z -uall)
 }
 
-stage_relevant_changes() {
-  restore_spurious_package_lock
-
+ignored_status_paths() {
   local record xy path paired_path
   while IFS= read -r -d '' record; do
     xy="${record:0:2}"
@@ -116,6 +118,65 @@ stage_relevant_changes() {
         IFS= read -r -d '' paired_path || true
         ;;
     esac
+
+    if is_ignored_file "$path" && [[ -f "$path" ]]; then
+      printf '%s\0' "$path"
+    fi
+    if [[ -n "$paired_path" ]] && is_ignored_file "$paired_path" && [[ -f "$paired_path" ]]; then
+      printf '%s\0' "$paired_path"
+    fi
+  done < <(git status --porcelain=v1 -z -uall)
+}
+
+status_is_delete() {
+  local xy="$1"
+  [[ "$xy" == D* || "$xy" == " D" ]]
+}
+
+deleted_path_matches_ignored_file() {
+  local deleted_path="$1" ignored_path
+  shift
+
+  git cat-file -e "HEAD:$deleted_path" 2>/dev/null || return 1
+  for ignored_path in "$@"; do
+    [[ -f "$ignored_path" ]] || continue
+    if cmp -s <(git show "HEAD:$deleted_path") "$ignored_path"; then
+      printf '%s\n' "$ignored_path"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+stage_relevant_changes() {
+  restore_spurious_package_lock
+
+  local ignored_paths=() ignored_path record xy path paired_path moved_target
+  while IFS= read -r -d '' ignored_path; do
+    ignored_paths+=("$ignored_path")
+  done < <(ignored_status_paths)
+
+  while IFS= read -r -d '' record; do
+    xy="${record:0:2}"
+    path="${record:3}"
+    paired_path=""
+    [[ -z "$path" ]] && continue
+
+    case "$xy" in
+      R* | C* | *R | *C)
+        IFS= read -r -d '' paired_path || true
+        ;;
+    esac
+
+    if status_is_delete "$xy" && ((${#ignored_paths[@]} > 0)); then
+      if moved_target="$(deleted_path_matches_ignored_file "$path" "${ignored_paths[@]}")"; then
+        IGNORED_FILES+=("$path (moved to ignored path $moved_target)")
+        git restore --staged -- "$path" 2>/dev/null || true
+        git restore -- "$path" 2>/dev/null || true
+        continue
+      fi
+    fi
 
     if is_ignored_file "$path" || { [[ -n "$paired_path" ]] && is_ignored_file "$paired_path"; }; then
       IGNORED_FILES+=("$path")
@@ -291,6 +352,10 @@ is_permission_push_error() {
   grep -qiE 'permission|denied|403|not allowlisted|could not read Username' <<<"$1"
 }
 
+has_github_token_env() {
+  [[ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}${GH_ENTERPRISE_TOKEN:-}${GITHUB_ENTERPRISE_TOKEN:-}" ]]
+}
+
 git_push_with_token_retry() {
   local output_var="$1"
   shift
@@ -301,13 +366,13 @@ git_push_with_token_retry() {
     return 0
   fi
 
-  if [[ -n "${GH_TOKEN:-}" ]] && is_permission_push_error "$output"; then
-    log "Push failed with permission-like error; retrying same remote without GH_TOKEN"
-    if retry_output="$(env -u GH_TOKEN "$@" 2>&1)"; then
+  if has_github_token_env && is_permission_push_error "$output"; then
+    log "Push failed with permission-like error; retrying same remote without GitHub token environment variables"
+    if retry_output="$(env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN "$@" 2>&1)"; then
       printf -v "$output_var" '%s' "$retry_output"
       return 0
     fi
-    output="${output}"$'\n'"Retry without GH_TOKEN also failed:"$'\n'"${retry_output}"
+    output="${output}"$'\n'"Retry without GitHub token environment variables also failed:"$'\n'"${retry_output}"
   fi
 
   printf -v "$output_var" '%s' "$output"
@@ -340,6 +405,38 @@ remote_for_fetch_owner_repo() {
   done < <(git remote)
 
   return 1
+}
+
+remote_has_split_push_repo() {
+  local remote="$1" fetch_owner_repo push_owner_repo
+  fetch_owner_repo="$(remote_fetch_owner_repo "$remote")"
+  push_owner_repo="$(remote_owner_repo "$remote")"
+  [[ -n "$fetch_owner_repo" && -n "$push_owner_repo" && "$fetch_owner_repo" != "$push_owner_repo" ]]
+}
+
+push_branch_to_remote() {
+  local output_var="$1" remote="$2" set_upstream="$3" refspec="${4:-}"
+  local args
+
+  if remote_has_split_push_repo "$remote"; then
+    log "Remote $remote has separate fetch and push repositories; using --force because --force-with-lease checks the fetch-side tracking ref"
+    args=(git push --force)
+  else
+    args=(git push --force-with-lease)
+  fi
+
+  if [[ "$set_upstream" == "yes" ]]; then
+    args+=(-u)
+  fi
+
+  args+=("$remote")
+  if [[ -n "$refspec" ]]; then
+    args+=("$refspec")
+  else
+    args+=(HEAD)
+  fi
+
+  git_push_with_token_retry "$output_var" "${args[@]}"
 }
 
 list_existing_prs_for_branch() {
@@ -408,7 +505,7 @@ push_with_fallback() {
 
     if [[ "$upstream_branch" != "main" && "$upstream_branch" != "master" ]]; then
       log "Pushing to tracked upstream $upstream"
-      if git_push_with_token_retry push_output git push --force-with-lease; then
+      if push_branch_to_remote push_output "$PUSH_REMOTE" "no" "HEAD:$upstream_branch"; then
         printf '%s\n' "$push_output"
         PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
         return
@@ -418,7 +515,7 @@ push_with_fallback() {
       if is_permission_push_error "$push_output"; then
         log "Tracked push failed with permission-like error; falling back to $DEFAULT_REMOTE"
         PUSH_REMOTE="$DEFAULT_REMOTE"
-        if git_push_with_token_retry push_output git push --force-with-lease -u "$DEFAULT_REMOTE" HEAD; then
+        if push_branch_to_remote push_output "$DEFAULT_REMOTE" "yes"; then
           printf '%s\n' "$push_output"
           PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
           return
@@ -446,7 +543,7 @@ push_with_fallback() {
 
   PUSH_REMOTE="${matched_remote:-$DEFAULT_REMOTE}"
   log "Pushing to $PUSH_REMOTE"
-  if git_push_with_token_retry push_output git push --force-with-lease -u "$PUSH_REMOTE" HEAD; then
+  if push_branch_to_remote push_output "$PUSH_REMOTE" "yes"; then
     printf '%s\n' "$push_output"
     PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
     return
@@ -457,7 +554,7 @@ push_with_fallback() {
     log "Push to $PUSH_REMOTE failed with permission-like error; trying upstream as fallback"
     local failed_remote="$PUSH_REMOTE"
     PUSH_REMOTE="upstream"
-    if git_push_with_token_retry push_output git push --force-with-lease -u upstream "HEAD:$branch"; then
+    if push_branch_to_remote push_output upstream "yes" "HEAD:$branch"; then
       printf '%s\n' "$push_output"
       PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
       return
@@ -549,6 +646,8 @@ create_or_update_pr() {
   head_owner="${PUSH_OWNER_REPO%%/*}"
   if find_existing_pr_for_branch "$branch" "$head_owner"; then
     log "PR already exists: $PR_URL"
+  elif find_existing_pr_for_branch "$branch"; then
+    log "PR already exists for branch $branch with a different head owner: $PR_URL"
   else
     if ! branch_has_commits_ahead; then
       log "Skipping PR creation because $PR_SKIPPED_REASON"
@@ -578,13 +677,15 @@ create_or_update_pr() {
       rm -f "$create_error_file"
       if grep -qi 'fork collab' <<<"$create_error"; then
         log "Retrying PR creation without maintainer edits"
-        PR_URL="$(gh pr create \
+        if ! PR_URL="$(gh pr create \
           --repo "$BASE_REPO" \
           --head "${head_owner}:${branch}" \
           --base "$BASE_BRANCH" \
           --title "$title" \
           --body "$body" \
-          --no-maintainer-edit)"
+          --no-maintainer-edit 2>&1)"; then
+          die "Unable to create PR (--no-maintainer-edit retry): $PR_URL"
+        fi
       else
         printf '%s\n' "$create_error" >&2
         die "Unable to create PR"

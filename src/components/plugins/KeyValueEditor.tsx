@@ -198,7 +198,9 @@ export function KeyValueEditor({
           disabled={disabled}
         >
           <Plus size={14} />
-          {t("settings:toolsMcp.addEnvVar")}
+          {itemLabel === "Header"
+            ? "Add Header"
+            : t("settings:toolsMcp.addEnvVar")}
         </Button>
       )}
 

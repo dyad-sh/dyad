@@ -33,7 +33,11 @@ import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import { getEffectiveDefaultChatMode, type ChatMode } from "@/lib/schemas";
+import {
+  getEffectiveDefaultChatMode,
+  hasDyadProKey,
+  type ChatMode,
+} from "@/lib/schemas";
 import {
   FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   isFreeProBuildModeCombination,
@@ -49,7 +53,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RefreshCw, X, Zap } from "lucide-react";
+import { RefreshCw, Zap } from "lucide-react";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -71,6 +75,9 @@ export default function HomePage() {
   const { settings, updateSettings, envVars } = useSettings();
   const { isAnyProviderSetup, isLoading: isLoadingLanguageModelProviders } =
     useLanguageModelProviders();
+  const hasDyadProApiKey = settings ? hasDyadProKey(settings) : false;
+  const hasConfiguredAiProvider =
+    !isLoadingLanguageModelProviders && isAnyProviderSetup();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const initialChatMode = useInitialChatMode();
   const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
@@ -99,7 +106,6 @@ export default function HomePage() {
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [isAiSetupDialogOpen, setIsAiSetupDialogOpen] = useState(false);
-  const [isSetupPillDismissed, setIsSetupPillDismissed] = useState(false);
   const [
     shouldOpenAiSetupDialogWhenProvidersLoad,
     setShouldOpenAiSetupDialogWhenProvidersLoad,
@@ -453,36 +459,27 @@ export default function HomePage() {
           </div>
           <HomeChatInput onSubmit={handleSubmit} />
 
-          {!isSetupPillDismissed &&
-            !isLoadingLanguageModelProviders &&
-            !isAnyProviderSetup() && (
-              <div className="mt-3 flex justify-center">
-                <div className="flex items-center gap-0.5 rounded-full border border-primary/25 bg-primary/5 py-0.5 pl-3 pr-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      posthog.capture("home:setup-pill:click");
-                      openAiSetupDialog();
-                    }}
-                    className="flex cursor-pointer items-center gap-1.5 py-1 text-sm font-medium text-primary transition-colors hover:underline"
-                  >
-                    <Zap aria-hidden="true" className="size-3.5" />
-                    Connect AI to build — takes a minute
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Dismiss"
-                    onClick={() => {
-                      posthog.capture("home:setup-pill:dismiss");
-                      setIsSetupPillDismissed(true);
-                    }}
-                    className="flex size-6 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground"
-                  >
-                    <X aria-hidden="true" className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
+          {!hasDyadProApiKey && (
+            <div className="-mt-2 flex justify-end px-4">
+              <button
+                type="button"
+                onClick={() => {
+                  posthog.capture("home:setup-pill:click");
+                  openAiSetupDialog();
+                }}
+                className={
+                  hasConfiguredAiProvider
+                    ? "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground hover:underline"
+                    : "flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline"
+                }
+              >
+                <Zap aria-hidden="true" className="size-3.5" />
+                {hasConfiguredAiProvider
+                  ? "Manage AI setup"
+                  : "Connect AI to build — takes a minute"}
+              </button>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {randomPrompts.map((item) => (
@@ -522,7 +519,7 @@ export default function HomePage() {
               Choose how Dyad should access AI before generating your app.
             </DialogDescription>
           </DialogHeader>
-          <SetupBanner variant="dialog" />
+          <SetupBanner variant="dialog" forceShow />
         </DialogContent>
       </Dialog>
     </div>

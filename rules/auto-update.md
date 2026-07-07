@@ -1,0 +1,8 @@
+# Auto-update (Squirrel / update-electron-app)
+
+Debugging update failures reported by users, or changing updater/debug-report code.
+
+- The update feed URL shape is `https://api.dyad.sh/v1/update/{stable|beta}/dyad-sh/dyad/<platform>-<arch>/<version>/RELEASES` (built by `update-electron-app` from the `host` set in `src/main.ts`). To check server health, curl that exact shape — a malformed path (e.g. missing the `dyad-sh/dyad/...` segments) gets a 307 redirect to the repo homepage, which looks "up" but is not a valid feed response.
+- Windows `Squirrel.FileDownloader.DownloadUrl` stack traces that start at `--- End of stack trace ---` are missing the head line with the real exception (`System.Net.WebException: ...`). Cause: `update-electron-app` logs updater errors at info level, and the warn-filtered bug-report logs drop `[info]`-prefixed lines while keeping unprefixed stack-trace continuation lines. Fixed by an error-level `autoUpdater.on("error")` handler in `src/main.ts`; old reports still show only tails.
+- The full .NET inner-exception chain persists across restarts in Squirrel's own log next to `Update.exe`: `%LocalAppData%\dyad\SquirrelSetup.log`. Debug bundles capture its tail via `readUpdaterLogs()` in `src/ipc/handlers/debug_handlers.ts` (`updaterLogs` field).
+- Bug-report bodies travel in the GitHub issue-creation URL (`openGitHubIssue` in `HelpDialog.tsx`), so any new log section added there must be tightly size-capped (~1-2k chars) to avoid overlong URLs; session upload bundles are POSTed and have no such limit.

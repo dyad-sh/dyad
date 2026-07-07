@@ -142,15 +142,27 @@ export const customDark: editor.IStandaloneThemeData = {
   },
 };
 
-loader.init().then((monaco) => {
-  monaco.editor.defineTheme("dyad-light", customLight);
-  monaco.editor.defineTheme("dyad-dark", customDark);
+// Skip Monaco's eager global init under vitest. This module is imported
+// transitively by the chat message tree (DyadWrite -> FileEditor), so the hybrid
+// harness pulls it in even though it never renders an editor. `loader.init()`
+// starts an async (CDN) load that gets canceled on test teardown, surfacing as a
+// "Canceled" unhandled rejection that fails the run. Production, dev, and E2E
+// builds don't set VITEST, so they init normally. (Mirrors the
+// DYAD_SKIP_MANAGED_PNPM_INSTALL harness touchpoint.)
+const IS_VITEST =
+  typeof process !== "undefined" && process.env.VITEST === "true";
 
-  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-    jsx: monaco.languages.typescript.JsxEmit.React, // Enable JSX
+if (!IS_VITEST) {
+  loader.init().then((monaco) => {
+    monaco.editor.defineTheme("dyad-light", customLight);
+    monaco.editor.defineTheme("dyad-dark", customDark);
+
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+      jsx: monaco.languages.typescript.JsxEmit.React, // Enable JSX
+    });
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      // Too noisy because we don't have the full TS environment.
+      noSemanticValidation: true,
+    });
   });
-  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-    // Too noisy because we don't have the full TS environment.
-    noSemanticValidation: true,
-  });
-});
+}

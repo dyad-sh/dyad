@@ -6,14 +6,16 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { CANNED_MESSAGE } from ".";
+import { CANNED_MESSAGE } from "./index";
+import { fakeLlmLog } from "./log";
+import { resolveDumpDir, resolveFixturesDir } from "./paths";
 
 /**
  * Generate a dump file from the request and return the path marker
  */
 function generateDump(req: Request): string {
   const timestamp = Date.now();
-  const generatedDir = path.join(__dirname, "generated");
+  const generatedDir = resolveDumpDir();
 
   // Create generated directory if it doesn't exist
   if (!fs.existsSync(generatedDir)) {
@@ -109,7 +111,7 @@ function createSSEEvent(eventType: string, data: any): string {
 export const createResponsesHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { input, messages, stream = false } = req.body ?? {};
-    console.log(`* [responses/${prefix}] Received request`, {
+    fakeLlmLog(`* [responses/${prefix}] Received request`, {
       hasInput: input != null,
       hasMessages: Array.isArray(messages),
       stream: Boolean(stream),
@@ -140,12 +142,7 @@ export const createResponsesHandler =
     const testCaseName = extractTestCaseName(lastUserText);
     if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       const testFilePath = path.join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "e2e-tests",
-        "fixtures",
+        resolveFixturesDir(),
         prefix,
         `${testCaseName}.md`,
       );

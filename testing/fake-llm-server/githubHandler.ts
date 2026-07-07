@@ -567,9 +567,19 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
           }
           res.end();
         });
+        // If the child exits before consuming its whole stdin (bad pack,
+        // spawn race), the pending write EPIPEs; without a handler that's an
+        // uncaught stream error that takes down the whole fake server.
+        ps.stdin.on("error", (error) => {
+          console.error("* git-receive-pack stdin error:", error);
+        });
         ps.stdin.write(rawBody);
         ps.stdin.end();
         ps.stdout.pipe(res);
+        // Deliberately NOT killing the child on client disconnect: its input
+        // is fully buffered above, so it always terminates on its own, and
+        // killing receive-pack mid-ref-update is what would leave stale locks
+        // in the bare repo.
         console.log(
           `* [git-http-server] 200 POST    ${req.url} (persistent receive-pack)`,
         );

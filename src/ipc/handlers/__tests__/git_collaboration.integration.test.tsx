@@ -438,6 +438,9 @@ describe("Git collaboration actions (integration)", () => {
     // call deadlocks the event loop the server needs to answer it.
     const remoteUrl = git(app.appDir, "remote", "get-url", "origin").trim();
     const seedDir = path.join(path.dirname(app.appDir), "pull-remote-seed");
+    // A leftover from a retried run would make the clone fail on a
+    // non-empty destination.
+    fs.rmSync(seedDir, { recursive: true, force: true });
     await gitAsync(path.dirname(app.appDir), "clone", remoteUrl, seedDir);
     const remoteFile = "remote-change.txt";
     const remoteContent = "Content committed on the remote";

@@ -87,7 +87,7 @@ vi.mock("@ai-sdk/mcp", () => ({
 // cached client to rebuild. Mock it to a no-op so the test doesn't
 // pull in the whole manager.
 vi.mock("@/ipc/utils/mcp_manager", () => ({
-  mcpManager: { dispose: vi.fn() },
+  mcpManager: { dispose: vi.fn(async () => {}) },
 }));
 
 const flowImport = await import("@/ipc/utils/mcp_oauth_flow");

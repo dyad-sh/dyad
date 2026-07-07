@@ -109,7 +109,7 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
-  mcpManager: { dispose: vi.fn() },
+  mcpManager: { dispose: vi.fn(async () => {}) },
 }));
 
 // Resolve mocks before importing modules under test.

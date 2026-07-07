@@ -504,7 +504,7 @@ export async function runOAuthFlow(
     });
     if (initial === "AUTHORIZED") {
       listener.dispose();
-      mcpManager.dispose(s.id);
+      await mcpManager.dispose(s.id);
       return { success: true, error: null };
     }
 
@@ -523,7 +523,9 @@ export async function runOAuthFlow(
     }
 
     // Rebuild the cached MCP client so it picks up the new tokens.
-    mcpManager.dispose(s.id);
+    // Fire-and-forget: closing a possibly-hung transport must not block the
+    // flow, but the rejection needs a handler.
+    void mcpManager.dispose(s.id).catch(() => {});
     return { success: true, error: null };
   } catch (err) {
     listener.dispose();
@@ -555,6 +557,6 @@ export async function disconnectOAuth(
     allowInteractive: true,
   });
   await provider.invalidateCredentials("all");
-  mcpManager.dispose(serverId);
+  void mcpManager.dispose(serverId).catch(() => {});
   return { success: true };
 }

@@ -1311,7 +1311,7 @@ export async function setupHybridChatHarness(
         // Dynamic import: static top-level imports of the handler graph break
         // module-load ordering (see the ipc_host import above).
         const { mcpManager } = await import("@/ipc/utils/mcp_manager");
-        mcpManager.disposeAll();
+        await mcpManager.disposeAll();
         await Promise.all(
           Array.from(mcpHttpProcesses, (child) => stopChildProcess(child)),
         );

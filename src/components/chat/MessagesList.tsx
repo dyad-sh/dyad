@@ -1,13 +1,6 @@
 import React from "react";
 import type { Message } from "@/ipc/types";
-import {
-  forwardRef,
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import { forwardRef, useState, useCallback, useMemo } from "react";
 import { Virtuoso } from "react-virtuoso";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
@@ -25,8 +18,6 @@ import { ipc } from "@/ipc/types";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { PromoMessage } from "./PromoMessage";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
 interface MessagesListProps {
@@ -53,10 +44,7 @@ interface FooterContext {
   selectedChatId: number | null;
   appId: number | null;
   setMessagesById: ReturnType<typeof useSetAtom<typeof chatMessagesByIdAtom>>;
-  settings: ReturnType<typeof useSettings>["settings"];
-  userBudget: ReturnType<typeof useUserBudgetInfo>["userBudget"];
   renderSetupBanner: () => React.ReactNode;
-  promoSeed: number | null;
 }
 
 // Footer component for Virtuoso - receives context via props
@@ -78,10 +66,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     selectedChatId,
     appId,
     setMessagesById,
-    settings,
-    userBudget,
     renderSetupBanner,
-    promoSeed,
   } = context;
 
   const questionnaireState =
@@ -260,11 +245,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           </div>
         </div>
       )}
-      {promoSeed !== null &&
-        !settings?.enableDyadPro &&
-        !settings?.isTestMode &&
-        !userBudget &&
-        messages.length > 0 && <PromoMessage seed={promoSeed} />}
       <div ref={messagesEndRef} />
       {renderSetupBanner()}
     </>
@@ -282,29 +262,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
-    const { userBudget } = useUserBudgetInfo();
-
-    // Pick a promo when a stream starts and keep it visible after the stream
-    // ends, so users have a chance to act on it once their attention returns
-    // to the chat. A new stream rotates to a new promo.
-    const [activePromo, setActivePromo] = useState<{
-      chatId: number | null;
-      seed: number;
-    } | null>(null);
-    const wasStreamingRef = useRef(false);
-    useEffect(() => {
-      if (isStreaming && !wasStreamingRef.current) {
-        setActivePromo({
-          chatId: selectedChatId,
-          seed: messages.length * (appId ?? 1) * (selectedChatId ?? 1),
-        });
-      }
-      wasStreamingRef.current = isStreaming;
-    }, [isStreaming, selectedChatId, appId, messages.length]);
-    const promoSeed =
-      activePromo && activePromo.chatId === selectedChatId
-        ? activePromo.seed
-        : null;
 
     // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
@@ -392,10 +349,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         selectedChatId,
         appId,
         setMessagesById,
-        settings,
-        userBudget,
         renderSetupBanner,
-        promoSeed,
       }),
       [
         messages,
@@ -411,10 +365,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         selectedChatId,
         appId,
         setMessagesById,
-        settings,
-        userBudget,
         renderSetupBanner,
-        promoSeed,
       ],
     );
 

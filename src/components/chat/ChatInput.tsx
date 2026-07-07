@@ -103,6 +103,7 @@ import {
   ContextLimitBanner,
   shouldShowContextLimitBanner,
 } from "./ContextLimitBanner";
+import { PromoMessage, usePromoMessage } from "./PromoMessage";
 import { useCountTokens } from "@/hooks/useCountTokens";
 import { useChats } from "@/hooks/useChats";
 import { useRouter } from "@tanstack/react-router";
@@ -380,6 +381,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       totalTokens: tokenCountResult.actualMaxTokens,
       contextWindow: tokenCountResult.contextWindow,
     });
+
+  // Promo cap row on the composer; never stack two caps — the context limit
+  // warning wins the slot.
+  const promo = usePromoMessage(chatId);
+  const showPromo = promo.visible && !showBanner;
 
   useEffect(() => {
     if (error) {
@@ -794,6 +800,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         </div>
       )}
       <div className="p-2 pt-0" data-testid="chat-input-container">
+        {/* Promo cap row fused to the top of the composer */}
+        {showPromo && <PromoMessage seed={promo.seed} />}
         {/* Show context limit banner above chat input for visibility */}
         {showBanner && tokenCountResult && (
           <ContextLimitBanner
@@ -806,7 +814,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
             "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
             isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
-            showBanner && "rounded-t-none border-t-0",
+            (showBanner || showPromo) && "rounded-t-none border-t-0",
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}

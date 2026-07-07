@@ -1,10 +1,16 @@
-import { X } from "lucide-react";
+import { useAtomValue } from "jotai";
+import { RefreshCw, Sparkles } from "lucide-react";
 import { usePostHog } from "posthog-js/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { chatMessagesByIdAtom, isStreamingByIdAtom } from "@/atoms/chatAtoms";
 import { DyadProTrialDialog } from "@/components/DyadProTrialDialog";
-import { Button } from "@/components/ui/button";
-import { ipc } from "@/ipc/types";
+import { useSettings } from "@/hooks/useSettings";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { ipc, type UserBudgetInfo } from "@/ipc/types";
+import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import { cn } from "@/lib/utils";
 
 export interface PromoMessageConfig {
   /** Stable id used for the promo_click event and UTM attribution. */
@@ -27,17 +33,38 @@ export const PROMO_MESSAGES: PromoMessageConfig[] = [
   },
   {
     id: "agent-mode",
-    text: "Dyad Pro's Agent mode automatically debugs your app.",
-    cta: "Try Agent Mode",
+    text: "Let Dyad Pro fix bugs with Agent mode.",
+    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 3,
   },
   {
-    id: "pro-tools",
-    text: "Clone websites, search the web, and generate images with Pro tools.",
-    cta: "Unlock Pro Tools",
+    id: "custom-theme",
+    text: "Give your app a unique look with AI theme generator.",
+    cta: "Get Dyad Pro",
+    target: { type: "trial-dialog" },
+    weight: 2,
+  },
+  {
+    id: "speech-to-text",
+    text: "Tired of typing? Talk to Dyad with your voice.",
+    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 3,
+  },
+  {
+    id: "web-search",
+    text: "Let Dyad use the web for fresh information and better builds.",
+    cta: "Get Dyad Pro",
+    target: { type: "trial-dialog" },
+    weight: 2,
+  },
+  {
+    id: "pro-tools",
+    text: "Recreate a website with Dyad Pro.",
+    cta: "Unlock Dyad Pro",
+    target: { type: "trial-dialog" },
+    weight: 2,
   },
   {
     id: "all-models",
@@ -55,19 +82,22 @@ export const PROMO_MESSAGES: PromoMessageConfig[] = [
   },
   {
     id: "reddit",
-    text: "Join 600+ builders in the Dyad subreddit.",
+    text: "Join 4000+ builders in the Dyad subreddit.",
     cta: "Join r/dyadbuilders",
     target: { type: "url", url: "https://www.reddit.com/r/dyadbuilders/" },
     weight: 1,
   },
   {
     id: "follow-x",
-    text: "Follow Dyad on X for tips and updates.",
+    text: "Follow Dyad on X for build tips and release updates.",
     cta: "Follow @dyad_sh",
     target: { type: "url", url: "https://x.com/dyad_sh" },
-    weight: 1,
+    weight: 0.5,
   },
 ];
+
+const SHOW_PROMO_DEV_CYCLE =
+  (import.meta as { env?: { MODE?: string } }).env?.MODE === "development";
 
 export function pickPromoMessage(seed: number): PromoMessageConfig {
   const totalWeight = PROMO_MESSAGES.reduce(
@@ -84,32 +114,101 @@ export function pickPromoMessage(seed: number): PromoMessageConfig {
   return PROMO_MESSAGES[0];
 }
 
-const PROMO_DISMISSED_AT_KEY = "dyadPromoDismissedAt";
-const PROMO_DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
-
-function isPromoDismissed(): boolean {
-  try {
-    const dismissedAt = Number(localStorage.getItem(PROMO_DISMISSED_AT_KEY));
-    return (
-      Number.isFinite(dismissedAt) &&
-      dismissedAt > 0 &&
-      Date.now() - dismissedAt < PROMO_DISMISS_DURATION_MS
-    );
-  } catch {
-    return false;
-  }
+export function shouldShowPromoMessage({
+  promoSeed,
+  settings,
+  userBudget,
+  messagesLength,
+}: {
+  promoSeed: number | null;
+  settings: UserSettings | null | undefined;
+  userBudget: UserBudgetInfo | undefined;
+  messagesLength: number;
+}) {
+  const hasProKey = settings ? hasDyadProKey(settings) : false;
+  return (
+    promoSeed !== null &&
+    !settings?.isTestMode &&
+    !hasProKey &&
+    !userBudget &&
+    messagesLength > 0
+  );
 }
 
+export interface PromoMessageState {
+  visible: boolean;
+  seed: number;
+}
+
+/**
+ * Tracks which promo (if any) to show for a chat. A promo is picked when a
+ * stream starts and kept after it ends, so users have a chance to act on it
+ * once their attention returns to the composer. A new stream rotates to a
+ * new promo. Exposed as a hook so the composer can drop its top corners
+ * while the promo cap row is visible.
+ */
+export function usePromoMessage(chatId?: number): PromoMessageState {
+  const { settings } = useSettings();
+  const { userBudget } = useUserBudgetInfo();
+  const appId = useAtomValue(selectedAppIdAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const isStreamingById = useAtomValue(isStreamingByIdAtom);
+
+  const messagesLength =
+    chatId !== undefined ? (messagesById.get(chatId)?.length ?? 0) : 0;
+  const isStreaming =
+    chatId !== undefined ? (isStreamingById.get(chatId) ?? false) : false;
+
+  const [activePromo, setActivePromo] = useState<{
+    chatId: number | null;
+    seed: number;
+  } | null>(null);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isStreaming && !wasStreamingRef.current) {
+      setActivePromo({
+        chatId: chatId ?? null,
+        seed: messagesLength * (appId ?? 1) * (chatId ?? 1),
+      });
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, chatId, appId, messagesLength]);
+
+  const promoSeed =
+    activePromo && activePromo.chatId === (chatId ?? null)
+      ? activePromo.seed
+      : null;
+
+  return {
+    visible: shouldShowPromoMessage({
+      promoSeed,
+      settings,
+      userBudget,
+      messagesLength,
+    }),
+    seed: promoSeed ?? 0,
+  };
+}
+
+/**
+ * Promo rendered as a quiet "cap" row fused to the top of the chat composer,
+ * mirroring the ContextLimitBanner pattern: rounded top corners here, and the
+ * composer drops its own top border and corners while this is visible.
+ */
 export function PromoMessage({ seed }: { seed: number }) {
   const posthog = usePostHog();
-  const [dismissed, setDismissed] = useState(isPromoDismissed);
   const [isTrialDialogOpen, setIsTrialDialogOpen] = useState(false);
+  const [devMessageIndex, setDevMessageIndex] = useState<number | null>(null);
 
-  if (dismissed) {
-    return null;
-  }
+  useEffect(() => {
+    setDevMessageIndex(null);
+  }, [seed]);
 
-  const message = pickPromoMessage(seed);
+  const message =
+    devMessageIndex === null
+      ? pickPromoMessage(seed)
+      : PROMO_MESSAGES[devMessageIndex];
+  const isProPromo = message.target.type === "trial-dialog";
 
   const handleCtaClick = () => {
     posthog?.capture("promo_click", { messageId: message.id });
@@ -120,42 +219,53 @@ export function PromoMessage({ seed }: { seed: number }) {
     }
   };
 
-  const handleDismiss = () => {
-    try {
-      localStorage.setItem(PROMO_DISMISSED_AT_KEY, String(Date.now()));
-    } catch {
-      // localStorage unavailable — still hide for this session.
-    }
-    setDismissed(true);
+  const handleDevCycle = () => {
+    setDevMessageIndex((currentIndex) => {
+      if (currentIndex !== null) {
+        return (currentIndex + 1) % PROMO_MESSAGES.length;
+      }
+      const pickedIndex = PROMO_MESSAGES.findIndex(
+        (promo) => promo.id === message.id,
+      );
+      return (pickedIndex + 1) % PROMO_MESSAGES.length;
+    });
   };
 
   return (
     <>
       <div
         data-testid="promo-message"
-        className="max-w-3xl mx-auto mt-4 flex items-center justify-center gap-3 rounded-lg border border-border bg-muted/50 py-2 pl-4 pr-2"
+        className="flex items-center gap-2 rounded-t-2xl border-t border-l border-r border-border bg-muted/30 py-1.5 pl-3 pr-1.5 text-[13px] animate-in fade-in-0 slide-in-from-bottom-1 duration-200 motion-reduce:animate-none"
       >
-        <p className="text-sm text-foreground">{message.text}</p>
-        <Button
-          size="sm"
-          variant={
-            message.target.type === "trial-dialog" ? "default" : "outline"
-          }
-          className="shrink-0"
+        {isProPromo && (
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+        )}
+        <span className="flex-1 min-w-0 truncate text-muted-foreground">
+          {message.text}
+        </span>
+        <button
+          type="button"
           onClick={handleCtaClick}
+          className={cn(
+            "inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md border px-2 font-medium transition-colors",
+            isProPromo
+              ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+              : "border-border bg-background/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
         >
           {message.cta}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-          aria-label="Dismiss"
-          title="Hide for a week"
-          onClick={handleDismiss}
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        </button>
+        {SHOW_PROMO_DEV_CYCLE && (
+          <button
+            type="button"
+            aria-label="Cycle promo message"
+            title="Cycle promo message"
+            onClick={handleDevCycle}
+            className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </button>
+        )}
       </div>
       <DyadProTrialDialog
         isOpen={isTrialDialogOpen}

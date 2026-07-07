@@ -58,7 +58,7 @@ is_ignored_file() {
   local file="$1"
 
   case "$file" in
-    .env | .env.* | */.env | */.env.* | credentials.* | */credentials.* | *.secret | *.key | *.pem | .DS_Store | */.DS_Store | *.log | node_modules/* | */node_modules/*)
+    .env | .env.* | */.env | */.env.* | credentials.* | */credentials.* | *.secret | *.key | *.pem | .DS_Store | */.DS_Store | *.log | node_modules/* | */node_modules/* | .claude/tmp/*)
       return 0
       ;;
   esac
@@ -104,18 +104,30 @@ git_status_paths() {
 stage_relevant_changes() {
   restore_spurious_package_lock
 
-  local path
-  while IFS= read -r -d '' path; do
+  local record xy path paired_path
+  while IFS= read -r -d '' record; do
+    xy="${record:0:2}"
+    path="${record:3}"
+    paired_path=""
     [[ -z "$path" ]] && continue
 
-    if is_ignored_file "$path"; then
+    case "$xy" in
+      R* | C* | *R | *C)
+        IFS= read -r -d '' paired_path || true
+        ;;
+    esac
+
+    if is_ignored_file "$path" || { [[ -n "$paired_path" ]] && is_ignored_file "$paired_path"; }; then
       IGNORED_FILES+=("$path")
+      [[ -z "$paired_path" ]] || IGNORED_FILES+=("$paired_path")
       git restore --staged -- "$path" 2>/dev/null || true
+      [[ -z "$paired_path" ]] || git restore --staged -- "$paired_path" 2>/dev/null || true
       continue
     fi
 
     git add -A -- "$path"
-  done < <(git_status_paths)
+    [[ -z "$paired_path" ]] || git add -A -- "$paired_path"
+  done < <(git status --porcelain=v1 -z -uall)
 }
 
 staged_file_list() {
@@ -127,7 +139,7 @@ default_branch_name() {
   files="$(git_status_paths | awk -v RS='\0' 'NR <= 5 { printf "%s ", $0 }')"
 
   case "$files" in
-    *".claude/skills/pr-push"*) joined="fast-pr-push-skill" ;;
+    *".claude/skills/pr-push"*) joined="update-pr-push-skill" ;;
     *".github/workflows"*) joined="update-workflows" ;;
     *"rules/"* | *"AGENTS.md"*) joined="update-agent-docs" ;;
     *"src/"*) joined="update-app-code" ;;
@@ -162,7 +174,7 @@ commit_message_from_staged_files() {
   files="$(staged_file_list | tr '\n' ' ')"
 
   case "$files" in
-    *".claude/skills/pr-push"*) printf 'chore: speed up pr push skill\n' ;;
+    *".claude/skills/pr-push"*) printf 'chore: update pr push skill\n' ;;
     *"rules/"* | *"AGENTS.md"*) printf 'docs: record session learnings\n' ;;
     *".github/workflows"*) printf 'ci: update workflows\n' ;;
     *) printf 'chore: update project files\n' ;;
@@ -229,10 +241,15 @@ amend_or_commit_check_changes() {
   fi
 }
 
-remote_owner_repo() {
-  local remote="$1"
-  local url parsed
-  url="$(git remote get-url --push "$remote" 2>/dev/null || git remote get-url "$remote")"
+repo_temp_file() {
+  local name="$1"
+  mkdir -p .claude/tmp
+  mktemp ".claude/tmp/${name}.XXXXXX"
+}
+
+owner_repo_from_url() {
+  local url="$1"
+  local parsed
 
   url="${url%.git}"
   case "$url" in
@@ -256,8 +273,45 @@ remote_owner_repo() {
   esac
 }
 
+remote_owner_repo() {
+  local remote="$1"
+  local url
+  url="$(git remote get-url --push "$remote" 2>/dev/null || git remote get-url "$remote")"
+  owner_repo_from_url "$url"
+}
+
+remote_fetch_owner_repo() {
+  local remote="$1"
+  local url
+  url="$(git remote get-url "$remote")"
+  owner_repo_from_url "$url"
+}
+
 is_permission_push_error() {
   grep -qiE 'permission|denied|403|not allowlisted|could not read Username' <<<"$1"
+}
+
+git_push_with_token_retry() {
+  local output_var="$1"
+  shift
+  local output retry_output
+
+  if output="$("$@" 2>&1)"; then
+    printf -v "$output_var" '%s' "$output"
+    return 0
+  fi
+
+  if [[ -n "${GH_TOKEN:-}" ]] && is_permission_push_error "$output"; then
+    log "Push failed with permission-like error; retrying same remote without GH_TOKEN"
+    if retry_output="$(env -u GH_TOKEN "$@" 2>&1)"; then
+      printf -v "$output_var" '%s' "$retry_output"
+      return 0
+    fi
+    output="${output}"$'\n'"Retry without GH_TOKEN also failed:"$'\n'"${retry_output}"
+  fi
+
+  printf -v "$output_var" '%s' "$output"
+  return 1
 }
 
 has_remote() {
@@ -276,14 +330,30 @@ remote_for_owner_repo() {
   return 1
 }
 
-list_existing_prs_for_branch() {
-  local branch="$1" list_output
+remote_for_fetch_owner_repo() {
+  local owner_repo="$1" remote
+  while IFS= read -r remote; do
+    if [[ "$(remote_fetch_owner_repo "$remote")" == "$owner_repo" ]]; then
+      printf '%s\n' "$remote"
+      return 0
+    fi
+  done < <(git remote)
 
-  if ! list_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json number,url,headRepository,headRepositoryOwner --jq '.[] | [.number, .url, (((.headRepositoryOwner.login // "") + "/" + (.headRepository.name // "")) | select(. != "/"))] | @tsv' 2>&1)"; then
+  return 1
+}
+
+list_existing_prs_for_branch() {
+  local branch="$1" list_output error_file
+  error_file="$(repo_temp_file pr-push-list-error)"
+
+  if ! list_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json number,url,headRepository,headRepositoryOwner --jq '.[] | [.number, .url, (((.headRepositoryOwner.login // "") + "/" + (.headRepository.name // "")) | select(. != "/"))] | @tsv' 2>"$error_file")"; then
+    cat "$error_file" >&2
+    rm -f "$error_file"
     printf '%s\n' "$list_output" >&2
     die "Unable to list existing PRs"
   fi
 
+  rm -f "$error_file"
   printf '%s\n' "$list_output"
 }
 
@@ -338,7 +408,7 @@ push_with_fallback() {
 
     if [[ "$upstream_branch" != "main" && "$upstream_branch" != "master" ]]; then
       log "Pushing to tracked upstream $upstream"
-      if push_output="$(git push --force-with-lease 2>&1)"; then
+      if git_push_with_token_retry push_output git push --force-with-lease; then
         printf '%s\n' "$push_output"
         PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
         return
@@ -348,9 +418,13 @@ push_with_fallback() {
       if is_permission_push_error "$push_output"; then
         log "Tracked push failed with permission-like error; falling back to $DEFAULT_REMOTE"
         PUSH_REMOTE="$DEFAULT_REMOTE"
-        git push --force-with-lease -u "$DEFAULT_REMOTE" HEAD
-        PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
-        return
+        if git_push_with_token_retry push_output git push --force-with-lease -u "$DEFAULT_REMOTE" HEAD; then
+          printf '%s\n' "$push_output"
+          PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
+          return
+        fi
+        printf '%s\n' "$push_output" >&2
+        die "Fallback push to $DEFAULT_REMOTE failed after tracked push to $upstream failed"
       fi
 
       die "Push to tracked upstream failed"
@@ -372,7 +446,7 @@ push_with_fallback() {
 
   PUSH_REMOTE="${matched_remote:-$DEFAULT_REMOTE}"
   log "Pushing to $PUSH_REMOTE"
-  if push_output="$(git push --force-with-lease -u "$PUSH_REMOTE" HEAD 2>&1)"; then
+  if git_push_with_token_retry push_output git push --force-with-lease -u "$PUSH_REMOTE" HEAD; then
     printf '%s\n' "$push_output"
     PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
     return
@@ -381,13 +455,15 @@ push_with_fallback() {
   printf '%s\n' "$push_output" >&2
   if [[ "$PUSH_REMOTE" != "upstream" ]] && has_remote "upstream" && is_permission_push_error "$push_output"; then
     log "Push to $PUSH_REMOTE failed with permission-like error; trying upstream as fallback"
+    local failed_remote="$PUSH_REMOTE"
     PUSH_REMOTE="upstream"
-    if push_output="$(git push --force-with-lease -u upstream "HEAD:$branch" 2>&1)"; then
+    if git_push_with_token_retry push_output git push --force-with-lease -u upstream "HEAD:$branch"; then
       printf '%s\n' "$push_output"
       PUSH_OWNER_REPO="$(remote_owner_repo "$PUSH_REMOTE")"
       return
     fi
     printf '%s\n' "$push_output" >&2
+    die "Fallback push to upstream failed after push to $failed_remote failed"
   fi
 
   die "Push failed"
@@ -435,7 +511,7 @@ pr_body() {
 
 base_comparison_ref() {
   local base_remote
-  if base_remote="$(remote_for_owner_repo "$BASE_REPO")"; then
+  if base_remote="$(remote_for_fetch_owner_repo "$BASE_REPO")"; then
     if ! git show-ref --verify --quiet "refs/remotes/$base_remote/$BASE_BRANCH"; then
       git fetch "$base_remote" "$BASE_BRANCH" >/dev/null 2>&1 || true
     fi
@@ -469,6 +545,7 @@ create_or_update_pr() {
   local branch head_owner title body create_error create_error_file
 
   branch="$(current_branch)"
+  [[ -n "$PUSH_OWNER_REPO" && "$PUSH_OWNER_REPO" != *://* && "$PUSH_OWNER_REPO" == */* ]] || die "Cannot determine owner/repo for push remote $PUSH_REMOTE"
   head_owner="${PUSH_OWNER_REPO%%/*}"
   if find_existing_pr_for_branch "$branch" "$head_owner"; then
     log "PR already exists: $PR_URL"
@@ -490,7 +567,7 @@ create_or_update_pr() {
     fi
 
     log "Creating PR against $BASE_REPO"
-    create_error_file="$(mktemp "${TMPDIR:-/tmp}/pr-push-create-error.XXXXXX")"
+    create_error_file="$(repo_temp_file pr-push-create-error)"
     if ! PR_URL="$(gh pr create \
       --repo "$BASE_REPO" \
       --head "${head_owner}:${branch}" \

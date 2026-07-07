@@ -69,6 +69,8 @@ import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { ChatPanel } from "@/components/ChatPanel";
+import { AppList } from "@/components/AppList";
+import { ChatList } from "@/components/ChatList";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TitleBar } from "@/app/TitleBar";
@@ -157,6 +159,10 @@ export interface MountOptions {
   wireAppEvents?: boolean;
   /** Render the plan preview panel alongside ChatPanel for plan-mode tests. */
   withPlanPanel?: boolean;
+  /** Render the real app sidebar list next to the mounted route. */
+  withAppList?: boolean;
+  /** Render the real chat sidebar list next to the mounted route. */
+  withChatList?: boolean;
 }
 
 export interface MountSurfaceOptions extends MountOptions {
@@ -203,6 +209,21 @@ export interface HybridChatHarness extends ChatFlowHarness {
 
   /** Set the active selected app in the mounted Jotai store. */
   setSelectedAppId: (appId: number | null) => void;
+
+  /** Drive a Base UI popover/menu trigger in happy-dom. */
+  openPopover: (trigger: HTMLElement) => Promise<void>;
+
+  /** Click an item inside an already-open popover/menu/dialog. */
+  clickMenuItem: (name: string | RegExp) => Promise<HTMLElement>;
+
+  /** Find a Base UI dialog by accessible name. */
+  findDialog: (name: string | RegExp) => Promise<HTMLElement>;
+
+  /** Click a dialog action button and wait for the dialog to close. */
+  confirmDialog: (
+    dialogName: string | RegExp,
+    buttonName: string | RegExp,
+  ) => Promise<void>;
 
   /**
    * Seed the chat input the way LexicalChatInput's onChange does (happy-dom
@@ -467,6 +488,8 @@ export async function setupHybridChatHarness(
         <div data-testid="hybrid-surface-root">
           {opts.wireAppEvents !== false && <HybridAppShellHooks />}
           {opts.withTitleBar && <TitleBar />}
+          {opts.withAppList && <AppList show />}
+          {opts.withChatList && <ChatList show />}
           <Outlet />
         </div>
       );
@@ -627,6 +650,42 @@ export async function setupHybridChatHarness(
       act(() => {
         store.set(selectedAppIdAtom, appId);
       });
+    };
+
+    const openPopover = async (trigger: HTMLElement): Promise<void> => {
+      trigger.focus();
+      fireEvent.pointerDown(trigger);
+      fireEvent.pointerUp(trigger);
+      fireEvent.click(trigger);
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      await waitFor(() => {
+        expect(
+          document.querySelector('[data-slot="popover-content"]'),
+        ).toBeTruthy();
+      });
+    };
+
+    const clickMenuItem = async (
+      name: string | RegExp,
+    ): Promise<HTMLElement> => {
+      const item = await screen.findByRole("button", { name });
+      fireEvent.pointerDown(item);
+      fireEvent.pointerUp(item);
+      fireEvent.click(item);
+      return item;
+    };
+
+    const findDialog = async (name: string | RegExp): Promise<HTMLElement> =>
+      screen.findByRole("dialog", { name });
+
+    const confirmDialog = async (
+      dialogName: string | RegExp,
+      buttonName: string | RegExp,
+    ): Promise<void> => {
+      const dialog = await findDialog(dialogName);
+      const button = await screen.findByRole("button", { name: buttonName });
+      fireEvent.click(button);
+      await waitFor(() => expect(dialog.isConnected).toBe(false));
     };
 
     // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
@@ -960,6 +1019,10 @@ export async function setupHybridChatHarness(
       router: getActiveRouter,
       currentLocation: () => getActiveRouter().state.location,
       setSelectedAppId,
+      openPopover,
+      clickMenuItem,
+      findDialog,
+      confirmDialog,
       setChatInputValue: seedChatInput,
       typeInChat,
       pressEnterInChat,

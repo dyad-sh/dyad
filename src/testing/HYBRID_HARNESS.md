@@ -128,6 +128,7 @@ re-exported unchanged (`db`, `appDir`, `appId`, `chatId`, `userDataDir`,
 ```ts
 harness.bridge          // RendererIpcBridge: missingChannels, sentEvents, settleInFlight, pendingCount
 harness.mount(opts?)    // render <ChatPanel>; opts: { chatId?, appId? }. Returns RTL RenderResult.
+harness.mountSurface(opts?) // render /chat, /app-details, /settings, /media, etc.
 harness.typeInChat(text, opts?)       // seed input + wait for Send enabled -> { sendButton, send() }
 harness.pressEnterInChat(text, opts?) // seed input + Lexical Enter submit (QUEUES while streaming)
 harness.waitForStreamEnd(chatId?, ms?)      // consume the NEXT unconsumed chat:response:end (per chatId)
@@ -136,6 +137,10 @@ harness.eventCount(channel)                 // how many events on `channel` the 
 harness.waitForEvent(channel, predicate?, ms?) // resolve on the first matching bridge event
 harness.waitForRenderedText(textOrRegex, ms?)  // wait for text with stable match count
 harness.selectFromBaseUiSelect(trigger, optionMatcher)  // drive a Base UI <Select> in happy-dom
+harness.openPopover(trigger)             // drive a Base UI popover/menu trigger in happy-dom
+harness.clickMenuItem(name)              // click a button item in an open popup/dialog
+harness.findDialog(name)                 // find a named Base UI Dialog
+harness.confirmDialog(dialog, button)    // click dialog action and wait for close
 harness.selectChatMode("build" | "ask" | "plan" | "local-agent") // open the chat-mode selector + pick
 harness.createChat(appId?)            // insert a chats row -> new chatId
 harness.dispose()                     // race-free teardown (see §6)
@@ -169,6 +174,13 @@ harness.dispose()                     // race-free teardown (see §6)
   ```
   `eventCount(channel)` is the general-purpose baseline primitive if you need it
   for a non-end channel.
+- **Driving Base UI popovers/dialogs**: use `openPopover(trigger)` before
+  clicking items in overflow menus such as app-details more options. Use
+  `clickMenuItem(/Copy app/)` for button-like menu items, `findDialog(/Copy/)`
+  to wait for Base UI dialogs, and `confirmDialog(/Delete/, /Delete App/)` when
+  the assertion should wait for the dialog to close. These helpers reproduce the
+  pointer/focus sequence happy-dom needs; a bare click can leave Base UI popups
+  closed.
 - **Driving a Base UI (Radix) `<Select>`** (the chat-mode selector, model picker,
   etc.): a bare `fireEvent.click` on the trigger or option does nothing in
   happy-dom. Use `selectFromBaseUiSelect(trigger, /OptionText/)`, which focuses +

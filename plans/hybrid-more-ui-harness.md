@@ -9,9 +9,11 @@ drive through **the real trigger UI**, keeping the harness's deep assertions
 - **Beyond-ChatPanel (17 specs)** — the trigger UI lives in the title bar,
   settings pages, or connector panels; needs the Phase 0 surface extensions.
 
-Delivery model: land this as one consolidated PR with reviewable sections or
-commits, not a series of small PRs. Each migrated e2e spec is deleted or
-slimmed in the same PR as its replacement integration coverage.
+Delivery model: land this as **one consolidated PR** with reviewable sections or
+commits, not a series of small PRs. Do not open phase-by-phase PRs; keep Phase
+0/1/2/3 progress on the same branch and update the same PR as additional
+families migrate. Each migrated e2e spec is deleted or slimmed in the same PR as
+its replacement integration coverage.
 
 Beyond-ChatPanel flows, grouped by the surface that must become mountable:
 
@@ -262,7 +264,9 @@ streaming hooks + Lexical + several home atoms). Two-step approach:
    explicitly out of scope here.
 
 **Deliverables**: `copy_app`, `delete_app`, `rename_app`, `new_chat`,
-`switch_apps` as `*.integration.test.tsx`; delete the five e2e specs.
+`switch_apps` as `*.integration.test.tsx`; delete the five e2e specs. Covered
+in `src/ipc/handlers/__tests__/app_details_actions.integration.test.tsx` on the
+single consolidated migration PR.
 
 ---
 
@@ -334,7 +338,8 @@ snapshots of full-app layout, Lexical keystroke fidelity, and the home-page
 
 Ship this as **one consolidated PR**, not a series of many small PRs. Keep the
 phases as the internal implementation and review order, with commits/sections
-that make the large diff navigable:
+that make the large diff navigable. Phase checkpoints may be pushed for review,
+but they should update the same PR instead of creating new PRs:
 
 1. **Phase 0** (harness core) first; no spec deletions until the harness guard
    tests are green and the existing hybrid tests still pass.

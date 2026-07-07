@@ -8,6 +8,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import type { LocalAgentFixture, Turn } from "./localAgentTypes";
+import { resolveFixturesDir } from "./paths";
 
 // Register ts-node to allow loading .ts fixture files directly
 try {
@@ -134,16 +135,7 @@ async function loadFixture(fixtureName: string): Promise<LocalAgentFixture> {
     return fixtureCache.get(fixtureName)!;
   }
 
-  const fixtureDir = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "e2e-tests",
-    "fixtures",
-    "engine",
-    "local-agent",
-  );
+  const fixtureDir = path.join(resolveFixturesDir(), "engine", "local-agent");
 
   // Try .ts first, then .js
   let fixturePath = path.join(fixtureDir, `${fixtureName}.ts`);

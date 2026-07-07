@@ -1,4 +1,4 @@
-import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 // Skipping because snapshotting the security findings table is not
@@ -49,74 +49,8 @@ testSkipIfWindows(
   },
 );
 
-test("security review - multi-select and fix issues", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=1");
-
-  await po.previewPanel.selectPreviewMode("security");
-
-  await po.page
-    .getByRole("button", { name: "Run Security Review" })
-    .first()
-    .click();
-  await po.chatActions.waitForChatCompletion();
-
-  // Select the first two issues using individual checkboxes
-  const checkboxes = po.page.getByRole("checkbox");
-  // Skip the first checkbox (select all)
-  await checkboxes.nth(1).click();
-  await checkboxes.nth(2).click();
-
-  // Wait for the "Fix X Issues" button to appear
-  const fixSelectedButton = po.page.getByRole("button", {
-    name: "Fix 2 Issues",
-  });
-  await fixSelectedButton.waitFor({ state: "visible" });
-
-  // Click the fix selected button
-  await fixSelectedButton.click();
-  await expect(async () => {
-    const text = await po.page.getByTestId("messages-list").textContent();
-    expect(text).toMatch(
-      /Please fix the following 2 security issues[\s\S]*Version 2:/,
-    );
-  }).toPass({ timeout: Timeout.MEDIUM });
-  await po.snapshotMessages({ replaceDumpPath: true });
-});
-
-test("security review - creates chat tabs", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=1");
-
-  await po.previewPanel.selectPreviewMode("security");
-
-  // Initial tab count should be 1 (the first chat)
-  const closeButtons = po.page.getByLabel(/^Close tab:/);
-  await expect(async () => {
-    const count = await closeButtons.count();
-    expect(count).toBe(1);
-  }).toPass({ timeout: Timeout.MEDIUM });
-
-  // Run security review creates a new chat
-  await po.page
-    .getByRole("button", { name: "Run Security Review" })
-    .first()
-    .click();
-  await po.chatActions.waitForChatCompletion();
-
-  // Tab count should increase to 2
-  await expect(async () => {
-    const count = await closeButtons.count();
-    expect(count).toBe(2);
-  }).toPass({ timeout: Timeout.MEDIUM });
-
-  // Click Fix Issue creates another chat
-  await po.page.getByRole("button", { name: "Fix Issue" }).first().click();
-  await po.chatActions.waitForChatCompletion();
-
-  // Tab count should increase to 3
-  await expect(async () => {
-    const count = await closeButtons.count();
-    expect(count).toBe(3);
-  }).toPass({ timeout: Timeout.MEDIUM });
-});
+// Multi-select fix prompt semantics and review/fix db effects are covered by
+// the vitest hybrid suite (security_review.integration.test.ts); the two
+// kept tests above remain the canonical SecurityPanel flows (the panel lives
+// outside ChatPanel, and the Edit Security Rules dialog save path exists
+// only here). Chat-tab creation chrome is covered by chat_tabs.spec.ts.

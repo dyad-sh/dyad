@@ -21,13 +21,7 @@ import {
 } from "@tanstack/react-query";
 import { showError } from "./lib/toast";
 import { ipc } from "./ipc/types";
-import { useSetAtom } from "jotai";
-import {
-  pendingToolConsentsAtom,
-  agentTodosByChatIdAtom,
-} from "./atoms/chatAtoms";
-import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
-import { pendingIntegrationAtom } from "./atoms/integrationAtoms";
+import { useStore } from "jotai";
 import { queryKeys } from "./lib/queryKeys";
 import {
   createExceptionFromTelemetry,
@@ -35,6 +29,7 @@ import {
   shouldBypassNonProTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
+import { registerRendererIpcListeners } from "./app_wiring/registerRendererIpcListeners";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -132,6 +127,7 @@ const posthogClient = posthog.init(
 
 function App() {
   const queryClient = useQueryClient();
+  const store = useStore();
 
   // Fetch user budget on app load
   useEffect(() => {
@@ -163,151 +159,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = ipc.events.misc.onErrorToast(({ message, action }) => {
-      showError(message, {
-        action: action
-          ? {
-              label: action.label,
-              onClick: () => {
-                ipc.system.openExternalUrl(action.url);
-              },
-            }
-          : undefined,
-      });
-    });
-    void ipc.misc.rendererErrorToastReady(undefined);
-    return () => unsubscribe();
-  }, []);
-
-  // Agent v2 tool consent requests - queue consents instead of overwriting
-  const setPendingToolConsents = useSetAtom(pendingToolConsentsAtom);
-  const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
-  const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
-  const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
-
-  // Agent todos updates
-  useEffect(() => {
-    const unsubscribe = ipc.events.agent.onTodosUpdate((payload) => {
-      setAgentTodosByChatId((prev) => {
-        const next = new Map(prev);
-        next.set(payload.chatId, payload.todos);
-        return next;
-      });
-    });
-    return () => unsubscribe();
-  }, [setAgentTodosByChatId]);
-
-  // Clear todos when a new stream starts (so previous turn's todos don't persist)
-  useEffect(() => {
-    const unsubscribe = ipc.events.misc.onChatStreamStart(({ chatId }) => {
-      setAgentTodosByChatId((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-    });
-    return () => unsubscribe();
-  }, [setAgentTodosByChatId]);
-
-  useEffect(() => {
-    const unsubscribe = ipc.events.agent.onConsentRequest((payload) => {
-      setPendingToolConsents((prev) => [
-        ...prev,
-        {
-          kind: "agent",
-          requestId: payload.requestId,
-          chatId: payload.chatId,
-          toolName: payload.toolName,
-          toolDescription: payload.toolDescription,
-          inputPreview: payload.inputPreview,
-          metadata: payload.metadata,
-        },
-      ]);
-    });
-    return () => unsubscribe();
-  }, [setPendingToolConsents]);
-
-  // MCP tool consents share the same queue/banner as agent-tool consents.
-  useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
-      setPendingToolConsents((prev) => [
-        ...prev,
-        {
-          kind: "mcp",
-          requestId: payload.requestId,
-          chatId: payload.chatId,
-          serverId: payload.serverId,
-          serverName: payload.serverName,
-          toolName: payload.toolName,
-          toolDescription: payload.toolDescription,
-          inputPreview: payload.inputPreview,
-          classifierReason: payload.reason,
-          classifierPending: payload.classifierPending ?? false,
-        },
-      ]);
-    });
-    return () => unsubscribe();
-  }, [setPendingToolConsents]);
-
-  // Auto-approved by the classifier: remove the prompt.
-  useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentResolved((payload) => {
-      setPendingToolConsents((prev) =>
-        prev.filter((c) => c.requestId !== payload.requestId),
-      );
-    });
-    return () => unsubscribe();
-  }, [setPendingToolConsents]);
-
-  // Classifier wants review: drop the spinner and show the reason.
-  useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentClassified((payload) => {
-      setPendingToolConsents((prev) =>
-        prev.map((c) =>
-          c.requestId === payload.requestId
-            ? {
-                ...c,
-                classifierPending: false,
-                classifierReason: payload.reason,
-              }
-            : c,
-        ),
-      );
-    });
-    return () => unsubscribe();
-  }, [setPendingToolConsents]);
-
-  // Clear pending agent consents when a chat stream ends or errors
-  // This prevents stale consent banners from remaining visible after cancellation
-  useEffect(() => {
-    const unsubscribe = ipc.events.misc.onChatStreamEnd(({ chatId }) => {
-      setPendingToolConsents((prev) =>
-        prev.filter((consent) => consent.chatId !== chatId),
-      );
-      setPendingQuestionnaire((prev) => {
-        if (!prev.has(chatId)) return prev;
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-      // Without this, a cancelled/timed-out integration request would leave the
-      // chat card interactive and the Configure panel's Continue button armed
-      // against a backend resolver that no longer exists — clicking it would
-      // silently no-op while still queuing a phantom continuation message.
-      setPendingIntegration((prev) => {
-        if (!prev.has(chatId)) return prev;
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-    });
-    return () => unsubscribe();
-  }, [setPendingToolConsents, setPendingQuestionnaire, setPendingIntegration]);
-
-  // Forward telemetry events from main process to PostHog
-  useEffect(() => {
-    const unsubscribe = ipc.events.system.onTelemetryEvent(
-      ({ eventName, properties }) => {
+    return registerRendererIpcListeners({
+      ipcClient: ipc,
+      store,
+      queryClient,
+      onTelemetryEvent: ({ eventName, properties }) => {
         if (eventName === "$exception") {
           posthog.captureException(
             createExceptionFromTelemetry(properties),
@@ -318,20 +174,8 @@ function App() {
 
         posthog.capture(eventName, properties);
       },
-    );
-    return () => unsubscribe();
-  }, []);
-
-  // Agent problems updates - update the TanStack Query cache when the agent runs type checks
-  useEffect(() => {
-    const unsubscribe = ipc.events.agent.onProblemsUpdate((payload) => {
-      queryClient.setQueryData(
-        queryKeys.problems.byApp({ appId: payload.appId }),
-        payload.problems,
-      );
     });
-    return () => unsubscribe();
-  }, []);
+  }, [queryClient, store]);
 
   return <RouterProvider router={router} />;
 }

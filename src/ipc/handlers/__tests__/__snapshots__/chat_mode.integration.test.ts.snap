@@ -1,0 +1,126 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`chat mode (integration) > ask mode omits codebase context and does not apply changes > chat-mode-ask-all-messages 1`] = `
+"===
+role: system
+message: [[SYSTEM_MESSAGE]]
+
+===
+role: user
+message: [dump] hi"
+`;
+
+exports[`chat mode (integration) > default build mode sends codebase context and applies changes > chat-mode-build-all-messages 1`] = `
+"===
+role: system
+message: [[SYSTEM_MESSAGE]]
+
+===
+role: user
+message: This is my codebase. <dyad-file path="tsconfig.node.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dyad-generated-app</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+</dyad-file>
+
+<dyad-file path="tsconfig.app.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+</dyad-file>
+
+<dyad-file path="tsconfig.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="vite.config.ts">
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+
+export default defineConfig(() => ({
+  server: {
+    host: "::",
+    port: 8080,
+  },
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+}));
+
+</dyad-file>
+
+<dyad-file path="src/App.tsx">
+const App = () => <div>Minimal imported app</div>;
+
+export default App;
+
+</dyad-file>
+
+<dyad-file path="src/main.tsx">
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+
+createRoot(document.getElementById("root")!).render(<App />);
+
+</dyad-file>
+
+<dyad-file path="src/vite-env.d.ts">
+/// <reference types="vite/client" />
+
+</dyad-file>
+
+
+
+===
+role: assistant
+message: OK, got it. I'm ready to help
+
+===
+role: user
+message: [dump] hi"
+`;

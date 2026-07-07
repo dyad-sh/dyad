@@ -6,21 +6,30 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { CANNED_MESSAGE } from ".";
+import { CANNED_MESSAGE } from "./index";
+import { fakeLlmLog } from "./log";
+import { resolveDumpDir, resolveFixturesDir } from "./paths";
 
 /**
  * Generate a dump file from the request and return the path marker
  */
 function generateDump(req: Request): string {
   const timestamp = Date.now();
-  const generatedDir = path.join(__dirname, "generated");
+  const generatedDir = resolveDumpDir();
 
   // Create generated directory if it doesn't exist
   if (!fs.existsSync(generatedDir)) {
     fs.mkdirSync(generatedDir, { recursive: true });
   }
 
-  const dumpFilePath = path.join(generatedDir, `${timestamp}.json`);
+  // Include a random suffix so parallel processes writing in the same
+  // millisecond cannot collide on the dump filename (same scheme as
+  // chatCompletionHandler.ts; the harness relies on names being unique and
+  // lexically sortable by time).
+  const dumpFilePath = path.join(
+    generatedDir,
+    `${timestamp}-${Math.random().toString(36).slice(2, 8)}.json`,
+  );
 
   try {
     fs.writeFileSync(
@@ -109,7 +118,7 @@ function createSSEEvent(eventType: string, data: any): string {
 export const createResponsesHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { input, messages, stream = false } = req.body ?? {};
-    console.log(`* [responses/${prefix}] Received request`, {
+    fakeLlmLog(`* [responses/${prefix}] Received request`, {
       hasInput: input != null,
       hasMessages: Array.isArray(messages),
       stream: Boolean(stream),
@@ -140,12 +149,7 @@ export const createResponsesHandler =
     const testCaseName = extractTestCaseName(lastUserText);
     if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       const testFilePath = path.join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "e2e-tests",
-        "fixtures",
+        resolveFixturesDir(),
         prefix,
         `${testCaseName}.md`,
       );

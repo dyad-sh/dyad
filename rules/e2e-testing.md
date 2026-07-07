@@ -2,7 +2,13 @@
 
 Use E2E testing when you need to test a complete user flow for a feature.
 
-If you would need to mock a lot of things to unit test a feature, prefer to write an E2E test instead.
+If you would need to mock a lot of things to unit test a feature, consider a
+Vitest integration test first. Use `*.integration.test.ts` /
+`*.integration.test.tsx` when the behavior can be proven with real IPC handlers,
+sqlite, git, fake LLM/Engine routes, or the renderer+IPC harness without
+launching the packaged Electron app. Use Playwright E2E when the test needs the
+packaged app, native Electron/browser behavior, real click/focus/keyboard
+behavior, screenshots/visual layout, or a complete app-shell user journey.
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 

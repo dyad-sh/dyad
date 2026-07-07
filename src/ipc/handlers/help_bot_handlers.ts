@@ -15,6 +15,7 @@ import {
 } from "@ai-sdk/openai";
 import { createTypedHandler } from "./base";
 import { helpContracts } from "../types/help";
+import { getTestFetchOption } from "../utils/test_fetch_override";
 import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -67,6 +68,7 @@ export function registerHelpBotHandlers() {
       const provider = createOpenAI({
         baseURL: "https://helpchat.dyad.sh/v1",
         apiKey,
+        ...getTestFetchOption(),
       });
       const helpBotModel = await resolveBuiltinModelAlias(
         "dyad/help-bot/default",

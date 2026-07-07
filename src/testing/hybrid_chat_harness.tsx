@@ -71,6 +71,7 @@ import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { ChatPanel } from "@/components/ChatPanel";
 import { AppList } from "@/components/AppList";
 import { ChatList } from "@/components/ChatList";
+import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TitleBar } from "@/app/TitleBar";
@@ -163,6 +164,8 @@ export interface MountOptions {
   withAppList?: boolean;
   /** Render the real chat sidebar list next to the mounted route. */
   withChatList?: boolean;
+  /** Render the real telemetry privacy banner next to the mounted route. */
+  withPrivacyBanner?: boolean;
 }
 
 export interface MountSurfaceOptions extends MountOptions {
@@ -224,6 +227,9 @@ export interface HybridChatHarness extends ChatFlowHarness {
     dialogName: string | RegExp,
     buttonName: string | RegExp,
   ) => Promise<void>;
+
+  /** Toggle a Base UI switch and wait for its checked state. */
+  setSwitch: (switchElement: HTMLElement, checked: boolean) => Promise<void>;
 
   /**
    * Seed the chat input the way LexicalChatInput's onChange does (happy-dom
@@ -490,6 +496,7 @@ export async function setupHybridChatHarness(
           {opts.withTitleBar && <TitleBar />}
           {opts.withAppList && <AppList show />}
           {opts.withChatList && <ChatList show />}
+          {opts.withPrivacyBanner && <PrivacyBanner />}
           <Outlet />
         </div>
       );
@@ -686,6 +693,20 @@ export async function setupHybridChatHarness(
       const button = await screen.findByRole("button", { name: buttonName });
       fireEvent.click(button);
       await waitFor(() => expect(dialog.isConnected).toBe(false));
+    };
+
+    const setSwitch = async (
+      switchElement: HTMLElement,
+      checked: boolean,
+    ): Promise<void> => {
+      if (switchElement.getAttribute("aria-checked") !== String(checked)) {
+        fireEvent.click(switchElement);
+      }
+      await waitFor(() => {
+        expect(switchElement.getAttribute("aria-checked")).toBe(
+          String(checked),
+        );
+      });
     };
 
     // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
@@ -1023,6 +1044,7 @@ export async function setupHybridChatHarness(
       clickMenuItem,
       findDialog,
       confirmDialog,
+      setSwitch,
       setChatInputValue: seedChatInput,
       typeInChat,
       pressEnterInChat,

@@ -284,12 +284,14 @@ page only where section context matters.
 | `smart_context_options`        | `ProModeSelector` standalone (it's a Popover off the chat input, so it can also be driven from the existing `/chat` mount) | seed pro key + `enableDyadPro: true` or buttons are disabled; assert `enableProSmartFilesContextMode` / `proSmartContextOption`                                                                                                                                                                                                        |
 | `turbo_edits_options`          | same `ProModeSelector` mount                                                                                               | assert `enableProLazyEditsMode` / `proLazyEditsMode` (`v1`/`v2`)                                                                                                                                                                                                                                                                       |
 | `dyad_pro_key_validation`      | `/settings/providers/$provider` route with `provider: "auto"`                                                              | **no IPC mocking**: pass `engine: true` (existing option) so the real `validate-provider-api-key` handler streams against the fake server, which 401s keys matching `/invalid/i` → real "API key rejected" AlertDialog; happy path with `testdyadkey`. The ApiKeyConfiguration "Paste" button (`navigator.clipboard`) is not exercised |
-| `supabase_migrations` (toggle) | `SupabaseIntegration` standalone or `/settings` Integrations section                                                       | toggle only renders when `isSupabaseConnected(settings)` — seed connected supabase settings the way `supabase_branch.integration.test.ts` seeds them; assert `enableSupabaseWriteSqlMigration` delta. The migration-files-on-disk half of the e2e spec stays a node-harness test                                                       |
+| `supabase_migrations` (toggle) | `SupabaseIntegration` standalone or `/settings` Integrations section                                                       | toggle only renders when `isSupabaseConnected(settings)` — seed connected supabase settings the way `supabase_branch.integration.test.ts` seeds them; assert `enableSupabaseWriteSqlMigration` delta. The migration-files-on-disk half is covered by a hybrid `/chat` test that also asserts the native-git clean regression.          |
 
 **Deliverables**: six integration tests; delete `telemetry`,
 `max_tool_call_steps`, `smart_context_options`, `turbo_edits_options`,
-`dyad_pro_key_validation` e2e specs; shrink `supabase_migrations.spec.ts` to
-nothing once its chat-driven half is migrated (node or hybrid `/chat`).
+`dyad_pro_key_validation`, and `supabase_migrations` e2e specs. Covered in
+`src/ipc/handlers/__tests__/settings_actions.integration.test.tsx` and
+`src/ipc/handlers/__tests__/supabase_migrations.integration.test.tsx` on the
+single consolidated migration PR.
 
 ---
 

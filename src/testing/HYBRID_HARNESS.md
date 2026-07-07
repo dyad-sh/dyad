@@ -141,6 +141,7 @@ harness.openPopover(trigger)             // drive a Base UI popover/menu trigger
 harness.clickMenuItem(name)              // click a button item in an open popup/dialog
 harness.findDialog(name)                 // find a named Base UI Dialog
 harness.confirmDialog(dialog, button)    // click dialog action and wait for close
+harness.setSwitch(element, checked)       // click a Base UI switch and wait for checked state
 harness.selectChatMode("build" | "ask" | "plan" | "local-agent") // open the chat-mode selector + pick
 harness.createChat(appId?)            // insert a chats row -> new chatId
 harness.dispose()                     // race-free teardown (see §6)
@@ -181,6 +182,10 @@ harness.dispose()                     // race-free teardown (see §6)
   the assertion should wait for the dialog to close. These helpers reproduce the
   pointer/focus sequence happy-dom needs; a bare click can leave Base UI popups
   closed.
+- **Driving Base UI switches**: use `setSwitch(element, checked)` rather than a
+  bare click when the assertion depends on a persisted settings update. It only
+  clicks when the switch is not already in the requested state and waits for the
+  `aria-checked` state to settle.
 - **Driving a Base UI (Radix) `<Select>`** (the chat-mode selector, model picker,
   etc.): a bare `fireEvent.click` on the trigger or option does nothing in
   happy-dom. Use `selectFromBaseUiSelect(trigger, /OptionText/)`, which focuses +

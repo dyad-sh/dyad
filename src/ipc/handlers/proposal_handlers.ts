@@ -133,7 +133,7 @@ const getProposalHandler = async (
       // Find the latest ASSISTANT message for the chat
       const latestAssistantMessage = await db.query.messages.findFirst({
         where: and(eq(messages.chatId, chatId), eq(messages.role, "assistant")),
-        orderBy: [desc(messages.createdAt)],
+        orderBy: [desc(messages.createdAt), desc(messages.id)],
         columns: {
           id: true, // Fetch the ID
           content: true, // Fetch the content to parse

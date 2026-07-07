@@ -279,7 +279,17 @@ export function AddPluginDialog({
                 </div>
                 {oauthEnabled && (
                   <div className="col-span-2">
-                    <Accordion>
+                    <Accordion
+                      // Fields keep their values when the dialog is
+                      // dismissed and reopened; start expanded when they
+                      // hold anything so carried-over credentials are
+                      // visible rather than hidden in a collapsed section.
+                      defaultValue={
+                        oauthClientId || oauthClientSecret || oauthScope
+                          ? ["advanced"]
+                          : []
+                      }
+                    >
                       <AccordionItem value="advanced">
                         <AccordionTrigger className="py-2 text-sm">
                           Advanced OAuth options

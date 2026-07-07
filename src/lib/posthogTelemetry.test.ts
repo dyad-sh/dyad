@@ -168,6 +168,15 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     ).toBe(true);
   });
 
+  it("always sends promo_click for non-Pro sampling", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "promo_click",
+        properties: { messageId: "pro-trial" },
+      }),
+    ).toBe(true);
+  });
+
   it("does not bypass unrelated sandbox telemetry", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

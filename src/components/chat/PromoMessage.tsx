@@ -1,222 +1,169 @@
+import { X } from "lucide-react";
+import { usePostHog } from "posthog-js/react";
+import { useState } from "react";
+
+import { DyadProTrialDialog } from "@/components/DyadProTrialDialog";
+import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
-import React from "react";
 
-// Types for the message system
-export interface TextSpan {
-  type: "text";
-  content: string;
+export interface PromoMessageConfig {
+  /** Stable id used for the promo_click event and UTM attribution. */
+  id: string;
+  text: string;
+  cta: string;
+  /** Pro promos open the in-app trial dialog; community tips open an external URL. */
+  target: { type: "trial-dialog" } | { type: "url"; url: string };
+  /** Relative frequency in the rotation. */
+  weight: number;
 }
 
-export interface LinkSpan {
-  type: "link";
-  content: string;
-  url?: string;
-  action?: () => void;
-}
-
-export type MessageSpan = TextSpan | LinkSpan;
-
-export interface MessageConfig {
-  spans: MessageSpan[];
-}
-
-// Generic Message component
-export function Message({ spans }: MessageConfig) {
-  return (
-    <div className="max-w-3xl mx-auto mt-4 py-2 px-1 border border-blue-500 rounded-lg bg-blue-50 text-center">
-      <p className="text-sm text-blue-700">
-        {spans.map((span, index) => {
-          if (span.type === "text") {
-            return <span key={index}>{span.content}</span>;
-          } else if (span.type === "link") {
-            return (
-              <a
-                key={index}
-                onClick={() => {
-                  if (span.action) {
-                    span.action();
-                  } else if (span.url) {
-                    ipc.system.openExternalUrl(span.url);
-                  }
-                }}
-                className="text-blue-600 hover:text-blue-800 underline cursor-pointer"
-              >
-                {span.content}
-              </a>
-            );
-          }
-          return null;
-        })}
-      </p>
-    </div>
-  );
-}
-
-// Predefined message configurations
-export const TURBO_EDITS_PROMO_MESSAGE: MessageConfig = {
-  spans: [
-    { type: "text", content: "Tired of waiting on AI?" },
-    { type: "link", content: " Get Dyad Pro", url: "https://dyad.sh/pro#ai" },
-    { type: "text", content: " for faster edits with Turbo Edits." },
-  ],
-};
-
-export const SMART_CONTEXT_PROMO_MESSAGE: MessageConfig = {
-  spans: [
-    { type: "text", content: "Save up to 3x on AI costs with " },
-    {
-      type: "link",
-      content: "Dyad Pro's Smart Context",
-      url: "https://dyad.sh/pro#ai",
-    },
-  ],
-};
-
-// Example of other message types you could easily add
-export const DIFFERENT_MODEL_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Getting stuck in a debugging loop? Try a different model.",
-    },
-  ],
-};
-
-export const REDDIT_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Join 600+ builders in the ",
-    },
-    {
-      type: "link",
-      content: "Dyad subreddit",
-      url: "https://www.reddit.com/r/dyadbuilders/",
-    },
-  ],
-};
-
-export const REPORT_A_BUG_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Found a bug? Click Help > Report a Bug",
-    },
-  ],
-};
-
-export const UPLOAD_CHAT_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content:
-        "Want to report a bad AI response? Upload the chat by clicking Help",
-    },
-  ],
-};
-// https://www.youtube.com/watch?v=a7OoruOkkeg&list=PL1xR2pfIiRlW7mgr9AS95OkFQBtvrSlO5
-export const BUILD_A_BIBLE_APP_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "link",
-      content: "Watch",
-      url: "https://www.youtube.com/watch?v=a7OoruOkkeg&list=PL1xR2pfIiRlW7mgr9AS95OkFQBtvrSlO5",
-    },
-    {
-      type: "text",
-      content: " the creator of Dyad build a Bible app step-by-step",
-    },
-  ],
-};
-
-export const DEBUGGING_TIPS_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Getting stuck? Read our ",
-    },
-    {
-      type: "link",
-      content: "debugging tips",
-      url: "https://www.dyad.sh/docs/guides/debugging",
-    },
-  ],
-};
-
-// Advanced tip: Customize your AI rules https://www.dyad.sh/docs/guides/ai-rules
-export const AI_RULES_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Advanced tip: Customize your ",
-    },
-    {
-      type: "link",
-      content: "AI rules",
-      url: "https://www.dyad.sh/docs/guides/ai-rules",
-    },
-  ],
-};
-
-export const NEW_CHAT_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Want to keep the AI focused? Start a new chat.",
-    },
-  ],
-};
-
-// Want to know what's next? Checkout our roadmap https://www.dyad.sh/docs/roadmap
-export const ROADMAP_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Want to know what's next? Check out our ",
-    },
-    {
-      type: "link",
-      content: "roadmap",
-      url: "https://www.dyad.sh/docs/roadmap",
-    },
-  ],
-};
-
-// Like Dyad? Star it on GitHub https://github.com/dyad-sh/dyad/
-export const GITHUB_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Like Dyad? Star it on ",
-    },
-    {
-      type: "link",
-      content: "GitHub",
-      url: "https://github.com/dyad-sh/dyad",
-    },
-  ],
-};
-// Array of all available messages for rotation
-const ALL_MESSAGES = [
-  TURBO_EDITS_PROMO_MESSAGE,
-  SMART_CONTEXT_PROMO_MESSAGE,
-  DIFFERENT_MODEL_TIP,
-  REDDIT_TIP,
-  REPORT_A_BUG_TIP,
-  UPLOAD_CHAT_TIP,
-  BUILD_A_BIBLE_APP_TIP,
-  DEBUGGING_TIPS_TIP,
-  AI_RULES_TIP,
-  NEW_CHAT_TIP,
-  ROADMAP_TIP,
-  GITHUB_TIP,
+export const PROMO_MESSAGES: PromoMessageConfig[] = [
+  {
+    id: "pro-trial",
+    text: "Build more with Dyad Pro — free for 3 days.",
+    cta: "Start Free Trial",
+    target: { type: "trial-dialog" },
+    weight: 3,
+  },
+  {
+    id: "agent-mode",
+    text: "Dyad Pro's Agent mode automatically debugs your app.",
+    cta: "Try Agent Mode",
+    target: { type: "trial-dialog" },
+    weight: 3,
+  },
+  {
+    id: "pro-tools",
+    text: "Clone websites, search the web, and generate images with Pro tools.",
+    cta: "Unlock Pro Tools",
+    target: { type: "trial-dialog" },
+    weight: 3,
+  },
+  {
+    id: "all-models",
+    text: "Access all the leading AI models in one subscription.",
+    cta: "Get Dyad Pro",
+    target: { type: "trial-dialog" },
+    weight: 3,
+  },
+  {
+    id: "github-star",
+    text: "Enjoying Dyad? Star us on GitHub.",
+    cta: "Star on GitHub",
+    target: { type: "url", url: "https://github.com/dyad-sh/dyad" },
+    weight: 1,
+  },
+  {
+    id: "reddit",
+    text: "Join 600+ builders in the Dyad subreddit.",
+    cta: "Join r/dyadbuilders",
+    target: { type: "url", url: "https://www.reddit.com/r/dyadbuilders/" },
+    weight: 1,
+  },
+  {
+    id: "follow-x",
+    text: "Follow Dyad on X for tips and updates.",
+    cta: "Follow @dyad_sh",
+    target: { type: "url", url: "https://x.com/dyad_sh" },
+    weight: 1,
+  },
 ];
 
-// Main PromoMessage component using the modular system
+export function pickPromoMessage(seed: number): PromoMessageConfig {
+  const totalWeight = PROMO_MESSAGES.reduce(
+    (sum, message) => sum + message.weight,
+    0,
+  );
+  let remaining = hashNumber(seed) % totalWeight;
+  for (const message of PROMO_MESSAGES) {
+    remaining -= message.weight;
+    if (remaining < 0) {
+      return message;
+    }
+  }
+  return PROMO_MESSAGES[0];
+}
+
+const PROMO_DISMISSED_AT_KEY = "dyadPromoDismissedAt";
+const PROMO_DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isPromoDismissed(): boolean {
+  try {
+    const dismissedAt = Number(localStorage.getItem(PROMO_DISMISSED_AT_KEY));
+    return (
+      Number.isFinite(dismissedAt) &&
+      dismissedAt > 0 &&
+      Date.now() - dismissedAt < PROMO_DISMISS_DURATION_MS
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function PromoMessage({ seed }: { seed: number }) {
-  const hashedSeed = hashNumber(seed);
-  const randomMessage = ALL_MESSAGES[hashedSeed % ALL_MESSAGES.length];
-  return <Message {...randomMessage} />;
+  const posthog = usePostHog();
+  const [dismissed, setDismissed] = useState(isPromoDismissed);
+  const [isTrialDialogOpen, setIsTrialDialogOpen] = useState(false);
+
+  if (dismissed) {
+    return null;
+  }
+
+  const message = pickPromoMessage(seed);
+
+  const handleCtaClick = () => {
+    posthog?.capture("promo_click", { messageId: message.id });
+    if (message.target.type === "trial-dialog") {
+      setIsTrialDialogOpen(true);
+    } else {
+      ipc.system.openExternalUrl(message.target.url);
+    }
+  };
+
+  const handleDismiss = () => {
+    try {
+      localStorage.setItem(PROMO_DISMISSED_AT_KEY, String(Date.now()));
+    } catch {
+      // localStorage unavailable — still hide for this session.
+    }
+    setDismissed(true);
+  };
+
+  return (
+    <>
+      <div
+        data-testid="promo-message"
+        className="max-w-3xl mx-auto mt-4 flex items-center justify-center gap-3 rounded-lg border border-border bg-muted/50 py-2 pl-4 pr-2"
+      >
+        <p className="text-sm text-foreground">{message.text}</p>
+        <Button
+          size="sm"
+          variant={
+            message.target.type === "trial-dialog" ? "default" : "outline"
+          }
+          className="shrink-0"
+          onClick={handleCtaClick}
+        >
+          {message.cta}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label="Dismiss"
+          title="Hide for a week"
+          onClick={handleDismiss}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <DyadProTrialDialog
+        isOpen={isTrialDialogOpen}
+        onClose={() => setIsTrialDialogOpen(false)}
+        utmCampaign={`streaming-promo-${message.id}`}
+      />
+    </>
+  );
 }
 
 /**

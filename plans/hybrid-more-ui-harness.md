@@ -430,7 +430,7 @@ guard tests, and every migrated integration spec. The PR description should
 include the migration checklist mapping each removed e2e assertion to its new
 integration assertion or named keep/drop note.
 
-End state: 15 of the 17 specs fully deleted from `e2e-tests/`, 2 slimmed to a
-single named native-dependent test each, and every migrated flow driven
-through the same clicks a user makes — with payload/db/git/file assertions the
-Playwright versions never had.
+Beyond-ChatPanel end state: 16 of the 17 specs fully deleted from
+`e2e-tests/`, `media_library` slimmed to its single named remnant, and every
+migrated flow driven through the same clicks a user makes — with
+payload/db/git/file assertions the Playwright versions never had.

@@ -1,217 +1,42 @@
 ---
 name: dyad:pr-push
-description: Commit any uncommitted changes, run lint checks, fix any issues, and push the current branch.
+description: Fast script-driven workflow to commit uncommitted changes, run checks, push the branch, and create or update a GitHub PR.
 ---
 
 # PR Push
 
-Commit any uncommitted changes, run lint checks, fix any issues, and push the current branch.
+Use this skill to publish the current work to GitHub. It must complete autonomously and push by the end unless GitHub auth or permissions block the operation.
 
-**IMPORTANT:** This skill MUST complete all steps autonomously. Do NOT ask for user confirmation at any step. Do NOT stop partway through. You MUST push to GitHub by the end of this skill.
+## Workflow
 
-## Task Tracking
+1. Run `/remember-learnings` first. This captures session learnings before any push or PR creation, so any resulting `AGENTS.md` or `rules/` changes are included in the same publish flow.
+2. Run the bundled script from the repository root:
 
-**You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each step below. Mark each task as `in_progress` when you start it and `completed` when you finish. This ensures you complete ALL steps.
-
-## Instructions
-
-1. **Ensure you are NOT on main branch:**
-
-   Run `git branch --show-current` to check the current branch.
-
-   **CRITICAL:** You MUST NEVER push directly to the main branch. If you are on `main` or `master`:
-   - Generate a descriptive branch name based on the uncommitted changes (e.g., `fix-login-validation`, `add-user-settings-page`)
-   - Create and switch to the new branch: `git checkout -b <branch-name>`
-   - Report that you created a new branch
-
-   If you are already on a feature branch, proceed to the next step.
-
-2. **Check for uncommitted changes:**
-
-   Run `git status` to check for any uncommitted changes (staged, unstaged, or untracked files).
-
-   If there are uncommitted changes:
-   - **When in doubt, `git add` the files.** Assume changed/untracked files are related to the current work unless they are egregiously unrelated (e.g., completely different feature area with no connection to the current changes).
-   - Only exclude files that are clearly secrets or artifacts that should never be committed (e.g., `.env`, `.env.*`, `credentials.*`, `*.secret`, `*.key`, `*.pem`, `.DS_Store`, `node_modules/`, `*.log`).
-   - **Do NOT stage `package-lock.json` unless `package.json` has also been modified.** Changes to `package-lock.json` without a corresponding `package.json` change are spurious diffs (e.g., from running `npm install` locally) and should be excluded. If `package-lock.json` is dirty but `package.json` is not, run `git checkout -- package-lock.json` to discard the changes.
-   - Stage and commit all relevant files with a descriptive commit message summarizing the changes.
-   - Keep track of any files you ignored so you can report them at the end.
-
-   If there are no uncommitted changes, proceed to the next step.
-
-3. **Run lint checks:**
-
-   Run these commands to ensure the code passes all pre-commit checks:
-
-   ```
-   npm run fmt && npm run lint:fix && npm run ts
+   ```bash
+   .claude/skills/pr-push/scripts/pr_push.sh
    ```
 
-   If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
+3. If the script reports a fixable failure, fix it and rerun the script. Do not manually replay the full workflow unless the script itself is broken.
+4. Summarize the script's final output, including the branch, committed files, ignored files, checks, pushed remote, and PR URL or bot-account PR creation link.
 
-   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 4.
+## Script Behavior
 
-4. **Run tests:**
+The script handles the mechanical workflow:
 
-   Run the test suite to ensure nothing is broken:
+- Refuses to push `main`/`master`; creates a feature branch if needed.
+- Stages relevant changes while ignoring obvious secrets/artifacts and spurious `package-lock.json` changes without `package.json`.
+- Commits changes with a generated message, unless `PR_PUSH_COMMIT_MESSAGE` is set.
+- Runs `npm run fmt`, `npm run lint:fix`, `npm run ts`, and `npm test`.
+- Amends automated formatting/lint changes into the commit it created.
+- Pushes to the tracked upstream, an existing PR head remote, or `origin` with the documented fallback behavior.
+- Creates or updates the PR against `dyad-sh/dyad:main`, unless the active GitHub account is a bot.
+- Removes `needs-human:review-issue` when a PR exists.
 
-   ```
-   npm test
-   ```
+Optional environment overrides:
 
-   If any tests fail, fix them before proceeding. Do NOT skip failing tests.
-
-   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 5.
-
-5. **If lint made changes, amend the last commit:**
-
-   If the lint checks made any changes, stage and amend them into the last commit:
-
-   ```
-   git add -A
-   git commit --amend --no-edit
-   ```
-
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 6.
-
-6. **Push the branch (REQUIRED):**
-
-   You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
-
-   **CRITICAL:** You MUST NEVER run `git pull --rebase` (or any `git pull`) from the fork repo. If you need to pull/rebase, ONLY pull from the upstream repo (`dyad-sh/dyad`). Pulling from a fork can overwrite local changes or introduce unexpected commits from the fork's history.
-
-   First, determine the correct remote to push to:
-
-   a. Check if the branch already tracks a remote:
-
-   ```
-   git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null
-   ```
-
-   If this succeeds (e.g., returns `origin/my-branch` or `someuser/my-branch`), the branch already has an upstream. Push to it:
-
-   ```
-   git push --force-with-lease
-   ```
-
-   **Permission fallback:** If the push fails with a permission error (e.g., the branch tracks `upstream` but the current account lacks write access to `dyad-sh/dyad`), fall back to pushing to `origin` instead:
-
-   ```
-   git push --force-with-lease -u origin HEAD
-   ```
-
-   b. If there is NO upstream, check if a PR already exists and determine which remote it was opened from:
-
-   First, get the PR's head repository as `owner/repo`:
-
-   ```
-   gh pr view --json headRepository --jq .headRepository.nameWithOwner
-   ```
-
-   **Error handling:** If `gh pr view` exits with a non-zero status, check whether the error indicates "no PR found" (expected — proceed to step c) or another failure (auth, network, ambiguous branch — report the error and stop rather than silently falling back).
-
-   If a PR exists, find which local remote corresponds to that `owner/repo`. List all remotes and extract the `owner/repo` portion from each URL:
-
-   ```
-   git remote -v
-   ```
-
-   For each remote URL, extract the `owner/repo` by stripping the protocol/hostname prefix and `.git` suffix. This handles all URL formats:
-   - SSH: `git@github.com:owner/repo.git` → `owner/repo`
-   - HTTPS: `https://github.com/owner/repo.git` → `owner/repo`
-   - Token-authenticated: `https://x-access-token:...@github.com/owner/repo.git` → `owner/repo`
-
-   Match the PR's `owner/repo` against each remote's extracted `owner/repo`. If multiple remotes match (e.g., both SSH and HTTPS URLs for the same repo), prefer the first match. If no remote matches (e.g., the fork is not configured locally), proceed to step c.
-
-   Push to the matched remote:
-
-   ```
-   git push --force-with-lease -u <matched-remote> HEAD
-   ```
-
-   c. If no PR exists (or no matching remote was found) and there is no upstream, fall back to `origin`. If pushing to `origin` fails due to permission errors, try pushing to `upstream` instead (per the project's git workflow in CLAUDE.md). Report which remote was used.
-
-   ```
-   git push --force-with-lease -u origin HEAD
-   ```
-
-   Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
-
-7. **Create or update the PR (REQUIRED):**
-
-   First, check if a PR already exists for this branch:
-
-   ```
-   gh pr view --json number,url
-   ```
-
-   If a PR already exists, skip PR creation (the push already updated it — this works regardless of which account is active).
-
-   If NO PR exists, check whether the active GitHub account is a bot:
-
-   ```
-   gh auth status
-   ```
-
-   Look at the active account name in the output (e.g., `Logged in to github.com account keppo-bot[bot]`). The account is a bot if the name ends with `[bot]`.
-
-   **If the account is a bot, do NOT create the PR.** PRs _authored_ by bot accounts do not trigger third-party code reviewers (Cursor Bugbot, Gemini Code Assist, cubic, Copilot), so the PR must be created by a human. Instead:
-   - Construct the PR-creation link for the pushed branch: `https://github.com/<owner>/<repo>/pull/new/<branch-name>` (use the repo the branch was pushed to)
-   - Write the suggested PR title and body (same format as the `gh pr create` body below) so the user can paste them in
-   - In the final summary, tell the user to create the PR themselves using that link, title, and body
-   - Skip step 9 (there is no PR to edit yet); later pushes to the branch will update the PR normally once the user has created it
-
-   **If the account is NOT a bot:** do NOT tell the user to visit a URL to create a PR. You MUST create it automatically using `gh pr create`:
-
-   ```
-   gh pr create --title "<descriptive title>" --body "$(cat <<'EOF'
-   ## Summary
-   <1-3 bullet points summarizing the changes>
-   EOF
-   )"
-   ```
-
-   Use the commit messages and changed files to write a good title and summary.
-
-   **PR description style:** do NOT state the obvious (what the diff already shows). Concisely capture the design decisions and trade-offs, staying close to the original prompt / user intent — why this approach, what was deliberately not done, and any behavior boundaries a reviewer should know.
-
-8. **Do NOT automatically add `cc:request`:**
-
-   Do not add the `cc:request` label automatically as part of this skill. Leave review-request labeling unchanged unless the user explicitly asks for it separately.
-
-9. **Remove review-issue label:**
-
-   After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
-
-   ```
-   gh pr edit --remove-label "needs-human:review-issue" 2>/dev/null || true
-   ```
-
-10. **Remember learnings (after initial push):**
-
-Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md` or `rules/` files.
-
-If any files were modified by the skill (check with `git status`):
-
-- Stage the modified files: `git add AGENTS.md rules/`
-- Create a new commit for the learnings:
-  ```
-  git commit -m "docs: record session learnings"
-  ```
-- Push the learnings commit:
-  ```
-  git push
-  ```
-
-**IMPORTANT:** Do NOT amend the previous commit. Create a separate commit for learnings so the main work is already pushed before this step.
-
-11. **Summarize the results:**
-
-- Report if a new feature branch was created (and its name)
-- Report any uncommitted changes that were committed in step 2
-- Report any files that were IGNORED and not committed (if any), explaining why they were skipped
-- Report any lint fixes that were applied
-- Confirm tests passed
-- Confirm the branch has been pushed
-- Report any learnings added to `AGENTS.md` or `rules/` (and whether a follow-up push was made)
-- **Include the PR URL** (either newly created or existing) — or, if PR creation was skipped because the active account is a bot, include the PR-creation link plus the suggested title and body for the user to paste
+- `PR_PUSH_COMMIT_MESSAGE`: commit message for newly staged work.
+- `PR_PUSH_PR_TITLE`: PR title.
+- `PR_PUSH_PR_BODY`: PR body.
+- `PR_PUSH_BASE_REPO`: default `dyad-sh/dyad`.
+- `PR_PUSH_BASE_BRANCH`: default `main`.
+- `PR_PUSH_REMOTE`: default fallback remote `origin`.

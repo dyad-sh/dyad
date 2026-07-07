@@ -231,7 +231,7 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
       if (provider === "openrouter") {
         return Boolean(
           mocks.settings.providerSettings.openrouter.apiKey.value ||
-            mocks.envVars.OPENROUTER_API_KEY,
+          mocks.envVars.OPENROUTER_API_KEY,
         );
       }
       return false;

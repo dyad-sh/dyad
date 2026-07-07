@@ -71,3 +71,9 @@ If a chat-flow or hybrid harness suite passes all tests but fails during
 `dispose()` with `ENOTEMPTY` for a `dyad-chat-flow-*` temp directory, look for a
 launched app process still writing under that root (often `pnpm install`). Stop
 running apps and await process closure before removing the harness temp dir.
+
+When a hybrid test involving git passes locally but fails in CI with messages
+like `Failed to resolve ref 'main'` or a branch banner showing `master`, check
+the fixture repo's `git init` default branch. Either make production code use
+the current branch instead of assuming `main`, or force the fixture branch name
+in the test so local and CI exercise the same branch layout.

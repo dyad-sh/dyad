@@ -140,7 +140,7 @@ export function registerTokenCountHandlers() {
         } else {
           codebaseTokens = estimateTokens(codebaseInfo);
         }
-        logger.log(
+        logger.debug(
           `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`,
         );
       }
@@ -171,7 +171,7 @@ export function registerTokenCountHandlers() {
 
           mentionedAppsTokens = estimateTokens(mentionedAppsContent);
 
-          logger.log(
+          logger.debug(
             `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
           );
         }

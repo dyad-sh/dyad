@@ -125,11 +125,11 @@ export async function getModelClient(
         settings,
       });
 
-      logger.info(
+      logger.debug(
         `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`,
       );
 
-      logger.info(
+      logger.debug(
         `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
       );
 

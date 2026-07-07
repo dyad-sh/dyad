@@ -737,7 +737,6 @@ export function UnconnectedGitHubConnector({
 
     // Listener for updates (user code, verification uri, status messages)
     const removeUpdateListener = ipc.events.github.onFlowUpdate((data) => {
-      console.log("Received github:flow-update", data);
       if (data.userCode) {
         setGithubUserCode(data.userCode);
       }
@@ -760,8 +759,7 @@ export function UnconnectedGitHubConnector({
     cleanupFunctions.push(removeUpdateListener);
 
     // Listener for success
-    const removeSuccessListener = ipc.events.github.onFlowSuccess((data) => {
-      console.log("Received github:flow-success", data);
+    const removeSuccessListener = ipc.events.github.onFlowSuccess(() => {
       setGithubStatusMessage("Successfully connected to GitHub!");
       setGithubUserCode(null); // Clear user-facing info
       setGithubVerificationUri(null);
@@ -774,7 +772,6 @@ export function UnconnectedGitHubConnector({
 
     // Listener for errors
     const removeErrorListener = ipc.events.github.onFlowError((data) => {
-      console.log("Received github:flow-error", data);
       setGithubError(data.error || "An unknown error occurred.");
       setGithubStatusMessage(null);
       setGithubUserCode(null);

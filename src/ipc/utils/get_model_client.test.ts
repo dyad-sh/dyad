@@ -6,6 +6,7 @@ import { getModelClient } from "./get_model_client";
 vi.mock("electron-log", () => ({
   default: {
     scope: () => ({
+      debug: vi.fn(),
       info: vi.fn(),
       log: vi.fn(),
       warn: vi.fn(),

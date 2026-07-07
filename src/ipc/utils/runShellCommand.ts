@@ -7,7 +7,7 @@ export function runShellCommand(
   command: string,
   options: { env?: NodeJS.ProcessEnv } = {},
 ): Promise<string | null> {
-  logger.log(`Running command: ${command}`);
+  logger.debug(`Running command: ${command}`);
   return new Promise((resolve) => {
     let output = "";
     const process = spawn(command, {

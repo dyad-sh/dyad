@@ -1004,6 +1004,12 @@ export function queueCloudSandboxSnapshotSync(input: {
 }
 
 export async function reconcileCloudSandboxes(): Promise<string[]> {
+  // Without a Dyad Pro API key there are no cloud sandboxes to reconcile;
+  // skip instead of logging an auth error on every startup.
+  const apiKey = readSettings().providerSettings?.auto?.apiKey?.value;
+  if (!apiKey && !IS_TEST_BUILD) {
+    return [];
+  }
   try {
     const response = await cloudSandboxFetch("/sandboxes/reconcile", {
       method: "POST",

@@ -116,6 +116,7 @@ describe("IPC handler envelopes", () => {
 
   it("returns envelopes from legacy logged handlers", async () => {
     const logger = {
+      debug: vi.fn(),
       log: vi.fn(),
       error: vi.fn(),
     };

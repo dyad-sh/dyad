@@ -488,7 +488,7 @@ export default Index;
       try {
         if (fs.existsSync(testFilePath)) {
           messageContent = fs.readFileSync(testFilePath, "utf-8");
-          console.log(`* Loaded test case: ${testCaseName}`);
+          fakeLlmLog(`* Loaded test case: `);
         } else {
           console.error(`* Test case file not found: ${testFilePath}`);
           messageContent = `Error: Test case file not found: ${testCaseName}.md`;

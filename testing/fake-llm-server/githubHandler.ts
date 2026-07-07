@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import { spawn } from "child_process";
+import { fakeLlmLog } from "./log";
 
 const gitHttpMiddlewareFactory = require("git-http-mock-server/middleware");
 
@@ -45,7 +46,7 @@ function recordPushEvents(repoName: string, body: string) {
           commitSha: isDelete ? oldSha : newSha,
         });
 
-        console.log(
+        fakeLlmLog(
           `* Recorded ${operation} to ${repoName}/${branchName}, commit: ${isDelete ? oldSha : newSha}`,
         );
       }
@@ -127,7 +128,7 @@ let deviceFlowState = {
 
 // GitHub Device Flow - Step 1: Get device code
 export function handleDeviceCode(req: Request, res: Response) {
-  console.log("* GitHub Device Code requested");
+  fakeLlmLog("* GitHub Device Code requested");
 
   // Reset state for new flow
   deviceFlowState = {
@@ -149,7 +150,7 @@ export function handleDeviceCode(req: Request, res: Response) {
 
 // GitHub Device Flow - Step 2: Poll for access token
 export function handleAccessToken(req: Request, res: Response) {
-  console.log("* GitHub Access Token polling", {
+  fakeLlmLog("* GitHub Access Token polling", {
     pollCount: deviceFlowState.pollCount,
   });
 
@@ -183,7 +184,7 @@ export function handleAccessToken(req: Request, res: Response) {
 
 // Get authenticated user info
 export function handleUser(req: Request, res: Response) {
-  console.log("* GitHub User info requested");
+  fakeLlmLog("* GitHub User info requested");
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.includes(mockAccessToken)) {
@@ -197,7 +198,7 @@ export function handleUser(req: Request, res: Response) {
 
 // Get user emails
 export function handleUserEmails(req: Request, res: Response) {
-  console.log("* GitHub User emails requested");
+  fakeLlmLog("* GitHub User emails requested");
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.includes(mockAccessToken)) {
@@ -218,7 +219,7 @@ export function handleUserEmails(req: Request, res: Response) {
 
 // List user repositories
 export function handleUserRepos(req: Request, res: Response) {
-  console.log("* GitHub User repos requested");
+  fakeLlmLog("* GitHub User repos requested");
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.includes(mockAccessToken)) {
@@ -233,7 +234,7 @@ export function handleUserRepos(req: Request, res: Response) {
   } else if (req.method === "POST") {
     // Create repo
     const { name, private: isPrivate } = req.body;
-    console.log("* Creating repository:", name);
+    fakeLlmLog("* Creating repository:", name);
 
     // Check if repo already exists
     const existingRepo = mockRepos.find((repo) => repo.name === name);
@@ -275,7 +276,7 @@ export function handleUserRepos(req: Request, res: Response) {
 
 // Get repository info
 export function handleRepo(req: Request, res: Response) {
-  console.log("* GitHub Repo info requested");
+  fakeLlmLog("* GitHub Repo info requested");
 
   const { owner, repo } = req.params;
   const authHeader = req.headers.authorization;
@@ -299,7 +300,7 @@ export function handleRepo(req: Request, res: Response) {
 
 // Get repository branches
 export function handleRepoBranches(req: Request, res: Response) {
-  console.log("* GitHub Repo branches requested");
+  fakeLlmLog("* GitHub Repo branches requested");
 
   const { owner, repo } = req.params;
   const authHeader = req.headers.authorization;
@@ -323,7 +324,7 @@ export function handleRepoBranches(req: Request, res: Response) {
 
 // Create repository for organization (not implemented in mock)
 export function handleOrgRepos(req: Request, res: Response) {
-  console.log("* GitHub Org repos requested");
+  fakeLlmLog("* GitHub Org repos requested");
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.includes(mockAccessToken)) {
@@ -337,7 +338,7 @@ export function handleOrgRepos(req: Request, res: Response) {
 }
 
 export function handleRepoCollaborators(req: Request, res: Response) {
-  console.log("* GitHub Repo collaborators requested");
+  fakeLlmLog("* GitHub Repo collaborators requested");
 
   const { owner, repo } = req.params;
   const authHeader = req.headers.authorization;
@@ -388,7 +389,7 @@ export function handleRepoCollaborators(req: Request, res: Response) {
 
 // Push event management functions for testing
 export function handleGetPushEvents(req: Request, res: Response) {
-  console.log("* Getting push events");
+  fakeLlmLog("* Getting push events");
   const { repo } = req.query;
 
   const events = repo ? pushEvents.filter((e) => e.repo === repo) : pushEvents;
@@ -397,34 +398,34 @@ export function handleGetPushEvents(req: Request, res: Response) {
 }
 
 export function handleClearPushEvents(req: Request, res: Response) {
-  console.log("* Clearing push events");
+  fakeLlmLog("* Clearing push events");
   pushEvents.length = 0;
   res.json({ cleared: true, timestamp: new Date() });
 }
 
 export function handleResetRepos(req: Request, res: Response) {
-  console.log("* Resetting repos root");
+  fakeLlmLog("* Resetting repos root");
   try {
     fs.rmSync(mockReposRoot, { recursive: true, force: true });
   } catch (err) {
     console.warn("* Warning: failed to remove old repos root", err);
   }
   mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
-  console.log(`* New repos root: ${mockReposRoot}`);
+  fakeLlmLog(`* New repos root: ${mockReposRoot}`);
   res.json({ reset: true, timestamp: new Date() });
 }
 
 // Handle Git operations (push, pull, clone, etc.) using git-http-mock-server
 export function handleGitPush(req: Request, res: Response, next?: Function) {
-  console.log("* GitHub Git operation requested:", req.method, req.url);
+  fakeLlmLog("* GitHub Git operation requested:", req.method, req.url);
   // Log request headers to see git operation details
-  console.log("* Git Headers:", {
+  fakeLlmLog("* Git Headers:", {
     "git-protocol": req.headers["git-protocol"],
     "content-type": req.headers["content-type"],
     "user-agent": req.headers["user-agent"],
   });
 
-  console.error(`* Using git repos directory: ${mockReposRoot}`);
+  fakeLlmLog(`* Using git repos directory: `);
   // Create git middleware instance for this request
   const gitHttpMiddleware = gitHttpMiddlewareFactory({
     root: mockReposRoot,
@@ -438,11 +439,11 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
   const repoName = match?.[1];
 
   if (repoName) {
-    console.log(`* Git operation for repo: ${repoName}`);
+    fakeLlmLog(`* Git operation for repo: ${repoName}`);
     // Ensure the bare git repository exists for this repo
     const bareRepoPath = path.join(mockReposRoot, `${repoName}.git`);
     if (!fs.existsSync(bareRepoPath)) {
-      console.log(`* Creating bare git repository at: ${bareRepoPath}`);
+      fakeLlmLog(`* Creating bare git repository at: ${bareRepoPath}`);
       try {
         fs.mkdirSync(bareRepoPath, { recursive: true });
         const { execSync } = require("child_process");
@@ -521,7 +522,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
           }
         }
 
-        console.log(
+        fakeLlmLog(
           `* Successfully created bare git repository: ${repoName}.git`,
         );
       } catch (error) {
@@ -539,7 +540,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     // Buffering the body also lets us parse push events without racing the
     // middleware's own `req.pipe(...)` for the stream.
     if (req.url.includes("/git-receive-pack") && req.method === "POST") {
-      console.log("* Git PUSH operation detected for repo:", repoName);
+      fakeLlmLog("* Git PUSH operation detected for repo:", repoName);
       const chunks: Buffer[] = [];
       req.on("data", (chunk) => {
         chunks.push(Buffer.from(chunk));
@@ -580,7 +581,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         // is fully buffered above, so it always terminates on its own, and
         // killing receive-pack mid-ref-update is what would leave stale locks
         // in the bare repo.
-        console.log(
+        fakeLlmLog(
           `* [git-http-server] 200 POST    ${req.url} (persistent receive-pack)`,
         );
       });
@@ -594,7 +595,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
       "/github/git/",
     );
     req.url = rewrittenUrl;
-    console.log(`* Rewritten URL from ${urlPath} to ${rewrittenUrl}`);
+    fakeLlmLog(`* Rewritten URL from ${urlPath} to ${rewrittenUrl}`);
   }
   // Use git-http-mock-server middleware to handle the actual git operations
   gitHttpMiddleware(
@@ -603,7 +604,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     next ||
       (() => {
         // Fallback if middleware doesn't handle the request
-        console.log(
+        fakeLlmLog(
           `* Git middleware did not handle request: ${req.method} ${req.url}`,
         );
         res.status(404).json({

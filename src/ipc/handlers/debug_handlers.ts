@@ -499,7 +499,7 @@ export function registerDebugHandlers() {
     }
   });
 
-  console.log("Registered debug IPC handlers");
+  log.debug("Registered debug IPC handlers");
 
   createTypedHandler(systemContracts.takeScreenshot, async () => {
     const win = BrowserWindow.getFocusedWindow();

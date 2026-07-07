@@ -117,7 +117,7 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 const getClientMock = vi.fn();
-const disposeMock = vi.fn();
+const disposeMock = vi.fn(async () => {});
 vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
     getClient: getClientMock,

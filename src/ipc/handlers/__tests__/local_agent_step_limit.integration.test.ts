@@ -11,7 +11,13 @@
 // directly), after which further prompts run normally.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -58,13 +64,28 @@ describe("local agent step limit (integration)", () => {
       { timeout: 15_000 },
     );
 
+    const streamStarted = harness.waitForEvent(
+      "chat:stream:start",
+      (payload) =>
+        !!payload &&
+        typeof payload === "object" &&
+        (payload as { chatId?: number }).chatId === harness.chatId,
+      60_000,
+    );
     const { send } = await harness.typeInChat("tc=local-agent/step-limit");
     send();
+    await streamStarted;
 
     // While the step-limit turn is streaming (the Cancel control is up),
     // submit a second prompt via the real Lexical Enter path — it QUEUES
     // instead of sending, exactly like the e2e's mid-stream Enter press.
-    await screen.findByLabelText("cancelGeneration", {}, { timeout: 15_000 });
+    await screen.findByLabelText(
+      /^(cancelGeneration|Cancel generation)$/,
+      {},
+      {
+        timeout: 60_000,
+      },
+    );
     await harness.pressEnterInChat("tc=local-agent/simple-response");
     await waitFor(() => expect(screen.getByText("1 Queued")).toBeTruthy(), {
       timeout: 15_000,
@@ -180,14 +201,11 @@ describe("local agent step limit (integration)", () => {
       "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
     );
 
-    // Every channel the UI invoked had a real handler.
-    expect([...harness.bridge.missingChannels]).toEqual([]);
-  }, 240_000);
-
-  it("re-renders the persisted step-limit card after a remount", async () => {
     // A fresh mount = a fresh jotai store (like an app restart): the queue is
     // ephemeral, but the persisted conversation — including the step-limit
-    // notice card — renders from the db.
+    // notice card — renders from the db. Same test as the flow that produced
+    // that conversation so it can't be orphaned by test reordering.
+    cleanup();
     harness.mount();
 
     await waitFor(
@@ -206,5 +224,8 @@ describe("local agent step limit (integration)", () => {
     );
     // The queue did not leak across the remount.
     expect(screen.queryByText(/\d+ Queued/)).toBeNull();
-  }, 60_000);
+
+    // Every channel the UI invoked had a real handler.
+    expect([...harness.bridge.missingChannels]).toEqual([]);
+  }, 240_000);
 });

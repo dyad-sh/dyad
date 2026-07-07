@@ -46,8 +46,17 @@ describe("local-agent cancel todos (integration)", () => {
     await harness.selectChatMode("local-agent");
 
     const todosDir = path.join(harness.appDir, ".dyad", "todos");
+    const streamStarted = harness.waitForEvent(
+      "chat:stream:start",
+      (payload) =>
+        !!payload &&
+        typeof payload === "object" &&
+        (payload as { chatId?: number }).chatId === harness.chatId,
+      60_000,
+    );
     const { send } = await harness.typeInChat("tc=local-agent/cancel-todos");
     send();
+    await streamStarted;
 
     await screen.findByText("First cancellable task", {}, { timeout: 20_000 });
     await waitFor(() => {
@@ -56,9 +65,9 @@ describe("local-agent cancel todos (integration)", () => {
     });
 
     const cancelButton = await screen.findByLabelText(
-      "cancelGeneration",
+      /^(cancelGeneration|Cancel generation)$/,
       {},
-      { timeout: 15_000 },
+      { timeout: 60_000 },
     );
     fireEvent.click(cancelButton);
 

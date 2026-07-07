@@ -19,7 +19,8 @@ testSkipIfWindows("mcp - oauth connects and calls a tool", async ({ po }) => {
   });
 
   // Wait for the fake server to be ready by checking stdout for the
-  // ready message. Mirrors the pattern in mcp.spec.ts.
+  // ready message. Mirrors the MCP HTTP fake-server startup pattern used by
+  // the hybrid MCP integration tests.
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error("fake-oauth-mcp-server failed to start within timeout"));

@@ -1,2 +1,0 @@
-- "proLazyEditsMode": "v1"
-+ "proLazyEditsMode": "v2"

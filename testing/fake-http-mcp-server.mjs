@@ -88,7 +88,10 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`HTTP MCP server running on http://localhost:${PORT}/mcp`);
+  // Log the bound port, not the requested one: callers may pass PORT=0 and
+  // parse the actual port from this line (see hybrid_chat_harness.tsx).
+  const actualPort = httpServer.address().port;
+  console.log(`HTTP MCP server running on http://localhost:${actualPort}/mcp`);
   console.log(`Environment variables:`, Object.keys(process.env).length);
 });
 

@@ -9,6 +9,10 @@ import path from "path";
 import { CANNED_MESSAGE } from "./index";
 import { fakeLlmLog } from "./log";
 import { resolveDumpDir, resolveFixturesDir } from "./paths";
+import {
+  matchConsentClassifierPayload,
+  SLOW_CONSENT_TOOL,
+} from "./consentClassifier";
 
 /**
  * Generate a dump file from the request and return the path marker
@@ -166,23 +170,15 @@ export const createResponsesHandler =
       messageContent = generateDump(req);
     }
 
-    // The MCP auto-consent classifier payload (buildUserPayload) carries these
-    // labels. Detect it off the user text, then decide off the tool name so e2e
-    // can exercise both the allow and ask paths.
-    const isConsent =
-      lastUserText.includes("MCP server:") &&
-      lastUserText.includes("Tool:") &&
-      lastUserText.includes("Arguments:");
-    if (isConsent) {
-      const risky = /(delete|drop|danger|destroy|remove)/i.test(lastUserText);
-      messageContent = JSON.stringify({
-        reason: risky ? "destructive tool" : "safe tool",
-        decision: risky ? "ask" : "allow",
-      });
+    // See consentClassifier.ts: fake decisions for the MCP auto-consent
+    // classifier, shared with the chat-completions fake route.
+    const consentMatch = matchConsentClassifierPayload(lastUserText);
+    if (consentMatch) {
+      messageContent = consentMatch.content;
       // Answer slowly for print_envs so e2e can observe the "AI reviewing"
       // spinner and exercise the user-decides-before-the-AI path. Race the delay
       // against the client disconnecting so we don't write to a closed response.
-      if (lastUserText.includes("Tool: print_envs")) {
+      if (consentMatch.toolName === SLOW_CONSENT_TOOL) {
         await new Promise<void>((resolve) => {
           const timer = setTimeout(() => {
             req.off("close", onClose);

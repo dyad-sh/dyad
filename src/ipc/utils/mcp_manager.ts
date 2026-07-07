@@ -72,12 +72,26 @@ class McpManager {
     return client;
   }
 
-  dispose(serverId: number) {
+  async dispose(serverId: number) {
     const c = this.clients.get(serverId);
     if (c) {
-      c.close();
+      // Delete from the cache first so a concurrent getClient can't hand out
+      // the closing client.
       this.clients.delete(serverId);
+      await c.close();
     }
+  }
+
+  // Close every cached client. Server ids are only unique per database, so
+  // anything that swaps databases (the test harness) must clear the cache or
+  // a new server can silently reuse a stale client keyed to the same id.
+  // Best-effort per client (allSettled): one dead transport must not block
+  // closing the rest, and a rejection must not surface as an unhandled
+  // promise rejection.
+  async disposeAll() {
+    const clients = [...this.clients.values()];
+    this.clients.clear();
+    await Promise.allSettled(clients.map((client) => client.close()));
   }
 }
 

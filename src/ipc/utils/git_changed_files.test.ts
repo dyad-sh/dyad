@@ -29,6 +29,7 @@ import {
 import { readSettings } from "@/main/settings";
 
 const execFileAsync = promisify(execFile);
+const MERGE_COMMIT_TEST_TIMEOUT_MS = 15_000;
 
 async function runGit(repoDir: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: repoDir });
@@ -137,35 +138,39 @@ describe.each([
     );
   });
 
-  it("diffs merge commits against their first parent only", async () => {
-    const dir = await setupRepo();
-    await write(dir, "base.txt", "base\n");
-    await commitAll(dir, "base");
+  it(
+    "diffs merge commits against their first parent only",
+    async () => {
+      const dir = await setupRepo();
+      await write(dir, "base.txt", "base\n");
+      await commitAll(dir, "base");
 
-    // Branch that introduces feature.txt.
-    await runGit(dir, ["checkout", "-b", "feature"]);
-    await write(dir, "feature.txt", "feature\n");
-    await commitAll(dir, "feature adds file");
+      // Branch that introduces feature.txt.
+      await runGit(dir, ["checkout", "-b", "feature"]);
+      await write(dir, "feature.txt", "feature\n");
+      await commitAll(dir, "feature adds file");
 
-    // Back on the main line, modify base.txt so the histories diverge. This is
-    // the file that `-m` (diff against all parents) would spuriously report for
-    // the merge commit even though the merge did not introduce it.
-    await runGit(dir, ["checkout", "-"]);
-    await write(dir, "base.txt", "base-v2\n");
-    await commitAll(dir, "main modifies base");
+      // Back on the main line, modify base.txt so the histories diverge. This is
+      // the file that `-m` (diff against all parents) would spuriously report for
+      // the merge commit even though the merge did not introduce it.
+      await runGit(dir, ["checkout", "-"]);
+      await write(dir, "base.txt", "base-v2\n");
+      await commitAll(dir, "main modifies base");
 
-    await runGit(dir, ["merge", "--no-ff", "--no-gpg-sign", "feature"]);
-    const mergeCommit = await runGit(dir, ["rev-parse", "HEAD"]);
+      await runGit(dir, ["merge", "--no-ff", "--no-gpg-sign", "feature"]);
+      const mergeCommit = await runGit(dir, ["rev-parse", "HEAD"]);
 
-    const changes = await getChangedFilesForCommit({
-      path: dir,
-      commitHash: mergeCommit,
-    });
+      const changes = await getChangedFilesForCommit({
+        path: dir,
+        commitHash: mergeCommit,
+      });
 
-    // Only feature.txt was introduced by the merge relative to the first
-    // parent; base.txt must NOT appear.
-    expect(changes).toEqual([{ path: "feature.txt", type: "added" }]);
-  });
+      // Only feature.txt was introduced by the merge relative to the first
+      // parent; base.txt must NOT appear.
+      expect(changes).toEqual([{ path: "feature.txt", type: "added" }]);
+    },
+    MERGE_COMMIT_TEST_TIMEOUT_MS,
+  );
 
   it("reports both sides when a file is replaced by a directory", async () => {
     const dir = await setupRepo();

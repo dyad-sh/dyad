@@ -32,3 +32,9 @@ production code must read Dyad Engine/Gateway URLs at call time. If a test still
 logs `POST https://engine.dyad.sh/v1/... 401 (Unauthorized)`, search for
 module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
 `getDyadEngineBaseUrl()`.
+
+When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
+`process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block
+before app imports. `setupHybridChatHarness({ testBuild: true })` sets the flag
+before dynamic IPC registration, but it cannot fix static imports that already
+loaded modules such as the Neon management client.

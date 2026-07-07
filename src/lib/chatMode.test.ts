@@ -279,4 +279,43 @@ describe("chat mode resolution", () => {
       }),
     ).toEqual({ mode: "local-agent" });
   });
+
+  it("normalizes stored design mode", () => {
+    expect(normalizeStoredChatMode("design")).toBe("design");
+  });
+
+  it("keeps stored design mode for Pro users", () => {
+    const settings = makeSettings({
+      enableDyadPro: true,
+      providerSettings: {
+        auto: { apiKey: { value: "dyad-key" } },
+      },
+    });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "design",
+        settings,
+        envVars: {},
+      }),
+    ).toEqual({ mode: "design" });
+  });
+
+  it("falls back from design mode to the default for non-Pro users", () => {
+    const settings = makeSettings({ defaultChatMode: "build" });
+
+    expect(
+      resolveChatMode({
+        storedChatMode: "design",
+        settings,
+        envVars: {},
+      }),
+    ).toEqual({ mode: "build", fallbackReason: "pro-required" });
+  });
+
+  it("does not surface design as the effective default for non-Pro users", () => {
+    const settings = makeSettings({ defaultChatMode: "design" });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, false)).toBe("build");
+  });
 });

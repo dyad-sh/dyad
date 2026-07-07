@@ -193,7 +193,14 @@ export class ChatActions {
   }
 
   async selectChatMode(
-    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
+    mode:
+      | "build"
+      | "ask"
+      | "agent"
+      | "local-agent"
+      | "basic-agent"
+      | "plan"
+      | "design",
   ) {
     await this.page.getByTestId("chat-mode-selector").click();
     const mapping: Record<string, string> = {
@@ -203,6 +210,7 @@ export class ChatActions {
       "local-agent": "Agent v2",
       "basic-agent": "Basic Agent", // For free users
       plan: "Plan.*Design before you build",
+      design: "Design.*Generate your app's screens",
     };
     const optionName = mapping[mode];
     await this.page

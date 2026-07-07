@@ -33,6 +33,7 @@ import {
   type PendingToolConsent,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
+  needsFreshDesignChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -332,6 +333,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
     needsFreshPlanChatAtom,
   );
+  const [needsFreshDesignChat, setNeedsFreshDesignChat] = useAtom(
+    needsFreshDesignChatAtom,
+  );
 
   // Detect transition to plan mode from another mode in a chat with messages
   const prevModeRef = useRef(chatMode);
@@ -359,12 +363,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         setNeedsFreshPlanChat(true);
       }
     }
+
+    if (prevMode && prevMode !== "design" && currentMode === "design") {
+      const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+      if (messages.length > 0) {
+        setNeedsFreshDesignChat(true);
+      }
+    }
   }, [
     chatMode,
     chatId,
     isChatModeLoading,
     messagesById,
     setNeedsFreshPlanChat,
+    setNeedsFreshDesignChat,
   ]);
 
   // Token counting for context limit banner
@@ -595,6 +607,34 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         attachments,
         redo: false,
         requestedChatMode: "plan",
+      });
+      clearAttachments();
+      posthog.capture("chat:submit", { chatMode });
+      return;
+    }
+
+    // If switching to design mode from another mode in a chat with messages,
+    // create a new chat for a clean design session.
+    if (needsFreshDesignChat && chatMode === "design" && appId) {
+      clearComposerAfterSubmit();
+      setNeedsFreshDesignChat(false);
+
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "design",
+      });
+      setSelectedChatId(newChatId);
+      navigate({ to: "/chat", search: { id: newChatId } });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+      showInfo("We've switched you to a new chat for a clean design session");
+
+      void openPreviewIfSetupRequired(appId);
+      await streamMessage({
+        prompt: promptWithImages,
+        chatId: newChatId,
+        attachments,
+        redo: false,
+        requestedChatMode: "design",
       });
       clearAttachments();
       posthog.capture("chat:submit", { chatMode });

@@ -7,7 +7,7 @@ import {
   type UserSettings,
 } from "./schemas";
 
-export type ChatModeFallbackReason = "quota-exhausted";
+export type ChatModeFallbackReason = "quota-exhausted" | "pro-required";
 
 export interface ChatModeResolution {
   mode: ChatMode;
@@ -38,6 +38,12 @@ export function getUnavailableChatModeReason({
   settings: UserSettings;
   freeAgentQuotaAvailable?: boolean;
 }): ChatModeFallbackReason | undefined {
+  // Design mode requires Dyad Pro (image generation is Pro-only). A non-Pro
+  // user with a stored "design" mode falls back to the effective default.
+  if (mode === "design") {
+    return isDyadProEnabled(settings) ? undefined : "pro-required";
+  }
+
   if (mode !== "local-agent") {
     return undefined;
   }

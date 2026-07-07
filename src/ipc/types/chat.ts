@@ -168,7 +168,9 @@ export const ChatResponseChunkSchema = z.object({
   // only acks when chunkSeq is present.
   chunkSeq: z.number().int().nonnegative().finite().optional(),
   effectiveChatMode: ChatModeSchema.optional(),
-  chatModeFallbackReason: z.literal("quota-exhausted").optional(),
+  chatModeFallbackReason: z
+    .enum(["quota-exhausted", "pro-required"])
+    .optional(),
 });
 
 export type ChatResponseChunk = z.infer<typeof ChatResponseChunkSchema>;

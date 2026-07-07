@@ -806,6 +806,7 @@ ${componentSnippet}
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
+        const isDesignMode = selectedChatMode === "design";
         const willUseLocalAgentStream =
           isLocalAgentBackedMode(selectedChatMode);
 
@@ -1426,6 +1427,41 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPrompt: planModeSystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             planModeOnly: true,
+            messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            settingsOverride: settings,
+            freeModelMode,
+            referencedApps: referencedAppsForAgent,
+            currentTurnHasOnDiskAttachment: false,
+          });
+          return;
+        }
+
+        // Handle design mode: use local-agent with design tools only
+        // (planning_questionnaire, generate_image, write_design_spec). Design
+        // mode is Pro-only because image generation requires a Dyad Pro key.
+        if (isDesignMode) {
+          if (!isDyadProEnabled(settings)) {
+            safeSend(event.sender, "chat:response:error", {
+              chatId: req.chatId,
+              error:
+                "Design mode requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
+            });
+            return;
+          }
+
+          const designModeSystemPrompt = constructSystemPrompt({
+            aiRules,
+            chatMode: "design",
+            enableTurboEditsV2: false,
+            themePrompt,
+            freeModelMode,
+          });
+
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt: designModeSystemPrompt,
+            dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            designModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
             freeModelMode,

@@ -41,6 +41,7 @@ import { miscContracts, miscEvents } from "../types/misc";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import { freeModelQuotaContracts } from "../types/free_model_quota";
 import { planEvents, planContracts } from "../types/plan";
+import { designEvents, designContracts } from "../types/design";
 import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
@@ -108,6 +109,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(freeAgentQuotaContracts),
   ...getInvokeChannels(freeModelQuotaContracts),
   ...getInvokeChannels(planContracts),
+  ...getInvokeChannels(designContracts),
   ...getInvokeChannels(integrationContracts),
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
@@ -140,6 +142,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
+  ...getReceiveChannels(designEvents),
   ...getReceiveChannels(integrationEvents),
   ...getReceiveChannels(appBlueprintEvents),
 ] as const;

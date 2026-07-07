@@ -4,6 +4,7 @@ import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 import { constructLocalAgentPrompt } from "./local_agent_prompt";
 import { constructPlanModePrompt } from "./plan_mode_prompt";
+import { constructDesignModePrompt } from "./design_mode_prompt";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 
 const logger = log.scope("system_prompt");
@@ -532,7 +533,7 @@ export const constructSystemPrompt = ({
   codeExplorerAvailable,
 }: {
   aiRules: string | undefined;
-  chatMode?: "build" | "ask" | "local-agent" | "plan";
+  chatMode?: "build" | "ask" | "local-agent" | "plan" | "design";
   enableTurboEditsV2: boolean;
   themePrompt?: string;
   /** If true, use read-only mode for local-agent (ask mode with tools) */
@@ -563,6 +564,10 @@ export const constructSystemPrompt = ({
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
+  }
+
+  if (chatMode === "design") {
+    return constructDesignModePrompt(aiRules, themePrompt);
   }
 
   if (chatMode === "local-agent") {

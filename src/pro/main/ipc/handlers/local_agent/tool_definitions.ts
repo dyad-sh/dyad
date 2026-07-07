@@ -36,6 +36,7 @@ import { exploreCodeTool } from "./tools/explore_code";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import { writeDesignSpecTool } from "./tools/write_design_spec";
 import { readGuideTool } from "./tools/read_guide";
 import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
 import { searchMcpToolsTool } from "./tools/search_mcp_tools";
@@ -111,6 +112,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   planningQuestionnaireTool,
   writePlanTool,
   exitPlanTool,
+  // Design mode tools
+  writeDesignSpecTool,
   // App blueprint tools
   writeAppBlueprintTool,
 ];
@@ -383,6 +386,13 @@ export interface BuildAgentToolSetOptions {
    */
   planModeOnly?: boolean;
   /**
+   * If true, only include tools that are allowed in design mode.
+   * Design mode has access to read-only tools plus design-specific tools
+   * (planning_questionnaire, generate_image, write_design_spec). It must NOT
+   * include code-editing tools.
+   */
+  designModeOnly?: boolean;
+  /**
    * If true, exclude Pro-only tools.
    * Used for basic agent mode where some tools may not be available.
    */
@@ -412,6 +422,23 @@ const PLAN_MODE_ONLY_TOOLS = new Set(["write_plan", "exit_plan"]);
 const PLANNING_SPECIFIC_TOOLS = new Set([
   ...PLAN_MODE_ONLY_TOOLS,
   "planning_questionnaire",
+]);
+
+/**
+ * Tools that should ONLY be available in design mode (excluded from every
+ * other mode, like PLAN_MODE_ONLY_TOOLS).
+ */
+const DESIGN_MODE_ONLY_TOOLS = new Set(["write_design_spec"]);
+
+/**
+ * Design-specific tools allowed in design mode despite modifying state.
+ * Superset of DESIGN_MODE_ONLY_TOOLS plus state-modifying tools that design
+ * mode legitimately needs (asking questions, generating images).
+ */
+const DESIGN_SPECIFIC_TOOLS = new Set([
+  ...DESIGN_MODE_ONLY_TOOLS,
+  "planning_questionnaire",
+  "generate_image",
 ]);
 
 /**
@@ -473,6 +500,19 @@ export function shouldIncludeTool(
   }
   // Skip plan-mode-only tools when NOT in plan mode.
   if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  // In design mode, skip state-modifying tools unless they're design-specific.
+  // This excludes all code-editing tools (write_file, search_replace, etc.).
+  if (
+    options.designModeOnly &&
+    toolModifiesState(tool, ctx) &&
+    !DESIGN_SPECIFIC_TOOLS.has(tool.name)
+  ) {
+    return false;
+  }
+  // Skip design-mode-only tools when NOT in design mode.
+  if (!options.designModeOnly && DESIGN_MODE_ONLY_TOOLS.has(tool.name)) {
     return false;
   }
   // Skip Pro-only tools in basic agent mode.

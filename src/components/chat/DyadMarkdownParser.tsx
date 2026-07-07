@@ -54,6 +54,7 @@ import { DyadNeonProjectInfo } from "./DyadNeonProjectInfo";
 import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
+import { DyadWriteDesign } from "./DyadWriteDesign";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
@@ -1063,6 +1064,22 @@ function renderCustomTag(
         >
           {content}
         </DyadWritePlan>
+      );
+
+    case "dyad-write-design":
+      return (
+        <DyadWriteDesign
+          node={{
+            properties: {
+              title: attributes.title || "Design",
+              interfaces: attributes.interfaces,
+              complete: attributes.complete,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWriteDesign>
       );
 
     case "dyad-exit-plan":

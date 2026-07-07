@@ -8,7 +8,8 @@ export type PreviewMode =
   | "configure"
   | "publish"
   | "security"
-  | "plan";
+  | "plan"
+  | "design";
 
 export const previewModeAtom = atom<PreviewMode>("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);

@@ -516,6 +516,9 @@ export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());
 // Flag: set when user switches to plan mode from another mode in a chat with messages
 export const needsFreshPlanChatAtom = atom<boolean>(false);
 
+// Flag: set when user switches to design mode from another mode in a chat with messages
+export const needsFreshDesignChatAtom = atom<boolean>(false);
+
 // Queued messages (multiple messages per chat, sent in sequence after streams complete)
 export interface QueuedMessageItem {
   id: string; // UUID for stable identification during reordering/editing

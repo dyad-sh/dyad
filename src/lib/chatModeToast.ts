@@ -12,6 +12,8 @@ export function getChatModeDisplayName(mode: ChatMode, isPro: boolean): string {
       return isPro ? "Agent" : "Basic Agent";
     case "plan":
       return "Plan";
+    case "design":
+      return "Design";
   }
 }
 
@@ -33,13 +35,18 @@ export function showChatModeFallbackToast({
   effectiveMode,
   isPro,
   toastId,
+  reason,
 }: {
   effectiveMode: ChatMode;
   isPro: boolean;
   toastId?: string;
+  reason?: ChatModeFallbackReason;
 }) {
   const modeName = getChatModeDisplayName(effectiveMode, isPro);
-  const message = `Quota exhausted. Using ${modeName} mode.`;
+  const message =
+    reason === "pro-required"
+      ? `Design mode requires Dyad Pro. Using ${modeName} mode.`
+      : `Quota exhausted. Using ${modeName} mode.`;
 
   toast.warning(message, {
     id: toastId,

@@ -85,6 +85,17 @@ export const queryKeys = {
     }) => ["plans", "forChat", appId, chatId] as const,
   },
 
+  designs: {
+    all: ["designs"] as const,
+    forChat: ({
+      appId,
+      chatId,
+    }: {
+      appId: number | null;
+      chatId: number | null;
+    }) => ["designs", "forChat", appId, chatId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Proposals
   // ─────────────────────────────────────────────────────────────────────────────
@@ -406,6 +417,7 @@ export type AppQueryKey =
     >
   | QueryKeyOf<(typeof queryKeys.chats)[keyof typeof queryKeys.chats]>
   | QueryKeyOf<(typeof queryKeys.plans)[keyof typeof queryKeys.plans]>
+  | QueryKeyOf<(typeof queryKeys.designs)[keyof typeof queryKeys.designs]>
   | QueryKeyOf<(typeof queryKeys.proposals)[keyof typeof queryKeys.proposals]>
   | QueryKeyOf<(typeof queryKeys.versions)[keyof typeof queryKeys.versions]>
   | QueryKeyOf<(typeof queryKeys.branches)[keyof typeof queryKeys.branches]>

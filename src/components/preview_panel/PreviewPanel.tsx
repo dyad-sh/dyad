@@ -28,6 +28,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
+import { DesignPanel } from "./DesignPanel";
 import { PackageManagerWarningBanner } from "./PackageManagerWarningBanner";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
@@ -238,6 +239,8 @@ export function PreviewPanel() {
                   <SecurityPanel />
                 ) : previewMode === "plan" ? (
                   <PlanPanel />
+                ) : previewMode === "design" ? (
+                  <DesignPanel />
                 ) : (
                   <Problems />
                 )}

@@ -12,6 +12,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
+import { useDesignEvents } from "@/hooks/useDesignEvents";
 import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
@@ -38,6 +39,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Initialize plan events listener
   usePlanEvents();
+  // Initialize design events listener
+  useDesignEvents();
   useIntegrationEvents();
 
   // Initialize app blueprint events listener

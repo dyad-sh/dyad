@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
-import { ChatModeSchema } from "../lib/schemas";
+import { ChatModeSchema, type ChatMode } from "../lib/schemas";
 import { useChatMode } from "./useChatMode";
 import { useRouterState } from "@tanstack/react-router";
 import { useSetAtom } from "jotai";
@@ -36,9 +36,17 @@ export function useChatModeToggle() {
     if (!settings || !selectedMode) return;
 
     const currentMode = selectedMode;
-    // Migration on read ensures currentMode is never "agent"
-    const modes = ChatModeSchema.options;
-    const currentIndex = modes.indexOf(currentMode);
+    // Migration on read ensures currentMode is never "agent".
+    // "design" is a specialized Pro-only flow reached from the mode menu, not
+    // part of the keyboard toggle cycle.
+    const modes = ChatModeSchema.options.filter(
+      (m): m is Exclude<ChatMode, "design"> => m !== "design",
+    );
+    // currentMode may be "design" (not in the cycle) → indexOf returns -1, so
+    // the next mode falls back to the first cycle entry.
+    const currentIndex = modes.indexOf(
+      currentMode as Exclude<ChatMode, "design">,
+    );
     const newMode = modes[(currentIndex + 1) % modes.length];
 
     if (routeChatId == null) {

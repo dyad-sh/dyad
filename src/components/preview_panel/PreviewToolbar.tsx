@@ -36,12 +36,12 @@ const PRIMARY_MODES = [
   "preview",
   "code",
   "publish",
-] as const satisfies readonly Exclude<PreviewMode, "plan">[];
+] as const satisfies readonly Exclude<PreviewMode, "plan" | "design">[];
 const OVERFLOW_MODES = [
   "configure",
   "problems",
   "security",
-] as const satisfies readonly Exclude<PreviewMode, "plan">[];
+] as const satisfies readonly Exclude<PreviewMode, "plan" | "design">[];
 const COMPACT_TOOLBAR_THRESHOLD = 700;
 
 interface ModeButtonsProps {
@@ -89,7 +89,7 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
     }
   };
 
-  type ToolbarMode = Exclude<PreviewMode, "plan">;
+  type ToolbarMode = Exclude<PreviewMode, "plan" | "design">;
   const modeMeta: Record<
     ToolbarMode,
     { icon: React.ReactNode; label: string; testId: string }

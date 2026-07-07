@@ -67,6 +67,8 @@ export function DefaultChatModeSelector() {
         return "Ask";
       case "plan":
         return "Plan";
+      case "design":
+        return "Design";
       default:
         throw new Error(`Unknown chat mode: ${mode}`);
     }

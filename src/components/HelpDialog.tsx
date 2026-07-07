@@ -41,6 +41,7 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { type UserSettings } from "@/lib/schemas";
 import { type UserBudgetInfo } from "@/ipc/types/system";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatUpdaterLogsForIssueBody } from "@/lib/debugLogFormatting";
 
 // =============================================================================
 // Animation constants
@@ -106,10 +107,19 @@ function formatSystemInfoSection(
 }
 
 function formatLogsSection(debugInfo: SystemDebugInfo): string {
+  // Keep the updater section small: the issue body travels in the GitHub URL.
+  const updaterSection = debugInfo.updaterLogs
+    ? `
+
+## Auto-Updater Logs
+\`\`\`
+${formatUpdaterLogsForIssueBody(debugInfo.updaterLogs)}
+\`\`\``
+    : "";
   return `## Logs
 \`\`\`
 ${debugInfo.logs.slice(-3_500) || "No logs available"}
-\`\`\``;
+\`\`\`${updaterSection}`;
 }
 
 function openGitHubIssue(params: {
@@ -629,6 +639,12 @@ ${formatLogsSection(debugInfo)}
           <ReviewDetailsSection title="Logs">
             {debugBundle.logs}
           </ReviewDetailsSection>
+
+          {debugBundle.updaterLogs && (
+            <ReviewDetailsSection title="Auto-Updater Logs">
+              {debugBundle.updaterLogs}
+            </ReviewDetailsSection>
+          )}
 
           <ReviewDetailsSection title="System Information" mono={false}>
             <p>Dyad Version: {debugBundle.system.dyadVersion}</p>

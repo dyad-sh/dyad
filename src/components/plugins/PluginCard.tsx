@@ -65,7 +65,7 @@ export function PluginCard({
   onDisableOAuthAndRetry: (serverId: number) => void;
 }) {
   return (
-    <div className="border rounded-lg p-3">
+    <div data-testid="plugin-card" className="border rounded-lg p-3">
       <div className="flex items-center justify-between">
         <div>
           <div className="font-medium flex items-center gap-2">

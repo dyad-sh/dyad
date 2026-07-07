@@ -23,11 +23,14 @@ export class Plugins {
     await expect(dialog).not.toBeVisible({ timeout: Timeout.MEDIUM });
   }
 
+  // Scoped to the named server's card so the assertion can't pass on
+  // a tool that belongs to a different server.
   async waitForTool(serverName: string, toolName: string) {
-    await expect(this.page.getByText(serverName, { exact: true })).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    await expect(this.page.getByText(toolName, { exact: true })).toBeVisible({
+    const card = this.page
+      .getByTestId("plugin-card")
+      .filter({ has: this.page.getByText(serverName, { exact: true }) });
+    await expect(card).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(card.getByText(toolName, { exact: true })).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
   }

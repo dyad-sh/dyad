@@ -9,9 +9,10 @@ drive through **the real trigger UI**, keeping the harness's deep assertions
 - **Beyond-ChatPanel (17 specs)** — the trigger UI lives in the title bar,
   settings pages, or connector panels; needs the Phase 0 surface extensions.
 
-Delivery model: land this as **one consolidated PR** with reviewable sections or
-commits, not a series of small PRs. Do not open phase-by-phase PRs; keep Phase
-0/1/2/3 progress on the same branch and update the same PR as additional
+Delivery model: land this as **one large consolidated PR**, not lots of little
+PRs. Use reviewable sections or commits inside that single PR, but do not open
+phase-by-phase, family-by-family, or spec-by-spec PRs. Keep Phase 0/1/2/3
+progress on the same branch and keep updating the same PR as additional
 families migrate. Each migrated e2e spec is deleted or slimmed in the same PR as
 its replacement integration coverage.
 
@@ -302,28 +303,30 @@ render there in production) — **not** via `PublishPanel` until its
 `preview_panel` import graph passes the 0.5 guard; `DatabaseSection` /
 `MigrationPanelBody` are imported directly to sidestep that initially.
 
-| Spec                | Drive                                                                                                                                                                                                                      | Assert / notes                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github`            | `/app-details` → `GitHubConnector`: device flow (fake server issues FAKE-CODE; flow events arrive through the real bridge `ipc.events.github.*`), create-repo / connect-existing, sync                                     | covered in `src/ipc/handlers/__tests__/github_actions.integration.test.tsx`: push events via `harness.github.pushEvents()` (fake server test endpoint); app repo rows; settings delta on disconnect/reconnect. Reset with `/reset-repos` + `/clear-push-events` between tests                                                                                                                                                            |
-| `github-import`     | `ImportAppDialog` mounted through the harness-only `/import-app` surface                                                                                                                                                   | covered in `src/ipc/handlers/__tests__/github_import.integration.test.tsx`: drive the "GitHub URL" tab with custom app name/advanced commands and the authenticated "Your GitHub Repos" tab against the fake GitHub git base; assert imported `package.json`/`vite.config.ts`, app DB rows, persisted commands, and default component-tagger upgrade. `e2e-tests/github-import.spec.ts` is deleted on the same consolidated migration PR |
-| `git_collaboration` | `GithubBranchManager` + `GithubCollaboratorManager` via `/app-details`                                                                                                                                                     | create/rename/delete/switch/merge branch against the harness's real git checkout (`disableNativeGit: false` supported already); collaborators via fake server routes; conflict tests can seed conflicts with direct `git` calls in the test (node `child_process` is available)                                                                                                                                                          |
-| `neon_branch`       | `NeonConnector` via `/app-details` (DeepLink provider from 0.1)                                                                                                                                                            | covered in `src/ipc/handlers/__tests__/neon_branch.integration.test.tsx`: seed the connected Neon account state, then drive project/branch selects via the real connector UI; assert `.env.local` `DATABASE_URL`/`POSTGRES_URL`/`NEON_AUTH_BASE_URL`, per-branch auth cookie secret persistence, and app DB branch rows. `e2e-tests/neon_branch.spec.ts` is deleted on the same consolidated migration PR                                |
-| `neon_migration`    | `DatabaseSection` + `MigrationPanelBody` mounted through the harness-only `/database` surface, app row seeded with `neonProjectId`/branch ids the mock client serves (`test-main-branch-id`, `test-development-branch-id`) | covered in `src/ipc/handlers/__tests__/neon_migration.integration.test.tsx`: "Migrate to Production" → review-SQL dialog (destructive warnings, "I understand…") → real `migration:migrate`; assert persisted deploy-branch choice, success state, production-branch skip state, and production `DATABASE_URL`. `e2e-tests/neon_migration.spec.ts` is deleted on the same consolidated migration PR                                      |
-| `media_library`     | `/media` route                                                                                                                                                                                                             | covered in `src/ipc/handlers/__tests__/media_library.integration.test.tsx`: seed files under `<app>/.dyad/media` with `fs`, drive thumbnail action menu → rename/move/delete dialogs, drive move's `AppSearchSelect` popover, and assert filesystem + app rows. `e2e-tests/media_library.spec.ts` is slimmed to the named "Start New Chat With Image" attachment/navigation remnant                                                      |
+| Spec                | Drive                                                                                                                                                                                                                      | Assert / notes                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github`            | `/app-details` → `GitHubConnector`: device flow (fake server issues FAKE-CODE; flow events arrive through the real bridge `ipc.events.github.*`), create-repo / connect-existing, sync                                     | covered in `src/ipc/handlers/__tests__/github_actions.integration.test.tsx`: push events via `harness.github.pushEvents()` (fake server test endpoint); app repo rows; settings delta on disconnect/reconnect. Reset with `/reset-repos` + `/clear-push-events` between tests                                                                                                                                                                |
+| `github-import`     | `ImportAppDialog` mounted through the harness-only `/import-app` surface                                                                                                                                                   | covered in `src/ipc/handlers/__tests__/github_import.integration.test.tsx`: drive the "GitHub URL" tab with custom app name/advanced commands and the authenticated "Your GitHub Repos" tab against the fake GitHub git base; assert imported `package.json`/`vite.config.ts`, app DB rows, persisted commands, and default component-tagger upgrade. `e2e-tests/github-import.spec.ts` is deleted on the same consolidated migration PR     |
+| `git_collaboration` | `GithubBranchManager` + `GithubCollaboratorManager` via `/app-details`                                                                                                                                                     | covered in `src/ipc/handlers/__tests__/git_collaboration.integration.test.tsx`: create/switch/rename/merge/delete branches against the harness's real git checkout, pull through the branch-actions menu, invite/remove collaborators through fake GitHub routes, and seed direct-git merge conflicts for the AI-resolution and cancel-sync UI paths. `e2e-tests/git_collaboration.spec.ts` is deleted on the same consolidated migration PR |
+| `neon_branch`       | `NeonConnector` via `/app-details` (DeepLink provider from 0.1)                                                                                                                                                            | covered in `src/ipc/handlers/__tests__/neon_branch.integration.test.tsx`: seed the connected Neon account state, then drive project/branch selects via the real connector UI; assert `.env.local` `DATABASE_URL`/`POSTGRES_URL`/`NEON_AUTH_BASE_URL`, per-branch auth cookie secret persistence, and app DB branch rows. `e2e-tests/neon_branch.spec.ts` is deleted on the same consolidated migration PR                                    |
+| `neon_migration`    | `DatabaseSection` + `MigrationPanelBody` mounted through the harness-only `/database` surface, app row seeded with `neonProjectId`/branch ids the mock client serves (`test-main-branch-id`, `test-development-branch-id`) | covered in `src/ipc/handlers/__tests__/neon_migration.integration.test.tsx`: "Migrate to Production" → review-SQL dialog (destructive warnings, "I understand…") → real `migration:migrate`; assert persisted deploy-branch choice, success state, production-branch skip state, and production `DATABASE_URL`. `e2e-tests/neon_migration.spec.ts` is deleted on the same consolidated migration PR                                          |
+| `media_library`     | `/media` route                                                                                                                                                                                                             | covered in `src/ipc/handlers/__tests__/media_library.integration.test.tsx`: seed files under `<app>/.dyad/media` with `fs`, drive thumbnail action menu → rename/move/delete dialogs, drive move's `AppSearchSelect` popover, and assert filesystem + app rows. `e2e-tests/media_library.spec.ts` is slimmed to the named "Start New Chat With Image" attachment/navigation remnant                                                          |
 
 **Deliverables**: six integration tests; `github` is covered in
 `src/ipc/handlers/__tests__/github_actions.integration.test.tsx`,
 `github-import` is covered in
 `src/ipc/handlers/__tests__/github_import.integration.test.tsx`,
+`git_collaboration` is covered in
+`src/ipc/handlers/__tests__/git_collaboration.integration.test.tsx`,
 `neon_branch` is covered in
 `src/ipc/handlers/__tests__/neon_branch.integration.test.tsx`,
 `neon_migration` is covered in
 `src/ipc/handlers/__tests__/neon_migration.integration.test.tsx`, and
 `e2e-tests/github.spec.ts`, `e2e-tests/github-import.spec.ts`,
-`e2e-tests/neon_branch.spec.ts`, and `e2e-tests/neon_migration.spec.ts` are
-deleted on the same consolidated migration PR. `media_library` leaves one
-explicitly-named test in a slimmed e2e spec (attachment strip); every other e2e
-file in this family is deleted.
+`e2e-tests/git_collaboration.spec.ts`, `e2e-tests/neon_branch.spec.ts`, and
+`e2e-tests/neon_migration.spec.ts` are deleted on the same consolidated
+migration PR. `media_library` leaves one explicitly-named test in a slimmed e2e
+spec (attachment strip); every other e2e file in this family is deleted.
 
 ---
 
@@ -364,11 +367,11 @@ but they should update the same PR instead of creating new PRs:
    then `git_collaboration` (reuses it), then neon pair, `media_library`,
    `github-import` last (dialog-direct mount is independent).
 
-Before opening the PR, run the full relevant verification once across the final
-combined diff: existing hybrid tests, new guard tests, and every migrated
-integration spec. The PR description should include the migration checklist
-mapping each removed e2e assertion to its new integration assertion or named
-keep/drop note.
+Before requesting final review on the consolidated PR, run the full relevant
+verification once across the final combined diff: existing hybrid tests, new
+guard tests, and every migrated integration spec. The PR description should
+include the migration checklist mapping each removed e2e assertion to its new
+integration assertion or named keep/drop note.
 
 End state: 15 of the 17 specs fully deleted from `e2e-tests/`, 2 slimmed to a
 single named native-dependent test each, and every migrated flow driven

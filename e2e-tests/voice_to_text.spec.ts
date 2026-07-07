@@ -1,6 +1,5 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
-import { Timeout } from "./helpers/constants";
 
 test("voice-to-text button visible for pro users", async ({ po }) => {
   await po.setUpDyadPro();

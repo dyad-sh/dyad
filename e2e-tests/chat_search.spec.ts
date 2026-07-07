@@ -1,5 +1,10 @@
 import { test } from "./helpers/test_helper";
 
+// All tests in this file are skipped because the chat search dialog feature
+// is gated behind an experiment flag not enabled in the default E2E config.
+// Re-enable these tests once the experiment is made default or explicitly
+// enabled in the test fixture.
+
 test.skip("chat search - basic search dialog functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");

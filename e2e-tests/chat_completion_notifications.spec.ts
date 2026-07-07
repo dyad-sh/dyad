@@ -1,6 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { test, testWithConfig } from "./helpers/test_helper";
-import { Timeout } from "./helpers/constants";
+import { test, testWithConfig, Timeout } from "./helpers/test_helper";
 
 /**
  * E2E tests for native notifications. We stub window.Notification and validate

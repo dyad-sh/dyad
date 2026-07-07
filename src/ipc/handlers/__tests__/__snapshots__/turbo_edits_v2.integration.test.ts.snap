@@ -1,0 +1,11 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`turbo edits v2 (integration) > search-replace dump: request goes through the dyad engine 1`] = `
+"===
+role: system
+message: [[SYSTEM_MESSAGE]]
+
+===
+role: user
+message: [dump]"
+`;

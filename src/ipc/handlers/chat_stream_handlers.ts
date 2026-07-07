@@ -1308,9 +1308,15 @@ This conversation includes one or more image attachments. When the user uploads 
           // for the underlying SDK behavior and why this is required.
           const fullStream = streamResult.fullStream;
           cancelOrphanedBaseStream(streamResult);
+          // Not every caller consumes `usage`; when the user cancels the
+          // stream it rejects with AbortError, so mark it handled here to
+          // keep the rejection from surfacing as unhandled. Callers that
+          // await it still observe the rejection.
+          const usage = streamResult.usage;
+          usage.catch(() => {});
           return {
             fullStream,
-            usage: streamResult.usage,
+            usage,
           };
         };
 

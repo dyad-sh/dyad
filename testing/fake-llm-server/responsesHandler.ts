@@ -7,13 +7,14 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { CANNED_MESSAGE } from ".";
+import { resolveDumpDir, resolveFixturesDir } from "./paths";
 
 /**
  * Generate a dump file from the request and return the path marker
  */
 function generateDump(req: Request): string {
   const timestamp = Date.now();
-  const generatedDir = path.join(__dirname, "generated");
+  const generatedDir = resolveDumpDir();
 
   // Create generated directory if it doesn't exist
   if (!fs.existsSync(generatedDir)) {
@@ -140,12 +141,7 @@ export const createResponsesHandler =
     const testCaseName = extractTestCaseName(lastUserText);
     if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       const testFilePath = path.join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "e2e-tests",
-        "fixtures",
+        resolveFixturesDir(),
         prefix,
         `${testCaseName}.md`,
       );

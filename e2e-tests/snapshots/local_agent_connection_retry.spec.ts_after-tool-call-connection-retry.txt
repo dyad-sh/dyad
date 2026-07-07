@@ -1,2 +1,0 @@
-=== src/recovered-after-tool-call.ts ===
-export const recoveredAfterToolCall = true;

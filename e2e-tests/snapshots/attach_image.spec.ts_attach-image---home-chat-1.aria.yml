@@ -1,6 +1,0 @@
-- paragraph: "[dump]"
-- 'button "Expand image: logo.png"'
-- paragraph: "[[dyad-dump-path=*]]"
-- button "Copy"
-- button "Undo"
-- button "Retry"

@@ -1,0 +1,286 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`smart context deep (integration) > mention app falls back to balanced > smart-context-deep-mention-app 1`] = `
+"{
+  "body": {
+    "model": "[[MODEL]]",
+    "temperature": 0,
+    "messages": [
+      {
+        "role": "system",
+        "content": "[[SYSTEM_MESSAGE]]"
+      },
+      {
+        "role": "user",
+        "content": "[dump] @app:minimal-with-ai-rules hi"
+      }
+    ],
+    "stream": true,
+    "dyad_options": {
+      "files": [
+        {
+          "path": "tsconfig.node.json",
+          "content": "{\\n  \\"compilerOptions\\": {\\n    \\"target\\": \\"ES2022\\",\\n    \\"lib\\": [\\"ES2023\\"],\\n    \\"module\\": \\"ESNext\\",\\n    \\"skipLibCheck\\": true,\\n\\n    /* Bundler mode */\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"allowImportingTsExtensions\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"moduleDetection\\": \\"force\\",\\n    \\"noEmit\\": true,\\n\\n    /* Linting */\\n    \\"strict\\": true,\\n    \\"noUnusedLocals\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"noFallthroughCasesInSwitch\\": true\\n  },\\n  \\"include\\": [\\"vite.config.ts\\"]\\n}\\n",
+          "force": false
+        },
+        {
+          "path": "index.html",
+          "content": "<!doctype html>\\n<html lang=\\"en\\">\\n  <head>\\n    <meta charset=\\"UTF-8\\" />\\n    <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\" />\\n    <title>dyad-generated-app</title>\\n  </head>\\n\\n  <body>\\n    <div id=\\"root\\"></div>\\n    <script type=\\"module\\" src=\\"/src/main.tsx\\"></script>\\n  </body>\\n</html>\\n",
+          "force": false
+        },
+        {
+          "path": "tsconfig.app.json",
+          "content": "{\\n  \\"compilerOptions\\": {\\n    \\"target\\": \\"ES2020\\",\\n    \\"useDefineForClassFields\\": true,\\n    \\"lib\\": [\\"ES2020\\", \\"DOM\\", \\"DOM.Iterable\\"],\\n    \\"module\\": \\"ESNext\\",\\n    \\"skipLibCheck\\": true,\\n\\n    /* Bundler mode */\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"allowImportingTsExtensions\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"moduleDetection\\": \\"force\\",\\n    \\"noEmit\\": true,\\n    \\"jsx\\": \\"react-jsx\\",\\n\\n    /* Linting */\\n    \\"strict\\": false,\\n    \\"noUnusedLocals\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"noImplicitAny\\": false,\\n    \\"noFallthroughCasesInSwitch\\": false,\\n\\n    \\"baseUrl\\": \\".\\",\\n    \\"paths\\": {\\n      \\"@/*\\": [\\"./src/*\\"]\\n    }\\n  },\\n  \\"include\\": [\\"src\\"]\\n}\\n",
+          "force": false
+        },
+        {
+          "path": ".gitignore",
+          "content": "# Logs\\nlogs\\n*.log\\nnpm-debug.log*\\nyarn-debug.log*\\nyarn-error.log*\\npnpm-debug.log*\\nlerna-debug.log*\\n\\nnode_modules\\ndist\\ndist-ssr\\n*.local\\n\\n# Editor directories and files\\n.vscode/*\\n!.vscode/extensions.json\\n.idea\\n.DS_Store\\n*.suo\\n*.ntvs*\\n*.njsproj\\n*.sln\\n*.sw?\\n",
+          "force": false
+        },
+        {
+          "path": "package.json",
+          "content": "{\\n  \\"name\\": \\"vite_react_shadcn_ts\\",\\n  \\"private\\": true,\\n  \\"version\\": \\"0.0.0\\",\\n  \\"type\\": \\"module\\",\\n  \\"scripts\\": {\\n    \\"dev\\": \\"vite\\",\\n    \\"build\\": \\"vite build\\",\\n    \\"build:dev\\": \\"vite build --mode development\\",\\n    \\"lint\\": \\"eslint .\\",\\n    \\"preview\\": \\"vite preview\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"react\\": \\"^18.3.1\\",\\n    \\"react-dom\\": \\"^18.3.1\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^22.5.5\\",\\n    \\"@types/react\\": \\"^18.3.3\\",\\n    \\"@types/react-dom\\": \\"^18.3.0\\",\\n    \\"@vitejs/plugin-react-swc\\": \\"^4.3.0\\",\\n    \\"typescript\\": \\"^5.5.3\\",\\n    \\"vite\\": \\"^7.3.2\\"\\n  }\\n}\\n",
+          "force": false
+        },
+        {
+          "path": "tsconfig.json",
+          "content": "{\\n  \\"files\\": [],\\n  \\"references\\": [\\n    { \\"path\\": \\"./tsconfig.app.json\\" },\\n    { \\"path\\": \\"./tsconfig.node.json\\" }\\n  ],\\n  \\"compilerOptions\\": {\\n    \\"baseUrl\\": \\".\\",\\n    \\"paths\\": {\\n      \\"@/*\\": [\\"./src/*\\"]\\n    },\\n    \\"noImplicitAny\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"skipLibCheck\\": true,\\n    \\"allowJs\\": true,\\n    \\"noUnusedLocals\\": false,\\n    \\"strictNullChecks\\": false\\n  }\\n}\\n",
+          "force": false
+        },
+        {
+          "path": "vite.config.ts",
+          "content": "import { defineConfig } from \\"vite\\";\\nimport react from \\"@vitejs/plugin-react-swc\\";\\nimport path from \\"path\\";\\n\\nexport default defineConfig(() => ({\\n  server: {\\n    host: \\"::\\",\\n    port: 8080,\\n  },\\n  plugins: [react()],\\n  resolve: {\\n    alias: {\\n      \\"@\\": path.resolve(__dirname, \\"./src\\"),\\n    },\\n  },\\n}));\\n",
+          "force": false
+        },
+        {
+          "path": "src/App.tsx",
+          "content": "const App = () => <div>Minimal imported app</div>;\\n\\nexport default App;\\n",
+          "force": false
+        },
+        {
+          "path": "src/main.tsx",
+          "content": "import { createRoot } from \\"react-dom/client\\";\\nimport App from \\"./App.tsx\\";\\n\\ncreateRoot(document.getElementById(\\"root\\")!).render(<App />);\\n",
+          "force": false
+        },
+        {
+          "path": "src/vite-env.d.ts",
+          "content": "/// <reference types=\\"vite/client\\" />\\n",
+          "force": false
+        },
+        {
+          "path": "src/pages/Index.tsx",
+          "content": "// this file has been replaced",
+          "force": false
+        }
+      ],
+      "enable_lazy_edits": true,
+      "enable_smart_files_context": true,
+      "smart_context_mode": "balanced",
+      "app_id": 1,
+      "mentioned_apps": [
+        {
+          "appName": "minimal-with-ai-rules",
+          "files": [
+            {
+              "path": "tsconfig.node.json",
+              "content": "{\\n  \\"compilerOptions\\": {\\n    \\"target\\": \\"ES2022\\",\\n    \\"lib\\": [\\"ES2023\\"],\\n    \\"module\\": \\"ESNext\\",\\n    \\"skipLibCheck\\": true,\\n\\n    /* Bundler mode */\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"allowImportingTsExtensions\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"moduleDetection\\": \\"force\\",\\n    \\"noEmit\\": true,\\n\\n    /* Linting */\\n    \\"strict\\": true,\\n    \\"noUnusedLocals\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"noFallthroughCasesInSwitch\\": true\\n  },\\n  \\"include\\": [\\"vite.config.ts\\"]\\n}\\n",
+              "force": false
+            },
+            {
+              "path": "index.html",
+              "content": "<!doctype html>\\n<html lang=\\"en\\">\\n  <head>\\n    <meta charset=\\"UTF-8\\" />\\n    <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\" />\\n    <title>dyad-generated-app</title>\\n  </head>\\n\\n  <body>\\n    <div id=\\"root\\"></div>\\n    <script type=\\"module\\" src=\\"/src/main.tsx\\"></script>\\n  </body>\\n</html>\\n",
+              "force": false
+            },
+            {
+              "path": "tsconfig.app.json",
+              "content": "{\\n  \\"compilerOptions\\": {\\n    \\"target\\": \\"ES2020\\",\\n    \\"useDefineForClassFields\\": true,\\n    \\"lib\\": [\\"ES2020\\", \\"DOM\\", \\"DOM.Iterable\\"],\\n    \\"module\\": \\"ESNext\\",\\n    \\"skipLibCheck\\": true,\\n\\n    /* Bundler mode */\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"allowImportingTsExtensions\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"moduleDetection\\": \\"force\\",\\n    \\"noEmit\\": true,\\n    \\"jsx\\": \\"react-jsx\\",\\n\\n    /* Linting */\\n    \\"strict\\": false,\\n    \\"noUnusedLocals\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"noImplicitAny\\": false,\\n    \\"noFallthroughCasesInSwitch\\": false,\\n\\n    \\"baseUrl\\": \\".\\",\\n    \\"paths\\": {\\n      \\"@/*\\": [\\"./src/*\\"]\\n    }\\n  },\\n  \\"include\\": [\\"src\\"]\\n}\\n",
+              "force": false
+            },
+            {
+              "path": "AI_RULES.md",
+              "content": "[[beginning of AI_RULES.md]]\\nThere's already AI rules...\\n[[end of AI_RULES.md]]\\n",
+              "force": false
+            },
+            {
+              "path": ".gitignore",
+              "content": "# Logs\\nlogs\\n*.log\\nnpm-debug.log*\\nyarn-debug.log*\\nyarn-error.log*\\npnpm-debug.log*\\nlerna-debug.log*\\n\\nnode_modules\\ndist\\ndist-ssr\\n*.local\\n\\n# Editor directories and files\\n.vscode/*\\n!.vscode/extensions.json\\n.idea\\n.DS_Store\\n*.suo\\n*.ntvs*\\n*.njsproj\\n*.sln\\n*.sw?\\n",
+              "force": false
+            },
+            {
+              "path": "package.json",
+              "content": "{\\n  \\"name\\": \\"vite_react_shadcn_ts\\",\\n  \\"private\\": true,\\n  \\"version\\": \\"0.0.0\\",\\n  \\"type\\": \\"module\\",\\n  \\"scripts\\": {\\n    \\"dev\\": \\"vite\\",\\n    \\"build\\": \\"vite build\\",\\n    \\"build:dev\\": \\"vite build --mode development\\",\\n    \\"lint\\": \\"eslint .\\",\\n    \\"preview\\": \\"vite preview\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"react\\": \\"^18.3.1\\",\\n    \\"react-dom\\": \\"^18.3.1\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^22.5.5\\",\\n    \\"@types/react\\": \\"^18.3.3\\",\\n    \\"@types/react-dom\\": \\"^18.3.0\\",\\n    \\"@vitejs/plugin-react-swc\\": \\"^3.9.0\\",\\n    \\"typescript\\": \\"^5.5.3\\",\\n    \\"vite\\": \\"^6.3.4\\"\\n  }\\n}\\n",
+              "force": false
+            },
+            {
+              "path": "tsconfig.json",
+              "content": "{\\n  \\"files\\": [],\\n  \\"references\\": [\\n    { \\"path\\": \\"./tsconfig.app.json\\" },\\n    { \\"path\\": \\"./tsconfig.node.json\\" }\\n  ],\\n  \\"compilerOptions\\": {\\n    \\"baseUrl\\": \\".\\",\\n    \\"paths\\": {\\n      \\"@/*\\": [\\"./src/*\\"]\\n    },\\n    \\"noImplicitAny\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"skipLibCheck\\": true,\\n    \\"allowJs\\": true,\\n    \\"noUnusedLocals\\": false,\\n    \\"strictNullChecks\\": false\\n  }\\n}\\n",
+              "force": false
+            },
+            {
+              "path": "vite.config.ts",
+              "content": "import { defineConfig } from \\"vite\\";\\nimport react from \\"@vitejs/plugin-react-swc\\";\\nimport path from \\"path\\";\\n\\nexport default defineConfig(() => ({\\n  server: {\\n    host: \\"::\\",\\n    port: 8080,\\n  },\\n  plugins: [react()],\\n  resolve: {\\n    alias: {\\n      \\"@\\": path.resolve(__dirname, \\"./src\\"),\\n    },\\n  },\\n}));\\n",
+              "force": false
+            },
+            {
+              "path": "src/App.tsx",
+              "content": "const App = () => <div>Minimal imported app</div>;\\n\\nexport default App;\\n",
+              "force": false
+            },
+            {
+              "path": "src/main.tsx",
+              "content": "import { createRoot } from \\"react-dom/client\\";\\nimport App from \\"./App.tsx\\";\\n\\ncreateRoot(document.getElementById(\\"root\\")!).render(<App />);\\n",
+              "force": false
+            },
+            {
+              "path": "src/vite-env.d.ts",
+              "content": "/// <reference types=\\"vite/client\\" />\\n",
+              "force": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "headers": {
+    "authorization": "Bearer testdyadkey"
+  }
+}"
+`;
+
+exports[`smart context deep (integration) > read write read: deep mode sends versioned files > smart-context-deep-read-write-read 1`] = `
+"{
+  "body": {
+    "model": "[[MODEL]]",
+    "temperature": 0,
+    "messages": [
+      {
+        "role": "system",
+        "content": "[[SYSTEM_MESSAGE]]"
+      },
+      {
+        "role": "user",
+        "content": "tc=read-index"
+      },
+      {
+        "role": "assistant",
+        "content": "Read the index page:\\n<dyad-read path=\\"src/pages/Index.tsx\\"></dyad-read>\\nDone."
+      },
+      {
+        "role": "user",
+        "content": "tc=update-index-1"
+      },
+      {
+        "role": "assistant",
+        "content": "First read\\n<dyad-write path=\\"src/pages/Index.tsx\\" description=\\"replace file\\">\\n// this file has been replaced\\n</dyad-write>"
+      },
+      {
+        "role": "user",
+        "content": "tc=read-index"
+      },
+      {
+        "role": "assistant",
+        "content": "Read the index page:\\n<dyad-read path=\\"src/pages/Index.tsx\\"></dyad-read>\\nDone."
+      },
+      {
+        "role": "user",
+        "content": "[dump]"
+      }
+    ],
+    "stream": true,
+    "dyad_options": {
+      "versioned_files": {
+        "fileIdToContent": {
+          "[[FILE_ID_0]]": "{\\n  \\"compilerOptions\\": {\\n    \\"target\\": \\"ES2020\\",\\n    \\"useDefineForClassFields\\": true,\\n    \\"lib\\": [\\"ES2020\\", \\"DOM\\", \\"DOM.Iterable\\"],\\n    \\"module\\": \\"ESNext\\",\\n    \\"skipLibCheck\\": true,\\n\\n    /* Bundler mode */\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"allowImportingTsExtensions\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"moduleDetection\\": \\"force\\",\\n    \\"noEmit\\": true,\\n    \\"jsx\\": \\"react-jsx\\",\\n\\n    /* Linting */\\n    \\"strict\\": false,\\n    \\"noUnusedLocals\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"noImplicitAny\\": false,\\n    \\"noFallthroughCasesInSwitch\\": false,\\n\\n    \\"baseUrl\\": \\".\\",\\n    \\"paths\\": {\\n      \\"@/*\\": [\\"./src/*\\"]\\n    }\\n  },\\n  \\"include\\": [\\"src\\"]\\n}\\n",
+          "[[FILE_ID_1]]": "{\\n  \\"compilerOptions\\": {\\n    \\"target\\": \\"ES2022\\",\\n    \\"lib\\": [\\"ES2023\\"],\\n    \\"module\\": \\"ESNext\\",\\n    \\"skipLibCheck\\": true,\\n\\n    /* Bundler mode */\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"allowImportingTsExtensions\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"moduleDetection\\": \\"force\\",\\n    \\"noEmit\\": true,\\n\\n    /* Linting */\\n    \\"strict\\": true,\\n    \\"noUnusedLocals\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"noFallthroughCasesInSwitch\\": true\\n  },\\n  \\"include\\": [\\"vite.config.ts\\"]\\n}\\n",
+          "[[FILE_ID_2]]": "{\\n  \\"files\\": [],\\n  \\"references\\": [\\n    { \\"path\\": \\"./tsconfig.app.json\\" },\\n    { \\"path\\": \\"./tsconfig.node.json\\" }\\n  ],\\n  \\"compilerOptions\\": {\\n    \\"baseUrl\\": \\".\\",\\n    \\"paths\\": {\\n      \\"@/*\\": [\\"./src/*\\"]\\n    },\\n    \\"noImplicitAny\\": false,\\n    \\"noUnusedParameters\\": false,\\n    \\"skipLibCheck\\": true,\\n    \\"allowJs\\": true,\\n    \\"noUnusedLocals\\": false,\\n    \\"strictNullChecks\\": false\\n  }\\n}\\n",
+          "[[FILE_ID_3]]": "{\\n  \\"name\\": \\"vite_react_shadcn_ts\\",\\n  \\"private\\": true,\\n  \\"version\\": \\"0.0.0\\",\\n  \\"type\\": \\"module\\",\\n  \\"scripts\\": {\\n    \\"dev\\": \\"vite\\",\\n    \\"build\\": \\"vite build\\",\\n    \\"build:dev\\": \\"vite build --mode development\\",\\n    \\"lint\\": \\"eslint .\\",\\n    \\"preview\\": \\"vite preview\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"react\\": \\"^18.3.1\\",\\n    \\"react-dom\\": \\"^18.3.1\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^22.5.5\\",\\n    \\"@types/react\\": \\"^18.3.3\\",\\n    \\"@types/react-dom\\": \\"^18.3.0\\",\\n    \\"@vitejs/plugin-react-swc\\": \\"^4.3.0\\",\\n    \\"typescript\\": \\"^5.5.3\\",\\n    \\"vite\\": \\"^7.3.2\\"\\n  }\\n}\\n",
+          "[[FILE_ID_4]]": "// original index page\\nexport default function Index() {\\n  return null;\\n}\\n",
+          "[[FILE_ID_5]]": "// this file has been replaced",
+          "[[FILE_ID_6]]": "/// <reference types=\\"vite/client\\" />\\n",
+          "[[FILE_ID_7]]": "# Logs\\nlogs\\n*.log\\nnpm-debug.log*\\nyarn-debug.log*\\nyarn-error.log*\\npnpm-debug.log*\\nlerna-debug.log*\\n\\nnode_modules\\ndist\\ndist-ssr\\n*.local\\n\\n# Editor directories and files\\n.vscode/*\\n!.vscode/extensions.json\\n.idea\\n.DS_Store\\n*.suo\\n*.ntvs*\\n*.njsproj\\n*.sln\\n*.sw?\\n",
+          "[[FILE_ID_8]]": "<!doctype html>\\n<html lang=\\"en\\">\\n  <head>\\n    <meta charset=\\"UTF-8\\" />\\n    <meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1.0\\" />\\n    <title>dyad-generated-app</title>\\n  </head>\\n\\n  <body>\\n    <div id=\\"root\\"></div>\\n    <script type=\\"module\\" src=\\"/src/main.tsx\\"></script>\\n  </body>\\n</html>\\n",
+          "[[FILE_ID_9]]": "const App = () => <div>Minimal imported app</div>;\\n\\nexport default App;\\n",
+          "[[FILE_ID_10]]": "import { createRoot } from \\"react-dom/client\\";\\nimport App from \\"./App.tsx\\";\\n\\ncreateRoot(document.getElementById(\\"root\\")!).render(<App />);\\n",
+          "[[FILE_ID_11]]": "import { defineConfig } from \\"vite\\";\\nimport react from \\"@vitejs/plugin-react-swc\\";\\nimport path from \\"path\\";\\n\\nexport default defineConfig(() => ({\\n  server: {\\n    host: \\"::\\",\\n    port: 8080,\\n  },\\n  plugins: [react()],\\n  resolve: {\\n    alias: {\\n      \\"@\\": path.resolve(__dirname, \\"./src\\"),\\n    },\\n  },\\n}));\\n"
+        },
+        "fileReferences": [
+          {
+            "path": "tsconfig.node.json",
+            "force": false,
+            "fileId": "[[FILE_ID_1]]"
+          },
+          {
+            "path": "index.html",
+            "force": false,
+            "fileId": "[[FILE_ID_8]]"
+          },
+          {
+            "path": "tsconfig.app.json",
+            "force": false,
+            "fileId": "[[FILE_ID_0]]"
+          },
+          {
+            "path": ".gitignore",
+            "force": false,
+            "fileId": "[[FILE_ID_7]]"
+          },
+          {
+            "path": "package.json",
+            "force": false,
+            "fileId": "[[FILE_ID_3]]"
+          },
+          {
+            "path": "tsconfig.json",
+            "force": false,
+            "fileId": "[[FILE_ID_2]]"
+          },
+          {
+            "path": "vite.config.ts",
+            "force": false,
+            "fileId": "[[FILE_ID_11]]"
+          },
+          {
+            "path": "src/App.tsx",
+            "force": false,
+            "fileId": "[[FILE_ID_9]]"
+          },
+          {
+            "path": "src/main.tsx",
+            "force": false,
+            "fileId": "[[FILE_ID_10]]"
+          },
+          {
+            "path": "src/vite-env.d.ts",
+            "force": false,
+            "fileId": "[[FILE_ID_6]]"
+          },
+          {
+            "path": "src/pages/Index.tsx",
+            "force": false,
+            "fileId": "[[FILE_ID_5]]"
+          }
+        ],
+        "messageIndexToFilePathToFileId": {
+          "1": {
+            "src/pages/Index.tsx": "[[FILE_ID_4]]"
+          },
+          "3": {},
+          "5": {
+            "src/pages/Index.tsx": "[[FILE_ID_5]]"
+          },
+          "7": {}
+        },
+        "hasExternalChanges": false
+      },
+      "enable_lazy_edits": true,
+      "enable_smart_files_context": true,
+      "smart_context_mode": "deep",
+      "app_id": 1
+    }
+  },
+  "headers": {
+    "authorization": "Bearer testdyadkey"
+  }
+}"
+`;

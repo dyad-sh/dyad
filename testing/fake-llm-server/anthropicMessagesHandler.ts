@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { generateDump } from "./chatCompletionHandler";
+import { resolveFixturesDir } from "./paths";
 import {
   extractLocalAgentFixture,
   handleLocalAgentFixture,
@@ -313,16 +314,7 @@ export const createAnthropicMessagesHandler =
     if (userTextContent.startsWith("/security-review")) {
       messageContent =
         fs.readFileSync(
-          path.join(
-            __dirname,
-            "..",
-            "..",
-            "..",
-            "e2e-tests",
-            "fixtures",
-            "security-review",
-            "findings.md",
-          ),
+          path.join(resolveFixturesDir(), "security-review", "findings.md"),
           "utf-8",
         ) +
         "\n\n" +

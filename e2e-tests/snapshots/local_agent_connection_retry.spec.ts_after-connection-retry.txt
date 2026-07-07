@@ -1,2 +1,0 @@
-=== src/recovered.ts ===
-export const recovered = true;

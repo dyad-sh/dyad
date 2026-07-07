@@ -9,6 +9,7 @@ import {
 
 import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import {
+  formatAiStreamErrorMessage,
   removeDyadTags,
   hasUnclosedDyadWrite,
 } from "@/ipc/handlers/chat_stream_handlers";
@@ -86,6 +87,113 @@ vi.mock("@/db", () => ({
     })),
   },
 }));
+
+describe("formatAiStreamErrorMessage", () => {
+  it("replaces image input support errors with actionable copy", () => {
+    const message = formatAiStreamErrorMessage({
+      error: {
+        error: {
+          message: "This model does not support image input.",
+          responseBody: "GLM-5.2 accepts text only.",
+        },
+      },
+      isEngineEnabled: false,
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: The selected model doesn't support image input. Remove image attachments or choose a vision-capable model.",
+    );
+  });
+
+  it("keeps request id and provider details for other errors", () => {
+    const message = formatAiStreamErrorMessage({
+      error: {
+        error: {
+          message: "Rate limit exceeded",
+          responseBody: "Retry after 30 seconds",
+        },
+      },
+      isEngineEnabled: true,
+      dyadRequestId: "req-123",
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: [Request ID: req-123] Rate limit exceeded\n\nDetails: Retry after 30 seconds",
+    );
+  });
+
+  it("replaces image_url model support errors with actionable copy", () => {
+    const message = formatAiStreamErrorMessage({
+      error: {
+        error: {
+          message:
+            "Invalid content type. image_url is only supported by certain models.",
+        },
+      },
+      isEngineEnabled: false,
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: The selected model doesn't support image input. Remove image attachments or choose a vision-capable model.",
+    );
+  });
+
+  it("replaces plural image model support errors with actionable copy", () => {
+    const message = formatAiStreamErrorMessage({
+      error: {
+        error: {
+          message: "This model cannot accept images.",
+        },
+      },
+      isEngineEnabled: false,
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: The selected model doesn't support image input. Remove image attachments or choose a vision-capable model.",
+    );
+  });
+
+  it("keeps provider details for unsupported image formats", () => {
+    const message = formatAiStreamErrorMessage({
+      error: {
+        error: {
+          message: "Unsupported image media type: image/tiff",
+          responseBody: "Only PNG and JPEG are supported.",
+        },
+      },
+      isEngineEnabled: false,
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: Unsupported image media type: image/tiff\n\nDetails: Only PNG and JPEG are supported.",
+    );
+  });
+
+  it("uses standard Error messages without an undefined request id", () => {
+    const message = formatAiStreamErrorMessage({
+      error: new Error("Network failed"),
+      isEngineEnabled: true,
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: Network failed",
+    );
+  });
+
+  it("does not throw on circular error objects", () => {
+    const error: Record<string, unknown> = {};
+    error.self = error;
+
+    const message = formatAiStreamErrorMessage({
+      error,
+      isEngineEnabled: false,
+    });
+
+    expect(message).toBe(
+      "Sorry, there was an error from the AI: [object Object]",
+    );
+  });
+});
 
 describe("getDyadAddDependencyTags", () => {
   it("should return an empty array when no dyad-add-dependency tags are found", () => {

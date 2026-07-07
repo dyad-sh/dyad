@@ -165,6 +165,80 @@ const activeStreams = new Map<number, AbortController>();
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
 
+const IMAGE_INPUT_UNSUPPORTED_ERROR_MESSAGE =
+  "The selected model doesn't support image input. Remove image attachments or choose a vision-capable model.";
+
+function isImageInputUnsupportedError(text: string): boolean {
+  const normalized = text.toLowerCase();
+  if (/image_url.*only supported by certain models/.test(normalized)) {
+    return true;
+  }
+  const isAttachmentFormatError =
+    /image\s+(media\s+type|mime|format|file\s+type|content\s+type)/.test(
+      normalized,
+    ) ||
+    /(media\s+type|mime|format|file\s+type|content\s+type).*image/.test(
+      normalized,
+    );
+  if (isAttachmentFormatError) {
+    return false;
+  }
+  return (
+    /\bmodel\b.*\b(does not|doesn't|cannot|can't|not)\b.*\b(support|accept|handle)\b.*\b(images?|vision|image input)\b/.test(
+      normalized,
+    ) ||
+    /\bimage input\b.*\b(is )?(not supported|unsupported)\b/.test(normalized)
+  );
+}
+
+function stringifyError(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+  try {
+    const json = JSON.stringify(error);
+    if (json && json !== "{}") {
+      return json;
+    }
+  } catch {
+    // Fall through to String(error) for circular objects.
+  }
+  return String(error ?? "Unknown error");
+}
+
+export function formatAiStreamErrorMessage({
+  error,
+  isEngineEnabled,
+  dyadRequestId,
+}: {
+  error: unknown;
+  isEngineEnabled?: boolean;
+  dyadRequestId?: string;
+}): string {
+  let message =
+    (error as any)?.error?.message ??
+    (error as any)?.message ??
+    stringifyError(error);
+  const responseBody = (error as any)?.error?.responseBody;
+  const responseBodyText =
+    responseBody === undefined ? undefined : stringifyError(responseBody);
+  if (message && responseBodyText) {
+    message += "\n\nDetails: " + responseBodyText;
+  }
+  const requestIdPrefix =
+    isEngineEnabled && dyadRequestId ? `[Request ID: ${dyadRequestId}] ` : "";
+  const displayMessage = isImageInputUnsupportedError(
+    `${message}\n${responseBodyText ?? ""}`,
+  )
+    ? IMAGE_INPUT_UNSUPPORTED_ERROR_MESSAGE
+    : message;
+
+  return `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${displayMessage}`;
+}
+
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
 
 // Safely parse an MCP tool key that combines server and tool names.
@@ -1280,22 +1354,18 @@ This conversation includes one or more image attachments. When the user uploads 
               }
             },
             onError: (error: any) => {
-              let errorMessage = (error as any)?.error?.message;
-              const responseBody = error?.error?.responseBody;
-              if (errorMessage && responseBody) {
-                errorMessage += "\n\nDetails: " + responseBody;
-              }
-              const message = errorMessage || JSON.stringify(error);
-              const requestIdPrefix = isEngineEnabled
-                ? `[Request ID: ${dyadRequestId}] `
-                : "";
+              const message = formatAiStreamErrorMessage({
+                error,
+                isEngineEnabled,
+                dyadRequestId,
+              });
               logger.error(
-                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
+                `AI stream text error for request: ${message} error=`,
                 error,
               );
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
-                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
+                error: message,
               });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);

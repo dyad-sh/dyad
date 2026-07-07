@@ -30,8 +30,10 @@ import { SetupDyadProButton } from "./ProBanner";
 
 export function SetupBanner({
   variant = "inline",
+  forceShow = false,
 }: {
   variant?: "inline" | "dialog";
+  forceShow?: boolean;
 }) {
   const { t } = useTranslation("home");
   const posthog = usePostHog();
@@ -72,12 +74,14 @@ export function SetupBanner({
     settingsScrollAndNavigateTo(SECTION_IDS.providers);
   };
 
+  const hasProviderSetup = isAnyProviderSetup();
+
   const itemsNeedAction: string[] = [];
-  if (!isAnyProviderSetup() && !loading) {
+  if (!hasProviderSetup && !loading) {
     itemsNeedAction.push("ai-setup");
   }
 
-  if (itemsNeedAction.length === 0) {
+  if (itemsNeedAction.length === 0 && !forceShow) {
     if (variant === "dialog") {
       return null;
     }
@@ -99,11 +103,13 @@ export function SetupBanner({
       >
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            {variant === "dialog"
-              ? "You're almost ready to build"
-              : "Connect AI to start building"}
+            {hasProviderSetup
+              ? "Manage AI setup"
+              : variant === "dialog"
+                ? "You're almost ready to build"
+                : "Connect AI to start building"}
           </h2>
-          {variant === "dialog" && hasPendingPrompt ? (
+          {variant === "dialog" && hasPendingPrompt && !hasProviderSetup ? (
             <p className="mt-2 flex items-center justify-center gap-1.5 text-sm leading-6 text-muted-foreground">
               <CircleCheck
                 aria-hidden="true"
@@ -113,7 +119,9 @@ export function SetupBanner({
             </p>
           ) : (
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Dyad uses AI to build your app.
+              {hasProviderSetup
+                ? "Change how Dyad accesses AI."
+                : "Dyad uses AI to build your app."}
             </p>
           )}
         </div>

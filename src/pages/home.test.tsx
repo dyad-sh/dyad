@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   attachments: [] as any[],
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: true,
+  isSettingsLoading: false,
   effectiveDefaultChatMode: "build",
   hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
@@ -94,6 +95,7 @@ vi.mock("@/hooks/useLoadApps", () => ({
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     envVars: {},
+    loading: mocks.isSettingsLoading,
     settings: mocks.settings,
     updateSettings: mocks.updateSettings,
   }),
@@ -132,6 +134,8 @@ vi.mock("@/hooks/useLoadApp", () => ({
 
 vi.mock("@/lib/schemas", () => ({
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
+  hasDyadProKey: (settings: any) =>
+    Boolean(settings?.providerSettings?.auto?.apiKey?.value),
 }));
 
 vi.mock("@/lib/toast", () => ({
@@ -177,7 +181,8 @@ vi.mock("@/components/chat/HomeChatInput", () => ({
 }));
 
 vi.mock("@/components/SetupBanner", () => ({
-  SetupBanner: () => <div>AI setup dialog</div>,
+  SetupBanner: ({ forceShow }: { forceShow?: boolean }) =>
+    forceShow ? <div>AI setup dialog</div> : null,
 }));
 
 vi.mock("@/components/TelemetryBanner", () => ({
@@ -210,6 +215,7 @@ describe("HomePage", () => {
     mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
     mocks.initialChatMode = "build";
+    mocks.isSettingsLoading = false;
     mocks.navigate.mockReset();
     mocks.posthogCapture.mockReset();
     mocks.openPreviewIfSetupRequired.mockReset();
@@ -282,6 +288,86 @@ describe("HomePage", () => {
     await waitFor(() => {
       expect(mocks.setAtom).toHaveBeenCalledWith(false);
     });
+  });
+
+  it("shows the setup pill for non-Pro users without a configured provider", () => {
+    mocks.isAnyProviderSetup = false;
+    mocks.isLoadingLanguageModelProviders = false;
+
+    renderHomePage();
+
+    expect(
+      screen.getByRole("button", { name: /Connect AI to build/ }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  });
+
+  it("hides the setup pill while settings or providers are loading", () => {
+    mocks.isAnyProviderSetup = false;
+    mocks.isLoadingLanguageModelProviders = true;
+
+    const { rerender } = renderHomePage();
+
+    expect(
+      screen.queryByRole("button", { name: /Connect AI to build/ }),
+    ).toBeNull();
+
+    mocks.isLoadingLanguageModelProviders = false;
+    mocks.isSettingsLoading = true;
+    rerenderHomePage(rerender);
+
+    expect(
+      screen.queryByRole("button", { name: /Connect AI to build/ }),
+    ).toBeNull();
+  });
+
+  it("de-emphasizes the setup pill when an AI provider is configured", () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+
+    renderHomePage();
+
+    expect(
+      screen.getByRole("button", { name: "Manage AI setup" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Connect AI to build/ }),
+    ).toBeNull();
+  });
+
+  it("opens the setup dialog from the configured-provider manage link", () => {
+    mocks.isAnyProviderSetup = true;
+    mocks.isLoadingLanguageModelProviders = false;
+
+    renderHomePage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage AI setup" }));
+
+    expect(screen.getByText("AI setup dialog")).toBeTruthy();
+  });
+
+  it("hides the setup pill when a Dyad Pro API key is saved", () => {
+    mocks.settings = {
+      enableDyadPro: false,
+      isTestMode: true,
+      providerSettings: {
+        auto: {
+          apiKey: {
+            value: "dyad-pro-key",
+          },
+        },
+      },
+      selectedChatMode: "build",
+    };
+
+    renderHomePage();
+
+    expect(
+      screen.queryByRole("button", { name: /Connect AI to build/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Manage AI setup" }),
+    ).toBeNull();
   });
 
   it("keeps the preview panel open when setup was opened for the new app", async () => {

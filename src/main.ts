@@ -5,7 +5,6 @@ import {
   Menu,
   protocol,
   net,
-  session,
   crashReporter,
 } from "electron";
 import * as path from "node:path";
@@ -288,72 +287,10 @@ export async function onReady() {
   // setAsDefaultProtocolClient above is unreliable on Linux.
   void registerDyadProtocolLinux();
 
-  // Load React DevTools extension in development
-  if (process.env.NODE_ENV === "development") {
-    let chromeUserData: string;
-    // Determine Chrome extensions path based on platform
-    if (process.platform === "win32") {
-      chromeUserData = path.join(
-        process.env.LOCALAPPDATA || "",
-        "Google",
-        "Chrome",
-        "User Data",
-        "Default",
-        "Extensions",
-      );
-    } else if (process.platform === "darwin") {
-      // macOS
-      chromeUserData = path.join(
-        process.env.HOME || "",
-        "Library",
-        "Application Support",
-        "Google",
-        "Chrome",
-        "Default",
-        "Extensions",
-      );
-    } else {
-      // Linux
-      chromeUserData = path.join(
-        process.env.HOME || "",
-        ".config",
-        "google-chrome",
-        "Default",
-        "Extensions",
-      );
-    }
-
-    // React DevTools extension ID
-    const reactDevToolsId = "fmkadmapgofadopljbjfkapdkoienihi";
-    const extensionsDir = path.join(chromeUserData, reactDevToolsId);
-
-    if (fs.existsSync(extensionsDir)) {
-      try {
-        const versions = fs.readdirSync(extensionsDir);
-        if (versions.length > 0) {
-          // Get the latest version using numeric sort to handle version boundaries (e.g., 9.0.0 vs 10.0.0)
-          const latestVersion = versions
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-            .reverse()[0];
-          const extensionPath = path.join(extensionsDir, latestVersion);
-          await session.defaultSession.loadExtension(extensionPath, {
-            allowFileAccess: true,
-          });
-          logger.info("React DevTools loaded successfully");
-        } else {
-          logger.warn(
-            "React DevTools extension directory is empty. Install it in Chrome first.",
-          );
-        }
-      } catch (err) {
-        logger.error("Failed to load React DevTools:", err);
-      }
-    } else {
-      logger.warn(
-        "React DevTools extension not found. Install it in Chrome first.",
-      );
-    }
-  }
+  // React DevTools extension loading is intentionally disabled. In Electron it
+  // can spam startup logs with:
+  // "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist."
+  // from chrome-extension://fmkadmapgofadopljbjfkapdkoienihi/main.html.
 
   try {
     const backupManager = new BackupManager({

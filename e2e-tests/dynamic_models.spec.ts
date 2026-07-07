@@ -25,7 +25,7 @@ testWithRemoteCatalog(
     await po.setUp();
 
     await po.page.getByTestId("model-picker").click();
-    await po.page.getByText("OpenAI", { exact: true }).click();
+    // Models appear directly in the flat tier list.
     await expect(po.page.getByText("GPT 5.2", { exact: true })).toBeVisible();
     await expect(
       po.page.getByText("GPT 5.2 Remote Only", { exact: true }),
@@ -55,7 +55,7 @@ testWithFallbackCatalog(
     await po.setUp();
 
     await po.page.getByTestId("model-picker").click();
-    await po.page.getByText("OpenAI", { exact: true }).click();
+    // Models appear directly in the flat tier list.
     await expect(po.page.getByText("GPT 5.2", { exact: true })).toBeVisible();
     await expect(
       po.page.getByText("GPT 5.2 Remote Only", { exact: true }),

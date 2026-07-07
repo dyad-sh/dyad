@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   setChatMode: vi.fn(),
   updateSettings: vi.fn(),
+  navigate: vi.fn(),
+  posthogCapture: vi.fn(),
+  openExternalUrl: vi.fn(),
   selectedMode: "build",
   isTrial: false,
   renderSubContent: false,
@@ -76,6 +79,45 @@ vi.mock("@tanstack/react-router", () => ({
       search: {},
     },
   }),
+  useNavigate: () => mocks.navigate,
+}));
+
+vi.mock("posthog-js/react", () => ({
+  usePostHog: () => ({
+    capture: mocks.posthogCapture,
+  }),
+}));
+
+vi.mock("@/routes/settings/providers/$provider", () => ({
+  providerSettingsRoute: {
+    id: "/settings/providers/$provider",
+  },
+}));
+
+vi.mock("@/ipc/types", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ipc: {
+    system: {
+      openExternalUrl: mocks.openExternalUrl,
+    },
+  },
+}));
+
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+    open ? <div>{children}</div> : null,
+  DialogContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogHeader: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogTitle: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogDescription: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
 }));
 
 vi.mock("@/hooks/useChatMode", () => ({
@@ -287,6 +329,9 @@ describe("ModelPicker", () => {
     mocks.setChatMode.mockReset();
     mocks.setChatMode.mockResolvedValue(undefined);
     mocks.updateSettings.mockReset();
+    mocks.navigate.mockReset();
+    mocks.posthogCapture.mockReset();
+    mocks.openExternalUrl.mockReset();
     mocks.selectedMode = "build";
     mocks.renderSubContent = false;
     mocks.envVars = {};
@@ -350,18 +395,135 @@ describe("ModelPicker", () => {
     ]);
   });
 
-  it("keeps non-Pro users on provider grouping with Other AI providers", () => {
+  it("shows non-Pro users the same tiered flat list with More models", () => {
     mocks.settings.enableDyadPro = false;
     mocks.settings.providerSettings.auto.apiKey.value = "";
 
     render(<ModelPicker />);
 
-    expect(screen.getByText("OpenAI")).toBeTruthy();
-    expect(screen.getByText("Other AI providers")).toBeTruthy();
-    expect(screen.queryByText("More models")).toBeNull();
-    expect(screen.queryByText("GPT 5")).toBeNull();
+    expect(screen.getByText("GPT 5")).toBeTruthy();
+    expect(screen.queryByText("OpenAI")).toBeNull();
+    expect(screen.getByText("More models")).toBeTruthy();
+    expect(screen.queryByText("Other AI providers")).toBeNull();
     expect(screen.queryByText("Grok Code Fast")).toBeNull();
     expect(screen.queryByText("Dyad Free")).toBeNull();
+    expect(screen.getByText("Free (OpenRouter)")).toBeTruthy();
+  });
+
+  it("marks models without a provider key as locked for non-Pro users", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settings.providerSettings.openrouter.apiKey.value = "openrouter-key";
+
+    render(<ModelPicker />);
+
+    expect(screen.getByText("GPT 5").closest("button")?.dataset.locked).toBe(
+      "true",
+    );
+    expect(
+      screen.getByText("Claude Sonnet 4.5").closest("button")?.dataset.locked,
+    ).toBeUndefined();
+    expect(
+      screen.getAllByText("Auto")[1].closest("button")?.dataset.locked,
+    ).toBeUndefined();
+  });
+
+  it("opens the unlock dialog instead of selecting a locked model", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
+
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "model-picker:locked-model-click",
+      { provider: "openai", model: "gpt-5" },
+    );
+    expect(screen.getByText("Unlock GPT 5 with Dyad Pro")).toBeTruthy();
+  });
+
+  it("opens the Pro upgrade page from the unlock dialog", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
+    fireEvent.click(screen.getByText("Try Dyad Pro"));
+
+    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
+      expect.stringContaining("utm_campaign=model-picker-locked-model"),
+    );
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "model-picker:upgrade-click",
+      {
+        source: "locked-model-dialog",
+        provider: "openai",
+        model: "gpt-5",
+      },
+    );
+    expect(screen.queryByText("Try Dyad Pro")).toBeNull();
+  });
+
+  it("navigates to provider settings from the unlock dialog own-key link", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("GPT 5").closest("button")!);
+    fireEvent.click(screen.getByText(/use your own/));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings/providers/$provider",
+      params: { provider: "openai" },
+    });
+    expect(mocks.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("lets non-Pro users select models from providers with their own key", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+    mocks.settings.providerSettings.openrouter.apiKey.value = "openrouter-key";
+
+    render(<ModelPicker />);
+
+    fireEvent.click(screen.getByText("Claude Sonnet 4.5").closest("button")!);
+
+    expect(mocks.updateSettings).toHaveBeenCalledWith({
+      selectedModel: expect.objectContaining({
+        name: "anthropic/claude-sonnet-4.5",
+        provider: "openrouter",
+      }),
+    });
+  });
+
+  it("shows the unlock-all footer only for non-Pro users", () => {
+    mocks.settings.enableDyadPro = false;
+    mocks.settings.providerSettings.auto.apiKey.value = "";
+
+    render(<ModelPicker />);
+
+    fireEvent.click(
+      screen.getByText("Unlock all models with Dyad Pro").closest("button")!,
+    );
+
+    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
+      expect.stringContaining("utm_campaign=model-picker-unlock-all"),
+    );
+    expect(mocks.posthogCapture).toHaveBeenCalledWith(
+      "model-picker:upgrade-click",
+      { source: "unlock-all-footer" },
+    );
+  });
+
+  it("hides the unlock-all footer for Pro users", () => {
+    render(<ModelPicker />);
+
+    expect(screen.queryByText("Unlock all models with Dyad Pro")).toBeNull();
+    expect(document.querySelector("[data-locked]")).toBeNull();
   });
 
   it("shows data sharing disclosure on Auto for non-Pro users with an OpenRouter key", () => {

@@ -1,6 +1,18 @@
 const DEFAULT_UPDATER_LOG_ISSUE_BODY_LIMIT = 1_200;
 const LAST_UPDATER_ERROR_HEADER = "Last updater error (this session):";
 const TRUNCATED_MARKER = "[...truncated...]\n";
+const NEXT_UPDATER_SECTION_PATTERN =
+  /\n\n(?:Squirrel.*\.log \(tail\):|Error reading Squirrel logs:)/g;
+
+function findNextUpdaterSectionStart(
+  updaterLogs: string,
+  lastErrorStart: number,
+): number {
+  NEXT_UPDATER_SECTION_PATTERN.lastIndex =
+    lastErrorStart + LAST_UPDATER_ERROR_HEADER.length;
+  const match = NEXT_UPDATER_SECTION_PATTERN.exec(updaterLogs);
+  return match?.index ?? -1;
+}
 
 export function formatUpdaterLogsForIssueBody(
   updaterLogs: string,
@@ -15,7 +27,10 @@ export function formatUpdaterLogsForIssueBody(
     return updaterLogs.slice(-maxLength);
   }
 
-  const nextSectionStart = updaterLogs.indexOf("\n\n", lastErrorStart);
+  const nextSectionStart = findNextUpdaterSectionStart(
+    updaterLogs,
+    lastErrorStart,
+  );
   const lastErrorSection =
     nextSectionStart === -1
       ? updaterLogs.slice(lastErrorStart)

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 
 import {
   Popover,
@@ -18,6 +19,7 @@ import {
 
 export function McpToolsPicker() {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
   const { servers, toolsByServer, consentsMap, setToolConsent } = useMcp();
 
   // Removed activation toggling – consent governs execution time behavior
@@ -44,8 +46,18 @@ export function McpToolsPicker() {
           </div>
           {servers.length === 0 ? (
             <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No MCP servers configured. Configure them in Settings → Tools
-              (MCP).
+              No MCP servers configured.{" "}
+              <button
+                type="button"
+                className="text-primary underline-offset-2 hover:underline"
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate({ to: "/plugins" });
+                }}
+              >
+                Add them on the Plugins page
+              </button>
+              .
             </div>
           ) : (
             <div className="space-y-3">

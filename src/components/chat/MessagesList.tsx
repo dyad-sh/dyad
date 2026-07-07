@@ -18,6 +18,7 @@ import { ipc } from "@/ipc/types";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
+import { ModifiedFilesCard } from "./ModifiedFilesCard";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
 interface MessagesListProps {
@@ -72,155 +73,182 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   const questionnaireState =
     selectedChatId != null ? submittedChatIds.get(selectedChatId) : undefined;
 
+  const lastMessage = messages.length
+    ? messages[messages.length - 1]
+    : undefined;
+  const isLastMessageAssistant = lastMessage?.role === "assistant";
+
+  // Reverts the whole last generation: targets the version just before the last
+  // assistant message's commit (falling back to its source commit) and drops the
+  // messages produced by that turn. Shared by the modified-files card and the
+  // standalone Undo button below.
+  const handleUndo = async () => {
+    if (!selectedChatId || !appId) {
+      console.error("No chat selected or app ID not available");
+      return;
+    }
+
+    setIsUndoLoading(true);
+    try {
+      const currentMessage = messages[messages.length - 1];
+      // The user message that triggered this assistant response
+      const userMessage = messages[messages.length - 2];
+      const currentCommitIndex = currentMessage?.commitHash
+        ? versions.findIndex(
+            (version) => version.oid === currentMessage.commitHash,
+          )
+        : -1;
+      const previousVersionId =
+        currentCommitIndex >= 0
+          ? versions[currentCommitIndex + 1]?.oid
+          : undefined;
+      const revertTargetVersionId =
+        previousVersionId ?? currentMessage?.sourceCommitHash;
+
+      if (revertTargetVersionId) {
+        console.debug("Reverting to previous version", revertTargetVersionId);
+        await revertVersion({
+          versionId: revertTargetVersionId,
+          currentChatMessageId: userMessage
+            ? {
+                chatId: selectedChatId,
+                messageId: userMessage.id,
+              }
+            : undefined,
+        });
+        const chat = await ipc.chat.getChat(selectedChatId);
+        setMessagesById((prev) => {
+          const next = new Map(prev);
+          next.set(selectedChatId, chat.messages);
+          return next;
+        });
+      } else {
+        showWarning(
+          "No source commit hash found for message. Need to manually undo code changes",
+        );
+      }
+    } catch (error) {
+      console.error("Error during undo operation:", error);
+      showError("Failed to undo changes");
+    } finally {
+      setIsUndoLoading(false);
+    }
+  };
+
+  // Re-runs the last user prompt. If the last assistant turn is still the tip of
+  // history it is first reverted (so the retry replaces it rather than stacking);
+  // otherwise the prompt is redone. Shared by the modified-files card and the
+  // standalone Retry button below.
+  const handleRetry = async () => {
+    if (!selectedChatId) {
+      console.error("No chat selected");
+      return;
+    }
+
+    setIsRetryLoading(true);
+    try {
+      // The last message is usually an assistant, but it might not be.
+      const lastVersion = versions[0];
+      const lastMessage = messages[messages.length - 1];
+      let shouldRedo = true;
+      if (
+        lastVersion.oid === lastMessage.commitHash &&
+        lastMessage.role === "assistant"
+      ) {
+        const previousAssistantMessage = messages[messages.length - 3];
+        if (
+          previousAssistantMessage?.role === "assistant" &&
+          previousAssistantMessage?.commitHash
+        ) {
+          console.debug("Reverting to previous assistant version");
+          await revertVersion({
+            versionId: previousAssistantMessage.commitHash,
+          });
+          shouldRedo = false;
+        } else {
+          const chat = await ipc.chat.getChat(selectedChatId);
+          if (chat.initialCommitHash) {
+            console.debug(
+              "Reverting to initial commit hash",
+              chat.initialCommitHash,
+            );
+            await revertVersion({
+              versionId: chat.initialCommitHash,
+            });
+          } else {
+            showWarning(
+              "No initial commit hash found for chat. Need to manually undo code changes",
+            );
+          }
+        }
+      }
+
+      // Find the last user message
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find((message) => message.role === "user");
+      if (!lastUserMessage) {
+        console.error("No user message found");
+        return;
+      }
+      // Need to do a redo, if we didn't delete the message from a revert.
+      const redo = shouldRedo;
+      console.debug("Streaming message with redo", redo);
+
+      streamMessage({
+        prompt: lastUserMessage.content,
+        chatId: selectedChatId,
+        redo,
+      });
+    } catch (error) {
+      console.error("Error during retry operation:", error);
+      showError("Failed to retry message");
+    } finally {
+      setIsRetryLoading(false);
+    }
+  };
+
+  // When the last assistant turn produced a commit, show the modified-files card
+  // (which owns its own Undo/Retry buttons). Otherwise fall back to the standalone
+  // buttons so text-only replies keep those affordances.
+  const showModifiedFilesCard =
+    isLastMessageAssistant && !!lastMessage?.commitHash && appId != null;
+
   return (
     <>
-      {!isStreaming && (
+      {!isStreaming && showModifiedFilesCard && (
+        <ModifiedFilesCard
+          appId={appId!}
+          commitHash={lastMessage!.commitHash!}
+          onUndo={handleUndo}
+          isUndoLoading={isUndoLoading}
+          onRetry={handleRetry}
+          isRetryLoading={isRetryLoading}
+        />
+      )}
+      {!isStreaming && !showModifiedFilesCard && (
         <div className="flex max-w-3xl mx-auto gap-2">
-          {!!messages.length &&
-            messages[messages.length - 1].role === "assistant" && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isUndoLoading}
-                onClick={async () => {
-                  if (!selectedChatId || !appId) {
-                    console.error("No chat selected or app ID not available");
-                    return;
-                  }
-
-                  setIsUndoLoading(true);
-                  try {
-                    const currentMessage = messages[messages.length - 1];
-                    // The user message that triggered this assistant response
-                    const userMessage = messages[messages.length - 2];
-                    const currentCommitIndex = currentMessage?.commitHash
-                      ? versions.findIndex(
-                          (version) =>
-                            version.oid === currentMessage.commitHash,
-                        )
-                      : -1;
-                    const previousVersionId =
-                      currentCommitIndex >= 0
-                        ? versions[currentCommitIndex + 1]?.oid
-                        : undefined;
-                    const revertTargetVersionId =
-                      previousVersionId ?? currentMessage?.sourceCommitHash;
-
-                    if (revertTargetVersionId) {
-                      console.debug(
-                        "Reverting to previous version",
-                        revertTargetVersionId,
-                      );
-                      await revertVersion({
-                        versionId: revertTargetVersionId,
-                        currentChatMessageId: userMessage
-                          ? {
-                              chatId: selectedChatId,
-                              messageId: userMessage.id,
-                            }
-                          : undefined,
-                      });
-                      const chat = await ipc.chat.getChat(selectedChatId);
-                      setMessagesById((prev) => {
-                        const next = new Map(prev);
-                        next.set(selectedChatId, chat.messages);
-                        return next;
-                      });
-                    } else {
-                      showWarning(
-                        "No source commit hash found for message. Need to manually undo code changes",
-                      );
-                    }
-                  } catch (error) {
-                    console.error("Error during undo operation:", error);
-                    showError("Failed to undo changes");
-                  } finally {
-                    setIsUndoLoading(false);
-                  }
-                }}
-              >
-                {isUndoLoading ? (
-                  <Loader2 size={16} className="mr-1 animate-spin" />
-                ) : (
-                  <Undo size={16} />
-                )}
-                Undo
-              </Button>
-            )}
+          {isLastMessageAssistant && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isUndoLoading}
+              onClick={handleUndo}
+            >
+              {isUndoLoading ? (
+                <Loader2 size={16} className="mr-1 animate-spin" />
+              ) : (
+                <Undo size={16} />
+              )}
+              Undo
+            </Button>
+          )}
           {!!messages.length && (
             <Button
               variant="outline"
               size="sm"
               disabled={isRetryLoading}
-              onClick={async () => {
-                if (!selectedChatId) {
-                  console.error("No chat selected");
-                  return;
-                }
-
-                setIsRetryLoading(true);
-                try {
-                  // The last message is usually an assistant, but it might not be.
-                  const lastVersion = versions[0];
-                  const lastMessage = messages[messages.length - 1];
-                  let shouldRedo = true;
-                  if (
-                    lastVersion.oid === lastMessage.commitHash &&
-                    lastMessage.role === "assistant"
-                  ) {
-                    const previousAssistantMessage =
-                      messages[messages.length - 3];
-                    if (
-                      previousAssistantMessage?.role === "assistant" &&
-                      previousAssistantMessage?.commitHash
-                    ) {
-                      console.debug("Reverting to previous assistant version");
-                      await revertVersion({
-                        versionId: previousAssistantMessage.commitHash,
-                      });
-                      shouldRedo = false;
-                    } else {
-                      const chat = await ipc.chat.getChat(selectedChatId);
-                      if (chat.initialCommitHash) {
-                        console.debug(
-                          "Reverting to initial commit hash",
-                          chat.initialCommitHash,
-                        );
-                        await revertVersion({
-                          versionId: chat.initialCommitHash,
-                        });
-                      } else {
-                        showWarning(
-                          "No initial commit hash found for chat. Need to manually undo code changes",
-                        );
-                      }
-                    }
-                  }
-
-                  // Find the last user message
-                  const lastUserMessage = [...messages]
-                    .reverse()
-                    .find((message) => message.role === "user");
-                  if (!lastUserMessage) {
-                    console.error("No user message found");
-                    return;
-                  }
-                  // Need to do a redo, if we didn't delete the message from a revert.
-                  const redo = shouldRedo;
-                  console.debug("Streaming message with redo", redo);
-
-                  streamMessage({
-                    prompt: lastUserMessage.content,
-                    chatId: selectedChatId,
-                    redo,
-                  });
-                } catch (error) {
-                  console.error("Error during retry operation:", error);
-                  showError("Failed to retry message");
-                } finally {
-                  setIsRetryLoading(false);
-                }
-              }}
+              onClick={handleRetry}
             >
               {isRetryLoading ? (
                 <Loader2 size={16} className="mr-1 animate-spin" />

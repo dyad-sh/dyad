@@ -41,6 +41,7 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { type UserSettings } from "@/lib/schemas";
 import { type UserBudgetInfo } from "@/ipc/types/system";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatUpdaterLogsForIssueBody } from "@/lib/debugLogFormatting";
 
 // =============================================================================
 // Animation constants
@@ -112,7 +113,7 @@ function formatLogsSection(debugInfo: SystemDebugInfo): string {
 
 ## Auto-Updater Logs
 \`\`\`
-${debugInfo.updaterLogs.slice(-1_200)}
+${formatUpdaterLogsForIssueBody(debugInfo.updaterLogs)}
 \`\`\``
     : "";
   return `## Logs
@@ -638,6 +639,12 @@ ${formatLogsSection(debugInfo)}
           <ReviewDetailsSection title="Logs">
             {debugBundle.logs}
           </ReviewDetailsSection>
+
+          {debugBundle.updaterLogs && (
+            <ReviewDetailsSection title="Auto-Updater Logs">
+              {debugBundle.updaterLogs}
+            </ReviewDetailsSection>
+          )}
 
           <ReviewDetailsSection title="System Information" mono={false}>
             <p>Dyad Version: {debugBundle.system.dyadVersion}</p>

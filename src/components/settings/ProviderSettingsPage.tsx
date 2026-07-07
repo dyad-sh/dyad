@@ -123,6 +123,10 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [apiKeyValidationDialog, setApiKeyValidationDialog] =
     useState<ApiKeyValidationDialogState | null>(null);
   const [showStartBuildingBanner, setShowStartBuildingBanner] = useState(false);
+  // Set when the user opens the provider's website to get a key; on the next
+  // window refocus we nudge them toward the paste button.
+  const [awaitingKeyFromWebsite, setAwaitingKeyFromWebsite] = useState(false);
+  const [highlightPasteButton, setHighlightPasteButton] = useState(false);
   const queryClient = useQueryClient();
   const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
 
@@ -163,8 +167,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     | undefined;
   const isVertexConfigured = Boolean(
     vertexSettings?.projectId &&
-    vertexSettings?.location &&
-    vertexSettings?.serviceAccountKey?.value,
+      vertexSettings?.location &&
+      vertexSettings?.serviceAccountKey?.value,
   );
 
   const isAzureConfigured =
@@ -206,6 +210,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     value: string,
     options: { skipValidation?: boolean } = {},
   ) => {
+    setHighlightPasteButton(false);
     const normalizedValue = normalizeAndValidateKeyInput(value);
     if (!normalizedValue) {
       return;
@@ -344,6 +349,23 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       setIsSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!awaitingKeyFromWebsite) {
+      return;
+    }
+    const handleFocus = () => {
+      setAwaitingKeyFromWebsite(false);
+      setHighlightPasteButton(true);
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [awaitingKeyFromWebsite]);
+
+  useEffect(() => {
+    setAwaitingKeyFromWebsite(false);
+    setHighlightPasteButton(false);
+  }, [provider]);
 
   // Effect to clear input error when input changes
   useEffect(() => {
@@ -492,6 +514,11 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             hasFreeTier={hasFreeTier}
             providerWebsiteUrl={providerWebsiteUrl}
             isDyad={isDyad}
+            onOpenProviderWebsite={() => {
+              if (!isConfigured) {
+                setAwaitingKeyFromWebsite(true);
+              }
+            }}
           />
 
           {settingsLoading ? (
@@ -517,12 +544,17 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               saveError={saveError}
               testSuccessMessage={testSuccessMessage}
               apiKeyInput={apiKeyInput}
-              onApiKeyInputChange={setApiKeyInput}
+              onApiKeyInputChange={(value) => {
+                setHighlightPasteButton(false);
+                setApiKeyInput(value);
+              }}
               onSaveKey={handleSaveKey}
               onTestKey={shouldValidateApiKey ? handleTestKey : undefined}
               onDeleteKey={handleDeleteKey}
               isDyad={isDyad}
               updateSettings={updateSettings}
+              highlightPasteButton={highlightPasteButton}
+              onDismissPasteHighlight={() => setHighlightPasteButton(false)}
             />
           )}
 

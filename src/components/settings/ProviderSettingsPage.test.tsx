@@ -44,6 +44,7 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
         name: "Google",
         type: "local",
         envVarName: "GOOGLE_API_KEY",
+        websiteUrl: "https://example.com/api-keys",
       },
     ],
     isLoading: false,
@@ -122,6 +123,30 @@ describe("ProviderSettingsPage", () => {
 
     expect(await screen.findByText("API key rejected")).not.toBeNull();
     expect(screen.queryByText("API key check failed")).toBeNull();
+  });
+
+  it("nudges toward Paste & Save after returning from the provider website", async () => {
+    renderProviderSettingsPage();
+
+    expect(screen.queryByText(/Copied your API key/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Setup API Key" }));
+    expect(mocks.openExternalUrl).toHaveBeenCalledWith(
+      "https://example.com/api-keys",
+    );
+    // The nudge should wait until the user comes back to the window.
+    expect(screen.queryByText(/Copied your API key/)).toBeNull();
+
+    fireEvent.focus(window);
+    expect(await screen.findByText(/Copied your API key/)).not.toBeNull();
+
+    // Typing a key manually dismisses the nudge.
+    fireEvent.change(screen.getByLabelText("Set Google API Key"), {
+      target: { value: "typed-key" },
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/Copied your API key/)).toBeNull();
+    });
   });
 
   it.each([

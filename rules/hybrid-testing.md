@@ -33,6 +33,29 @@ logs `POST https://engine.dyad.sh/v1/... 401 (Unauthorized)`, search for
 module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
 `getDyadEngineBaseUrl()`.
 
+## Test log noise
+
+- `src/testing/hybrid.setup.ts` caps electron-log's console transport at
+  `warn` (its default prints everything, including `logger.debug`). Set
+  `DYAD_TEST_LOG_LEVEL=debug` to see info/debug logs while debugging a test.
+  New per-request logging in app code should be `logger.debug`, not
+  `logger.info`/`logger.log`.
+- In `testing/fake-llm-server/`, informational logs must go through
+  `fakeLlmLog` from `./log` (silenced by `FAKE_LLM_QUIET=1`, which the vitest
+  harnesses set). Reserve raw `console.error` for genuine failures — it is
+  never suppressed.
+- Some unit tests mock electron-log with an explicit method object
+  (`vi.mock("electron-log", ... { scope: () => ({ info, log, warn, error }) })`).
+  Calling a logger method the mock omits fails with e.g. "logger.debug is not
+  a function" — grep `vi.mock("electron-log"` when changing log levels.
+- `generateProblemReport` is stubbed to `{ problems: [] }` in
+  `hybrid.setup.ts`: the tsc worker needs a compiled worker script and
+  Electron paths that don't exist under vitest. Integration tests cannot
+  assert on real TypeScript problem reports.
+- Suppress known-noisy test console output (React `act(...)` warnings,
+  TanStack `useRouter` provider warnings) via `noisyConsolePatterns` in
+  `vitest.config.ts` rather than letting it accumulate.
+
 Full `npm test` runs can fail inside the Codex sandbox before test logic runs
 when OAuth, proxy, or hybrid harness suites bind/connect to loopback ports. If
 the failure is `listen EPERM` or `connect EPERM` for `127.0.0.1`, `localhost`,

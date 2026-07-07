@@ -676,7 +676,7 @@ export async function extractCodebase({
   const formattedOutput = formattedFiles.join("");
 
   const endTime = Date.now();
-  logger.log("extractCodebase: time taken", endTime - startTime);
+  logger.debug("extractCodebase: time taken", endTime - startTime);
   if (IS_TEST_BUILD) {
     // Why? For some reason, file ordering is not stable on Windows.
     // This is a workaround to ensure stable ordering, although

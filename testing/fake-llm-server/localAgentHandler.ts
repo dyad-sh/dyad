@@ -9,6 +9,7 @@ import path from "path";
 import fs from "fs";
 import type { LocalAgentFixture, Turn } from "./localAgentTypes";
 import { resolveFixturesDir } from "./paths";
+import { fakeLlmLog } from "./log";
 
 // Register ts-node to allow loading .ts fixture files directly
 try {
@@ -346,7 +347,7 @@ async function streamToolCallResponse(
   }
 
   if (options?.dropAfterToolCalls) {
-    console.log(
+    fakeLlmLog(
       `[local-agent] Simulating connection drop after streaming tool calls`,
     );
     // Drop before finish_reason/[DONE] so tool calls were emitted but the
@@ -508,7 +509,7 @@ async function streamAnthropicToolCallResponse(
   }
 
   if (options?.dropAfterToolCalls) {
-    console.log(
+    fakeLlmLog(
       `[local-agent] Simulating Anthropic connection drop after streaming tool calls`,
     );
     res.socket?.destroy();
@@ -534,8 +535,8 @@ export async function handleLocalAgentFixture(
   const { messages = [] } = req.body;
   const protocol = options.protocol ?? "openai";
 
-  console.log(`[local-agent] Loading fixture: ${fixtureName}`);
-  console.log(`[local-agent] Messages count: ${messages.length}`);
+  fakeLlmLog(`[local-agent] Loading fixture: ${fixtureName}`);
+  fakeLlmLog(`[local-agent] Messages count: ${messages.length}`);
 
   try {
     const fixture = await loadFixture(fixtureName);
@@ -551,13 +552,13 @@ export async function handleLocalAgentFixture(
     // Get the turns for the current pass
     const turns = getTurnsForPass(fixture, passIndex);
 
-    console.error(
+    fakeLlmLog(
       `[local-agent] Loaded fixture: ${fixtureName}, Session: ${sessionId}, Pass: ${passIndex}, Turn: ${turnIndex}, Tool rounds: ${toolResultRounds}`,
     );
 
     if (turnIndex >= turns.length) {
       // All turns exhausted for this pass, send a simple completion message
-      console.log(
+      fakeLlmLog(
         `[local-agent] All turns exhausted for pass ${passIndex}, sending completion`,
       );
       await streamTextResponse(res, "Task completed.", undefined, protocol);
@@ -565,7 +566,7 @@ export async function handleLocalAgentFixture(
     }
 
     let turn = turns[turnIndex];
-    console.log(
+    fakeLlmLog(
       `[local-agent] Executing pass ${passIndex}, turn ${turnIndex}:`,
       {
         hasText: !!turn.text,
@@ -607,13 +608,13 @@ export async function handleLocalAgentFixture(
       const currentAttempt = (connectionAttempts.get(attemptKey) || 0) + 1;
       connectionAttempts.set(attemptKey, currentAttempt);
 
-      console.log(
+      fakeLlmLog(
         `[local-agent] Connection attempt ${currentAttempt} for ${attemptKey}, ` +
           `drop on: [${turnScopedDropAttempts.join(", ")}]`,
       );
 
       if (turnScopedDropAttempts.includes(currentAttempt)) {
-        console.log(
+        fakeLlmLog(
           `[local-agent] Simulating connection drop on attempt ${currentAttempt}`,
         );
         // Stream partial data then destroy the socket to simulate a network interruption

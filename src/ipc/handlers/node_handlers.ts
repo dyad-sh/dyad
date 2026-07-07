@@ -460,7 +460,7 @@ export function registerNodeHandlers() {
   }
 
   createTypedHandler(systemContracts.getNodejsStatus, async () => {
-    logger.log(
+    logger.debug(
       "handling ipc: nodejs-status for platform:",
       platform(),
       "and arch:",

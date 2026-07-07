@@ -54,8 +54,10 @@ export async function getFreeModelQuotaStatus() {
 
   if (!response.ok) {
     const errorBody = await response.text();
+    // Collapse whitespace and truncate so an HTML error page doesn't flood the log.
+    const errorSummary = errorBody.replace(/\s+/g, " ").slice(0, 200);
     logger.warn(
-      `Failed to fetch free model quota. Status: ${response.status}. Body: ${errorBody}`,
+      `Failed to fetch free model quota. Status: ${response.status}. Body: ${errorSummary}`,
     );
     throw new DyadError(
       "Unable to fetch Dyad Free quota.",

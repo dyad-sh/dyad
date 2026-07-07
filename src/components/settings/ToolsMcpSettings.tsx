@@ -381,9 +381,7 @@ export function ToolsMcpSettings() {
   });
   const oauthStorageEncrypted = oauthStorageEncryptedQuery.data ?? null;
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
-  console.log("lastDeepLink!!!", lastDeepLink);
   useEffect(() => {
-    console.log("rerun effect");
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "add-mcp-server") {
         const deepLink = lastDeepLink as AddMcpServerDeepLinkData;

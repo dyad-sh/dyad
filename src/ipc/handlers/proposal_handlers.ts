@@ -67,7 +67,7 @@ function cleanupExpiredCacheEntries() {
   });
 
   if (expiredCount > 0) {
-    logger.log(
+    logger.debug(
       `Cleaned up ${expiredCount} expired codebase token cache entries`,
     );
   }
@@ -95,12 +95,12 @@ async function getCodebaseTokenCount(
     cacheEntry.chatContext === JSON.stringify(chatContext) &&
     now - cacheEntry.timestamp < CACHE_EXPIRATION_MS
   ) {
-    logger.log(`Using cached codebase token count for chatId: ${chatId}`);
+    logger.debug(`Using cached codebase token count for chatId: ${chatId}`);
     return cacheEntry.tokenCount;
   }
 
   // Calculate and cache the token count
-  logger.log(`Calculating codebase token count for chatId: ${chatId}`);
+  logger.debug(`Calculating codebase token count for chatId: ${chatId}`);
   const codebase = (
     await extractCodebase({
       appPath: getDyadAppPath(appPath),
@@ -127,7 +127,7 @@ const getProposalHandler = async (
   { chatId }: { chatId: number },
 ): Promise<ProposalResult | null> => {
   return withLock("get-proposal:" + chatId, async () => {
-    logger.log(`IPC: get-proposal called for chatId: ${chatId}`);
+    logger.debug(`IPC: get-proposal called for chatId: ${chatId}`);
 
     try {
       // Find the latest ASSISTANT message for the chat
@@ -147,7 +147,7 @@ const getProposalHandler = async (
         !latestAssistantMessage?.approvalState
       ) {
         const messageId = latestAssistantMessage.id; // Get the message ID
-        logger.log(
+        logger.debug(
           `Found latest assistant message (ID: ${messageId}), parsing content...`,
         );
         const messageContent = latestAssistantMessage.content;
@@ -205,7 +205,7 @@ const getProposalHandler = async (
               description: query.description,
             })),
           };
-          logger.log(
+          logger.debug(
             "Generated code proposal. title=",
             proposal.title,
             "files=",
@@ -220,7 +220,7 @@ const getProposalHandler = async (
             messageId,
           };
         } else {
-          logger.log(
+          logger.debug(
             "No relevant tags found in the latest assistant message content.",
           );
         }
@@ -298,13 +298,13 @@ const getProposalHandler = async (
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;
         const contextWindow = Math.min(await getContextWindow(), 100_000);
-        logger.log(
+        logger.debug(
           `Token usage: ${totalTokens}/${contextWindow} (${(totalTokens / contextWindow) * 100}%)`,
         );
 
         // If we're using more than 80% of the context window, suggest summarizing
         if (totalTokens > contextWindow * 0.8 || chat.messages.length > 10) {
-          logger.log(
+          logger.debug(
             `Token usage is high (${totalTokens}/${contextWindow}) OR long chat history (${chat.messages.length} messages), suggesting summarize action`,
           );
           actions.push({
@@ -404,7 +404,7 @@ const rejectProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<void> => {
-  logger.log(
+  logger.debug(
     `IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`,
   );
 
@@ -430,7 +430,7 @@ const rejectProposalHandler = async (
     .set({ approvalState: "rejected" })
     .where(eq(messages.id, messageId));
 
-  logger.log(`Message ${messageId} marked as rejected.`);
+  logger.debug(`Message ${messageId} marked as rejected.`);
 };
 
 // Function to register proposal-related handlers

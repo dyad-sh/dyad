@@ -1,6 +1,15 @@
 import { configure, prettyDOM } from "@testing-library/dom";
 import { afterEach, vi } from "vitest";
+import log from "electron-log";
 import type { RendererIpcBridge } from "./renderer_ipc_bridge";
+
+// Quiet electron-log's console transport during tests: per-request info/debug
+// chatter from IPC handlers otherwise floods vitest output. Warnings and
+// errors still print. Override with DYAD_TEST_LOG_LEVEL=debug (or another
+// electron-log level) when debugging a test.
+log.transports.console.level =
+  (process.env.DYAD_TEST_LOG_LEVEL as typeof log.transports.console.level) ??
+  "warn";
 
 type HybridBridgeDiagnosticGlobal = typeof globalThis & {
   __DYAD_HYBRID_BRIDGE__?: RendererIpcBridge;
@@ -23,6 +32,17 @@ vi.mock("electron", async () => {
 vi.mock("posthog-js/react", () => ({
   usePostHog: () => ({ capture: vi.fn() }),
 }));
+
+// The tsc problem-report worker needs a compiled worker script and Electron
+// app paths, neither of which exists under vitest — every problems check would
+// otherwise fail and dump a TypeError stack into the test output.
+vi.mock("@/ipc/processors/tsc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/ipc/processors/tsc")>();
+  return {
+    ...actual,
+    generateProblemReport: async () => ({ problems: [] }),
+  };
+});
 
 vi.mock("react-i18next", async () => {
   const [common, settings, chat, home, errors] = await Promise.all([

@@ -13,6 +13,13 @@ const noisyConsolePatterns = [
   /processor.*warning/i,
   // Known test fixture console outputs (not real errors)
   /\[test\]/i,
+  // React "not wrapped in act(...)" warnings: the hybrid harness drives real
+  // async IPC flows, so late state updates outside act() are expected and
+  // repeat thousands of times. They don't fail tests; suppress the noise.
+  /not wrapped in act\(/,
+  // Components rendered without a RouterProvider in the hybrid harness warn on
+  // every useRouter() call; harmless in tests.
+  /useRouter must be used inside a <RouterProvider>/,
 ];
 
 // Any `*.integration.test.ts(x)` under src/ runs in the `integration` project

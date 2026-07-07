@@ -40,14 +40,15 @@ export function registerProHandlers() {
         isTrial: false,
       };
     }
-    logger.info("Attempting to fetch user budget information.");
+    logger.debug("Attempting to fetch user budget information.");
 
     const settings = readSettings();
 
     const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
     if (!apiKey) {
-      logger.error("LLM Gateway API key (Dyad Pro) is not configured.");
+      // Expected state for non-Pro users; not an error.
+      logger.debug("LLM Gateway API key (Dyad Pro) is not configured.");
       return null;
     }
 
@@ -83,7 +84,7 @@ export function registerProHandlers() {
       const redactedUserId =
         data.userId.length > 8 ? "****" + data.userId.slice(-4) : "<redacted>";
 
-      logger.info("Successfully fetched user budget information.");
+      logger.debug("Successfully fetched user budget information.");
 
       // Transform to UserBudgetInfo format
       const userBudgetInfo = UserBudgetInfoSchema.parse({

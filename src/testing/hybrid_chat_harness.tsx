@@ -70,8 +70,9 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { getDefaultStore } from "jotai";
-import React from "react";
+import { createStore, Provider } from "jotai";
+import React, { useEffect } from "react";
+import { Toaster } from "sonner";
 import { expect } from "vitest";
 
 // IMPORTANT: `./chat_flow_harness` must be imported BEFORE `@/components/ChatPanel`.
@@ -86,13 +87,12 @@ import {
 } from "./chat_flow_harness";
 import type { RendererEvent } from "./electron_mock";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  chatInputValuesByIdAtom,
-  chatMessagesByIdAtom,
-  selectedChatIdAtom,
-} from "@/atoms/chatAtoms";
+import { chatInputValuesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
 import { ChatPanel } from "@/components/ChatPanel";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
+import { ipc } from "@/ipc/types";
 // Import from the dedicated schema module, NOT "@/routes/chat": the route file
 // statically imports ChatPage -> PreviewPanel -> Monaco, which would load into
 // every hybrid test and throw "Canceled" rejections on teardown.
@@ -103,6 +103,13 @@ import {
   type RendererIpcBridge,
 } from "./renderer_ipc_bridge";
 
+const SECOND_SETUP_ERROR =
+  "Second harness setup in one process — one harness per test FILE " +
+  "(forks pool isolation); split the file";
+
+let activeHybridChatHarness = false;
+type JotaiStore = ReturnType<typeof createStore>;
+
 export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
   /**
    * Silence React's "not wrapped in act(...)" warnings by wrapping the bridge's
@@ -112,6 +119,12 @@ export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
    * act-related issue.
    */
   silenceActWarnings?: boolean;
+  /**
+   * Fail dispose when renderer code invoked a channel with no registered
+   * main-process handler. Default true; opt out only for a test that is
+   * intentionally exercising that failure path.
+   */
+  assertNoMissingChannels?: boolean;
 }
 
 export interface MountOptions {
@@ -119,6 +132,8 @@ export interface MountOptions {
   chatId?: number;
   /** App to select. Default: the harness's default app. */
   appId?: number;
+  /** Install the same main->renderer listeners AppRoot registers. Default true. */
+  wireAppEvents?: boolean;
 }
 
 export interface TypeInChatResult {
@@ -209,266 +224,339 @@ function eventPayload(e: { args: unknown[] }): unknown {
   return e.args[0];
 }
 
+function HybridAppEventWiring({
+  store,
+  queryClient,
+}: {
+  store: JotaiStore;
+  queryClient: QueryClient;
+}) {
+  useEffect(
+    () =>
+      registerRendererIpcListeners({
+        ipcClient: ipc,
+        store,
+        queryClient,
+      }),
+    [queryClient, store],
+  );
+  return null;
+}
+
 export async function setupHybridChatHarness(
   options: HybridChatHarnessOptions,
 ): Promise<HybridChatHarness> {
+  if (activeHybridChatHarness) {
+    throw new Error(SECOND_SETUP_ERROR);
+  }
+  activeHybridChatHarness = true;
+
   // Prevent the UI's `nodejs-status` query from kicking off the real
   // `npm install pnpm` background side effect (gated in node_handlers.ts).
   process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL = "true";
 
-  const node = await setupChatFlowHarness(options);
+  let node: ChatFlowHarness | undefined;
 
-  // Register every handler the UI invokes (the node harness only registers
-  // chat_stream). Same code path as main.ts. Imported dynamically (after the
-  // electron mock + db are live) — a static top-level import of the full
-  // handler graph perturbs CJS/ESM interop ordering for transitive deps
-  // (react-remove-scroll's tslib) and fails at module load.
-  const { registerIpcHandlers } = await import("@/ipc/ipc_host");
-  registerIpcHandlers();
+  try {
+    node = await setupChatFlowHarness(options);
+    const nodeHarness = node;
 
-  const silenceActWarnings = options.silenceActWarnings ?? true;
-  const bridge = installRendererIpcBridge(options.electronMock, {
-    wrapDispatch: silenceActWarnings
-      ? (dispatch) => {
-          // Sync dispatch; act flushes the resulting renders/effects. The
-          // returned thenable resolves synchronously for sync work, so not
-          // awaiting it is safe here.
-          void act(() => {
-            dispatch();
-          });
-        }
-      : undefined,
-  });
+    // Register every handler the UI invokes (the node harness only registers
+    // chat_stream). Same code path as main.ts. Imported dynamically (after the
+    // electron mock + db are live) — a static top-level import of the full
+    // handler graph perturbs CJS/ESM interop ordering for transitive deps
+    // (react-remove-scroll's tslib) and fails at module load.
+    const { registerIpcHandlers } = await import("@/ipc/ipc_host");
+    registerIpcHandlers();
 
-  const store = getDefaultStore();
-  const queryClients: QueryClient[] = [];
+    const silenceActWarnings = options.silenceActWarnings ?? true;
+    const bridge = installRendererIpcBridge(options.electronMock, {
+      wrapDispatch: silenceActWarnings
+        ? (dispatch) => {
+            // Sync dispatch; act flushes the resulting renders/effects. The
+            // returned thenable resolves synchronously for sync work, so not
+            // awaiting it is safe here.
+            void act(() => {
+              dispatch();
+            });
+          }
+        : undefined,
+    });
 
-  const mount = (opts: MountOptions = {}): RenderResult => {
-    const chatId = opts.chatId ?? node.chatId;
-    const appId = opts.appId ?? node.appId;
+    let activeStore: JotaiStore | undefined;
+    const queryClients: QueryClient[] = [];
+    const assertNoMissingChannels = options.assertNoMissingChannels ?? true;
 
-    // Seed the default store the components read (the app has no <Provider>).
-    store.set(selectedAppIdAtom, appId);
-    store.set(selectedChatIdAtom, chatId);
-
-    // A private route tree: useStreamChat/ChatInput call useSearch({from:"/chat"}),
-    // so a real "/chat" route is required. It imports the REAL search schema from
-    // src/routes/chat.tsx (chatSearchSchema) so this replica can't drift from
-    // production. It renders ChatPanel directly — mounting the real ChatPage would
-    // drag in PreviewPanel (Monaco, iframe runtime).
-    const rootRoute = createRootRoute({ component: Outlet });
-    const chatTestRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: "/chat",
-      validateSearch: chatSearchSchema,
-      component: function HybridChatRoute() {
-        const search = chatTestRoute.useSearch();
-        return (
-          <ChatPanel
-            chatId={search.id}
-            isPreviewOpen={false}
-            onTogglePreview={() => {}}
-          />
+    const getActiveStore = (): JotaiStore => {
+      if (!activeStore) {
+        throw new Error(
+          "setupHybridChatHarness.mount() must be called before using this helper",
         );
-      },
-    });
-    const router = createRouter({
-      routeTree: rootRoute.addChildren([chatTestRoute]),
-      history: createMemoryHistory({
-        initialEntries: [`/chat?id=${chatId}&appId=${appId}`],
-      }),
-    });
+      }
+      return activeStore;
+    };
 
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
-    queryClients.push(queryClient);
+    const mount = (opts: MountOptions = {}): RenderResult => {
+      const chatId = opts.chatId ?? nodeHarness.chatId;
+      const appId = opts.appId ?? nodeHarness.appId;
+      const store = createStore();
+      activeStore = store;
 
-    const result = render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router as never} />
-      </QueryClientProvider>,
-    );
-    return result;
-  };
+      store.set(selectedAppIdAtom, appId);
+      store.set(selectedChatIdAtom, chatId);
 
-  const typeInChat = async (
-    text: string,
-    opts: MountOptions = {},
-  ): Promise<TypeInChatResult> => {
-    const chatId = opts.chatId ?? node.chatId;
-    // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
-    // the atom write re-renders ChatInput (enabling Send).
-    const current = store.get(chatInputValuesByIdAtom);
-    const next = new Map(current);
-    next.set(chatId, text);
-    act(() => {
-      store.set(chatInputValuesByIdAtom, next);
-    });
+      // A private route tree: useStreamChat/ChatInput call useSearch({from:"/chat"}),
+      // so a real "/chat" route is required. It imports the REAL search schema from
+      // src/routes/chat.tsx (chatSearchSchema) so this replica can't drift from
+      // production. It renders ChatPanel directly — mounting the real ChatPage would
+      // drag in PreviewPanel (Monaco, iframe runtime).
+      const rootRoute = createRootRoute({ component: Outlet });
+      const chatTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/chat",
+        validateSearch: chatSearchSchema,
+        component: function HybridChatRoute() {
+          const search = chatTestRoute.useSearch();
+          return (
+            <ChatPanel
+              chatId={search.id}
+              isPreviewOpen={false}
+              onTogglePreview={() => {}}
+            />
+          );
+        },
+      });
+      const router = createRouter({
+        routeTree: rootRoute.addChildren([chatTestRoute]),
+        history: createMemoryHistory({
+          initialEntries: [`/chat?id=${chatId}&appId=${appId}`],
+        }),
+      });
 
-    const sendButton = await screen.findByLabelText("sendMessage");
-    await waitFor(() => {
-      expect((sendButton as HTMLButtonElement).hasAttribute("disabled")).toBe(
-        false,
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      });
+      queryClients.push(queryClient);
+
+      const result = render(
+        <QueryClientProvider client={queryClient}>
+          <Provider store={store}>
+            <ThemeProvider>
+              {opts.wireAppEvents !== false && (
+                <HybridAppEventWiring store={store} queryClient={queryClient} />
+              )}
+              <RouterProvider router={router as never} />
+              <Toaster richColors expand duration={500} />
+            </ThemeProvider>
+          </Provider>
+        </QueryClientProvider>,
       );
-    });
-    return {
-      sendButton,
-      send: () => fireEvent.click(sendButton),
+      return result;
     };
-  };
 
-  const waitForEvent = async (
-    channel: string,
-    predicate?: (payload: unknown) => boolean,
-    timeoutMs = 20_000,
-  ): Promise<RendererEvent> => {
-    let match: { channel: string; args: unknown[] } | undefined;
-    await waitFor(
-      () => {
-        match = bridge.sentEvents.find(
-          (e) =>
-            e.channel === channel && (!predicate || predicate(eventPayload(e))),
+    const typeInChat = async (
+      text: string,
+      opts: MountOptions = {},
+    ): Promise<TypeInChatResult> => {
+      const chatId = opts.chatId ?? nodeHarness.chatId;
+      const store = getActiveStore();
+      // Exactly what LexicalChatInput's onChange writes. Wrapped in act because
+      // the atom write re-renders ChatInput (enabling Send).
+      const current = store.get(chatInputValuesByIdAtom);
+      const next = new Map(current);
+      next.set(chatId, text);
+      act(() => {
+        store.set(chatInputValuesByIdAtom, next);
+      });
+
+      const sendButton = await screen.findByLabelText("sendMessage");
+      await waitFor(() => {
+        expect((sendButton as HTMLButtonElement).hasAttribute("disabled")).toBe(
+          false,
         );
-        expect(match).toBeTruthy();
-      },
-      { timeout: timeoutMs },
-    );
-    return { channel, payload: eventPayload(match!) };
-  };
-
-  // Predicate that keeps only chat:response:end events for a given chatId (or
-  // all of them when chatId is undefined).
-  const streamEndPredicate = (chatId?: number) =>
-    chatId === undefined
-      ? undefined
-      : (payload: unknown) =>
-          !!payload &&
-          typeof payload === "object" &&
-          (payload as { chatId?: number }).chatId === chatId;
-
-  const matchingStreamEnds = (chatId?: number) => {
-    const predicate = streamEndPredicate(chatId);
-    return bridge.sentEvents.filter(
-      (e) =>
-        e.channel === "chat:response:end" &&
-        (!predicate || predicate(eventPayload(e))),
-    );
-  };
-
-  const eventCount = (channel: string): number =>
-    bridge.sentEvents.filter((e) => e.channel === channel).length;
-
-  const waitForStreamEnd = (
-    chatId?: number,
-    timeoutMs = 20_000,
-  ): Promise<RendererEvent> =>
-    waitForEvent("chat:response:end", streamEndPredicate(chatId), timeoutMs);
-
-  const waitForNextStreamEnd = (
-    chatId?: number,
-    timeoutMs = 20_000,
-  ): Promise<RendererEvent> => {
-    // Snapshot the baseline SYNCHRONOUSLY (before returning the promise) so a
-    // stale end from a prior turn can't satisfy the wait; resolve on the first
-    // matching end past the baseline.
-    const baseline = matchingStreamEnds(chatId).length;
-    let found: { channel: string; args: unknown[] } | undefined;
-    return waitFor(
-      () => {
-        const matches = matchingStreamEnds(chatId);
-        expect(matches.length).toBeGreaterThan(baseline);
-        found = matches[matches.length - 1];
-      },
-      { timeout: timeoutMs },
-    ).then(() => ({
-      channel: "chat:response:end",
-      payload: eventPayload(found!),
-    }));
-  };
-
-  const selectFromBaseUiSelect = async (
-    trigger: HTMLElement,
-    optionMatcher: string | RegExp,
-  ): Promise<void> => {
-    // happy-dom won't open a Base UI Select on a bare click. Focus + ArrowDown
-    // opens the popup; then pointer events + click + Enter on the option commit
-    // the value (a bare click alone does nothing).
-    trigger.focus();
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    const option = await screen.findByRole("option", { name: optionMatcher });
-    fireEvent.pointerDown(option);
-    fireEvent.pointerUp(option);
-    fireEvent.click(option);
-    fireEvent.keyDown(option, { key: "Enter" });
-  };
-
-  const selectChatMode = async (
-    mode: "build" | "ask" | "plan" | "local-agent",
-  ): Promise<void> => {
-    // One matcher per mode works for both the option text and the trigger's
-    // resulting aria-label ("Chat mode: <name>"): Build/Ask/Plan match verbatim;
-    // "Agent" matches "Agent v2"/"Basic Agent" (pro/non-pro) and the "Agent"/
-    // "Basic Agent" aria label.
-    const matcher: Record<typeof mode, RegExp> = {
-      build: /Build/,
-      ask: /Ask/,
-      plan: /Plan/,
-      "local-agent": /Agent/,
+      });
+      return {
+        sendButton,
+        send: () => fireEvent.click(sendButton),
+      };
     };
-    const trigger = await screen.findByTestId("chat-mode-selector");
-    await selectFromBaseUiSelect(trigger, matcher[mode]);
-    await waitFor(() =>
-      expect(trigger.getAttribute("aria-label")).toMatch(matcher[mode]),
-    );
-  };
 
-  const createChat = async (appId?: number): Promise<number> => {
-    const [row] = await node.db
-      .insert(chats)
-      .values({ appId: appId ?? node.appId })
-      .returning();
-    return row.id;
-  };
+    const waitForEvent = async (
+      channel: string,
+      predicate?: (payload: unknown) => boolean,
+      timeoutMs = 20_000,
+    ): Promise<RendererEvent> => {
+      let match: { channel: string; args: unknown[] } | undefined;
+      await waitFor(
+        () => {
+          match = bridge.sentEvents.find(
+            (e) =>
+              e.channel === channel &&
+              (!predicate || predicate(eventPayload(e))),
+          );
+          expect(match).toBeTruthy();
+        },
+        { timeout: timeoutMs },
+      );
+      return { channel, payload: eventPayload(match!) };
+    };
 
-  const dispose = async (): Promise<void> => {
-    // Teardown ordering is load-bearing (see HYBRID_HARNESS.md "Race-free
-    // teardown"):
-    //   1. unmount React first — stops new UI-driven invokes;
-    //   2. drain in-flight invokes — their handlers read the db;
-    //   3. reset the shared jotai store + query caches;
-    //   4. uninstall the bridge;
-    //   5. THEN dispose the node harness (closes the db, removes temp dir).
-    // Closing the db before (2) throws "Database not initialized" from
-    // still-resolving background queries (proposals, token counts).
-    cleanup();
-    await bridge.settleInFlight();
-    for (const qc of queryClients) {
-      qc.clear();
+    // Predicate that keeps only chat:response:end events for a given chatId (or
+    // all of them when chatId is undefined).
+    const streamEndPredicate = (chatId?: number) =>
+      chatId === undefined
+        ? undefined
+        : (payload: unknown) =>
+            !!payload &&
+            typeof payload === "object" &&
+            (payload as { chatId?: number }).chatId === chatId;
+
+    const matchingStreamEnds = (chatId?: number) => {
+      const predicate = streamEndPredicate(chatId);
+      return bridge.sentEvents.filter(
+        (e) =>
+          e.channel === "chat:response:end" &&
+          (!predicate || predicate(eventPayload(e))),
+      );
+    };
+
+    const eventCount = (channel: string): number =>
+      bridge.sentEvents.filter((e) => e.channel === channel).length;
+
+    const waitForStreamEnd = (
+      chatId?: number,
+      timeoutMs = 20_000,
+    ): Promise<RendererEvent> =>
+      waitForEvent("chat:response:end", streamEndPredicate(chatId), timeoutMs);
+
+    const waitForNextStreamEnd = (
+      chatId?: number,
+      timeoutMs = 20_000,
+    ): Promise<RendererEvent> => {
+      // Snapshot the baseline SYNCHRONOUSLY (before returning the promise) so a
+      // stale end from a prior turn can't satisfy the wait; resolve on the first
+      // matching end past the baseline.
+      const baseline = matchingStreamEnds(chatId).length;
+      let found: { channel: string; args: unknown[] } | undefined;
+      return waitFor(
+        () => {
+          const matches = matchingStreamEnds(chatId);
+          expect(matches.length).toBeGreaterThan(baseline);
+          found = matches[matches.length - 1];
+        },
+        { timeout: timeoutMs },
+      ).then(() => ({
+        channel: "chat:response:end",
+        payload: eventPayload(found!),
+      }));
+    };
+
+    const selectFromBaseUiSelect = async (
+      trigger: HTMLElement,
+      optionMatcher: string | RegExp,
+    ): Promise<void> => {
+      // happy-dom won't open a Base UI Select on a bare click. Focus + ArrowDown
+      // opens the popup; then pointer events + click + Enter on the option commit
+      // the value (a bare click alone does nothing).
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      const option = await screen.findByRole("option", { name: optionMatcher });
+      fireEvent.pointerDown(option);
+      fireEvent.pointerUp(option);
+      fireEvent.click(option);
+      fireEvent.keyDown(option, { key: "Enter" });
+    };
+
+    const selectChatMode = async (
+      mode: "build" | "ask" | "plan" | "local-agent",
+    ): Promise<void> => {
+      // One matcher per mode works for both the option text and the trigger's
+      // resulting aria-label ("Chat mode: <name>"): Build/Ask/Plan match verbatim;
+      // "Agent" matches "Agent v2"/"Basic Agent" (pro/non-pro) and the "Agent"/
+      // "Basic Agent" aria label.
+      const matcher: Record<typeof mode, RegExp> = {
+        build: /Build/,
+        ask: /Ask/,
+        plan: /Plan/,
+        "local-agent": /Agent/,
+      };
+      const trigger = await screen.findByTestId("chat-mode-selector");
+      await selectFromBaseUiSelect(trigger, matcher[mode]);
+      await waitFor(() =>
+        expect(trigger.getAttribute("aria-label")).toMatch(matcher[mode]),
+      );
+    };
+
+    const createChat = async (appId?: number): Promise<number> => {
+      const [row] = await nodeHarness.db
+        .insert(chats)
+        .values({ appId: appId ?? nodeHarness.appId })
+        .returning();
+      return row.id;
+    };
+
+    const dispose = async (): Promise<void> => {
+      // Teardown ordering is load-bearing (see HYBRID_HARNESS.md "Race-free
+      // teardown"):
+      //   1. unmount React first — stops new UI-driven invokes;
+      //   2. drain in-flight invokes — their handlers read the db;
+      //   3. clear per-mount query caches and drop the active jotai store;
+      //   4. uninstall the bridge;
+      //   5. THEN dispose the node harness (closes the db, removes temp dir).
+      // Closing the db before (2) throws "Database not initialized" from
+      // still-resolving background queries (proposals, token counts).
+      let teardownError: unknown;
+      let missingChannels: string[] = [];
+      try {
+        cleanup();
+        await bridge.settleInFlight();
+        missingChannels = [...bridge.missingChannels];
+        for (const qc of queryClients) {
+          qc.clear();
+        }
+        activeStore = undefined;
+        bridge.uninstall();
+        await nodeHarness.dispose();
+      } catch (error) {
+        teardownError = error;
+      } finally {
+        activeHybridChatHarness = false;
+      }
+
+      if (teardownError) {
+        throw teardownError;
+      }
+      if (assertNoMissingChannels && missingChannels.length > 0) {
+        throw new Error(
+          `Hybrid harness renderer invoked channels with no registered handler: ${missingChannels.join(
+            ", ",
+          )}`,
+        );
+      }
+    };
+
+    return {
+      ...nodeHarness,
+      bridge,
+      mount,
+      typeInChat,
+      waitForStreamEnd,
+      waitForNextStreamEnd,
+      eventCount,
+      waitForEvent,
+      selectFromBaseUiSelect,
+      selectChatMode,
+      createChat,
+      dispose,
+    };
+  } catch (error) {
+    activeHybridChatHarness = false;
+    if (node) {
+      await node.dispose();
     }
-    store.set(selectedChatIdAtom, null);
-    store.set(selectedAppIdAtom, null);
-    store.set(chatInputValuesByIdAtom, new Map());
-    store.set(chatMessagesByIdAtom, new Map());
-    bridge.uninstall();
-    await node.dispose();
-  };
-
-  return {
-    ...node,
-    bridge,
-    mount,
-    typeInChat,
-    waitForStreamEnd,
-    waitForNextStreamEnd,
-    eventCount,
-    waitForEvent,
-    selectFromBaseUiSelect,
-    selectChatMode,
-    createChat,
-    dispose,
-  };
+    throw error;
+  }
 }

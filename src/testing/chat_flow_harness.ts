@@ -56,6 +56,11 @@ import {
 const REPO_ROOT = process.cwd();
 const FIXTURES_ROOT = path.join(REPO_ROOT, "e2e-tests", "fixtures");
 const IMPORT_APP_FIXTURES = path.join(FIXTURES_ROOT, "import-app");
+const SECOND_SETUP_ERROR =
+  "Second harness setup in one process — one harness per test FILE " +
+  "(forks pool isolation); split the file";
+
+let activeChatFlowHarness = false;
 
 export interface ChatFlowHarnessOptions {
   /**
@@ -151,210 +156,244 @@ function git(appDir: string, ...args: string[]): string {
 export async function setupChatFlowHarness(
   options: ChatFlowHarnessOptions,
 ): Promise<ChatFlowHarness> {
+  if (activeChatFlowHarness) {
+    throw new Error(SECOND_SETUP_ERROR);
+  }
+  activeChatFlowHarness = true;
+
   const { electronMock } = options;
-  if (!electronMock?.ipcHandlers) {
-    throw new Error(
-      "setupChatFlowHarness requires { electronMock } — the hoisted object " +
-        'passed to vi.mock("electron", ...). See CHAT_FLOW_HARNESS.md.',
-    );
-  }
+  let fakeLlm: FakeLlmServerHandle | undefined;
+  let tmpRoot: string | undefined;
 
-  // NODE_ENV must be "development" before app modules are imported; the hoisted
-  // preamble normally sets it, but assert here to fail loudly if it wasn't.
-  if (process.env.NODE_ENV !== "development") {
-    process.env.NODE_ENV = "development";
-  }
-
-  const fixtureApp = options.fixtureApp ?? "minimal";
-  const fixtureAppDir = path.join(IMPORT_APP_FIXTURES, fixtureApp);
-  if (!fs.existsSync(fixtureAppDir)) {
-    throw new Error(`Unknown fixture app: ${fixtureApp} (${fixtureAppDir})`);
-  }
-
-  // Unique, collision-proof temp root (pid + randomness), parallel-safe.
-  const tmpRoot = path.join(
-    os.tmpdir(),
-    `dyad-chat-flow-${process.pid}-${Math.random().toString(36).slice(2, 10)}`,
-  );
-  const userDataDir = path.join(tmpRoot, "userData");
-  const dumpDir = path.join(tmpRoot, "fake-llm-dumps");
-  fs.rmSync(tmpRoot, { recursive: true, force: true });
-  fs.mkdirSync(userDataDir, { recursive: true });
-  fs.mkdirSync(dumpDir, { recursive: true });
-
-  process.env.DYAD_DEV_USER_DATA_DIR = userDataDir;
-  process.env.FAKE_LLM_DUMP_DIR = dumpDir;
-  process.env.FAKE_LLM_FIXTURES_DIR = FIXTURES_ROOT;
-  if (!options.verboseFakeLlm) {
-    process.env.FAKE_LLM_QUIET = "1";
-  }
-
-  // 1. Fake LLM server on an ephemeral port.
-  const fakeLlm: FakeLlmServerHandle = await startFakeLlmServer();
-  const fakeLlmUrl = fakeLlm.url;
-
-  if (options.useFakeCatalog !== false) {
-    process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
-  }
-
-  // 2. Real sqlite db (drizzle migrations) in the temp userData dir.
-  initializeDatabase();
-
-  // 3. Settings file via the app's own writer (mirrors the e2e test provider).
-  const settings: Partial<UserSettings> = {
-    selectedModel: options.selectedModel ?? {
-      provider: options.provider?.id ?? "testing",
-      name: options.model?.apiName ?? "test-model",
-    },
-    selectedChatMode: options.chatMode ?? "build",
-    autoApproveChanges: options.autoApprove ?? true,
-    enableNativeGit: options.enableNativeGit ?? true,
-    hasRunBefore: true,
-    ...options.settings,
-  };
-  writeSettings(settings);
-
-  // 4. Custom provider + model rows (same shape the Settings UI creates).
-  const providerId = options.provider?.id ?? "testing";
-  await db.insert(language_model_providers).values({
-    id: providerId,
-    name: options.provider?.name ?? "test-provider",
-    api_base_url: options.provider?.apiBaseUrl ?? `${fakeLlmUrl}/v1`,
-  });
-  await db.insert(language_models).values({
-    displayName: options.model?.displayName ?? "test-model",
-    apiName: options.model?.apiName ?? "test-model",
-    customProviderId: providerId,
-    max_output_tokens: options.model?.maxOutputTokens ?? 8192,
-    context_window: options.model?.contextWindow ?? 128_000,
-  });
-
-  // 5. Real app checkout of the fixture + a real git repo.
-  const appDir = path.join(tmpRoot, "app");
-  fs.cpSync(fixtureAppDir, appDir, { recursive: true });
-  git(appDir, "init");
-  git(appDir, "add", "-A");
-  git(appDir, "commit", "-m", "init");
-
-  const [appRow] = await db
-    .insert(apps)
-    .values({ name: fixtureApp, path: appDir })
-    .returning();
-  const [chatRow] = await db
-    .insert(chats)
-    .values({ appId: appRow.id })
-    .returning();
-
-  registerChatStreamHandlers();
-
-  const appId = appRow.id;
-  const chatId = chatRow.id;
-
-  const loadMessages = () =>
-    db.query.messages.findMany({
-      where: eq(messages.chatId, chatId),
-      orderBy: [asc(messages.id)],
-    });
-
-  // Dump files are named `<timestamp>-<rand>.json`, so a lexical sort is
-  // chronological. dumpIndex -1 (default) selects the newest, matching the
-  // order the Playwright PageObject sees when scanning message text.
-  const listDumpPaths = (): string[] => {
-    if (!fs.existsSync(dumpDir)) {
-      return [];
-    }
-    return fs
-      .readdirSync(dumpDir)
-      .filter((f) => f.endsWith(".json"))
-      .sort()
-      .map((f) => path.join(dumpDir, f));
-  };
-
-  const getServerDump = (opts?: ServerDumpOptions): ServerDumpResult =>
-    readServerDump(listDumpPaths(), opts);
-
-  const streamChat = async (
-    prompt: string,
-    streamOptions: Partial<Omit<ChatStreamParams, "chatId" | "prompt">> & {
-      chatId?: number;
-    } = {},
-  ): Promise<StreamChatResult> => {
-    const handler = electronMock.ipcHandlers.get("chat:stream");
-    if (!handler) {
+  try {
+    if (!electronMock?.ipcHandlers) {
       throw new Error(
-        "chat:stream handler not registered — did registerChatStreamHandlers run?",
+        "setupChatFlowHarness requires { electronMock } — the hoisted object " +
+          'passed to vi.mock("electron", ...). See CHAT_FLOW_HARNESS.md.',
       );
     }
-    const events: RendererEvent[] = [];
-    const event = createFakeIpcEvent(events);
-    const { chatId: overrideChatId, ...rest } = streamOptions;
-    const result = await handler(event, {
-      chatId: overrideChatId ?? chatId,
-      prompt,
-      ...rest,
-    });
-    const msgs = await loadMessages();
-    return {
-      chatId: overrideChatId ?? chatId,
-      result,
-      events,
-      messages: msgs,
-      event: (channel) => events.find((e) => e.channel === channel),
-      eventsFor: (channel) => events.filter((e) => e.channel === channel),
-      getServerDump,
-    };
-  };
 
-  const getAppFiles = () => {
-    const data = generateAppFilesSnapshotData(appDir, appDir);
-    return data
-      .filter((f) => f.relativePath !== ".gitattributes")
-      .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-  };
-
-  const readAppFile = (relativePath: string): string => {
-    const full = path.join(appDir, relativePath);
-    if (!fs.existsSync(full)) {
-      throw new Error(`App file not found: ${relativePath}`);
+    // NODE_ENV must be "development" before app modules are imported; the hoisted
+    // preamble normally sets it, but assert here to fail loudly if it wasn't.
+    if (process.env.NODE_ENV !== "development") {
+      process.env.NODE_ENV = "development";
     }
-    return fs.readFileSync(full, "utf-8");
-  };
 
-  const appFileExists = (relativePath: string): boolean =>
-    fs.existsSync(path.join(appDir, relativePath));
+    const fixtureApp = options.fixtureApp ?? "minimal";
+    const fixtureAppDir = path.join(IMPORT_APP_FIXTURES, fixtureApp);
+    if (!fs.existsSync(fixtureAppDir)) {
+      throw new Error(`Unknown fixture app: ${fixtureApp} (${fixtureAppDir})`);
+    }
 
-  const gitLog = (): string[] =>
-    git(appDir, "log", "--oneline").trim().split("\n").filter(Boolean);
+    // Unique, collision-proof temp root (pid + randomness), parallel-safe.
+    tmpRoot = path.join(
+      os.tmpdir(),
+      `dyad-chat-flow-${process.pid}-${Math.random().toString(36).slice(2, 10)}`,
+    );
+    const userDataDir = path.join(tmpRoot, "userData");
+    const dumpDir = path.join(tmpRoot, "fake-llm-dumps");
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+    fs.mkdirSync(userDataDir, { recursive: true });
+    fs.mkdirSync(dumpDir, { recursive: true });
 
-  const dispose = async (): Promise<void> => {
-    try {
-      await fakeLlm.close();
-    } catch {
-      // ignore
+    process.env.DYAD_DEV_USER_DATA_DIR = userDataDir;
+    process.env.FAKE_LLM_DUMP_DIR = dumpDir;
+    process.env.FAKE_LLM_FIXTURES_DIR = FIXTURES_ROOT;
+    if (!options.verboseFakeLlm) {
+      process.env.FAKE_LLM_QUIET = "1";
+    }
+
+    // 1. Fake LLM server on an ephemeral port.
+    fakeLlm = await startFakeLlmServer();
+    const fakeLlmUrl = fakeLlm.url;
+    const fakeLlmHandle = fakeLlm;
+    const tmpRootPath = tmpRoot;
+
+    if (options.useFakeCatalog !== false) {
+      process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
+    }
+
+    // 2. Real sqlite db (drizzle migrations) in the temp userData dir.
+    initializeDatabase();
+
+    // 3. Settings file via the app's own writer (mirrors the e2e test provider).
+    const settings: Partial<UserSettings> = {
+      selectedModel: options.selectedModel ?? {
+        provider: options.provider?.id ?? "testing",
+        name: options.model?.apiName ?? "test-model",
+      },
+      selectedChatMode: options.chatMode ?? "build",
+      autoApproveChanges: options.autoApprove ?? true,
+      enableNativeGit: options.enableNativeGit ?? true,
+      hasRunBefore: true,
+      ...options.settings,
+    };
+    writeSettings(settings);
+
+    // 4. Custom provider + model rows (same shape the Settings UI creates).
+    const providerId = options.provider?.id ?? "testing";
+    await db.insert(language_model_providers).values({
+      id: providerId,
+      name: options.provider?.name ?? "test-provider",
+      api_base_url: options.provider?.apiBaseUrl ?? `${fakeLlmUrl}/v1`,
+    });
+    await db.insert(language_models).values({
+      displayName: options.model?.displayName ?? "test-model",
+      apiName: options.model?.apiName ?? "test-model",
+      customProviderId: providerId,
+      max_output_tokens: options.model?.maxOutputTokens ?? 8192,
+      context_window: options.model?.contextWindow ?? 128_000,
+    });
+
+    // 5. Real app checkout of the fixture + a real git repo.
+    const appDir = path.join(tmpRootPath, "app");
+    fs.cpSync(fixtureAppDir, appDir, { recursive: true });
+    git(appDir, "init");
+    git(appDir, "add", "-A");
+    git(appDir, "commit", "-m", "init");
+
+    const [appRow] = await db
+      .insert(apps)
+      .values({ name: fixtureApp, path: appDir })
+      .returning();
+    const [chatRow] = await db
+      .insert(chats)
+      .values({ appId: appRow.id })
+      .returning();
+
+    registerChatStreamHandlers();
+
+    const appId = appRow.id;
+    const chatId = chatRow.id;
+
+    const loadMessages = () =>
+      db.query.messages.findMany({
+        where: eq(messages.chatId, chatId),
+        orderBy: [asc(messages.id)],
+      });
+
+    // Dump files are named `<timestamp>-<rand>.json`, so a lexical sort is
+    // chronological. dumpIndex -1 (default) selects the newest, matching the
+    // order the Playwright PageObject sees when scanning message text.
+    const listDumpPaths = (): string[] => {
+      if (!fs.existsSync(dumpDir)) {
+        return [];
+      }
+      return fs
+        .readdirSync(dumpDir)
+        .filter((f) => f.endsWith(".json"))
+        .sort()
+        .map((f) => path.join(dumpDir, f));
+    };
+
+    const getServerDump = (opts?: ServerDumpOptions): ServerDumpResult =>
+      readServerDump(listDumpPaths(), opts);
+
+    const streamChat = async (
+      prompt: string,
+      streamOptions: Partial<Omit<ChatStreamParams, "chatId" | "prompt">> & {
+        chatId?: number;
+      } = {},
+    ): Promise<StreamChatResult> => {
+      const handler = electronMock.ipcHandlers.get("chat:stream");
+      if (!handler) {
+        throw new Error(
+          "chat:stream handler not registered — did registerChatStreamHandlers run?",
+        );
+      }
+      const events: RendererEvent[] = [];
+      const event = createFakeIpcEvent(events);
+      const { chatId: overrideChatId, ...rest } = streamOptions;
+      const result = await handler(event, {
+        chatId: overrideChatId ?? chatId,
+        prompt,
+        ...rest,
+      });
+      const msgs = await loadMessages();
+      return {
+        chatId: overrideChatId ?? chatId,
+        result,
+        events,
+        messages: msgs,
+        event: (channel) => events.find((e) => e.channel === channel),
+        eventsFor: (channel) => events.filter((e) => e.channel === channel),
+        getServerDump,
+      };
+    };
+
+    const getAppFiles = () => {
+      const data = generateAppFilesSnapshotData(appDir, appDir);
+      return data
+        .filter((f) => f.relativePath !== ".gitattributes")
+        .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    };
+
+    const readAppFile = (relativePath: string): string => {
+      const full = path.join(appDir, relativePath);
+      if (!fs.existsSync(full)) {
+        throw new Error(`App file not found: ${relativePath}`);
+      }
+      return fs.readFileSync(full, "utf-8");
+    };
+
+    const appFileExists = (relativePath: string): boolean =>
+      fs.existsSync(path.join(appDir, relativePath));
+
+    const gitLog = (): string[] =>
+      git(appDir, "log", "--oneline").trim().split("\n").filter(Boolean);
+
+    const dispose = async (): Promise<void> => {
+      try {
+        try {
+          await fakeLlmHandle.close();
+        } catch {
+          // ignore
+        }
+        try {
+          closeDatabase();
+        } catch {
+          // ignore
+        }
+        fs.rmSync(tmpRootPath, { recursive: true, force: true });
+      } finally {
+        activeChatFlowHarness = false;
+      }
+    };
+
+    return {
+      db,
+      appDir,
+      appId,
+      chatId,
+      userDataDir,
+      fakeLlmUrl,
+      fakeLlmPort: fakeLlmHandle.port,
+      electronMock,
+      streamChat,
+      getServerDump,
+      getAppFiles,
+      readAppFile,
+      appFileExists,
+      gitLog,
+      dispose,
+    };
+  } catch (error) {
+    activeChatFlowHarness = false;
+    if (fakeLlm) {
+      try {
+        await fakeLlm.close();
+      } catch {
+        // ignore
+      }
     }
     try {
       closeDatabase();
     } catch {
       // ignore
     }
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  };
-
-  return {
-    db,
-    appDir,
-    appId,
-    chatId,
-    userDataDir,
-    fakeLlmUrl,
-    fakeLlmPort: fakeLlm.port,
-    electronMock,
-    streamChat,
-    getServerDump,
-    getAppFiles,
-    readAppFile,
-    appFileExists,
-    gitLog,
-    dispose,
-  };
+    if (tmpRoot) {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+    throw error;
+  }
 }

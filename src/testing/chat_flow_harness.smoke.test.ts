@@ -78,6 +78,12 @@ describe("chat flow harness (smoke)", () => {
     expect(eventsFor("chat:response:error")).toHaveLength(0);
   }, 30_000);
 
+  it("rejects a second setup before the active harness is disposed", async () => {
+    await expect(setupChatFlowHarness({ electronMock: h })).rejects.toThrow(
+      "Second harness setup in one process",
+    );
+  });
+
   it("second turn reuses the same chat and appends messages", async () => {
     // The real fake server returns a monotonic counter for "[increment]".
     const { result, messages } = await harness.streamChat("[increment]");

@@ -16,7 +16,15 @@
 // first comment). One benign warning still logs at settings-load — the
 // api.dyad.sh/v1/desktop-config fetch is CORS-blocked; it is caught and
 // harmless. See HYBRID_HARNESS.md.
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const h = vi.hoisted(() => {
   process.env.NODE_ENV = "development";
@@ -45,7 +53,7 @@ vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => {} },
 }));
 
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -66,6 +74,10 @@ describe("hybrid chat harness (smoke)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("clicking Send drives the real chat:stream handler and renders the streamed assistant message", async () => {
@@ -115,9 +127,36 @@ describe("hybrid chat harness (smoke)", () => {
     expect(assistant!.commitHash).toBeTruthy();
     // 4. The renderer got the stream events through the bridge.
     expect(bridgeSawChunk(harness)).toBe(true);
-    // 5. Every channel the UI invoked had a real handler.
-    expect([...harness.bridge.missingChannels]).toEqual([]);
   }, 60_000);
+
+  it("rejects a second setup before the active harness is disposed", async () => {
+    await expect(
+      setupHybridChatHarness({
+        electronMock: h,
+        settings: { isTestMode: true },
+      }),
+    ).rejects.toThrow("Second harness setup in one process");
+  });
+
+  it("uses a fresh jotai store for each mount", async () => {
+    const first = harness.mount();
+    await screen.findByTestId("chat-input-container");
+    const { sendButton } = await harness.typeInChat("draft only");
+    expect((sendButton as HTMLButtonElement).hasAttribute("disabled")).toBe(
+      false,
+    );
+
+    first.unmount();
+
+    const second = harness.mount();
+    const remountedSendButton = await screen.findByLabelText("sendMessage");
+    await waitFor(() => {
+      expect(
+        (remountedSendButton as HTMLButtonElement).hasAttribute("disabled"),
+      ).toBe(true);
+    });
+    second.unmount();
+  }, 30_000);
 });
 
 function bridgeSawChunk(harness: HybridChatHarness): boolean {

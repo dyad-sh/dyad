@@ -32,3 +32,8 @@ production code must read Dyad Engine/Gateway URLs at call time. If a test still
 logs `POST https://engine.dyad.sh/v1/... 401 (Unauthorized)`, search for
 module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
 `getDyadEngineBaseUrl()`.
+
+Full `npm test` runs can fail inside the Codex sandbox before test logic runs
+when OAuth, proxy, or hybrid harness suites bind/connect to loopback ports. If
+the failure is `listen EPERM` or `connect EPERM` for `127.0.0.1`, `localhost`,
+or `::1`, re-run the same command outside the sandbox before debugging tests.

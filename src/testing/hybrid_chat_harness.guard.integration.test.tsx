@@ -22,6 +22,7 @@ describe("hybrid chat harness guards", () => {
         testId: "app-details-page",
         withTitleBar: true,
       },
+      { route: "/database" as const, testId: "database-section" },
       { route: "/settings" as const, text: "Settings" },
       {
         route: "/settings/providers/$provider" as const,

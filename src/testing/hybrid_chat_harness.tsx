@@ -118,6 +118,11 @@ const LazyProviderSettingsPage = lazy(() =>
     default: module.ProviderSettingsPage,
   })),
 );
+const LazyDatabaseSection = lazy(() =>
+  import("@/components/preview_panel/DatabaseSection").then((module) => ({
+    default: module.DatabaseSection,
+  })),
+);
 
 export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
   /**
@@ -146,6 +151,7 @@ export type HybridSurfaceRoute =
   | "/"
   | "/chat"
   | "/app-details"
+  | "/database"
   | "/settings"
   | "/settings/providers/$provider"
   | "/library/media"
@@ -535,6 +541,17 @@ export async function setupHybridChatHarness(
           );
         },
       });
+      const databaseTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/database",
+        component: function HybridDatabaseRoute() {
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyDatabaseSection appId={appId} />
+            </Suspense>
+          );
+        },
+      });
       const settingsTestRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: "/settings",
@@ -588,6 +605,7 @@ export async function setupHybridChatHarness(
         homeLiteRoute,
         chatTestRoute,
         appDetailsTestRoute,
+        databaseTestRoute,
         settingsTestRoute,
         providerSettingsTestRoute,
         mediaTestRoute,
@@ -599,6 +617,8 @@ export async function setupHybridChatHarness(
         initialPath = `/chat${encodeSearch({ id: chatId, appId, ...search })}`;
       } else if (route === "/app-details") {
         initialPath = `/app-details${encodeSearch({ appId, ...search })}`;
+      } else if (route === "/database") {
+        initialPath = `/database${encodeSearch(search)}`;
       } else if (route === "/settings/providers/$provider") {
         const provider = opts.params?.provider ?? "auto";
         initialPath = `/settings/providers/${provider}${encodeSearch(search)}`;

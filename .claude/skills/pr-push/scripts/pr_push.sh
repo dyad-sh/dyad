@@ -367,7 +367,7 @@ push_with_fallback() {
 active_account_is_bot() {
   local account
   account="$(gh api user --jq .login 2>/dev/null || true)"
-  [[ "$account" == *"[bot]" ]]
+  [[ "$account" == *\[bot\] ]]
 }
 
 pr_title() {
@@ -406,10 +406,17 @@ pr_body() {
 base_comparison_ref() {
   local base_remote
   if base_remote="$(remote_for_owner_repo "$BASE_REPO")"; then
-    printf '%s/%s\n' "$base_remote" "$BASE_BRANCH"
-  else
-    printf '%s\n' "$BASE_BRANCH"
+    if ! git show-ref --verify --quiet "refs/remotes/$base_remote/$BASE_BRANCH"; then
+      git fetch "$base_remote" "$BASE_BRANCH" >/dev/null 2>&1 || true
+    fi
+
+    if git show-ref --verify --quiet "refs/remotes/$base_remote/$BASE_BRANCH"; then
+      printf '%s/%s\n' "$base_remote" "$BASE_BRANCH"
+      return
+    fi
   fi
+
+  printf '%s\n' "$BASE_BRANCH"
 }
 
 branch_has_commits_ahead() {

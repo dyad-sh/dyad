@@ -27,6 +27,7 @@ import {
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
+import { DyadSecurityFinding } from "./DyadSecurityFinding";
 import { ipc } from "@/ipc/types";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
@@ -892,6 +893,13 @@ function renderCustomTag(
         <DyadProblemSummary summary={attributes.summary}>
           {content}
         </DyadProblemSummary>
+      );
+
+    case "dyad-security-finding":
+      return (
+        <DyadSecurityFinding title={attributes.title} level={attributes.level}>
+          {content}
+        </DyadSecurityFinding>
       );
 
     case "dyad-chat-summary":

@@ -50,6 +50,41 @@ describe("DyadMarkdownParser dyad-status", () => {
   });
 });
 
+describe("DyadMarkdownParser dyad-security-finding", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders a card with the title and severity level", () => {
+    render(
+      <DyadMarkdownParser
+        content={
+          '<dyad-security-finding title="SQL Injection in User Lookup" level="critical">\nUser input is concatenated into a query.\n</dyad-security-finding>'
+        }
+      />,
+    );
+
+    const card = screen.getByRole("button");
+    expect(screen.getByText("SQL Injection in User Lookup")).toBeTruthy();
+    // SeverityBadge renders the level text.
+    expect(screen.getByText("critical")).toBeTruthy();
+    // critical maps to the red left-accent.
+    expect(card.className).toContain("border-l-red-500");
+  });
+
+  it("falls back gracefully when the level is missing or invalid", () => {
+    render(
+      <DyadMarkdownParser
+        content={'<dyad-security-finding title="Partial finding">'}
+      />,
+    );
+
+    expect(screen.getByText("Partial finding")).toBeTruthy();
+    // No badge is rendered for an unknown level.
+    expect(screen.queryByText("critical")).toBeNull();
+  });
+});
+
 describe("DyadMarkdownParser closed-block render counts", () => {
   beforeEach(() => {
     markdownRenderCounts.clear();

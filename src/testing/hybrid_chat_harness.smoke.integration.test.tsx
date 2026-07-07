@@ -7,8 +7,8 @@
 // sqlite -> `chat:response:chunk` events fan back through the bridge -> jotai
 // atoms update -> the assistant message renders in the DOM.
 //
-// The hybrid Vitest project supplies happy-dom, CORS-relaxed fetch, and shared
-// renderer mocks. See HYBRID_HARNESS.md.
+// The integration Vitest project supplies happy-dom, CORS-relaxed fetch, and
+// shared renderer mocks. See HYBRID_HARNESS.md.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { cleanup, screen, waitFor } from "@testing-library/react";

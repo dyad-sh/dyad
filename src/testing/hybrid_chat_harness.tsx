@@ -23,9 +23,9 @@
  * appearing, an approval control, input clearing, a banner) or about a flow that
  * can only be driven through real UI events. See HYBRID_HARNESS.md.
  *
- * Hybrid tests run under the `hybrid` Vitest project, which supplies happy-dom,
- * the shared electron/posthog/i18n mocks, and the hoisted electron mock handle
- * exported from `src/testing/hybrid.setup.ts`.
+ * Hybrid harness tests run under the `integration` Vitest project, which
+ * supplies happy-dom, the shared electron/posthog/i18n mocks, and the hoisted
+ * electron mock handle exported from `src/testing/hybrid.setup.ts`.
  */
 import {
   act,

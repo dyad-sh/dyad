@@ -15,6 +15,11 @@ const noisyConsolePatterns = [
   /\[test\]/i,
 ];
 
+const hybridIntegrationTests = [
+  "src/ipc/handlers/__tests__/*.integration.test.ts",
+  "src/testing/hybrid_chat_harness.*.integration.test.tsx",
+];
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -35,13 +40,13 @@ export default defineConfig({
           name: "unit",
           environment: "happy-dom",
           include: ["src/**/*.{test,spec}.{ts,tsx}"],
-          exclude: [...configDefaults.exclude, "src/**/*.hybrid.test.{ts,tsx}"],
+          exclude: [...configDefaults.exclude, ...hybridIntegrationTests],
         },
       },
       {
         extends: true,
         test: {
-          name: "hybrid",
+          name: "integration",
           environment: "happy-dom",
           environmentOptions: {
             happyDOM: {
@@ -52,7 +57,7 @@ export default defineConfig({
               },
             },
           },
-          include: ["src/**/*.hybrid.test.{ts,tsx}"],
+          include: hybridIntegrationTests,
           setupFiles: ["src/testing/hybrid.setup.ts"],
           pool: "forks",
         },

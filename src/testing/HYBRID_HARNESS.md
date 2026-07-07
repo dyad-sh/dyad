@@ -30,7 +30,8 @@ If a test would pass with the node harness, use the node harness.
 
 ## 2. Test-file skeleton
 
-Hybrid tests are named `*.hybrid.test.ts`. The Vitest `hybrid` project supplies
+Hybrid harness tests are named `*.integration.test.ts` or
+`*.integration.test.tsx`. The Vitest `integration` project supplies
 the happy-dom environment, `disableSameOriginPolicy`, the shared `electron` /
 PostHog / i18n mocks, `NODE_ENV=development`, and failure DOM dumps via
 `src/testing/hybrid.setup.ts`.
@@ -212,7 +213,7 @@ same `__snapshots__/*.snap` file. The snapshot key is derived from those names,
 so the existing (node-written) snapshot now also gates the UI-driven payload —
 proving that clicking the real Send button sends the LLM **exactly** the same
 `getServerDump()` bytes the node harness did. A drift shows up as a snapshot
-diff. `chat_mode.hybrid.test.ts` does this: its
+diff. `chat_mode.integration.test.ts` does this: its
 `chat-mode-build-all-messages` / `chat-mode-ask-all-messages` snapshots are
 unchanged from the node era. Do not rewrite or `-u` these on conversion — an
 unchanged snapshot is the whole point.
@@ -328,9 +329,9 @@ no longer need a hoisted relay just to know the fake server's ephemeral port.
   effective default, and with Dyad Pro enabled the effective default is
   `local-agent`. An ask-mode hybrid test silently runs in local-agent mode
   unless it drives the real selector: `await harness.selectChatMode("ask")`
-  (see `local_agent_ask.hybrid.test.ts`).
+  (see `local_agent_ask.integration.test.ts`).
 - **Post-stream DOM duplication.** Around stream end, assistant text can
   transiently render in two nodes (streamed + persisted renderings), so
   `getByText` may throw "found multiple elements". Use
   `harness.waitForRenderedText(...)` for text that lands near
-  `chat:response:end` (see `context_compaction.hybrid.test.ts`).
+  `chat:response:end` (see `context_compaction.integration.test.ts`).

@@ -77,20 +77,23 @@ audit of provider-creation sites is the only fiddly part. Do NOT try to patch
 above them silently swallows the options line — a documented trap), plus the
 `vi.hoisted` + three `vi.mock` calls (electron, posthog-js/react,
 react-i18next). At 16 tests it's noise; at 60 it's a maintenance liability.
-Also: hybrid and node tests share the `.integration.test.ts` suffix — you
-cannot tell which harness a test uses without opening it.
+Also: hybrid and node tests both use the `.integration.test.ts` suffix, so the
+Vitest project routing has to identify hybrid harness tests by path/glob rather
+than by a separate filename suffix.
 
 **Design.**
 
-1. Rename the 16 hybrid tests `*.integration.test.ts` → `*.hybrid.test.ts`
-   **and their snapshot files** (`__snapshots__/<name>.snap` is keyed by test
-   filename — `chat_mode`, `context_compaction`, `security_review` have snaps).
-   Keep describe/it names unchanged so snapshot _contents_ stay identical.
+1. Keep hybrid harness tests named `*.integration.test.ts` /
+   `*.integration.test.tsx` **and keep snapshot filenames in sync**
+   (`__snapshots__/<name>.snap` is keyed by test filename — `chat_mode`,
+   `context_compaction`, `security_review` have snaps). Keep describe/it names
+   unchanged so snapshot _contents_ stay identical.
 2. Split vitest config into two projects (vitest `test.projects` /
    workspace):
-   - **unit** (existing behavior): current include, minus
-     `src/**/*.hybrid.test.ts`.
-   - **hybrid**: include `src/**/*.hybrid.test.ts`, `environment: "happy-dom"`,
+   - **unit** (existing behavior): current include, minus the hybrid harness
+     integration globs.
+   - **integration**: include the hybrid harness integration globs,
+     `environment: "happy-dom"`,
      `environmentOptions: { happyDOM: { settings: { fetch: {
 disableSameOriginPolicy: true } } } }`, `setupFiles:
 ["src/testing/hybrid.setup.ts"]`, forks pool (explicit, since parallel
@@ -181,7 +184,7 @@ catch it before committing to the design.
 
 - Any canned assistant response containing a code span renders `CodeHighlight`
   → `useTheme()` throws `useTheme must be used within a ThemeProvider` → route
-  error boundary ("Something went wrong!"). `security_review.hybrid.test.ts`
+  error boundary ("Something went wrong!"). `security_review.integration.test.ts`
   carries a per-test `vi.mock("@/contexts/ThemeContext")` workaround; every
   future test with code in fixtures will hit this.
 - Toasts have nowhere to render (no `<Toaster>` in the tree), so `undo` had to
@@ -233,7 +236,7 @@ unknown, and it's timeboxed with a fallback.
 3. `settleInFlight` on timeout: `console.warn` (or throw behind an option) the
    pending channels from the Map — e.g. `settleInFlight timed out; pending:
 ["chat:stream", "get-proposal"]`.
-4. Update `cancelled_message.hybrid.test.ts` to restore the envelope
+4. Update `cancelled_message.integration.test.ts` to restore the envelope
    assertion via `bridge.lastInvoke("chat:cancel")`.
 
 **Verification.** All 16 hybrid tests green (waits API-compatible);

@@ -14,7 +14,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/dyad-errors.md](rules/dyad-errors.md)                         | Classifying IPC/main errors with `DyadError` / `DyadErrorKind` and PostHog exception filtering                                                                                 |
 | [rules/local-agent-tools.md](rules/local-agent-tools.md)             | Adding/modifying local agent tools, tool flags (`modifiesState`), or read-only/plan-only guards                                                                                |
 | [rules/e2e-testing.md](rules/e2e-testing.md)                         | Writing or debugging E2E tests (Playwright, Base UI radio clicks, Lexical editor, test fixtures)                                                                               |
-| [rules/hybrid-testing.md](rules/hybrid-testing.md)                   | Writing or debugging hybrid renderer+IPC Vitest tests, especially fake Dyad Engine/Gateway routing                                                                             |
+| [rules/hybrid-testing.md](rules/hybrid-testing.md)                   | Writing or debugging Vitest integration tests, especially renderer+IPC harness tests and fake Dyad Engine/Gateway routing                                                      |
 | [rules/git-workflow.md](rules/git-workflow.md)                       | Pushing branches, creating PRs, or dealing with fork/upstream remotes                                                                                                          |
 | [rules/base-ui-components.md](rules/base-ui-components.md)           | Using TooltipTrigger, ToggleGroupItem, or other Base UI wrapper components                                                                                                     |
 | [rules/database-drizzle.md](rules/database-drizzle.md)               | Modifying the database schema, generating migrations, or resolving migration conflicts                                                                                         |
@@ -122,7 +122,7 @@ Use these guidelines whenever you work within this repository.
 
 ## Testing
 
-Our project relies on a combination of unit testing and E2E testing. Unless your change is trivial, you MUST add a test, preferably an e2e test case.
+Our project relies on a combination of unit tests, Vitest integration tests, and Playwright E2E tests. Unless your change is trivial, you MUST add a test; prefer the narrowest test type that proves the behavior.
 
 ### Unit testing
 
@@ -131,6 +131,12 @@ Use unit testing for pure business logic and util functions.
 Target a Vitest file with `npm test -- path/to/file.test.ts`. Do not pass Jest-only flags such as `--runInBand`; Vitest will fail with `Unknown option '--runInBand'`.
 
 Package-local Vitest suites may use their own config and not match the root `npm test -- path` include globs. For example, run `npm --prefix packages/ts-pg-schema-diff test` and `npm --prefix packages/ts-pg-schema-diff run typecheck` for `packages/ts-pg-schema-diff`.
+
+### Vitest integration testing
+
+Use Vitest integration tests (`*.integration.test.ts` / `*.integration.test.tsx`) when the behavior spans real app modules such as IPC handlers, sqlite, git, fake LLM/Engine routes, or renderer+IPC wiring, but does not require a packaged Electron app or browser-only behavior. Prefer this over Playwright when you can assert the behavior through the chat-flow or renderer+IPC harness with deterministic fake services.
+
+Use Playwright E2E instead when the test needs the packaged Electron runtime, real browser/Electron behavior, native dialogs, screenshots, Monaco/Lexical browser interactions, full navigation flows, or confidence that only the real app shell provides. See [rules/hybrid-testing.md](rules/hybrid-testing.md) for integration-test guidance and [rules/e2e-testing.md](rules/e2e-testing.md) for Playwright guidance.
 
 If `npm test` fails in files unrelated to your change, verify the failure is pre-existing before debugging: `git worktree add /tmp/main-check main`, symlink the repo's `node_modules` into it, and run the failing test file there. If it also fails on clean main, note it in the PR summary and move on. (Known example: `src/ipc/handlers/app_collection_handlers.test.ts` failed on main as of 2026-07-01.)
 

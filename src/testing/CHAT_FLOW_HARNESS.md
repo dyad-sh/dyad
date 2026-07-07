@@ -23,8 +23,9 @@ the two migrated specs under `src/ipc/handlers/__tests__/`.
 > renders the real `<ChatPanel>` (React Testing Library under happy-dom) over
 > this same real IPC stack, so clicking the real Send button drives the whole
 > flow and the streamed message lands in the DOM. See
-> [HYBRID_HARNESS.md](./HYBRID_HARNESS.md). Prefer this node harness whenever a
-> test only needs files / git / db / `[dump]` assertions.
+> [HYBRID_HARNESS.md](./HYBRID_HARNESS.md). Hybrid files use the
+> `*.hybrid.test.ts` suffix. Prefer this node harness whenever a test only needs
+> files / git / db / `[dump]` assertions.
 
 > ⚠️ **Migration agents MUST NOT edit the harness files**
 > (`chat_flow_harness.ts`, `electron_mock.ts`, `server_dump.ts`, or anything in

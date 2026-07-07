@@ -28,43 +28,22 @@ If a test would pass with the node harness, use the node harness.
 
 ---
 
-## 2. Test-file preamble (copy verbatim)
+## 2. Test-file skeleton
 
-The environment pragmas, `vi.hoisted`, and the three `vi.mock`s are hoisted
-per-file and **cannot** live inside the helper.
+Hybrid tests are named `*.hybrid.test.ts`. The Vitest `hybrid` project supplies
+the happy-dom environment, `disableSameOriginPolicy`, the shared `electron` /
+PostHog / i18n mocks, `NODE_ENV=development`, and failure DOM dumps via
+`src/testing/hybrid.setup.ts`.
 
 ```tsx
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  return { ipcHandlers: new Map() };
-});
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 
 describe("my UI feature (hybrid)", () => {
   let harness: HybridChatHarness;
@@ -91,19 +70,23 @@ describe("my UI feature (hybrid)", () => {
 });
 ```
 
-Notes on the preamble:
+Notes:
 
-- **Environment is `happy-dom`, not `node`** (RTL needs a DOM). This is the
-  opposite of the node harness. Keep the pragmas at the **very top of the file**
-  — vitest only reads the env docblock from the first comment; a JSDoc above it
-  swallows the `-options` line.
 - `settings: { isTestMode: true }` makes `MessagesList` render a plain
   (non-Virtuoso) list — the same path the Playwright suite renders and the one
   `screen.getByText` can see.
-- The three mocks are the **only** ones needed: `electron` (the shared node-mock),
+- The setup file's three mocks are the **only** shared mocks needed: `electron`
+  (the shared node-mock),
   `posthog-js/react` (offline telemetry), `react-i18next` (so `t()` works without
   the renderer's i18next bootstrap). Lexical, framer-motion, and Virtuoso mount
   cleanly — do not mock them.
+- If a test needs import-time env such as `DYAD_ENGINE_URL` or
+  `E2E_TEST_BUILD`, keep a small local `vi.hoisted` block before app imports and
+  still pass `electronMock: h` from `@/testing/hybrid.setup`.
+- On test failure, `src/testing/hybrid.setup.ts` prints
+  `prettyDOM(document.body, 20_000)`. Bridge event history is still available on
+  `harness.bridge.sentEvents`; automatic failure printing of those events needs
+  a future harness/bridge hook to expose the active bridge to the setup file.
 
 ---
 
@@ -223,7 +206,7 @@ same `__snapshots__/*.snap` file. The snapshot key is derived from those names,
 so the existing (node-written) snapshot now also gates the UI-driven payload —
 proving that clicking the real Send button sends the LLM **exactly** the same
 `getServerDump()` bytes the node harness did. A drift shows up as a snapshot
-diff. `chat_mode.integration.test.ts` does this: its
+diff. `chat_mode.hybrid.test.ts` does this: its
 `chat-mode-build-all-messages` / `chat-mode-ask-all-messages` snapshots are
 unchanged from the node era. Do not rewrite or `-u` these on conversion — an
 unchanged snapshot is the whole point.
@@ -285,8 +268,6 @@ applies: **one harness per test file**, run under the default forks pool.
 
 - **Missing `waitForStreamEnd` before main-side asserts** → flaky files/git/db
   and teardown "Database not initialized". See §5.
-- **Env docblock not at the very top** → the `-options` line is ignored. Keep the
-  two `// @vitest-environment*` lines as the first thing in the file.
 - **Mounting `ChatPage` instead of `ChatPanel`** → pulls in Monaco/iframe and
   hangs. Always mount via `harness.mount()`.
 - **Trying to type into the editor** → happy-dom can't. Use `typeInChat`. See §4.
@@ -335,11 +316,13 @@ exercise engine/gateway routes, start a second fake-LLM server (or relay) inside
 `vi.hoisted` and set the env vars there, before any app module imports:
 
 ```tsx
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
-  // Point engine/gateway at a relay started here, before app modules load.
-  // process.env.DYAD_ENGINE_URL = "http://127.0.0.1:<relayPort>/engine";
-  return { ipcHandlers: new Map() };
+const engineServer = await vi.hoisted(async () => {
+  const { startFakeLlmServer } =
+    await import("../../../../testing/fake-llm-server/index");
+  const server = await startFakeLlmServer();
+  process.env.DYAD_ENGINE_URL = `${server.url}/engine/v1`;
+  process.env.DYAD_GATEWAY_URL = `${server.url}/gateway/v1`;
+  return server;
 });
 ```
 
@@ -373,9 +356,9 @@ A first-class harness option for this is a welcome follow-up; for now the
   effective default, and with Dyad Pro enabled the effective default is
   `local-agent`. An ask-mode hybrid test silently runs in local-agent mode
   unless it drives the real selector: `await harness.selectChatMode("ask")`
-  (see `local_agent_ask.integration.test.ts`).
+  (see `local_agent_ask.hybrid.test.ts`).
 - **Post-stream DOM duplication.** Around stream end, assistant text can
   transiently render in two nodes (streamed + persisted renderings), so
   `getByText` may throw "found multiple elements". Use
   `getAllByText(...).length > 0` in `waitFor` for text that lands near
-  `chat:response:end` (see `context_compaction.integration.test.ts`).
+  `chat:response:end` (see `context_compaction.hybrid.test.ts`).

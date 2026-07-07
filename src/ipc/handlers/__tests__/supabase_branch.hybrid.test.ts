@@ -1,6 +1,3 @@
-// @vitest-environment happy-dom
-// @vitest-environment-options {"happyDOM": {"settings": {"fetch": {"disableSameOriginPolicy": true}}}}
-//
 // Migrated from e2e-tests/supabase_branch.spec.ts ("supabase branch selection
 // works"), then converted from the node chat-flow harness to the HYBRID
 // harness (real <ChatPanel> over the real IPC stack).
@@ -18,32 +15,11 @@
 // used).
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => {
-  process.env.NODE_ENV = "development";
+vi.hoisted(() => {
   // Routes the Supabase management client/context to their mock test-build
   // implementations (the same ones the Playwright suite used).
   process.env.E2E_TEST_BUILD = "true";
-  return { ipcHandlers: new Map() };
 });
-
-vi.mock("electron", async () => {
-  const { createElectronMock } = await import("@/testing/electron_mock");
-  return createElectronMock(h);
-});
-
-vi.mock("posthog-js/react", () => ({
-  usePostHog: () => ({ capture: vi.fn() }),
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) =>
-      typeof fallback === "string" ? fallback : key,
-    i18n: { language: "en", changeLanguage: async () => {} },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children ?? null,
-  initReactI18next: { type: "3rdParty", init: () => {} },
-}));
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
@@ -51,6 +27,7 @@ import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
+import { h } from "@/testing/hybrid.setup";
 import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "@/ipc/contracts/core";
 import { db } from "@/db";
 import { apps } from "@/db/schema";

@@ -63,6 +63,11 @@ jobs:
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Use clang for Linux native rebuilds
+        if: matrix.os.name == 'linux'
+        run: |
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
       - name: add macos cert
         if: contains(matrix.os.name, 'macos')
         env:

@@ -54,24 +54,15 @@ export class ModelPicker {
     }
 
     if (!(await this.clickMenuItemIfVisible(provider, false))) {
-      if (await this.clickMenuItemIfVisible("More models")) {
-        await this.getMenuItem(provider, false).click();
-      } else {
-        await this.getMenuItem("Other AI providers", false).click();
-        await this.getMenuItem(provider, false).click();
-      }
+      await this.getMenuItem("More models").click();
+      await this.getMenuItem(provider, false).click();
     }
     await this.clickModel(model);
   }
 
   async selectTestModel() {
-    await this.page.getByTestId("model-picker").click();
-    const providerItem = this.getMenuItem("test-provider", false);
-    await expect(providerItem).toBeVisible();
-    await providerItem.click();
-    const modelItem = this.getMenuItem("test-model");
-    await expect(modelItem).toBeVisible();
-    await modelItem.click();
+    // Custom provider models appear directly in the flat tier list.
+    await this.selectModel({ provider: "test-provider", model: "test-model" });
   }
 
   async selectTestOllamaModel() {
@@ -90,7 +81,7 @@ export class ModelPicker {
 
   async selectTestAzureModel() {
     await this.page.getByTestId("model-picker").click();
-    await this.getMenuItem("Other AI providers", false).click();
+    await this.getMenuItem("More models").click();
     await this.getMenuItem("Azure OpenAI", false).click();
     await this.clickModel("GPT-5");
   }

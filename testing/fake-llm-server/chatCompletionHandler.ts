@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { CANNED_MESSAGE, createStreamChunk } from ".";
+import { CANNED_MESSAGE, createStreamChunk } from "./index";
 import {
   handleLocalAgentFixture,
   extractLocalAgentFixture,
@@ -11,6 +11,8 @@ import {
   buildExploreCodeSubmitReportArgs,
   isExploreCodeSubagentPrompt,
 } from "./exploreCodeFixtures";
+import { fakeLlmLog } from "./log";
+import { resolveDumpDir, resolveFixturesDir } from "./paths";
 
 let globalCounter = 0;
 
@@ -126,7 +128,7 @@ async function streamToolCall(
 export const createChatCompletionHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { stream = false, messages = [] } = req.body;
-    console.log("* Received messages", messages);
+    fakeLlmLog("* Received messages", messages);
 
     if (hasInvalidApiKey(req)) {
       // The Dyad engine (a LiteLLM proxy) reports auth failures as an SSE
@@ -216,7 +218,7 @@ export const createChatCompletionHandler =
       }
     }
 
-    console.error(
+    fakeLlmLog(
       `[local-agent] Checking message: "${userTextContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
     );
     if (localAgentFixture) {
@@ -432,7 +434,7 @@ export default Index;
       }
     }
 
-    console.error("LASTMESSAGE", lastMessage);
+    fakeLlmLog("LASTMESSAGE", lastMessage);
     // Check if the last message is "[dump]" to write messages to file and return path
     if (
       lastMessage &&
@@ -452,16 +454,7 @@ export default Index;
       lastMessage.content.startsWith("/security-review")
     ) {
       messageContent = fs.readFileSync(
-        path.join(
-          __dirname,
-          "..",
-          "..",
-          "..",
-          "e2e-tests",
-          "fixtures",
-          "security-review",
-          "findings.md",
-        ),
+        path.join(resolveFixturesDir(), "security-review", "findings.md"),
         "utf-8",
       );
       messageContent += "\n\n" + generateDump(req);
@@ -481,14 +474,9 @@ export default Index;
       !lastMessage.content.startsWith("tc=local-agent/")
     ) {
       const testCaseName = lastMessage.content.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
-      console.error(`* Loading test case: ${testCaseName}`);
+      fakeLlmLog(`* Loading test case: ${testCaseName}`);
       const testFilePath = path.join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "e2e-tests",
-        "fixtures",
+        resolveFixturesDir(),
         prefix,
         `${testCaseName}.md`,
       );
@@ -740,14 +728,22 @@ export default Index;
 
 export function generateDump(req: Request) {
   const timestamp = Date.now();
-  const generatedDir = path.join(__dirname, "generated");
+  // The vitest chat-flow harness points FAKE_LLM_DUMP_DIR at a unique temp dir
+  // so concurrent test files never share the dump folder. The standalone CLI
+  // (Playwright) falls back to the historical ./generated location.
+  const generatedDir = resolveDumpDir();
 
   // Create generated directory if it doesn't exist
   if (!fs.existsSync(generatedDir)) {
     fs.mkdirSync(generatedDir, { recursive: true });
   }
 
-  const dumpFilePath = path.join(generatedDir, `${timestamp}.json`);
+  // Include a random suffix so parallel processes writing in the same
+  // millisecond cannot collide on the dump filename.
+  const dumpFilePath = path.join(
+    generatedDir,
+    `${timestamp}-${Math.random().toString(36).slice(2, 8)}.json`,
+  );
 
   try {
     fs.writeFileSync(

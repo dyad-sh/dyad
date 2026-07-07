@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`context compaction (integration) > compaction can run mid-turn > compaction-mid-turn-transcript 1`] = `
+"===
+role: user
+message: [{"type":"text","text":"tc=local-agent/compaction-mid-turn"}]
+
+===
+role: assistant
+message: [{"type":"text","text":"<dyad-compaction title=\\"Conversation compacted\\" state=\\"finished\\">\\n## Key Decisions Made\\n- Completed initial task as requested\\n\\n## Current Task State\\nConversation was compacted to save context space.\\n</dyad-compaction>\\n\\nIf you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]\\nNote: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file."},{"type":"text","text":"post-compaction step"},{"type":"tool_use","id":"[[TOOL_CALL_0]]","name":"read_file","input":{"path":"SOMEFILE.md"}}]
+
+===
+role: user
+message: [{"type":"tool_result","tool_use_id":"[[TOOL_CALL_0]]","content":"File does not exist: SOMEFILE.md","is_error":true}]
+
+===
+role: assistant
+message: [{"type":"text","text":"END OF COMPACTED TURN."}]
+
+===
+role: user
+message: [{"type":"text","text":"[dump] hi"}]"
+`;
+
+exports[`context compaction (integration) > compaction triggers and shows summary > compaction-post-summary-transcript 1`] = `
+"===
+role: assistant
+message: [{"type":"text","text":"<dyad-compaction title=\\"Conversation compacted\\" state=\\"finished\\">\\n## Key Decisions Made\\n- Completed initial task as requested\\n\\n## Current Task State\\nConversation was compacted to save context space.\\n</dyad-compaction>\\n\\nIf you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]\\nNote: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file."}]
+
+===
+role: user
+message: [{"type":"text","text":"tc=local-agent/simple-response"}]
+
+===
+role: assistant
+message: [{"type":"text","text":"Hello! I understand your request. This is a simple response from the Basic Agent mode."}]
+
+===
+role: user
+message: [{"type":"text","text":"[dump] hi"}]"
+`;

@@ -175,6 +175,15 @@ function getManagedPnpmInstallPromise(): Promise<string> {
 }
 
 function scheduleManagedPnpmInstall(currentPnpmVersion: string | null): void {
+  // The implicit background install runs `npm install pnpm`, which does real
+  // network + filesystem work. Integration tests that register the full IPC
+  // surface (e.g. the hybrid chat harness) trigger this via the UI's
+  // `nodejs-status` query; the flag lets them opt out of the side effect. It
+  // only skips the *implicit* convenience install — an explicit `installPnpm`
+  // handler call is unaffected.
+  if (process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL === "true") {
+    return;
+  }
   if (managedPnpmInstallPromise) {
     logger.info("Dyad-managed pnpm install is already in progress.");
     return;

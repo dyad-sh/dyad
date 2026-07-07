@@ -212,6 +212,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 - In the merged `html-report` artifact's `results.json`, failure screenshots are embedded as base64 in `attachments[].body` (the `path` field is empty or CI-side); decode the body to view them. Trace zips live in the artifact's `data/` directory, keyed by the hash in the CI-side path.
 - Before root-causing a failure on a PR branch, download the `html-report` from a recent main-branch CI run and check whether the same spec fails there — pre-existing main failures are out of scope for the PR's deflake.
+- If every E2E shard fails during discovery with `Vitest cannot be imported in a CommonJS module using require()` and the merged report stats are all zero, Playwright probably collected a Vitest helper test under `e2e-tests`. Keep Playwright collection scoped to E2E `*.spec.ts` files and run helper `*.test.ts` files with `npm test`.
 
 ## Real Socket Firewall E2E tests
 

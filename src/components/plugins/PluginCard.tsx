@@ -60,7 +60,7 @@ export function PluginCard({
     serverId: number,
     toolName: string,
     consent: McpToolConsent["consent"],
-  ) => void;
+  ) => Promise<void>;
   onEnableOAuthAndRetry: (serverId: number) => void;
   onDisableOAuthAndRetry: (serverId: number) => void;
 }) {
@@ -191,13 +191,14 @@ export function PluginCard({
               <div className="flex items-center gap-2">
                 <Select
                   value={consents[`${s.id}:${t.name}`] || "ask"}
-                  onValueChange={(v) =>
+                  onValueChange={(v) => {
+                    // The mutation already shows an error toast.
                     onSetToolConsent(
                       s.id,
                       t.name,
                       v as McpToolConsent["consent"],
-                    )
-                  }
+                    ).catch(() => {});
+                  }}
                 >
                   <SelectTrigger className="w-[140px] h-8">
                     <SelectValue />

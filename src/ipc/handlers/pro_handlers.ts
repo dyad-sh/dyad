@@ -24,6 +24,14 @@ const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
 const typedHandle = createLoggedTypedHandler(logger);
 
+function getUserInfoUrl() {
+  // Overridable so tests point at the fake LLM server instead of the real API.
+  if (process.env.DYAD_USER_INFO_URL) {
+    return process.env.DYAD_USER_INFO_URL;
+  }
+  return "https://api.dyad.sh/v1/user/info";
+}
+
 export function registerProHandlers() {
   // This method should try to avoid throwing errors because this is auxiliary
   // information and isn't critical to using the app
@@ -52,7 +60,7 @@ export function registerProHandlers() {
       return null;
     }
 
-    const url = "https://api.dyad.sh/v1/user/info";
+    const url = getUserInfoUrl();
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,

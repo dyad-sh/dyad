@@ -26,6 +26,9 @@ describe("voice-to-text chat input controls (integration)", () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
       autoApprove: true,
+      // Tests below enable Dyad Pro, which triggers free-quota fetches; route
+      // them to the fake engine instead of the real engine.dyad.sh.
+      engine: true,
       settings: { isTestMode: true },
     });
   }, 60_000);

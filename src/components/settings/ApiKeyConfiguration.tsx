@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Info, KeyRound, Trash2, Clipboard, Eye, EyeOff } from "lucide-react";
+import {
+  ArrowUp,
+  Info,
+  KeyRound,
+  Trash2,
+  Clipboard,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Accordion,
@@ -7,6 +15,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AzureConfiguration } from "./AzureConfiguration";
 import { VertexConfiguration } from "./VertexConfiguration";
 import { Input } from "@/components/ui/input";
@@ -44,6 +57,8 @@ interface ApiKeyConfigurationProps {
   onDeleteKey: () => Promise<void>;
   isDyad: boolean;
   updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
+  highlightPasteButton?: boolean;
+  onDismissPasteHighlight?: () => void;
 }
 
 export function ApiKeyConfiguration({
@@ -63,6 +78,8 @@ export function ApiKeyConfiguration({
   onDeleteKey,
   isDyad,
   updateSettings,
+  highlightPasteButton = false,
+  onDismissPasteHighlight,
 }: ApiKeyConfigurationProps) {
   const [showUserApiKey, setShowUserApiKey] = useState(false);
   const [prevProvider, setPrevProvider] = useState(provider);
@@ -193,33 +210,63 @@ export function ApiKeyConfiguration({
                 placeholder={`Enter new ${providerDisplayName} API Key here`}
                 className={`flex-grow ${saveError ? "border-red-500" : ""}`}
               />
-              <Button
-                onClick={async () => {
-                  let text = "";
-                  try {
-                    text = await navigator.clipboard.readText();
-                  } catch (error) {
-                    showError("Failed to paste from clipboard");
-                    console.error("Failed to paste from clipboard", error);
-                    return;
-                  }
-
-                  if (text) {
-                    await handleSave(text);
+              <Popover
+                open={highlightPasteButton}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    onDismissPasteHighlight?.();
                   }
                 }}
-                disabled={isMutatingKey}
-                variant="outline"
-                size="icon"
-                title="Paste from clipboard and save"
-                aria-label="Paste from clipboard and save"
               >
-                <Clipboard className="h-4 w-4" />
-              </Button>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      onClick={async () => {
+                        let text = "";
+                        try {
+                          text = await navigator.clipboard.readText();
+                        } catch (error) {
+                          showError("Failed to paste from clipboard");
+                          console.error(
+                            "Failed to paste from clipboard",
+                            error,
+                          );
+                          return;
+                        }
+
+                        if (text) {
+                          await handleSave(text);
+                        }
+                      }}
+                      disabled={isMutatingKey}
+                      variant={apiKeyInput ? "outline" : "default"}
+                      className={
+                        highlightPasteButton
+                          ? "ring-4 ring-primary/60 shadow-lg shadow-primary/30"
+                          : undefined
+                      }
+                      title="Paste from clipboard and save"
+                    >
+                      <Clipboard className="h-4 w-4" />
+                      Paste & Save
+                    </Button>
+                  }
+                />
+                <PopoverContent
+                  side="bottom"
+                  align="center"
+                  className="w-fit py-2 px-3 bg-background text-primary shadow-lg ring-1 ring-primary/40"
+                >
+                  <div className="text-sm font-semibold flex items-center gap-1">
+                    <ArrowUp /> Copied your API key? Click to paste & save it
+                  </div>
+                </PopoverContent>
+              </Popover>
 
               <Button
                 onClick={() => handleSave(apiKeyInput)}
                 disabled={isMutatingKey || !apiKeyInput}
+                variant={apiKeyInput ? "default" : "outline"}
               >
                 {isSaving ? "Saving..." : "Save Key"}
               </Button>

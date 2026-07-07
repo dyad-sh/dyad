@@ -150,9 +150,7 @@ testSetup.describe("Setup Flow", () => {
         (key) => navigator.clipboard.writeText(key),
         apiKey,
       );
-      await po.page
-        .getByRole("button", { name: "Paste from clipboard and save" })
-        .click();
+      await po.page.getByRole("button", { name: "Paste & Save" }).click();
       await expectProviderApiKeySaved(po, "google", apiKey);
 
       await expect(

@@ -11,11 +11,10 @@ import {
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
 import { gitIsIgnoredIso } from "./git_utils";
+import { getDyadEngineBaseUrl } from "./dyad_engine_url";
 
 const logger = log.scope("cloud_sandbox_provider");
 
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 const CLOUD_SANDBOX_EXCLUDED_DIRS = new Set(["node_modules", ".git", ".next"]);
 const CLOUD_SANDBOX_ROOT_ALLOWLIST = new Set([".env", ".env.local"]);
 
@@ -243,7 +242,7 @@ async function cloudSandboxFetch(
     headers.set("Authorization", `Bearer ${apiKey}`);
   }
 
-  const response = await fetch(`${DYAD_ENGINE_URL}${endpoint}`, {
+  const response = await fetch(`${getDyadEngineBaseUrl()}${endpoint}`, {
     ...init,
     headers,
   });

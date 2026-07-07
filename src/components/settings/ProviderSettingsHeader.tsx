@@ -23,6 +23,7 @@ interface ProviderSettingsHeaderProps {
   hasFreeTier?: boolean;
   providerWebsiteUrl?: string;
   isDyad: boolean;
+  onOpenProviderWebsite?: () => void;
 }
 
 function getKeyButtonText({
@@ -47,11 +48,13 @@ export function ProviderSettingsHeader({
   hasFreeTier,
   providerWebsiteUrl,
   isDyad,
+  onOpenProviderWebsite,
 }: ProviderSettingsHeaderProps) {
   const handleGetApiKeyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (providerWebsiteUrl) {
       ipc.system.openExternalUrl(providerWebsiteUrl);
+      onOpenProviderWebsite?.();
     }
   };
 

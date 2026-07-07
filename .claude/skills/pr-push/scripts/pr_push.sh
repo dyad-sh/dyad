@@ -269,8 +269,29 @@ remote_for_owner_repo() {
   return 1
 }
 
-no_pr_found_error() {
-  grep -qiE 'no (open )?pull requests? found|no pull request found' <<<"$1"
+find_existing_pr_for_branch() {
+  local branch="$1" number_output url_output
+
+  if ! number_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json number --jq '.[0].number // empty' 2>&1)"; then
+    printf '%s\n' "$number_output" >&2
+    die "Unable to list existing PRs"
+  fi
+
+  [[ -n "$number_output" ]] || return 1
+
+  if ! url_output="$(gh pr list --repo "$BASE_REPO" --head "$branch" --json url --jq '.[0].url // empty' 2>&1)"; then
+    printf '%s\n' "$url_output" >&2
+    die "Unable to read existing PR URL"
+  fi
+
+  PR_NUMBER="$number_output"
+  PR_URL="$url_output"
+  return 0
+}
+
+pr_head_repo() {
+  local pr_number="$1"
+  gh api "repos/$BASE_REPO/pulls/$pr_number" --jq .head.repo.full_name
 }
 
 push_with_fallback() {
@@ -305,18 +326,19 @@ push_with_fallback() {
     git branch --unset-upstream >/dev/null 2>&1 || true
   fi
 
-  local pr_head_repo pr_view_output matched_remote
-  if pr_view_output="$(gh pr view "$branch" --repo "$BASE_REPO" --json headRepository --jq .headRepository.nameWithOwner 2>&1)"; then
-    pr_head_repo="$pr_view_output"
+  local pr_head_repo_name pr_view_output matched_remote
+  if find_existing_pr_for_branch "$branch"; then
+    pr_view_output="$(pr_head_repo "$PR_NUMBER" 2>&1)" || {
+      printf '%s\n' "$pr_view_output" >&2
+      die "Unable to check existing PR head repository before push"
+    }
+    pr_head_repo_name="$pr_view_output"
     while IFS= read -r remote; do
-      if [[ "$(remote_owner_repo "$remote")" == "$pr_head_repo" ]]; then
+      if [[ "$(remote_owner_repo "$remote")" == "$pr_head_repo_name" ]]; then
         matched_remote="$remote"
         break
       fi
     done < <(git remote)
-  elif ! no_pr_found_error "$pr_view_output"; then
-    printf '%s\n' "$pr_view_output" >&2
-    die "Unable to check existing PR before push"
   fi
 
   PUSH_REMOTE="${matched_remote:-$DEFAULT_REMOTE}"
@@ -407,20 +429,12 @@ branch_has_commits_ahead() {
 }
 
 create_or_update_pr() {
-  local view_output branch head_owner title body create_error create_error_file
+  local branch head_owner title body create_error create_error_file
 
   branch="$(current_branch)"
-  if PR_NUMBER="$(gh pr view "$branch" --repo "$BASE_REPO" --json number --jq .number 2>&1)"; then
-    PR_URL="$(gh pr view "$branch" --repo "$BASE_REPO" --json url --jq .url)"
+  if find_existing_pr_for_branch "$branch"; then
     log "PR already exists: $PR_URL"
   else
-    view_output="$PR_NUMBER"
-    PR_NUMBER=""
-    if ! no_pr_found_error "$view_output"; then
-      printf '%s\n' "$view_output" >&2
-      die "Unable to check PR state"
-    fi
-
     if ! branch_has_commits_ahead; then
       log "Skipping PR creation because $PR_SKIPPED_REASON"
       return

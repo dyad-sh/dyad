@@ -366,7 +366,7 @@ create_or_update_pr() {
 
 print_summary() {
   printf '\nPR push summary\n'
-  printf '---------------\n'
+  printf -- '---------------\n'
   printf 'Branch: %s\n' "$(current_branch)"
   [[ -n "$CREATED_BRANCH" ]] && printf 'Created branch: %s\n' "$CREATED_BRANCH"
   printf 'Committed files:\n'

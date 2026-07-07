@@ -63,7 +63,12 @@ import {
 } from "./chat_flow_harness";
 import type { RendererEvent } from "./electron_mock";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { chatInputValuesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import {
+  attachmentsAtom,
+  chatInputValuesByIdAtom,
+  selectedChatIdAtom,
+} from "@/atoms/chatAtoms";
+import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
@@ -79,6 +84,7 @@ import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
+import type { ComponentSelection, FileAttachment } from "@/ipc/types";
 import { setModelClientFetchForTesting } from "@/ipc/utils/get_model_client";
 // Import from the dedicated schema module, NOT "@/routes/chat": the route file
 // statically imports ChatPage -> PreviewPanel -> Monaco, which would load into
@@ -198,6 +204,14 @@ export interface TypeInChatResult {
   send: () => void;
 }
 
+export interface ChatAttachmentSeed {
+  name: string;
+  content: BlobPart;
+  mimeType?: string;
+  type?: FileAttachment["type"];
+  lastModified?: number;
+}
+
 export interface HybridChatHarness extends ChatFlowHarness {
   /** The renderer<->main bridge (missingChannels, sentEvents, settleInFlight). */
   bridge: RendererIpcBridge;
@@ -255,6 +269,16 @@ export interface HybridChatHarness extends ChatFlowHarness {
    * scenario expects Send to stay disabled, e.g. while a proposal is pending.
    */
   setChatInputValue: (text: string, opts?: MountOptions) => void;
+
+  /**
+   * Seed the real ChatInput attachment atom with browser File objects, matching
+   * what the file picker/drop/paste handoff stores before submit converts files
+   * to IPC attachments.
+   */
+  setChatAttachments: (attachments: ChatAttachmentSeed[]) => void;
+
+  /** Seed selected preview components for queue edit/restore assertions. */
+  setSelectedComponents: (components: ComponentSelection[]) => void;
 
   /**
    * Seed the chat input, then submit via the Lexical Enter command (a real
@@ -704,6 +728,29 @@ export async function setupHybridChatHarness(
       });
     };
 
+    const setChatAttachments = (attachments: ChatAttachmentSeed[]) => {
+      const store = getActiveStore();
+      const fileAttachments = attachments.map(
+        (attachment): FileAttachment => ({
+          file: new File([attachment.content], attachment.name, {
+            type: attachment.mimeType ?? "text/plain",
+            lastModified: attachment.lastModified,
+          }),
+          type: attachment.type ?? "chat-context",
+        }),
+      );
+      act(() => {
+        store.set(attachmentsAtom, fileAttachments);
+      });
+    };
+
+    const setSelectedComponents = (components: ComponentSelection[]) => {
+      const store = getActiveStore();
+      act(() => {
+        store.set(selectedComponentsPreviewAtom, components);
+      });
+    };
+
     const openPopover = async (trigger: HTMLElement): Promise<void> => {
       trigger.focus();
       fireEvent.pointerDown(trigger);
@@ -1091,6 +1138,8 @@ export async function setupHybridChatHarness(
       confirmDialog,
       setSwitch,
       setChatInputValue: seedChatInput,
+      setChatAttachments,
+      setSelectedComponents,
       typeInChat,
       pressEnterInChat,
       waitForStreamEnd,

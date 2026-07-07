@@ -59,14 +59,14 @@ Each row names the blocking extension and where it lives in this plan. Three
 of the five extensions are already scoped by Phase 0 (0.1/0.3/0.4); only 0.6
 and 0.7 are new work items.
 
-| Spec                                                                                                              | Blocking extension                                                                                                                                                          |
-| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mcp.spec.ts`, `mcp_auto_consent.spec.ts`, `mcp_out_of_order.spec.ts`, `local_agent_advanced.spec.ts` (MCP cases) | **0.6 MCP fake-server bootstrapping** — the biggest single unlock (4 specs)                                                                                                 |
-| `local_agent_large_attachment.spec.ts`, `queued_message.spec.ts` (attachment cases)                               | **0.7 attachment injection** via the bridge (file-picker seeding); `queued_message`'s queue-while-streaming timing is already solved (`pressEnterInChat`)                   |
-| `chat_image_generation.spec.ts`                                                                                   | **covered** by the existing `/chat` mount and auxiliary-actions dropdown drivers                                                                                            |
-| `version_search.spec.ts`                                                                                          | **covered** by the existing `/chat` mount: `ChatHeader` opens the real `VersionPane`, so no new surface was needed                                                          |
-| `supabase_stale_ui.spec.ts`                                                                                       | **covered** by the `/app-details?provider=supabase` surface plus the test-build fake Supabase connect path                                                                  |
-| `local_agent_explore_code.spec.ts`                                                                                | **defer** — needs the code-explorer/tsc worker backend, which isn't available under vitest (worker bundling); migrate as node-harness payload test or keep e2e until solved |
+| Spec                                                                                                              | Blocking extension                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp.spec.ts`, `mcp_auto_consent.spec.ts`, `mcp_out_of_order.spec.ts`, `local_agent_advanced.spec.ts` (MCP cases) | **0.6 MCP fake-server bootstrapping** — the biggest single unlock (4 specs)                                                                                                  |
+| `local_agent_large_attachment.spec.ts`, `queued_message.spec.ts` (attachment cases)                               | **covered** by `setChatAttachments` bridge-level injection into the real ChatInput attachment state; `queued_message` also uses `pressEnterInChat` for queue-while-streaming |
+| `chat_image_generation.spec.ts`                                                                                   | **covered** by the existing `/chat` mount and auxiliary-actions dropdown drivers                                                                                             |
+| `version_search.spec.ts`                                                                                          | **covered** by the existing `/chat` mount: `ChatHeader` opens the real `VersionPane`, so no new surface was needed                                                           |
+| `supabase_stale_ui.spec.ts`                                                                                       | **covered** by the `/app-details?provider=supabase` surface plus the test-build fake Supabase connect path                                                                   |
+| `local_agent_explore_code.spec.ts`                                                                                | **defer** — needs the code-explorer/tsc worker backend, which isn't available under vitest (worker bundling); migrate as node-harness payload test or keep e2e until solved  |
 
 ### 0.6 MCP fake-server bootstrapping (new)
 
@@ -82,6 +82,13 @@ does (bridge-level injection into the chat input's attachment state), so
 attachment-carrying prompts can be sent through the real submit path. Unlocks
 2 specs.
 
+Implemented as `harness.setChatAttachments([{ name, content, mimeType, type }])`
+in `src/testing/hybrid_chat_harness.tsx`. It writes browser `File` objects into
+`attachmentsAtom`, leaving submit, queueing, `FileReader` conversion, IPC stream
+params, and `.dyad/media` persistence on the real production path. The harness
+also exposes `setSelectedComponents` for queue edit/restore assertions that only
+need ChatInput state; real iframe component picking stays in E2E.
+
 **Migrated CP2 coverage so far**: `chat_image_generation.spec.ts` is covered in
 `src/ipc/handlers/__tests__/chat_image_generation.integration.test.tsx`, which
 drives the chat auxiliary-actions dropdown -> real `ImageGeneratorDialog` ->
@@ -93,14 +100,27 @@ message attachment tag. `version_search.spec.ts` is covered in
 `ChatHeader` -> `VersionPane` through the existing `/chat` mount and asserts
 version-number/message/note search, empty results, clear, favorite-only
 filtering, note persistence, favorite persistence, and close/reopen reset
-behavior. `supabase_stale_ui.spec.ts` is covered in
+behavior. `local_agent_large_attachment.spec.ts` is covered in
+`src/ipc/handlers/__tests__/local_agent_large_attachment.integration.test.tsx`,
+which seeds a large text attachment into the real ChatInput attachment atom,
+sends the prompt through the real local-agent submit path, asserts the rendered
+MustardScript card reads `attachments:large-log.txt`, and verifies the stored
+attachment manifest entry. The attachment restore case from
+`queued_message.spec.ts` is covered in
+`src/ipc/handlers/__tests__/queued_message.integration.test.tsx`, which queues a
+message during a real stream, restores its seeded attachment and selected
+component while editing, clears both on submit, and lets the queue drain through
+the real processor. `supabase_stale_ui.spec.ts` is covered in
 `src/ipc/handlers/__tests__/supabase_stale_ui.integration.test.tsx`, which
 connects Supabase for one app through the real app-details connector, navigates
 the same mounted route to a second app, and asserts the first app's connected
 project card does not leak into the second app's setup UI.
 `e2e-tests/chat_image_generation.spec.ts`,
-`e2e-tests/version_search.spec.ts`, and `e2e-tests/supabase_stale_ui.spec.ts`
-are deleted on the same consolidated migration PR.
+`e2e-tests/version_search.spec.ts`,
+`e2e-tests/local_agent_large_attachment.spec.ts`, and
+`e2e-tests/supabase_stale_ui.spec.ts` are deleted on the same consolidated
+migration PR. `e2e-tests/queued_message.spec.ts` is slimmed to the remaining
+non-attachment queue and real-preview component-selection coverage.
 
 ---
 

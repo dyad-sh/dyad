@@ -131,6 +131,8 @@ harness.mount(opts?)    // render <ChatPanel>; opts: { chatId?, appId? }. Return
 harness.mountSurface(opts?) // render /chat, /app-details, /settings, /media, etc.
 harness.typeInChat(text, opts?)       // seed input + wait for Send enabled -> { sendButton, send() }
 harness.pressEnterInChat(text, opts?) // seed input + Lexical Enter submit (QUEUES while streaming)
+harness.setChatAttachments([{ name, content, mimeType?, type? }]) // seed real File attachments into ChatInput
+harness.setSelectedComponents(components) // seed selected preview components into ChatInput
 harness.waitForStreamEnd(chatId?, ms?)      // consume the NEXT unconsumed chat:response:end (per chatId)
 harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end past the call point
 harness.eventCount(channel)                 // how many events on `channel` the bridge has seen (a baseline)
@@ -193,6 +195,15 @@ harness.dispose()                     // race-free teardown (see §6)
   matched option to commit. `selectChatMode(mode)` wraps it for the chat-mode
   selector and waits for the trigger's `aria-label` to reflect the pick (which is
   what persists `chatMode` onto the chat row).
+- **Seeding attachments**: use `setChatAttachments([{ name, content, mimeType }])`
+  after `mount()` and before `typeInChat()` / `pressEnterInChat()`. It writes the
+  same `attachmentsAtom` shape that the file picker/drop/paste paths store:
+  browser `File` objects plus the `chat-context` / `upload-to-codebase` type.
+  Submit still runs through the real `ChatInput` path, including `FileReader`
+  conversion to IPC attachments and `.dyad/media` persistence.
+- **Seeding selected components**: use `setSelectedComponents(components)` for
+  queue edit/restore assertions that only need ChatInput state. Keep Playwright
+  coverage for picking a component inside the real preview iframe.
 
 ---
 

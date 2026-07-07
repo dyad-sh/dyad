@@ -263,6 +263,12 @@ jobs:
         # do not run this on Windows (it fails and not necessary)
         if: contains(matrix.os.name, 'macos')
         run: npm run presubmit
+      # Must run before type-checking and unit tests: the vitest integration
+      # harness imports the fake-llm-server in-process, so its own
+      # node_modules (express 4 + @types) must be installed for both tsc and
+      # vitest to resolve the right packages.
+      - name: Prep test server
+        run: cd testing/fake-llm-server && npm install && npm run build && cd -
       - name: Type-checking
         # do not run this on windows (it's redundant)
         if: contains(matrix.os.name, 'macos')
@@ -275,8 +281,6 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run pre:e2e
-      - name: Prep test server
-        run: cd testing/fake-llm-server && npm install && npm run build && cd -
       # macOS: Archive app bundle with tar to preserve metadata (code signatures, extended attributes)
       # This is necessary because GitHub artifact upload/download loses these attributes
       - name: Archive macOS app bundle

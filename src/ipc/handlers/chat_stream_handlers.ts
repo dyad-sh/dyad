@@ -1313,7 +1313,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // keep the rejection from surfacing as unhandled. Callers that
           // await it still observe the rejection.
           const usage = streamResult.usage;
-          usage.catch(() => {});
+          Promise.resolve(usage).catch(() => {});
           return {
             fullStream,
             usage,

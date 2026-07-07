@@ -6,7 +6,8 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { CANNED_MESSAGE } from ".";
+import { CANNED_MESSAGE } from "./index";
+import { fakeLlmLog } from "./log";
 import { resolveDumpDir, resolveFixturesDir } from "./paths";
 
 /**
@@ -110,7 +111,7 @@ function createSSEEvent(eventType: string, data: any): string {
 export const createResponsesHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { input, messages, stream = false } = req.body ?? {};
-    console.log(`* [responses/${prefix}] Received request`, {
+    fakeLlmLog(`* [responses/${prefix}] Received request`, {
       hasInput: input != null,
       hasMessages: Array.isArray(messages),
       stream: Boolean(stream),

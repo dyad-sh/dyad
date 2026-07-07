@@ -12,6 +12,7 @@ import {
   buildExploreCodeSubmitReportArgs,
   isExploreCodeSubagentPrompt,
 } from "./exploreCodeFixtures";
+import { fakeLlmLog } from "./log";
 
 const CANNED_MESSAGE = `
   <dyad-write path="file1.txt">
@@ -270,7 +271,7 @@ async function streamToolUseMessage(
 export const createAnthropicMessagesHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { messages = [], stream = false } = req.body ?? {};
-    console.log(`* [anthropic/${prefix}] Received messages`, messages);
+    fakeLlmLog(`* [anthropic/${prefix}] Received messages`, messages);
 
     const userMessages = Array.isArray(messages)
       ? messages.filter((m: any) => m.role === "user")

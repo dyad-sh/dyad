@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
-import { CANNED_MESSAGE, createStreamChunk } from ".";
+import { CANNED_MESSAGE, createStreamChunk } from "./index";
 import {
   handleLocalAgentFixture,
   extractLocalAgentFixture,

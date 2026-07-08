@@ -1,8 +1,8 @@
-import { Route } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
 import { PluginDetailPage } from "@/components/plugins/PluginDetailPage";
 import { rootRoute } from "./root";
 
-export const pluginDetailRoute = new Route({
+export const pluginDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plugins/$serverId",
   params: {

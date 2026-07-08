@@ -9,8 +9,10 @@ import {
   currentPackageManagerWarningAtom,
   currentPreviewAppExitAtom,
   currentPreviewErrorAtom,
+  currentPreviewLoadingAtom,
   currentPreviewReloadTokenAtom,
   setConsoleEntriesForAppAtom,
+  setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import {
   useAppOutputSubscription,
@@ -262,6 +264,13 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(store.get(currentPreviewReloadTokenAtom)).toBe(0);
+    act(() => {
+      store.set(setPreviewRunStateForAppAtom, {
+        appId: 1,
+        state: { operation: "run", startedAt: 100 },
+      });
+    });
+    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
 
     act(() => {
       for (const listener of appOutputListeners) {
@@ -281,6 +290,7 @@ describe("useAppOutputSubscription", () => {
       mode: "host",
     });
     expect(store.get(currentPreviewReloadTokenAtom)).toBe(1);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
 
     unmount();
   });

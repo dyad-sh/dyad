@@ -115,6 +115,7 @@ export function useAppOutputSubscription() {
   const setAppUrl = useSetAtom(setAppUrlForAppAtom);
   const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
   const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
+  const setPreviewRunState = useSetAtom(setPreviewRunStateForAppAtom);
   const setPackageManagerWarning = useSetAtom(
     setPackageManagerWarningForAppAtom,
   );
@@ -169,11 +170,12 @@ export function useAppOutputSubscription() {
               mode,
             },
           });
+          setPreviewRunState({ appId: output.appId, state: undefined });
           bumpPreviewReloadToken(output.appId);
         }
       }
     },
-    [bumpPreviewReloadToken, setAppUrl],
+    [bumpPreviewReloadToken, setAppUrl, setPreviewRunState],
   );
 
   const onHotModuleReload = useCallback(

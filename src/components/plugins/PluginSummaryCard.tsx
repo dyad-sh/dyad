@@ -33,8 +33,19 @@ export function PluginSummaryCard({
   return (
     <Card
       data-testid="plugin-card"
+      role="button"
+      tabIndex={0}
       className="relative transition-all hover:shadow-md border-border cursor-pointer"
       onClick={() => onOpen(s.id)}
+      onKeyDown={(e) => {
+        if (
+          (e.key === "Enter" || e.key === " ") &&
+          e.target === e.currentTarget
+        ) {
+          e.preventDefault();
+          onOpen(s.id);
+        }
+      }}
     >
       <CardHeader className="p-4">
         <CardTitle className="text-lg font-medium mb-1 flex items-center gap-2 min-w-0">

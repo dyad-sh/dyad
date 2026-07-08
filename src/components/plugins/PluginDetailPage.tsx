@@ -29,8 +29,6 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     setToolConsent: updateToolConsent,
     updateServer,
     isUpdatingServer,
-    isStartingOAuth,
-    isDisconnectingOAuth,
   } = useMcp();
   const {
     connectingServerId,
@@ -115,22 +113,18 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 <Button
                   variant="default"
                   onClick={() => onConnect(s.id)}
-                  disabled={isStartingOAuth && connectingServerId === s.id}
+                  disabled={connectingServerId === s.id}
                 >
-                  {isStartingOAuth && connectingServerId === s.id
-                    ? "Connecting…"
-                    : "Connect"}
+                  {connectingServerId === s.id ? "Connecting…" : "Connect"}
                 </Button>
               )}
               {s.oauthEnabled && s.oauthConnected && (
                 <Button
                   variant="outline"
                   onClick={() => onDisconnect(s.id)}
-                  disabled={
-                    isDisconnectingOAuth && disconnectingServerId === s.id
-                  }
+                  disabled={disconnectingServerId === s.id}
                 >
-                  {isDisconnectingOAuth && disconnectingServerId === s.id
+                  {disconnectingServerId === s.id
                     ? "Disconnecting…"
                     : "Disconnect"}
                 </Button>
@@ -167,7 +161,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                     <Button
                       size="sm"
                       onClick={() => onEnableOAuthAndRetry(s.id)}
-                      disabled={isUpdatingServer || isStartingOAuth}
+                      disabled={isUpdatingServer || connectingServerId !== null}
                     >
                       Enable OAuth & retry
                     </Button>

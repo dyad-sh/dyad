@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { atom, useAtom } from "jotai";
 import { useMcp } from "@/hooks/useMcp";
 import type { McpServer } from "@/ipc/types";
@@ -7,21 +6,24 @@ import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { useOauthCallbackPort } from "./AddPluginDialog";
 import type { ConnectFeedback } from "./PluginSummaryCard";
 
-// Feedback survives navigation between the plugins list and a plugin
-// detail page, so a failure raised on one is visible on the other.
+// Connect state survives navigation between the plugins list and a
+// plugin detail page, so a failure raised on one is visible on the
+// other and an in-flight flow can't be started twice.
 const connectFeedbackAtom = atom<ConnectFeedback | null>(null);
+const connectingServerIdAtom = atom<number | null>(null);
+const disconnectingServerIdAtom = atom<number | null>(null);
 
 // Shared OAuth connect/probe handling for the plugins list and the
 // plugin detail page.
 export function usePluginConnect() {
   const { statusByServer, updateServer, startOAuth, disconnectOAuth } =
     useMcp();
-  const [connectingServerId, setConnectingServerId] = useState<number | null>(
-    null,
+  const [connectingServerId, setConnectingServerId] = useAtom(
+    connectingServerIdAtom,
   );
-  const [disconnectingServerId, setDisconnectingServerId] = useState<
-    number | null
-  >(null);
+  const [disconnectingServerId, setDisconnectingServerId] = useAtom(
+    disconnectingServerIdAtom,
+  );
   const [connectFeedback, setConnectFeedback] = useAtom(connectFeedbackAtom);
 
   const callbackPort = useOauthCallbackPort();

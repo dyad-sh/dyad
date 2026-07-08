@@ -17,14 +17,8 @@ export function PluginsList({
   onAddDialogOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const {
-    servers,
-    toolsByServer,
-    consentsMap,
-    isLoading,
-    toggleEnabled,
-    isStartingOAuth,
-  } = useMcp();
+  const { servers, toolsByServer, consentsMap, isLoading, toggleEnabled } =
+    useMcp();
   const { connectingServerId, feedbackFor, onServerCreated, onConnect } =
     usePluginConnect();
 
@@ -77,7 +71,7 @@ export function PluginsList({
               toolCount={toolCountFor(s.id)}
               enabledToolCount={enabledToolCountFor(s.id)}
               feedback={feedbackFor(s)}
-              isConnecting={isStartingOAuth && connectingServerId === s.id}
+              isConnecting={connectingServerId === s.id}
               onConnect={onConnect}
               onToggleEnabled={toggleEnabled}
               onOpen={(serverId) =>

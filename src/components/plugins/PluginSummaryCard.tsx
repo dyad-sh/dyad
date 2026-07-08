@@ -103,7 +103,7 @@ export function PluginSummaryCard({
               </Label>
               <Switch
                 id={`plugin-enabled-${s.id}`}
-                aria-label={`Toggle ${s.name}`}
+                aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}
                 onCheckedChange={() => onToggleEnabled(s.id, !!s.enabled)}
               />

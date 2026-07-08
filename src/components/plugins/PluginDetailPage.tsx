@@ -130,7 +130,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 </Button>
               )}
               <Switch
-                aria-label={`Toggle ${s.name}`}
+                aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}
                 onCheckedChange={() => toggleEnabled(s.id, !!s.enabled)}
               />

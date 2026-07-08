@@ -73,7 +73,8 @@ export class PreviewPanel {
       | "preview"
       | "configure"
       | "security"
-      | "publish",
+      | "publish"
+      | "tests",
   ) {
     // Mode buttons live inside the preview panel, so the panel must be expanded
     // before they're clickable. If the panel is collapsed, the chat panel covers
@@ -94,13 +95,16 @@ export class PreviewPanel {
       );
     }
 
-    // When the toolbar is narrow (< 700px), `configure`, `problems`, and
-    // `security` move into an overflow dropdown. Open the dropdown first if
-    // the direct button isn't visible.
+    // When the toolbar is narrow (< 700px), `configure`, `problems`,
+    // `security`, and `tests` move into an overflow dropdown. Open the dropdown
+    // first if the direct button isn't visible.
     const directButton = this.page.getByTestId(`${mode}-mode-button`);
     await expect(async () => {
       const isInOverflow =
-        (mode === "security" || mode === "problems" || mode === "configure") &&
+        (mode === "security" ||
+          mode === "problems" ||
+          mode === "configure" ||
+          mode === "tests") &&
         (await directButton
           .first()
           .isVisible()
@@ -113,6 +117,32 @@ export class PreviewPanel {
       await expect(directButton.first()).toBeVisible({ timeout: 1_000 });
       await directButton.first().click({ timeout: 1_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
+  }
+
+  // --- Tests panel (behind the per-app opt-in gate) ---
+
+  locateEnableTestingButton() {
+    return this.page.getByRole("button", {
+      name: "Enable testing for this app",
+    });
+  }
+
+  locateDisableTestingButton() {
+    return this.page.getByRole("button", {
+      name: "Disable testing for this app",
+    });
+  }
+
+  locateRunAllTestsButton() {
+    return this.page.getByRole("button", { name: "Run all tests" });
+  }
+
+  async clickEnableTesting() {
+    await this.locateEnableTestingButton().click();
+  }
+
+  async clickDisableTesting() {
+    await this.locateDisableTestingButton().click();
   }
 
   async clickRecheckProblems() {

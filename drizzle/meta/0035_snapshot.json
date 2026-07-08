@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "533d5162-c7e9-4feb-b6fc-b51bb5d37796",
-  "prevId": "b5003e32-965d-48d8-a807-e252fd088c09",
+  "id": "d32eedc7-20d0-497a-a0a0-83288b75034b",
+  "prevId": "533d5162-c7e9-4feb-b6fc-b51bb5d37796",
   "tables": {
     "app_collections": {
       "name": "app_collections",
@@ -134,6 +134,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "supabase_test_user_id": {
+          "name": "supabase_test_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "neon_project_id": {
           "name": "neon_project_id",
           "type": "text",
@@ -157,6 +164,13 @@
         },
         "neon_active_branch_id": {
           "name": "neon_active_branch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "neon_test_branch_id": {
+          "name": "neon_test_branch_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -249,6 +263,14 @@
         },
         "needs_app_blueprint": {
           "name": "needs_app_blueprint",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "0"
+        },
+        "testing_enabled": {
+          "name": "testing_enabled",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

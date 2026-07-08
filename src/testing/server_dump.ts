@@ -244,7 +244,7 @@ function scrubDumpFileContent(raw: string): string {
   return raw
     .replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]")
     .replaceAll(
-      /\.dyad\/chats\/\d+\/compaction-[^\s"\\]+\.md/g,
+      /\.dyad[\\/]+chats[\\/]+\d+[\\/]+compaction-[^\s"\\]+\.md/g,
       "[[compaction-backup-path]]",
     );
 }

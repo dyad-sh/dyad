@@ -132,6 +132,10 @@ function truncateLineText(text: string): string {
   return text.slice(0, MAX_LINE_LENGTH) + "...";
 }
 
+export function normalizeRipgrepMatchPath(matchPath: string): string {
+  return matchPath.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
 async function runRipgrep({
   appPath,
   query,
@@ -231,8 +235,7 @@ async function runRipgrep({
             continue;
           }
 
-          // Normalize path (remove leading ./)
-          const normalizedPath = matchPath.replace(/^\.\//, "");
+          const normalizedPath = normalizeRipgrepMatchPath(matchPath);
 
           if (maxMatches !== undefined && results.length >= maxMatches) {
             stoppedEarly = true;

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import * as zlib from "zlib";
 import { execFileSync, spawn } from "child_process";
 import { fakeLlmLog } from "./log";
 
@@ -187,6 +188,19 @@ let deviceFlowState = {
   pollCount: 0,
 };
 
+let deviceCodeResponseMode: "json" | "github-gzip-chunked" = "json";
+
+function deviceCodeResponseBody() {
+  return {
+    device_code: mockDeviceCode,
+    user_code: mockUserCode,
+    verification_uri: "https://github.com/login/device",
+    verification_uri_complete: `https://github.com/login/device?user_code=${mockUserCode}`,
+    expires_in: 900,
+    interval: 1,
+  };
+}
+
 // GitHub Device Flow - Step 1: Get device code
 export function handleDeviceCode(req: Request, res: Response) {
   fakeLlmLog("* GitHub Device Code requested");
@@ -199,14 +213,24 @@ export function handleDeviceCode(req: Request, res: Response) {
     pollCount: 0,
   };
 
-  res.json({
-    device_code: mockDeviceCode,
-    user_code: mockUserCode,
-    verification_uri: "https://github.com/login/device",
-    verification_uri_complete: `https://github.com/login/device?user_code=${mockUserCode}`,
-    expires_in: 900,
-    interval: 1, // Short interval for testing
-  });
+  const body = deviceCodeResponseBody();
+
+  if (deviceCodeResponseMode !== "github-gzip-chunked") {
+    res.json(body);
+    return;
+  }
+
+  const gzipped = zlib.gzipSync(Buffer.from(JSON.stringify(body), "utf8"));
+  res.status(200);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Encoding", "gzip");
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.setHeader("Connection", "close");
+  res.removeHeader("Content-Length");
+  res.write(gzipped.subarray(0, 17));
+  setTimeout(() => {
+    res.end(gzipped.subarray(17));
+  }, 10);
 }
 
 // GitHub Device Flow - Step 2: Poll for access token
@@ -474,6 +498,20 @@ export function handleResetRepos(req: Request, res: Response) {
   mockReposRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-git-mock-"));
   fakeLlmLog(`* New repos root: ${mockReposRoot}`);
   res.json({ reset: true, timestamp: new Date() });
+}
+
+export function handleSetDeviceCodeResponseMode(req: Request, res: Response) {
+  const mode = req.body?.mode;
+  if (mode !== "json" && mode !== "github-gzip-chunked") {
+    res.status(400).json({
+      error: "invalid_mode",
+      validModes: ["json", "github-gzip-chunked"],
+    });
+    return;
+  }
+  deviceCodeResponseMode = mode;
+  fakeLlmLog(`* GitHub Device Code response mode: ${mode}`);
+  res.json({ success: true, mode });
 }
 
 // Handle Git operations (push, pull, clone, etc.) using git-http-mock-server

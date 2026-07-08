@@ -503,6 +503,15 @@ describe("DyadOAuthClientProvider", () => {
       ).toString("base64");
       expect(oauthStateHasTokens(stored)).toBe(true);
     });
+
+    it("reads legacy untagged plaintext without invoking safeStorage", () => {
+      const stored = Buffer.from(
+        JSON.stringify({ tokens: { access_token: "tok" } }),
+        "utf8",
+      ).toString("base64");
+      expect(oauthStateHasTokens(stored)).toBe(true);
+      expect(safeStorage.decryptString).not.toHaveBeenCalled();
+    });
   });
 
   it("falls back to base64-only storage when safeStorage encryption is unavailable", async () => {

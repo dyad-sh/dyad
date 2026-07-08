@@ -40,6 +40,26 @@ function formUrlEncode(s: string): string {
 // Tags plaintext-fallback blobs so they stay readable if the OS
 // keyring becomes available later.
 const PLAINTEXT_PREFIX = "plain:";
+let loggedDecryptFailure = false;
+
+function parseStoredOAuthStateJson(json: string): StoredOAuthState | null {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      ("tokens" in parsed || "clientInformation" in parsed)
+    ) {
+      return parsed as StoredOAuthState;
+    }
+  } catch {}
+  return null;
+}
+
+function untaggedPlaintext(stored: string): string | null {
+  const plaintext = Buffer.from(stored, "base64").toString("utf8");
+  return parseStoredOAuthStateJson(plaintext) ? plaintext : null;
+}
 
 export function encryptToString(plaintext: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -60,6 +80,10 @@ export function decryptFromString(stored: string): string {
       "base64",
     ).toString("utf8");
   }
+  const plaintext = untaggedPlaintext(stored);
+  if (plaintext) {
+    return plaintext;
+  }
   const buf = Buffer.from(stored, "base64");
   if (!safeStorage.isEncryptionAvailable()) {
     // Untagged blob without a keyring: best-effort UTF-8. Garbage
@@ -73,15 +97,18 @@ export function decryptFromString(stored: string): string {
   try {
     return safeStorage.decryptString(buf);
   } catch (err) {
-    // Either untagged plaintext from a no-keyring write
-    // (recoverable) or undecryptable ciphertext (yields garbage that
-    // JSON.parse upstream drops as empty state). Return bytes either
-    // way and let the caller decide.
-    logger.warn(
-      "safeStorage.decryptString rejected OAuth state; treating as plaintext",
-      err,
-    );
-    return buf.toString("utf8");
+    // Undecryptable ciphertext usually means the OS key changed, the
+    // row came from another machine, or Electron's storage backend
+    // cannot read its old bytes. Treat it as disconnected and avoid
+    // logging the same warning on every settings render.
+    if (!loggedDecryptFailure) {
+      loggedDecryptFailure = true;
+      logger.warn(
+        "Stored OAuth state could not be decrypted; treating as disconnected. Reconnect OAuth for this MCP server.",
+        err instanceof Error ? err.message : err,
+      );
+    }
+    return "";
   }
 }
 

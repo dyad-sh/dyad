@@ -21,6 +21,7 @@ import {
   handleClearPushEvents,
   handleResetRepos,
   handleRepoCollaborators,
+  handleSetDeviceCodeResponseMode,
 } from "./githubHandler";
 
 // Helper function to create OpenAI-like streaming response chunks
@@ -610,6 +611,10 @@ export function createFakeLlmApp(getPort: () => number) {
   app.get("/github/api/test/push-events", handleGetPushEvents);
   app.post("/github/api/test/clear-push-events", handleClearPushEvents);
   app.post("/github/api/test/reset-repos", handleResetRepos);
+  app.post(
+    "/github/api/test/device-code-response-mode",
+    handleSetDeviceCodeResponseMode,
+  );
 
   // GitHub Git endpoints - intercept all paths with /github/git prefix
   app.all("/github/git/*", handleGitPush);

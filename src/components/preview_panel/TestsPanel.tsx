@@ -33,7 +33,7 @@ import {
   type RuntimeTestResult,
   type TestStatus,
 } from "@/atoms/testRuntimeAtoms";
-import type { TestCase, TestCaseResult } from "@/ipc/types";
+import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useRunApp } from "@/hooks/useRunApp";
@@ -223,7 +223,12 @@ function FixButton({ onClick, label }: { onClick: () => void; label: string }) {
 }
 
 interface AskAiToFix {
-  (file: string, error: string | undefined, testTitle?: string): void;
+  (
+    file: string,
+    error: string | undefined,
+    testTitle?: string,
+    screenshotPath?: string,
+  ): void;
 }
 
 interface TestCaseRowProps {
@@ -309,7 +314,14 @@ function TestCaseRow({
         )}
         {isFailing && (
           <FixButton
-            onClick={() => onAskAiToFix(file, result?.error, testCase.title)}
+            onClick={() =>
+              onAskAiToFix(
+                file,
+                result?.error,
+                testCase.title,
+                result?.screenshotPath,
+              )
+            }
             label={`Ask AI to fix test: ${testCase.title}`}
           />
         )}
@@ -428,7 +440,14 @@ function FileRow({
         </button>
         {isFailing && (
           <FixButton
-            onClick={() => onAskAiToFix(file, result?.error)}
+            onClick={() =>
+              onAskAiToFix(
+                file,
+                result?.error,
+                undefined,
+                result?.screenshotPath,
+              )
+            }
             label={`Ask AI to fix tests in: ${fileName}`}
           />
         )}
@@ -717,7 +736,7 @@ export function TestsPanel() {
 
   // User-initiated only: hand the failure back into a normal chat turn.
   const askAiToFix = useCallback<AskAiToFix>(
-    (file, error, testTitle) => {
+    async (file, error, testTitle, screenshotPath) => {
       if (chatId == null) {
         showInfo("Open a chat to ask the AI to fix this test.");
         return;
@@ -741,10 +760,41 @@ export function TestsPanel() {
           output.length > MAX ? `…(truncated)\n${output.slice(-MAX)}` : output;
         sections.push(`Test output:\n\`\`\`\n${tail}\n\`\`\``);
       }
-      streamMessage({ prompt: sections.join("\n\n"), chatId });
+
+      // Attach the failure screenshot as an image so the model can see the
+      // actual UI state at the point of failure. This is the only way the
+      // screenshot reaches the model: the agent's file tools read PNGs as UTF-8
+      // text, so pointing it at the on-disk path wouldn't work. Chat-context
+      // image attachments are converted to model image parts server-side.
+      let attachments: FileAttachment[] | undefined;
+      if (screenshotPath && selectedAppId != null) {
+        try {
+          const { dataUrl } = await ipc.tests.getTestScreenshot({
+            appId: selectedAppId,
+            path: screenshotPath,
+          });
+          if (dataUrl) {
+            const blob = await (await fetch(dataUrl)).blob();
+            const name =
+              screenshotPath.split(/[\\/]/).pop() || "screenshot.png";
+            const screenshotFile = new File([blob], name, {
+              type: blob.type || "image/png",
+            });
+            attachments = [{ file: screenshotFile, type: "chat-context" }];
+            sections.push(
+              "The attached image is the failure screenshot captured at the point the test failed — use it to see the real UI state.",
+            );
+          }
+        } catch {
+          // Non-fatal: the screenshot may have been cleared between runs. Fall
+          // back to a text-only message rather than blocking the fix request.
+        }
+      }
+
+      streamMessage({ prompt: sections.join("\n\n"), chatId, attachments });
       showInfo("Sent to chat — asking the AI to fix the test…");
     },
-    [chatId, streamMessage, jotaiStore],
+    [chatId, streamMessage, jotaiStore, selectedAppId],
   );
 
   // Kick off a first test by asking the AI (in chat) to cover a critical flow.

@@ -196,13 +196,18 @@ describe("local-agent basic flows (integration)", () => {
     );
     send();
 
-    const approveButton = await screen.findByRole(
+    await screen.findByRole(
       "button",
       { name: "Approve Plan" },
       { timeout: 20_000 },
     );
     await harness.waitForStreamEnd(app.chatId);
     const followUpEnd = harness.waitForNextStreamEnd(app.chatId);
+    const approveButton = await screen.findByRole(
+      "button",
+      { name: "Approve Plan" },
+      { timeout: 20_000 },
+    );
     fireEvent.click(approveButton);
 
     await harness.waitForEvent(

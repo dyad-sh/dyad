@@ -386,6 +386,6 @@ Email verification is **enabled** on this Neon Auth branch. When implementing si
 
 Email verification is **enabled** on this Neon Auth branch.
 
-${filterGuideByFramework(addEmailVerificationGuide, frameworkType)}
+${filterGuideByFramework(normalizeGuideNewlines(addEmailVerificationGuide), frameworkType)}
 `;
 }

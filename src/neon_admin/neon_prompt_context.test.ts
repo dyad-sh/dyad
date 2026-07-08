@@ -5,6 +5,7 @@ import { filterGuideByFramework } from "../prompts/guides/filter_guide_by_framew
 
 const getCachedEmailPasswordConfig = vi.fn();
 const getNeonContext = vi.fn();
+const normalizeGuideNewlines = (guide: string) => guide.replace(/\r\n/g, "\n");
 
 vi.mock("./neon_management_client", () => ({
   getCachedEmailPasswordConfig,
@@ -44,7 +45,10 @@ describe("buildNeonPromptAdditions", () => {
     expect(additions).toContain("<neon-system-prompt>");
     expect(additions).toContain("# Neon Project Info");
     expect(additions).toContain(
-      filterGuideByFramework(addAuthenticationGuide, "nextjs"),
+      filterGuideByFramework(
+        normalizeGuideNewlines(addAuthenticationGuide),
+        "nextjs",
+      ),
     );
     // Closing tags are never mentioned inline in the prose, so they're a
     // reliable signal that the tag was stripped.

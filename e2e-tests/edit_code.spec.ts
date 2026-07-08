@@ -109,11 +109,13 @@ test("edit code", async ({ po }) => {
   // Save the file
   await po.page.getByTestId("save-file-button").click();
 
-  // Expect toast to be visible
-  await expect(po.page.getByText("File saved")).toBeVisible();
-
   // We are NOT snapshotting the app files because the Monaco UI edit
   // is not deterministic.
+  await expectFileContent(
+    appPath,
+    editedFilePath,
+    "export const MadeWithDyad = ;",
+  );
   const editedFile = fs.readFileSync(
     path.join(appPath, editedFilePath),
     "utf8",

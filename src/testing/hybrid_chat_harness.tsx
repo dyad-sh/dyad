@@ -145,6 +145,12 @@ const LazyDatabaseSection = lazy(() =>
     default: module.DatabaseSection,
   })),
 );
+const LazyPluginsPage = lazy(() => import("@/pages/plugins"));
+const LazyPluginDetailPage = lazy(() =>
+  import("@/components/plugins/PluginDetailPage").then((module) => ({
+    default: module.PluginDetailPage,
+  })),
+);
 
 export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
   /**
@@ -187,6 +193,8 @@ export type HybridSurfaceRoute =
   | "/database"
   | "/import-app"
   | "/settings"
+  | "/plugins"
+  | "/plugins/$serverId"
   | "/settings/providers/$provider"
   | "/library/media"
   | "/media";
@@ -729,6 +737,36 @@ export async function setupHybridChatHarness(
           );
         },
       });
+      const pluginsTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/plugins",
+        component: function HybridPluginsRoute() {
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyPluginsPage />
+            </Suspense>
+          );
+        },
+      });
+      const pluginDetailTestRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/plugins/$serverId",
+        params: {
+          parse: (params: { serverId: string }) => ({
+            serverId: Number(params.serverId),
+          }),
+        },
+        component: function HybridPluginDetailRoute() {
+          const params = pluginDetailTestRoute.useParams() as {
+            serverId: number;
+          };
+          return (
+            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
+              <LazyPluginDetailPage serverId={params.serverId} />
+            </Suspense>
+          );
+        },
+      });
       const homeLiteRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: "/",
@@ -746,6 +784,8 @@ export async function setupHybridChatHarness(
         providerSettingsTestRoute,
         mediaTestRoute,
         importAppTestRoute,
+        pluginsTestRoute,
+        pluginDetailTestRoute,
       ]);
 
       const search = opts.search ?? {};
@@ -765,6 +805,10 @@ export async function setupHybridChatHarness(
         initialPath = `/import-app${encodeSearch(search)}`;
       } else if (route === "/settings") {
         initialPath = `/settings${encodeSearch(search)}`;
+      } else if (route === "/plugins") {
+        initialPath = `/plugins${encodeSearch(search)}`;
+      } else if (route === "/plugins/$serverId") {
+        initialPath = `/plugins/${opts.params?.serverId ?? ""}${encodeSearch(search)}`;
       } else {
         initialPath = `/${encodeSearch(search)}`;
       }

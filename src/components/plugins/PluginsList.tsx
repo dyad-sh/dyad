@@ -1,15 +1,13 @@
-import React, { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
-import type { McpServer, McpToolConsent } from "@/ipc/types";
-import { ipc } from "@/ipc/types";
-import { showError, showInfo, showSuccess } from "@/lib/toast";
-import {
-  AddPluginDialog,
-  useOauthCallbackPort,
-  useOauthStorageEncrypted,
-} from "./AddPluginDialog";
+import { AddPluginDialog, useOauthStorageEncrypted } from "./AddPluginDialog";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
-import { PluginCard, type ConnectFeedback } from "./PluginCard";
+import { PluginSummaryCard } from "./PluginSummaryCard";
+import { PluginsStats } from "./PluginsStats";
+import { usePluginConnect } from "./usePluginConnect";
 
 export function PluginsList({
   addDialogOpen,
@@ -18,166 +16,19 @@ export function PluginsList({
   addDialogOpen: boolean;
   onAddDialogOpenChange: (open: boolean) => void;
 }) {
+  const navigate = useNavigate();
   const {
     servers,
     toolsByServer,
-    statusByServer,
     consentsMap,
-    toggleEnabled: toggleServerEnabled,
-    deleteServer,
-    setToolConsent: updateToolConsent,
-    updateServer,
-    isUpdatingServer,
-    startOAuth,
-    disconnectOAuth,
+    isLoading,
+    toggleEnabled,
     isStartingOAuth,
-    isDisconnectingOAuth,
   } = useMcp();
-  const [consents, setConsents] = useState<
-    Record<string, McpToolConsent["consent"]>
-  >({});
-  const [connectingServerId, setConnectingServerId] = useState<number | null>(
-    null,
-  );
-  const [disconnectingServerId, setDisconnectingServerId] = useState<
-    number | null
-  >(null);
-  const [connectFeedback, setConnectFeedback] =
-    useState<ConnectFeedback | null>(null);
+  const { connectingServerId, feedbackFor, onServerCreated, onConnect } =
+    usePluginConnect();
 
-  const callbackPort = useOauthCallbackPort();
   const oauthStorageEncrypted = useOauthStorageEncrypted();
-
-  React.useEffect(() => {
-    setConsents(consentsMap);
-  }, [consentsMap]);
-
-  const runAutoConnect = async (
-    serverId: number,
-    opts?: { showToast?: boolean; callbackPort?: number },
-  ) => {
-    // Clear any prior feedback so a stale "discovery_failed" alert
-    // can't sit next to a fresh error toast on the retry path.
-    setConnectFeedback(null);
-    setConnectingServerId(serverId);
-    try {
-      // No port means the flow uses the server's saved port, which
-      // matches its registered redirect URI. Callers pass the probed
-      // port only for rows with none saved yet.
-      const result = await startOAuth({
-        serverId,
-        callbackPort: opts?.callbackPort,
-      });
-      if (result.success) {
-        setConnectFeedback(null);
-        showSuccess("OAuth connection successful");
-        return;
-      }
-      const message = result.error ?? "OAuth flow failed";
-      if (result.errorKind === "discovery_failed") {
-        setConnectFeedback({
-          serverId,
-          kind: "discovery_failed",
-          message,
-        });
-        // Toast only on the initial post-registration attempt so the
-        // failure is visible even when the new row is scrolled out of
-        // view. Manual retries show the inline panel in place.
-        if (opts?.showToast) {
-          showError(
-            "OAuth connection failed. This server doesn't support OAuth.",
-          );
-        }
-      } else {
-        showError(message);
-      }
-    } finally {
-      setConnectingServerId(null);
-    }
-  };
-
-  const runProbe = async (serverId: number, opts?: { showToast?: boolean }) => {
-    try {
-      const result = await ipc.mcp.probeConnection(serverId);
-      if (result.status === "unauthorized") {
-        setConnectFeedback({
-          serverId,
-          kind: "unauthorized",
-          message:
-            "This server requires authentication. Enable OAuth and try again.",
-        });
-        if (opts?.showToast) {
-          showError(
-            "Server connection failed. This server requires authentication. Try enabling OAuth.",
-          );
-        }
-      } else {
-        setConnectFeedback(null);
-      }
-    } catch {
-      // Best-effort probe; swallow on failure.
-    }
-  };
-
-  const onServerCreated = async (
-    created: McpServer,
-    opts: { wantsOAuth: boolean; callbackPort: number | null },
-  ) => {
-    if (opts.wantsOAuth) {
-      // Bridge the gap until the new row arrives in `serversQuery`
-      // and shows its own "Connecting…" state.
-      showInfo(`Connecting OAuth for "${created.name}"…`);
-      await runAutoConnect(created.id, {
-        showToast: true,
-        callbackPort:
-          typeof opts.callbackPort === "number" ? opts.callbackPort : undefined,
-      });
-    } else {
-      await runProbe(created.id, { showToast: true });
-    }
-  };
-
-  const onConnect = async (serverId: number) => {
-    await runAutoConnect(serverId);
-  };
-
-  const onEnableOAuthAndRetry = async (serverId: number) => {
-    await updateServer({ id: serverId, oauthEnabled: true });
-    setConnectFeedback(null);
-    // Just enabled, so no saved port yet -- use the probed one.
-    await runAutoConnect(serverId, {
-      callbackPort: typeof callbackPort === "number" ? callbackPort : undefined,
-    });
-  };
-
-  const onDisableOAuthAndRetry = async (serverId: number) => {
-    await updateServer({ id: serverId, oauthEnabled: false });
-    setConnectFeedback(null);
-    await runProbe(serverId);
-  };
-
-  const onDisconnect = async (serverId: number) => {
-    setDisconnectingServerId(serverId);
-    try {
-      await disconnectOAuth(serverId);
-      showSuccess("Disconnected OAuth");
-    } catch (err) {
-      showError(
-        err instanceof Error ? err.message : "Failed to disconnect OAuth",
-      );
-    } finally {
-      setDisconnectingServerId(null);
-    }
-  };
-
-  const onSetToolConsent = async (
-    serverId: number,
-    toolName: string,
-    consent: McpToolConsent["consent"],
-  ) => {
-    await updateToolConsent(serverId, toolName, consent);
-    setConsents((prev) => ({ ...prev, [`${serverId}:${toolName}`]: consent }));
-  };
 
   const hasOauthServer = useMemo(
     () => (servers || []).some((s) => s.transport === "http" && s.oauthEnabled),
@@ -185,59 +36,65 @@ export function PluginsList({
   );
   const showPlaintextBanner = oauthStorageEncrypted === false && hasOauthServer;
 
+  // Unconnected or still-loading servers have no tool list yet; the
+  // card shows a placeholder instead of a misleading zero.
+  const toolCountFor = (serverId: number): number | null =>
+    toolsByServer[serverId] ? toolsByServer[serverId].length : null;
+
+  const enabledToolCountFor = (serverId: number): number | null =>
+    toolsByServer[serverId]
+      ? toolsByServer[serverId].filter(
+          (t) => consentsMap[`${serverId}:${t.name}`] !== "denied",
+        ).length
+      : null;
+
   return (
     <div className="space-y-6">
       {showPlaintextBanner && <OauthPlaintextStorageAlert />}
-      <div className="space-y-3">
-        {servers.map((s) => {
-          // An OAuth-off server that returns 401 needs auth; surface
-          // that from the live probe status so the alert stays put.
-          const feedback: ConnectFeedback | null =
-            connectFeedback && connectFeedback.serverId === s.id
-              ? connectFeedback
-              : !s.oauthEnabled && statusByServer[s.id] === "unauthorized"
-                ? {
-                    serverId: s.id,
-                    kind: "unauthorized",
-                    message:
-                      "This server requires authentication. Enable OAuth and try again.",
-                  }
-                : null;
-          return (
-            <PluginCard
+      <PluginsStats
+        servers={servers}
+        toolsByServer={toolsByServer}
+        consentsMap={consentsMap}
+        isLoading={isLoading}
+      />
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="border-border">
+              <CardHeader className="p-4">
+                <Skeleton className="h-6 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {servers.map((s) => (
+            <PluginSummaryCard
               key={s.id}
               server={s}
-              tools={toolsByServer[s.id] || []}
-              consents={consents}
-              feedback={feedback}
+              toolCount={toolCountFor(s.id)}
+              enabledToolCount={enabledToolCountFor(s.id)}
+              feedback={feedbackFor(s)}
               isConnecting={isStartingOAuth && connectingServerId === s.id}
-              isDisconnecting={
-                isDisconnectingOAuth && disconnectingServerId === s.id
-              }
-              isStartingOAuth={isStartingOAuth}
-              isUpdatingServer={!!isUpdatingServer}
               onConnect={onConnect}
-              onDisconnect={onDisconnect}
-              onToggleEnabled={toggleServerEnabled}
-              onDelete={deleteServer}
-              onUpdateEnvJson={async (id, envJson) => {
-                await updateServer({ id, envJson });
-              }}
-              onUpdateHeadersJson={async (id, headersJson) => {
-                await updateServer({ id, headersJson });
-              }}
-              onSetToolConsent={onSetToolConsent}
-              onEnableOAuthAndRetry={onEnableOAuthAndRetry}
-              onDisableOAuthAndRetry={onDisableOAuthAndRetry}
+              onToggleEnabled={toggleEnabled}
+              onOpen={(serverId) =>
+                navigate({
+                  to: "/plugins/$serverId",
+                  params: { serverId },
+                })
+              }
             />
-          );
-        })}
-        {servers.length === 0 && (
-          <div className="text-sm text-muted-foreground">
-            No plugins added yet.
-          </div>
-        )}
-      </div>
+          ))}
+          {servers.length === 0 && (
+            <div className="col-span-full text-sm text-muted-foreground">
+              No plugins added yet.
+            </div>
+          )}
+        </div>
+      )}
       <AddPluginDialog
         open={addDialogOpen}
         onOpenChange={onAddDialogOpenChange}

@@ -159,9 +159,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 <AlertTitle>
                   {feedback.kind === "unauthorized"
                     ? "Server requires authentication"
-                    : feedback.kind === "discovery_failed"
-                      ? "Server doesn't support OAuth"
-                      : "Connection failed"}
+                    : "Server doesn't support OAuth"}
                 </AlertTitle>
                 <AlertDescription className="gap-2">
                   <span>{feedback.message}</span>

@@ -7,7 +7,7 @@ import type { McpServer } from "@/ipc/types";
 
 export type ConnectFeedback = {
   serverId: number;
-  kind: "discovery_failed" | "unauthorized" | "other";
+  kind: "discovery_failed" | "unauthorized";
   message: string;
 };
 

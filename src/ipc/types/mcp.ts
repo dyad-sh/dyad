@@ -259,8 +259,8 @@ export const mcpContracts = {
     }),
     output: z.object({
       success: z.boolean(),
-      // Set when `success` is false; shown to the user as a toast in
-      // `ToolsMcpSettings`.
+      // Set when `success` is false; shown to the user as a toast on
+      // the Plugins page.
       error: z.string().nullable(),
       errorKind: z.enum(["discovery_failed", "other"]).nullable().optional(),
     }),

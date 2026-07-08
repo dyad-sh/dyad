@@ -184,7 +184,7 @@ export default App;
 
 testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+  await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
   await po.sendPrompt("tc=1");
 
   const appPath = await po.appManagement.getCurrentAppPath();

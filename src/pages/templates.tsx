@@ -5,7 +5,7 @@ import { useTemplates } from "@/hooks/useTemplates";
 import { TemplateCard } from "@/components/TemplateCard";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
 
-const HubPage: React.FC = () => {
+const TemplatesPage: React.FC = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { templates, isLoading } = useTemplates();
   const { settings, updateSettings } = useSettings();
@@ -88,4 +88,4 @@ const HubPage: React.FC = () => {
   );
 };
 
-export default HubPage;
+export default TemplatesPage;

@@ -7,8 +7,6 @@ import React, {
 } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc, DeepLinkData } from "../ipc/types";
-import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
-import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
 type DeepLinkContextType = {
   lastDeepLink: (DeepLinkData & { timestamp: number }) | null;
@@ -25,17 +23,14 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
     (DeepLinkData & { timestamp: number }) | null
   >(null);
   const navigate = useNavigate();
-  const scrollAndNavigateTo = useScrollAndNavigateTo("/settings", {
-    behavior: "smooth",
-    block: "start",
-  });
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onDeepLinkReceived((data) => {
       // Update with timestamp to ensure state change even if same type comes twice
       setLastDeepLink({ ...data, timestamp: Date.now() });
       if (data.type === "add-mcp-server") {
-        // Navigate to tools-mcp section
-        scrollAndNavigateTo(SECTION_IDS.toolsMcp);
+        // Navigate to the Plugins page; it opens the add dialog with
+        // the prefilled form.
+        navigate({ to: "/plugins" });
       } else if (data.type === "add-prompt") {
         // Navigate to library page
         navigate({ to: "/library" });
@@ -43,7 +38,7 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
     });
 
     return unsubscribe;
-  }, [navigate, scrollAndNavigateTo]);
+  }, [navigate]);
 
   const clearLastDeepLink = useCallback(() => setLastDeepLink(null), []);
 

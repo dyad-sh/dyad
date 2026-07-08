@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 test("create next.js app", async ({ po }) => {
   await po.setUp();
   const beforeSettings = po.settings.recordSettings();
-  await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+  await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
   await po.chatActions.selectChatMode("build");
   po.settings.snapshotSettingsDelta(beforeSettings);
 

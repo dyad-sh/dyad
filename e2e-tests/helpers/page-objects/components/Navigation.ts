@@ -109,8 +109,12 @@ export class Navigation {
     });
   }
 
-  async goToHubTab() {
-    await this.page.getByRole("link", { name: "Hub" }).click();
+  async goToTemplatesTab() {
+    await this.page.getByRole("link", { name: "Templates" }).click();
+  }
+
+  async goToPluginsTab() {
+    await this.page.getByRole("link", { name: "Plugins" }).click();
   }
 
   async clickBackButton() {
@@ -121,8 +125,8 @@ export class Navigation {
     await this.page.getByRole("img", { name: templateName }).click();
   }
 
-  async goToHubAndSelectTemplate(templateName: "Next.js Template") {
-    await this.goToHubTab();
+  async goToTemplatesAndSelectTemplate(templateName: "Next.js Template") {
+    await this.goToTemplatesTab();
     await this.selectTemplate(templateName);
     await this.goToAppsTab();
   }

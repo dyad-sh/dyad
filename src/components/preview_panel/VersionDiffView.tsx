@@ -44,12 +44,14 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
   const { changes, loading, error } = useVersionChanges(appId, versionId);
   // The selected file is held in a shared atom so external callers (e.g. the
   // modified-files card in the chat) can open the diff at a specific file. The
-  // displayed selection is derived during render (below) so switching versions
-  // never flashes the placeholder while waiting for an effect to reconcile a
-  // stale path.
-  const [selectedDiffPath, setSelectedDiffPath] = useAtom(
+  // selection is scoped to a version, so it is only applied when it belongs to
+  // the version being shown (see below); this avoids a stale path from another
+  // version leaking in without needing an effect to reconcile it.
+  const [selectedDiffFile, setSelectedDiffFile] = useAtom(
     selectedVersionDiffFileAtom,
   );
+  const selectedDiffPath =
+    selectedDiffFile?.versionId === versionId ? selectedDiffFile.path : null;
 
   if (loading) {
     return (
@@ -98,7 +100,7 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
         {changes.map((file) => (
           <button
             key={file.path}
-            onClick={() => setSelectedDiffPath(file.path)}
+            onClick={() => setSelectedDiffFile({ versionId, path: file.path })}
             data-testid="version-diff-file"
             className={cn(
               "flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--background-darkest)]",

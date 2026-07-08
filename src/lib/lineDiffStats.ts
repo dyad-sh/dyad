@@ -18,6 +18,12 @@ function toLines(content: string): string[] {
   return normalized.split("\n");
 }
 
+// Above this many DP cells (rows × columns of the untrimmable middle) we skip
+// the LCS and treat the middle as entirely changed. computeLineDiffStats runs
+// synchronously during render, so a pathological input (e.g. a large minified
+// bundle where every line differs) could otherwise block the main thread.
+const MAX_LCS_CELLS = 4_000_000;
+
 /**
  * Length of the longest common subsequence between two line arrays. Used to
  * derive how many lines were added/removed the same way `git diff` reports them:
@@ -29,12 +35,49 @@ function lcsLength(a: string[], b: string[]): number {
   if (n === 0 || m === 0) {
     return 0;
   }
-  // Rolling two-row DP to keep memory at O(min dimension).
-  let previous = Array.from<number>({ length: m + 1 }).fill(0);
-  let current = Array.from<number>({ length: m + 1 }).fill(0);
-  for (let i = 1; i <= n; i++) {
-    for (let j = 1; j <= m; j++) {
-      if (a[i - 1] === b[j - 1]) {
+
+  // Most edits change only a handful of lines, so trim the shared prefix and
+  // suffix first. This shrinks the DP table (often to nothing) and keeps the
+  // computation fast even for large files.
+  let start = 0;
+  while (start < n && start < m && a[start] === b[start]) {
+    start++;
+  }
+  let endA = n - 1;
+  let endB = m - 1;
+  while (endA >= start && endB >= start && a[endA] === b[endB]) {
+    endA--;
+    endB--;
+  }
+
+  // Shared prefix + suffix lines already accounted for as common.
+  const trimmedCommon = start + (n - 1 - endA);
+  const lenA = endA - start + 1;
+  const lenB = endB - start + 1;
+  if (lenA === 0 || lenB === 0) {
+    return trimmedCommon;
+  }
+
+  // Guard against pathological inputs: skip the DP and treat the untrimmable
+  // middle as entirely changed rather than block the main thread.
+  if (lenA * lenB > MAX_LCS_CELLS) {
+    return trimmedCommon;
+  }
+
+  // Use the smaller dimension for the rolling DP columns so memory/allocation
+  // stays at O(min(lenA, lenB)). The LCS length is symmetric in its arguments.
+  const [small, large] =
+    lenA <= lenB
+      ? [a.slice(start, endA + 1), b.slice(start, endB + 1)]
+      : [b.slice(start, endB + 1), a.slice(start, endA + 1)];
+  const sLen = small.length;
+  const lLen = large.length;
+
+  let previous = Array.from<number>({ length: sLen + 1 }).fill(0);
+  let current = Array.from<number>({ length: sLen + 1 }).fill(0);
+  for (let i = 1; i <= lLen; i++) {
+    for (let j = 1; j <= sLen; j++) {
+      if (large[i - 1] === small[j - 1]) {
         current[j] = previous[j - 1] + 1;
       } else {
         current[j] = Math.max(previous[j], current[j - 1]);
@@ -42,7 +85,7 @@ function lcsLength(a: string[], b: string[]): number {
     }
     [previous, current] = [current, previous];
   }
-  return previous[m];
+  return trimmedCommon + previous[sLen];
 }
 
 /**

@@ -66,4 +66,32 @@ describe("computeLineDiffStats", () => {
       deletions: 0,
     });
   });
+
+  it("counts accurately for a small edit in a large file (prefix/suffix trim)", () => {
+    // A 10k-line file where a single line in the middle is changed. Trimming the
+    // shared prefix/suffix keeps the diff exact (and fast).
+    const lines = Array.from({ length: 10_000 }, (_, i) => `line ${i}`);
+    const oldContent = lines.join("\n");
+    const changed = [...lines];
+    changed[5000] = "CHANGED";
+    expect(computeLineDiffStats(oldContent, changed.join("\n"))).toEqual({
+      additions: 1,
+      deletions: 1,
+    });
+  });
+
+  it("falls back to worst-case counts for a huge fully-different middle", () => {
+    // Every line differs and there is no shared prefix/suffix to trim, so the DP
+    // exceeds the size guard and we report a worst-case (all lines changed).
+    const oldContent = Array.from({ length: 3000 }, (_, i) => `old ${i}`).join(
+      "\n",
+    );
+    const newContent = Array.from({ length: 3000 }, (_, i) => `new ${i}`).join(
+      "\n",
+    );
+    expect(computeLineDiffStats(oldContent, newContent)).toEqual({
+      additions: 3000,
+      deletions: 3000,
+    });
+  });
 });

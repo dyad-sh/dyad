@@ -13,7 +13,16 @@ export type PreviewMode =
 
 export const previewModeAtom = atom<PreviewMode>("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
-// The file path the version diff view should open at. Set when navigating to a
-// specific changed file (e.g. from the modified-files card); null falls back to
-// the first changed file in the version.
-export const selectedVersionDiffFileAtom = atom<string | null>(null);
+// The changed file the version diff view should open at, scoped to the version
+// it belongs to. Set when navigating to a specific file (e.g. from the
+// modified-files card). The diff view only honors `path` when `versionId`
+// matches the version it is showing, so a selection made for one version never
+// leaks into another that happens to contain a file with the same path; null
+// (or a mismatched version) falls back to the first changed file.
+export interface SelectedVersionDiffFile {
+  versionId: string;
+  path: string;
+}
+export const selectedVersionDiffFileAtom = atom<SelectedVersionDiffFile | null>(
+  null,
+);

@@ -64,109 +64,118 @@ export function ModifiedFilesCard({
     return map;
   }, [changes]);
 
-  // Nothing to show while loading, on error, or when the commit changed no
-  // user-visible files. Failing silently keeps the chat footer uncluttered; the
-  // underlying error is already logged by the diff view when it is opened.
-  if (loading || error || !changes || changes.length === 0) {
-    return null;
-  }
-
   const openDiff = (filePath: string) => {
-    setSelectedVersionDiffFile(filePath);
+    setSelectedVersionDiffFile({ versionId: commitHash, path: filePath });
     setSelectedVersionId(commitHash);
     setPreviewMode("code");
     setIsPreviewOpen(true);
   };
 
+  // The file list is unavailable while loading, on error, or when the commit
+  // changed no user-visible files. In those cases we still render the Undo/Retry
+  // footer (the assistant turn produced a commit, so those affordances must stay
+  // available); only the header + list are hidden.
+  const hasChanges = !loading && !error && !!changes && changes.length > 0;
+
+  const footer = (
+    <div className="px-3 py-2 border-t border-border/60 flex justify-end gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="modified-files-retry"
+        disabled={isRetryLoading}
+        onClick={onRetry}
+        className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
+      >
+        {isRetryLoading ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <RefreshCw size={16} />
+        )}
+        Retry
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="modified-files-undo"
+        disabled={isUndoLoading}
+        onClick={onUndo}
+        className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
+      >
+        {isUndoLoading ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <Undo size={16} />
+        )}
+        Undo
+      </Button>
+    </div>
+  );
+
   return (
     <div className="max-w-3xl w-full mx-auto my-2 px-2">
       <div
         data-testid="modified-files-card"
-        className="rounded-xl border border-border/60 bg-(--background-lightest) overflow-hidden"
+        className="rounded-xl border border-border/60 bg-[var(--background-lightest)] overflow-hidden"
       >
-        <div className="px-3 py-2 border-b border-border/60 text-sm font-medium">
-          Modified files{" "}
-          <span className="text-muted-foreground font-normal">
-            ({changes.length})
-          </span>
-        </div>
-        <div className="max-h-64 overflow-y-auto divide-y divide-border/60">
-          {changes.map((file) => {
-            const stats = statsByPath.get(file.path);
-            const meta = STATUS_META[file.type];
-            const { dir, name } = splitPath(file.path);
-            return (
-              <button
-                key={file.path}
-                type="button"
-                data-testid="modified-files-row"
-                onClick={() => openDiff(file.path)}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm cursor-pointer hover:bg-(--background-lighter) transition-colors"
-                title={file.path}
-              >
-                <span
-                  className={cn(
-                    "flex-shrink-0 w-4 text-center font-mono text-xs font-semibold",
-                    meta.className,
-                  )}
-                  title={file.type}
+        {hasChanges && (
+          <div className="px-3 py-2 border-b border-border/60 text-sm font-medium">
+            Modified files{" "}
+            <span className="text-muted-foreground font-normal">
+              ({changes.length})
+            </span>
+          </div>
+        )}
+        {hasChanges && (
+          <div className="max-h-64 overflow-y-auto divide-y divide-border/60">
+            {changes.map((file) => {
+              const stats = statsByPath.get(file.path);
+              const meta = STATUS_META[file.type];
+              const { dir, name } = splitPath(file.path);
+              return (
+                <button
+                  key={file.path}
+                  type="button"
+                  data-testid="modified-files-row"
+                  onClick={() => openDiff(file.path)}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm cursor-pointer hover:bg-[var(--background-lighter)] transition-colors"
+                  title={file.path}
                 >
-                  {meta.label}
-                </span>
-                <span className="min-w-0 flex-1 truncate">
-                  {dir && <span className="text-muted-foreground">{dir}</span>}
-                  <span className="font-medium">{name}</span>
-                </span>
-                {stats && (
-                  <span className="flex-shrink-0 flex items-center gap-2 font-mono text-xs">
-                    {stats.additions > 0 && (
-                      <span className="text-green-600 dark:text-green-400">
-                        +{stats.additions}
-                      </span>
+                  <span
+                    className={cn(
+                      "flex-shrink-0 w-4 text-center font-mono text-xs font-semibold",
+                      meta.className,
                     )}
-                    {stats.deletions > 0 && (
-                      <span className="text-red-600 dark:text-red-400">
-                        -{stats.deletions}
-                      </span>
-                    )}
+                    title={file.type}
+                  >
+                    {meta.label}
                   </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <div className="px-3 py-2 border-t border-border/60 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="modified-files-retry"
-            disabled={isRetryLoading}
-            onClick={onRetry}
-            className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
-          >
-            {isRetryLoading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <RefreshCw size={16} />
-            )}
-            Retry
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="modified-files-undo"
-            disabled={isUndoLoading}
-            onClick={onUndo}
-            className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
-          >
-            {isUndoLoading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Undo size={16} />
-            )}
-            Undo
-          </Button>
-        </div>
+                  <span className="min-w-0 flex-1 truncate">
+                    {dir && (
+                      <span className="text-muted-foreground">{dir}</span>
+                    )}
+                    <span className="font-medium">{name}</span>
+                  </span>
+                  {stats && (
+                    <span className="flex-shrink-0 flex items-center gap-2 font-mono text-xs">
+                      {stats.additions > 0 && (
+                        <span className="text-green-600 dark:text-green-400">
+                          +{stats.additions}
+                        </span>
+                      )}
+                      {stats.deletions > 0 && (
+                        <span className="text-red-600 dark:text-red-400">
+                          -{stats.deletions}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {footer}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -42,13 +42,6 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     onDisableOAuthAndRetry,
   } = usePluginConnect();
 
-  const [consents, setConsents] = useState<
-    Record<string, McpToolConsent["consent"]>
-  >({});
-  React.useEffect(() => {
-    setConsents(consentsMap);
-  }, [consentsMap]);
-
   const s = servers.find((srv) => srv.id === serverId);
 
   // Unknown id (deleted elsewhere, bad deep link) lands back on the
@@ -71,7 +64,6 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     consent: McpToolConsent["consent"],
   ) => {
     await updateToolConsent(s.id, toolName, consent);
-    setConsents((prev) => ({ ...prev, [`${s.id}:${toolName}`]: consent }));
   };
 
   const onDelete = async () => {
@@ -243,7 +235,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                     <div className="font-mono text-sm truncate">{t.name}</div>
                     <div className="flex items-center gap-2">
                       <Select
-                        value={consents[`${s.id}:${t.name}`] || "ask"}
+                        value={consentsMap[`${s.id}:${t.name}`] || "ask"}
                         onValueChange={(v) => {
                           // The mutation already shows an error toast.
                           onSetToolConsent(

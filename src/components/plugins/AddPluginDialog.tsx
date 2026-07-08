@@ -216,7 +216,7 @@ export function AddPluginDialog({
         {showPlaintextBanner && <OauthPlaintextStorageAlert />}
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className="space-y-2">
               <Label>Name</Label>
               <Input
                 value={name}
@@ -224,7 +224,7 @@ export function AddPluginDialog({
                 placeholder="My MCP Server"
               />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="mcp-transport-select">Transport</Label>
               <select
                 id="mcp-transport-select"
@@ -239,7 +239,7 @@ export function AddPluginDialog({
             </div>
             {transport === "stdio" && (
               <>
-                <div>
+                <div className="space-y-2">
                   <Label>Command</Label>
                   <Input
                     value={command}
@@ -247,7 +247,7 @@ export function AddPluginDialog({
                     placeholder="node"
                   />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label>Args</Label>
                   <Input
                     value={args}
@@ -259,7 +259,7 @@ export function AddPluginDialog({
             )}
             {transport === "http" && (
               <>
-                <div className="col-span-2">
+                <div className="col-span-2 space-y-2">
                   <Label>URL</Label>
                   <Input
                     value={url}
@@ -298,7 +298,7 @@ export function AddPluginDialog({
                           Advanced OAuth options
                         </AccordionTrigger>
                         <AccordionContent className="space-y-3">
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             <Label>OAuth Client ID</Label>
                             <div className="text-xs text-muted-foreground">
                               If the MCP server's setup requires you to register
@@ -311,7 +311,7 @@ export function AddPluginDialog({
                               placeholder="Pre-registered client ID"
                             />
                           </div>
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             <Label>OAuth Client Secret</Label>
                             <div className="text-xs text-muted-foreground">
                               Include this only if the MCP server gave you a
@@ -326,7 +326,7 @@ export function AddPluginDialog({
                               placeholder="Pre-registered client secret"
                             />
                           </div>
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             <Label>OAuth Scope</Label>
                             <div className="text-xs text-muted-foreground">
                               Permissions to request, space-separated. Leave

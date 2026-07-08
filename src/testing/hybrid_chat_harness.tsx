@@ -755,6 +755,9 @@ export async function setupHybridChatHarness(
           parse: (params: { serverId: string }) => ({
             serverId: Number(params.serverId),
           }),
+          stringify: (params: { serverId: number }) => ({
+            serverId: String(params.serverId),
+          }),
         },
         component: function HybridPluginDetailRoute() {
           const params = pluginDetailTestRoute.useParams() as {

@@ -111,14 +111,16 @@ describe("Plugins page (integration)", () => {
         }),
       );
     });
+    const { tools } = await ipc.mcp.listTools(server.id);
+    const total = tools.length;
     fireEvent.click(screen.getByRole("button", { name: "All Plugins" }));
     await waitFor(() => {
       expect(screen.getByTestId("plugins-stats").textContent).toBe(
-        "1 plugin · 3 tools enabled",
+        `1 plugin · ${total - 1} tools enabled`,
       );
     });
     expect((await screen.findByTestId("plugin-card")).textContent).toContain(
-      "3 of 4 tools enabled",
+      `${total - 1} of ${total} tools enabled`,
     );
 
     // Back into the detail page to delete it.

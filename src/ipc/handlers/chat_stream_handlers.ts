@@ -806,6 +806,7 @@ ${componentSnippet}
         const isLocalAgentMode = selectedChatMode === "local-agent";
         const isAskMode = selectedChatMode === "ask";
         const isPlanMode = selectedChatMode === "plan";
+        const isDesignMode = selectedChatMode === "design";
         const willUseLocalAgentStream =
           isLocalAgentBackedMode(selectedChatMode);
 
@@ -1426,6 +1427,34 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPrompt: planModeSystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             planModeOnly: true,
+            messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            settingsOverride: settings,
+            freeModelMode,
+            referencedApps: referencedAppsForAgent,
+            currentTurnHasOnDiskAttachment: false,
+          });
+          return;
+        }
+
+        // Handle design mode: use local-agent with design tools only.
+        // Design mode generates visual interface mockups (rendered with Konva
+        // in the preview panel) before any code is written. Like plan mode it
+        // is read-only with respect to the codebase — its tools only emit
+        // design state (brief + scene graphs).
+        if (isDesignMode) {
+          const designModeSystemPrompt = constructSystemPrompt({
+            aiRules,
+            chatMode: "design",
+            enableTurboEditsV2: false,
+            themePrompt,
+            freeModelMode,
+          });
+
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt: designModeSystemPrompt,
+            dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            designModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
             settingsOverride: settings,
             freeModelMode,

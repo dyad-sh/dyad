@@ -58,6 +58,7 @@ import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
+import { DyadDesignBriefCard, DyadDesignInterfaceCard } from "./DyadDesignCard";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { DyadScript } from "./DyadScript";
 import { mapActionToButton } from "./ChatInput";
@@ -1108,6 +1109,24 @@ function renderCustomTag(
               state: getState({ isStreaming, inProgress }),
             },
           }}
+        />
+      );
+
+    case "dyad-design-brief":
+      return (
+        <DyadDesignBriefCard
+          appName={attributes["app-name"] || ""}
+          primaryColor={attributes["primary-color"] || ""}
+          interfaces={Number.parseInt(attributes.interfaces || "0", 10) || 0}
+          inProgress={attributes.complete !== "true"}
+        />
+      );
+
+    case "dyad-design-interface":
+      return (
+        <DyadDesignInterfaceCard
+          name={attributes.name || ""}
+          inProgress={attributes.complete !== "true"}
         />
       );
 

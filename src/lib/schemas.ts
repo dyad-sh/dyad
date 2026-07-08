@@ -15,7 +15,9 @@ export const ChatSummarySchema = z.object({
   appId: z.number(),
   title: z.string().nullable(),
   createdAt: z.date(),
-  chatMode: z.enum(["build", "ask", "local-agent", "plan"]).nullable(),
+  chatMode: z
+    .enum(["build", "ask", "local-agent", "plan", "design"])
+    .nullable(),
 });
 
 /**
@@ -154,13 +156,20 @@ export const StoredChatModeSchema = z.enum([
   "agent", // DEPRECATED: converted to "build" on read
   "local-agent",
   "plan",
+  "design",
 ]);
 export type StoredChatMode = z.infer<typeof StoredChatModeSchema>;
 
 /**
  * Active chat modes (excludes deprecated values)
  */
-export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
+export const ChatModeSchema = z.enum([
+  "build",
+  "ask",
+  "local-agent",
+  "plan",
+  "design",
+]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 /**
@@ -171,7 +180,12 @@ export type ChatMode = z.infer<typeof ChatModeSchema>;
  * what's actually sent to the model.
  */
 export function isLocalAgentBackedMode(mode: ChatMode | undefined): boolean {
-  return mode === "local-agent" || mode === "ask" || mode === "plan";
+  return (
+    mode === "local-agent" ||
+    mode === "ask" ||
+    mode === "plan" ||
+    mode === "design"
+  );
 }
 
 export const GitHubSecretsSchema = z.object({

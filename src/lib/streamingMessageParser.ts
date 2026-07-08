@@ -71,6 +71,8 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-step-limit",
   "dyad-script",
   "dyad-app-blueprint",
+  "dyad-design-brief",
+  "dyad-design-interface",
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);
 

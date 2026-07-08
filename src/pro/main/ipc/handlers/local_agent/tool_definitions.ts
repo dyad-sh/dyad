@@ -41,6 +41,8 @@ import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
 import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { getMcpToolSchemaTool } from "./tools/get_mcp_tool_schema";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
+import { writeDesignBriefTool } from "./tools/write_design_brief";
+import { designInterfaceTool } from "./tools/design_interface";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -113,6 +115,9 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   exitPlanTool,
   // App blueprint tools
   writeAppBlueprintTool,
+  // Design mode tools
+  writeDesignBriefTool,
+  designInterfaceTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
@@ -383,6 +388,12 @@ export interface BuildAgentToolSetOptions {
    */
   planModeOnly?: boolean;
   /**
+   * If true, only include tools that are allowed in design mode.
+   * Design mode has access to read-only tools plus design-specific tools
+   * (write_design_brief, design_interface, planning_questionnaire).
+   */
+  designModeOnly?: boolean;
+  /**
    * If true, exclude Pro-only tools.
    * Used for basic agent mode where some tools may not be available.
    */
@@ -411,6 +422,25 @@ const PLAN_MODE_ONLY_TOOLS = new Set(["write_plan", "exit_plan"]);
  */
 const PLANNING_SPECIFIC_TOOLS = new Set([
   ...PLAN_MODE_ONLY_TOOLS,
+  "planning_questionnaire",
+]);
+
+/**
+ * Tools that should ONLY be available in design mode (excluded from every other
+ * mode). They emit design brief / interface state and modify no files.
+ */
+const DESIGN_MODE_ONLY_TOOLS = new Set([
+  "write_design_brief",
+  "design_interface",
+]);
+
+/**
+ * Tools allowed in design mode despite being marked as modifying state. Superset
+ * of DESIGN_MODE_ONLY_TOOLS plus the questionnaire, which design mode reuses for
+ * requirements gathering.
+ */
+const DESIGN_SPECIFIC_TOOLS = new Set([
+  ...DESIGN_MODE_ONLY_TOOLS,
   "planning_questionnaire",
 ]);
 
@@ -475,6 +505,18 @@ export function shouldIncludeTool(
   if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
     return false;
   }
+  // In design mode, skip state-modifying tools unless they're design-specific.
+  if (
+    options.designModeOnly &&
+    toolModifiesState(tool, ctx) &&
+    !DESIGN_SPECIFIC_TOOLS.has(tool.name)
+  ) {
+    return false;
+  }
+  // Skip design-mode-only tools when NOT in design mode.
+  if (!options.designModeOnly && DESIGN_MODE_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
   // Skip Pro-only tools in basic agent mode.
   if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
     return false;
@@ -537,6 +579,7 @@ export function buildAgentToolSet(
             toolModifiesState(tool, ctx) &&
             !APP_BLUEPRINT_TOOLS.has(tool.name) &&
             !PLANNING_SPECIFIC_TOOLS.has(tool.name) &&
+            !DESIGN_SPECIFIC_TOOLS.has(tool.name) &&
             !CAPABILITY_GATED_BLUEPRINT_TOOLS.has(tool.name)
           ) {
             assertAppBlueprintApproved({

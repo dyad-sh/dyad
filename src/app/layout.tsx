@@ -14,6 +14,7 @@ import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
+import { useDesignEvents } from "@/hooks/useDesignEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
@@ -42,6 +43,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Initialize app blueprint events listener
   useAppBlueprintEvents();
+
+  // Initialize design mode events listener
+  useDesignEvents();
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();

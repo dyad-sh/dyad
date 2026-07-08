@@ -64,7 +64,8 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
     if (
       isVersionSelected &&
       previewMode !== "preview" &&
-      previewMode !== "code"
+      previewMode !== "code" &&
+      previewMode !== "design"
     ) {
       setPreviewMode("preview");
     }
@@ -89,7 +90,8 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
     }
   };
 
-  type ToolbarMode = Exclude<PreviewMode, "plan">;
+  // "plan" and "design" are programmatic-only views with no toolbar button.
+  type ToolbarMode = Exclude<PreviewMode, "plan" | "design">;
   const modeMeta: Record<
     ToolbarMode,
     { icon: React.ReactNode; label: string; testId: string }

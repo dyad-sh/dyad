@@ -58,6 +58,7 @@ export { imageGenerationContracts } from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
 export { appCollectionContracts } from "./app_collections";
 export { terminalContracts } from "./terminal";
+export { designContracts, designEvents } from "./design";
 
 // =============================================================================
 // Client Exports
@@ -95,6 +96,7 @@ export { imageGenerationClient } from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 export { appCollectionClient } from "./app_collections";
 export { terminalClient } from "./terminal";
+export { designClient, designEventClient } from "./design";
 
 // =============================================================================
 // Type Exports
@@ -424,6 +426,7 @@ import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
+import { designClient, designEventClient } from "./design";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
 
@@ -489,6 +492,7 @@ export const ipc = {
   appBlueprint: appBlueprintClient,
   appCollection: appCollectionClient,
   terminal: terminalClient,
+  design: designClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -498,5 +502,6 @@ export const ipc = {
     system: systemEventClient,
     misc: miscEventClient,
     appBlueprint: appBlueprintEventClient,
+    design: designEventClient,
   },
 } as const;

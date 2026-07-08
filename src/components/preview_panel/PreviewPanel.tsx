@@ -1,5 +1,7 @@
 import { useAtomValue } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useChatMode } from "@/hooks/useChatMode";
 import {
   currentConsoleEntriesAtom,
   currentPreviewReloadTokenAtom,
@@ -28,6 +30,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
+import { DesignCanvas } from "./DesignCanvas";
 import { PackageManagerWarningBanner } from "./PackageManagerWarningBanner";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
@@ -104,6 +107,18 @@ export function PreviewPanel() {
     !isCheckingNode &&
     !nodeVersion;
 
+  // In design mode the preview panel is dedicated to the mockups: the design
+  // view is programmatic-only (no toolbar tab), so switching to another panel
+  // would strand the user away from their designs. Force the design canvas and
+  // hide the tab switcher for as long as the chat is in design mode.
+  //
+  // Chat mode is per-chat (chat.chatMode), so we read the effective mode for the
+  // currently selected chat rather than settings.selectedChatMode (the default
+  // used only when off a chat).
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const { selectedMode } = useChatMode(selectedChatId);
+  const isDesignMode = selectedMode === "design";
+
   const latestMessage =
     consoleEntries.length > 0
       ? consoleEntries[consoleEntries.length - 1]?.message
@@ -174,12 +189,14 @@ export function PreviewPanel() {
         <PanelGroup direction="vertical">
           <Panel id="content" minSize={30}>
             <div className="flex h-full flex-col">
-              {previewMode !== "preview" && (
+              {!isDesignMode && previewMode !== "preview" && (
                 <PreviewToolbar compactThreshold={0} />
               )}
               <PackageManagerWarningBanner />
               <div className="flex-1 overflow-y-auto">
-                {isNodeMissing ? (
+                {isDesignMode ? (
+                  <DesignCanvas />
+                ) : isNodeMissing ? (
                   <PreviewNodeRequirement
                     appName={app?.name}
                     nodeDownloadUrl={nodeSystemInfo?.nodeDownloadUrl}
@@ -238,6 +255,8 @@ export function PreviewPanel() {
                   <SecurityPanel />
                 ) : previewMode === "plan" ? (
                   <PlanPanel />
+                ) : previewMode === "design" ? (
+                  <DesignCanvas />
                 ) : (
                   <Problems />
                 )}

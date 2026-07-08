@@ -12,6 +12,8 @@ export function getChatModeDisplayName(mode: ChatMode, isPro: boolean): string {
       return isPro ? "Agent" : "Basic Agent";
     case "plan":
       return "Plan";
+    case "design":
+      return "Design";
   }
 }
 

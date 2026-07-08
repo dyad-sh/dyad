@@ -162,6 +162,10 @@ vi.mock("./PlanPanel", () => ({
   PlanPanel: () => <div>Plan panel</div>,
 }));
 
+vi.mock("./DesignCanvas", () => ({
+  DesignCanvas: () => <div>Design canvas</div>,
+}));
+
 vi.mock("./Problems", () => ({
   Problems: () => <div>Problems panel</div>,
 }));
@@ -194,6 +198,20 @@ describe("PreviewPanel", () => {
     mocks.installManagedNode.mockReturnValue(new Promise(() => {}));
     mocks.cancelManagedNodeInstall.mockResolvedValue(undefined);
     mocks.updateSettings.mockResolvedValue(undefined);
+  });
+
+  it("always shows the design canvas when the chat is in design mode", () => {
+    mocks.settings = {
+      disablePreviewNodeAutoInstall: false,
+      selectedChatMode: "design",
+    };
+
+    render(<PreviewPanel />);
+
+    // Design mode overrides the previewMode ("preview" in this test) so the
+    // mockups are always shown while designing.
+    expect(screen.getByText("Design canvas")).toBeTruthy();
+    expect(screen.queryByText("Preview iframe")).toBeNull();
   });
 
   it("shows preview when Node is known to be installed even if the latest Node check failed", () => {

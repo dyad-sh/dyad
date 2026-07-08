@@ -365,6 +365,7 @@ export async function handleLocalAgentStream(
     dyadRequestId,
     readOnly = false,
     planModeOnly = false,
+    designModeOnly = false,
     messageOverride,
     settingsOverride,
     freeModelMode,
@@ -385,6 +386,12 @@ export async function handleLocalAgentStream(
      */
     planModeOnly?: boolean;
     /**
+     * If true, only include tools allowed in design mode (read-only exploration
+     * tools plus the design-specific tools that emit brief/interface state).
+     * Design mode, like plan mode, never mutates the codebase.
+     */
+    designModeOnly?: boolean;
+    /**
      * If provided, use these messages instead of fetching from the database.
      * Used for summarization where messages need to be transformed.
      */
@@ -403,6 +410,10 @@ export async function handleLocalAgentStream(
   },
 ): Promise<boolean> {
   const settings = settingsOverride ?? readSettings();
+  // Design mode shares plan mode's read-only posture toward the codebase: no
+  // MCP tools, no workspace mutations, no deploys/commits, and no Pro gate.
+  // The two differ only in which tool set they expose (see buildOptions below).
+  const restrictedMode = planModeOnly || designModeOnly;
   const maxToolCallSteps =
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
@@ -468,7 +479,7 @@ export async function handleLocalAgentStream(
   // Read-only mode (ask mode) is allowed for all users without Pro
   if (
     !readOnly &&
-    !planModeOnly &&
+    !restrictedMode &&
     !isDyadProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
@@ -621,8 +632,8 @@ export async function handleLocalAgentStream(
     // Load persisted todos from a previous turn (if any)
     persistedTodos = await loadTodos(appPath, chat.id);
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
-    // Skip in read-only/plan-only mode to avoid modifying the workspace
-    if (!readOnly && !planModeOnly) {
+    // Skip in read-only/plan-only/design-only mode to avoid modifying the workspace
+    if (!readOnly && !restrictedMode) {
       await ensureDyadGitignored(appPath).catch((err: unknown) =>
         logger.warn("Failed to ensure .dyad gitignored:", err),
       );
@@ -719,7 +730,9 @@ export async function handleLocalAgentStream(
     const buildOptions = {
       readOnly,
       planModeOnly,
-      basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
+      designModeOnly,
+      basicAgentMode:
+        !readOnly && !restrictedMode && isBasicAgentMode(settings),
       freeModelMode: effectiveFreeModelMode,
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
@@ -737,7 +750,7 @@ export async function handleLocalAgentStream(
     // from the same predicate the builder uses. Off in read-only and plan mode.
     const mcpInSandboxEnabled =
       !readOnly &&
-      !planModeOnly &&
+      !restrictedMode &&
       shouldIncludeTool(executeSandboxScriptTool, ctx, buildOptions);
     ctx.mcpToolsEnabled = mcpInSandboxEnabled;
 
@@ -754,7 +767,7 @@ export async function handleLocalAgentStream(
     // actually registered this turn.
     const hasGetSchemaTool = agentTools.get_mcp_tool_schema != undefined;
     const mcpToolsForRegistration: ToolSet =
-      !readOnly && !planModeOnly && !mcpInSandboxEnabled
+      !readOnly && !restrictedMode && !mcpInSandboxEnabled
         ? await getMcpTools(event, ctx)
         : {};
     if (agentTools.execute_sandbox_script != undefined) {
@@ -852,7 +865,7 @@ export async function handleLocalAgentStream(
     if (
       !messageOverride &&
       !readOnly &&
-      !planModeOnly &&
+      !restrictedMode &&
       persistedTodos.length > 0 &&
       hasIncompleteTodos(persistedTodos)
     ) {
@@ -1096,7 +1109,7 @@ export async function handleLocalAgentStream(
                       type: "text",
                       text: buildPlanningQuestionnaireReflectionMessage(
                         questionnaireError,
-                        planModeOnly,
+                        restrictedMode,
                       ),
                     },
                   ]);
@@ -1483,7 +1496,7 @@ export async function handleLocalAgentStream(
       if (
         !shouldRunTodoFollowUpPass({
           readOnly,
-          planModeOnly,
+          planModeOnly: restrictedMode,
           passEndedWithText,
           todos: ctx.todos,
           todoFollowUpLoops,
@@ -1540,8 +1553,8 @@ export async function handleLocalAgentStream(
       sendChunk(fullResponse);
     }
 
-    // In read-only and plan mode, skip the deploy step (commit follows below)
-    if (!readOnly && !planModeOnly) {
+    // In read-only, plan, and design mode, skip the deploy step (commit follows below)
+    if (!readOnly && !restrictedMode) {
       // Deploy all Supabase functions if shared modules changed
       const deployResult = await deployAllFunctionsIfNeeded({
         ...ctx,
@@ -1601,8 +1614,8 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // In read-only and plan mode, skip commits
-    if (!readOnly && !planModeOnly) {
+    // In read-only, plan, and design mode, skip commits
+    if (!readOnly && !restrictedMode) {
       // Commit all changes
       const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 

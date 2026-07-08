@@ -18,7 +18,10 @@ describe("computeExecCommand", () => {
     });
 
     const script = path.resolve("/home/user/code/dyad/.vite/main.js");
-    expect(command.exec).toBe(`"/usr/lib/electron/electron" "${script}" %u`);
+    const escapedScript = script.replace(/(["`$\\])/g, "\\$1");
+    expect(command.exec).toBe(
+      `"/usr/lib/electron/electron" "${escapedScript}" %u`,
+    );
     expect(command.tryExec).toBe("/usr/lib/electron/electron");
   });
 

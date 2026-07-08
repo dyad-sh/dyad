@@ -411,7 +411,7 @@ export async function setupChatFlowHarness(
       if (!fs.existsSync(full)) {
         throw new Error(`App file not found: ${relativePath}`);
       }
-      return fs.readFileSync(full, "utf-8");
+      return fs.readFileSync(full, "utf-8").replace(/\r\n/g, "\n");
     };
 
     const appFileExists = (relativePath: string): boolean =>

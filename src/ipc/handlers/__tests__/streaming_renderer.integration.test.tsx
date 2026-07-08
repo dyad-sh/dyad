@@ -37,15 +37,23 @@ describe("streaming renderer (integration)", () => {
     );
     send();
 
-    await screen.findByText("StreamingRenderBlockA.tsx", {
-      exact: true,
-    });
-    await screen.findByText("StreamingRenderBlockE.tsx", { exact: true });
+    await screen.findByText(
+      "StreamingRenderBlockA.tsx",
+      {
+        exact: true,
+      },
+      { timeout: 30_000 },
+    );
+    await screen.findByText(
+      "StreamingRenderBlockE.tsx",
+      { exact: true },
+      { timeout: 30_000 },
+    );
     expect(
       screen.getByText("StreamingRenderBlockA.tsx", { exact: true }),
     ).toBeTruthy();
 
-    await harness.waitForStreamEnd(chatId);
+    await harness.waitForStreamEnd(chatId, 60_000);
 
     for (const name of [
       "StreamingRenderBlockA.tsx",
@@ -68,12 +76,12 @@ describe("streaming renderer (integration)", () => {
     );
     send();
 
-    await screen.findByText("Writing...", {}, { timeout: 10_000 });
+    await screen.findByText("Writing...", {}, { timeout: 30_000 });
     expect(
       screen.getByText("StreamingRenderLargeBlock.tsx", { exact: true }),
     ).toBeTruthy();
 
-    await harness.waitForStreamEnd(chatId);
+    await harness.waitForStreamEnd(chatId, 60_000);
 
     expect(
       screen.getByText("StreamingRenderLargeBlock.tsx", { exact: true }),

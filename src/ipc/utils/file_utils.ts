@@ -19,7 +19,9 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
     return [];
   }
 
-  const dirents = fs.readdirSync(dir, { withFileTypes: true });
+  const dirents = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name));
   const files: string[] = [];
 
   for (const dirent of dirents) {
@@ -32,11 +34,11 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
       }
     } else {
       // For files, add the relative path
-      files.push(path.relative(baseDir, res));
+      files.push(normalizePath(path.relative(baseDir, res)));
     }
   }
 
-  return files;
+  return files.sort((a, b) => a.localeCompare(b));
 }
 
 export async function copyDirectoryRecursive(

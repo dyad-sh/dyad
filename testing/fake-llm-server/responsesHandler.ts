@@ -158,7 +158,9 @@ export const createResponsesHandler =
         `${testCaseName}.md`,
       );
       try {
-        messageContent = fs.readFileSync(testFilePath, "utf-8");
+        messageContent = fs
+          .readFileSync(testFilePath, "utf-8")
+          .replace(/\r\n/g, "\n");
       } catch (error) {
         console.error(`* [responses/${prefix}] Error reading test file`, error);
         messageContent = `Error: Could not read test file: ${testCaseName}`;

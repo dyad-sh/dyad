@@ -457,10 +457,12 @@ export default Index;
       typeof lastMessage.content === "string" &&
       lastMessage.content.startsWith("/security-review")
     ) {
-      messageContent = fs.readFileSync(
-        path.join(resolveFixturesDir(), "security-review", "findings.md"),
-        "utf-8",
-      );
+      messageContent = fs
+        .readFileSync(
+          path.join(resolveFixturesDir(), "security-review", "findings.md"),
+          "utf-8",
+        )
+        .replace(/\r\n/g, "\n");
       messageContent += "\n\n" + generateDump(req);
     }
 
@@ -487,7 +489,9 @@ export default Index;
 
       try {
         if (fs.existsSync(testFilePath)) {
-          messageContent = fs.readFileSync(testFilePath, "utf-8");
+          messageContent = fs
+            .readFileSync(testFilePath, "utf-8")
+            .replace(/\r\n/g, "\n");
           fakeLlmLog(`* Loaded test case: `);
         } else {
           console.error(`* Test case file not found: ${testFilePath}`);

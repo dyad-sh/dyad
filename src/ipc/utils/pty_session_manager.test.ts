@@ -17,7 +17,7 @@ interface MockPtyController {
   };
 }
 
-function createMockPtyController(pid: number): MockPtyController {
+function createMockPtyController(): MockPtyController {
   const dataListeners = new Set<(data: string) => void>();
   const exitListeners = new Set<
     (event: { exitCode: number; signal?: number }) => void
@@ -35,7 +35,7 @@ function createMockPtyController(pid: number): MockPtyController {
       }
     },
     pty: {
-      pid,
+      pid: undefined,
       kill: vi.fn(),
       write: vi.fn(),
       resize: vi.fn(),
@@ -65,7 +65,7 @@ function createManager() {
   const controllers: MockPtyController[] = [];
   const send = vi.fn();
   const spawner = vi.fn((_shell, _args, _options) => {
-    const controller = createMockPtyController(controllers.length + 1);
+    const controller = createMockPtyController();
     controllers.push(controller);
     return controller.pty;
   });

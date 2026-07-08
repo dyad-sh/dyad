@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "node:path";
 import {
   parseEnvFile,
   removeNeonEnvVars,
@@ -17,8 +18,14 @@ vi.mock("fs", () => ({
 }));
 
 vi.mock("@/paths/paths", () => ({
-  getDyadAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
+  getDyadAppPath: vi.fn((appPath: string) =>
+    require("node:path").join("/mock/apps", appPath),
+  ),
 }));
+
+function mockEnvPath(appPath = "my-app") {
+  return path.join("/mock/apps", appPath, ".env.local");
+}
 
 function createEnoentError() {
   return Object.assign(new Error("File not found"), {
@@ -588,7 +595,7 @@ describe("Neon env var helpers", () => {
       });
 
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        "/mock/apps/my-app/.env.local",
+        mockEnvPath(),
         expect.any(String),
       );
 
@@ -823,7 +830,7 @@ NEON_AUTH_COOKIE_SECRET=${"c".repeat(64)}`);
       await removeNeonEnvVars({ appPath: "my-app" });
 
       expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        "/mock/apps/my-app/.env.local",
+        mockEnvPath(),
         expect.any(String),
       );
 

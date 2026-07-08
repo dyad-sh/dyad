@@ -12,6 +12,7 @@ import {
   deleteAppBlueprintForChat,
   getAppBlueprintForChat,
 } from "@/ipc/handlers/app_blueprint_handlers";
+import { ensureGitLineEndingPolicy } from "@/ipc/utils/git_utils";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -69,6 +70,10 @@ describe("local-agent basic flows (integration)", () => {
         { cwd: appDir, stdio: "pipe" },
       );
     git("init");
+    await ensureGitLineEndingPolicy({
+      path: appDir,
+      writeGitattributes: true,
+    });
     git("add", "-A");
     git("commit", "-m", "init");
 
@@ -120,7 +125,11 @@ describe("local-agent basic flows (integration)", () => {
     );
     await harness.waitForStreamEnd(app.chatId);
 
-    expect(fs.readFileSync(path.join(app.appDir, "src/App.tsx"), "utf8")).toBe(
+    expect(
+      fs
+        .readFileSync(path.join(app.appDir, "src/App.tsx"), "utf8")
+        .replace(/\r\n/g, "\n"),
+    ).toBe(
       "const App = () => <div>UPDATED imported app</div>;\n\nexport default App;\n",
     );
     const storedMessages = await harness.db.query.messages.findMany({
@@ -192,22 +201,28 @@ describe("local-agent basic flows (integration)", () => {
     );
     send();
 
-    const approveButton = await screen.findByRole(
+    await screen.findByRole(
       "button",
       { name: "Approve Plan" },
       { timeout: 20_000 },
     );
     await harness.waitForStreamEnd(app.chatId);
     const followUpEnd = harness.waitForNextStreamEnd(app.chatId);
-    fireEvent.click(approveButton);
-
-    await harness.waitForEvent(
+    const approveButton = await screen.findByRole(
+      "button",
+      { name: "Approve Plan" },
+      { timeout: 20_000 },
+    );
+    const blueprintApproved = harness.waitForEvent(
       "app-blueprint:approved",
       (payload) =>
         typeof payload === "object" &&
         payload !== null &&
         (payload as { chatId?: number }).chatId === app.chatId,
     );
+    fireEvent.click(approveButton);
+
+    await blueprintApproved;
     await waitFor(async () => {
       const appRow = await harness.db.query.apps.findFirst({
         where: eq(apps.id, app.appId),

@@ -624,7 +624,10 @@ export async function extractCodebase({
 
   // Sort files by modification time (oldest first)
   // This is important for cache-ability.
-  const sortedFiles = await sortFilesByModificationTime([...new Set(files)]);
+  const sortedFiles = await sortFilesByModificationTime(
+    [...new Set(files)],
+    Boolean(settings.isTestMode),
+  );
 
   // Format files and collect individual file contents
   const formatPromises = sortedFiles.map(async (file) => {
@@ -693,7 +696,10 @@ export async function extractCodebase({
 /**
  * Sort files by their modification timestamp (oldest first)
  */
-async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
+async function sortFilesByModificationTime(
+  files: string[],
+  forcePathSort = false,
+): Promise<string[]> {
   // Get stats for all files
   const fileStats = await Promise.all(
     files.map(async (file) => {
@@ -709,7 +715,7 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
     }),
   );
 
-  if (IS_TEST_BUILD) {
+  if (IS_TEST_BUILD || forcePathSort) {
     // Why? For some reason, file ordering is not stable on Windows.
     // This is a workaround to ensure stable ordering, although
     // ideally we'd like to sort it by modification time which is
@@ -719,7 +725,9 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
       .map((item) => item.file);
   }
   // Sort by modification time (oldest first)
-  return fileStats.sort((a, b) => a.mtime - b.mtime).map((item) => item.file);
+  return fileStats
+    .sort((a, b) => a.mtime - b.mtime || a.file.localeCompare(b.file))
+    .map((item) => item.file);
 }
 
 function createFullGlobPath({

@@ -14,6 +14,9 @@
 // `engine: true`.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { screen, waitFor } from "@testing-library/react";
 
 import {
@@ -115,7 +118,10 @@ describe("local-agent ask mode (integration)", () => {
       /<dyad-script description="Check App\.tsx length" state="finished" truncated="false" execution-ms="\d+">/,
     );
     // The script output is App.tsx's length — verify against the real file.
-    const appTsxLength = harness.readAppFile("src/App.tsx").length;
+    const appTsxLength = fs.readFileSync(
+      path.join(harness.appDir, "src/App.tsx"),
+      "utf8",
+    ).length;
     const payloadMatch = content.match(
       /<dyad-script [^>]*>([\s\S]*?)<\/dyad-script>/,
     );

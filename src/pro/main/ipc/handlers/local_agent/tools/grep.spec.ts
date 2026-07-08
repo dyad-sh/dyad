@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { grepTool } from "./grep";
+import { grepTool, normalizeRipgrepMatchPath } from "./grep";
 import type { AgentContext } from "./types";
 
 // Mock electron-log
@@ -170,6 +170,14 @@ function deepHello() {
       expect(() =>
         schema.parse({ query: "createBooking({", literal: true }),
       ).not.toThrow();
+    });
+  });
+
+  describe("path normalization", () => {
+    it("normalizes Windows ripgrep paths to prompt-safe relative paths", () => {
+      expect(normalizeRipgrepMatchPath(".\\nested\\deep.ts")).toBe(
+        "nested/deep.ts",
+      );
     });
   });
 

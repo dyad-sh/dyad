@@ -4,6 +4,8 @@ import addPasswordResetGuide from "./guides/add-password-reset.md?raw";
 import { filterGuideByFramework } from "./guides/filter_guide_by_framework";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 
+const normalizeGuideNewlines = (guide: string) => guide.replace(/\r\n/g, "\n");
+
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,
   frameworkType: AppFrameworkType | null,
@@ -56,6 +58,16 @@ function getSharedNeonPrompt(
   isLocalAgentMode: boolean,
   frameworkType: AppFrameworkType | null,
 ): string {
+  const addAuthenticationGuideBody = normalizeGuideNewlines(
+    addAuthenticationGuide,
+  );
+  const addEmailVerificationGuideBody = normalizeGuideNewlines(
+    addEmailVerificationGuide,
+  );
+  const addPasswordResetGuideBody = normalizeGuideNewlines(
+    addPasswordResetGuide,
+  );
+
   const authSection = isLocalAgentMode
     ? `## Auth (detailed guide available)
 
@@ -65,9 +77,9 @@ ${emailVerificationEnabled ? `\n**IMPORTANT:** Email verification is enabled. Af
 **IMPORTANT:** If the task involves password reset, forgot-password, or "reset my password" flows, you MUST call \`read_guide\` with guide="add-password-reset" BEFORE writing any password-reset code. Do NOT hand-roll a reset-token flow.`
     : `## Auth
 
-${filterGuideByFramework(addAuthenticationGuide, frameworkType)}
-${emailVerificationEnabled ? `\n${filterGuideByFramework(addEmailVerificationGuide, frameworkType)}` : ""}
-${filterGuideByFramework(addPasswordResetGuide, frameworkType)}`;
+${filterGuideByFramework(addAuthenticationGuideBody, frameworkType)}
+${emailVerificationEnabled ? `\n${filterGuideByFramework(addEmailVerificationGuideBody, frameworkType)}` : ""}
+${filterGuideByFramework(addPasswordResetGuideBody, frameworkType)}`;
 
   return `
 <neon-system-prompt>
@@ -374,6 +386,6 @@ Email verification is **enabled** on this Neon Auth branch. When implementing si
 
 Email verification is **enabled** on this Neon Auth branch.
 
-${filterGuideByFramework(addEmailVerificationGuide, frameworkType)}
+${filterGuideByFramework(normalizeGuideNewlines(addEmailVerificationGuide), frameworkType)}
 `;
 }

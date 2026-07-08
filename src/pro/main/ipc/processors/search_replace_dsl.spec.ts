@@ -12,11 +12,11 @@ import {
 const passesContent = readFileSync(
   join(__dirname, "search_replace_passes.txt"),
   "utf-8",
-);
+).replace(/\r\n/g, "\n");
 const failsContent = readFileSync(
   join(__dirname, "search_replace_fails.txt"),
   "utf-8",
-);
+).replace(/\r\n/g, "\n");
 
 const passingTestCases =
   parseDslTestCases(passesContent).filter(isPassingTestCase);

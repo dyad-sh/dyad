@@ -297,7 +297,7 @@ export function AddPluginDialog({
                         <AccordionTrigger className="py-2 text-sm">
                           Advanced OAuth options
                         </AccordionTrigger>
-                        <AccordionContent className="space-y-3">
+                        <AccordionContent className="space-y-3 px-1">
                           <div className="space-y-2">
                             <Label>OAuth Client ID</Label>
                             <div className="text-xs text-muted-foreground">

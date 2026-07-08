@@ -202,6 +202,7 @@ ${finding.description}`;
     expect(assistant.commitHash).toBeTruthy();
     expect(harness.appFileExists("file1.txt")).toBe(true);
     expect(harness.gitLog().length).toBeGreaterThan(commitsBefore);
+    await harness.bridge.settleInFlight();
   }, 60_000);
 
   it("multi-select fix: streams a combined 2-issue prompt in a new chat", async () => {
@@ -211,6 +212,7 @@ ${finding.description}`;
     // The previous test already committed the canned file1.txt write; perturb
     // and commit it so this turn's identical canned write is a real change
     // again (each e2e test ran against a fresh app).
+    await harness.bridge.settleInFlight();
     fs.writeFileSync(path.join(harness.appDir, "file1.txt"), "perturbed\n");
     execFileSync("git", ["add", "-A"], { cwd: harness.appDir });
     execFileSync(

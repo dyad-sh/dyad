@@ -208,15 +208,16 @@ describe("local-agent basic flows (integration)", () => {
       { name: "Approve Plan" },
       { timeout: 20_000 },
     );
-    fireEvent.click(approveButton);
-
-    await harness.waitForEvent(
+    const blueprintApproved = harness.waitForEvent(
       "app-blueprint:approved",
       (payload) =>
         typeof payload === "object" &&
         payload !== null &&
         (payload as { chatId?: number }).chatId === app.chatId,
     );
+    fireEvent.click(approveButton);
+
+    await blueprintApproved;
     await waitFor(async () => {
       const appRow = await harness.db.query.apps.findFirst({
         where: eq(apps.id, app.appId),

@@ -91,10 +91,7 @@ async function getSafeStorageDecryptCalls(po: {
 test("GitHub device flow handles GitHub-style gzip chunked response", async ({
   po,
 }) => {
-  await setGitHubDeviceCodeResponseMode(
-    po.fakeLlmPort,
-    "github-gzip-chunked",
-  );
+  await setGitHubDeviceCodeResponseMode(po.fakeLlmPort, "github-gzip-chunked");
 
   try {
     await po.setUp();

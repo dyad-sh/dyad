@@ -175,9 +175,7 @@ export function PreviewPanel() {
         <PanelGroup direction="vertical">
           <Panel id="content" minSize={30}>
             <div className="flex h-full flex-col">
-              {previewMode !== "preview" && (
-                <PreviewToolbar compactThreshold={0} />
-              )}
+              <PreviewToolbar />
               <PackageManagerWarningBanner />
               <div className="flex-1 overflow-y-auto">
                 {isNodeMissing ? (

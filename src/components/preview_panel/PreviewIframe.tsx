@@ -31,8 +31,6 @@ import {
   Pen,
   MoreVertical,
   Trash2,
-  Maximize2,
-  Minimize2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -57,7 +55,6 @@ import {
   isRestoringQueuedSelectionAtom,
   pendingScreenshotAppIdAtom,
 } from "@/atoms/previewAtoms";
-import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
 import { mergePendingChange } from "@/ipc/types/visual-editing";
 import {
@@ -90,7 +87,6 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
-import { PreviewToolbar } from "./PreviewToolbar";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
 import {
@@ -281,9 +277,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
     screenshotDataUrlAtom,
-  );
-  const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
-    isChatPanelHiddenAtom,
   );
   const currentHistoryUrl = navigationHistory[currentHistoryPosition] ?? null;
   const currentAddressPath = formatPreviewAddressPath(currentHistoryUrl);
@@ -1599,7 +1592,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     <div className="flex flex-col h-full">
       {/* Browser-style header - hide when annotator is active */}
       {!annotatorMode && (
-        <PreviewToolbar>
+        <div className="flex min-w-0 items-center space-x-2 border-b p-2">
           {/* Browser navigation group */}
           <div className="flex items-center space-x-2 ml-auto">
             {isCloudMode && (
@@ -1951,28 +1944,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {annotatorMode ? "Annotator mode active" : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-                    aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
-                    aria-pressed={isChatPanelHidden}
-                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    data-testid="preview-toggle-chat-panel-button"
-                  />
-                }
-              >
-                {isChatPanelHidden ? (
-                  <Maximize2 size={16} />
-                ) : (
-                  <Minimize2 size={16} />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>
-                {isChatPanelHidden ? "Show chat" : "Hide chat"}
-              </TooltipContent>
-            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger
                 data-testid="preview-more-options-button"
@@ -2014,7 +1985,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </PreviewToolbar>
+        </div>
       )}
 
       <div className="relative flex-grow overflow-hidden">

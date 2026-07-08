@@ -538,6 +538,18 @@ export function registerTestsHandlers() {
           let prepared: PreparedIsolation | undefined;
           try {
             const app = await getApp(appId);
+
+            if (!app.testingEnabled) {
+              return {
+                appId,
+                results: [],
+                infraError: {
+                  message:
+                    "Testing isn't enabled for this app. Enable it in the Tests panel before running tests.",
+                },
+              };
+            }
+
             const runtimeMode = readSettings().runtimeMode2 ?? "host";
 
             // Set up isolation so the run never mutates the user's real data:

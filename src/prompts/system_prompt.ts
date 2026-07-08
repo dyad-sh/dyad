@@ -661,6 +661,7 @@ export const constructSystemPrompt = ({
       hasSupabaseProject,
       enableAppBlueprint,
       codeExplorerAvailable,
+      testingEnabled,
     });
   }
 

@@ -73,6 +73,31 @@ describe("local_agent_prompt", () => {
     expect(prompt).toMatchSnapshot();
   });
 
+  it("agent mode omits test-writing guidance when testing is disabled", () => {
+    const prompt = constructLocalAgentPrompt(undefined);
+    expect(prompt).not.toContain("# Writing end-to-end tests");
+  });
+
+  it("agent mode includes test-writing guidance when testing is enabled", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      testingEnabled: true,
+    });
+    expect(prompt).toContain("# Writing end-to-end tests");
+  });
+
+  it("basic agent mode gates test-writing guidance on testingEnabled", () => {
+    const disabled = constructLocalAgentPrompt(undefined, undefined, {
+      basicAgentMode: true,
+    });
+    expect(disabled).not.toContain("# Writing end-to-end tests");
+
+    const enabled = constructLocalAgentPrompt(undefined, undefined, {
+      basicAgentMode: true,
+      testingEnabled: true,
+    });
+    expect(enabled).toContain("# Writing end-to-end tests");
+  });
+
   it("ask mode system prompt", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       readOnly: true,

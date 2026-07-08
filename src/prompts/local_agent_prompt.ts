@@ -326,9 +326,11 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 function buildLocalAgentSystemPrompt({
   enableAppBlueprint,
   codeExplorerAvailable,
+  testingEnabled,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
+  testingEnabled: boolean;
 }): string {
   return `
 ${ROLE_BLOCK}
@@ -345,8 +347,7 @@ ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable })}
 [[SERVER_LAYER]]
-${AGENT_TEST_WRITING_GUIDANCE}
-
+${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
 ${IMAGE_GENERATION_BLOCK}
 ${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
 ${AI_RULES_BLOCK}
@@ -357,7 +358,10 @@ ${AI_RULES_BLOCK}
  * System prompt for Local Agent v2 in Basic Agent mode (free tier)
  * Limited tools - no code_search, web_search, web_crawl
  */
-function buildLocalAgentBasicSystemPrompt(enableAppBlueprint: boolean): string {
+function buildLocalAgentBasicSystemPrompt(
+  enableAppBlueprint: boolean,
+  testingEnabled: boolean,
+): string {
   return `
 ${ROLE_BLOCK}
 
@@ -373,8 +377,7 @@ ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${basicDevelopmentWorkflowBlock(enableAppBlueprint)}
 [[SERVER_LAYER]]
-${AGENT_TEST_WRITING_GUIDANCE}
-${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
+${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
 ${AI_RULES_BLOCK}
 `;
 }
@@ -417,21 +420,32 @@ export function constructLocalAgentPrompt(
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
     codeExplorerAvailable?: boolean;
+    /**
+     * Whether the app has opted into E2E testing. Gates the agent-mode
+     * test-writing guidance so non-testing apps don't carry it in every prompt
+     * (mirrors the build-mode gating in `getSystemPromptForChatMode`).
+     */
+    testingEnabled?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
   const codeExplorerAvailable = !!options?.codeExplorerAvailable;
+  const testingEnabled = !!options?.testingEnabled;
 
   // Select the appropriate base prompt
   let basePrompt: string;
   if (options?.readOnly) {
     basePrompt = LOCAL_AGENT_ASK_SYSTEM_PROMPT;
   } else if (options?.basicAgentMode || options?.freeModelMode) {
-    basePrompt = buildLocalAgentBasicSystemPrompt(enableAppBlueprint);
+    basePrompt = buildLocalAgentBasicSystemPrompt(
+      enableAppBlueprint,
+      testingEnabled,
+    );
   } else {
     basePrompt = buildLocalAgentSystemPrompt({
       enableAppBlueprint,
       codeExplorerAvailable,
+      testingEnabled,
     });
   }
 

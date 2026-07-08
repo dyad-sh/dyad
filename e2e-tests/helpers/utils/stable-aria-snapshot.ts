@@ -11,6 +11,7 @@ function isMoreIndented(line: string, baseIndent: number) {
 
 function normalizeTextLine(line: string) {
   const indent = line.match(/^ */)?.[0] ?? "";
+  line = line.replace(/http:\/\/localhost:\d+/g, "http://localhost:[[port]]");
   const trimmed = line.trim();
 
   if (

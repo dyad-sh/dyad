@@ -19,6 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -351,7 +352,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     selectedVersionIdAtom,
   );
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
+  const { branchInfo } = useCurrentBranch(appId);
   const wasVisibleRef = useRef(false);
+  const returnBranchNameRef = useRef<string | null>(null);
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -467,6 +470,12 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   }, [versions]);
 
   useEffect(() => {
+    if (branchInfo?.branch && branchInfo.branch !== "<no-branch>") {
+      returnBranchNameRef.current = branchInfo.branch;
+    }
+  }, [branchInfo?.branch]);
+
+  useEffect(() => {
     async function updatePaneState() {
       // When pane becomes visible after being closed
       if (isVisible && !wasVisibleRef.current) {
@@ -485,7 +494,10 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         setAutoFocusNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
-          await checkoutVersion({ appId, versionId: "main" });
+          await checkoutVersion({
+            appId,
+            versionId: returnBranchNameRef.current ?? "main",
+          });
           if (app?.neonProjectId) {
             await restartApp();
           }
@@ -539,6 +551,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const handleVersionClick = async (version: Version) => {
     if (appId) {
+      if (branchInfo?.branch && branchInfo.branch !== "<no-branch>") {
+        returnBranchNameRef.current = branchInfo.branch;
+      }
       setSelectedVersionId(version.oid);
       try {
         await checkoutVersion({ appId, versionId: version.oid });
@@ -698,6 +713,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     void (async () => {
       await revertVersion({
         versionId: version.oid,
+        targetBranchName: returnBranchNameRef.current ?? undefined,
       });
       setSelectedVersionId(null);
       // Close the pane after revert to force a refresh on next open

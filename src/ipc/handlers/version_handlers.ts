@@ -386,7 +386,8 @@ export function registerVersionHandlers() {
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
-    const { appId, previousVersionId, currentChatMessageId } = params;
+    const { appId, previousVersionId, currentChatMessageId, targetBranchName } =
+      params;
     return withLock(appId, async () => {
       let successMessage = "Restored version";
       let warningMessage = "";
@@ -399,15 +400,17 @@ export function registerVersionHandlers() {
       }
 
       const appPath = getDyadAppPath(app.path);
+      const currentBranch = await gitCurrentBranch({ path: appPath });
+      const revertRef = currentBranch ?? targetBranchName ?? "HEAD";
       // Get the current commit hash before reverting
       const currentCommitHash = await getCurrentCommitHash({
         path: appPath,
-        ref: "main",
+        ref: revertRef,
       });
 
       await gitCheckout({
         path: appPath,
-        ref: "main",
+        ref: revertRef,
       });
 
       if (app.neonProjectId && app.neonDevelopmentBranchId) {

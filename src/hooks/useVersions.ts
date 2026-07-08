@@ -54,14 +54,17 @@ export function useVersions(appId: number | null) {
     {
       versionId: string;
       currentChatMessageId?: { chatId: number; messageId: number };
+      targetBranchName?: string;
     }
   >({
     mutationFn: async ({
       versionId,
       currentChatMessageId,
+      targetBranchName,
     }: {
       versionId: string;
       currentChatMessageId?: { chatId: number; messageId: number };
+      targetBranchName?: string;
     }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
@@ -71,6 +74,7 @@ export function useVersions(appId: number | null) {
         appId: currentAppId,
         previousVersionId: versionId,
         currentChatMessageId,
+        targetBranchName,
       });
     },
     onSuccess: async (result) => {

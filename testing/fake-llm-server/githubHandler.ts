@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { fakeLlmLog } from "./log";
 
 const gitHttpMiddlewareFactory = require("git-http-mock-server/middleware");
@@ -21,7 +21,8 @@ const pushEvents: PushEvent[] = [];
 // Parse the git receive-pack protocol body for ref updates
 // ("old-sha new-sha refs/heads/branch-name") and record them for the
 // /github/api/test/push-events endpoint.
-function recordPushEvents(repoName: string, body: string) {
+function recordPushEvents(repoName: string, body: string): PushEvent[] {
+  const events: PushEvent[] = [];
   try {
     const lines = body.split("\n");
     lines.forEach((line) => {
@@ -38,13 +39,16 @@ function recordPushEvents(repoName: string, body: string) {
         if (isDelete) operation = "delete";
         else if (isCreate) operation = "create";
 
-        pushEvents.push({
+        const event: PushEvent = {
           timestamp: new Date(),
           repo: repoName,
           branch: branchName,
           operation,
           commitSha: isDelete ? oldSha : newSha,
-        });
+        };
+
+        events.push(event);
+        pushEvents.push(event);
 
         fakeLlmLog(
           `* Recorded ${operation} to ${repoName}/${branchName}, commit: ${isDelete ? oldSha : newSha}`,
@@ -53,6 +57,63 @@ function recordPushEvents(repoName: string, body: string) {
     });
   } catch (error) {
     console.error("* Error parsing git protocol:", error);
+  }
+  return events;
+}
+
+function ensureBareRepoHeadTracksCreatedBranch(
+  bareRepoPath: string,
+  events: PushEvent[],
+) {
+  const createdBranch = events.find(
+    (event) => event.operation === "create",
+  )?.branch;
+  if (!createdBranch) {
+    return;
+  }
+
+  let headRef: string;
+  try {
+    headRef = execFileSync(
+      "git",
+      ["--git-dir", bareRepoPath, "symbolic-ref", "--quiet", "HEAD"],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    )
+      .toString()
+      .trim();
+  } catch {
+    return;
+  }
+
+  try {
+    execFileSync(
+      "git",
+      ["--git-dir", bareRepoPath, "show-ref", "--verify", "--quiet", headRef],
+      { stdio: "ignore" },
+    );
+    return;
+  } catch {
+    // Continue below: HEAD points at a default branch ref that has not been
+    // created, so clones need it retargeted to the first pushed branch.
+  }
+
+  try {
+    execFileSync(
+      "git",
+      [
+        "--git-dir",
+        bareRepoPath,
+        "symbolic-ref",
+        "HEAD",
+        `refs/heads/${createdBranch}`,
+      ],
+      { stdio: "pipe" },
+    );
+  } catch (error) {
+    console.warn(
+      "* Warning: failed to set symbolic-ref HEAD on bare repo",
+      error,
+    );
   }
 }
 
@@ -547,7 +608,10 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
       });
       req.on("end", () => {
         const rawBody = Buffer.concat(chunks);
-        recordPushEvents(repoName, rawBody.toString("latin1"));
+        const recordedEvents = recordPushEvents(
+          repoName,
+          rawBody.toString("latin1"),
+        );
 
         const env = req.headers["git-protocol"]
           ? {
@@ -577,6 +641,11 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
         ps.stdin.write(rawBody);
         ps.stdin.end();
         ps.stdout.pipe(res);
+        ps.on("close", (code) => {
+          if (code === 0) {
+            ensureBareRepoHeadTracksCreatedBranch(bareRepoPath, recordedEvents);
+          }
+        });
         // Deliberately NOT killing the child on client disconnect: its input
         // is fully buffered above, so it always terminates on its own, and
         // killing receive-pack mid-ref-update is what would leave stale locks

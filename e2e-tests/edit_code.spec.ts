@@ -13,11 +13,36 @@ async function getActiveEditorModelPath(page: Page): Promise<string | null> {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const editor = monaco.editor.getEditors().find((candidate: any) => {
-      return candidate.getModel();
-    });
+    const editor =
+      monaco.editor.getEditors().find((candidate: any) => {
+        return candidate.hasTextFocus?.() && candidate.getModel();
+      }) ??
+      monaco.editor.getEditors().find((candidate: any) => {
+        return candidate.getModel();
+      });
     const model = editor?.getModel();
     return model?.uri?.path ?? null;
+  });
+}
+
+async function getActiveEditorModelContent(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    // Monaco attaches itself to the window in the packaged app.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const monaco = (window as any).monaco;
+    if (!monaco) {
+      return null;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const editor =
+      monaco.editor.getEditors().find((candidate: any) => {
+        return candidate.hasTextFocus?.() && candidate.getModel();
+      }) ??
+      monaco.editor.getEditors().find((candidate: any) => {
+        return candidate.getModel();
+      });
+    return editor?.getModel()?.getValue() ?? null;
   });
 }
 
@@ -30,19 +55,37 @@ async function selectFileAndWaitForEditor(page: Page, fileName: string) {
 }
 
 async function replaceEditorContent(page: Page, content: string) {
-  const editorContent = page.getByRole("textbox", {
-    name: "Editor content",
-  });
+  const editorContent = page.locator(".monaco-editor textarea").first();
   await expect(editorContent).toBeVisible();
-  await editorContent.click({ force: true });
+  await editorContent.focus();
   // Small delay to let Monaco settle after click before selecting all
   await page.waitForTimeout(100);
   await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.type(content);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.insertText(content);
+  await expect
+    .poll(() => getActiveEditorModelContent(page), { timeout: Timeout.MEDIUM })
+    .toEqual(content);
 }
 
 function normalizeLineEndings(value: string) {
   return value.replace(/\r\n/g, "\n");
+}
+
+async function expectFileContent(
+  appPath: string,
+  relativePath: string,
+  expectedContent: string,
+) {
+  await expect
+    .poll(
+      () =>
+        normalizeLineEndings(
+          fs.readFileSync(path.join(appPath, relativePath), "utf8"),
+        ),
+      { timeout: Timeout.MEDIUM },
+    )
+    .toEqual(expectedContent);
 }
 
 test("edit code", async ({ po }) => {
@@ -106,32 +149,11 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
     updatedRobotsFile = `User-agent: *\nDisallow: /round-${round}\n`;
 
     await replaceEditorContent(po.page, firstFileEdit);
-    // Brief pause between file switches to let Monaco persist changes
-    await po.page.waitForTimeout(200);
     await selectFileAndWaitForEditor(po.page, "robots.txt");
     await replaceEditorContent(po.page, updatedRobotsFile);
-    await po.page.waitForTimeout(200);
     await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
   }
 
-  await expect
-    .poll(
-      () =>
-        normalizeLineEndings(
-          fs.readFileSync(path.join(appPath, firstOpenedFilePath), "utf8"),
-        ),
-      { timeout: Timeout.MEDIUM },
-    )
-    .toEqual(firstFileEdit);
-  await expect
-    .poll(
-      () =>
-        normalizeLineEndings(
-          fs.readFileSync(path.join(appPath, robotsFilePath), "utf8"),
-        ),
-      {
-        timeout: Timeout.MEDIUM,
-      },
-    )
-    .toEqual(updatedRobotsFile);
+  await expectFileContent(appPath, firstOpenedFilePath, firstFileEdit);
+  await expectFileContent(appPath, robotsFilePath, updatedRobotsFile);
 });

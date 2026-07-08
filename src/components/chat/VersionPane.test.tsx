@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import type React from "react";
 import type { PropsWithChildren } from "react";
@@ -10,6 +10,7 @@ import { VersionPane } from "./VersionPane";
 
 const {
   checkoutVersionMock,
+  currentBranchMock,
   listAppScreenshotsMock,
   refreshAppMock,
   refreshVersionsMock,
@@ -20,6 +21,7 @@ const {
   versionsMock,
 } = vi.hoisted(() => ({
   checkoutVersionMock: vi.fn(),
+  currentBranchMock: { branch: "main" },
   listAppScreenshotsMock: vi.fn(),
   refreshAppMock: vi.fn(),
   refreshVersionsMock: vi.fn(),
@@ -78,6 +80,14 @@ vi.mock("@/hooks/useCheckoutVersion", () => ({
   useCheckoutVersion: () => ({
     checkoutVersion: checkoutVersionMock,
     isCheckingOutVersion: false,
+  }),
+}));
+
+vi.mock("@/hooks/useCurrentBranch", () => ({
+  useCurrentBranch: () => ({
+    branchInfo: currentBranchMock,
+    isLoading: false,
+    refetchBranchInfo: vi.fn(),
   }),
 }));
 
@@ -140,6 +150,7 @@ describe("VersionPane", () => {
     setVersionNoteMock.mockReset();
 
     versionsMock.length = 0;
+    currentBranchMock.branch = "main";
     listAppScreenshotsMock.mockResolvedValue({ screenshots: [] });
   });
 
@@ -162,5 +173,36 @@ describe("VersionPane", () => {
       ).toBe(String(versionCount));
     });
     expect(screen.getAllByTestId(/^version-row-/)).toHaveLength(20);
+  });
+
+  it("restores selected versions on the branch active before checkout", async () => {
+    currentBranchMock.branch = "feature/test";
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane isVisible onClose={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: version.oid,
+      });
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restore to this version" }),
+    );
+
+    await waitFor(() => {
+      expect(revertVersionMock).toHaveBeenCalledWith({
+        versionId: version.oid,
+        targetBranchName: "feature/test",
+      });
+    });
   });
 });

@@ -15,6 +15,8 @@
 //   - "undo" (isomorphic git)
 //   - "undo with native git"
 //   - "undo after assistant with no code"
+import { execFileSync } from "node:child_process";
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -150,6 +152,10 @@ describe("undo (integration)", () => {
       autoApprove: true,
       enableNativeGit: true,
       settings: { isTestMode: true },
+    });
+    execFileSync("git", ["branch", "-M", "master"], {
+      cwd: harness.appDir,
+      stdio: "pipe",
     });
   }, 60_000);
 

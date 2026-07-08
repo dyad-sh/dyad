@@ -31,6 +31,13 @@ export const RevertVersionParamsSchema = z.object({
   appId: z.number(),
   previousVersionId: z.string(),
   currentChatMessageId: CurrentChatMessageIdSchema.optional(),
+  targetBranchName: z
+    .string()
+    .refine(
+      (v) => !v.startsWith("-"),
+      "targetBranchName must not start with '-'",
+    )
+    .optional(),
 });
 
 export type RevertVersionParams = z.infer<typeof RevertVersionParamsSchema>;

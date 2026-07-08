@@ -63,11 +63,18 @@ jobs:
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Use clang for Linux native rebuilds
+      - name: Use clang 18 for Linux native rebuilds
         if: matrix.os.name == 'linux'
         run: |
-          echo "CC=clang" >> "$GITHUB_ENV"
-          echo "CXX=clang++" >> "$GITHUB_ENV"
+          sudo install -d -m 0755 /etc/apt/keyrings
+          wget -qO /tmp/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
+          gpg --dearmor /tmp/llvm-snapshot.gpg.key
+          sudo install -m 0644 /tmp/llvm-snapshot.gpg.key.gpg /etc/apt/keyrings/apt.llvm.org.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" | sudo tee /etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
+          sudo apt-get update
+          sudo apt-get install -y clang-18
+          echo "CC=clang-18" >> "$GITHUB_ENV"
+          echo "CXX=clang++-18" >> "$GITHUB_ENV"
       - name: add macos cert
         if: contains(matrix.os.name, 'macos')
         env:

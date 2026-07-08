@@ -89,6 +89,16 @@ describe("normalizeMessagesAriaSnapshot", () => {
 `);
   });
 
+  it("normalizes localhost ports in links", () => {
+    expect(
+      normalizeMessagesAriaSnapshot(`- link "http://localhost:42101/src/pages/Index.tsx:6:6":
+  - /url: http://localhost:42101/src/pages/Index.tsx:6:6
+`),
+    ).toBe(`- link "http://localhost:[[port]]/src/pages/Index.tsx:6:6":
+  - /url: http://localhost:[[port]]/src/pages/Index.tsx:6:6
+`);
+  });
+
   it("normalizes generated AI rules prompts", () => {
     expect(
       normalizeMessagesAriaSnapshot(`- paragraph: /Generate an AI_RULES\\.md file for this app\\. Describe the tech stack in 5-\\d+ bullet points and describe clear rules about what libraries to use for what\\./

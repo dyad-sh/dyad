@@ -5,8 +5,8 @@
 - text: "[[Version 2: files changed]]"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
-  - link "http://localhost:42101/src/pages/Index.tsx:6:6":
-    - /url: http://localhost:42101/src/pages/Index.tsx:6:6
+  - link "http://localhost:[[port]]/src/pages/Index.tsx:6:6":
+    - /url: http://localhost:[[port]]/src/pages/Index.tsx:6:6
   - text: )
 - button "Copy"
 - code: Fixing the error...

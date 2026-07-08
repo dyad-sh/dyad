@@ -25,6 +25,7 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
   // be shown, however there's some kind of race condition and
   // we don't reliably detect when the HMR update has completed.
   // await po.previewPanel.locatePreviewErrorBanner().waitFor({ state: "hidden" });
+  await po.previewPanel.clickPreviewRefresh();
   await po.previewPanel.snapshotPreview({
     name: "fix-error-with-AI-4.aria.yml",
   });

@@ -120,7 +120,11 @@ describe("local-agent basic flows (integration)", () => {
     );
     await harness.waitForStreamEnd(app.chatId);
 
-    expect(fs.readFileSync(path.join(app.appDir, "src/App.tsx"), "utf8")).toBe(
+    expect(
+      fs
+        .readFileSync(path.join(app.appDir, "src/App.tsx"), "utf8")
+        .replace(/\r\n/g, "\n"),
+    ).toBe(
       "const App = () => <div>UPDATED imported app</div>;\n\nexport default App;\n",
     );
     const storedMessages = await harness.db.query.messages.findMany({

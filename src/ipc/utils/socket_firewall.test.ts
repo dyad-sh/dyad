@@ -66,9 +66,12 @@ beforeEach(() => {
 describe("getPackageManagerCommandEnv", () => {
   it("disables Corepack project packageManager pins while preserving the rest of the env", () => {
     const managedPnpmBinDir = getManagedPnpmBinDir();
+    const existingDir = os.tmpdir();
 
-    expect(getPackageManagerCommandEnv({ PATH: "/bin", FOO: "bar" })).toEqual({
-      PATH: [managedPnpmBinDir, "/bin"].join(path.delimiter),
+    expect(
+      getPackageManagerCommandEnv({ PATH: existingDir, FOO: "bar" }),
+    ).toEqual({
+      PATH: [managedPnpmBinDir, existingDir].join(path.delimiter),
       FOO: "bar",
       COREPACK_ENABLE_PROJECT_SPEC: "0",
       COREPACK_ENABLE_STRICT: "0",
@@ -79,7 +82,7 @@ describe("getPackageManagerCommandEnv", () => {
 
   it("does not duplicate the managed pnpm path segment", () => {
     const managedPnpmBinDir = getManagedPnpmBinDir();
-    const pathValue = [managedPnpmBinDir, "/bin"].join(path.delimiter);
+    const pathValue = [managedPnpmBinDir, os.tmpdir()].join(path.delimiter);
 
     expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
       pathValue,
@@ -88,12 +91,13 @@ describe("getPackageManagerCommandEnv", () => {
 
   it("promotes a non-front managed pnpm path segment and drops nonexistent path entries", () => {
     const managedPnpmBinDir = getManagedPnpmBinDir();
-    const pathValue = ["/custom/node", managedPnpmBinDir, "/bin"].join(
+    const existingDir = os.tmpdir();
+    const pathValue = ["/custom/node", managedPnpmBinDir, existingDir].join(
       path.delimiter,
     );
 
     expect(getPackageManagerCommandEnv({ PATH: pathValue }).PATH).toBe(
-      [managedPnpmBinDir, "/bin"].join(path.delimiter),
+      [managedPnpmBinDir, existingDir].join(path.delimiter),
     );
   });
 
@@ -900,7 +904,7 @@ describe("runCommand", () => {
       });
 
       expect(runPtyCommandMock).toHaveBeenCalledWith(
-        "cmd.exe",
+        expect.stringMatching(/cmd\.exe$/i),
         ["/d", "/s", "/c", "npx.cmd --yes sfw@2.0.4"],
         expect.objectContaining({
           displayCommand: "npx --yes sfw@2.0.4",

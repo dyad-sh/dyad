@@ -204,25 +204,27 @@ describe("runPtyCommand", () => {
   });
 
   it("kills the PTY and rejects when the command times out", async () => {
-    vi.useFakeTimers();
-    const controller = createMockPtyController();
-    spawnMock.mockReturnValue(controller.pty);
+    await withPlatform("darwin", async () => {
+      vi.useFakeTimers();
+      const controller = createMockPtyController();
+      spawnMock.mockReturnValue(controller.pty);
 
-    const promise = runPtyCommand("npx", ["sfw"], {
-      timeoutMs: 25,
+      const promise = runPtyCommand("npx", ["sfw"], {
+        timeoutMs: 25,
+      });
+      controller.emitData("still running");
+      const handledPromise = promise.catch((error) => error);
+
+      await vi.advanceTimersByTimeAsync(25);
+      await expect(handledPromise).resolves.toMatchObject({
+        exitCode: null,
+        message:
+          "Command 'npx sfw' timed out after 25 ms. The command may be stuck. Check your network or environment and try again.",
+        output:
+          "still running\nCommand 'npx sfw' timed out after 25 ms. The command may be stuck. Check your network or environment and try again.",
+      } satisfies Partial<PtyCommandExecutionError>);
+      expect(controller.pty.kill).toHaveBeenCalledTimes(1);
     });
-    controller.emitData("still running");
-    const handledPromise = promise.catch((error) => error);
-
-    await vi.advanceTimersByTimeAsync(25);
-    await expect(handledPromise).resolves.toMatchObject({
-      exitCode: null,
-      message:
-        "Command 'npx sfw' timed out after 25 ms. The command may be stuck. Check your network or environment and try again.",
-      output:
-        "still running\nCommand 'npx sfw' timed out after 25 ms. The command may be stuck. Check your network or environment and try again.",
-    } satisfies Partial<PtyCommandExecutionError>);
-    expect(controller.pty.kill).toHaveBeenCalledTimes(1);
   });
 
   it("uses the display-command override in PTY exit errors", async () => {

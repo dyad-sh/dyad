@@ -27,6 +27,10 @@ const fixtureCache = new Map<string, LocalAgentFixture>();
 // Key: `${sessionId}-${passIndex}-${turnIndex}`, Value: attempt count
 const connectionAttempts = new Map<string, number>();
 
+function normalizeFixtureText(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
 /**
  * Generate a session ID from the first user message
  * This allows us to track conversation state across requests
@@ -230,6 +234,8 @@ async function streamTextResponse(
   usage?: Turn["usage"],
   protocol: "openai" | "anthropic" = "openai",
 ) {
+  text = normalizeFixtureText(text);
+
   if (protocol === "anthropic") {
     await streamAnthropicTextResponse(res, text, usage);
     return;
@@ -300,9 +306,10 @@ async function streamToolCallResponse(
 
   // 2) Send text content if any
   if (turn.text) {
+    const text = normalizeFixtureText(turn.text);
     const batchSize = 32;
-    for (let i = 0; i < turn.text.length; i += batchSize) {
-      const batch = turn.text.slice(i, i + batchSize);
+    for (let i = 0; i < text.length; i += batchSize) {
+      const batch = text.slice(i, i + batchSize);
       res.write(mkChunk({ content: batch }));
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
@@ -413,6 +420,8 @@ async function streamAnthropicTextBlock(
   index: number,
   text: string,
 ) {
+  text = normalizeFixtureText(text);
+
   writeAnthropicEvent(res, "content_block_start", {
     type: "content_block_start",
     index,

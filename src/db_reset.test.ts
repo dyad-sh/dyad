@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 
 const mocks = vi.hoisted(() => {
   const sqlite = {
@@ -78,9 +79,9 @@ describe("database reset helpers", () => {
     const { getDatabaseFilePaths } = await loadDbModule();
 
     expect(getDatabaseFilePaths()).toEqual([
-      "/mock/user-data/sqlite.db",
-      "/mock/user-data/sqlite.db-wal",
-      "/mock/user-data/sqlite.db-shm",
+      path.join("/mock/user-data", "sqlite.db"),
+      path.join("/mock/user-data", "sqlite.db-wal"),
+      path.join("/mock/user-data", "sqlite.db-shm"),
     ]);
   });
 });

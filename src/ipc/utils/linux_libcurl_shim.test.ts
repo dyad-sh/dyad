@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
 import { parseLdconfig } from "./linux_libcurl_shim";
 
 const execFileSyncMock = vi.fn();
@@ -43,6 +44,8 @@ const GNUTLS_LINE =
 const LIBCURL_LINE =
   "\tlibcurl.so.4 (libc6,x86-64) => /lib/x86_64-linux-gnu/libcurl.so.4";
 const LIBCURL_PATH = "/lib/x86_64-linux-gnu/libcurl.so.4";
+const SHIM_DIR = path.join("/userdata", "native-shims");
+const SHIM_LINK = path.join(SHIM_DIR, "libcurl-gnutls.so.4");
 
 function setPlatform(platform: NodeJS.Platform, arch: NodeJS.Architecture) {
   Object.defineProperty(process, "platform", {
@@ -102,11 +105,8 @@ describe("ensureLibcurlShimOnLinux", () => {
   it("creates a symlink to libcurl.so.4 when the gnutls soname is missing", async () => {
     const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShimOnLinux()).toBe("/userdata/native-shims");
-    expect(fsMock.symlinkSync).toHaveBeenCalledWith(
-      LIBCURL_PATH,
-      "/userdata/native-shims/libcurl-gnutls.so.4",
-    );
+    expect(ensureLibcurlShimOnLinux()).toBe(SHIM_DIR);
+    expect(fsMock.symlinkSync).toHaveBeenCalledWith(LIBCURL_PATH, SHIM_LINK);
   });
 
   it("returns undefined when no libcurl at all is found", async () => {
@@ -121,7 +121,7 @@ describe("ensureLibcurlShimOnLinux", () => {
     fsMock.readlinkSync.mockReturnValue(LIBCURL_PATH);
     const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShimOnLinux()).toBe("/userdata/native-shims");
+    expect(ensureLibcurlShimOnLinux()).toBe(SHIM_DIR);
     expect(fsMock.rmSync).not.toHaveBeenCalled();
     expect(fsMock.symlinkSync).not.toHaveBeenCalled();
   });
@@ -142,7 +142,7 @@ describe("ensureLibcurlShimOnLinux", () => {
     });
     const ensureLibcurlShimOnLinux = await loadEnsureLibcurlShim();
 
-    expect(ensureLibcurlShimOnLinux()).toBe("/userdata/native-shims");
+    expect(ensureLibcurlShimOnLinux()).toBe(SHIM_DIR);
     expect(execFileSyncMock).toHaveBeenCalledWith("/sbin/ldconfig", ["-p"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],

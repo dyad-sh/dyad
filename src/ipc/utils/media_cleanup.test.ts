@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
 
 const fsMocks = vi.hoisted(() => {
   return {
@@ -40,7 +41,7 @@ vi.mock("@/paths/paths", () => ({
   getDyadAppPath: vi.fn((appPath: string) => {
     const path = require("node:path");
     if (path.isAbsolute(appPath)) return appPath;
-    return `/home/user/dyad-apps/${appPath}`;
+    return path.join("/home/user/dyad-apps", appPath);
   }),
 }));
 
@@ -93,9 +94,11 @@ describe("cleanupOldMediaFiles", () => {
     const recentMtimeMs = now - 5 * 24 * 60 * 60 * 1000;
 
     dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+    const appPath = path.join("/home/user/dyad-apps", "my-app");
+    const mediaDir = path.join(appPath, ".dyad/media");
 
     fsMocks.readdir.mockImplementation((dirPath: string) => {
-      if (dirPath === "/home/user/dyad-apps/my-app/.dyad/media") {
+      if (dirPath === mediaDir) {
         return Promise.resolve(["old-image.png", "recent-image.png"]);
       }
       return Promise.reject(new Error("ENOENT"));
@@ -120,10 +123,10 @@ describe("cleanupOldMediaFiles", () => {
 
     expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
     expect(fsMocks.unlink).toHaveBeenCalledWith(
-      "/home/user/dyad-apps/my-app/.dyad/media/old-image.png",
+      path.join(mediaDir, "old-image.png"),
     );
     expect(mediaPathMocks.pruneAttachmentManifest).toHaveBeenCalledWith(
-      "/home/user/dyad-apps/my-app",
+      appPath,
     );
     expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 1 old media files");
     expect(logMocks.warn).not.toHaveBeenCalled();
@@ -195,7 +198,7 @@ describe("cleanupOldMediaFiles", () => {
       expect.stringContaining("old-file.png"),
     );
     expect(mediaPathMocks.pruneAttachmentManifest).toHaveBeenCalledWith(
-      "/home/user/dyad-apps/my-app",
+      path.join("/home/user/dyad-apps", "my-app"),
     );
   });
 
@@ -211,12 +214,13 @@ describe("cleanupOldMediaFiles", () => {
     fsMocks.stat.mockResolvedValue({ isFile: () => true, mtimeMs: oldMtimeMs });
     fsMocks.unlink.mockResolvedValue(undefined);
     mediaPathMocks.pruneAttachmentManifest.mockRejectedValue(pruneError);
+    const mediaDir = path.join("/home/user/dyad-apps", "my-app", ".dyad/media");
 
     await cleanupOldMediaFiles();
 
     expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
     expect(logMocks.warn).toHaveBeenCalledWith(
-      "Failed to prune attachment manifest for /home/user/dyad-apps/my-app/.dyad/media:",
+      `Failed to prune attachment manifest for ${mediaDir}:`,
       pruneError,
     );
     expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 1 old media files");
@@ -268,12 +272,13 @@ describe("cleanupOldMediaFiles", () => {
 
     const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
 
-    dbMocks.from.mockResolvedValue([
-      { path: "/external/projects/my-imported-app" },
-    ]);
+    const appPath = path.resolve("/external/projects/my-imported-app");
+    const mediaDir = path.join(appPath, ".dyad/media");
+
+    dbMocks.from.mockResolvedValue([{ path: appPath }]);
 
     fsMocks.readdir.mockImplementation((dirPath: string) => {
-      if (dirPath === "/external/projects/my-imported-app/.dyad/media") {
+      if (dirPath === mediaDir) {
         return Promise.resolve(["old-image.png"]);
       }
       return Promise.reject(new Error("ENOENT"));
@@ -286,7 +291,7 @@ describe("cleanupOldMediaFiles", () => {
 
     expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
     expect(fsMocks.unlink).toHaveBeenCalledWith(
-      "/external/projects/my-imported-app/.dyad/media/old-image.png",
+      path.join(mediaDir, "old-image.png"),
     );
   });
 });

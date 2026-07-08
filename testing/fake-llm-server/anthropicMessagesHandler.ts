@@ -314,10 +314,12 @@ export const createAnthropicMessagesHandler =
     }
     if (userTextContent.startsWith("/security-review")) {
       messageContent =
-        fs.readFileSync(
-          path.join(resolveFixturesDir(), "security-review", "findings.md"),
-          "utf-8",
-        ) +
+        fs
+          .readFileSync(
+            path.join(resolveFixturesDir(), "security-review", "findings.md"),
+            "utf-8",
+          )
+          .replace(/\r\n/g, "\n") +
         "\n\n" +
         generateDump(req);
     }

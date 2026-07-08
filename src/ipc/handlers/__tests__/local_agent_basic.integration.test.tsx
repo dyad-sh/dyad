@@ -12,6 +12,7 @@ import {
   deleteAppBlueprintForChat,
   getAppBlueprintForChat,
 } from "@/ipc/handlers/app_blueprint_handlers";
+import { ensureGitLineEndingPolicy } from "@/ipc/utils/git_utils";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -69,6 +70,10 @@ describe("local-agent basic flows (integration)", () => {
         { cwd: appDir, stdio: "pipe" },
       );
     git("init");
+    await ensureGitLineEndingPolicy({
+      path: appDir,
+      writeGitattributes: true,
+    });
     git("add", "-A");
     git("commit", "-m", "init");
 

@@ -33,20 +33,16 @@ export function PluginSummaryCard({
   return (
     <Card
       data-testid="plugin-card"
-      role="button"
-      tabIndex={0}
-      className="relative transition-all hover:shadow-md border-border cursor-pointer"
-      onClick={() => onOpen(s.id)}
-      onKeyDown={(e) => {
-        if (
-          (e.key === "Enter" || e.key === " ") &&
-          e.target === e.currentTarget
-        ) {
-          e.preventDefault();
-          onOpen(s.id);
-        }
-      }}
+      className="relative transition-all hover:shadow-md border-border"
     >
+      {/* Overlay behind the controls: the whole card opens the detail
+          page while Connect and the switch stay independent controls. */}
+      <button
+        type="button"
+        aria-label={`Open ${s.name}`}
+        className="absolute inset-0 cursor-pointer rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => onOpen(s.id)}
+      />
       <CardHeader className="p-4">
         <CardTitle className="text-lg font-medium mb-1 flex items-center gap-2 min-w-0">
           <span className="truncate">{s.name}</span>
@@ -82,10 +78,7 @@ export function PluginSummaryCard({
                 : `${toolCount} tool${toolCount === 1 ? "" : "s"}`}
           </span>
           <div className="flex items-center gap-2">
-            <div
-              className="flex items-center gap-2"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="relative z-10 flex items-center gap-2">
               {s.oauthEnabled && !s.oauthConnected && (
                 <Button
                   size="sm"

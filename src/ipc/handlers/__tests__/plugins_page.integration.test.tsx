@@ -73,7 +73,9 @@ describe("Plugins page (integration)", () => {
     const server = await harness.mcp.addStdioServer();
     harness.mountSurface({ route: "/plugins" });
 
-    fireEvent.click(await screen.findByTestId("plugin-card"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open testing-mcp-server" }),
+    );
     const detail = await screen.findByTestId("plugin-detail");
     await within(detail).findByText("calculator_add");
 
@@ -124,7 +126,9 @@ describe("Plugins page (integration)", () => {
     );
 
     // Back into the detail page to delete it.
-    fireEvent.click(await screen.findByTestId("plugin-card"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open testing-mcp-server" }),
+    );
     const detailAgain = await screen.findByTestId("plugin-detail");
 
     // Delete asks for confirmation, then returns to the list.

@@ -270,6 +270,66 @@ describe("applyPnpmVersionMigration", () => {
     }
   });
 
+  it("leaves the pin untouched when the install fails", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      const originalPackageJson = JSON.stringify(
+        { name: "app", packageManager: "pnpm@8.15.9" },
+        null,
+        2,
+      );
+      await writeAppFiles(appPath, {
+        "package.json": originalPackageJson,
+        "pnpm-lock.yaml": "lockfileVersion: '6.0'\n",
+      });
+      simpleSpawnWithDeniedPnpmBuildSelfHealMock.mockRejectedValue(
+        new Error("Failed to reinstall dependencies with pnpm"),
+      );
+
+      await expect(applyPnpmVersionMigration({ appPath })).rejects.toThrow(
+        "Failed to reinstall dependencies with pnpm",
+      );
+      await expect(
+        readFile(path.join(appPath, "package.json"), "utf8"),
+      ).resolves.toBe(originalPackageJson);
+      expect(gitCommitMock).not.toHaveBeenCalled();
+      expect(sendTelemetryEventMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("throws without touching the app when the available pnpm predates the 9.0 lockfile", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      const originalPackageJson = JSON.stringify(
+        { name: "app", packageManager: "pnpm@8.15.9" },
+        null,
+        2,
+      );
+      await writeAppFiles(appPath, {
+        "package.json": originalPackageJson,
+        "pnpm-lock.yaml": "lockfileVersion: '6.0'\n",
+      });
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: true,
+        minimumReleaseAgeSupported: false,
+        version: "8.15.9",
+      });
+
+      await expect(applyPnpmVersionMigration({ appPath })).rejects.toThrow(
+        "older than pnpm 9",
+      );
+      await expect(
+        readFile(path.join(appPath, "package.json"), "utf8"),
+      ).resolves.toBe(originalPackageJson);
+      expect(simpleSpawnWithDeniedPnpmBuildSelfHealMock).not.toHaveBeenCalled();
+      expect(gitCommitMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
   it("throws without touching the app when pnpm is unavailable", async () => {
     const appPath = await createTempAppDir();
     try {

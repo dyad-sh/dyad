@@ -18,6 +18,7 @@ import {
   signalPrefersPnpm,
 } from "@/ipc/utils/package_manager_selection";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { isVersionAtLeast } from "@/shared/version_utils";
 
 const logger = log.scope("pnpm_migration");
 
@@ -132,9 +133,22 @@ export async function applyPnpmVersionMigration({
       DyadErrorKind.External,
     );
   }
+  // If PATH fell back to an old system pnpm (e.g. the managed install is
+  // missing), "migrating" would pin the old pnpm and rewrite the lockfile in
+  // the old format, leaving the upgrade permanently needed.
+  if (
+    !isVersionAtLeast(
+      pnpmSupport.version,
+      `${COMPATIBLE_PNPM_LOCKFILE_MAJOR}.0.0`,
+    )
+  ) {
+    throw new DyadError(
+      `The available pnpm (${pnpmSupport.version}) is older than pnpm ${COMPATIBLE_PNPM_LOCKFILE_MAJOR}, so the project cannot be migrated. Restart Dyad and try again.`,
+      DyadErrorKind.External,
+    );
+  }
 
   const previousLockfileVersion = readPnpmLockfileVersion(appPath);
-  await updatePackageManagerPin(appPath, pnpmSupport.version);
 
   await simpleSpawnWithDeniedPnpmBuildSelfHeal({
     command: `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`,
@@ -142,6 +156,13 @@ export async function applyPnpmVersionMigration({
     successMessage: "Reinstalled dependencies with the Dyad-managed pnpm",
     errorPrefix: "Failed to reinstall dependencies with pnpm",
   });
+
+  // Update the pin only after the install succeeds: a failed install must not
+  // leave a stray pin edit that hides the upgrade (the pin-only trigger would
+  // read as resolved) and gets swept into the user's next commit. The install
+  // itself never reads the pin — corepack project specs are disabled and
+  // package-manager-strict is off in getPackageManagerCommandEnv().
+  await updatePackageManagerPin(appPath, pnpmSupport.version);
 
   // Old-lockfile apps commonly carry unlisted build-script deps; record any
   // builds this install skipped so plain `pnpm install` stays green outside

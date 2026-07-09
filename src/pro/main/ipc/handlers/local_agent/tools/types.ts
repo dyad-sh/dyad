@@ -145,13 +145,6 @@ export interface AgentContext {
    */
   sandboxWriteFileHostEnabled?: boolean;
   /**
-   * Whether the add_dependency tool is available in this turn. Guidance that
-   * tells the agent to install packages should use this instead of assuming
-   * state-changing tools survived read-only / plan-mode filtering. Undefined
-   * is treated as available for non-handler test contexts.
-   */
-  canInstallDependencies?: boolean;
-  /**
    * Whether the app-blueprint approval flow gates state-modifying work this
    * turn (settings.enableAppBlueprint && app.needsAppBlueprint), mirroring
    * BuildAgentToolSetOptions.enableAppBlueprint. Consumed by capability-layer

@@ -98,7 +98,6 @@ import {
   executeSandboxScriptTool,
 } from "./tools/execute_sandbox_script";
 import { writeFileTool } from "./tools/write_file";
-import { addDependencyTool } from "./tools/add_dependency";
 import {
   collectMcpToolDefs,
   estimateMcpInlineTokens,
@@ -728,11 +727,6 @@ export async function handleLocalAgentStream(
     // the direct tool is filtered out.
     ctx.sandboxWriteFileHostEnabled = shouldIncludeTool(
       writeFileTool,
-      ctx,
-      buildOptions,
-    );
-    ctx.canInstallDependencies = shouldIncludeTool(
-      addDependencyTool,
       ctx,
       buildOptions,
     );

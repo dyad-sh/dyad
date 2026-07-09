@@ -30,6 +30,7 @@ const V10_PREFIX = "v10";
 const PBKDF2_SALT = "saltysalt";
 const PBKDF2_ITERATIONS = 1003;
 const PBKDF2_KEY_LENGTH = 16;
+const SECURITY_CLI_TIMEOUT_MS = 30_000;
 // Chromium uses a fixed IV of 16 space (0x20) bytes for its os_crypt v10 scheme.
 const AES_IV = Buffer.alloc(16, 0x20);
 
@@ -147,7 +148,7 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
         args.push(this.keychainPath);
       }
       const output = execFileSync("security", args, {
-        timeout: 5_000,
+        timeout: SECURITY_CLI_TIMEOUT_MS,
         encoding: "utf8",
       });
       // The CLI appends a trailing newline to the `-w` output.

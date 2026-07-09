@@ -7,6 +7,7 @@ import {
 } from "../contracts/core";
 import { ConsoleEntrySchema } from "./supabase";
 import { ProblemReportSchema } from "./agent";
+import type { ProcessMemoryDiagnostics } from "@/utils/process_memory_diagnostics";
 
 // =============================================================================
 // Portal Schemas
@@ -275,6 +276,14 @@ export const SessionDebugBundleSchema = z.object({
   logs: z.string(),
   /** Auto-updater failure details (last in-process error + Squirrel log tail on Windows). Null if none. */
   updaterLogs: z.string().nullable(),
+  /**
+   * Process-level memory diagnostics: Electron process metrics, per-app child
+   * process tree RSS, and real system memory-pressure signals (darwin).
+   * Best-effort — sections may carry an `error` field instead of data. The
+   * shape is owned by src/utils/process_memory_diagnostics.ts; validated
+   * loosely here so diagnostics failures can never break the export.
+   */
+  memoryDiagnostics: z.custom<ProcessMemoryDiagnostics>(() => true).nullable(),
 });
 
 export type SessionDebugBundle = z.infer<typeof SessionDebugBundleSchema>;

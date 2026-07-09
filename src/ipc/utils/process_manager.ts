@@ -55,6 +55,22 @@ export const processCounter = {
 };
 
 /**
+ * Returns [appId, pid] pairs for apps with a locally spawned process.
+ * Read-only accessor used by memory diagnostics; excludes cloud/docker apps,
+ * which have no local child process to inspect.
+ */
+export function getRunningAppProcessPids(): { appId: number; pid: number }[] {
+  const pairs: { appId: number; pid: number }[] = [];
+  for (const [appId, appInfo] of runningApps.entries()) {
+    const pid = appInfo.process?.pid;
+    if (typeof pid === "number") {
+      pairs.push({ appId, pid });
+    }
+  }
+  return pairs;
+}
+
+/**
  * Kills a running process with its child processes
  * @param process The child process to kill
  * @param pid The process ID

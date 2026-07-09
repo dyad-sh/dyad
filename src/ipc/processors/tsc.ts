@@ -193,8 +193,6 @@ export async function generateProblemReport({
 
     // Handle worker messages (the worker sends a single reply)
     child.on("message", (output: WorkerOutput) => {
-      child.kill();
-
       settle(() => {
         if (output.success && output.data) {
           logger.info(`TSC worker completed successfully for app ${appPath}`);
@@ -209,10 +207,12 @@ export async function generateProblemReport({
           );
         }
       });
+      child.kill();
     });
 
     // Handle fatal V8 errors in the worker (e.g. heap OOM). The exit event
     // still fires afterwards, but settle() guards against double rejection.
+    // NOTE: Electron's UtilityProcess "error" event is currently experimental.
     child.on("error", (type, location, report) => {
       logger.error(
         `TSC worker fatal error for app ${appPath}: ${type} at ${location}`,

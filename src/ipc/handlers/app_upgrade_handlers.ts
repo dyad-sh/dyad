@@ -16,26 +16,44 @@ import path from "node:path";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
 import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "../utils/socket_firewall";
+import {
+  applyPnpmVersionMigration,
+  getManagedPnpmMajorVersion,
+  isPnpmVersionMigrationNeeded,
+} from "../utils/pnpm_migration";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
 
-const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
-  {
-    id: "component-tagger",
-    title: "Enable select component to edit",
-    description:
-      "Installs the Dyad component tagger Vite plugin and its dependencies.",
-    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
-  },
-  {
-    id: "capacitor",
-    title: "Upgrade to hybrid mobile app with Capacitor",
-    description:
-      "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
-    manualUpgradeUrl: "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
-  },
-];
+function getAvailableUpgrades(): Omit<AppUpgrade, "isNeeded">[] {
+  const managedPnpmMajor = getManagedPnpmMajorVersion();
+  return [
+    {
+      id: "component-tagger",
+      title: "Enable select component to edit",
+      description:
+        "Installs the Dyad component tagger Vite plugin and its dependencies.",
+      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
+    },
+    {
+      id: "capacitor",
+      title: "Upgrade to hybrid mobile app with Capacitor",
+      description:
+        "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
+      manualUpgradeUrl:
+        "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
+    },
+    {
+      id: "pnpm-version-migration",
+      title: `Migrate to pnpm ${managedPnpmMajor}`,
+      description:
+        `This app has legacy pnpm metadata. Dyad already runs pnpm ${managedPnpmMajor}, ` +
+        "which writes a lockfile format older pnpm versions can't read. This updates the " +
+        `packageManager pin and the lockfile together so everything matches pnpm ${managedPnpmMajor}.`,
+      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/pnpm-migration",
+    },
+  ];
+}
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -172,12 +190,14 @@ export function registerAppUpgradeHandlers() {
       const app = await getApp(appId);
       const appPath = getDyadAppPath(app.path);
 
-      const upgradesWithStatus = availableUpgrades.map((upgrade) => {
+      const upgradesWithStatus = getAvailableUpgrades().map((upgrade) => {
         let isNeeded = false;
         if (upgrade.id === "component-tagger") {
           isNeeded = isComponentTaggerUpgradeNeeded(appPath);
         } else if (upgrade.id === "capacitor") {
           isNeeded = isCapacitorUpgradeNeeded(appPath);
+        } else if (upgrade.id === "pnpm-version-migration") {
+          isNeeded = isPnpmVersionMigrationNeeded(appPath);
         }
         return { ...upgrade, isNeeded };
       });
@@ -200,6 +220,8 @@ export function registerAppUpgradeHandlers() {
         await applyComponentTagger(appPath);
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
+      } else if (upgradeId === "pnpm-version-migration") {
+        await applyPnpmVersionMigration({ appPath });
       } else {
         throw new DyadError(
           `Unknown upgrade id: ${upgradeId}`,

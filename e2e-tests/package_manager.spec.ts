@@ -598,3 +598,69 @@ realPnpmStrictBuildsTestSkipIfWindows(
     }).toPass({ timeout: Timeout.EXTRA_LONG });
   },
 );
+
+realPnpmStrictBuildsTestSkipIfWindows(
+  "pnpm version migration upgrade updates the pin and lockfile together",
+  async ({ po }, testInfo) => {
+    testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
+
+    await po.setUp();
+    await po.importApp("minimal");
+    await po.previewPanel.expectPreviewIframeIsVisible(
+      SOCKET_FIREWALL_TEST_TIMEOUT,
+    );
+
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const packageJsonPath = path.join(appPath, "package.json");
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+    // An old pin contradicts the managed pnpm: CI/deploys following it cannot
+    // read the 9.0 lockfile Dyad writes. This is the migration trigger.
+    packageJson.packageManager = "pnpm@8.15.9";
+    await fs.writeFile(
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
+
+    await po.clickRestart();
+    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    const warningBanner = po.page.getByTestId("package-manager-warning-banner");
+    await expect(warningBanner).toContainText("This app pins an older pnpm", {
+      timeout: Timeout.EXTRA_LONG,
+    });
+    await warningBanner
+      .getByTestId("package-manager-warning-run-upgrade")
+      .click();
+    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.previewPanel.expectPreviewIframeIsVisible(
+      SOCKET_FIREWALL_TEST_TIMEOUT,
+    );
+    await expect(
+      po.page.getByTestId("package-manager-warning-banner"),
+    ).toBeHidden({
+      timeout: Timeout.MEDIUM,
+    });
+
+    const migratedPackageJson = JSON.parse(
+      await fs.readFile(packageJsonPath, "utf8"),
+    );
+    expect(migratedPackageJson.packageManager).toMatch(/^pnpm@(9|\d{2,})\./);
+
+    const lockfile = await fs.readFile(
+      path.join(appPath, "pnpm-lock.yaml"),
+      "utf8",
+    );
+    expect(lockfile).toContain("lockfileVersion: '9.0'");
+
+    const lastCommitSubject = execFileSync(
+      "git",
+      ["log", "-1", "--format=%s"],
+      { cwd: appPath, encoding: "utf8" },
+    ).trim();
+    expect(lastCommitSubject).toContain("[dyad] migrate to pnpm");
+  },
+);

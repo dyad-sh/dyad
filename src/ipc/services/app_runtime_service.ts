@@ -48,12 +48,17 @@ import {
   resolvePnpmIgnoredBuilds,
 } from "@/ipc/utils/pnpm_denied_builds";
 import {
+  getManagedPnpmMajorVersion,
+  isPnpmVersionMigrationNeeded,
+} from "@/ipc/utils/pnpm_migration";
+import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
   signalPrefersPnpm,
 } from "@/ipc/utils/package_manager_selection";
 
 const logger = log.scope("app_runtime_service");
+const pnpmVersionMigrationNotifiedAppIds = new Set<number>();
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
@@ -231,6 +236,7 @@ function emitPnpmMinimumReleaseAgeWarning({
 
   safeSend(event.sender, "app:output", {
     type: "package-manager-warning",
+    warningKind: "release-age",
     message,
     appId,
   });
@@ -272,6 +278,7 @@ export async function executeApp({
       startCommand,
     });
   } else {
+    notifyPnpmVersionMigrationAvailable({ appPath, appId, event });
     await executeAppLocalNode({
       appPath,
       appId,
@@ -280,6 +287,43 @@ export async function executeApp({
       installCommand,
       startCommand,
     });
+  }
+}
+
+// Discovery nudge for the consented "Migrate to pnpm N" app upgrade: the
+// contradiction (old pin/lockfile vs the managed pnpm) only bites outside
+// Dyad (CI, deploys, teammates), so surface it in the console the user is
+// already watching instead of failing or silently rewriting the pin.
+function notifyPnpmVersionMigrationAvailable({
+  appPath,
+  appId,
+  event,
+}: {
+  appPath: string;
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+}): void {
+  try {
+    if (!isPnpmVersionMigrationNeeded(appPath)) {
+      return;
+    }
+    const managedMajor = getManagedPnpmMajorVersion();
+    if (!pnpmVersionMigrationNotifiedAppIds.has(appId)) {
+      safeSend(event.sender, "app:output", {
+        type: "stdout",
+        message: `[dyad] This pnpm app needs a pnpm ${managedMajor} migration (pre-9 lockfile or pnpm <= 8 pin). Dyad already runs pnpm ${managedMajor}, so deploys, CI, and teammates' installs can drift without the matching project pin. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
+        appId,
+      });
+      pnpmVersionMigrationNotifiedAppIds.add(appId);
+    }
+    safeSend(event.sender, "app:output", {
+      type: "package-manager-warning",
+      warningKind: "pnpm-migration",
+      message: `This app pins an older pnpm that can't read the lockfile Dyad writes. Migrate to pnpm ${managedMajor} so CI, deploys, and teammates can install it reliably.`,
+      appId,
+    });
+  } catch (error) {
+    logger.warn("Failed to check pnpm version migration status:", error);
   }
 }
 

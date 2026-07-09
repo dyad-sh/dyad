@@ -42,10 +42,19 @@ export interface PreviewErrorMessage {
   source: "preview-app" | "dyad-app" | "dyad-sync";
 }
 
+export type PackageManagerWarningKind = "release-age" | "pnpm-migration";
+
 export interface PackageManagerWarning {
+  kind: PackageManagerWarningKind;
   message: string;
   appId: number;
 }
+
+const packageManagerWarningPriority: Record<PackageManagerWarningKind, number> =
+  {
+    "pnpm-migration": 1,
+    "release-age": 2,
+  };
 
 export type PreviewErrorUpdate =
   | PreviewErrorMessage
@@ -70,10 +79,12 @@ export const previewReloadTokenByAppIdAtom = atom<Map<number, number>>(
 export const consoleEntriesByAppIdAtom = atom<Map<number, ConsoleEntry[]>>(
   new Map(),
 );
-export const packageManagerWarningByAppIdAtom = atom<Map<number, string>>(
-  new Map(),
+export const packageManagerWarningByAppIdAtom = atom<
+  Map<number, Omit<PackageManagerWarning, "appId">>
+>(new Map());
+export const dismissedPackageManagerWarningAppIdsAtom = atom<Set<number>>(
+  new Set<number>(),
 );
-export const dismissedPackageManagerWarningAtom = atom(false);
 
 // Stores the current preview URL to preserve route across HMR-induced remounts.
 // This tracks the current iframe route per app, not the app's base URL.
@@ -133,8 +144,8 @@ export const currentPackageManagerWarningAtom = atom(
     if (appId === null) {
       return undefined;
     }
-    const message = get(packageManagerWarningByAppIdAtom).get(appId);
-    return message === undefined ? undefined : { message, appId };
+    const warning = get(packageManagerWarningByAppIdAtom).get(appId);
+    return warning === undefined ? undefined : { ...warning, appId };
   },
 );
 
@@ -270,24 +281,40 @@ export const setPackageManagerWarningForAppAtom = atom(
       warning,
     }: { appId: number; warning: Omit<PackageManagerWarning, "appId"> },
   ) => {
-    if (get(dismissedPackageManagerWarningAtom)) {
+    if (get(dismissedPackageManagerWarningAppIdsAtom).has(appId)) {
       return;
     }
 
     set(packageManagerWarningByAppIdAtom, (prev) => {
+      const current = prev.get(appId);
+      if (
+        current &&
+        packageManagerWarningPriority[current.kind] >
+          packageManagerWarningPriority[warning.kind]
+      ) {
+        return prev;
+      }
       const next = new Map(prev);
-      next.set(appId, warning.message);
+      next.set(appId, warning);
       return next;
     });
   },
 );
 
-// Dismissal hides the warning for every app for the rest of the Dyad
-// session, not just the app whose banner was dismissed.
-export const dismissPackageManagerWarningsAtom = atom(null, (_get, set) => {
-  set(dismissedPackageManagerWarningAtom, true);
-  set(packageManagerWarningByAppIdAtom, new Map());
-});
+export const dismissPackageManagerWarningsAtom = atom(
+  null,
+  (get, set, appId: number) => {
+    const dismissedAppIds = get(dismissedPackageManagerWarningAppIdsAtom);
+    const nextDismissedAppIds = new Set(dismissedAppIds);
+    nextDismissedAppIds.add(appId);
+    set(dismissedPackageManagerWarningAppIdsAtom, nextDismissedAppIds);
+    set(packageManagerWarningByAppIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+  },
+);
 
 export const clearPackageManagerWarningForAppAtom = atom(
   null,

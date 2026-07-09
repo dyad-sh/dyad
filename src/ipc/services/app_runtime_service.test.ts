@@ -112,6 +112,7 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
     "--config.pm-on-fail=ignore",
     "--minimum-release-age=1440",
   ],
+  PNPM_GLOBAL_INSTALL_PACKAGE: "pnpm@latest-11",
   PNPM_PM_ON_FAIL_IGNORE_ARG: "--config.pm-on-fail=ignore",
 }));
 
@@ -552,6 +553,91 @@ describe("executeApp", () => {
         expect.objectContaining({
           type: "package-manager-warning",
           message: "Install pnpm 10.16.0 or newer for the strongest protection",
+        }),
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("emits the pnpm version migration nudge only once per app session", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writePackageJson(appPath, { name: "app" });
+      await writeFile(
+        path.join(appPath, "pnpm-lock.yaml"),
+        "lockfileVersion: '6.0'\n",
+      );
+      const firstProcess = new FakeChildProcess(101);
+      const secondProcess = new FakeChildProcess(102);
+      spawnMock
+        .mockReturnValueOnce(firstProcess)
+        .mockReturnValueOnce(secondProcess);
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: true,
+        minimumReleaseAgeSupported: true,
+      });
+
+      await executeApp({
+        appPath,
+        appId: 90,
+        event: createEvent(),
+        isNeon: false,
+      });
+      await executeApp({
+        appPath,
+        appId: 90,
+        event: createEvent(),
+        isNeon: false,
+      });
+
+      const migrationNudges = safeSendMock.mock.calls.filter((call) => {
+        return (
+          call[1] === "app:output" &&
+          typeof call[2]?.message === "string" &&
+          call[2].message.includes('apply "Migrate to pnpm')
+        );
+      });
+      expect(migrationNudges).toHaveLength(1);
+      const migrationWarnings = safeSendMock.mock.calls.filter((call) => {
+        return (
+          call[1] === "app:output" &&
+          call[2]?.type === "package-manager-warning" &&
+          call[2]?.warningKind === "pnpm-migration"
+        );
+      });
+      expect(migrationWarnings).toHaveLength(2);
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("does not emit the pnpm version migration nudge outside host mode", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writePackageJson(appPath, { name: "app" });
+      await writeFile(
+        path.join(appPath, "pnpm-lock.yaml"),
+        "lockfileVersion: '6.0'\n",
+      );
+      readSettingsMock.mockReturnValue({
+        runtimeMode2: "cloud",
+      });
+
+      await expect(
+        executeApp({
+          appPath,
+          appId: 91,
+          event: createEvent(),
+          isNeon: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(safeSendMock).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "app:output",
+        expect.objectContaining({
+          message: expect.stringContaining('apply "Migrate to pnpm'),
         }),
       );
     } finally {

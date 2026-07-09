@@ -4,6 +4,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   appendConsoleEntriesForAppAtom,
   bumpPreviewReloadTokenForAppAtom,
+  clearPackageManagerWarningForAppAtom,
   currentPreviewLoadingAtom,
   previewCurrentUrlAtom,
   setAppUrlForAppAtom,
@@ -258,12 +259,16 @@ export function useAppOutputSubscription() {
 
       if (
         output.type === "package-manager-warning" &&
-        pnpmWarningSettingRef.current.hasSettings &&
-        pnpmWarningSettingRef.current.showWarning
+        (output.warningKind === "pnpm-migration" ||
+          (pnpmWarningSettingRef.current.hasSettings &&
+            pnpmWarningSettingRef.current.showWarning))
       ) {
         setPackageManagerWarning({
           appId: output.appId,
-          warning: { message: output.message },
+          warning: {
+            kind: output.warningKind ?? "release-age",
+            message: output.message,
+          },
         });
       }
 
@@ -353,6 +358,9 @@ export function useRunApp() {
   const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
+  const clearPackageManagerWarning = useSetAtom(
+    clearPackageManagerWarningForAppAtom,
+  );
 
   const runApp = useCallback(
     async (appId: number) => {
@@ -362,6 +370,7 @@ export function useRunApp() {
         state: { operation: "run", startedAt },
       });
       setPreviewAppExit({ appId, exit: null });
+      clearPackageManagerWarning(appId);
       try {
         console.debug("Running app", appId);
 
@@ -404,6 +413,7 @@ export function useRunApp() {
       setPreviewAppExit,
       setPreviewError,
       setPreviewRunState,
+      clearPackageManagerWarning,
     ],
   );
 
@@ -453,6 +463,7 @@ export function useRunApp() {
         state: { operation: "restart", startedAt },
       });
       setPreviewAppExit({ appId, exit: null });
+      clearPackageManagerWarning(appId);
       try {
         console.debug(
           "Restarting app",
@@ -515,6 +526,7 @@ export function useRunApp() {
       setPreviewAppExit,
       setPreviewError,
       setPreviewRunState,
+      clearPackageManagerWarning,
     ],
   );
 

@@ -17,10 +17,9 @@ const {
   commitPnpmAllowBuildsConfigIfChangedMock,
   ensureSocketFirewallInstalledMock,
   getPnpmMinimumReleaseAgeSupportMock,
-  readPnpmIgnoredBuildsMock,
-  recordDeniedPnpmBuildsMock,
+  resolvePnpmIgnoredBuildsMock,
+  recordAndReportDeniedPnpmBuildsMock,
   runCommandMock,
-  sendTelemetryEventMock,
   readEffectiveSettingsMock,
   dbUpdateSetMock,
   dbUpdateWhereMock,
@@ -28,10 +27,9 @@ const {
   commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
   ensureSocketFirewallInstalledMock: vi.fn(),
   getPnpmMinimumReleaseAgeSupportMock: vi.fn(),
-  readPnpmIgnoredBuildsMock: vi.fn(),
-  recordDeniedPnpmBuildsMock: vi.fn(),
+  resolvePnpmIgnoredBuildsMock: vi.fn(),
+  recordAndReportDeniedPnpmBuildsMock: vi.fn(),
   runCommandMock: vi.fn(),
-  sendTelemetryEventMock: vi.fn(),
   readEffectiveSettingsMock: vi.fn(),
   dbUpdateSetMock: vi.fn(),
   dbUpdateWhereMock: vi.fn(),
@@ -64,14 +62,13 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
       commitPnpmAllowBuildsConfigIfChangedMock,
     ensureSocketFirewallInstalled: ensureSocketFirewallInstalledMock,
     getPnpmMinimumReleaseAgeSupport: getPnpmMinimumReleaseAgeSupportMock,
-    readPnpmIgnoredBuilds: readPnpmIgnoredBuildsMock,
-    recordDeniedPnpmBuilds: recordDeniedPnpmBuildsMock,
     runCommand: runCommandMock,
   };
 });
 
-vi.mock("@/ipc/utils/telemetry", () => ({
-  sendTelemetryEvent: sendTelemetryEventMock,
+vi.mock("@/ipc/utils/pnpm_denied_builds", () => ({
+  resolvePnpmIgnoredBuilds: resolvePnpmIgnoredBuildsMock,
+  recordAndReportDeniedPnpmBuilds: recordAndReportDeniedPnpmBuildsMock,
 }));
 
 describe("executeAddDependency", () => {
@@ -89,8 +86,10 @@ describe("executeAddDependency", () => {
     commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue({
       promotedPackages: [],
     });
-    readPnpmIgnoredBuildsMock.mockResolvedValue([]);
-    recordDeniedPnpmBuildsMock.mockResolvedValue({ deniedBuilds: [] });
+    resolvePnpmIgnoredBuildsMock.mockResolvedValue([]);
+    recordAndReportDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: [],
+    });
     readEffectiveSettingsMock.mockResolvedValue({
       blockUnsafeNpmPackages: true,
     });
@@ -603,10 +602,10 @@ describe("executeAddDependency", () => {
       stdout: "installed via pnpm",
       stderr: "",
     });
-    readPnpmIgnoredBuildsMock.mockResolvedValue([
+    resolvePnpmIgnoredBuildsMock.mockResolvedValue([
       { packageName: "core-js", packageSpec: "core-js@3.49.0" },
     ]);
-    recordDeniedPnpmBuildsMock.mockResolvedValue({
+    recordAndReportDeniedPnpmBuildsMock.mockResolvedValue({
       deniedBuilds: [{ packageName: "core-js", packageSpec: "core-js@3.49.0" }],
     });
 
@@ -624,13 +623,13 @@ describe("executeAddDependency", () => {
     expect(result.installResults).toContain(
       "Note: build scripts for core-js were not run (Dyad security policy).",
     );
-    expect(sendTelemetryEventMock).toHaveBeenCalledWith(
-      "pnpm:build-auto-denied",
-      {
-        packages: ["core-js@3.49.0"],
-        source: "add-dependency",
-      },
-    );
+    expect(recordAndReportDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+      appPath: "/tmp/app",
+      ignoredBuilds: [
+        { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+      ],
+      source: "add-dependency",
+    });
     expect(dbUpdateSetMock).toHaveBeenCalledWith({
       content: expect.stringContaining(
         "Note: build scripts for core-js were not run",

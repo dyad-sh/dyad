@@ -747,6 +747,148 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
     }
   });
 
+  it("converts pnpm placeholder entries into tagged denials", async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-placeholder-"),
+    );
+    const configPath = path.join(tempDir, "pnpm-workspace.yaml");
+    try {
+      // pnpm 11 appends this placeholder after a non-strict install with
+      // ignored builds; it does not satisfy strict mode and must not be
+      // treated as a user decision.
+      await writeFile(
+        configPath,
+        [
+          "allowBuilds:",
+          "  core-js: set this to true or false",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+          "  # dyad-default-allow-builds-channel=local",
+          "  sharp: true",
+          "  # dyad-default-allow-builds end",
+          "packages:",
+          "  - .",
+          "minimumReleaseAge: 1440",
+          "",
+        ].join("\n"),
+      );
+
+      await expect(
+        recordDeniedPnpmBuilds({
+          appPath: tempDir,
+          allowBuildsText,
+          ignoredBuilds: [
+            { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+          ],
+        }),
+      ).resolves.toEqual({
+        deniedBuilds: [
+          { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+        ],
+      });
+
+      const nextConfig = await readFile(configPath, "utf8");
+      expect(nextConfig).toContain("core-js: false # dyad-auto-denied");
+      expect(nextConfig).not.toContain("set this to true or false");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves placeholder entries even without an ignored-builds list", async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-placeholder-ensure-"),
+    );
+    const configPath = path.join(tempDir, "pnpm-workspace.yaml");
+    try {
+      await writeFile(
+        configPath,
+        [
+          "allowBuilds:",
+          "  core-js: set this to true or false",
+          "  sharp: set this to true or false",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+          "  # dyad-default-allow-builds-channel=local",
+          '  "@swc/core": true',
+          "  # dyad-default-allow-builds end",
+          "packages:",
+          "  - .",
+          "minimumReleaseAge: 1440",
+          "",
+        ].join("\n"),
+      );
+
+      // App-start ensure pass: sharp is in the allow-list so its placeholder
+      // resolves to the managed `true`; core-js becomes a tagged denial.
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: tempDir,
+          allowBuildsText,
+        }),
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
+
+      const nextConfig = await readFile(configPath, "utf8");
+      expect(nextConfig).toContain("core-js: false # dyad-auto-denied");
+      expect(nextConfig).toContain("sharp: true");
+      expect(nextConfig).not.toContain("set this to true or false");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates the allowBuilds key when recording offline denials into a config without one", async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-deny-no-key-"),
+    );
+    const configPath = path.join(tempDir, "pnpm-workspace.yaml");
+    try {
+      // Contrived: remote-channel metadata forces the offline denial-only
+      // path, but the allowBuilds key itself was stripped by an external
+      // tool. Denials must still be recorded, not silently dropped.
+      await writeFile(
+        configPath,
+        [
+          "# dyad-default-allow-builds begin",
+          "# dyad-default-allow-builds-schema=v1",
+          "# dyad-default-allow-builds-data-version=2026-05-21.1",
+          "# dyad-default-allow-builds-channel=remote",
+          "# dyad-default-allow-builds end",
+          "packages:",
+          "  - .",
+          "",
+        ].join("\n"),
+      );
+
+      const failingFetcher = vi.fn(async () => ({
+        ok: false,
+        text: async () => "",
+      }));
+
+      await expect(
+        recordDeniedPnpmBuilds({
+          appPath: tempDir,
+          remoteAllowBuildsTextFetcher: failingFetcher,
+          ignoredBuilds: [
+            { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+          ],
+        }),
+      ).resolves.toEqual({
+        deniedBuilds: [
+          { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+        ],
+      });
+
+      const nextConfig = await readFile(configPath, "utf8");
+      expect(nextConfig).toContain("allowBuilds:");
+      expect(nextConfig).toContain("core-js: false # dyad-auto-denied");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("records denials against existing config when the remote allow-list is unavailable", async () => {
     const tempDir = await mkdtemp(
       path.join(os.tmpdir(), "dyad-pnpm-deny-offline-"),

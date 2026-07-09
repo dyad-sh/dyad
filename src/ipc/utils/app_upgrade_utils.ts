@@ -6,12 +6,12 @@ import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   isPnpmIgnoredBuildsError,
-  parsePnpmIgnoredBuildsFromOutput,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
-  readPnpmIgnoredBuilds,
-  recordDeniedPnpmBuilds,
 } from "./socket_firewall";
-import { sendTelemetryEvent } from "./telemetry";
+import {
+  recordAndReportDeniedPnpmBuilds,
+  resolvePnpmIgnoredBuilds,
+} from "./pnpm_denied_builds";
 
 export const logger = log.scope("app_upgrade_utils");
 
@@ -72,25 +72,14 @@ export async function selfHealDeniedPnpmBuildsFromError({
     return false;
   }
 
-  const ignoredBuildsFromModulesYaml = await readPnpmIgnoredBuilds(appPath);
   const errorOutput = error instanceof Error ? error.message : String(error);
-  const ignoredBuilds =
-    ignoredBuildsFromModulesYaml.length > 0
-      ? ignoredBuildsFromModulesYaml
-      : parsePnpmIgnoredBuildsFromOutput(errorOutput);
-  const { deniedBuilds } = await recordDeniedPnpmBuilds({
+  const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath, errorOutput);
+  const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
     appPath,
     ignoredBuilds,
-  });
-  if (deniedBuilds.length === 0) {
-    return false;
-  }
-
-  sendTelemetryEvent("pnpm:build-auto-denied", {
-    packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
     source,
   });
-  return true;
+  return deniedBuilds.length > 0;
 }
 
 export async function simpleSpawnWithDeniedPnpmBuildSelfHeal({

@@ -12,11 +12,12 @@ import {
   getCommandExecutionDisplayDetails,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
-  readPnpmIgnoredBuilds,
-  recordDeniedPnpmBuilds,
   runCommand,
 } from "@/ipc/utils/socket_firewall";
-import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import {
+  recordAndReportDeniedPnpmBuilds,
+  resolvePnpmIgnoredBuilds,
+} from "@/ipc/utils/pnpm_denied_builds";
 import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
@@ -277,19 +278,16 @@ export async function installPackages({
 
   let installResultsWithPolicyNotes = installResults;
   if (packageManager === "pnpm") {
-    const ignoredBuilds = await readPnpmIgnoredBuilds(appPath);
+    const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath);
     // Promotions were already applied (and rebuilt) by the pre-install
     // commitPnpmAllowBuildsConfigIfChanged call above, so this record pass
     // only ever adds denials for builds the install just ignored.
-    const { deniedBuilds } = await recordDeniedPnpmBuilds({
+    const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
       appPath,
       ignoredBuilds,
+      source: "add-dependency",
     });
     if (deniedBuilds.length > 0) {
-      sendTelemetryEvent("pnpm:build-auto-denied", {
-        packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
-        source: "add-dependency",
-      });
       installResultsWithPolicyNotes += formatDeniedBuildsNote(
         Array.from(
           new Set(deniedBuilds.map((ignoredBuild) => ignoredBuild.packageName)),

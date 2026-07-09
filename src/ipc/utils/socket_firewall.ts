@@ -396,13 +396,56 @@ function parseYamlMapKey(rawKey: string): string {
   }
 }
 
-function parseAllowBuildsLine(line: string): { key: string } | null {
-  const match = line.match(/^\s{2}((?:"(?:[^"\\]|\\.)+"|'[^']+'|[^:#]+)):\s*/);
+function parseAllowBuildsLine(
+  line: string,
+): { key: string; value: string } | null {
+  const match = line.match(
+    /^\s{2}((?:"(?:[^"\\]|\\.)+"|'[^']+'|[^:#]+)):\s*(.*?)\s*(?:#.*)?$/,
+  );
   if (!match) {
     return null;
   }
 
-  return { key: parseYamlMapKey(match[1].trim()) };
+  return { key: parseYamlMapKey(match[1].trim()), value: match[2].trim() };
+}
+
+// pnpm 11 appends `pkg: set this to true or false` placeholder entries to
+// allowBuilds after a non-strict install that ignored builds. A placeholder
+// neither satisfies strict mode (installs still fail with
+// ERR_PNPM_IGNORED_BUILDS) nor represents a human decision, so Dyad treats
+// these as its own to resolve: remove them and let the caller convert them
+// into tagged denials (or a managed `true` when the allow-list covers them).
+const PNPM_PLACEHOLDER_ALLOW_BUILDS_VALUE_PATTERN =
+  /^["']?set this to true or false["']?$/i;
+
+function removePlaceholderAllowBuildsEntries(lines: string[]): string[] {
+  const range = getTopLevelAllowBuildsRange(lines);
+  if (!range) {
+    return [];
+  }
+
+  const managedBlock = findAllowBuildsManagedBlock(lines);
+  const placeholderPackages: string[] = [];
+  for (let index = range.end - 1; index > range.start; index -= 1) {
+    if (
+      managedBlock &&
+      index >= managedBlock.beginIndex &&
+      index <= managedBlock.endIndex
+    ) {
+      continue;
+    }
+
+    const parsedLine = parseAllowBuildsLine(lines[index]);
+    if (
+      parsedLine &&
+      PNPM_PLACEHOLDER_ALLOW_BUILDS_VALUE_PATTERN.test(parsedLine.value)
+    ) {
+      lines.splice(index, 1);
+      placeholderPackages.push(parsedLine.key);
+    }
+  }
+
+  return placeholderPackages;
 }
 
 function removeAutoDeniedPromotedBuilds(
@@ -519,6 +562,13 @@ function updatePnpmAllowBuildsConfigContentWithSource(
   }
 
   const promotedPackages = removeAutoDeniedPromotedBuilds(lines, source);
+  // Placeholder entries become tagged denials below (via the deny list), or
+  // simply drop away when the allow-list now covers the package (the managed
+  // block rewrite emits `pkg: true` for those).
+  const packagesToDeny = [
+    ...autoDeniedPackageNames,
+    ...removePlaceholderAllowBuildsEntries(lines),
+  ];
   const managedBlock = findAllowBuildsManagedBlock(lines);
   if (managedBlock) {
     const { beginIndex, endIndex } = managedBlock;
@@ -543,7 +593,7 @@ function updatePnpmAllowBuildsConfigContentWithSource(
     const deniedPackages = insertAutoDeniedBuilds(
       lines,
       new Set(source.packages),
-      autoDeniedPackageNames,
+      packagesToDeny,
     );
     return {
       content: formatPnpmWorkspaceConfigContent(lines),
@@ -569,7 +619,7 @@ function updatePnpmAllowBuildsConfigContentWithSource(
     const deniedPackages = insertAutoDeniedBuilds(
       lines,
       new Set(source.packages),
-      autoDeniedPackageNames,
+      packagesToDeny,
     );
     return {
       content: formatPnpmWorkspaceConfigContent(lines),
@@ -587,7 +637,7 @@ function updatePnpmAllowBuildsConfigContentWithSource(
   const deniedPackages = insertAutoDeniedBuilds(
     nextLines,
     new Set(source.packages),
-    autoDeniedPackageNames,
+    packagesToDeny,
   );
   return {
     content: formatPnpmWorkspaceConfigContent(nextLines),
@@ -941,10 +991,21 @@ function insertAutoDeniedBuildsIntoContent(
     lines.pop();
   }
 
+  const packagesToDeny = [
+    ...packageNames,
+    ...removePlaceholderAllowBuildsEntries(lines),
+  ];
+  if (packagesToDeny.length > 0 && !getTopLevelAllowBuildsRange(lines)) {
+    if (lines.length > 0 && lines.at(-1) !== "") {
+      lines.push("");
+    }
+    lines.push("allowBuilds:");
+  }
+
   const deniedPackages = insertAutoDeniedBuilds(
     lines,
     new Set<string>(),
-    packageNames,
+    packagesToDeny,
   );
   if (deniedPackages.length === 0) {
     return {

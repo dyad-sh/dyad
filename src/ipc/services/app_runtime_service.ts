@@ -41,11 +41,12 @@ import {
   type PackageManager,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_INSTALL_POLICY_ARGS,
-  readPnpmIgnoredBuilds,
-  recordDeniedPnpmBuilds,
   getBestEffortPnpmRebuildCommand,
 } from "@/ipc/utils/socket_firewall";
-import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import {
+  recordAndReportDeniedPnpmBuilds,
+  resolvePnpmIgnoredBuilds,
+} from "@/ipc/utils/pnpm_denied_builds";
 import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
@@ -630,17 +631,12 @@ export function registerCloudSandboxSyncUpdateListener(): void {
 // absent (npm apps, Docker-volume installs).
 async function recordIgnoredBuildsAfterInstall(appPath: string): Promise<void> {
   try {
-    const ignoredBuilds = await readPnpmIgnoredBuilds(appPath);
-    const { deniedBuilds } = await recordDeniedPnpmBuilds({
+    const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath);
+    await recordAndReportDeniedPnpmBuilds({
       appPath,
       ignoredBuilds,
+      source: "app-run",
     });
-    if (deniedBuilds.length > 0) {
-      sendTelemetryEvent("pnpm:build-auto-denied", {
-        packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
-        source: "app-run",
-      });
-    }
   } catch (error) {
     logger.warn("Failed to record ignored pnpm builds after install:", error);
   }
@@ -830,18 +826,15 @@ async function selfHealDeniedPnpmBuilds({
   // Docker caller skips the host cleanup.
   removeNodeModules?: boolean;
 }): Promise<boolean> {
-  const ignoredBuildsFromModulesYaml = await readPnpmIgnoredBuilds(appPath);
-  const ignoredBuilds =
-    ignoredBuildsFromModulesYaml.length > 0
-      ? ignoredBuildsFromModulesYaml
-      : parsePnpmIgnoredBuildsFromOutput(output);
+  const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath, output);
   // recordDeniedPnpmBuilds may also promote previously auto-denied packages
   // as a side effect; no explicit `pnpm rebuild` is needed here because
   // node_modules is removed below, so the retry's fresh install runs build
   // scripts for newly-allowed packages natively.
-  const { deniedBuilds } = await recordDeniedPnpmBuilds({
+  const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
     appPath,
     ignoredBuilds,
+    source: telemetrySource,
   });
   if (deniedBuilds.length === 0) {
     return false;
@@ -854,10 +847,6 @@ async function selfHealDeniedPnpmBuilds({
     });
   }
 
-  sendTelemetryEvent("pnpm:build-auto-denied", {
-    packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
-    source: telemetrySource,
-  });
   return true;
 }
 
@@ -1220,18 +1209,13 @@ export function startCloudSandboxLogStream(input: {
     const appPath = input.appPath;
     void (async () => {
       try {
-        const { deniedBuilds } = await recordDeniedPnpmBuilds({
+        // Output-only on purpose: the install ran remotely, so the local
+        // .modules.yaml (if any) does not describe this sandbox.
+        await recordAndReportDeniedPnpmBuilds({
           appPath,
           ignoredBuilds,
+          source: "cloud-sandbox",
         });
-        if (deniedBuilds.length > 0) {
-          sendTelemetryEvent("pnpm:build-auto-denied", {
-            packages: deniedBuilds.map(
-              (ignoredBuild) => ignoredBuild.packageSpec,
-            ),
-            source: "cloud-sandbox",
-          });
-        }
       } catch (error) {
         logger.warn(
           "Failed to record ignored pnpm builds from cloud sandbox logs:",

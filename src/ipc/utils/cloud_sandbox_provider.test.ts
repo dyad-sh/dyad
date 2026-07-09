@@ -501,6 +501,9 @@ describe("cloud_sandbox_provider sandbox creation", () => {
 
   beforeEach(() => {
     commitPnpmAllowBuildsConfigIfChangedMock.mockReset();
+    commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue({
+      promotedPackages: [],
+    });
     fetchMock = vi.fn(async () => {
       return new Response(
         JSON.stringify({
@@ -541,6 +544,28 @@ describe("cloud_sandbox_provider sandbox creation", () => {
     expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
       "/tmp/app",
     );
+  });
+
+  it("rebuilds promoted pnpm builds in the default install command", async () => {
+    commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue({
+      promotedPackages: ["core-js", "@scope/native"],
+    });
+
+    await createCloudSandbox({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand: null,
+      startCommand: undefined,
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      appId: 42,
+      appPath: "/tmp/app",
+      installCommand:
+        "pnpm --config.pm-on-fail=ignore --config.confirmModulesPurge=false --config.strictDepBuilds=false install && (pnpm rebuild 'core-js' '@scope/native' || true)",
+      startCommand: "pnpm --config.pm-on-fail=ignore run dev",
+    });
   });
 
   it("preserves explicit custom commands after trimming", async () => {

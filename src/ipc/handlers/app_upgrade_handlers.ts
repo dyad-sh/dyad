@@ -9,6 +9,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   isComponentTaggerUpgradeNeeded,
   applyComponentTagger,
+  simpleSpawnWithDeniedPnpmBuildSelfHeal,
 } from "../utils/app_upgrade_utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -87,12 +88,23 @@ async function applyCapacitor({
   appPath: string;
 }) {
   // Install Capacitor dependencies
-  await simpleSpawn({
-    command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps`,
-    cwd: appPath,
-    successMessage: "Capacitor dependencies installed successfully",
-    errorPrefix: "Failed to install Capacitor dependencies",
-  });
+  try {
+    await simpleSpawnWithDeniedPnpmBuildSelfHeal({
+      command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4`,
+      cwd: appPath,
+      successMessage: "Capacitor dependencies installed successfully with pnpm",
+      errorPrefix: "Failed to install Capacitor dependencies via pnpm",
+    });
+  } catch (pnpmErr) {
+    logger.info("pnpm install failed, falling back to npm", pnpmErr);
+    await simpleSpawn({
+      command:
+        "npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+      cwd: appPath,
+      successMessage: "Capacitor dependencies installed successfully with npm",
+      errorPrefix: "Failed to install Capacitor dependencies",
+    });
+  }
 
   // Initialize Capacitor
   await simpleSpawn({
@@ -105,12 +117,24 @@ async function applyCapacitor({
   // Intentionally omit PNPM_INSTALL_POLICY_ARGS because:
   // 1. confirmModulesPurge will almost never be needed for capacitor (i.e. user would need to switch from npm to pnpm and not triggered a rebuild).
   // 2. strictBuildDeps should be kept true (default value) in case capacitor has native deps.
-  await simpleSpawn({
-    command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} install --prod=false || npm install --include=dev --legacy-peer-deps`,
-    cwd: appPath,
-    successMessage: "Development dependencies installed successfully",
-    errorPrefix: "Failed to install development dependencies",
-  });
+  try {
+    await simpleSpawnWithDeniedPnpmBuildSelfHeal({
+      command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} install --prod=false`,
+      cwd: appPath,
+      successMessage:
+        "Development dependencies installed successfully with pnpm",
+      errorPrefix: "Failed to install development dependencies via pnpm",
+    });
+  } catch (pnpmErr) {
+    logger.info("pnpm install failed, falling back to npm", pnpmErr);
+    await simpleSpawn({
+      command: "npm install --include=dev --legacy-peer-deps",
+      cwd: appPath,
+      successMessage:
+        "Development dependencies installed successfully with npm",
+      errorPrefix: "Failed to install development dependencies",
+    });
+  }
 
   // Add iOS and Android platforms
   await simpleSpawn({

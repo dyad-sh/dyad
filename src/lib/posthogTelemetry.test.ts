@@ -177,6 +177,15 @@ describe("shouldBypassNonProTelemetrySampling", () => {
     ).toBe(true);
   });
 
+  it("always sends pnpm build policy telemetry for non-Pro sampling", () => {
+    expect(
+      shouldBypassNonProTelemetrySampling({
+        event: "pnpm:build-auto-denied",
+        properties: { packages: ["core-js@3.49.0"] },
+      }),
+    ).toBe(true);
+  });
+
   it("does not bypass unrelated sandbox telemetry", () => {
     expect(
       shouldBypassNonProTelemetrySampling({

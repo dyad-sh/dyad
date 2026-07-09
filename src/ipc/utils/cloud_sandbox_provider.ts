@@ -138,6 +138,23 @@ function getDefaultStartCommand(): string {
   return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
 }
 
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function appendBestEffortPnpmRebuild(
+  installCommand: string,
+  packageNames: string[],
+): string {
+  if (packageNames.length === 0) {
+    return installCommand;
+  }
+
+  return `${installCommand} && (pnpm rebuild ${packageNames
+    .map(quoteShellArg)
+    .join(" ")} || true)`;
+}
+
 function getDefaultCloudSandboxErrorMessage(status: number): string {
   if (status === 401 || status === 403) {
     return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
@@ -702,11 +719,18 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     installCommand?: string | null;
     startCommand?: string | null;
   }) {
+    let promotedPackages: string[] = [];
     if (!input.installCommand?.trim()) {
-      await commitPnpmAllowBuildsConfigIfChanged(input.appPath);
+      promotedPackages = (
+        await commitPnpmAllowBuildsConfigIfChanged(input.appPath)
+      ).promotedPackages;
     }
 
-    const { installCommand, startCommand } = resolveCloudSandboxCommands(input);
+    const { installCommand: resolvedInstallCommand, startCommand } =
+      resolveCloudSandboxCommands(input);
+    const installCommand = input.installCommand?.trim()
+      ? resolvedInstallCommand
+      : appendBestEffortPnpmRebuild(resolvedInstallCommand, promotedPackages);
     const response = await cloudSandboxFetch("/sandboxes", {
       method: "POST",
       body: JSON.stringify({

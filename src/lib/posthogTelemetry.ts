@@ -86,6 +86,10 @@ export function shouldBypassNonProTelemetrySampling(
     return true;
   }
 
+  if (eventName?.startsWith("pnpm:build-")) {
+    return true;
+  }
+
   if (eventName === "app:initial-load") {
     return true;
   }

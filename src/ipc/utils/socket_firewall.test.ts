@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
@@ -30,6 +30,9 @@ import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
+  parsePnpmIgnoredBuildsFromModulesYaml,
+  readPnpmIgnoredBuilds,
+  recordDeniedPnpmBuilds,
   resolveExecutableName,
   runCommand,
   SOCKET_FIREWALL_PROBE_TIMEOUT_MS,
@@ -412,7 +415,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
           appPath: tempDir,
           allowBuildsText,
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
 
       await expect(
         readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
@@ -457,7 +460,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
             text: () => Promise.resolve(remoteAllowBuildsText),
           }),
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
 
       await expect(
         readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
@@ -492,13 +495,13 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
           appPath: firstTempDir,
           remoteAllowBuildsTextFetcher,
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
       await expect(
         ensurePnpmAllowBuildsConfigured({
           appPath: secondTempDir,
           remoteAllowBuildsTextFetcher,
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
 
       expect(remoteAllowBuildsTextFetcher).toHaveBeenCalledTimes(1);
       await expect(
@@ -550,7 +553,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
           appPath: firstTempDir,
           remoteAllowBuildsTextFetcher,
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
 
       dateNowSpy.mockReturnValue(startMs + DYAD_ALLOW_BUILDS_CACHE_TTL_MS + 1);
 
@@ -559,7 +562,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
           appPath: secondTempDir,
           remoteAllowBuildsTextFetcher,
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
 
       expect(remoteAllowBuildsTextFetcher).toHaveBeenCalledTimes(2);
       await expect(
@@ -604,7 +607,7 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
             text: () => Promise.resolve(""),
           }),
         }),
-      ).resolves.toEqual({ changed: false });
+      ).resolves.toEqual({ changed: false, promotedPackages: [] });
 
       await expect(readFile(configPath, "utf8")).resolves.toBe(existingConfig);
     } finally {
@@ -623,11 +626,169 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
             text: () => Promise.resolve(""),
           }),
         }),
-      ).resolves.toEqual({ changed: true });
+      ).resolves.toEqual({ changed: true, promotedPackages: [] });
 
       await expect(
         readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
       ).resolves.toContain("  # dyad-default-allow-builds-channel=local");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("records ignored builds as tagged denials outside the managed block", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-deny-"));
+    try {
+      await expect(
+        recordDeniedPnpmBuilds({
+          appPath: tempDir,
+          allowBuildsText,
+          ignoredBuilds: [
+            { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+            {
+              packageName: "@scope/native",
+              packageSpec: "@scope/native@1.2.3",
+            },
+            { packageName: "sharp", packageSpec: "sharp@0.34.0" },
+          ],
+        }),
+      ).resolves.toEqual({
+        deniedBuilds: [
+          { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+          { packageName: "@scope/native", packageSpec: "@scope/native@1.2.3" },
+        ],
+      });
+
+      await expect(
+        readFile(path.join(tempDir, "pnpm-workspace.yaml"), "utf8"),
+      ).resolves.toBe(
+        [
+          "allowBuilds:",
+          '  "@scope/native": false # dyad-auto-denied',
+          "  core-js: false # dyad-auto-denied",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+          "  # dyad-default-allow-builds-channel=local",
+          '  "@swc/core": true',
+          "  sharp: true",
+          "  # dyad-default-allow-builds end",
+          "",
+          "packages:",
+          "  - .",
+          "minimumReleaseAge: 1440",
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("promotes tagged denials when the allow-list later includes the package", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-promote-"));
+    const configPath = path.join(tempDir, "pnpm-workspace.yaml");
+    const promotedAllowBuildsText = [
+      "# dyad-default-allow-builds-schema=v1",
+      "# dyad-default-allow-builds-data-version=2026-05-22.1",
+      "# dyad-default-allow-builds-channel=local",
+      "core-js",
+      "sharp",
+      "",
+    ].join("\n");
+
+    try {
+      await writeFile(
+        configPath,
+        [
+          "allowBuilds:",
+          "  core-js: false # dyad-auto-denied",
+          "  user-denied: false",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+          "  # dyad-default-allow-builds-channel=local",
+          "  sharp: true",
+          "  # dyad-default-allow-builds end",
+          "minimumReleaseAge: 1440",
+          "",
+        ].join("\n"),
+      );
+
+      await expect(
+        ensurePnpmAllowBuildsConfigured({
+          appPath: tempDir,
+          allowBuildsText: promotedAllowBuildsText,
+        }),
+      ).resolves.toEqual({ changed: true, promotedPackages: ["core-js"] });
+
+      await expect(readFile(configPath, "utf8")).resolves.toBe(
+        [
+          "allowBuilds:",
+          "  user-denied: false",
+          "  # dyad-default-allow-builds begin",
+          "  # dyad-default-allow-builds-schema=v1",
+          "  # dyad-default-allow-builds-data-version=2026-05-22.1",
+          "  # dyad-default-allow-builds-channel=local",
+          "  core-js: true",
+          "  sharp: true",
+          "  # dyad-default-allow-builds end",
+          "minimumReleaseAge: 1440",
+          "",
+          "packages:",
+          "  - .",
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readPnpmIgnoredBuilds", () => {
+  it("parses ignored build specs from node_modules/.modules.yaml", async () => {
+    expect(
+      parsePnpmIgnoredBuildsFromModulesYaml(
+        [
+          "layoutVersion: 5",
+          "ignoredBuilds:",
+          "  - core-js@3.49.0",
+          '  - "@scope/native@1.2.3"',
+          "pendingBuilds: []",
+          "",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+      { packageName: "@scope/native", packageSpec: "@scope/native@1.2.3" },
+    ]);
+  });
+
+  it("reads ignored builds from the app path", async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-ignored-builds-"),
+    );
+    try {
+      await writeFile(
+        path.join(tempDir, "node_modules", ".modules.yaml"),
+        "ignoredBuilds: [core-js@3.49.0]\n",
+      ).catch(async (error) => {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+        await mkdir(path.join(tempDir, "node_modules"), {
+          recursive: true,
+        });
+        await writeFile(
+          path.join(tempDir, "node_modules", ".modules.yaml"),
+          "ignoredBuilds: [core-js@3.49.0]\n",
+        );
+      });
+
+      await expect(readPnpmIgnoredBuilds(tempDir)).resolves.toEqual([
+        { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+      ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

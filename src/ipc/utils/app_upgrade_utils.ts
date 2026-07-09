@@ -4,7 +4,14 @@ import path from "node:path";
 import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "./socket_firewall";
+import {
+  isPnpmIgnoredBuildsError,
+  parsePnpmIgnoredBuildsFromOutput,
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
+  readPnpmIgnoredBuilds,
+  recordDeniedPnpmBuilds,
+} from "./socket_firewall";
+import { sendTelemetryEvent } from "./telemetry";
 
 export const logger = log.scope("app_upgrade_utils");
 
@@ -45,6 +52,67 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 type ApplyComponentTaggerOptions = {
   installDependencies?: boolean;
 };
+
+export async function selfHealDeniedPnpmBuildsFromError({
+  appPath,
+  error,
+  source,
+}: {
+  appPath: string;
+  error: unknown;
+  source: "self-heal";
+}): Promise<boolean> {
+  if (!isPnpmIgnoredBuildsError(error)) {
+    return false;
+  }
+
+  const ignoredBuildsFromModulesYaml = await readPnpmIgnoredBuilds(appPath);
+  const errorOutput = error instanceof Error ? error.message : String(error);
+  const ignoredBuilds =
+    ignoredBuildsFromModulesYaml.length > 0
+      ? ignoredBuildsFromModulesYaml
+      : parsePnpmIgnoredBuildsFromOutput(errorOutput);
+  const { deniedBuilds } = await recordDeniedPnpmBuilds({
+    appPath,
+    ignoredBuilds,
+  });
+  if (deniedBuilds.length === 0) {
+    return false;
+  }
+
+  sendTelemetryEvent("pnpm:build-auto-denied", {
+    packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
+    source,
+  });
+  return true;
+}
+
+export async function simpleSpawnWithDeniedPnpmBuildSelfHeal({
+  command,
+  cwd,
+  successMessage,
+  errorPrefix,
+}: {
+  command: string;
+  cwd: string;
+  successMessage: string;
+  errorPrefix: string;
+}): Promise<void> {
+  try {
+    await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+  } catch (error) {
+    const healed = await selfHealDeniedPnpmBuildsFromError({
+      appPath: cwd,
+      error,
+      source: "self-heal",
+    });
+    if (!healed) {
+      throw error;
+    }
+
+    await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+  }
+}
 
 export async function applyComponentTagger(
   appPath: string,
@@ -128,7 +196,7 @@ export async function applyComponentTagger(
 
   if (installDependencies) {
     try {
-      await simpleSpawn({
+      await simpleSpawnWithDeniedPnpmBuildSelfHeal({
         command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger`,
         cwd: appPath,
         successMessage:

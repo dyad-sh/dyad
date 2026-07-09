@@ -59,6 +59,8 @@ const DYAD_ALLOW_BUILDS_BEGIN = "# dyad-default-allow-builds begin";
 const DYAD_ALLOW_BUILDS_END = "# dyad-default-allow-builds end";
 const LEGACY_DYAD_ALLOW_BUILDS_BEGIN = "# dyad-default-allow-builds=v1 begin";
 const LEGACY_DYAD_ALLOW_BUILDS_END = "# dyad-default-allow-builds=v1 end";
+const DYAD_AUTO_DENIED_ALLOW_BUILDS_COMMENT = "# dyad-auto-denied";
+const PNPM_IGNORED_BUILDS_ERROR_CODE = "ERR_PNPM_IGNORED_BUILDS";
 const DYAD_ALLOW_BUILDS_METADATA_PATTERN =
   /^#\s*(dyad-default-allow-builds-(?:schema|data-version|channel))=(.+)$/;
 const DYAD_ALLOW_BUILDS_REMOTE_URL =
@@ -179,6 +181,10 @@ type AllowBuildsTextFetcher = (
 type RemoteAllowBuildsCacheEntry = {
   source: AllowBuildsSource;
   expiresAtMs: number;
+};
+export type PnpmIgnoredBuild = {
+  packageName: string;
+  packageSpec: string;
 };
 
 const remoteAllowBuildsCache = new WeakMap<
@@ -375,17 +381,100 @@ function parseAllowBuildsExistingKeys(lines: string[]): Set<string> {
     }
 
     const rawKey = match[1].trim();
-    try {
-      keys.add(
-        rawKey.startsWith('"')
-          ? JSON.parse(rawKey)
-          : rawKey.replace(/^'|'$/g, ""),
-      );
-    } catch {
-      keys.add(rawKey);
-    }
+    keys.add(parseYamlMapKey(rawKey));
   }
   return keys;
+}
+
+function parseYamlMapKey(rawKey: string): string {
+  try {
+    return rawKey.startsWith('"')
+      ? JSON.parse(rawKey)
+      : rawKey.replace(/^'|'$/g, "");
+  } catch {
+    return rawKey;
+  }
+}
+
+function parseAllowBuildsLine(line: string): { key: string } | null {
+  const match = line.match(/^\s{2}((?:"(?:[^"\\]|\\.)+"|'[^']+'|[^:#]+)):\s*/);
+  if (!match) {
+    return null;
+  }
+
+  return { key: parseYamlMapKey(match[1].trim()) };
+}
+
+function removeAutoDeniedPromotedBuilds(
+  lines: string[],
+  source: AllowBuildsSource,
+): string[] {
+  const promotedPackageSet = new Set(source.packages);
+  const range = getTopLevelAllowBuildsRange(lines);
+  if (!range || promotedPackageSet.size === 0) {
+    return [];
+  }
+
+  const managedBlock = findAllowBuildsManagedBlock(lines);
+  const promotedPackages: string[] = [];
+  for (let index = range.end - 1; index > range.start; index -= 1) {
+    if (
+      managedBlock &&
+      index >= managedBlock.beginIndex &&
+      index <= managedBlock.endIndex
+    ) {
+      continue;
+    }
+
+    const parsedLine = parseAllowBuildsLine(lines[index]);
+    if (
+      parsedLine &&
+      promotedPackageSet.has(parsedLine.key) &&
+      lines[index].includes(DYAD_AUTO_DENIED_ALLOW_BUILDS_COMMENT)
+    ) {
+      lines.splice(index, 1);
+      promotedPackages.push(parsedLine.key);
+    }
+  }
+
+  return promotedPackages.sort((left, right) => left.localeCompare(right));
+}
+
+function insertAutoDeniedBuilds(
+  lines: string[],
+  source: AllowBuildsSource,
+  packageNames: string[],
+): string[] {
+  const sourcePackageSet = new Set(source.packages);
+  const range = getTopLevelAllowBuildsRange(lines);
+  const existingKeys = parseAllowBuildsExistingKeys(
+    range ? lines.slice(range.start + 1, range.end) : [],
+  );
+  const newDeniedPackageNames = Array.from(new Set(packageNames))
+    .filter((packageName) => {
+      return (
+        !sourcePackageSet.has(packageName) && !existingKeys.has(packageName)
+      );
+    })
+    .sort((left, right) => left.localeCompare(right));
+
+  if (newDeniedPackageNames.length === 0) {
+    return [];
+  }
+
+  if (!range) {
+    return [];
+  }
+
+  lines.splice(
+    range.start + 1,
+    0,
+    ...newDeniedPackageNames.map(
+      (packageName) =>
+        `  ${quoteYamlMapKey(packageName)}: false ${DYAD_AUTO_DENIED_ALLOW_BUILDS_COMMENT}`,
+    ),
+  );
+  return newDeniedPackageNames;
 }
 
 function hasTopLevelConfigKey(lines: string[], key: string): boolean {
@@ -416,18 +505,20 @@ export function updatePnpmAllowBuildsConfigContent(
   return updatePnpmAllowBuildsConfigContentWithSource(
     existingContent,
     parseDefaultAllowBuilds(allowBuildsText),
-  );
+  ).content;
 }
 
 function updatePnpmAllowBuildsConfigContentWithSource(
   existingContent: string,
   source: AllowBuildsSource,
-): string {
+  autoDeniedPackageNames: string[] = [],
+): { content: string; promotedPackages: string[]; deniedPackages: string[] } {
   const lines = existingContent ? existingContent.split(/\r?\n/) : [];
   if (lines.at(-1) === "") {
     lines.pop();
   }
 
+  const promotedPackages = removeAutoDeniedPromotedBuilds(lines, source);
   const managedBlock = findAllowBuildsManagedBlock(lines);
   if (managedBlock) {
     const { beginIndex, endIndex } = managedBlock;
@@ -449,7 +540,16 @@ function updatePnpmAllowBuildsConfigContentWithSource(
       endIndex - beginIndex + 1,
       ...buildAllowBuildsManagedBlock(filteredSource, indent),
     );
-    return formatPnpmWorkspaceConfigContent(lines);
+    const deniedPackages = insertAutoDeniedBuilds(
+      lines,
+      source,
+      autoDeniedPackageNames,
+    );
+    return {
+      content: formatPnpmWorkspaceConfigContent(lines),
+      promotedPackages,
+      deniedPackages,
+    };
   }
 
   const range = getTopLevelAllowBuildsRange(lines);
@@ -466,15 +566,34 @@ function updatePnpmAllowBuildsConfigContentWithSource(
       0,
       ...buildAllowBuildsManagedBlock(filteredSource, "  "),
     );
-    return formatPnpmWorkspaceConfigContent(lines);
+    const deniedPackages = insertAutoDeniedBuilds(
+      lines,
+      source,
+      autoDeniedPackageNames,
+    );
+    return {
+      content: formatPnpmWorkspaceConfigContent(lines),
+      promotedPackages,
+      deniedPackages,
+    };
   }
 
   const prefix = lines.length > 0 ? [...lines, ""] : [];
-  return formatPnpmWorkspaceConfigContent([
+  const nextLines = [
     ...prefix,
     "allowBuilds:",
     ...buildAllowBuildsManagedBlock(source, "  "),
-  ]);
+  ];
+  const deniedPackages = insertAutoDeniedBuilds(
+    nextLines,
+    source,
+    autoDeniedPackageNames,
+  );
+  return {
+    content: formatPnpmWorkspaceConfigContent(nextLines),
+    promotedPackages,
+    deniedPackages,
+  };
 }
 
 async function fetchRemoteAllowBuildsSource(
@@ -578,7 +697,7 @@ export async function ensurePnpmAllowBuildsConfigured({
   appPath: string;
   allowBuildsText?: string;
   remoteAllowBuildsTextFetcher?: AllowBuildsTextFetcher;
-}): Promise<{ changed: boolean }> {
+}): Promise<{ changed: boolean; promotedPackages: string[] }> {
   const configPath = path.join(appPath, "pnpm-workspace.yaml");
   try {
     let existingContent = "";
@@ -595,39 +714,47 @@ export async function ensurePnpmAllowBuildsConfigured({
       allowBuildsText,
       remoteAllowBuildsTextFetcher,
     });
-    const nextContent = allowBuildsSource
+    const updateResult = allowBuildsSource
       ? updatePnpmAllowBuildsConfigContentWithSource(
           existingContent,
           allowBuildsSource,
         )
-      : formatPnpmWorkspaceConfigContent(
-          existingContent
-            ? existingContent.split(/\r?\n/).filter((_, index, lines) => {
-                return index !== lines.length - 1 || lines[index] !== "";
-              })
-            : [],
-        );
+      : {
+          content: formatPnpmWorkspaceConfigContent(
+            existingContent
+              ? existingContent.split(/\r?\n/).filter((_, index, lines) => {
+                  return index !== lines.length - 1 || lines[index] !== "";
+                })
+              : [],
+          ),
+          promotedPackages: [],
+          deniedPackages: [],
+        };
+    const nextContent = updateResult.content;
     if (nextContent === existingContent) {
-      return { changed: false };
+      return { changed: false, promotedPackages: [] };
     }
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     const tempPath = `${configPath}.tmp`;
     await fs.writeFile(tempPath, nextContent);
     await fs.rename(tempPath, configPath);
-    return { changed: true };
+    return {
+      changed: true,
+      promotedPackages: updateResult.promotedPackages,
+    };
   } catch (error) {
     logger.warn("Failed to update pnpm allowBuilds config:", error);
-    return { changed: false };
+    return { changed: false, promotedPackages: [] };
   }
 }
 
 export async function commitPnpmAllowBuildsConfigIfChanged(
   appPath: string,
-): Promise<void> {
+): Promise<{ promotedPackages: string[] }> {
   const result = await ensurePnpmAllowBuildsConfigured({ appPath });
   if (!result.changed) {
-    return;
+    return { promotedPackages: result.promotedPackages };
   }
 
   try {
@@ -638,6 +765,186 @@ export async function commitPnpmAllowBuildsConfigIfChanged(
     });
   } catch (error) {
     logger.warn("Failed to commit pnpm allowBuilds config:", error);
+  }
+  return { promotedPackages: result.promotedPackages };
+}
+
+export function getPnpmIgnoredBuildPackageName(packageSpec: string): string {
+  const atIndex = packageSpec.lastIndexOf("@");
+  if (atIndex <= 0) {
+    return packageSpec.trim();
+  }
+  return packageSpec.slice(0, atIndex).trim();
+}
+
+function parseIgnoredBuildsInlineValue(value: string): string[] {
+  const trimmedValue = value.trim();
+  if (!trimmedValue || trimmedValue === "[]") {
+    return [];
+  }
+
+  if (trimmedValue.startsWith("[") && trimmedValue.endsWith("]")) {
+    return trimmedValue
+      .slice(1, -1)
+      .split(",")
+      .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ""))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+export function parsePnpmIgnoredBuildsFromModulesYaml(
+  content: string,
+): PnpmIgnoredBuild[] {
+  const lines = content.split(/\r?\n/);
+  const packageSpecs: string[] = [];
+  let inIgnoredBuilds = false;
+
+  for (const line of lines) {
+    const ignoredBuildsMatch = line.match(/^ignoredBuilds:\s*(.*)$/);
+    if (ignoredBuildsMatch) {
+      inIgnoredBuilds = true;
+      packageSpecs.push(
+        ...parseIgnoredBuildsInlineValue(ignoredBuildsMatch[1]),
+      );
+      continue;
+    }
+
+    if (!inIgnoredBuilds) {
+      continue;
+    }
+
+    if (line.trim() && !/^\s/.test(line)) {
+      break;
+    }
+
+    const listItemMatch = line.match(/^\s*-\s*(.+?)\s*$/);
+    if (listItemMatch) {
+      packageSpecs.push(listItemMatch[1].replace(/^['"]|['"]$/g, ""));
+    }
+  }
+
+  return Array.from(new Set(packageSpecs))
+    .filter(Boolean)
+    .map((packageSpec) => ({
+      packageName: getPnpmIgnoredBuildPackageName(packageSpec),
+      packageSpec,
+    }));
+}
+
+export function parsePnpmIgnoredBuildsFromOutput(
+  output: string,
+): PnpmIgnoredBuild[] {
+  const match = output.match(/Ignored build scripts:\s*([^\n\r]+)/i);
+  if (!match) {
+    return [];
+  }
+
+  return match[1]
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((packageSpec) => ({
+      packageName: getPnpmIgnoredBuildPackageName(packageSpec),
+      packageSpec,
+    }));
+}
+
+export async function readPnpmIgnoredBuilds(
+  appPath: string,
+): Promise<PnpmIgnoredBuild[]> {
+  try {
+    const modulesYamlPath = path.join(appPath, "node_modules", ".modules.yaml");
+    const content = await fs.readFile(modulesYamlPath, "utf8");
+    return parsePnpmIgnoredBuildsFromModulesYaml(content);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.debug("Failed to read pnpm ignored builds:", error);
+    }
+    return [];
+  }
+}
+
+export function isPnpmIgnoredBuildsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(PNPM_IGNORED_BUILDS_ERROR_CODE);
+}
+
+export async function recordDeniedPnpmBuilds({
+  appPath,
+  ignoredBuilds,
+  allowBuildsText,
+  remoteAllowBuildsTextFetcher,
+}: {
+  appPath: string;
+  ignoredBuilds: PnpmIgnoredBuild[];
+  allowBuildsText?: string;
+  remoteAllowBuildsTextFetcher?: AllowBuildsTextFetcher;
+}): Promise<{ deniedBuilds: PnpmIgnoredBuild[] }> {
+  const packageNames = ignoredBuilds.map(
+    (ignoredBuild) => ignoredBuild.packageName,
+  );
+  if (packageNames.length === 0) {
+    return { deniedBuilds: [] };
+  }
+
+  const configPath = path.join(appPath, "pnpm-workspace.yaml");
+  try {
+    let existingContent = "";
+    try {
+      existingContent = await fs.readFile(configPath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    const allowBuildsSource = await resolveAllowBuildsSource({
+      existingContent,
+      allowBuildsText,
+      remoteAllowBuildsTextFetcher,
+    });
+    if (!allowBuildsSource) {
+      return { deniedBuilds: [] };
+    }
+
+    const updateResult = updatePnpmAllowBuildsConfigContentWithSource(
+      existingContent,
+      allowBuildsSource,
+      packageNames,
+    );
+    if (updateResult.content === existingContent) {
+      return { deniedBuilds: [] };
+    }
+
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    const tempPath = `${configPath}.tmp`;
+    await fs.writeFile(tempPath, updateResult.content);
+    await fs.rename(tempPath, configPath);
+
+    const deniedPackageNameSet = new Set(updateResult.deniedPackages);
+    const deniedBuilds = ignoredBuilds.filter((ignoredBuild) =>
+      deniedPackageNameSet.has(ignoredBuild.packageName),
+    );
+    if (deniedBuilds.length === 0) {
+      return { deniedBuilds: [] };
+    }
+
+    try {
+      await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
+      await gitCommit({
+        path: appPath,
+        message: "[dyad] record denied pnpm dependency builds",
+      });
+    } catch (error) {
+      logger.warn("Failed to commit denied pnpm builds config:", error);
+    }
+
+    return { deniedBuilds };
+  } catch (error) {
+    logger.warn("Failed to record denied pnpm builds:", error);
+    return { deniedBuilds: [] };
   }
 }
 

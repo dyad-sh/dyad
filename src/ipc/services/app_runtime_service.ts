@@ -36,10 +36,15 @@ import {
   ensurePnpmAllowBuildsConfigured,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
+  isPnpmIgnoredBuildsError,
+  parsePnpmIgnoredBuildsFromOutput,
   type PackageManager,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_INSTALL_POLICY_ARGS,
+  readPnpmIgnoredBuilds,
+  recordDeniedPnpmBuilds,
 } from "@/ipc/utils/socket_firewall";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
@@ -90,6 +95,33 @@ function getPnpmRunCommand(): string {
   return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
 }
 
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function getBestEffortPnpmRebuildCommand(
+  packageNames: string[],
+): string | null {
+  if (packageNames.length === 0) {
+    return null;
+  }
+
+  return `(pnpm rebuild ${packageNames.map(quoteShellArg).join(" ")} || true)`;
+}
+
+function buildPnpmInstallAndRunCommand(input: {
+  promotedPackages: string[];
+  port: number;
+}): string {
+  return [
+    getPnpmInstallCommand(),
+    getBestEffortPnpmRebuildCommand(input.promotedPackages),
+    `${getPnpmRunCommand()} --port ${input.port}`,
+  ]
+    .filter(Boolean)
+    .join(" && ");
+}
+
 function getNpmInstallCommand(): string {
   return "npm install --legacy-peer-deps";
 }
@@ -113,9 +145,14 @@ async function getDefaultCommand({
 }): Promise<AppRuntimeCommand> {
   const port = getAppPort(appId);
   if (runtimeMode === "docker") {
-    await ensurePnpmAllowBuildsConfigured({ appPath });
+    const allowBuildsResult = await ensurePnpmAllowBuildsConfigured({
+      appPath,
+    });
     return {
-      command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
+      command: buildPnpmInstallAndRunCommand({
+        promotedPackages: allowBuildsResult.promotedPackages,
+        port,
+      }),
       isCustom: false,
       packageManager: "pnpm",
     };
@@ -147,9 +184,12 @@ async function getDefaultCommand({
     };
   }
 
-  await ensurePnpmAllowBuildsConfigured({ appPath });
+  const allowBuildsResult = await ensurePnpmAllowBuildsConfigured({ appPath });
   return {
-    command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
+    command: buildPnpmInstallAndRunCommand({
+      promotedPackages: allowBuildsResult.promotedPackages,
+      port,
+    }),
     isCustom: false,
     packageManager: "pnpm",
   };
@@ -373,6 +413,7 @@ async function executeAppLocalNode({
   isNeon,
   installCommand,
   startCommand,
+  ignoredBuildsSelfHealAttempted = false,
 }: {
   appPath: string;
   appId: number;
@@ -380,6 +421,7 @@ async function executeAppLocalNode({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
   const command = await getCommand({
     runtimeMode: "host",
@@ -459,6 +501,30 @@ Details: ${details || "n/a"}
     appId,
     isNeon,
     event,
+    onPnpmIgnoredBuildsFailure:
+      command.isCustom && !ignoredBuildsSelfHealAttempted
+        ? async (output) => {
+            const healed = await selfHealDeniedPnpmBuilds({
+              appPath,
+              output,
+              telemetrySource: "self-heal",
+            });
+            if (!healed) {
+              return false;
+            }
+
+            await executeAppLocalNode({
+              appPath,
+              appId,
+              event,
+              isNeon,
+              installCommand,
+              startCommand,
+              ignoredBuildsSelfHealAttempted: true,
+            });
+            return true;
+          }
+        : undefined,
   });
 }
 
@@ -565,14 +631,18 @@ function listenToProcess({
   appId,
   isNeon,
   event,
+  onPnpmIgnoredBuildsFailure,
 }: {
   process: ChildProcess;
   appId: number;
   isNeon: boolean;
   event: Electron.IpcMainInvokeEvent;
+  onPnpmIgnoredBuildsFailure?: (output: string) => Promise<boolean>;
 }) {
+  let processOutput = "";
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
+    processOutput += message;
     logger.debug(
       `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
     );
@@ -622,6 +692,7 @@ function listenToProcess({
 
   spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
+    processOutput += message;
     logger.error(
       `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
     );
@@ -642,25 +713,46 @@ function listenToProcess({
   });
 
   spawnedProcess.on("close", (code, signal) => {
-    logger.log(
-      `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
-    );
-    flushAllAppOutputs();
-    const currentAppInfo = runningApps.get(appId);
-    if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
-      removeAppIfCurrentProcess(appId, spawnedProcess);
-      return;
-    }
+    void (async () => {
+      logger.log(
+        `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
+      );
+      flushAllAppOutputs();
+      const currentAppInfo = runningApps.get(appId);
+      if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
+        removeAppIfCurrentProcess(appId, spawnedProcess);
+        return;
+      }
 
-    safeSend(event.sender, "app:output", {
-      type: "app-exit",
-      message: `App process exited with code ${code ?? "null"}`,
-      appId,
-      exitCode: code,
-      signal,
-      timestamp: Date.now(),
-    });
-    removeAppIfCurrentProcess(appId, spawnedProcess);
+      if (
+        code !== 0 &&
+        onPnpmIgnoredBuildsFailure &&
+        isPnpmIgnoredBuildsError(processOutput)
+      ) {
+        let retried = false;
+        try {
+          retried = await onPnpmIgnoredBuildsFailure(processOutput);
+        } catch (error) {
+          logger.warn(
+            `Failed to self-heal pnpm ignored builds for app ${appId}:`,
+            error,
+          );
+        }
+        if (retried) {
+          return;
+        }
+      }
+
+      safeSend(event.sender, "app:output", {
+        type: "app-exit",
+        message: `App process exited with code ${code ?? "null"}`,
+        appId,
+        exitCode: code,
+        signal,
+        timestamp: Date.now(),
+      });
+      removeAppIfCurrentProcess(appId, spawnedProcess);
+    })();
   });
 
   spawnedProcess.on("error", (err) => {
@@ -669,6 +761,35 @@ function listenToProcess({
     );
     removeAppIfCurrentProcess(appId, spawnedProcess);
   });
+}
+
+async function selfHealDeniedPnpmBuilds({
+  appPath,
+  output,
+  telemetrySource,
+}: {
+  appPath: string;
+  output: string;
+  telemetrySource: "self-heal";
+}): Promise<boolean> {
+  const ignoredBuildsFromModulesYaml = await readPnpmIgnoredBuilds(appPath);
+  const ignoredBuilds =
+    ignoredBuildsFromModulesYaml.length > 0
+      ? ignoredBuildsFromModulesYaml
+      : parsePnpmIgnoredBuildsFromOutput(output);
+  const { deniedBuilds } = await recordDeniedPnpmBuilds({
+    appPath,
+    ignoredBuilds,
+  });
+  if (deniedBuilds.length === 0) {
+    return false;
+  }
+
+  sendTelemetryEvent("pnpm:build-auto-denied", {
+    packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
+    source: telemetrySource,
+  });
+  return true;
 }
 
 async function executeAppInDocker({

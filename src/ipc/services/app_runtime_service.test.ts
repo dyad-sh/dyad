@@ -26,7 +26,11 @@ const {
     minimumReleaseAgeSupported: false,
   })),
   ensurePnpmAllowBuildsConfiguredMock:
-    vi.fn<(args: unknown) => Promise<{ changed: boolean }>>(),
+    vi.fn<
+      (
+        args: unknown,
+      ) => Promise<{ changed: boolean; promotedPackages: string[] }>
+    >(),
   readSettingsMock: vi.fn<() => Record<string, unknown>>(() => ({
     runtimeMode2: "host",
   })),
@@ -82,11 +86,20 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
     npm_config_pm_on_fail: "ignore",
   }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
+  isPnpmIgnoredBuildsError: (error: unknown) =>
+    String(error).includes("ERR_PNPM_IGNORED_BUILDS"),
+  parsePnpmIgnoredBuildsFromOutput: vi.fn(() => []),
+  readPnpmIgnoredBuilds: vi.fn(async () => []),
+  recordDeniedPnpmBuilds: vi.fn(async () => ({ deniedBuilds: [] })),
   PNPM_INSTALL_POLICY_ARGS: [
     "--config.pm-on-fail=ignore",
     "--minimum-release-age=1440",
   ],
   PNPM_PM_ON_FAIL_IGNORE_ARG: "--config.pm-on-fail=ignore",
+}));
+
+vi.mock("@/ipc/utils/telemetry", () => ({
+  sendTelemetryEvent: vi.fn(),
 }));
 
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
@@ -187,7 +200,10 @@ describe("executeApp", () => {
       minimumReleaseAgeSupported: false,
     });
     ensurePnpmAllowBuildsConfiguredMock.mockReset();
-    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({ changed: false });
+    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({
+      changed: false,
+      promotedPackages: [],
+    });
     readSettingsMock.mockReset();
     readSettingsMock.mockReturnValue({
       runtimeMode2: "host",
@@ -303,6 +319,35 @@ describe("executeApp", () => {
       expect.objectContaining({
         type: "package-manager-warning",
         message: "Install pnpm 10.16.0 or newer for the strongest protection",
+      }),
+    );
+  });
+
+  it("rebuilds promoted pnpm builds before starting the dev server", async () => {
+    const process = new FakeChildProcess(101);
+    spawnMock.mockReturnValueOnce(process);
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: true,
+      minimumReleaseAgeSupported: true,
+    });
+    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({
+      changed: true,
+      promotedPackages: ["core-js", "@scope/native"],
+    });
+
+    await executeApp({
+      appPath: "/tmp/app",
+      appId: 1,
+      event: createEvent(),
+      isNeon: false,
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "pnpm --config.pm-on-fail=ignore --minimum-release-age=1440 install && (pnpm rebuild 'core-js' '@scope/native' || true) && pnpm --config.pm-on-fail=ignore run dev --port 32101",
+      [],
+      expect.objectContaining({
+        cwd: "/tmp/app",
+        shell: true,
       }),
     );
   });

@@ -35,6 +35,7 @@ export const AppBaseSchema = z.object({
   installCommand: z.string().nullable(),
   startCommand: z.string().nullable(),
   isFavorite: z.boolean(),
+  testingEnabled: z.boolean(),
   collectionId: z.number().nullable(),
 });
 
@@ -303,6 +304,18 @@ export const AddToFavoriteResultSchema = z.object({
 });
 
 /**
+ * Schema for setting the per-app E2E testing opt-in flag.
+ */
+export const SetTestingEnabledParamsSchema = z.object({
+  appId: z.number(),
+  enabled: z.boolean(),
+});
+
+export const SetTestingEnabledResultSchema = z.object({
+  testingEnabled: z.boolean(),
+});
+
+/**
  * Schema for update app commands params.
  */
 export const UpdateAppCommandsParamsSchema = z.object({
@@ -454,6 +467,12 @@ export const appContracts = {
     channel: "add-to-favorite",
     input: AppIdParamsSchema,
     output: AddToFavoriteResultSchema,
+  }),
+
+  setTestingEnabled: defineContract({
+    channel: "set-testing-enabled",
+    input: SetTestingEnabledParamsSchema,
+    output: SetTestingEnabledResultSchema,
   }),
 
   selectAppLocation: defineContract({

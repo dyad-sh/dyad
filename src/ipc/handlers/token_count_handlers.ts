@@ -86,6 +86,7 @@ export function registerTokenCountHandlers() {
         themePrompt,
         frameworkType,
         hasSupabaseProject: !!chat.app?.supabaseProjectId,
+        testingEnabled: !!chat.app?.testingEnabled,
       });
       let supabaseContext = "";
 

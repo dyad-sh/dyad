@@ -345,6 +345,87 @@ If the user asks for server-side code in a Vite app (API routes, database access
 This only applies to Vite apps. Next.js apps have built-in API routes, so handle those requests normally.
 `;
 
+/**
+ * Guidance for writing end-to-end tests. The body is shared across surfaces so
+ * they all produce the same kind of test; only the instruction for HOW to emit
+ * the spec file differs:
+ * - Build mode emits a `<dyad-generate-test>` tag.
+ * - The Pro/local agent writes the spec with the `write_file` tool; Dyad
+ *   detects `.spec.ts` files and surfaces them in the Tests panel.
+ */
+const buildTestWritingGuidance = (emitInstruction: string) =>
+  `# Writing end-to-end tests
+
+When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
+
+- FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
+- Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
+${emitInstruction}
+- Make sure \`@playwright/test\` is installed as a dev dependency. If it isn't already in \`package.json\`, install it (Playwright is required to run the test).
+- Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
+- Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
+- Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
+- Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.
+- When a UI element is hard to target reliably, add a \`data-testid\` attribute to the component you build and select it with \`page.getByTestId("...")\`. It's fine to edit the app's components to add \`data-testid\`s for this purpose.
+- Keep each test focused on one happy-path user flow. Write tests that the app is expected to PASS.
+- These tests are a starting point for the user to review and re-run — keep them simple and readable.
+
+## Debugging a failing test
+
+When a test is failing and you're asked to fix it, do NOT guess at the cause from the error message alone. Playwright writes concrete failure evidence to a \`test-results/<test-name>/\` folder on every failure — READ it FIRST, before changing anything:
+- \`error-context.md\` — an accessibility-tree snapshot of the page at the moment of failure. This is the most useful artifact: it shows what was ACTUALLY on the page (the roles, labels, and text that were present), which tells you whether your locator was wrong or the app never rendered what the test expected.
+- \`test-failed-1.png\` — a screenshot of the page at the point of failure. Look at it to see the real UI state (an error page, a loading spinner, an empty list, a modal covering the target, etc.).
+
+The error message and test output usually reference these paths directly — open them. Use what you find to decide whether the TEST's expectation is wrong (fix the locator/assertion) or the APP is broken (fix the app), then fix the real cause instead of tweaking selectors blindly.
+
+## Isolated test data (database-connected apps)
+
+For Dyad-managed Neon and Supabase apps, Dyad isolates each test session so tests can create, update, and delete data without touching the user's real data. Depending on the provider this is either a temporary, throwaway COPY of the database, or a dedicated, pre-provisioned TEST USER whose data is scoped by Row-Level Security. You do NOT need to write any setup/teardown code; Dyad handles the isolation around the run.
+
+Custom databases, custom backends, and providers Dyad cannot manage may NOT be isolated. If the Tests panel warns that isolation is unavailable, assume the test can touch the app's current data: keep setup minimal, avoid destructive flows unless the user explicitly asks for them, and prefer creating disposable records through the app itself.
+
+Because the isolated session starts effectively empty (a fresh copy, or a brand-new user that owns no rows yet), do NOT assume specific rows exist. Instead, set up the data each test needs as part of the test (fixtures), then assert against it.
+
+### Fixtures: seeding the data a test needs
+
+- Put reusable setup in files under \`tests/fixtures/\` (e.g. \`tests/fixtures/todos.ts\`) and import them into your specs. Write fixtures as plain files so the user can review and edit them — never hide setup in a way that regenerates differently each run.
+- Seed data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. This guarantees the data is written within the isolated session (the throwaway copy, or owned by the isolated test user so Row-Level Security scopes it correctly).
+- Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, outside the isolated session.
+- Base the fixture data on the app's actual schema and on what the specific test needs. Keep it minimal: seed only what the test asserts on.
+
+### Authenticated tests (signing in a test user)
+
+This section applies ONLY when the specific flow under test genuinely requires a logged-in user. If the flow is reachable without signing in, or the user asked for a test that doesn't need authentication (or explicitly doesn't want auth), skip everything below — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, say so and ask the user before building auth — don't add it silently.
+
+When a flow requires a logged-in user, use the built-in auth fixture in \`tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
+- If \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user — read the credentials from those env vars and sign that user in by driving the app's OWN login UI. Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, build one before writing the auth-gated test.
+- Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, build one (or an equivalent way to create a user) first. Say so clearly if you add it.
+- Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.`;
+
+/** Build-mode test-writing guidance: emit the spec via a `<dyad-generate-test>` tag. */
+export const TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
+  `- In Build mode, emit it with a \`<dyad-generate-test>\` tag (NOT \`<dyad-write>\`) so it shows up in the Tests panel:
+  <dyad-generate-test path="tests/signup.spec.ts" description="Tests the signup flow">
+  ...test code...
+  </dyad-generate-test>`,
+);
+
+/**
+ * Local-agent test-writing guidance: write the spec with the `write_file` tool.
+ * Dyad detects `.spec.ts` files and surfaces them in the Tests panel where the
+ * user can run them — there is no dedicated test tool.
+ */
+export const AGENT_TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
+  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
+);
+
+// The test-writing guidance is appended by `getSystemPromptForChatMode` (only
+// when the app has opted into testing), NOT baked in here. It must go AFTER the
+// postfix: the postfix ends with the strong "ONLY use <dyad-write> for ALL code
+// output" mandate, so the test guidance (which tells the model to emit
+// `<dyad-generate-test>` for specs) must come after it to carry as the
+// exception — otherwise the postfix reads as the final word and the model may
+// wrap tests in `<dyad-write>`, so they never surface in the Tests panel.
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
@@ -530,6 +611,7 @@ export const constructSystemPrompt = ({
   hasSupabaseProject,
   enableAppBlueprint,
   codeExplorerAvailable,
+  testingEnabled,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -560,6 +642,11 @@ export const constructSystemPrompt = ({
    * TypeScript exploration tool over code_search for broad codebase discovery.
    */
   codeExplorerAvailable?: boolean;
+  /**
+   * Whether the app has opted into E2E testing. Gates the build-mode
+   * test-writing guidance (see `getSystemPromptForChatMode`).
+   */
+  testingEnabled?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -574,6 +661,7 @@ export const constructSystemPrompt = ({
       hasSupabaseProject,
       enableAppBlueprint,
       codeExplorerAvailable,
+      testingEnabled,
     });
   }
 
@@ -582,6 +670,7 @@ export const constructSystemPrompt = ({
     enableTurboEditsV2,
     frameworkType,
     hasSupabaseProject,
+    testingEnabled,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -601,11 +690,18 @@ export const getSystemPromptForChatMode = ({
   enableTurboEditsV2,
   frameworkType,
   hasSupabaseProject,
+  testingEnabled,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
   frameworkType?: AppFrameworkType | null;
   hasSupabaseProject?: boolean;
+  /**
+   * Whether the app has opted into the E2E testing feature. Test-writing
+   * guidance is only injected when true, so the model doesn't offer to write
+   * tests for apps that haven't enabled testing in the Tests panel.
+   */
+  testingEnabled?: boolean;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
@@ -620,6 +716,9 @@ export const getSystemPromptForChatMode = ({
     frameworkType === "vite" && !hasSupabaseProject;
   const buildPrompt =
     BUILD_SYSTEM_PROMPT_BASE +
+    // Keep the test guidance right after the base (i.e. after the postfix's
+    // "ONLY use <dyad-write>" mandate) so it carries as the exception.
+    (testingEnabled ? `\n\n${TEST_WRITING_GUIDANCE}` : "") +
     (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");
   return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };

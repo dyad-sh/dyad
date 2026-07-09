@@ -5,19 +5,38 @@ import { SqlQuery } from "../../lib/schemas";
 
 const logger = log.scope("dyad_tag_parser");
 
-export function getDyadWriteTags(fullResponse: string): {
+interface DyadFileTag {
   path: string;
   content: string;
   description?: string;
-}[] {
-  const dyadWriteRegex = /<dyad-write([^>]*)>([\s\S]*?)<\/dyad-write>/gi;
+}
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Parse `<tagName path="..." description="...">content</tagName>` occurrences
+ * into file tags. Shared by the identical `<dyad-write>` and
+ * `<dyad-generate-test>` extraction: both carry a `path`/`description` and a
+ * body with optional surrounding markdown fences.
+ */
+function parseDyadFileTags(
+  fullResponse: string,
+  tagName: string,
+): DyadFileTag[] {
+  const escapedTagName = escapeRegexLiteral(tagName);
+  const tagRegex = new RegExp(
+    `<${escapedTagName}([^>]*)>([\\s\\S]*?)</${escapedTagName}>`,
+    "gi",
+  );
   const pathRegex = /path="([^"]+)"/;
   const descriptionRegex = /description="([^"]+)"/;
 
   let match;
-  const tags: { path: string; content: string; description?: string }[] = [];
+  const tags: DyadFileTag[] = [];
 
-  while ((match = dyadWriteRegex.exec(fullResponse)) !== null) {
+  while ((match = tagRegex.exec(fullResponse)) !== null) {
     const attributesString = match[1];
     let content = unescapeXmlContent(match[2].trim());
 
@@ -42,12 +61,20 @@ export function getDyadWriteTags(fullResponse: string): {
       tags.push({ path: normalizePath(path), content, description });
     } else {
       logger.warn(
-        "Found <dyad-write> tag without a valid 'path' attribute:",
+        `Found <${tagName}> tag without a valid 'path' attribute:`,
         match[0],
       );
     }
   }
   return tags;
+}
+
+export function getDyadWriteTags(fullResponse: string): DyadFileTag[] {
+  return parseDyadFileTags(fullResponse, "dyad-write");
+}
+
+export function getDyadGenerateTestTags(fullResponse: string): DyadFileTag[] {
+  return parseDyadFileTags(fullResponse, "dyad-generate-test");
 }
 
 export function getDyadRenameTags(fullResponse: string): {

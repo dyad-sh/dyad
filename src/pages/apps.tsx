@@ -28,6 +28,7 @@ import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
+import { clearTestRuntimeForAppAtom } from "@/atoms/testRuntimeAtoms";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -76,6 +77,7 @@ export default function AppsPage() {
     return collections.filter((c) => c.name.toLowerCase().includes(q));
   }, [collections, searchQuery]);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
+  const clearTestRuntimeForApp = useSetAtom(clearTestRuntimeForAppAtom);
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -155,6 +157,7 @@ export default function AppsPage() {
       }
       for (const appId of succeededIds) {
         clearPreviewRuntimeForApp(appId);
+        clearTestRuntimeForApp(appId);
       }
       if (failed.length > 0) {
         const failedNames = failed

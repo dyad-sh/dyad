@@ -132,6 +132,10 @@ Similarly for GraphQL mutations, write the full query + variables as JSON and us
 gh api graphql --input .claude/tmp/resolve_thread.json
 ```
 
+For a single body field, `-F body=@path/to/body.md` is simpler than `--input`: it posts the raw file contents as that field with no JSON escaping needed. Note the hook blocks the _command line_, not the payload — a heredoc or `-f body="..."` with backticks/parens trips it, `@file` never does.
+
+`jq` is not installed in this environment — use `gh`'s built-in `--jq` flag for JSON extraction, or a Python script for larger parsing (see the sandbox note in `AGENTS.md`: inline `python3 -c` is blocked and scripts must live under `.claude/`).
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` can fail for two reasons:
@@ -201,6 +205,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Snapshot file conflicts (e.g., `e2e-tests/snapshots/*.txt`, `*.snap`)**: When a rebase conflicts on a snapshot, neither side may match what the rebased code actually produces (e.g., upstream changed the system prompt, your branch added new tools). Resolve quickly with `git checkout --theirs <file>` to unblock the rebase, then **regenerate snapshots after the rebase completes**: `npm test -- -u` for vitest snapshots, and re-run the affected E2E spec with `--update-snapshots` for E2E `.txt`/`.yml` snapshots. The system-prompt snapshot in `src/__tests__/__snapshots__/local_agent_prompt.test.ts.snap` and the matching E2E snapshots often drift together — after rebasing, expect to update both.
 - **Tests pinning specific prose**: A test that asserts on exact wording added by your branch (e.g., `expect(contents).toContain("REQUIRED")` for a phrase introduced in your AI rules patcher) will silently start asserting against text that was rebased away when upstream reworded the same section. After resolving the prose conflict, search for tests that reference the removed phrase (`grep "REQUIRED" *.test.ts`) and either delete the now-redundant assertion or update it to match the merged wording — the rebase itself does not surface this.
 - **Inverse of refactoring conflicts (incoming commit adds a feature in the old structure)**: When your branch extracted a helper (e.g., moved Nitro setup into `src/ipc/utils/nitro_setup.ts`) and an upstream commit later added a new step to the inline code (e.g., `addNitroToViteConfig` patching `vite.config.ts` from `enable_nitro.ts`), don't just take "ours" for the conflict. Port upstream's new step into your helper so the new feature still runs — otherwise the rebase silently drops upstream's feature for every caller of the helper.
+- **Auto-merged region can silently drop a definition needed by a conflict region**: A conflict may surface only at a symbol's _use_ site while its _definition_ site auto-merges to the side that lacks it. Example: upstream added `const PRO_AGENT_ONLY_TOOLS = new Set()` plus its use in `shouldIncludeTool`; only the use site conflicted, and the declaration block auto-merged to the branch's version (no definition), causing `TS2304: Cannot find name 'PRO_AGENT_ONLY_TOOLS'`. **Always run `npm run ts` after every conflict resolution** — grep-checking the conflict markers alone won't catch a dropped definition in a cleanly auto-merged hunk; restore it from `git show upstream/main:<file>`.
 
 ## Rebasing with uncommitted changes
 

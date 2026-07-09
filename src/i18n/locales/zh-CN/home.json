@@ -200,6 +200,7 @@
     "configure": "配置",
     "security": "安全",
     "publish": "发布",
+    "tests": "测试",
     "plan": "计划",
     "moreOptions": "更多选项",
     "rebuild": "重新构建",

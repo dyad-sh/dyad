@@ -43,6 +43,8 @@ import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
+import { reconcileOrphanTestBranches } from "./ipc/utils/neon_test_branch";
+import { reconcileOrphanTestUsers } from "./ipc/utils/supabase_test_user";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
 import {
@@ -320,6 +322,12 @@ export async function onReady() {
     app.quit();
     return;
   }
+
+  // Reconcile any Neon test branches / Supabase test users leaked by a previous
+  // session that crashed mid test-run. Fire-and-forget: best-effort cleanup
+  // must not block startup.
+  void reconcileOrphanTestBranches();
+  void reconcileOrphanTestUsers();
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();

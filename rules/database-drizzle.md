@@ -28,6 +28,8 @@ When rebasing a branch that has drizzle migrations conflicting with upstream (e.
 
 This avoids manual snapshot/journal editing and `prevId` mistakes. Verify afterward with `npm run db:generate` — it should report `No schema changes, nothing to migrate` if the snapshot is cumulative and consistent.
 
+**When the branch has a _chain_ of migration commits** (multiple migrations added and/or a "consolidate migrations" commit), the same `00XX_snapshot.json`/`_journal.json` conflicts recur on nearly every commit during rebase — don't try to hand-merge each one. Instead resolve each intermediate conflict just enough to proceed (e.g. `git checkout --theirs` the meta files, `git rm -f` orphaned renamed `.sql`), let the whole rebase finish, then do one clean reset: `rm` every extra `drizzle/00XX_*.sql` your branch added beyond upstream's set, `rm -rf drizzle/meta && git checkout upstream/main -- drizzle/meta`, and run a single `npm run db:generate`. drizzle-kit emits one cumulative migration for all your schema additions. Confirm with `git diff upstream/main --stat -- drizzle/` (should show only the new migration) and a second `db:generate` reporting `No schema changes`.
+
 ### Local dev DB breaks after renumbering (`Failed to run the query 'ALTER TABLE ... ADD ...'`)
 
 Renumbering a migration during rebase (e.g. the PR's `0032_*` → regenerated `0033_*`) breaks any **local dev DB that already applied the old-numbered migration**. The better-sqlite3 migrator only compares the single newest `created_at` in `__drizzle_migrations` against each journal entry's `when`, so:

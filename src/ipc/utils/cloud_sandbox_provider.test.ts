@@ -563,7 +563,7 @@ describe("cloud_sandbox_provider sandbox creation", () => {
       appId: 42,
       appPath: "/tmp/app",
       installCommand:
-        "pnpm --config.pm-on-fail=ignore --config.confirmModulesPurge=false --config.strictDepBuilds=false install && (pnpm rebuild 'core-js' '@scope/native' || true)",
+        "pnpm --config.pm-on-fail=ignore --config.confirmModulesPurge=false --config.strictDepBuilds=false install && (pnpm rebuild core-js @scope/native || echo pnpm rebuild skipped)",
       startCommand: "pnpm --config.pm-on-fail=ignore run dev",
     });
   });

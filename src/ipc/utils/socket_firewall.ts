@@ -769,6 +769,26 @@ export async function commitPnpmAllowBuildsConfigIfChanged(
   return { promotedPackages: result.promotedPackages };
 }
 
+const SAFE_PNPM_PACKAGE_NAME_PATTERN = /^(@[a-z0-9-_.]+\/)?[a-z0-9-_.]+$/i;
+
+export function getBestEffortPnpmRebuildCommand(
+  packageNames: string[],
+): string | null {
+  // This command string runs under cmd.exe on Windows (where single quotes
+  // are literal and `true` is not a command) and sh elsewhere, so neither
+  // quoting nor `|| true` is portable. npm package names never need quoting;
+  // drop anything that doesn't look like one, and use `echo` — a builtin
+  // that succeeds in both shells — as the best-effort fallback.
+  const safePackageNames = packageNames.filter((packageName) =>
+    SAFE_PNPM_PACKAGE_NAME_PATTERN.test(packageName),
+  );
+  if (safePackageNames.length === 0) {
+    return null;
+  }
+
+  return `(pnpm rebuild ${safePackageNames.join(" ")} || echo pnpm rebuild skipped)`;
+}
+
 export function getPnpmIgnoredBuildPackageName(packageSpec: string): string {
   const atIndex = packageSpec.lastIndexOf("@");
   if (atIndex <= 0) {
@@ -794,9 +814,46 @@ function parseIgnoredBuildsInlineValue(value: string): string[] {
   return [];
 }
 
+function parseIgnoredBuildsFromJson(content: string): string[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+
+  const ignoredBuilds = (parsed as { ignoredBuilds?: unknown }).ignoredBuilds;
+  if (ignoredBuilds === undefined) {
+    return [];
+  }
+  if (!Array.isArray(ignoredBuilds)) {
+    return null;
+  }
+
+  return ignoredBuilds.filter(
+    (entry): entry is string => typeof entry === "string",
+  );
+}
+
 export function parsePnpmIgnoredBuildsFromModulesYaml(
   content: string,
 ): PnpmIgnoredBuild[] {
+  // pnpm 10.x/11.x write .modules.yaml as JSON (a YAML subset); older
+  // versions used block-style YAML. Try JSON first, then the line parser.
+  const jsonPackageSpecs = parseIgnoredBuildsFromJson(content);
+  if (jsonPackageSpecs !== null) {
+    return Array.from(new Set(jsonPackageSpecs))
+      .filter(Boolean)
+      .map((packageSpec) => ({
+        packageName: getPnpmIgnoredBuildPackageName(packageSpec),
+        packageSpec,
+      }));
+  }
+
   const lines = content.split(/\r?\n/);
   const packageSpecs: string[] = [];
   let inIgnoredBuilds = false;
@@ -841,14 +898,18 @@ export function parsePnpmIgnoredBuildsFromOutput(
     return [];
   }
 
-  return match[1]
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((packageSpec) => ({
-      packageName: getPnpmIgnoredBuildPackageName(packageSpec),
-      packageSpec,
-    }));
+  return (
+    match[1]
+      .split(",")
+      // The warning-box form ends the list with a period and pads with box
+      // border characters; specs never legitimately end with either.
+      .map((entry) => entry.trim().replace(/[\s│.]+$/u, ""))
+      .filter(Boolean)
+      .map((packageSpec) => ({
+        packageName: getPnpmIgnoredBuildPackageName(packageSpec),
+        packageSpec,
+      }))
+  );
 }
 
 export async function readPnpmIgnoredBuilds(

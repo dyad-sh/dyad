@@ -26,11 +26,13 @@ import {
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
   ensureSocketFirewallInstalled,
+  getBestEffortPnpmRebuildCommand,
   getManagedPnpmBinDir,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   PACKAGE_MANAGER_PROBE_TIMEOUT_MS,
   parsePnpmIgnoredBuildsFromModulesYaml,
+  parsePnpmIgnoredBuildsFromOutput,
   readPnpmIgnoredBuilds,
   recordDeniedPnpmBuilds,
   resolveExecutableName,
@@ -747,7 +749,39 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
 });
 
 describe("readPnpmIgnoredBuilds", () => {
-  it("parses ignored build specs from node_modules/.modules.yaml", async () => {
+  it("parses the JSON .modules.yaml written by pnpm 10.x/11.x", async () => {
+    // Captured from a real `pnpm install` with pnpm 11.10.0 — the file is
+    // JSON despite the .yaml extension.
+    expect(
+      parsePnpmIgnoredBuildsFromModulesYaml(
+        JSON.stringify(
+          {
+            hoistedDependencies: {},
+            hoistPattern: ["*"],
+            included: { dependencies: true, devDependencies: true },
+            ignoredBuilds: ["core-js@3.49.0", "@scope/native@1.2.3"],
+            layoutVersion: 5,
+            pendingBuilds: [],
+          },
+          null,
+          2,
+        ),
+      ),
+    ).toEqual([
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+      { packageName: "@scope/native", packageSpec: "@scope/native@1.2.3" },
+    ]);
+  });
+
+  it("returns no ignored builds for JSON .modules.yaml without the key", async () => {
+    expect(
+      parsePnpmIgnoredBuildsFromModulesYaml(
+        JSON.stringify({ layoutVersion: 5, pendingBuilds: [] }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("parses ignored build specs from block-style YAML .modules.yaml", async () => {
     expect(
       parsePnpmIgnoredBuildsFromModulesYaml(
         [
@@ -769,22 +803,17 @@ describe("readPnpmIgnoredBuilds", () => {
     const tempDir = await mkdtemp(
       path.join(os.tmpdir(), "dyad-pnpm-ignored-builds-"),
     );
+    const modulesYamlContent = `${JSON.stringify(
+      { ignoredBuilds: ["core-js@3.49.0"], layoutVersion: 5 },
+      null,
+      2,
+    )}\n`;
     try {
+      await mkdir(path.join(tempDir, "node_modules"), { recursive: true });
       await writeFile(
         path.join(tempDir, "node_modules", ".modules.yaml"),
-        "ignoredBuilds: [core-js@3.49.0]\n",
-      ).catch(async (error) => {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw error;
-        }
-        await mkdir(path.join(tempDir, "node_modules"), {
-          recursive: true,
-        });
-        await writeFile(
-          path.join(tempDir, "node_modules", ".modules.yaml"),
-          "ignoredBuilds: [core-js@3.49.0]\n",
-        );
-      });
+        modulesYamlContent,
+      );
 
       await expect(readPnpmIgnoredBuilds(tempDir)).resolves.toEqual([
         { packageName: "core-js", packageSpec: "core-js@3.49.0" },
@@ -792,6 +821,48 @@ describe("readPnpmIgnoredBuilds", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("parsePnpmIgnoredBuildsFromOutput", () => {
+  it("parses the strict-mode error line", () => {
+    expect(
+      parsePnpmIgnoredBuildsFromOutput(
+        "[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: core-js@3.49.0, @scope/native@1.2.3\n",
+      ),
+    ).toEqual([
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+      { packageName: "@scope/native", packageSpec: "@scope/native@1.2.3" },
+    ]);
+  });
+
+  it("strips the trailing period and box borders from the warning-box form", () => {
+    expect(
+      parsePnpmIgnoredBuildsFromOutput(
+        "│   Ignored build scripts: core-js@3.49.0.                    │\n",
+      ),
+    ).toEqual([{ packageName: "core-js", packageSpec: "core-js@3.49.0" }]);
+  });
+});
+
+describe("getBestEffortPnpmRebuildCommand", () => {
+  it("returns null when no packages are promoted", () => {
+    expect(getBestEffortPnpmRebuildCommand([])).toBeNull();
+  });
+
+  it("emits unquoted names with a cross-shell fallback", () => {
+    // Single quotes are literal and `true` is not a command under cmd.exe,
+    // so the command must avoid both to be safe on Windows.
+    expect(getBestEffortPnpmRebuildCommand(["core-js", "@scope/native"])).toBe(
+      "(pnpm rebuild core-js @scope/native || echo pnpm rebuild skipped)",
+    );
+  });
+
+  it("drops names that are not plain npm package names", () => {
+    expect(
+      getBestEffortPnpmRebuildCommand(["core-js", "bad name; rm -rf /"]),
+    ).toBe("(pnpm rebuild core-js || echo pnpm rebuild skipped)");
+    expect(getBestEffortPnpmRebuildCommand(["$(evil)"])).toBeNull();
   });
 });
 

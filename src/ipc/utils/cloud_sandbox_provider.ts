@@ -5,6 +5,7 @@ import path from "node:path";
 import log from "electron-log";
 import {
   commitPnpmAllowBuildsConfigIfChanged,
+  getBestEffortPnpmRebuildCommand,
   PNPM_INSTALL_POLICY_ARGS,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "@/ipc/utils/socket_firewall";
@@ -138,21 +139,16 @@ function getDefaultStartCommand(): string {
   return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
 }
 
-function quoteShellArg(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 function appendBestEffortPnpmRebuild(
   installCommand: string,
   packageNames: string[],
 ): string {
-  if (packageNames.length === 0) {
+  const rebuildCommand = getBestEffortPnpmRebuildCommand(packageNames);
+  if (!rebuildCommand) {
     return installCommand;
   }
 
-  return `${installCommand} && (pnpm rebuild ${packageNames
-    .map(quoteShellArg)
-    .join(" ")} || true)`;
+  return `${installCommand} && ${rebuildCommand}`;
 }
 
 function getDefaultCloudSandboxErrorMessage(status: number): string {

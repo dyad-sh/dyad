@@ -43,6 +43,7 @@ import {
   PNPM_INSTALL_POLICY_ARGS,
   readPnpmIgnoredBuilds,
   recordDeniedPnpmBuilds,
+  getBestEffortPnpmRebuildCommand,
 } from "@/ipc/utils/socket_firewall";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
@@ -93,20 +94,6 @@ function getPnpmInstallCommand(): string {
 
 function getPnpmRunCommand(): string {
   return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
-}
-
-function quoteShellArg(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
-function getBestEffortPnpmRebuildCommand(
-  packageNames: string[],
-): string | null {
-  if (packageNames.length === 0) {
-    return null;
-  }
-
-  return `(pnpm rebuild ${packageNames.map(quoteShellArg).join(" ")} || true)`;
 }
 
 function buildPnpmInstallAndRunCommand(input: {
@@ -639,10 +626,23 @@ function listenToProcess({
   event: Electron.IpcMainInvokeEvent;
   onPnpmIgnoredBuildsFailure?: (output: string) => Promise<boolean>;
 }) {
+  // Rolling tail, kept only while a self-heal callback could still use it:
+  // dev servers run for hours and unbounded accumulation would leak memory.
+  // The ERR_PNPM_IGNORED_BUILDS marker appears at the end of a failed
+  // install, so a bounded tail is sufficient for the close-handler check.
+  const MAX_PROCESS_OUTPUT_TAIL_LENGTH = 64 * 1024;
   let processOutput = "";
+  const appendProcessOutput = (message: string) => {
+    if (!onPnpmIgnoredBuildsFailure) {
+      return;
+    }
+    processOutput = (processOutput + message).slice(
+      -MAX_PROCESS_OUTPUT_TAIL_LENGTH,
+    );
+  };
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    processOutput += message;
+    appendProcessOutput(message);
     logger.debug(
       `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
     );
@@ -692,7 +692,7 @@ function listenToProcess({
 
   spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    processOutput += message;
+    appendProcessOutput(message);
     logger.error(
       `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
     );
@@ -777,6 +777,10 @@ async function selfHealDeniedPnpmBuilds({
     ignoredBuildsFromModulesYaml.length > 0
       ? ignoredBuildsFromModulesYaml
       : parsePnpmIgnoredBuildsFromOutput(output);
+  // recordDeniedPnpmBuilds may also promote previously auto-denied packages
+  // as a side effect; no explicit `pnpm rebuild` is needed here because
+  // node_modules is removed below, so the retry's fresh install runs build
+  // scripts for newly-allowed packages natively.
   const { deniedBuilds } = await recordDeniedPnpmBuilds({
     appPath,
     ignoredBuilds,

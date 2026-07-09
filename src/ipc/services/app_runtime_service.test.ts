@@ -92,6 +92,10 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
     npm_config_pm_on_fail: "ignore",
   }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
+  getBestEffortPnpmRebuildCommand: (packageNames: string[]) =>
+    packageNames.length === 0
+      ? null
+      : `(pnpm rebuild ${packageNames.join(" ")} || echo pnpm rebuild skipped)`,
   isPnpmIgnoredBuildsError: (error: unknown) =>
     String(error).includes("ERR_PNPM_IGNORED_BUILDS"),
   parsePnpmIgnoredBuildsFromOutput: vi.fn(() => []),
@@ -374,7 +378,7 @@ describe("executeApp", () => {
     });
 
     expect(spawnMock).toHaveBeenCalledWith(
-      "pnpm --config.pm-on-fail=ignore --minimum-release-age=1440 install && (pnpm rebuild 'core-js' '@scope/native' || true) && pnpm --config.pm-on-fail=ignore run dev --port 32101",
+      "pnpm --config.pm-on-fail=ignore --minimum-release-age=1440 install && (pnpm rebuild core-js @scope/native || echo pnpm rebuild skipped) && pnpm --config.pm-on-fail=ignore run dev --port 32101",
       [],
       expect.objectContaining({
         cwd: "/tmp/app",

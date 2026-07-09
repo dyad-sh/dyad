@@ -278,6 +278,9 @@ export async function installPackages({
   let installResultsWithPolicyNotes = installResults;
   if (packageManager === "pnpm") {
     const ignoredBuilds = await readPnpmIgnoredBuilds(appPath);
+    // Promotions were already applied (and rebuilt) by the pre-install
+    // commitPnpmAllowBuildsConfigIfChanged call above, so this record pass
+    // only ever adds denials for builds the install just ignored.
     const { deniedBuilds } = await recordDeniedPnpmBuilds({
       appPath,
       ignoredBuilds,

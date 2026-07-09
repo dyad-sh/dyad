@@ -340,6 +340,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     // strip untouched ones out so the encryption pass below can't corrupt them.
     const preservedToReinject = reconcilePreservedSecrets(
       newSettings,
+      settings,
       settingsForWrite.preserved,
     );
     if (newSettings.githubAccessToken) {
@@ -735,6 +736,21 @@ function getAtPath(root: unknown, path: string[]): unknown {
   return current;
 }
 
+function hasOwnPropertyAtPath(root: unknown, path: string[]): boolean {
+  let current: unknown = root;
+  for (const key of path) {
+    if (
+      current === null ||
+      typeof current !== "object" ||
+      !Object.prototype.hasOwnProperty.call(current, key)
+    ) {
+      return false;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return true;
+}
+
 function setAtPath(root: unknown, path: string[], value: unknown): void {
   let current: unknown = root;
   for (let i = 0; i < path.length - 1; i++) {
@@ -772,6 +788,7 @@ function isMatchingSecretValue(current: unknown, secret: Secret): boolean {
 // deliberately removed, is left alone.
 function reconcilePreservedSecrets(
   newSettings: UserSettings,
+  incomingSettings: Partial<UserSettings>,
   preserved: PreservedSecret[],
 ): PreservedSecret[] {
   const toReinject: PreservedSecret[] = [];
@@ -787,6 +804,11 @@ function reconcilePreservedSecrets(
     } else if (current !== undefined) {
       // A new value replaced the still-locked secret (e.g. the user reconnected).
       // Let it flow through normal encryption; preservation for this field ends.
+      continue;
+    } else if (hasOwnPropertyAtPath(incomingSettings, path)) {
+      // The caller supplied the secret key with an undefined value. Treat that as
+      // an explicit clear, distinct from a readSettings()-rebuilt object where the
+      // locked field was omitted because it could not be decrypted.
       continue;
     } else if (path.length > 1) {
       const parent = getAtPath(newSettings, path.slice(0, -1));

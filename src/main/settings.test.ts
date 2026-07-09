@@ -1079,6 +1079,50 @@ describe("preserving undecryptable secrets", () => {
     });
   });
 
+  it("does not resurrect a locked provider apiKey when explicitly cleared", () => {
+    store[mockSettingsPath] = JSON.stringify({
+      providerSettings: { openai: { apiKey: lockedSecret("openai") } },
+    });
+
+    writeSettings({
+      providerSettings: {
+        openai: { apiKey: undefined },
+      },
+    });
+
+    expect(readStoredFile().providerSettings.openai.apiKey).toBeUndefined();
+
+    writeSettings({ enableAutoUpdate: false });
+    expect(readStoredFile().providerSettings.openai.apiKey).toBeUndefined();
+  });
+
+  it("does not resurrect a locked Vertex service account key when explicitly cleared", () => {
+    store[mockSettingsPath] = JSON.stringify({
+      providerSettings: {
+        vertex: {
+          projectId: "old-project",
+          location: "us-central1",
+          serviceAccountKey: lockedSecret("vertex"),
+        },
+      },
+    });
+
+    writeSettings({
+      providerSettings: {
+        vertex: {
+          apiKey: undefined,
+          projectId: "new-project",
+          location: "us-central1",
+          serviceAccountKey: undefined,
+        },
+      },
+    });
+
+    const storedVertex = readStoredFile().providerSettings.vertex;
+    expect(storedVertex.serviceAccountKey).toBeUndefined();
+    expect(storedVertex.projectId).toBe("new-project");
+  });
+
   it("does not resurrect a locked provider whose provider object is deliberately removed", () => {
     store[mockSettingsPath] = JSON.stringify({
       providerSettings: { openai: { apiKey: lockedSecret("openai") } },

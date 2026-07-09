@@ -93,7 +93,7 @@ export function AzureConfiguration({
       if (trimmedApiKey) {
         azureSettings.apiKey = { value: trimmedApiKey };
       } else {
-        delete azureSettings.apiKey;
+        azureSettings.apiKey = undefined;
       }
 
       const providerSettings = {

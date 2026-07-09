@@ -63,6 +63,17 @@ describe("runTypeChecksTool precondition guidance", () => {
     } as unknown as AgentContext;
   }
 
+  function expectWarningOutput(ctx: AgentContext): string {
+    expect(ctx.onXmlComplete).toHaveBeenCalledTimes(1);
+    const output = vi.mocked(ctx.onXmlComplete).mock.calls[0][0];
+    expect(output).toContain(
+      '<dyad-output type="warning" message="Type checking unavailable">',
+    );
+    expect(output).not.toContain("<dyad-status");
+    expect(output).not.toContain('type="error"');
+    return output;
+  }
+
   it("tells the agent to install dependencies when TypeScript is declared but missing", async () => {
     const appPath = await makeApp({
       devDependencies: { typescript: "^5.0.0" },
@@ -77,6 +88,7 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     const result = await runTypeChecksTool.execute({}, ctx);
 
+    expect(result).toMatch(/^Type checking could not run/);
     expect(result).toContain("TypeScript is listed in package.json");
     expect(result).toContain("add_dependency");
     expect(result).toContain('{ "packages": ["typescript"] }');
@@ -89,8 +101,8 @@ describe("runTypeChecksTool precondition guidance", () => {
         problems: { problems: [] },
       },
     );
-    expect(ctx.onXmlComplete).toHaveBeenCalledWith(
-      expect.stringContaining("TypeScript is listed in package.json"),
+    expect(expectWarningOutput(ctx)).toContain(
+      "TypeScript is listed in package.json",
     );
   });
 
@@ -111,10 +123,12 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     const result = await runTypeChecksTool.execute({}, ctx);
 
+    expect(result).toMatch(/^Type checking could not run/);
     expect(result).toContain("state-changing tools are unavailable");
     expect(result).toContain("switch to Agent mode");
     expect(result).not.toContain("add_dependency");
     expect(result).not.toContain('{ "packages": ["typescript"] }');
+    expectWarningOutput(ctx);
   });
 
   it("tells the agent not to retry and to suggest adding TypeScript for plain JavaScript projects", async () => {
@@ -129,11 +143,12 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     const result = await runTypeChecksTool.execute({}, ctx);
 
+    expect(result).toMatch(/^Type checking is unavailable/);
     expect(result).toContain("does not use TypeScript");
     expect(result).toContain("Do not call `run_type_checks` again");
     expect(result).toContain('<dyad-command type="add-typescript">');
-    expect(ctx.onXmlComplete).toHaveBeenCalledWith(
-      expect.stringContaining('&lt;dyad-command type="add-typescript"'),
+    expect(expectWarningOutput(ctx)).toContain(
+      '&lt;dyad-command type="add-typescript"',
     );
   });
 
@@ -151,8 +166,27 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     const result = await runTypeChecksTool.execute({}, ctx);
 
+    expect(result).toMatch(/^Type checking could not run/);
     expect(result).toContain("no tsconfig was found");
     expect(result).toContain("tsconfig.app.json");
     expect(result).not.toContain("add_dependency");
+    expectWarningOutput(ctx);
+  });
+
+  it("rethrows unexpected type-check failures for the generic error path", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^5.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    vi.mocked(generateProblemReport).mockRejectedValue(
+      new Error("worker exploded"),
+    );
+
+    await expect(runTypeChecksTool.execute({}, ctx)).rejects.toThrow(
+      "worker exploded",
+    );
+
+    expect(ctx.onXmlComplete).not.toHaveBeenCalled();
+    expect(safeSend).not.toHaveBeenCalled();
   });
 });

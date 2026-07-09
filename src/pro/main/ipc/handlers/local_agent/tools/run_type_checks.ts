@@ -12,6 +12,7 @@ import {
 } from "@/ipc/processors/tsc";
 import type { Problem, ProblemReport } from "@/ipc/types";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
 import { normalizePath } from "../../../../../../../shared/normalizePath";
 
@@ -105,6 +106,10 @@ export const runTypeChecksTool: ToolDefinition<
         appPath: ctx.appPath,
       });
     } catch (error) {
+      if (!isDyadError(error) || error.kind !== DyadErrorKind.Precondition) {
+        throw error;
+      }
+
       const preconditionKind = getTypeCheckPreconditionKind(error);
       if (!preconditionKind) {
         throw error;
@@ -123,7 +128,7 @@ export const runTypeChecksTool: ToolDefinition<
       });
 
       ctx.onXmlComplete(
-        `<dyad-status title="${escapeXmlAttr(title)}">\n${escapeXmlContent(result)}\n</dyad-status>`,
+        `<dyad-output type="warning" message="${escapeXmlAttr("Type checking unavailable")}">\n${escapeXmlContent(result)}\n</dyad-output>`,
       );
 
       return result;

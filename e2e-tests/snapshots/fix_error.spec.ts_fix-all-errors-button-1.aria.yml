@@ -18,5 +18,6 @@
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 3: files changed]]"
+- button "A file1.txt +1"
 - button "Undo"
 - button "Retry"

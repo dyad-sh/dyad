@@ -11,5 +11,6 @@
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy"
 - text: "[[Version 3: files changed]]"
+- button "A new/image/file.png"
 - button "Undo"
 - button "Retry"

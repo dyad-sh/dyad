@@ -13,5 +13,6 @@
 - button "Index.tsx src/pages/Index.tsx Edit"
 - button "Copy"
 - text: "[[Version 3: files changed]]"
+- button "M src/pages/Index.tsx +8 -15"
 - button "Undo"
 - button "Retry"

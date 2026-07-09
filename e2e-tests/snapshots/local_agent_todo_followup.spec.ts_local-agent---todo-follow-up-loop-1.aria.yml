@@ -15,5 +15,9 @@
 - button "Copy"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
+- text: Modified files (3)
+- button "A src/utils/README.md +5"
+- button "A src/utils/helper.test.ts +5"
+- button "A src/utils/helper.ts +3"
 - button "Undo"
 - button "Retry"

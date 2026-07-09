@@ -16,9 +16,16 @@ import path from "node:path";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
 import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "../utils/socket_firewall";
+import {
+  applyPnpmVersionMigration,
+  getManagedPnpmMajorVersion,
+  isPnpmVersionMigrationNeeded,
+} from "../utils/pnpm_migration";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
+
+const MANAGED_PNPM_MAJOR = getManagedPnpmMajorVersion();
 
 const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
   {
@@ -34,6 +41,16 @@ const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
     description:
       "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
     manualUpgradeUrl: "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
+  },
+  {
+    id: "pnpm-version-migration",
+    title: `Migrate to pnpm ${MANAGED_PNPM_MAJOR}`,
+    description:
+      `This project was set up with an older pnpm, but Dyad runs pnpm ${MANAGED_PNPM_MAJOR}, ` +
+      "which writes a lockfile format older pnpm versions can't read — so deploys and CI " +
+      "that follow the project's pinned pnpm version can fail. This updates the " +
+      `packageManager pin and the lockfile together so everything matches pnpm ${MANAGED_PNPM_MAJOR}.`,
+    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/pnpm-migration",
   },
 ];
 
@@ -178,6 +195,8 @@ export function registerAppUpgradeHandlers() {
           isNeeded = isComponentTaggerUpgradeNeeded(appPath);
         } else if (upgrade.id === "capacitor") {
           isNeeded = isCapacitorUpgradeNeeded(appPath);
+        } else if (upgrade.id === "pnpm-version-migration") {
+          isNeeded = isPnpmVersionMigrationNeeded(appPath);
         }
         return { ...upgrade, isNeeded };
       });
@@ -200,6 +219,8 @@ export function registerAppUpgradeHandlers() {
         await applyComponentTagger(appPath);
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
+      } else if (upgradeId === "pnpm-version-migration") {
+        await applyPnpmVersionMigration({ appPath });
       } else {
         throw new DyadError(
           `Unknown upgrade id: ${upgradeId}`,

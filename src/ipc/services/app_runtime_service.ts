@@ -48,6 +48,10 @@ import {
   resolvePnpmIgnoredBuilds,
 } from "@/ipc/utils/pnpm_denied_builds";
 import {
+  getManagedPnpmMajorVersion,
+  isPnpmVersionMigrationNeeded,
+} from "@/ipc/utils/pnpm_migration";
+import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
   signalPrefersPnpm,
@@ -254,6 +258,8 @@ export async function executeApp({
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
+  notifyPnpmVersionMigrationAvailable({ appPath, appId, event });
+
   if (runtimeMode === "docker") {
     await executeAppInDocker({
       appPath,
@@ -280,6 +286,34 @@ export async function executeApp({
       installCommand,
       startCommand,
     });
+  }
+}
+
+// Discovery nudge for the consented "Migrate to pnpm N" app upgrade: the
+// contradiction (old pin/lockfile vs the managed pnpm) only bites outside
+// Dyad (CI, deploys, teammates), so surface it in the console the user is
+// already watching instead of failing or silently rewriting the pin.
+function notifyPnpmVersionMigrationAvailable({
+  appPath,
+  appId,
+  event,
+}: {
+  appPath: string;
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+}): void {
+  try {
+    if (!isPnpmVersionMigrationNeeded(appPath)) {
+      return;
+    }
+    const managedMajor = getManagedPnpmMajorVersion();
+    safeSend(event.sender, "app:output", {
+      type: "stdout",
+      message: `[dyad] This project targets an older pnpm (pre-9 lockfile or pnpm <= 8 pin), but Dyad runs pnpm ${managedMajor} — deploys and CI that follow the project's pin can fail. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
+      appId,
+    });
+  } catch (error) {
+    logger.warn("Failed to check pnpm version migration status:", error);
   }
 }
 

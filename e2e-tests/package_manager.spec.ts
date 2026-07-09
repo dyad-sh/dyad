@@ -597,3 +597,53 @@ realPnpmStrictBuildsTestSkipIfWindows(
     }).toPass({ timeout: Timeout.EXTRA_LONG });
   },
 );
+
+realPnpmStrictBuildsTestSkipIfWindows(
+  "pnpm version migration upgrade updates the pin and lockfile together",
+  async ({ po }, testInfo) => {
+    testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
+
+    await po.setUp();
+    await po.importApp("minimal");
+    await po.previewPanel.expectPreviewIframeIsVisible(
+      SOCKET_FIREWALL_TEST_TIMEOUT,
+    );
+
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const packageJsonPath = path.join(appPath, "package.json");
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+    // An old pin contradicts the managed pnpm: CI/deploys following it cannot
+    // read the 9.0 lockfile Dyad writes. This is the migration trigger.
+    packageJson.packageManager = "pnpm@8.15.9";
+    await fs.writeFile(
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
+
+    await po.appManagement.getTitleBarAppNameButton().click();
+    await po.appManagement.clickAppUpgradeButton({
+      upgradeId: "pnpm-version-migration",
+    });
+    await po.appManagement.expectAppUpgradeButtonIsNotVisible({
+      upgradeId: "pnpm-version-migration",
+    });
+
+    const migratedPackageJson = JSON.parse(
+      await fs.readFile(packageJsonPath, "utf8"),
+    );
+    expect(migratedPackageJson.packageManager).toMatch(/^pnpm@(9|\d{2,})\./);
+
+    const lockfile = await fs.readFile(
+      path.join(appPath, "pnpm-lock.yaml"),
+      "utf8",
+    );
+    expect(lockfile).toContain("lockfileVersion: '9.0'");
+
+    const lastCommitSubject = execFileSync(
+      "git",
+      ["log", "-1", "--format=%s"],
+      { cwd: appPath, encoding: "utf8" },
+    ).trim();
+    expect(lastCommitSubject).toContain("[dyad] migrate to pnpm");
+  },
+);

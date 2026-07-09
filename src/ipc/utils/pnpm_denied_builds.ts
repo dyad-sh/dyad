@@ -9,6 +9,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 export type PnpmDeniedBuildsTelemetrySource =
   | "add-dependency"
   | "app-run"
+  | "app-upgrade"
   | "self-heal"
   | "cloud-sandbox";
 

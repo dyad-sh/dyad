@@ -384,6 +384,17 @@ async function handleGetUncommittedFileDiff(
   if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
   const appPath = getDyadAppPath(app.path);
 
+  // `filePath` comes from the renderer, so validate up front that it stays
+  // within the app directory before using it to read files or git objects. This
+  // rejects path-traversal attempts (e.g. "../../etc/passwd") with a clear error
+  // rather than silently returning an empty diff.
+  let resolvedPath: string;
+  try {
+    resolvedPath = safeJoin(appPath, filePath);
+  } catch {
+    throw new DyadError("Invalid file path", DyadErrorKind.Validation);
+  }
+
   // "before" side: the file at HEAD. Missing (newly added file) → empty.
   const oldContent =
     (await getFileAtCommit({ path: appPath, filePath, commitHash: "HEAD" })) ??
@@ -392,10 +403,7 @@ async function handleGetUncommittedFileDiff(
   // "after" side: the current working-tree contents. Missing (deleted) → empty.
   let newContent = "";
   try {
-    newContent = await fsPromises.readFile(
-      safeJoin(appPath, filePath),
-      "utf-8",
-    );
+    newContent = await fsPromises.readFile(resolvedPath, "utf-8");
   } catch {
     newContent = "";
   }

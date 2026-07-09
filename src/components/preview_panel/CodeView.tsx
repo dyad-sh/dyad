@@ -107,7 +107,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                 render={
                   <button
                     onClick={() => setStagedDiffFile(null)}
-                    className="p-1 rounded hover:bg-gray-200"
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                     data-testid="staged-diff-back-button"
                   />
                 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { GitCommitVertical, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useSetAtom } from "jotai";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ interface CommitMenuProps {
  * Commit opens a confirmation dialog that commits all staged files at once.
  */
 export function CommitMenu({ appId }: CommitMenuProps) {
+  const { t } = useTranslation("home");
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
@@ -55,7 +57,13 @@ export function CommitMenu({ appId }: CommitMenuProps) {
 
   const handleCommit = async () => {
     if (!commitMessage.trim()) return;
-    await commitChanges({ appId, message: commitMessage.trim() });
+    try {
+      await commitChanges({ appId, message: commitMessage.trim() });
+    } catch {
+      // useCommitChanges surfaces the error via a toast. Keep the dialog open
+      // and preserve the message so the user can retry without retyping it.
+      return;
+    }
     setIsDialogOpen(false);
     setCommitMessage("");
     // Nothing is staged anymore, so leave the diff view if it was open.
@@ -73,7 +81,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         data-testid="editor-commit-button"
       >
         <GitCommitVertical size={14} />
-        Commit
+        {t("preview.commit")}
         {hasUncommittedFiles && (
           <span className="rounded-full bg-muted px-1.5 text-xs">
             {uncommittedFiles.length}
@@ -87,19 +95,21 @@ export function CommitMenu({ appId }: CommitMenuProps) {
             buttonVariants({ variant: "outline", size: "sm" }),
             "rounded-l-none px-1.5",
           )}
-          aria-label="Staged files"
+          aria-label={t("preview.stagedFiles")}
           data-testid="staged-files-trigger"
         >
           <ChevronDown size={14} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-80">
           <DropdownMenuLabel>
-            Staged files ({uncommittedFiles.length})
+            {t("preview.stagedFilesWithCount", {
+              count: uncommittedFiles.length,
+            })}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {uncommittedFiles.length === 0 ? (
             <div className="px-2 py-2 text-sm text-muted-foreground">
-              No staged changes
+              {t("preview.noStagedChanges")}
             </div>
           ) : (
             uncommittedFiles.map((file) => (
@@ -138,9 +148,9 @@ export function CommitMenu({ appId }: CommitMenuProps) {
           data-testid="editor-commit-dialog"
         >
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle>Commit changes</DialogTitle>
+            <DialogTitle>{t("preview.commitChanges")}</DialogTitle>
             <DialogDescription>
-              Review the staged files and enter a commit message.
+              {t("preview.commitDialogDescription")}
             </DialogDescription>
           </DialogHeader>
 
@@ -150,20 +160,22 @@ export function CommitMenu({ appId }: CommitMenuProps) {
                 htmlFor="editor-commit-message"
                 className="text-sm font-medium mb-2 block"
               >
-                Commit message
+                {t("preview.commitMessage")}
               </label>
               <Input
                 id="editor-commit-message"
                 value={commitMessage}
                 onChange={(e) => setCommitMessage(e.target.value)}
-                placeholder="Enter commit message..."
+                placeholder={t("preview.commitMessagePlaceholder")}
                 data-testid="editor-commit-message-input"
               />
             </div>
 
             <div>
               <p className="text-sm font-medium mb-2">
-                Files to commit ({uncommittedFiles.length})
+                {t("preview.filesToCommit", {
+                  count: uncommittedFiles.length,
+                })}
               </p>
               <div
                 className="max-h-60 overflow-y-auto rounded-md border p-2 space-y-1"
@@ -200,7 +212,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               onClick={() => setIsDialogOpen(false)}
               disabled={isCommitting}
             >
-              Cancel
+              {t("preview.cancel")}
             </Button>
             <Button
               onClick={handleCommit}
@@ -211,7 +223,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               }
               data-testid="editor-commit-confirm-button"
             >
-              {isCommitting ? "Committing..." : "Commit"}
+              {isCommitting ? t("preview.committing") : t("preview.commit")}
             </Button>
           </DialogFooter>
         </DialogContent>

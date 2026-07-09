@@ -13,6 +13,7 @@ import { platform } from "node:os";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
+import { safeJoin } from "./path_utils";
 import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
 import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
@@ -926,10 +927,10 @@ async function readWorkingFileContent(
   filePath: string,
 ): Promise<string> {
   try {
-    return await fsPromises.readFile(
-      pathModule.join(dir, normalizePath(filePath)),
-      "utf-8",
-    );
+    // Use safeJoin (rather than a bare path.join) so a path that would escape
+    // the app directory is rejected instead of read, providing defense-in-depth
+    // consistency with the IPC diff handler.
+    return await fsPromises.readFile(safeJoin(dir, filePath), "utf-8");
   } catch {
     return "";
   }
@@ -971,6 +972,12 @@ async function getFileLineStats({
   }
 }
 
+// Cap how many files we read/diff at once. This function is polled every few
+// seconds, so an unbounded Promise.all over every uncommitted file could spike
+// CPU/memory or exhaust file descriptors after a large refactor. Processing in
+// bounded batches keeps the main process responsive while still parallelizing.
+const LINE_STATS_CONCURRENCY = 10;
+
 async function attachLineStats({
   path,
   files,
@@ -978,12 +985,18 @@ async function attachLineStats({
   path: string;
   files: Array<{ path: string; status: UncommittedFileStatus }>;
 }): Promise<UncommittedFile[]> {
-  return Promise.all(
-    files.map(async (file) => ({
-      ...file,
-      ...(await getFileLineStats({ path, file })),
-    })),
-  );
+  const results: UncommittedFile[] = [];
+  for (let i = 0; i < files.length; i += LINE_STATS_CONCURRENCY) {
+    const batch = files.slice(i, i + LINE_STATS_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (file) => ({
+        ...file,
+        ...(await getFileLineStats({ path, file })),
+      })),
+    );
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 /**

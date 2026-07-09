@@ -36,6 +36,7 @@ const SECURITY_CLI_TIMEOUT_MS = 30_000;
 const ERR_SEC_SUCCESS = 0;
 const ERR_SEC_INTERACTION_NOT_ALLOWED = -25308;
 const ERR_SEC_AUTH_FAILED = -25293;
+const ERR_SEC_USER_CANCELED = -128;
 // Chromium uses a fixed IV of 16 space (0x20) bytes for its os_crypt v10 scheme.
 const AES_IV = Buffer.alloc(16, 0x20);
 
@@ -109,6 +110,7 @@ interface KeychainReaderBinding {
     allowUI?: boolean,
   ): KeychainReadResult;
   isDefaultKeychainLocked(keychainPath?: string): boolean | null;
+  unlockDefaultKeychain?(keychainPath?: string): number | null;
 }
 
 type KeychainReaderBindingLoader = () => KeychainReaderBinding;
@@ -160,6 +162,20 @@ function normalizeReadResult(result: unknown): KeychainReadResult {
     };
   }
   return { status: -1, password: null };
+}
+
+function isSilentReadInteractionNeededStatus(status: number): boolean {
+  return (
+    status === ERR_SEC_INTERACTION_NOT_ALLOWED ||
+    // Locked explicit file keychains can report errSecAuthFailed with UI
+    // suppressed; recoveryNeedsKeychainUnlock still requires a locked-keychain
+    // check, so unlocked ACL mismatches remain silent.
+    status === ERR_SEC_AUTH_FAILED
+  );
+}
+
+function isUnlockCanceledStatus(status: number): boolean {
+  return status === ERR_SEC_USER_CANCELED || status === ERR_SEC_AUTH_FAILED;
 }
 
 /**
@@ -264,11 +280,7 @@ export class InProcessKeychainPasswordReader implements KeychainPasswordReader {
       result.status === ERR_SEC_SUCCESS && result.password !== null
         ? result.password
         : null;
-    if (
-      !this.allowUI &&
-      (result.status === ERR_SEC_INTERACTION_NOT_ALLOWED ||
-        result.status === ERR_SEC_AUTH_FAILED)
-    ) {
+    if (!this.allowUI && isSilentReadInteractionNeededStatus(result.status)) {
       interactionNeededIdentities.add(cacheKey);
     }
     this.passwordCache.set(cacheKey, password);
@@ -367,6 +379,23 @@ export function isDefaultKeychainLockedForSafeStorageRecovery(
   }
 }
 
+function unlockDefaultKeychainForSafeStorageRecovery(): number | null {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  const binding = loadInProcessKeychainReaderBinding();
+  if (binding === null || typeof binding.unlockDefaultKeychain !== "function") {
+    return null;
+  }
+  try {
+    const status = binding.unlockDefaultKeychain();
+    return typeof status === "number" ? status : null;
+  } catch (error) {
+    logger.debug("Failed to unlock default Keychain", error);
+    return null;
+  }
+}
+
 export function recoveryNeedsKeychainUnlock(): boolean {
   if (process.platform !== "darwin") {
     return false;
@@ -401,22 +430,27 @@ export function retryRecoveryWithKeychainUnlock(): boolean {
   }
   unlockPromptAttempted = true;
 
-  const retryReader = new InProcessKeychainPasswordReader(undefined, {
-    allowUI: true,
-  });
-  let obtainedPassword = false;
-  for (const identity of LEGACY_IDENTITIES) {
-    if (retryReader.readPassword(identity.service, identity.account) !== null) {
-      obtainedPassword = true;
+  logger.info("Requesting Keychain unlock to recover saved connections.");
+  const unlockStatus = unlockDefaultKeychainForSafeStorageRecovery();
+  if (unlockStatus !== ERR_SEC_SUCCESS) {
+    if (unlockStatus !== null && isUnlockCanceledStatus(unlockStatus)) {
+      logger.info(
+        "Keychain unlock was canceled; legacy safeStorage ciphertexts remain preserved.",
+      );
+    } else {
+      logger.info(
+        `Keychain unlock failed with status ${unlockStatus ?? "unknown"}; legacy safeStorage ciphertexts remain preserved.`,
+      );
     }
-  }
-  if (!obtainedPassword) {
     return false;
   }
 
   clearRecoveryFailureCache();
   interactionNeededIdentities = new Set();
-  defaultReader = retryReader;
+  defaultReader = new InProcessKeychainPasswordReader();
+  logger.info(
+    "Keychain unlock completed; retrying legacy safeStorage recovery.",
+  );
   return true;
 }
 

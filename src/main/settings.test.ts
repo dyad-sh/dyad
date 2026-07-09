@@ -1477,6 +1477,22 @@ describe("legacy keychain recovery integration", () => {
     });
   });
 
+  it("does not rewrite defaults when unlock recovery hits a later settings parse error", () => {
+    const locked = lockedSecret("github");
+    const originalStoredSettings = {
+      githubAccessToken: locked,
+      selectedModel: {},
+    };
+    store[mockSettingsPath] = JSON.stringify(originalStoredSettings);
+    mockRecover.mockReturnValue("gh_recovered_token");
+    mockGetRecoveryStats
+      .mockReturnValueOnce({ attempted: 1, recovered: 0, failed: 1 })
+      .mockReturnValueOnce({ attempted: 2, recovered: 1, failed: 1 });
+
+    expect(rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock()).toBe(0);
+    expect(JSON.parse(store[mockSettingsPath])).toEqual(originalStoredSettings);
+  });
+
   it("preserves the ciphertext when recovery also fails", () => {
     const locked = lockedSecret("github");
     store[mockSettingsPath] = JSON.stringify({ githubAccessToken: locked });

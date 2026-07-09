@@ -338,9 +338,24 @@ export async function readEffectiveSettings(): Promise<UserSettings> {
 
 export function rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock(): number {
   const recoveredBefore = getRecoveryStats().recovered;
-  const settings = readSettings();
+  let settings: UserSettings;
+  try {
+    settings = readExistingSettingsFile(getSettingsFilePath()).settings;
+  } catch (error) {
+    const recoveredCount = getRecoveryStats().recovered - recoveredBefore;
+    if (recoveredCount > 0) {
+      logger.warn(
+        `Skipped rewriting ${recoveredCount} recovered safeStorage secret(s) after Keychain unlock because settings could not be read safely.`,
+        error,
+      );
+    } else {
+      logger.info("Recovered 0 secret(s) after Keychain unlock.");
+    }
+    return 0;
+  }
   const recoveredCount = getRecoveryStats().recovered - recoveredBefore;
   if (recoveredCount <= 0) {
+    logger.info("Recovered 0 secret(s) after Keychain unlock.");
     return 0;
   }
   if (

@@ -471,7 +471,6 @@ export async function onReady() {
   await onFirstRunMaybe(settings);
   createWindow();
   createApplicationMenu();
-  scheduleSafeStorageKeychainUnlockRetry();
 
   sendTelemetryEvent("runtime_source", {
     runtime_source: settings.customNodePath
@@ -510,15 +509,19 @@ export async function onReady() {
   }
 }
 
-function scheduleSafeStorageKeychainUnlockRetry(): void {
-  setImmediate(() => {
+function scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad(): void {
+  if (safeStorageKeychainUnlockRetryScheduled) {
+    return;
+  }
+  safeStorageKeychainUnlockRetryScheduled = true;
+  setTimeout(() => {
     if (!recoveryNeedsKeychainUnlock()) {
       return;
     }
     if (retryRecoveryWithKeychainUnlock()) {
       rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
     }
-  });
+  }, 0);
 }
 
 export async function onFirstRunMaybe(settings: UserSettings) {
@@ -571,6 +574,7 @@ let pendingForceCloseData: any = null;
 let pendingActiveChatId: number | null = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
+let safeStorageKeychainUnlockRetryScheduled = false;
 
 const createWindow = () => {
   // Create the browser window.
@@ -722,6 +726,8 @@ const createWindow = () => {
       });
       clearRendererCrashRecord();
     }
+
+    scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad();
   });
 
   // Persist any non-clean renderer-process termination so we can report it on

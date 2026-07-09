@@ -108,6 +108,7 @@ interface NativeKeychainReaderBinding {
     allowUI?: boolean,
   ): { status: number; password: string | null };
   isDefaultKeychainLocked(keychainPath?: string): boolean | null;
+  unlockDefaultKeychain(keychainPath?: string): number | null;
 }
 
 function loadNativeKeychainReaderBinding(): NativeKeychainReaderBinding {
@@ -440,18 +441,23 @@ describe("Keychain unlock recovery retry", () => {
     expect(calls).toEqual([false, false]);
   });
 
-  it("tries allow-UI reads at most once even when the user cancels", async () => {
+  it("tries one Keychain unlock and no allow-UI item reads when the user cancels", async () => {
     const ciphertext = encryptV10Base64(
       "secret",
       deriveLegacyOsCryptKey("real-password"),
     );
     const calls: boolean[] = [];
+    let unlockCalls = 0;
     setInProcessKeychainBindingLoaderForTesting(() => ({
       readGenericPassword: (_service, _account, _keychainPath, allowUI) => {
         calls.push(allowUI ?? false);
         return { status: allowUI ? -25293 : -25308, password: null };
       },
       isDefaultKeychainLocked: () => true,
+      unlockDefaultKeychain: () => {
+        unlockCalls++;
+        return -128;
+      },
     }));
 
     await withPlatform("darwin", () => {
@@ -459,14 +465,17 @@ describe("Keychain unlock recovery retry", () => {
       expect(retryRecoveryWithKeychainUnlock()).toBe(false);
       expect(retryRecoveryWithKeychainUnlock()).toBe(false);
     });
-    expect(calls).toEqual([false, false, true, true]);
+    expect(calls).toEqual([false, false]);
+    expect(unlockCalls).toBe(1);
   });
 
-  it("clears failed ciphertext cache and reuses the allow-UI reader after unlock", async () => {
+  it("clears failed ciphertext cache and retries with a silent reader after unlock", async () => {
     const ciphertext = encryptV10Base64(
       "unlocked-secret",
       deriveLegacyOsCryptKey("unlocked-password"),
     );
+    let unlocked = false;
+    let unlockCalls = 0;
     const calls: Array<{
       service: string;
       account: string;
@@ -476,15 +485,20 @@ describe("Keychain unlock recovery retry", () => {
       readGenericPassword: (service, account, _keychainPath, allowUI) => {
         calls.push({ service, account, allowUI: allowUI ?? false });
         if (
-          allowUI &&
+          unlocked &&
           service === "dyad Safe Storage" &&
           account === "dyad Key"
         ) {
           return { status: 0, password: "unlocked-password" };
         }
-        return { status: allowUI ? -25300 : -25308, password: null };
+        return { status: unlocked ? -25300 : -25308, password: null };
       },
-      isDefaultKeychainLocked: () => true,
+      isDefaultKeychainLocked: () => !unlocked,
+      unlockDefaultKeychain: () => {
+        unlockCalls++;
+        unlocked = true;
+        return 0;
+      },
     }));
 
     await withPlatform("darwin", () => {
@@ -496,6 +510,7 @@ describe("Keychain unlock recovery retry", () => {
       );
       expect(retryRecoveryWithKeychainUnlock()).toBe(false);
     });
+    expect(unlockCalls).toBe(1);
     expect(calls).toEqual([
       {
         service: "dyad Safe Storage",
@@ -510,12 +525,12 @@ describe("Keychain unlock recovery retry", () => {
       {
         service: "dyad Safe Storage",
         account: "dyad Key",
-        allowUI: true,
+        allowUI: false,
       },
       {
         service: "Chromium Safe Storage",
         account: "Chromium Key",
-        allowUI: true,
+        allowUI: false,
       },
     ]);
   });

@@ -22,8 +22,10 @@ static napi_value make_read_result(napi_env env, OSStatus status,
   if (napi_create_int32(env, (int32_t)status, &status_value) != napi_ok) {
     return make_null(env);
   }
-  napi_set_named_property(env, result, "status", status_value);
-  napi_set_named_property(env, result, "password", password);
+  if (napi_set_named_property(env, result, "status", status_value) != napi_ok ||
+      napi_set_named_property(env, result, "password", password) != napi_ok) {
+    return make_null(env);
+  }
   return result;
 }
 
@@ -189,17 +191,32 @@ static napi_value read_generic_password(napi_env env, napi_callback_info info) {
   }
 
   CFDataRef password_data = (CFDataRef)result;
+  CFIndex password_length = CFDataGetLength(password_data);
+  const UInt8 *password_bytes = CFDataGetBytePtr(password_data);
+  if (password_length > 0 && password_bytes == NULL) {
+    CFRelease(result);
+    return make_null_read_result(env, errSecDecode);
+  }
   napi_value password;
-  napi_status create_status =
-      napi_create_string_utf8(env, (const char *)CFDataGetBytePtr(password_data),
-                              (size_t)CFDataGetLength(password_data),
-                              &password);
+  napi_status create_status = napi_create_string_utf8(
+      env, password_length == 0 ? "" : (const char *)password_bytes,
+      (size_t)password_length, &password);
   CFRelease(result);
 
   if (create_status != napi_ok) {
     return make_null_read_result(env, errSecAllocate);
   }
   return make_read_result(env, status, password);
+}
+
+static OSStatus copy_or_open_keychain(const char *keychain_path,
+                                      SecKeychainRef *keychain_ref) {
+  if (keychain_path != NULL) {
+    // Deprecated but still functional; Chromium os_crypt uses the same
+    // file-keychain API surface.
+    return SecKeychainOpen(keychain_path, keychain_ref);
+  }
+  return SecKeychainCopyDefault(keychain_ref);
 }
 
 static napi_value is_default_keychain_locked(napi_env env,
@@ -223,15 +240,8 @@ static napi_value is_default_keychain_locked(napi_env env,
   }
 
   SecKeychainRef keychain_ref = NULL;
-  OSStatus status;
-  if (keychain_path != NULL) {
-    // Deprecated but still functional; Chromium os_crypt uses the same
-    // file-keychain API surface.
-    status = SecKeychainOpen(keychain_path, &keychain_ref);
-    free(keychain_path);
-  } else {
-    status = SecKeychainCopyDefault(&keychain_ref);
-  }
+  OSStatus status = copy_or_open_keychain(keychain_path, &keychain_ref);
+  free(keychain_path);
 
   if (status != errSecSuccess || keychain_ref == NULL) {
     if (keychain_ref != NULL) {
@@ -255,6 +265,43 @@ static napi_value is_default_keychain_locked(napi_env env,
   return locked;
 }
 
+static napi_value unlock_default_keychain(napi_env env,
+                                          napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1];
+  if (napi_get_cb_info(env, info, &argc, args, NULL, NULL) != napi_ok) {
+    return make_null(env);
+  }
+
+  char *keychain_path = NULL;
+  if (argc >= 1) {
+    napi_valuetype keychain_path_type;
+    if (napi_typeof(env, args[0], &keychain_path_type) == napi_ok &&
+        keychain_path_type == napi_string) {
+      keychain_path = copy_utf8_arg(env, args[0]);
+      if (keychain_path == NULL) {
+        return make_null(env);
+      }
+    }
+  }
+
+  SecKeychainRef keychain_ref = NULL;
+  OSStatus status = copy_or_open_keychain(keychain_path, &keychain_ref);
+  free(keychain_path);
+  if (status == errSecSuccess && keychain_ref != NULL) {
+    status = SecKeychainUnlock(keychain_ref, 0, NULL, true);
+  }
+  if (keychain_ref != NULL) {
+    CFRelease(keychain_ref);
+  }
+
+  napi_value status_value;
+  if (napi_create_int32(env, (int32_t)status, &status_value) != napi_ok) {
+    return make_null(env);
+  }
+  return status_value;
+}
+
 static napi_value init(napi_env env, napi_value exports) {
   napi_value fn;
   if (napi_create_function(env, "readGenericPassword", NAPI_AUTO_LENGTH,
@@ -270,6 +317,14 @@ static napi_value init(napi_env env, napi_value exports) {
     return exports;
   }
   napi_set_named_property(env, exports, "isDefaultKeychainLocked", locked_fn);
+
+  napi_value unlock_fn;
+  if (napi_create_function(env, "unlockDefaultKeychain", NAPI_AUTO_LENGTH,
+                           unlock_default_keychain, NULL, &unlock_fn) !=
+      napi_ok) {
+    return exports;
+  }
+  napi_set_named_property(env, exports, "unlockDefaultKeychain", unlock_fn);
   return exports;
 }
 

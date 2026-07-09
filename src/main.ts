@@ -30,7 +30,12 @@ import {
   readRendererCrashRecord,
   clearRendererCrashRecord,
   setInitialLoadIsFirstSession,
+  rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock,
 } from "./main/settings";
+import {
+  recoveryNeedsKeychainUnlock,
+  retryRecoveryWithKeychainUnlock,
+} from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
 import { sendTelemetryEvent } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
@@ -504,6 +509,21 @@ export async function onReady() {
   }
 }
 
+function scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad(): void {
+  if (safeStorageKeychainUnlockRetryScheduled) {
+    return;
+  }
+  safeStorageKeychainUnlockRetryScheduled = true;
+  setTimeout(() => {
+    if (!recoveryNeedsKeychainUnlock()) {
+      return;
+    }
+    if (retryRecoveryWithKeychainUnlock()) {
+      rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
+    }
+  }, 0);
+}
+
 export async function onFirstRunMaybe(settings: UserSettings) {
   const isFirstSession = settings.hasRunBefore === false;
   setInitialLoadIsFirstSession(isFirstSession);
@@ -554,6 +574,7 @@ let pendingForceCloseData: any = null;
 let pendingActiveChatId: number | null = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
+let safeStorageKeychainUnlockRetryScheduled = false;
 
 const createWindow = () => {
   // Create the browser window.
@@ -705,6 +726,8 @@ const createWindow = () => {
       });
       clearRendererCrashRecord();
     }
+
+    scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad();
   });
 
   // Persist any non-clean renderer-process termination so we can report it on

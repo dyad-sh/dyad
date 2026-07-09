@@ -10,14 +10,15 @@ Use this skill to publish the current work to GitHub. It must complete autonomou
 ## Workflow
 
 1. Run `/remember-learnings` first. This captures session learnings before any push or PR creation, so any resulting `AGENTS.md` or `rules/` changes are included in the same publish flow.
-2. Run the bundled script from the repository root. Set `PR_PUSH_COMMIT_MESSAGE` to a descriptive commit message for the work being published:
+2. Decide whether to run unit tests locally before publishing. For broad or cross-cutting changes, run `npm test`. For targeted changes, run the narrowest relevant test command, such as `npm test -- path/to/file.test.ts`. For docs, agent-config, or other low-risk changes, it is acceptable to skip local unit tests because GitHub CI will run the full suite.
+3. Run the bundled script from the repository root. Set `PR_PUSH_COMMIT_MESSAGE` to a descriptive commit message for the work being published:
 
    ```bash
-   PR_PUSH_COMMIT_MESSAGE="<descriptive commit message>" bash .claude/skills/pr-push/scripts/pr_push.sh
+   PR_PUSH_COMMIT_MESSAGE="<descriptive commit message>" bash .agents/skills/pr-push/scripts/pr_push.sh
    ```
 
-3. If the script reports a fixable failure, fix it and rerun the script. When fixing issues, do not run `git pull` from fork remotes; only pull from the upstream repo configured by `PR_PUSH_BASE_REPO` (default `dyad-sh/dyad`) if needed. Do not manually replay the full workflow unless the script itself is broken.
-4. Summarize the script's final output, including the branch, committed files, ignored files, checks, pushed remote, and PR URL or bot-account PR creation link.
+4. If the script reports a fixable failure, fix it and rerun the script. When fixing issues, do not run `git pull` from fork remotes; only pull from the upstream repo configured by `PR_PUSH_BASE_REPO` (default `dyad-sh/dyad`) if needed. Do not manually replay the full workflow unless the script itself is broken.
+5. Summarize the script's final output, including the branch, committed files, ignored files, checks, pushed remote, and PR URL or bot-account PR creation link. Also report the local unit-test decision and any test command that was run.
 
 ## Script Behavior
 
@@ -26,7 +27,8 @@ The script handles the mechanical workflow:
 - Refuses to push `main`/`master`; creates a feature branch if needed.
 - Stages relevant changes while ignoring obvious secrets/artifacts and spurious `package-lock.json` changes without `package.json`.
 - Commits changes with a generated message, unless `PR_PUSH_COMMIT_MESSAGE` is set.
-- Runs `npm run fmt`, `npm run lint:fix`, `npm run ts`, and `npm test`.
+- Runs `npm run fmt`, `npm run lint:fix`, and `npm run ts`.
+- Does not run unit tests. The agent decides whether to run `npm test` for broad changes or a targeted `npm test -- ...` command for narrow changes; GitHub CI runs the full suite.
 - Amends automated formatting/lint changes into the commit it created.
 - Pushes to the tracked upstream, an existing PR head remote, or `origin` with the documented fallback behavior.
 - Creates or updates the PR against `dyad-sh/dyad:main`, unless the active GitHub account is a bot.

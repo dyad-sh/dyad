@@ -36,10 +36,10 @@ SecurityCliKeychainPasswordReader()`).
 
 Identities queried, in order (see `LEGACY_IDENTITIES`):
 
-| service                 | account    |
-| ----------------------- | ---------- |
-| `dyad Safe Storage`     | `dyad`     |
-| `Chromium Safe Storage` | `Chromium` |
+| service                 | account        |
+| ----------------------- | -------------- |
+| `dyad Safe Storage`     | `dyad Key`     |
+| `Chromium Safe Storage` | `Chromium Key` |
 
 ### Why the CLI reader prompts and the in-process reader shouldn't
 

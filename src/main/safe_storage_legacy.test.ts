@@ -10,6 +10,7 @@ import {
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -28,6 +29,7 @@ import {
 // --- Test crypto helpers: mirror Chromium's frozen os_crypt v10 scheme. ---
 
 const AES_IV = Buffer.alloc(16, 0x20);
+const require = createRequire(import.meta.url);
 
 function encryptV10(plaintext: string, key: Buffer): Buffer {
   const cipher = crypto.createCipheriv("aes-128-cbc", key, AES_IV);
@@ -80,6 +82,19 @@ function makeFakeReader(map: Record<string, string>): FakeReader {
       return key in map ? map[key] : null;
     },
   };
+}
+
+function assertInProcessKeychainReaderAddonAvailable(): void {
+  try {
+    require("dyad-keychain-reader");
+  } catch (error) {
+    throw new Error(
+      "Failed to load dyad-keychain-reader native addon. " +
+        "Run `npm rebuild dyad-keychain-reader` before running macOS " +
+        "safeStorage integration tests.\nOriginal error: " +
+        (error instanceof Error ? error.message : String(error)),
+    );
+  }
 }
 
 const DYAD_KEY = "dyad Safe Storage::dyad Key";
@@ -159,7 +174,7 @@ describe("InProcessKeychainPasswordReader", () => {
 
     await withPlatform("linux", () => {
       const reader = new InProcessKeychainPasswordReader();
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBeNull();
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBeNull();
     });
     expect(loadCount).toBe(0);
   });
@@ -173,7 +188,7 @@ describe("InProcessKeychainPasswordReader", () => {
     setInProcessKeychainBindingLoaderForTesting(() => ({
       readGenericPassword(service, account, keychainPath) {
         calls.push({ service, account, keychainPath });
-        if (service === "dyad Safe Storage") {
+        if (service === "dyad Safe Storage" && account === "dyad Key") {
           return "stored-password";
         }
         return null;
@@ -182,29 +197,29 @@ describe("InProcessKeychainPasswordReader", () => {
 
     await withPlatform("darwin", () => {
       const reader = new InProcessKeychainPasswordReader("/tmp/test.keychain");
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBe(
         "stored-password",
       );
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBe(
         "stored-password",
       );
       expect(
-        reader.readPassword("Chromium Safe Storage", "Chromium"),
+        reader.readPassword("Chromium Safe Storage", "Chromium Key"),
       ).toBeNull();
       expect(
-        reader.readPassword("Chromium Safe Storage", "Chromium"),
+        reader.readPassword("Chromium Safe Storage", "Chromium Key"),
       ).toBeNull();
     });
 
     expect(calls).toEqual([
       {
         service: "dyad Safe Storage",
-        account: "dyad",
+        account: "dyad Key",
         keychainPath: "/tmp/test.keychain",
       },
       {
         service: "Chromium Safe Storage",
-        account: "Chromium",
+        account: "Chromium Key",
         keychainPath: "/tmp/test.keychain",
       },
     ]);
@@ -219,9 +234,9 @@ describe("InProcessKeychainPasswordReader", () => {
 
     await withPlatform("darwin", () => {
       const reader = new InProcessKeychainPasswordReader();
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBeNull();
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBeNull();
       expect(
-        reader.readPassword("Chromium Safe Storage", "Chromium"),
+        reader.readPassword("Chromium Safe Storage", "Chromium Key"),
       ).toBeNull();
     });
     expect(loadCount).toBe(1);
@@ -256,7 +271,7 @@ describe("InProcessKeychainPasswordReader", () => {
     setInProcessKeychainBindingLoaderForTesting(() => ({
       readGenericPassword(service, account) {
         calls.push({ service, account });
-        if (service === "dyad Safe Storage") {
+        if (service === "dyad Safe Storage" && account === "dyad Key") {
           return "in-process-default-pw";
         }
         return null;
@@ -269,8 +284,8 @@ describe("InProcessKeychainPasswordReader", () => {
       );
     });
     expect(calls).toEqual([
-      { service: "dyad Safe Storage", account: "dyad" },
-      { service: "Chromium Safe Storage", account: "Chromium" },
+      { service: "dyad Safe Storage", account: "dyad Key" },
+      { service: "Chromium Safe Storage", account: "Chromium Key" },
     ]);
   });
 });
@@ -642,6 +657,8 @@ describe.skipIf(process.platform !== "darwin")(
     const promptService = "dyad Prompt Test Safe Storage";
 
     beforeAll(() => {
+      assertInProcessKeychainReaderAddonAvailable();
+
       execFileSync("security", [
         "create-keychain",
         "-p",
@@ -660,7 +677,7 @@ describe.skipIf(process.platform !== "darwin")(
         "-s",
         "dyad Safe Storage",
         "-a",
-        "dyad",
+        "dyad Key",
         "-w",
         storedPassword,
         keychainPath,
@@ -670,7 +687,7 @@ describe.skipIf(process.platform !== "darwin")(
         "-s",
         promptService,
         "-a",
-        "dyad",
+        "dyad Key",
         "-w",
         "prompt-required-password",
         keychainPath,
@@ -691,7 +708,7 @@ describe.skipIf(process.platform !== "darwin")(
 
     it("reads a stored password from the temp keychain", () => {
       const reader = new InProcessKeychainPasswordReader(keychainPath);
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBe(
         storedPassword,
       );
     });
@@ -716,7 +733,7 @@ describe.skipIf(process.platform !== "darwin")(
       const reader = new InProcessKeychainPasswordReader(keychainPath);
       const startedAt = Date.now();
 
-      expect(reader.readPassword(promptService, "dyad")).toBeNull();
+      expect(reader.readPassword(promptService, "dyad Key")).toBeNull();
 
       expect(Date.now() - startedAt).toBeLessThan(2_000);
     });

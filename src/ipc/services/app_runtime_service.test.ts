@@ -12,6 +12,7 @@ const {
   readSettingsMock,
   readPnpmIgnoredBuildsMock,
   recordDeniedPnpmBuildsMock,
+  parsePnpmIgnoredBuildsFromOutputMock,
   safeSendMock,
   sendTelemetryEventMock,
   spawnMock,
@@ -39,6 +40,9 @@ const {
   })),
   readPnpmIgnoredBuildsMock: vi.fn(),
   recordDeniedPnpmBuildsMock: vi.fn(),
+  parsePnpmIgnoredBuildsFromOutputMock: vi.fn<
+    (output: string) => { packageName: string; packageSpec: string }[]
+  >(() => []),
   safeSendMock: vi.fn(),
   sendTelemetryEventMock: vi.fn(),
   spawnMock: vi.fn(),
@@ -98,7 +102,8 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
       : `(pnpm rebuild ${packageNames.join(" ")} || echo pnpm rebuild skipped)`,
   isPnpmIgnoredBuildsError: (error: unknown) =>
     String(error).includes("ERR_PNPM_IGNORED_BUILDS"),
-  parsePnpmIgnoredBuildsFromOutput: vi.fn(() => []),
+  parsePnpmIgnoredBuildsFromOutput: (output: string) =>
+    parsePnpmIgnoredBuildsFromOutputMock(output),
   readPnpmIgnoredBuilds: (...args: unknown[]) =>
     readPnpmIgnoredBuildsMock(...args),
   recordDeniedPnpmBuilds: (...args: unknown[]) =>
@@ -134,7 +139,12 @@ vi.mock("@/ipc/utils/start_proxy_server", () => ({
   startProxy: (...args: unknown[]) => startProxyMock(...args),
 }));
 
-import { ensureProxyForRunningApp, executeApp } from "./app_runtime_service";
+import {
+  ensureProxyForRunningApp,
+  executeApp,
+  startCloudSandboxLogStream,
+} from "./app_runtime_service";
+import { streamCloudSandboxLogs } from "@/ipc/utils/cloud_sandbox_provider";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -242,6 +252,8 @@ describe("executeApp", () => {
     readPnpmIgnoredBuildsMock.mockResolvedValue([]);
     recordDeniedPnpmBuildsMock.mockReset();
     recordDeniedPnpmBuildsMock.mockResolvedValue({ deniedBuilds: [] });
+    parsePnpmIgnoredBuildsFromOutputMock.mockReset();
+    parsePnpmIgnoredBuildsFromOutputMock.mockReturnValue([]);
     safeSendMock.mockReset();
     sendTelemetryEventMock.mockReset();
     spawnMock.mockReset();
@@ -385,6 +397,92 @@ describe("executeApp", () => {
         shell: true,
       }),
     );
+  });
+
+  it("records ignored builds once the default install reaches the dev server", async () => {
+    const process = new FakeChildProcess(101);
+    spawnMock.mockReturnValueOnce(process);
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: true,
+      minimumReleaseAgeSupported: true,
+    });
+    const ignoredBuilds = [
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+    ];
+    readPnpmIgnoredBuildsMock.mockResolvedValue(ignoredBuilds);
+    recordDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: ignoredBuilds,
+    });
+
+    await executeApp({
+      appPath: "/tmp/app",
+      appId: 1,
+      event: createEvent(),
+      isNeon: false,
+    });
+
+    process.stdout.emit("data", "Local: http://localhost:32101/\n");
+    process.stdout.emit("data", "Local: http://localhost:32101/\n");
+
+    await waitForAssertion(() => {
+      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath: "/tmp/app",
+        ignoredBuilds,
+      });
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "pnpm:build-auto-denied",
+        {
+          packages: ["core-js@3.49.0"],
+          source: "app-run",
+        },
+      );
+    });
+    // One-shot: repeated URL output must not re-record.
+    expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("records ignored builds surfaced in cloud sandbox logs", async () => {
+    const event = createEvent();
+    runningApps.set(7, {
+      process: null,
+      processId: 1,
+      mode: "cloud",
+      rendererSender: event.sender,
+      cloudSandboxId: "sb-1",
+      lastViewedAt: Date.now(),
+    } as any);
+    const ignoredBuilds = [
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+    ];
+    vi.mocked(streamCloudSandboxLogs).mockImplementation(async function* () {
+      yield "Ignored build scripts: core-js@3.49.0.";
+    });
+    parsePnpmIgnoredBuildsFromOutputMock.mockReturnValue(ignoredBuilds);
+    recordDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: ignoredBuilds,
+    });
+
+    startCloudSandboxLogStream({
+      appId: 7,
+      appPath: "/tmp/cloud-app",
+      event,
+      sandboxId: "sb-1",
+      cloudLogAbortController: new AbortController(),
+    });
+
+    await waitForAssertion(() => {
+      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath: "/tmp/cloud-app",
+        ignoredBuilds,
+      });
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "pnpm:build-auto-denied",
+        {
+          packages: ["core-js@3.49.0"],
+          source: "cloud-sandbox",
+        },
+      );
+    });
   });
 
   it("does not warn about old pnpm for apps that explicitly use npm", async () => {

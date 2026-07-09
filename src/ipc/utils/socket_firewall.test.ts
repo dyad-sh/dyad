@@ -746,6 +746,60 @@ describe("updatePnpmAllowBuildsConfigContent", () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("records denials against existing config when the remote allow-list is unavailable", async () => {
+    const tempDir = await mkdtemp(
+      path.join(os.tmpdir(), "dyad-pnpm-deny-offline-"),
+    );
+    const configPath = path.join(tempDir, "pnpm-workspace.yaml");
+    try {
+      const existingConfig = [
+        "allowBuilds:",
+        "  # dyad-default-allow-builds begin",
+        "  # dyad-default-allow-builds-schema=v1",
+        "  # dyad-default-allow-builds-data-version=2026-05-21.1",
+        "  # dyad-default-allow-builds-channel=remote",
+        "  sharp: true",
+        "  # dyad-default-allow-builds end",
+        "packages:",
+        "  - .",
+        "minimumReleaseAge: 1440",
+        "",
+      ].join("\n");
+      await writeFile(configPath, existingConfig);
+
+      const failingFetcher = vi.fn(async () => ({
+        ok: false,
+        text: async () => "",
+      }));
+
+      await expect(
+        recordDeniedPnpmBuilds({
+          appPath: tempDir,
+          remoteAllowBuildsTextFetcher: failingFetcher,
+          ignoredBuilds: [
+            { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+            { packageName: "sharp", packageSpec: "sharp@0.34.0" },
+          ],
+        }),
+      ).resolves.toEqual({
+        deniedBuilds: [
+          { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+        ],
+      });
+
+      const nextConfig = await readFile(configPath, "utf8");
+      expect(nextConfig).toContain("core-js: false # dyad-auto-denied");
+      // The remote-managed block must be preserved untouched.
+      expect(nextConfig).toContain(
+        "# dyad-default-allow-builds-channel=remote",
+      );
+      expect(nextConfig).toContain("sharp: true");
+      expect(nextConfig).not.toContain("sharp: false");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("readPnpmIgnoredBuilds", () => {

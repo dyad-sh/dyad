@@ -900,6 +900,7 @@ export function registerAppHandlers() {
 
           startCloudSandboxLogStream({
             appId,
+            appPath,
             event,
             sandboxId: appInfo.cloudSandboxId,
             cloudLogAbortController: appInfo.cloudLogAbortController,

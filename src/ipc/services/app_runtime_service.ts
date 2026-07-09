@@ -486,6 +486,7 @@ Details: ${details || "n/a"}
   listenToProcess({
     process: spawnedProcess,
     appId,
+    appPath,
     isNeon,
     event,
     onPnpmIgnoredBuildsFailure:
@@ -499,6 +500,15 @@ Details: ${details || "n/a"}
             if (!healed) {
               return false;
             }
+
+            // Per "Transparent Over Magical": tell the user why the
+            // process restarted instead of silently reinstalling.
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message:
+                "[dyad] pnpm blocked dependency build scripts. Recorded the decision in pnpm-workspace.yaml and reinstalling...",
+              appId,
+            });
 
             await executeAppLocalNode({
               appPath,
@@ -613,15 +623,40 @@ export function registerCloudSandboxSyncUpdateListener(): void {
   cloudSandboxSyncUpdateListenerRegistered = true;
 }
 
+// Records builds that a successful install skipped (the "Ignored build
+// scripts" warning path) so the decision lands in pnpm-workspace.yaml and a
+// later plain `pnpm install` (export/CI/Rebuild) cannot fail on
+// ERR_PNPM_IGNORED_BUILDS. Best-effort: reads [] when .modules.yaml is
+// absent (npm apps, Docker-volume installs).
+async function recordIgnoredBuildsAfterInstall(appPath: string): Promise<void> {
+  try {
+    const ignoredBuilds = await readPnpmIgnoredBuilds(appPath);
+    const { deniedBuilds } = await recordDeniedPnpmBuilds({
+      appPath,
+      ignoredBuilds,
+    });
+    if (deniedBuilds.length > 0) {
+      sendTelemetryEvent("pnpm:build-auto-denied", {
+        packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
+        source: "app-run",
+      });
+    }
+  } catch (error) {
+    logger.warn("Failed to record ignored pnpm builds after install:", error);
+  }
+}
+
 function listenToProcess({
   process: spawnedProcess,
   appId,
+  appPath,
   isNeon,
   event,
   onPnpmIgnoredBuildsFailure,
 }: {
   process: ChildProcess;
   appId: number;
+  appPath?: string;
   isNeon: boolean;
   event: Electron.IpcMainInvokeEvent;
   onPnpmIgnoredBuildsFailure?: (output: string) => Promise<boolean>;
@@ -632,6 +667,7 @@ function listenToProcess({
   // install, so a bounded tail is sufficient for the close-handler check.
   const MAX_PROCESS_OUTPUT_TAIL_LENGTH = 64 * 1024;
   let processOutput = "";
+  let ignoredBuildsRecordedAfterInstall = false;
   const appendProcessOutput = (message: string) => {
     if (!onPnpmIgnoredBuildsFailure) {
       return;
@@ -680,6 +716,13 @@ function listenToProcess({
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
         const originalUrl = urlMatch[1];
+        // The dev-server URL appearing means the install phase completed
+        // successfully — the one point in the `install && dev` chain where
+        // ignored builds can be read and recorded.
+        if (appPath && !ignoredBuildsRecordedAfterInstall) {
+          ignoredBuildsRecordedAfterInstall = true;
+          void recordIgnoredBuildsAfterInstall(appPath);
+        }
         await ensureProxyForRunningApp({
           appId,
           event,
@@ -714,44 +757,54 @@ function listenToProcess({
 
   spawnedProcess.on("close", (code, signal) => {
     void (async () => {
-      logger.log(
-        `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
-      );
-      flushAllAppOutputs();
-      const currentAppInfo = runningApps.get(appId);
-      if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
-        removeAppIfCurrentProcess(appId, spawnedProcess);
-        return;
-      }
-
-      if (
-        code !== 0 &&
-        onPnpmIgnoredBuildsFailure &&
-        isPnpmIgnoredBuildsError(processOutput)
-      ) {
-        let retried = false;
-        try {
-          retried = await onPnpmIgnoredBuildsFailure(processOutput);
-        } catch (error) {
-          logger.warn(
-            `Failed to self-heal pnpm ignored builds for app ${appId}:`,
-            error,
-          );
-        }
-        if (retried) {
+      try {
+        logger.log(
+          `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
+        );
+        flushAllAppOutputs();
+        const currentAppInfo = runningApps.get(appId);
+        if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
+          removeAppIfCurrentProcess(appId, spawnedProcess);
           return;
         }
-      }
 
-      safeSend(event.sender, "app:output", {
-        type: "app-exit",
-        message: `App process exited with code ${code ?? "null"}`,
-        appId,
-        exitCode: code,
-        signal,
-        timestamp: Date.now(),
-      });
-      removeAppIfCurrentProcess(appId, spawnedProcess);
+        if (
+          code !== 0 &&
+          onPnpmIgnoredBuildsFailure &&
+          isPnpmIgnoredBuildsError(processOutput)
+        ) {
+          let retried = false;
+          try {
+            retried = await onPnpmIgnoredBuildsFailure(processOutput);
+          } catch (error) {
+            logger.warn(
+              `Failed to self-heal pnpm ignored builds for app ${appId}:`,
+              error,
+            );
+          }
+          if (retried) {
+            return;
+          }
+        }
+
+        safeSend(event.sender, "app:output", {
+          type: "app-exit",
+          message: `App process exited with code ${code ?? "null"}`,
+          appId,
+          exitCode: code,
+          signal,
+          timestamp: Date.now(),
+        });
+        removeAppIfCurrentProcess(appId, spawnedProcess);
+      } catch (error) {
+        // The close handler is a critical lifecycle point; never let an
+        // unexpected error leave a stale runningApps entry behind.
+        logger.error(
+          `Unexpected error in close handler for app ${appId}:`,
+          error,
+        );
+        removeAppIfCurrentProcess(appId, spawnedProcess);
+      }
     })();
   });
 
@@ -994,6 +1047,7 @@ ${errorOutput || "(empty)"}`,
   listenToProcess({
     process,
     appId,
+    appPath,
     isNeon,
     event,
   });
@@ -1086,6 +1140,7 @@ async function executeAppInCloud({
 
   startCloudSandboxLogStream({
     appId,
+    appPath,
     event,
     sandboxId,
     cloudLogAbortController,
@@ -1094,10 +1149,52 @@ async function executeAppInCloud({
 
 export function startCloudSandboxLogStream(input: {
   appId: number;
+  appPath?: string;
   event: Electron.IpcMainInvokeEvent;
   sandboxId: string;
   cloudLogAbortController: AbortController;
 }) {
+  // The sandbox install runs remotely and node_modules is never synced back,
+  // so the only way to observe ignored builds is the "Ignored build scripts"
+  // line in the streamed install output. Keep a bounded tail across chunks
+  // (the line may be split) and record denials locally once, best-effort.
+  const MAX_LOG_TAIL_LENGTH = 16 * 1024;
+  let logTail = "";
+  let ignoredBuildsRecorded = false;
+  const maybeRecordIgnoredBuilds = (message: string) => {
+    if (!input.appPath || ignoredBuildsRecorded) {
+      return;
+    }
+    logTail = (logTail + message).slice(-MAX_LOG_TAIL_LENGTH);
+    const ignoredBuilds = parsePnpmIgnoredBuildsFromOutput(logTail);
+    if (ignoredBuilds.length === 0) {
+      return;
+    }
+    ignoredBuildsRecorded = true;
+    const appPath = input.appPath;
+    void (async () => {
+      try {
+        const { deniedBuilds } = await recordDeniedPnpmBuilds({
+          appPath,
+          ignoredBuilds,
+        });
+        if (deniedBuilds.length > 0) {
+          sendTelemetryEvent("pnpm:build-auto-denied", {
+            packages: deniedBuilds.map(
+              (ignoredBuild) => ignoredBuild.packageSpec,
+            ),
+            source: "cloud-sandbox",
+          });
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to record ignored pnpm builds from cloud sandbox logs:",
+          error,
+        );
+      }
+    })();
+  };
+
   void (async () => {
     try {
       for await (const message of streamCloudSandboxLogs(
@@ -1108,6 +1205,8 @@ export function startCloudSandboxLogStream(input: {
         if (!appInfo || appInfo.cloudSandboxId !== input.sandboxId) {
           return;
         }
+
+        maybeRecordIgnoredBuilds(message);
 
         addLog({
           level: "info",

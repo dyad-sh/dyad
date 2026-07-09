@@ -442,10 +442,10 @@ function removeAutoDeniedPromotedBuilds(
 
 function insertAutoDeniedBuilds(
   lines: string[],
-  source: AllowBuildsSource,
+  allowedPackages: ReadonlySet<string>,
   packageNames: string[],
 ): string[] {
-  const sourcePackageSet = new Set(source.packages);
+  const sourcePackageSet = allowedPackages;
   const range = getTopLevelAllowBuildsRange(lines);
   const existingKeys = parseAllowBuildsExistingKeys(
     range ? lines.slice(range.start + 1, range.end) : [],
@@ -542,7 +542,7 @@ function updatePnpmAllowBuildsConfigContentWithSource(
     );
     const deniedPackages = insertAutoDeniedBuilds(
       lines,
-      source,
+      new Set(source.packages),
       autoDeniedPackageNames,
     );
     return {
@@ -568,7 +568,7 @@ function updatePnpmAllowBuildsConfigContentWithSource(
     );
     const deniedPackages = insertAutoDeniedBuilds(
       lines,
-      source,
+      new Set(source.packages),
       autoDeniedPackageNames,
     );
     return {
@@ -586,7 +586,7 @@ function updatePnpmAllowBuildsConfigContentWithSource(
   ];
   const deniedPackages = insertAutoDeniedBuilds(
     nextLines,
-    source,
+    new Set(source.packages),
     autoDeniedPackageNames,
   );
   return {
@@ -932,6 +932,35 @@ export function isPnpmIgnoredBuildsError(error: unknown): boolean {
   return message.includes(PNPM_IGNORED_BUILDS_ERROR_CODE);
 }
 
+function insertAutoDeniedBuildsIntoContent(
+  existingContent: string,
+  packageNames: string[],
+): { content: string; promotedPackages: string[]; deniedPackages: string[] } {
+  const lines = existingContent ? existingContent.split(/\r?\n/) : [];
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+
+  const deniedPackages = insertAutoDeniedBuilds(
+    lines,
+    new Set<string>(),
+    packageNames,
+  );
+  if (deniedPackages.length === 0) {
+    return {
+      content: existingContent,
+      promotedPackages: [],
+      deniedPackages: [],
+    };
+  }
+
+  return {
+    content: formatPnpmWorkspaceConfigContent(lines),
+    promotedPackages: [],
+    deniedPackages,
+  };
+}
+
 export async function recordDeniedPnpmBuilds({
   appPath,
   ignoredBuilds,
@@ -966,15 +995,17 @@ export async function recordDeniedPnpmBuilds({
       allowBuildsText,
       remoteAllowBuildsTextFetcher,
     });
-    if (!allowBuildsSource) {
-      return { deniedBuilds: [] };
-    }
-
-    const updateResult = updatePnpmAllowBuildsConfigContentWithSource(
-      existingContent,
-      allowBuildsSource,
-      packageNames,
-    );
+    const updateResult = allowBuildsSource
+      ? updatePnpmAllowBuildsConfigContentWithSource(
+          existingContent,
+          allowBuildsSource,
+          packageNames,
+        )
+      : // A remote-managed config whose fetch failed (offline/API outage):
+        // skip the managed rewrite but still record denials against the
+        // existing content — insertAutoDeniedBuilds already skips packages
+        // present anywhere in the allowBuilds map, managed block included.
+        insertAutoDeniedBuildsIntoContent(existingContent, packageNames);
     if (updateResult.content === existingContent) {
       return { deniedBuilds: [] };
     }

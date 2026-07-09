@@ -53,6 +53,12 @@ type ApplyComponentTaggerOptions = {
   installDependencies?: boolean;
 };
 
+// Unlike the app-runtime self-heal, this does NOT remove node_modules before
+// the retry. That is safe: pnpm re-evaluates previously ignored builds
+// against allowBuilds on every install — an explicit `pkg: false` entry
+// silences ERR_PNPM_IGNORED_BUILDS even on an "Already up to date" fast-path
+// run (verified against pnpm 11.10) — and these upgrade callers are
+// add/install commands whose retry re-links real work anyway.
 export async function selfHealDeniedPnpmBuildsFromError({
   appPath,
   error,

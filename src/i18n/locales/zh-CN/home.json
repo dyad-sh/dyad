@@ -254,6 +254,7 @@
       "noAppSelectedDescription": "选择一个应用以查看 TypeScript 问题和诊断信息。",
       "noProblemsReportTitle": "无问题报告",
       "noProblemsReportDescription": "运行检查以扫描您的应用中的 TypeScript 错误和其他问题。",
+      "agentModeNotice": "在 Agent 模式下，问题不会在 Agent 回合后自动刷新，因为 Agent 会自行运行类型检查。请使用运行检查来刷新。",
       "fixProblems": "修复 {{count}} 个问题",
       "error_one": "{{count}} 个错误",
       "error_other": "{{count}} 个错误"

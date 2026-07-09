@@ -534,7 +534,8 @@ export function WorkflowSettings() {
       <div id={SETTING_IDS.autoFix} className="space-y-1 mt-4">
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          This will automatically fix TypeScript errors.
+          This will automatically fix TypeScript errors in Build mode. In Agent
+          mode, the agent runs its own type checks instead.
         </div>
       </div>
 

@@ -261,6 +261,7 @@
       "noAppSelectedDescription": "Select an app to view TypeScript problems and diagnostic information.",
       "noProblemsReportTitle": "No Problems Report",
       "noProblemsReportDescription": "Run checks to scan your app for TypeScript errors and other problems.",
+      "agentModeNotice": "In Agent mode, problems don't refresh automatically after agent turns because the agent runs its own type checks. Use Run checks to refresh.",
       "fixProblems": "Fix {{count}} problem(s)",
       "error_one": "{{count}} error",
       "error_other": "{{count}} errors"

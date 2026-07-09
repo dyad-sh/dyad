@@ -254,6 +254,7 @@
       "noAppSelectedDescription": "Selecione um app para ver problemas de TypeScript e informações de diagnóstico.",
       "noProblemsReportTitle": "Nenhum Relatório de Problemas",
       "noProblemsReportDescription": "Execute verificações para escanear seu app em busca de erros de TypeScript e outros problemas.",
+      "agentModeNotice": "No modo Agente, os problemas não são atualizados automaticamente após os turnos do agente porque o agente executa suas próprias verificações de tipos. Use Executar verificações para atualizar.",
       "fixProblems": "Corrigir {{count}} problema(s)",
       "error_one": "{{count}} erro",
       "error_other": "{{count}} erros"

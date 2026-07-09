@@ -831,7 +831,7 @@ export function registerVersionHandlers() {
         // everything between the old target and HEAD.
         const forkInitialCommitHash = restoreCodebase
           ? targetCommitHash
-          : await getCurrentCommitHash({ path: appPath, ref: "main" }).catch(
+          : await getCurrentCommitHash({ path: appPath }).catch(
               () => targetCommitHash,
             );
 

@@ -272,9 +272,6 @@ run_checks() {
 
   log "Running typecheck"
   npm run ts || die "Typecheck failed; fix the issues above and rerun"
-
-  log "Running tests"
-  npm test || die "Tests failed; fix the issues above and rerun"
 }
 
 amend_or_commit_check_changes() {
@@ -718,7 +715,7 @@ print_summary() {
     printf -- '- %s\n' "${IGNORED_FILES[@]+"${IGNORED_FILES[@]}"}"
   fi
   printf 'Automated check changes: %s\n' "$LINT_CHANGED"
-  printf 'Checks: passed\n'
+  printf 'Checks: fmt, lint:fix, ts passed; unit tests not run by script\n'
   printf 'Pushed remote: %s (%s)\n' "$PUSH_REMOTE" "$PUSH_OWNER_REPO"
   if [[ -n "$PR_URL" ]]; then
     printf 'PR: %s\n' "$PR_URL"

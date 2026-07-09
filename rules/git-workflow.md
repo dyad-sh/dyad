@@ -76,6 +76,11 @@ When passing a PR body inline via `gh pr create --body "..."`, unescaped backtic
 formatting, check `git status` and revert unrelated skill-file churn before
 committing unless the task intentionally changes those skill docs.
 
+When editing skill files through `.agents/skills/...`, remember that
+`.agents/skills` is a symlink to `../.claude/skills`. If Git reports
+`fatal: pathspec '.agents/skills/...' is beyond a symbolic link`, inspect and
+commit the corresponding tracked `.claude/skills/...` path instead.
+
 ## Commit hooks and untracked artifacts
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.

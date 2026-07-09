@@ -2,7 +2,7 @@ import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { useEffect, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { RefreshCw, Maximize2, Minimize2, ArrowLeft, X } from "lucide-react";
+import { RefreshCw, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -137,13 +137,6 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
               <TooltipContent>{t("preview.backToEditor")}</TooltipContent>
             </Tooltip>
           )}
-          <div className="text-sm text-gray-500">
-            {isVersionDiffMode
-              ? t("preview.viewingVersionChanges")
-              : isStagedDiffMode
-                ? t("preview.viewingStagedChanges")
-                : `${app.files?.length ?? 0} ${t("preview.files")}`}
-          </div>
           {isVersionDiffMode && (
             <Tooltip>
               <TooltipTrigger
@@ -155,13 +148,20 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                   />
                 }
               >
-                <X size={16} />
+                <ArrowLeft size={16} />
               </TooltipTrigger>
               <TooltipContent>
                 {t("preview.closeVersionChanges")}
               </TooltipContent>
             </Tooltip>
           )}
+          <div className="text-sm text-gray-500">
+            {isVersionDiffMode
+              ? t("preview.viewingVersionChanges")
+              : isStagedDiffMode
+                ? t("preview.viewingStagedChanges")
+                : `${app.files?.length ?? 0} ${t("preview.files")}`}
+          </div>
           <div className="flex-1" />
           {app.id != null && <CommitMenu appId={app.id} />}
           <Tooltip>

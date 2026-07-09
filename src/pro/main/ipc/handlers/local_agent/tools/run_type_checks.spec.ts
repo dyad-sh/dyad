@@ -56,6 +56,7 @@ describe("runTypeChecksTool precondition guidance", () => {
     return {
       appId: 1,
       appPath,
+      canInstallDependencies: true,
       event: { sender: undefined },
       onXmlStream: vi.fn(),
       onXmlComplete: vi.fn(),
@@ -91,6 +92,29 @@ describe("runTypeChecksTool precondition guidance", () => {
     expect(ctx.onXmlComplete).toHaveBeenCalledWith(
       expect.stringContaining("TypeScript is listed in package.json"),
     );
+  });
+
+  it("does not tell the agent to use add_dependency when dependency installs are unavailable", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^5.0.0" },
+    });
+    const ctx = {
+      ...makeCtx(appPath),
+      canInstallDependencies: false,
+    } as AgentContext;
+    vi.mocked(generateProblemReport).mockRejectedValue(
+      new TypeCheckPreconditionError(
+        "typescript-not-found",
+        "Failed to load TypeScript from app",
+      ),
+    );
+
+    const result = await runTypeChecksTool.execute({}, ctx);
+
+    expect(result).toContain("state-changing tools are unavailable");
+    expect(result).toContain("switch to Agent mode");
+    expect(result).not.toContain("add_dependency");
+    expect(result).not.toContain('{ "packages": ["typescript"] }');
   });
 
   it("tells the agent not to retry and to suggest adding TypeScript for plain JavaScript projects", async () => {

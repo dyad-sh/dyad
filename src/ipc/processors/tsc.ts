@@ -87,10 +87,12 @@ export async function getTypeCheckPreconditionGuidance({
   kind,
   appPath,
   includeAgentInstructions,
+  canInstallDependencies = true,
 }: {
   kind: TscWorkerErrorKind;
   appPath: string;
   includeAgentInstructions?: boolean;
+  canInstallDependencies?: boolean;
 }): Promise<string> {
   if (kind === "tsconfig-not-found") {
     return "Type checking could not run: TypeScript is installed but no tsconfig was found (expected `tsconfig.app.json` or `tsconfig.json`). You can create a suitable tsconfig for this project and retry.";
@@ -99,9 +101,13 @@ export async function getTypeCheckPreconditionGuidance({
   const declaresTypeScript = await packageJsonDeclaresTypeScript(appPath);
 
   if (declaresTypeScript) {
-    return includeAgentInstructions
+    if (!includeAgentInstructions) {
+      return "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Install dependencies, then retry.";
+    }
+
+    return canInstallDependencies
       ? 'Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Call the `add_dependency` tool with `{ "packages": ["typescript"] }` to install dependencies, then retry `run_type_checks`.'
-      : "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Install dependencies, then retry.";
+      : "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). This turn cannot install dependencies because state-changing tools are unavailable. Tell the user to switch to Agent mode or install dependencies manually, then retry `run_type_checks`.";
   }
 
   return includeAgentInstructions
@@ -118,6 +124,7 @@ export function toProblemReportError(
   errorKind?: TscWorkerErrorKind,
 ): Error {
   if (error instanceof DyadError) {
+    // Already classified; keep the original kind rather than re-wrapping.
     return error;
   }
 

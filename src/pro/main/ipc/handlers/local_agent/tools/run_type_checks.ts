@@ -114,6 +114,7 @@ export const runTypeChecksTool: ToolDefinition<
         kind: preconditionKind,
         appPath: ctx.appPath,
         includeAgentInstructions: true,
+        canInstallDependencies: ctx.canInstallDependencies !== false,
       });
 
       safeSend(ctx.event.sender, "agent-tool:problems-update", {

@@ -42,6 +42,10 @@ export function registerProblemsHandlers() {
     } catch (error) {
       const preconditionKind = getTypeCheckPreconditionKind(error);
       if (preconditionKind) {
+        if (!appPath) {
+          throw error;
+        }
+
         const message = await getTypeCheckPreconditionGuidance({
           kind: preconditionKind,
           appPath,

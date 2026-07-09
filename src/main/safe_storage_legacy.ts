@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
+import { createRequire } from "node:module";
 import log from "electron-log";
 
 const logger = log.scope("safe_storage_recovery");
+const require = createRequire(import.meta.url);
 
 /**
  * Recovery for Bug #3837: on macOS, Electron `safeStorage` ciphertext can
@@ -31,6 +33,10 @@ const PBKDF2_SALT = "saltysalt";
 const PBKDF2_ITERATIONS = 1003;
 const PBKDF2_KEY_LENGTH = 16;
 const SECURITY_CLI_TIMEOUT_MS = 30_000;
+const ERR_SEC_SUCCESS = 0;
+const ERR_SEC_INTERACTION_NOT_ALLOWED = -25308;
+const ERR_SEC_AUTH_FAILED = -25293;
+const ERR_SEC_USER_CANCELED = -128;
 // Chromium uses a fixed IV of 16 space (0x20) bytes for its os_crypt v10 scheme.
 const AES_IV = Buffer.alloc(16, 0x20);
 
@@ -91,6 +97,87 @@ export interface KeychainPasswordReader {
   readPassword(service: string, account: string): string | null;
 }
 
+interface KeychainReadResult {
+  status: number;
+  password: string | null;
+}
+
+interface KeychainReaderBinding {
+  readGenericPassword(
+    service: string,
+    account: string,
+    keychainPath?: string,
+    allowUI?: boolean,
+  ): KeychainReadResult;
+  isDefaultKeychainLocked(keychainPath?: string): boolean | null;
+  unlockDefaultKeychain?(keychainPath?: string): number | null;
+}
+
+type KeychainReaderBindingLoader = () => KeychainReaderBinding;
+
+let inProcessBinding: KeychainReaderBinding | null | undefined;
+let inProcessBindingLoadFailureLogged = false;
+let inProcessBindingLoader: KeychainReaderBindingLoader = () =>
+  require("dyad-keychain-reader") as KeychainReaderBinding;
+let interactionNeededIdentities = new Set<string>();
+let unlockPromptAttempted = false;
+
+function loadInProcessKeychainReaderBinding(): KeychainReaderBinding | null {
+  if (inProcessBinding !== undefined) {
+    return inProcessBinding;
+  }
+  try {
+    inProcessBinding = inProcessBindingLoader();
+    return inProcessBinding;
+  } catch (error) {
+    inProcessBinding = null;
+    if (!inProcessBindingLoadFailureLogged) {
+      inProcessBindingLoadFailureLogged = true;
+      logger.debug("Failed to load in-process Keychain reader addon", error);
+    }
+    return null;
+  }
+}
+
+function createDefaultKeychainPasswordReader(): KeychainPasswordReader {
+  return process.env.DYAD_SAFE_STORAGE_READER === "cli"
+    ? new SecurityCliKeychainPasswordReader()
+    : new InProcessKeychainPasswordReader();
+}
+
+function keychainIdentityCacheKey(service: string, account: string): string {
+  return `${service}\u0000${account}`;
+}
+
+function normalizeReadResult(result: unknown): KeychainReadResult {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    typeof (result as KeychainReadResult).status === "number"
+  ) {
+    const password = (result as KeychainReadResult).password;
+    return {
+      status: (result as KeychainReadResult).status,
+      password: typeof password === "string" ? password : null,
+    };
+  }
+  return { status: -1, password: null };
+}
+
+function isSilentReadInteractionNeededStatus(status: number): boolean {
+  return (
+    status === ERR_SEC_INTERACTION_NOT_ALLOWED ||
+    // Locked explicit file keychains can report errSecAuthFailed with UI
+    // suppressed; recoveryNeedsKeychainUnlock still requires a locked-keychain
+    // check, so unlocked ACL mismatches remain silent.
+    status === ERR_SEC_AUTH_FAILED
+  );
+}
+
+function isUnlockCanceledStatus(status: number): boolean {
+  return status === ERR_SEC_USER_CANCELED || status === ERR_SEC_AUTH_FAILED;
+}
+
 /**
  * Reads a Keychain generic-password item via the `security` CLI.
  *
@@ -121,7 +208,7 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
     if (process.platform !== "darwin") {
       return null;
     }
-    const cacheKey = `${service}\u0000${account}`;
+    const cacheKey = keychainIdentityCacheKey(service, account);
     const cached = this.passwordCache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
@@ -156,6 +243,70 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
     } catch {
       // Nonzero exit (item not found), timeout, spawn failure, etc. Never throw.
       return null;
+    }
+  }
+}
+
+/**
+ * Reads a Keychain generic-password item in-process via SecItemCopyMatching.
+ *
+ * The native addon suppresses Keychain UI for the query; if macOS would need
+ * user interaction (for example, an item created by another app), the read
+ * returns null and recovery preserves the original ciphertext. Dev/adhoc builds
+ * may not be trusted by Keychain items created by a signed release build, which
+ * is expected to return null rather than prompting.
+ */
+export class InProcessKeychainPasswordReader implements KeychainPasswordReader {
+  private readonly keychainPath?: string;
+  private readonly allowUI: boolean;
+  private readonly passwordCache = new Map<string, string | null>();
+
+  constructor(keychainPath?: string, options: { allowUI?: boolean } = {}) {
+    this.keychainPath = keychainPath;
+    this.allowUI = options.allowUI ?? false;
+  }
+
+  readPassword(service: string, account: string): string | null {
+    if (process.platform !== "darwin") {
+      return null;
+    }
+    const cacheKey = keychainIdentityCacheKey(service, account);
+    const cached = this.passwordCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = this.readPasswordUncached(service, account);
+    const password =
+      result.status === ERR_SEC_SUCCESS && result.password !== null
+        ? result.password
+        : null;
+    if (!this.allowUI && isSilentReadInteractionNeededStatus(result.status)) {
+      interactionNeededIdentities.add(cacheKey);
+    }
+    this.passwordCache.set(cacheKey, password);
+    return password;
+  }
+
+  private readPasswordUncached(
+    service: string,
+    account: string,
+  ): KeychainReadResult {
+    const binding = loadInProcessKeychainReaderBinding();
+    if (binding === null) {
+      return { status: -1, password: null };
+    }
+    try {
+      return normalizeReadResult(
+        binding.readGenericPassword(
+          service,
+          account,
+          this.keychainPath,
+          this.allowUI,
+        ),
+      );
+    } catch (error) {
+      logger.debug("In-process Keychain reader failed", error);
+      return { status: -1, password: null };
     }
   }
 }
@@ -197,6 +348,112 @@ const recoveryCache = new Map<string, string | null>();
 
 let defaultReader: KeychainPasswordReader | undefined;
 
+function clearRecoveryFailureCache(): void {
+  for (const [ciphertextBase64, recovery] of recoveryCache) {
+    if (recovery === null) {
+      recoveryCache.delete(ciphertextBase64);
+    }
+  }
+}
+
+export function getRecoveryStats(): RecoveryStats {
+  return { ...stats };
+}
+
+export function isDefaultKeychainLockedForSafeStorageRecovery(
+  keychainPath?: string,
+): boolean | null {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  const binding = loadInProcessKeychainReaderBinding();
+  if (binding === null) {
+    return null;
+  }
+  try {
+    const locked = binding.isDefaultKeychainLocked(keychainPath);
+    return typeof locked === "boolean" ? locked : null;
+  } catch (error) {
+    logger.debug("Failed to check default Keychain lock state", error);
+    return null;
+  }
+}
+
+function unlockDefaultKeychainForSafeStorageRecovery(): number | null {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  const binding = loadInProcessKeychainReaderBinding();
+  if (binding === null || typeof binding.unlockDefaultKeychain !== "function") {
+    return null;
+  }
+  try {
+    const status = binding.unlockDefaultKeychain();
+    return typeof status === "number" ? status : null;
+  } catch (error) {
+    logger.debug("Failed to unlock default Keychain", error);
+    return null;
+  }
+}
+
+export function recoveryNeedsKeychainUnlock(): boolean {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY === "1") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_UNLOCK_PROMPT === "1") {
+    return false;
+  }
+  if (interactionNeededIdentities.size === 0 || stats.failed === 0) {
+    return false;
+  }
+  return isDefaultKeychainLockedForSafeStorageRecovery() === true;
+}
+
+export function retryRecoveryWithKeychainUnlock(): boolean {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY === "1") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_UNLOCK_PROMPT === "1") {
+    return false;
+  }
+  if (unlockPromptAttempted) {
+    return false;
+  }
+  if (!recoveryNeedsKeychainUnlock()) {
+    return false;
+  }
+  unlockPromptAttempted = true;
+
+  logger.info("Requesting Keychain unlock to recover saved connections.");
+  const unlockStatus = unlockDefaultKeychainForSafeStorageRecovery();
+  if (unlockStatus !== ERR_SEC_SUCCESS) {
+    if (unlockStatus !== null && isUnlockCanceledStatus(unlockStatus)) {
+      logger.info(
+        "Keychain unlock was canceled; legacy safeStorage ciphertexts remain preserved.",
+      );
+    } else {
+      logger.info(
+        `Keychain unlock failed with status ${unlockStatus ?? "unknown"}; legacy safeStorage ciphertexts remain preserved.`,
+      );
+    }
+    return false;
+  }
+
+  clearRecoveryFailureCache();
+  interactionNeededIdentities = new Set();
+  defaultReader = new InProcessKeychainPasswordReader();
+  logger.info(
+    "Keychain unlock completed; retrying legacy safeStorage recovery.",
+  );
+  return true;
+}
+
 /**
  * Attempts to recover a plaintext secret from a legacy `safeStorage` "v10"
  * ciphertext by reading the correct Keychain password directly.
@@ -229,7 +486,7 @@ export function recoverLegacySafeStorageSecret(
   }
 
   const activeReader =
-    reader ?? (defaultReader ??= new SecurityCliKeychainPasswordReader());
+    reader ?? (defaultReader ??= createDefaultKeychainPasswordReader());
 
   stats.attempted++;
 
@@ -290,9 +547,29 @@ export function clearRecoveryCacheForTesting(): void {
   stats.recovered = 0;
   stats.failed = 0;
   defaultReader = undefined;
+  interactionNeededIdentities = new Set();
+  unlockPromptAttempted = false;
+  inProcessBinding = undefined;
+  inProcessBindingLoadFailureLogged = false;
+  inProcessBindingLoader = () =>
+    require("dyad-keychain-reader") as KeychainReaderBinding;
 }
 
 /** Test-only: snapshot of the recovery counters. */
 export function getRecoveryStatsForTesting(): RecoveryStats {
-  return { ...stats };
+  return getRecoveryStats();
+}
+
+/** Test-only: injects a fake native binding loader. */
+export function setInProcessKeychainBindingLoaderForTesting(
+  loader: KeychainReaderBindingLoader,
+): void {
+  inProcessBinding = undefined;
+  inProcessBindingLoadFailureLogged = false;
+  inProcessBindingLoader = loader;
+}
+
+/** Test-only: constructs the env-selected default reader without caching it. */
+export function createDefaultKeychainPasswordReaderForTesting(): KeychainPasswordReader {
+  return createDefaultKeychainPasswordReader();
 }

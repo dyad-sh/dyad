@@ -28,7 +28,10 @@ import {
 } from "@/ipc/shared/remote_desktop_config";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ZodError } from "zod";
-import { recoverLegacySafeStorageSecret } from "./safe_storage_legacy";
+import {
+  getRecoveryStats,
+  recoverLegacySafeStorageSecret,
+} from "./safe_storage_legacy";
 
 const logger = log.scope("settings");
 
@@ -331,6 +334,40 @@ export async function readEffectiveSettings(): Promise<UserSettings> {
   const settings = readSettings();
   const remoteConfig = await getRemoteDesktopConfig();
   return resolveEffectiveSettings(settings, remoteConfig);
+}
+
+export function rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock(): number {
+  const recoveredBefore = getRecoveryStats().recovered;
+  let settings: UserSettings;
+  try {
+    settings = readExistingSettingsFile(getSettingsFilePath()).settings;
+  } catch (error) {
+    const recoveredCount = getRecoveryStats().recovered - recoveredBefore;
+    if (recoveredCount > 0) {
+      logger.warn(
+        `Skipped rewriting ${recoveredCount} recovered safeStorage secret(s) after Keychain unlock because settings could not be read safely.`,
+        error,
+      );
+    } else {
+      logger.info("Recovered 0 secret(s) after Keychain unlock.");
+    }
+    return 0;
+  }
+  const recoveredCount = getRecoveryStats().recovered - recoveredBefore;
+  if (recoveredCount <= 0) {
+    logger.info("Recovered 0 secret(s) after Keychain unlock.");
+    return 0;
+  }
+  if (
+    !tryWriteSettings(
+      settings,
+      "rewriting settings after legacy safeStorage Keychain unlock",
+    )
+  ) {
+    return 0;
+  }
+  logger.info(`Recovered ${recoveredCount} secret(s) after Keychain unlock.`);
+  return recoveredCount;
 }
 
 /**

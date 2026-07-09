@@ -81,6 +81,9 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }
+  if (file.startsWith("/node_modules/dyad-keychain-reader")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/node-pty")) {
     return false;
   }
@@ -112,6 +115,12 @@ const ignore = (file: string) => {
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
 const shouldSkipNativeRebuild = process.env.DYAD_SKIP_NATIVE_REBUILD === "true";
+const nativeRebuildModules = [
+  "better-sqlite3",
+  "node-pty",
+  "mustardscript",
+  ...(process.platform === "darwin" ? ["dyad-keychain-reader"] : []),
+];
 
 if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
   throw new Error(
@@ -124,7 +133,9 @@ const config: ForgeConfig = {
   packagerConfig: {
     // E2E test builds install local file: dependencies as links on Windows.
     // Dereference them so packaging does not require symlink privileges in the temp app.
-    derefSymlinks: isEndToEndTestBuild ? true : undefined,
+    // Local file: native packages install as symlinks; dereference them so the
+    // packaged app contains loadable runtime files.
+    derefSymlinks: true,
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
     afterCopy: [
       (buildPath, _electronVersion, platform, arch, callback) => {
@@ -169,9 +180,9 @@ const config: ForgeConfig = {
           teamId: process.env.APPLE_TEAM_ID!,
         },
     asar: {
-      // node-pty loads helper binaries like spawn-helper and winpty-agent from disk.
+      // Native modules and node-pty helper binaries must be loadable from disk.
       unpackDir:
-        "{node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
+        "{node_modules/dyad-keychain-reader,node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
     },
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
@@ -180,7 +191,7 @@ const config: ForgeConfig = {
   rebuildConfig: shouldSkipNativeRebuild
     ? { onlyModules: [] }
     : {
-        extraModules: ["better-sqlite3", "node-pty", "mustardscript"],
+        extraModules: nativeRebuildModules,
         force: true,
       },
   makers: [

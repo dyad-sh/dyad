@@ -9,32 +9,51 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   isComponentTaggerUpgradeNeeded,
   applyComponentTagger,
+  simpleSpawnWithDeniedPnpmBuildSelfHeal,
 } from "../utils/app_upgrade_utils";
 import fs from "node:fs";
 import path from "node:path";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
 import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "../utils/socket_firewall";
+import {
+  applyPnpmVersionMigration,
+  getManagedPnpmMajorVersion,
+  isPnpmVersionMigrationNeeded,
+} from "../utils/pnpm_migration";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
 
-const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
-  {
-    id: "component-tagger",
-    title: "Enable select component to edit",
-    description:
-      "Installs the Dyad component tagger Vite plugin and its dependencies.",
-    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
-  },
-  {
-    id: "capacitor",
-    title: "Upgrade to hybrid mobile app with Capacitor",
-    description:
-      "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
-    manualUpgradeUrl: "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
-  },
-];
+function getAvailableUpgrades(): Omit<AppUpgrade, "isNeeded">[] {
+  const managedPnpmMajor = getManagedPnpmMajorVersion();
+  return [
+    {
+      id: "component-tagger",
+      title: "Enable select component to edit",
+      description:
+        "Installs the Dyad component tagger Vite plugin and its dependencies.",
+      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
+    },
+    {
+      id: "capacitor",
+      title: "Upgrade to hybrid mobile app with Capacitor",
+      description:
+        "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
+      manualUpgradeUrl:
+        "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
+    },
+    {
+      id: "pnpm-version-migration",
+      title: `Migrate to pnpm ${managedPnpmMajor}`,
+      description:
+        `This app has legacy pnpm metadata. Dyad already runs pnpm ${managedPnpmMajor}, ` +
+        "which writes a lockfile format older pnpm versions can't read. This updates the " +
+        `packageManager pin and the lockfile together so everything matches pnpm ${managedPnpmMajor}.`,
+      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/pnpm-migration",
+    },
+  ];
+}
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -87,12 +106,23 @@ async function applyCapacitor({
   appPath: string;
 }) {
   // Install Capacitor dependencies
-  await simpleSpawn({
-    command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps`,
-    cwd: appPath,
-    successMessage: "Capacitor dependencies installed successfully",
-    errorPrefix: "Failed to install Capacitor dependencies",
-  });
+  try {
+    await simpleSpawnWithDeniedPnpmBuildSelfHeal({
+      command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4`,
+      cwd: appPath,
+      successMessage: "Capacitor dependencies installed successfully with pnpm",
+      errorPrefix: "Failed to install Capacitor dependencies via pnpm",
+    });
+  } catch (pnpmErr) {
+    logger.info("pnpm install failed, falling back to npm", pnpmErr);
+    await simpleSpawn({
+      command:
+        "npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+      cwd: appPath,
+      successMessage: "Capacitor dependencies installed successfully with npm",
+      errorPrefix: "Failed to install Capacitor dependencies",
+    });
+  }
 
   // Initialize Capacitor
   await simpleSpawn({
@@ -105,12 +135,24 @@ async function applyCapacitor({
   // Intentionally omit PNPM_INSTALL_POLICY_ARGS because:
   // 1. confirmModulesPurge will almost never be needed for capacitor (i.e. user would need to switch from npm to pnpm and not triggered a rebuild).
   // 2. strictBuildDeps should be kept true (default value) in case capacitor has native deps.
-  await simpleSpawn({
-    command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} install --prod=false || npm install --include=dev --legacy-peer-deps`,
-    cwd: appPath,
-    successMessage: "Development dependencies installed successfully",
-    errorPrefix: "Failed to install development dependencies",
-  });
+  try {
+    await simpleSpawnWithDeniedPnpmBuildSelfHeal({
+      command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} install --prod=false`,
+      cwd: appPath,
+      successMessage:
+        "Development dependencies installed successfully with pnpm",
+      errorPrefix: "Failed to install development dependencies via pnpm",
+    });
+  } catch (pnpmErr) {
+    logger.info("pnpm install failed, falling back to npm", pnpmErr);
+    await simpleSpawn({
+      command: "npm install --include=dev --legacy-peer-deps",
+      cwd: appPath,
+      successMessage:
+        "Development dependencies installed successfully with npm",
+      errorPrefix: "Failed to install development dependencies",
+    });
+  }
 
   // Add iOS and Android platforms
   await simpleSpawn({
@@ -148,12 +190,14 @@ export function registerAppUpgradeHandlers() {
       const app = await getApp(appId);
       const appPath = getDyadAppPath(app.path);
 
-      const upgradesWithStatus = availableUpgrades.map((upgrade) => {
+      const upgradesWithStatus = getAvailableUpgrades().map((upgrade) => {
         let isNeeded = false;
         if (upgrade.id === "component-tagger") {
           isNeeded = isComponentTaggerUpgradeNeeded(appPath);
         } else if (upgrade.id === "capacitor") {
           isNeeded = isCapacitorUpgradeNeeded(appPath);
+        } else if (upgrade.id === "pnpm-version-migration") {
+          isNeeded = isPnpmVersionMigrationNeeded(appPath);
         }
         return { ...upgrade, isNeeded };
       });
@@ -176,6 +220,8 @@ export function registerAppUpgradeHandlers() {
         await applyComponentTagger(appPath);
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
+      } else if (upgradeId === "pnpm-version-migration") {
+        await applyPnpmVersionMigration({ appPath });
       } else {
         throw new DyadError(
           `Unknown upgrade id: ${upgradeId}`,

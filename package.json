@@ -1,6 +1,6 @@
 {
   "name": "dyad",
-  "version": "1.6.0",
+  "version": "1.6.2",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
   "license": "MIT",
@@ -21,9 +21,10 @@
     "dev": "cross-env NODE_ENV=development npm start",
     "dev:engine": "cross-env DYAD_ENGINE_URL=http://localhost:8080/v1 npm start",
     "staging:engine": "cross-env DYAD_ENGINE_URL=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
-    "package": "npm run clean && electron-forge package",
-    "make": "npm run clean && electron-forge make",
-    "publish": "npm run clean && electron-forge publish",
+    "package": "npm run rebuild:keychain-reader && npm run clean && electron-forge package",
+    "make": "npm run rebuild:keychain-reader && npm run clean && electron-forge make",
+    "publish": "npm run rebuild:keychain-reader && npm run clean && electron-forge publish",
+    "rebuild:keychain-reader": "node scripts/rebuild-keychain-reader.mjs",
     "verify-release": "node scripts/verify-release-assets.js",
     "ts": "npm run ts:main && npm run ts:workers",
     "ts:main": "npx tsgo -p tsconfig.app.json --noEmit --incremental",
@@ -148,6 +149,9 @@
     "update-electron-app": "^3.1.2",
     "uuid": "^11.1.0",
     "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "dyad-keychain-reader": "file:native/keychain-reader"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",

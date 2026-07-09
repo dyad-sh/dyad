@@ -5,6 +5,7 @@ import path from "node:path";
 import log from "electron-log";
 import {
   commitPnpmAllowBuildsConfigIfChanged,
+  getBestEffortPnpmRebuildCommand,
   PNPM_INSTALL_POLICY_ARGS,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "@/ipc/utils/socket_firewall";
@@ -136,6 +137,18 @@ function getDefaultInstallCommand(): string {
 
 function getDefaultStartCommand(): string {
   return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
+}
+
+function appendBestEffortPnpmRebuild(
+  installCommand: string,
+  packageNames: string[],
+): string {
+  const rebuildCommand = getBestEffortPnpmRebuildCommand(packageNames);
+  if (!rebuildCommand) {
+    return installCommand;
+  }
+
+  return `${installCommand} && ${rebuildCommand}`;
 }
 
 function getDefaultCloudSandboxErrorMessage(status: number): string {
@@ -702,11 +715,18 @@ class DyadEngineCloudSandboxProvider implements CloudSandboxProvider {
     installCommand?: string | null;
     startCommand?: string | null;
   }) {
+    let promotedPackages: string[] = [];
     if (!input.installCommand?.trim()) {
-      await commitPnpmAllowBuildsConfigIfChanged(input.appPath);
+      promotedPackages = (
+        await commitPnpmAllowBuildsConfigIfChanged(input.appPath)
+      ).promotedPackages;
     }
 
-    const { installCommand, startCommand } = resolveCloudSandboxCommands(input);
+    const { installCommand: resolvedInstallCommand, startCommand } =
+      resolveCloudSandboxCommands(input);
+    const installCommand = input.installCommand?.trim()
+      ? resolvedInstallCommand
+      : appendBestEffortPnpmRebuild(resolvedInstallCommand, promotedPackages);
     const response = await cloudSandboxFetch("/sandboxes", {
       method: "POST",
       body: JSON.stringify({

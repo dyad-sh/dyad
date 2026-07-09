@@ -85,6 +85,7 @@
   "refreshApp": "刷新应用",
   "refreshAppDescription": "刷新应用预览",
   "keepGoing": "继续",
+  "addTypeScript": "添加 TypeScript",
   "tipProposal": "提案提示",
   "securityRisks": "安全风险",
   "sqlQueries": "SQL 查询",

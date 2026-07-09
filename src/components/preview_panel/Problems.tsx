@@ -225,7 +225,7 @@ export function Problems() {
 export function _Problems() {
   const { t } = useTranslation(["home", "common"]);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { problemReport } = useCheckProblems(selectedAppId);
+  const { problemReport, error } = useCheckProblems(selectedAppId);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const problemKey = (p: Problem) =>
     `${p.file}:${p.line}:${p.column}:${p.code}`;
@@ -253,6 +253,26 @@ export function _Problems() {
         <p className="text-sm text-muted-foreground max-w-md">
           {t("home:preview.problems_panel.noAppSelectedDescription")}
         </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <div className="w-16 h-16 rounded-full bg-[var(--background-darkest)] flex items-center justify-center mb-4">
+          <AlertTriangle size={24} className="text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-medium mb-2">
+          {t("home:preview.problems_panel.noProblemsReportTitle")}
+        </h3>
+        <p className="text-sm text-muted-foreground max-w-md mb-4">
+          {error.message}
+        </p>
+        <RecheckButton
+          appId={selectedAppId}
+          onBeforeRecheck={() => setSelectedKeys(new Set())}
+        />
       </div>
     );
   }

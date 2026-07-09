@@ -587,7 +587,8 @@ export type SuggestedAction =
   | RebuildAction
   | RestartAction
   | RefreshAction
-  | KeepGoingAction;
+  | KeepGoingAction
+  | AddTypeScriptAction;
 
 export interface RestartAppAction {
   id: "restart-app";
@@ -616,6 +617,10 @@ export interface RestartAction {
 
 export interface RefreshAction {
   id: "refresh";
+}
+
+export interface AddTypeScriptAction {
+  id: "add-typescript";
 }
 
 export interface KeepGoingAction {

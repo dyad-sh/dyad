@@ -15,6 +15,10 @@ import {
   runCommand,
 } from "@/ipc/utils/socket_firewall";
 import {
+  recordAndReportDeniedPnpmBuilds,
+  resolvePnpmIgnoredBuilds,
+} from "@/ipc/utils/pnpm_denied_builds";
+import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
   signalPrefersPnpm,
@@ -169,6 +173,34 @@ async function runAddDependencyCommand(
   }
 }
 
+function formatDeniedBuildsNote(packageNames: string[]): string {
+  if (packageNames.length === 0) {
+    return "";
+  }
+
+  const packageList = packageNames.join(", ");
+  return `\n\nNote: build scripts for ${packageList} were not run (Dyad security policy).`;
+}
+
+async function rebuildPromotedPnpmBuilds(
+  appPath: string,
+  packageNames: string[],
+): Promise<void> {
+  if (packageNames.length === 0) {
+    return;
+  }
+
+  try {
+    await runCommand("pnpm", ["rebuild", ...packageNames], {
+      cwd: appPath,
+      env: getPackageManagerCommandEnv(),
+      timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
+    });
+  } catch {
+    // Best effort: if the build is still broken, the install should not regress.
+  }
+}
+
 export async function installPackages({
   packages,
   appPath,
@@ -223,9 +255,10 @@ export async function installPackages({
   ) {
     warningMessages.push(pnpmSupport.warningMessage);
   }
-  if (packageManager === "pnpm") {
-    await commitPnpmAllowBuildsConfigIfChanged(appPath);
-  }
+  const promotedPackages =
+    packageManager === "pnpm"
+      ? (await commitPnpmAllowBuildsConfigIfChanged(appPath)).promotedPackages
+      : [];
   const { succeeded, installResults, lastError } =
     await runAddDependencyCommand(
       buildAddDependencyCommand(packages, packageManager, useSocketFirewall, {
@@ -241,8 +274,30 @@ export async function installPackages({
     });
   }
 
+  await rebuildPromotedPnpmBuilds(appPath, promotedPackages);
+
+  let installResultsWithPolicyNotes = installResults;
+  if (packageManager === "pnpm") {
+    const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath);
+    // Promotions were already applied (and rebuilt) by the pre-install
+    // commitPnpmAllowBuildsConfigIfChanged call above, so this record pass
+    // only ever adds denials for builds the install just ignored.
+    const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
+      appPath,
+      ignoredBuilds,
+      source: "add-dependency",
+    });
+    if (deniedBuilds.length > 0) {
+      installResultsWithPolicyNotes += formatDeniedBuildsNote(
+        Array.from(
+          new Set(deniedBuilds.map((ignoredBuild) => ignoredBuild.packageName)),
+        ).sort((left, right) => left.localeCompare(right)),
+      );
+    }
+  }
+
   return {
-    installResults,
+    installResults: installResultsWithPolicyNotes,
     warningMessages,
   };
 }

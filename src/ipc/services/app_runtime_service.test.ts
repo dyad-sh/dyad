@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
@@ -10,7 +10,11 @@ const {
   getPnpmMinimumReleaseAgeSupportMock,
   ensurePnpmAllowBuildsConfiguredMock,
   readSettingsMock,
+  readPnpmIgnoredBuildsMock,
+  recordDeniedPnpmBuildsMock,
+  parsePnpmIgnoredBuildsFromOutputMock,
   safeSendMock,
+  sendTelemetryEventMock,
   spawnMock,
   killPortMock,
   startProxyMock,
@@ -26,11 +30,21 @@ const {
     minimumReleaseAgeSupported: false,
   })),
   ensurePnpmAllowBuildsConfiguredMock:
-    vi.fn<(args: unknown) => Promise<{ changed: boolean }>>(),
+    vi.fn<
+      (
+        args: unknown,
+      ) => Promise<{ changed: boolean; promotedPackages: string[] }>
+    >(),
   readSettingsMock: vi.fn<() => Record<string, unknown>>(() => ({
     runtimeMode2: "host",
   })),
+  readPnpmIgnoredBuildsMock: vi.fn(),
+  recordDeniedPnpmBuildsMock: vi.fn(),
+  parsePnpmIgnoredBuildsFromOutputMock: vi.fn<
+    (output: string) => { packageName: string; packageSpec: string }[]
+  >(() => []),
   safeSendMock: vi.fn(),
+  sendTelemetryEventMock: vi.fn(),
   spawnMock: vi.fn(),
   killPortMock: vi.fn<() => Promise<void>>(async () => {}),
   startProxyMock: vi.fn(),
@@ -82,11 +96,28 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
     npm_config_pm_on_fail: "ignore",
   }),
   getPnpmMinimumReleaseAgeSupport: () => getPnpmMinimumReleaseAgeSupportMock(),
+  getBestEffortPnpmRebuildCommand: (packageNames: string[]) =>
+    packageNames.length === 0
+      ? null
+      : `(pnpm rebuild ${packageNames.join(" ")} || echo pnpm rebuild skipped)`,
+  isPnpmIgnoredBuildsError: (error: unknown) =>
+    String(error).includes("ERR_PNPM_IGNORED_BUILDS"),
+  parsePnpmIgnoredBuildsFromOutput: (output: string) =>
+    parsePnpmIgnoredBuildsFromOutputMock(output),
+  readPnpmIgnoredBuilds: (...args: unknown[]) =>
+    readPnpmIgnoredBuildsMock(...args),
+  recordDeniedPnpmBuilds: (...args: unknown[]) =>
+    recordDeniedPnpmBuildsMock(...args),
   PNPM_INSTALL_POLICY_ARGS: [
     "--config.pm-on-fail=ignore",
     "--minimum-release-age=1440",
   ],
+  PNPM_GLOBAL_INSTALL_PACKAGE: "pnpm@latest-11",
   PNPM_PM_ON_FAIL_IGNORE_ARG: "--config.pm-on-fail=ignore",
+}));
+
+vi.mock("@/ipc/utils/telemetry", () => ({
+  sendTelemetryEvent: (...args: unknown[]) => sendTelemetryEventMock(...args),
 }));
 
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
@@ -109,7 +140,12 @@ vi.mock("@/ipc/utils/start_proxy_server", () => ({
   startProxy: (...args: unknown[]) => startProxyMock(...args),
 }));
 
-import { ensureProxyForRunningApp, executeApp } from "./app_runtime_service";
+import {
+  ensureProxyForRunningApp,
+  executeApp,
+  startCloudSandboxLogStream,
+} from "./app_runtime_service";
+import { streamCloudSandboxLogs } from "@/ipc/utils/cloud_sandbox_provider";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -177,6 +213,24 @@ async function withCorepackProjectSpecEnv<T>(
   }
 }
 
+async function waitForAssertion(assertion: () => void): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
+  assertion();
+}
+
 describe("executeApp", () => {
   beforeEach(() => {
     runningApps.clear();
@@ -187,12 +241,22 @@ describe("executeApp", () => {
       minimumReleaseAgeSupported: false,
     });
     ensurePnpmAllowBuildsConfiguredMock.mockReset();
-    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({ changed: false });
+    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({
+      changed: false,
+      promotedPackages: [],
+    });
     readSettingsMock.mockReset();
     readSettingsMock.mockReturnValue({
       runtimeMode2: "host",
     });
+    readPnpmIgnoredBuildsMock.mockReset();
+    readPnpmIgnoredBuildsMock.mockResolvedValue([]);
+    recordDeniedPnpmBuildsMock.mockReset();
+    recordDeniedPnpmBuildsMock.mockResolvedValue({ deniedBuilds: [] });
+    parsePnpmIgnoredBuildsFromOutputMock.mockReset();
+    parsePnpmIgnoredBuildsFromOutputMock.mockReturnValue([]);
     safeSendMock.mockReset();
+    sendTelemetryEventMock.mockReset();
     spawnMock.mockReset();
     killPortMock.mockReset();
     killPortMock.mockResolvedValue(undefined);
@@ -307,6 +371,121 @@ describe("executeApp", () => {
     );
   });
 
+  it("rebuilds promoted pnpm builds before starting the dev server", async () => {
+    const process = new FakeChildProcess(101);
+    spawnMock.mockReturnValueOnce(process);
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: true,
+      minimumReleaseAgeSupported: true,
+    });
+    ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({
+      changed: true,
+      promotedPackages: ["core-js", "@scope/native"],
+    });
+
+    await executeApp({
+      appPath: "/tmp/app",
+      appId: 1,
+      event: createEvent(),
+      isNeon: false,
+    });
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "pnpm --config.pm-on-fail=ignore --minimum-release-age=1440 install && (pnpm rebuild core-js @scope/native || echo pnpm rebuild skipped) && pnpm --config.pm-on-fail=ignore run dev --port 32101",
+      [],
+      expect.objectContaining({
+        cwd: "/tmp/app",
+        shell: true,
+      }),
+    );
+  });
+
+  it("records ignored builds once the default install reaches the dev server", async () => {
+    const process = new FakeChildProcess(101);
+    spawnMock.mockReturnValueOnce(process);
+    getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+      available: true,
+      minimumReleaseAgeSupported: true,
+    });
+    const ignoredBuilds = [
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+    ];
+    readPnpmIgnoredBuildsMock.mockResolvedValue(ignoredBuilds);
+    recordDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: ignoredBuilds,
+    });
+
+    await executeApp({
+      appPath: "/tmp/app",
+      appId: 1,
+      event: createEvent(),
+      isNeon: false,
+    });
+
+    process.stdout.emit("data", "Local: http://localhost:32101/\n");
+    process.stdout.emit("data", "Local: http://localhost:32101/\n");
+
+    await waitForAssertion(() => {
+      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath: "/tmp/app",
+        ignoredBuilds,
+      });
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "pnpm:build-auto-denied",
+        {
+          packages: ["core-js@3.49.0"],
+          source: "app-run",
+        },
+      );
+    });
+    // One-shot: repeated URL output must not re-record.
+    expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("records ignored builds surfaced in cloud sandbox logs", async () => {
+    const event = createEvent();
+    runningApps.set(7, {
+      process: null,
+      processId: 1,
+      mode: "cloud",
+      rendererSender: event.sender,
+      cloudSandboxId: "sb-1",
+      lastViewedAt: Date.now(),
+    } as any);
+    const ignoredBuilds = [
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+    ];
+    vi.mocked(streamCloudSandboxLogs).mockImplementation(async function* () {
+      yield "Ignored build scripts: core-js@3.49.0.";
+    });
+    parsePnpmIgnoredBuildsFromOutputMock.mockReturnValue(ignoredBuilds);
+    recordDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: ignoredBuilds,
+    });
+
+    startCloudSandboxLogStream({
+      appId: 7,
+      appPath: "/tmp/cloud-app",
+      event,
+      sandboxId: "sb-1",
+      cloudLogAbortController: new AbortController(),
+    });
+
+    await waitForAssertion(() => {
+      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath: "/tmp/cloud-app",
+        ignoredBuilds,
+      });
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "pnpm:build-auto-denied",
+        {
+          packages: ["core-js@3.49.0"],
+          source: "cloud-sandbox",
+        },
+      );
+    });
+  });
+
   it("does not warn about old pnpm for apps that explicitly use npm", async () => {
     const appPath = await createTempAppDir();
     try {
@@ -374,6 +553,91 @@ describe("executeApp", () => {
         expect.objectContaining({
           type: "package-manager-warning",
           message: "Install pnpm 10.16.0 or newer for the strongest protection",
+        }),
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("emits the pnpm version migration nudge only once per app session", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writePackageJson(appPath, { name: "app" });
+      await writeFile(
+        path.join(appPath, "pnpm-lock.yaml"),
+        "lockfileVersion: '6.0'\n",
+      );
+      const firstProcess = new FakeChildProcess(101);
+      const secondProcess = new FakeChildProcess(102);
+      spawnMock
+        .mockReturnValueOnce(firstProcess)
+        .mockReturnValueOnce(secondProcess);
+      getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
+        available: true,
+        minimumReleaseAgeSupported: true,
+      });
+
+      await executeApp({
+        appPath,
+        appId: 90,
+        event: createEvent(),
+        isNeon: false,
+      });
+      await executeApp({
+        appPath,
+        appId: 90,
+        event: createEvent(),
+        isNeon: false,
+      });
+
+      const migrationNudges = safeSendMock.mock.calls.filter((call) => {
+        return (
+          call[1] === "app:output" &&
+          typeof call[2]?.message === "string" &&
+          call[2].message.includes('apply "Migrate to pnpm')
+        );
+      });
+      expect(migrationNudges).toHaveLength(1);
+      const migrationWarnings = safeSendMock.mock.calls.filter((call) => {
+        return (
+          call[1] === "app:output" &&
+          call[2]?.type === "package-manager-warning" &&
+          call[2]?.warningKind === "pnpm-migration"
+        );
+      });
+      expect(migrationWarnings).toHaveLength(2);
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("does not emit the pnpm version migration nudge outside host mode", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writePackageJson(appPath, { name: "app" });
+      await writeFile(
+        path.join(appPath, "pnpm-lock.yaml"),
+        "lockfileVersion: '6.0'\n",
+      );
+      readSettingsMock.mockReturnValue({
+        runtimeMode2: "cloud",
+      });
+
+      await expect(
+        executeApp({
+          appPath,
+          appId: 91,
+          event: createEvent(),
+          isNeon: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(safeSendMock).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "app:output",
+        expect.objectContaining({
+          message: expect.stringContaining('apply "Migrate to pnpm'),
         }),
       );
     } finally {
@@ -535,6 +799,80 @@ describe("executeApp", () => {
       expect(getPnpmMinimumReleaseAgeSupportMock).not.toHaveBeenCalled();
       expect(ensurePnpmAllowBuildsConfiguredMock).not.toHaveBeenCalled();
     });
+  });
+
+  it("clears node_modules before retrying custom pnpm commands after ignored builds are denied", async () => {
+    const appPath = await createTempAppDir();
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    await mkdir(nodeModulesPath, { recursive: true });
+    readPnpmIgnoredBuildsMock.mockResolvedValue([
+      {
+        packageSpec: "fake-build-dep@file:packages/fake-build-dep",
+        packageName: "fake-build-dep",
+      },
+    ]);
+    recordDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: [
+        {
+          packageSpec: "fake-build-dep@file:packages/fake-build-dep",
+          packageName: "fake-build-dep",
+        },
+      ],
+    });
+
+    try {
+      const firstProcess = new FakeChildProcess(101);
+      const secondProcess = new FakeChildProcess(102);
+      spawnMock
+        .mockReturnValueOnce(firstProcess)
+        .mockReturnValueOnce(secondProcess);
+
+      await executeApp({
+        appPath,
+        appId: 1,
+        event: createEvent(),
+        isNeon: false,
+        installCommand: "pnpm --config.strictDepBuilds=true install",
+        startCommand: "pnpm run dev",
+      });
+
+      firstProcess.stderr.emit(
+        "data",
+        "ERR_PNPM_IGNORED_BUILDS Ignored build scripts: fake-build-dep@file:packages/fake-build-dep",
+      );
+      firstProcess.emit("close", 1, null);
+
+      await waitForAssertion(() => {
+        expect(spawnMock).toHaveBeenCalledTimes(2);
+      });
+      await expect(stat(nodeModulesPath)).rejects.toThrow();
+      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath,
+        ignoredBuilds: [
+          {
+            packageSpec: "fake-build-dep@file:packages/fake-build-dep",
+            packageName: "fake-build-dep",
+          },
+        ],
+      });
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "pnpm:build-auto-denied",
+        {
+          packages: ["fake-build-dep@file:packages/fake-build-dep"],
+          source: "self-heal",
+        },
+      );
+      expect(runningApps.get(1)?.process).toBe(
+        secondProcess as unknown as ChildProcess,
+      );
+      expect(safeSendMock).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "app:output",
+        expect.objectContaining({ type: "app-exit" }),
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
   });
 
   it("starts the proxy on the deterministic port without killing the occupant", async () => {

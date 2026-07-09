@@ -24,6 +24,8 @@ export interface ProblemReport {
   problems: Problem[];
 }
 
+export type TscWorkerErrorKind = "typescript-not-found" | "tsconfig-not-found";
+
 export interface WorkerInput {
   appPath: string;
   virtualChanges: VirtualChanges;
@@ -34,6 +36,7 @@ export interface WorkerOutput {
   success: boolean;
   data?: ProblemReport;
   error?: string;
+  errorKind?: TscWorkerErrorKind;
 }
 
 export interface VirtualChanges {

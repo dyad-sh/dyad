@@ -4,7 +4,14 @@ import path from "node:path";
 import { gitAddAll, gitCommit } from "./git_utils";
 import { simpleSpawn } from "./simpleSpawn";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { PNPM_PM_ON_FAIL_IGNORE_ARG } from "./socket_firewall";
+import {
+  isPnpmIgnoredBuildsError,
+  PNPM_PM_ON_FAIL_IGNORE_ARG,
+} from "./socket_firewall";
+import {
+  recordAndReportDeniedPnpmBuilds,
+  resolvePnpmIgnoredBuilds,
+} from "./pnpm_denied_builds";
 
 export const logger = log.scope("app_upgrade_utils");
 
@@ -45,6 +52,62 @@ export function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 type ApplyComponentTaggerOptions = {
   installDependencies?: boolean;
 };
+
+// Unlike the app-runtime self-heal, this does NOT remove node_modules before
+// the retry. That is safe: pnpm re-evaluates previously ignored builds
+// against allowBuilds on every install — an explicit `pkg: false` entry
+// silences ERR_PNPM_IGNORED_BUILDS even on an "Already up to date" fast-path
+// run (verified against pnpm 11.10) — and these upgrade callers are
+// add/install commands whose retry re-links real work anyway.
+export async function selfHealDeniedPnpmBuildsFromError({
+  appPath,
+  error,
+  source,
+}: {
+  appPath: string;
+  error: unknown;
+  source: "self-heal";
+}): Promise<boolean> {
+  if (!isPnpmIgnoredBuildsError(error)) {
+    return false;
+  }
+
+  const errorOutput = error instanceof Error ? error.message : String(error);
+  const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath, errorOutput);
+  const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
+    appPath,
+    ignoredBuilds,
+    source,
+  });
+  return deniedBuilds.length > 0;
+}
+
+export async function simpleSpawnWithDeniedPnpmBuildSelfHeal({
+  command,
+  cwd,
+  successMessage,
+  errorPrefix,
+}: {
+  command: string;
+  cwd: string;
+  successMessage: string;
+  errorPrefix: string;
+}): Promise<void> {
+  try {
+    await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+  } catch (error) {
+    const healed = await selfHealDeniedPnpmBuildsFromError({
+      appPath: cwd,
+      error,
+      source: "self-heal",
+    });
+    if (!healed) {
+      throw error;
+    }
+
+    await simpleSpawn({ command, cwd, successMessage, errorPrefix });
+  }
+}
 
 export async function applyComponentTagger(
   appPath: string,
@@ -128,7 +191,7 @@ export async function applyComponentTagger(
 
   if (installDependencies) {
     try {
-      await simpleSpawn({
+      await simpleSpawnWithDeniedPnpmBuildSelfHeal({
         command: `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} add --ignore-workspace-root-check -D @dyad-sh/react-vite-component-tagger`,
         cwd: appPath,
         successMessage:

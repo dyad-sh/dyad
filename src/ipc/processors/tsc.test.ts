@@ -1,9 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
-import { toProblemReportError } from "./tsc";
+import {
+  getTypeCheckPreconditionKind,
+  toProblemReportError,
+  TypeCheckPreconditionError,
+} from "./tsc";
 
 describe("toProblemReportError", () => {
+  it("propagates structured worker error kinds", () => {
+    const error = toProblemReportError(
+      new Error("Cannot find module 'typescript'"),
+      "typescript-not-found",
+    );
+
+    expect(error).toBeInstanceOf(TypeCheckPreconditionError);
+    expect((error as TypeCheckPreconditionError).kind).toBe(
+      DyadErrorKind.Precondition,
+    );
+    expect(getTypeCheckPreconditionKind(error)).toBe("typescript-not-found");
+    expect(shouldFilterTelemetryException(error)).toBe(true);
+  });
+
   it("classifies missing TypeScript as a filtered precondition error", () => {
     const error = toProblemReportError(
       new Error(
@@ -13,6 +31,7 @@ describe("toProblemReportError", () => {
 
     expect(error).toBeInstanceOf(DyadError);
     expect((error as DyadError).kind).toBe(DyadErrorKind.Precondition);
+    expect(getTypeCheckPreconditionKind(error)).toBe("typescript-not-found");
     expect(shouldFilterTelemetryException(error)).toBe(true);
   });
 
@@ -25,6 +44,7 @@ describe("toProblemReportError", () => {
 
     expect(error).toBeInstanceOf(DyadError);
     expect((error as DyadError).kind).toBe(DyadErrorKind.Precondition);
+    expect(getTypeCheckPreconditionKind(error)).toBe("tsconfig-not-found");
     expect(shouldFilterTelemetryException(error)).toBe(true);
   });
 

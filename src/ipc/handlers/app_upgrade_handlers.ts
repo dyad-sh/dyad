@@ -47,9 +47,8 @@ function getAvailableUpgrades(): Omit<AppUpgrade, "isNeeded">[] {
       id: "pnpm-version-migration",
       title: `Migrate to pnpm ${managedPnpmMajor}`,
       description:
-        `This project needs an explicit pnpm ${managedPnpmMajor} pin. Dyad already runs pnpm ${managedPnpmMajor}, ` +
-        "which writes a lockfile format older pnpm versions can't read, and unpinned pnpm projects " +
-        "can drift across deploys, CI, and teammates' machines. This updates the " +
+        `This app has legacy pnpm metadata. Dyad already runs pnpm ${managedPnpmMajor}, ` +
+        "which writes a lockfile format older pnpm versions can't read. This updates the " +
         `packageManager pin and the lockfile together so everything matches pnpm ${managedPnpmMajor}.`,
       manualUpgradeUrl: "https://dyad.sh/docs/upgrades/pnpm-migration",
     },

@@ -85,10 +85,10 @@ function readPnpmLockfileVersion(appPath: string): number | null {
 
 /**
  * True when running the managed pnpm against this app leaves the repo in a
- * state the app's own pin/lockfile-era pnpm cannot read: a pre-9.0 lockfile
- * (which the managed pnpm rewrites incompatibly on install) or a
- * `packageManager` pin at or below pnpm 8 (whose corepack/CI installs cannot
- * read the 9.0 lockfile Dyad produces).
+ * state the app's legacy pnpm cannot read: a pre-9.0 lockfile (which the
+ * managed pnpm rewrites incompatibly on install) or a `packageManager` pin at
+ * or below pnpm 8 (whose corepack/CI installs cannot read the 9.0 lockfile
+ * Dyad produces).
  */
 export function isPnpmVersionMigrationNeeded(appPath: string): boolean {
   const signal = getPackageManagerSignal(appPath);
@@ -109,10 +109,7 @@ export function isPnpmVersionMigrationNeeded(appPath: string): boolean {
     return pinnedMajor <= LAST_INCOMPATIBLE_PNPM_MAJOR;
   }
 
-  // Once Dyad's managed install rewrites a pre-9 lockfile to 9.0, the old
-  // lockfile signal is gone. Keep pnpm apps without a packageManager pin
-  // eligible so the visible upgrade can still add the production pin.
-  return lockfileVersion !== null && !signal.packageManagerField;
+  return false;
 }
 
 async function updatePackageManagerPin(

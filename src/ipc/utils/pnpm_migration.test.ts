@@ -170,14 +170,14 @@ describe("isPnpmVersionMigrationNeeded", () => {
     }
   });
 
-  it("is still needed for a pnpm lockfile with no packageManager pin", async () => {
+  it("is not needed for a 9.0 pnpm lockfile with no packageManager pin", async () => {
     const appPath = await createTempAppDir();
     try {
       await writeAppFiles(appPath, {
         "package.json": JSON.stringify({ name: "app" }),
         "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
       });
-      expect(isPnpmVersionMigrationNeeded(appPath)).toBe(true);
+      expect(isPnpmVersionMigrationNeeded(appPath)).toBe(false);
     } finally {
       await rm(appPath, { recursive: true, force: true });
     }

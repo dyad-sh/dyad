@@ -4,6 +4,7 @@ import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import {
+  ensurePnpmAllowBuildsConfigured,
   getPnpmMinimumReleaseAgeSupport,
   PNPM_GLOBAL_INSTALL_PACKAGE,
   PNPM_INSTALL_POLICY_ARGS,
@@ -28,6 +29,7 @@ const logger = log.scope("pnpm_migration");
 const COMPATIBLE_PNPM_LOCKFILE_MAJOR = 9;
 // Pins at or below pnpm 8 write pre-9.0 lockfiles.
 const LAST_INCOMPATIBLE_PNPM_MAJOR = 8;
+const LOCKFILE_HEADER_BYTES = 512;
 
 export function getManagedPnpmMajorVersion(): number {
   const match = PNPM_GLOBAL_INSTALL_PACKAGE.match(/latest-(\d+)$/);
@@ -64,14 +66,20 @@ export function parsePinnedPnpmMajorVersion(
 }
 
 function readPnpmLockfileVersion(appPath: string): number | null {
+  const lockfilePath = path.join(appPath, "pnpm-lock.yaml");
+  let fd: number | null = null;
   try {
-    const content = fs.readFileSync(
-      path.join(appPath, "pnpm-lock.yaml"),
-      "utf8",
-    );
+    fd = fs.openSync(lockfilePath, "r");
+    const buffer = Buffer.alloc(LOCKFILE_HEADER_BYTES);
+    const bytesRead = fs.readSync(fd, buffer, 0, LOCKFILE_HEADER_BYTES, 0);
+    const content = buffer.subarray(0, bytesRead).toString("utf8");
     return parsePnpmLockfileVersion(content);
   } catch {
     return null;
+  } finally {
+    if (fd !== null) {
+      fs.closeSync(fd);
+    }
   }
 }
 
@@ -97,7 +105,14 @@ export function isPnpmVersionMigrationNeeded(appPath: string): boolean {
   }
 
   const pinnedMajor = parsePinnedPnpmMajorVersion(signal.packageManagerField);
-  return pinnedMajor !== null && pinnedMajor <= LAST_INCOMPATIBLE_PNPM_MAJOR;
+  if (pinnedMajor !== null) {
+    return pinnedMajor <= LAST_INCOMPATIBLE_PNPM_MAJOR;
+  }
+
+  // Once Dyad's managed install rewrites a pre-9 lockfile to 9.0, the old
+  // lockfile signal is gone. Keep pnpm apps without a packageManager pin
+  // eligible so the visible upgrade can still add the production pin.
+  return lockfileVersion !== null && !signal.packageManagerField;
 }
 
 async function updatePackageManagerPin(
@@ -149,6 +164,7 @@ export async function applyPnpmVersionMigration({
   }
 
   const previousLockfileVersion = readPnpmLockfileVersion(appPath);
+  const allowBuildsResult = await ensurePnpmAllowBuildsConfigured({ appPath });
 
   await simpleSpawnWithDeniedPnpmBuildSelfHeal({
     command: `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`,
@@ -162,13 +178,21 @@ export async function applyPnpmVersionMigration({
   // read as resolved) and gets swept into the user's next commit. The install
   // itself never reads the pin — corepack project specs are disabled and
   // package-manager-strict is off in getPackageManagerCommandEnv().
-  await updatePackageManagerPin(appPath, pnpmSupport.version);
+  try {
+    await updatePackageManagerPin(appPath, pnpmSupport.version);
+  } catch (error) {
+    logger.warn("Failed to update packageManager pin:", error);
+    throw new DyadError(
+      "Dependencies were reinstalled but the packageManager pin could not be updated. Please update package.json manually.",
+      DyadErrorKind.External,
+    );
+  }
 
   // Old-lockfile apps commonly carry unlisted build-script deps; record any
   // builds this install skipped so plain `pnpm install` stays green outside
   // Dyad (this also commits pnpm-workspace.yaml when it changes).
   const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath);
-  await recordAndReportDeniedPnpmBuilds({
+  const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
     appPath,
     ignoredBuilds,
     source: "app-upgrade",
@@ -178,6 +202,9 @@ export async function applyPnpmVersionMigration({
   try {
     await gitAdd({ path: appPath, filepath: "package.json" });
     await gitAdd({ path: appPath, filepath: "pnpm-lock.yaml" });
+    if (allowBuildsResult.changed || deniedBuilds.length > 0) {
+      await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
+    }
     await gitCommit({
       path: appPath,
       message: `[dyad] migrate to pnpm ${migrationMajor}`,

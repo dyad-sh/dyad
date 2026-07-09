@@ -58,6 +58,7 @@ import {
 } from "@/ipc/utils/package_manager_selection";
 
 const logger = log.scope("app_runtime_service");
+const pnpmVersionMigrationNotifiedAppIds = new Set<number>();
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
@@ -258,8 +259,6 @@ export async function executeApp({
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
-  notifyPnpmVersionMigrationAvailable({ appPath, appId, event });
-
   if (runtimeMode === "docker") {
     await executeAppInDocker({
       appPath,
@@ -278,6 +277,7 @@ export async function executeApp({
       startCommand,
     });
   } else {
+    notifyPnpmVersionMigrationAvailable({ appPath, appId, event });
     await executeAppLocalNode({
       appPath,
       appId,
@@ -303,15 +303,19 @@ function notifyPnpmVersionMigrationAvailable({
   event: Electron.IpcMainInvokeEvent;
 }): void {
   try {
+    if (pnpmVersionMigrationNotifiedAppIds.has(appId)) {
+      return;
+    }
     if (!isPnpmVersionMigrationNeeded(appPath)) {
       return;
     }
     const managedMajor = getManagedPnpmMajorVersion();
     safeSend(event.sender, "app:output", {
       type: "stdout",
-      message: `[dyad] This project targets an older pnpm (pre-9 lockfile or pnpm <= 8 pin), but Dyad runs pnpm ${managedMajor} — deploys and CI that follow the project's pin can fail. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
+      message: `[dyad] This pnpm project needs a pnpm ${managedMajor} migration (pre-9 lockfile, pnpm <= 8 pin, or missing packageManager pin). Dyad already runs pnpm ${managedMajor}, so deploys, CI, and teammates' installs can drift without the matching project pin. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
       appId,
     });
+    pnpmVersionMigrationNotifiedAppIds.add(appId);
   } catch (error) {
     logger.warn("Failed to check pnpm version migration status:", error);
   }

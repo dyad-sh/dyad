@@ -25,34 +25,36 @@ import {
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
 
-const MANAGED_PNPM_MAJOR = getManagedPnpmMajorVersion();
-
-const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
-  {
-    id: "component-tagger",
-    title: "Enable select component to edit",
-    description:
-      "Installs the Dyad component tagger Vite plugin and its dependencies.",
-    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
-  },
-  {
-    id: "capacitor",
-    title: "Upgrade to hybrid mobile app with Capacitor",
-    description:
-      "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
-    manualUpgradeUrl: "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
-  },
-  {
-    id: "pnpm-version-migration",
-    title: `Migrate to pnpm ${MANAGED_PNPM_MAJOR}`,
-    description:
-      `This project was set up with an older pnpm, but Dyad runs pnpm ${MANAGED_PNPM_MAJOR}, ` +
-      "which writes a lockfile format older pnpm versions can't read — so deploys and CI " +
-      "that follow the project's pinned pnpm version can fail. This updates the " +
-      `packageManager pin and the lockfile together so everything matches pnpm ${MANAGED_PNPM_MAJOR}.`,
-    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/pnpm-migration",
-  },
-];
+function getAvailableUpgrades(): Omit<AppUpgrade, "isNeeded">[] {
+  const managedPnpmMajor = getManagedPnpmMajorVersion();
+  return [
+    {
+      id: "component-tagger",
+      title: "Enable select component to edit",
+      description:
+        "Installs the Dyad component tagger Vite plugin and its dependencies.",
+      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
+    },
+    {
+      id: "capacitor",
+      title: "Upgrade to hybrid mobile app with Capacitor",
+      description:
+        "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
+      manualUpgradeUrl:
+        "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
+    },
+    {
+      id: "pnpm-version-migration",
+      title: `Migrate to pnpm ${managedPnpmMajor}`,
+      description:
+        `This project needs an explicit pnpm ${managedPnpmMajor} pin. Dyad already runs pnpm ${managedPnpmMajor}, ` +
+        "which writes a lockfile format older pnpm versions can't read, and unpinned pnpm projects " +
+        "can drift across deploys, CI, and teammates' machines. This updates the " +
+        `packageManager pin and the lockfile together so everything matches pnpm ${managedPnpmMajor}.`,
+      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/pnpm-migration",
+    },
+  ];
+}
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -189,7 +191,7 @@ export function registerAppUpgradeHandlers() {
       const app = await getApp(appId);
       const appPath = getDyadAppPath(app.path);
 
-      const upgradesWithStatus = availableUpgrades.map((upgrade) => {
+      const upgradesWithStatus = getAvailableUpgrades().map((upgrade) => {
         let isNeeded = false;
         if (upgrade.id === "component-tagger") {
           isNeeded = isComponentTaggerUpgradeNeeded(appPath);

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
 const {
+  ensurePnpmAllowBuildsConfiguredMock,
   getPnpmMinimumReleaseAgeSupportMock,
   simpleSpawnWithDeniedPnpmBuildSelfHealMock,
   gitAddMock,
@@ -12,6 +14,7 @@ const {
   recordAndReportDeniedPnpmBuildsMock,
   sendTelemetryEventMock,
 } = vi.hoisted(() => ({
+  ensurePnpmAllowBuildsConfiguredMock: vi.fn(),
   getPnpmMinimumReleaseAgeSupportMock: vi.fn(),
   simpleSpawnWithDeniedPnpmBuildSelfHealMock: vi.fn(),
   gitAddMock: vi.fn(),
@@ -27,6 +30,7 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
   >("@/ipc/utils/socket_firewall");
   return {
     ...actual,
+    ensurePnpmAllowBuildsConfigured: ensurePnpmAllowBuildsConfiguredMock,
     getPnpmMinimumReleaseAgeSupport: getPnpmMinimumReleaseAgeSupportMock,
   };
 });
@@ -57,6 +61,7 @@ import {
   parsePinnedPnpmMajorVersion,
   parsePnpmLockfileVersion,
 } from "./pnpm_migration";
+import { DyadErrorKind } from "@/errors/dyad_error";
 
 async function createTempAppDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "dyad-pnpm-migration-"));
@@ -73,6 +78,10 @@ async function writeAppFiles(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({
+    changed: false,
+    promotedPackages: [],
+  });
   getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
     available: true,
     minimumReleaseAgeSupported: true,
@@ -161,6 +170,43 @@ describe("isPnpmVersionMigrationNeeded", () => {
     }
   });
 
+  it("is still needed for a pnpm lockfile with no packageManager pin", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writeAppFiles(appPath, {
+        "package.json": JSON.stringify({ name: "app" }),
+        "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+      });
+      expect(isPnpmVersionMigrationNeeded(appPath)).toBe(true);
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("reads only the lockfile header when checking the lockfile version", async () => {
+    const appPath = await createTempAppDir();
+    const readSyncSpy = vi.spyOn(fs, "readSync");
+    try {
+      await writeAppFiles(appPath, {
+        "package.json": JSON.stringify({ name: "app" }),
+        "pnpm-lock.yaml": `lockfileVersion: '6.0'\n${"ignored:\n".repeat(10_000)}`,
+      });
+
+      expect(isPnpmVersionMigrationNeeded(appPath)).toBe(true);
+
+      expect(readSyncSpy).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Buffer),
+        0,
+        512,
+        0,
+      );
+    } finally {
+      readSyncSpy.mockRestore();
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
   it("is not needed for npm-shaped apps even with stale pnpm leftovers", async () => {
     const appPath = await createTempAppDir();
     try {
@@ -220,6 +266,11 @@ describe("applyPnpmVersionMigration", () => {
           cwd: appPath,
         }),
       );
+      expect(
+        ensurePnpmAllowBuildsConfiguredMock.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        simpleSpawnWithDeniedPnpmBuildSelfHealMock.mock.invocationCallOrder[0],
+      );
       expect(recordAndReportDeniedPnpmBuildsMock).toHaveBeenCalledWith({
         appPath,
         ignoredBuilds: [
@@ -246,6 +297,50 @@ describe("applyPnpmVersionMigration", () => {
           toPnpmVersion: "11.10.0",
         },
       );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("commits pnpm workspace policy changes with the migration", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writeAppFiles(appPath, {
+        "package.json": JSON.stringify({ name: "app" }, null, 2),
+        "pnpm-lock.yaml": "lockfileVersion: '6.0'\n",
+      });
+      ensurePnpmAllowBuildsConfiguredMock.mockResolvedValue({
+        changed: true,
+        promotedPackages: [],
+      });
+
+      await applyPnpmVersionMigration({ appPath });
+
+      expect(gitAddMock).toHaveBeenCalledWith({
+        path: appPath,
+        filepath: "pnpm-workspace.yaml",
+      });
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces a pin-write failure with manual guidance", async () => {
+    const appPath = await createTempAppDir();
+    try {
+      await writeAppFiles(appPath, {
+        "package.json": "{",
+        "pnpm-lock.yaml": "lockfileVersion: '6.0'\n",
+      });
+
+      await expect(
+        applyPnpmVersionMigration({ appPath }),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.External,
+        message:
+          "Dependencies were reinstalled but the packageManager pin could not be updated. Please update package.json manually.",
+      });
+      expect(gitCommitMock).not.toHaveBeenCalled();
     } finally {
       await rm(appPath, { recursive: true, force: true });
     }

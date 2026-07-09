@@ -16,6 +16,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - For Local Agent post-tool side effects that happen after the model/tool loop (for example shared Supabase function redeploys), use `ctx.onXmlComplete(...)` with escaped `<dyad-output>` content to surface warnings/errors inline. `warningMessages` creates toast warnings, and throwing turns the whole stream into a `ChatErrorBox`.
 - **`ctx.onXmlComplete` only updates the message `content` column and the UI; it does NOT make output visible to future agent turns.** `parseAiMessagesJson` reads from `aiMessagesJson` whenever it's present and ignores `content` entirely. For post-loop output that the agent should see next turn (deploy results, step-limit notices), also push a trailing assistant message into `accumulatedAiMessages` BEFORE the `aiMessagesJson` write, e.g.: `accumulatedAiMessages.push({ role: "assistant", content: [{ type: "text", text: xml }] })`.
+- If a tool's success path updates renderer-side caches via an IPC event (for example `agent-tool:problems-update`), handled precondition/error paths that return a normal tool result must also update, clear, or explicitly invalidate that cache. Otherwise the UI can keep stale successful data while the chat shows a handled failure.
 
 ## MCP consent results
 

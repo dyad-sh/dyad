@@ -100,7 +100,7 @@ export async function getTypeCheckPreconditionGuidance({
 
   if (declaresTypeScript) {
     return includeAgentInstructions
-      ? 'Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Call the `add_dependency` tool with `["typescript"]` to install dependencies, then retry `run_type_checks`.'
+      ? 'Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Call the `add_dependency` tool with `{ "packages": ["typescript"] }` to install dependencies, then retry `run_type_checks`.'
       : "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Install dependencies, then retry.";
   }
 

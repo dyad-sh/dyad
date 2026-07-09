@@ -116,6 +116,11 @@ export const runTypeChecksTool: ToolDefinition<
         includeAgentInstructions: true,
       });
 
+      safeSend(ctx.event.sender, "agent-tool:problems-update", {
+        appId: ctx.appId,
+        problems: { problems: [] },
+      });
+
       ctx.onXmlComplete(
         `<dyad-status title="${escapeXmlAttr(title)}">\n${escapeXmlContent(result)}\n</dyad-status>`,
       );

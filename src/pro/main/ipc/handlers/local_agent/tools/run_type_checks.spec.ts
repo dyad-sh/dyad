@@ -9,6 +9,7 @@ import {
   generateProblemReport,
   TypeCheckPreconditionError,
 } from "@/ipc/processors/tsc";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import { runTypeChecksTool } from "./run_type_checks";
 
 vi.mock("@/ipc/processors/tsc", async () => {
@@ -22,11 +23,16 @@ vi.mock("@/ipc/processors/tsc", async () => {
   };
 });
 
+vi.mock("@/ipc/utils/safe_sender", () => ({
+  safeSend: vi.fn(),
+}));
+
 describe("runTypeChecksTool precondition guidance", () => {
   let tempDirs: string[] = [];
 
   beforeEach(() => {
     vi.mocked(generateProblemReport).mockReset();
+    vi.mocked(safeSend).mockReset();
   });
 
   afterEach(async () => {
@@ -72,7 +78,16 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     expect(result).toContain("TypeScript is listed in package.json");
     expect(result).toContain("add_dependency");
+    expect(result).toContain('{ "packages": ["typescript"] }');
     expect(result).toContain("retry `run_type_checks`");
+    expect(safeSend).toHaveBeenCalledWith(
+      undefined,
+      "agent-tool:problems-update",
+      {
+        appId: 1,
+        problems: { problems: [] },
+      },
+    );
     expect(ctx.onXmlComplete).toHaveBeenCalledWith(
       expect.stringContaining("TypeScript is listed in package.json"),
     );

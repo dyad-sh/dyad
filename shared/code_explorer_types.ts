@@ -40,3 +40,15 @@ export interface CodeExplorerResult {
 export type CodeExplorerWorkerOutput =
   | { success: true; data: CodeExplorerResult }
   | { success: false; error: string };
+
+// All explorer sessions share a single host process, so replies must be
+// correlated to their requests explicitly instead of relying on
+// one-in-flight-per-worker ordering.
+export interface CodeExplorerHostRequest {
+  requestId: number;
+  input: CodeExplorerWorkerInput;
+}
+
+export type CodeExplorerHostResponse = CodeExplorerWorkerOutput & {
+  requestId: number;
+};

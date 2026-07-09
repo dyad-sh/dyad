@@ -1,8 +1,11 @@
-import { parentPort } from "node:worker_threads";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as v8 from "node:v8";
+import * as vm from "node:vm";
 
 import type {
+  CodeExplorerHostRequest,
+  CodeExplorerHostResponse,
   CodeExplorerWorkerInput,
   CodeExplorerWorkerOutput,
 } from "../../shared/code_explorer_types";
@@ -12,6 +15,16 @@ import {
   type BuiltCodeExplorerIndex,
 } from "./core";
 import { resolveProjectFileSet } from "./core/program";
+import { evictionPlan } from "./eviction";
+
+// This process's heap is bounded by the V8 pointer-compression cage (~4GB;
+// Electron 40 ignores a lower --max-old-space-size passed via execArgv).
+// Keeping cached indexes under ~2.5GB leaves headroom for the transient
+// ts.Program built during (re)indexing (released before the index is cached,
+// as before).
+const INDEX_CACHE_BUDGET_BYTES = 2.5 * 1024 * 1024 * 1024;
+// Secondary cap so many tiny projects don't accumulate unbounded metadata.
+const INDEX_CACHE_MAX_ENTRIES = 4;
 
 function loadLocalTypeScript(appPath: string): typeof import("typescript") {
   try {
@@ -24,20 +37,21 @@ function loadLocalTypeScript(appPath: string): typeof import("typescript") {
   }
 }
 
-interface CachedTypeScript {
-  appPath: string;
-  ts: typeof import("typescript");
-}
-
 interface CachedIndex {
   key: string;
   built: BuiltCodeExplorerIndex;
   watchedPaths: string[];
   newestMtimeMs: number;
   fileSetFingerprint: string;
+  /** GC'd heap delta measured across this index's build. */
+  bytes: number;
+  lastUsedAt: number;
 }
 
-let cachedTypeScript: CachedTypeScript | undefined;
+// One host process serves every explorer session, so both caches are keyed —
+// different apps may resolve different TypeScript installs, and the index
+// cache holds one entry per appPath+tsconfig within the byte budget above.
+const typeScriptCache = new Map<string, typeof import("typescript")>();
 const indexCache = new Map<string, CachedIndex>();
 
 export async function processCodeExplorer(
@@ -75,17 +89,17 @@ function codeExplorerErrorOutput(error: unknown): CodeExplorerWorkerOutput {
 }
 
 export function clearCodeExplorerWorkerCachesForTests(): void {
-  cachedTypeScript = undefined;
+  typeScriptCache.clear();
   indexCache.clear();
 }
 
 function loadCachedTypeScript(appPath: string): typeof import("typescript") {
-  if (cachedTypeScript?.appPath === appPath) {
-    return cachedTypeScript.ts;
+  const cached = typeScriptCache.get(appPath);
+  if (cached) {
+    return cached;
   }
   const ts = loadLocalTypeScript(appPath);
-  cachedTypeScript = { appPath, ts };
-  indexCache.clear();
+  typeScriptCache.set(appPath, ts);
   return ts;
 }
 
@@ -96,7 +110,34 @@ function getCachedIndex(
   const key = `${input.appPath}\0${input.tsconfigPath ?? ""}`;
   const cached = indexCache.get(key);
   if (cached && isCacheFresh(ts, input, cached)) {
+    cached.lastUsedAt = Date.now();
     return cached.built;
+  }
+
+  // Evict BEFORE building: drop the stale index for this key first so the old
+  // index and the new ts.Program never coexist, then free LRU indexes until
+  // the measured heap fits the budget.
+  indexCache.delete(key);
+  let preBuildHeapBytes = gcAndMeasureHeapBytes();
+  const evictKeys = evictionPlan({
+    entries: [...indexCache.values()].map((entry) => ({
+      key: entry.key,
+      lastUsedAt: entry.lastUsedAt,
+      bytes: entry.bytes,
+    })),
+    usedHeapBytes: preBuildHeapBytes,
+    budgetBytes: INDEX_CACHE_BUDGET_BYTES,
+    maxEntries: INDEX_CACHE_MAX_ENTRIES,
+  });
+  for (const evictKey of evictKeys) {
+    const evicted = indexCache.get(evictKey);
+    indexCache.delete(evictKey);
+    console.log(
+      `[code-explorer] evicting cached index ${evictKey.replaceAll("\0", "::")} (~${evicted?.bytes ?? 0} bytes) to fit the ${INDEX_CACHE_BUDGET_BYTES}-byte budget`,
+    );
+  }
+  if (evictKeys.length > 0) {
+    preBuildHeapBytes = gcAndMeasureHeapBytes();
   }
 
   const built = buildCodeExplorerIndex(ts, input);
@@ -105,14 +146,55 @@ function getCachedIndex(
     ...built.index.rootFileNames,
     ...sourceDirectories(built.index.rootFileNames),
   ].filter(Boolean);
+  const postBuildHeapBytes = gcAndMeasureHeapBytes();
   indexCache.set(key, {
     key,
     built,
     watchedPaths,
     newestMtimeMs: newestMtimeMs(watchedPaths),
     fileSetFingerprint: fileSetFingerprint(built.rootFileNames),
+    bytes: Math.max(0, postBuildHeapBytes - preBuildHeapBytes),
+    lastUsedAt: Date.now(),
   });
   return built;
+}
+
+let forcedGc: (() => void) | undefined | null = null;
+
+// Electron 40's utilityProcess delivers execArgv to process.execArgv but does
+// NOT apply V8 flags from it (verified empirically: globalThis.gc stays
+// undefined and heap_size_limit stays at the pointer-compression cage
+// default), so prefer globalThis.gc when present but otherwise expose gc at
+// runtime. If neither works, degrade to measuring without a forced
+// collection (over-counts, never fails).
+function acquireForcedGc(): (() => void) | undefined {
+  const globalGc = (globalThis as { gc?: () => void }).gc;
+  if (typeof globalGc === "function") {
+    return globalGc;
+  }
+  try {
+    v8.setFlagsFromString("--expose-gc");
+    const gc = vm.runInNewContext("gc") as unknown;
+    if (typeof gc === "function") {
+      return gc as () => void;
+    }
+  } catch {
+    // Fall through to un-collected measurement.
+  }
+  console.warn(
+    "[code-explorer] forced GC is unavailable; heap measurements include uncollected garbage",
+  );
+  return undefined;
+}
+
+// GC before measuring so used_heap_size reflects retained indexes rather than
+// garbage.
+function gcAndMeasureHeapBytes(): number {
+  if (forcedGc === null) {
+    forcedGc = acquireForcedGc();
+  }
+  forcedGc?.();
+  return v8.getHeapStatistics().used_heap_size;
 }
 
 function sourceDirectories(filePaths: string[]): string[] {
@@ -156,7 +238,30 @@ function newestMtimeMs(paths: string[]): number {
   return newest;
 }
 
-parentPort?.on("message", async (input: CodeExplorerWorkerInput) => {
-  const output = await processCodeExplorer(input);
-  parentPort?.postMessage(output);
-});
+// This file runs as an Electron utility process (see
+// src/ipc/processors/code_explorer.ts), which exposes IPC via
+// `process.parentPort` instead of worker_threads' parentPort. Electron's
+// typings for it live in the `electron` module, which isn't part of this
+// worker's tsconfig, so declare the minimal surface we use.
+interface UtilityProcessParentPort {
+  on(
+    event: "message",
+    listener: (messageEvent: { data: CodeExplorerHostRequest }) => void,
+  ): void;
+  postMessage(message: CodeExplorerHostResponse): void;
+}
+
+const parentPort = (
+  process as unknown as { parentPort?: UtilityProcessParentPort }
+).parentPort;
+
+// Handle messages from the main process. Requests are correlated by
+// requestId; the actual indexing/search work is synchronous, so concurrent
+// requests execute one at a time on this thread regardless of arrival order.
+if (parentPort) {
+  parentPort.on("message", async (messageEvent) => {
+    const { requestId, input } = messageEvent.data;
+    const output = await processCodeExplorer(input);
+    parentPort.postMessage({ requestId, ...output });
+  });
+}

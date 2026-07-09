@@ -563,7 +563,8 @@ realPnpmStrictBuildsTestSkipIfWindows(
           "update-app-commands",
           {
             appId,
-            installCommand: "pnpm --config.strictDepBuilds=true install",
+            installCommand:
+              "pnpm --config.strictDepBuilds=true install --no-frozen-lockfile",
             startCommand: "pnpm run dev -- --host 127.0.0.1",
           },
         );

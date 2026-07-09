@@ -333,6 +333,13 @@ export async function readEffectiveSettings(): Promise<UserSettings> {
   return resolveEffectiveSettings(settings, remoteConfig);
 }
 
+/**
+ * Merges and persists user settings.
+ *
+ * Secret-clearing contract: set a secret field to `undefined` to explicitly
+ * clear it. Omitting/deleting the key is treated as an accidental omission from
+ * a consumer read, so preserved locked ciphertext may be re-injected.
+ */
 export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();

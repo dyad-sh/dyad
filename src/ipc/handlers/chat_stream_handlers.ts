@@ -1903,6 +1903,12 @@ This conversation includes one or more image attachments. When the user uploads 
       logger.warn(`No active stream found for chat ${chatId}`);
     }
 
+    // Unblock any pending MCP consents *before* awaiting completion. A stream
+    // parked on a consent prompt won't unwind until that consent resolves, so
+    // awaiting `completion` first would hang indefinitely. Resolving the
+    // consents as declined here lets the handler finish so `completion` settles.
+    clearPendingMcpConsentsForChat(chatId);
+
     // Wait for the in-flight stream handler to fully unwind before returning so
     // callers (e.g. restore-to-message) know any partial tool/file writes have
     // settled and won't race a subsequent git revert. The handler logs its own

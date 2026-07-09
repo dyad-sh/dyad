@@ -181,9 +181,15 @@ export function useVersions(appId: number | null) {
   const restoreToMessageMutation = useMutation<
     RestoreToMessageResponse,
     Error,
-    { chatId: number; messageId: number; restoreCodebase: boolean }
+    { chatId: number; messageId: number; restoreCodebase: boolean },
+    { mutationAppId: number | null }
   >({
     mutationKey: restoreToMessageMutationKey,
+    // Capture the app the mutation targets so `onSuccess` invalidates *that*
+    // app's caches. If the user switches apps while the IPC call is in flight,
+    // the hook's `appId` closure would point at the newly selected app, leaving
+    // the restored app's version/branch/problem caches stale.
+    onMutate: () => ({ mutationAppId: appId }),
     mutationFn: async ({ chatId, messageId, restoreCodebase }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
@@ -196,7 +202,10 @@ export function useVersions(appId: number | null) {
         restoreCodebase,
       });
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, _variables, context) => {
+      // Invalidate the app the mutation ran against (see `onMutate`), falling
+      // back to the current closure `appId` if no context was captured.
+      const restoredAppId = context?.mutationAppId ?? appId;
       if ("warningMessage" in result) {
         // When `newChatId` is present the codebase *was* reverted and only a
         // secondary step (e.g. the Neon DB restore) failed. Make the partial
@@ -215,10 +224,10 @@ export function useVersions(appId: number | null) {
       // navigates once `mutateAsync` resolves), leaving the user on a spinner.
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.versions.list({ appId }),
+          queryKey: queryKeys.versions.list({ appId: restoredAppId }),
         }),
         queryClient.invalidateQueries({
-          queryKey: queryKeys.branches.current({ appId }),
+          queryKey: queryKeys.branches.current({ appId: restoredAppId }),
         }),
         // restoreToMessageVersion creates a brand new chat, so refresh the chat
         // list (like every other chat-creation path) or the sidebar won't show
@@ -227,7 +236,7 @@ export function useVersions(appId: number | null) {
           queryKey: queryKeys.chats.all,
         }),
         queryClient.invalidateQueries({
-          queryKey: queryKeys.problems.byApp({ appId }),
+          queryKey: queryKeys.problems.byApp({ appId: restoredAppId }),
         }),
       ]);
       if (settings?.runtimeMode2 === "cloud") {

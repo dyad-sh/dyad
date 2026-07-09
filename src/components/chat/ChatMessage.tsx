@@ -42,7 +42,6 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -214,8 +213,13 @@ const ChatMessage = ({
   // Exclude cancelled prompts: they render greyed out with a "Cancelled" label,
   // and showing an undo arrow on a turn that never completed (and may have left
   // partial file changes) is confusing.
+  // Attachment-only prompts (no text) are still accepted and can lead to code
+  // changes, so they get a restore arrow too — anchored to the attachment block
+  // below rather than the (absent) message box.
   const showRestoreButton =
-    message.role === "user" && hasUserText && !isCancelled;
+    message.role === "user" &&
+    (hasUserText || attachments.length > 0) &&
+    !isCancelled;
 
   const handleRestoreToMessage = async (restoreCodebase: boolean) => {
     if (appId == null || selectedChatId == null) {
@@ -223,7 +227,11 @@ const ChatMessage = ({
     }
     setShowRestoreConfirm(false);
     try {
-      if (isStreaming) {
+      // Only the code-restore path mutates git state, so it must wait for the
+      // active stream to fully cancel first (avoiding a race with the revert).
+      // Fork-only leaves the codebase untouched, so there's no reason to abort
+      // the original chat's in-progress generation.
+      if (isStreaming && restoreCodebase) {
         await ipc.chat.cancelStream(selectedChatId);
       }
       const result = await restoreToMessage({
@@ -242,6 +250,64 @@ const ChatMessage = ({
     }
   };
 
+  // The restore button + confirmation dialog, anchored absolutely to the
+  // top-right of its (relatively-positioned) container. Rendered inside the
+  // message box for text prompts, and next to the attachment block for
+  // attachment-only prompts (which have no message box).
+  const restoreButtonNode = showRestoreButton ? (
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              data-testid="restore-to-message-button"
+              onClick={() => setShowRestoreConfirm(true)}
+              disabled={isAnyVersionMutationPending}
+              aria-label="Restore to this point"
+              className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 shadow-sm transition-colors duration-200 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200"
+            />
+          }
+        >
+          {isRestoringToMessage ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Undo2 className="h-3.5 w-3.5" />
+          )}
+        </TooltipTrigger>
+        <TooltipContent>
+          Fork or restore to before this message in a new chat
+        </TooltipContent>
+      </Tooltip>
+      <AlertDialog
+        open={showRestoreConfirm}
+        onOpenChange={setShowRestoreConfirm}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore to this point?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-col sm:justify-normal">
+            <AlertDialogAction
+              data-testid="confirm-restore-to-message-button"
+              className="w-full"
+              onClick={() => handleRestoreToMessage(true)}
+            >
+              Restore code & fork chat
+            </AlertDialogAction>
+            <AlertDialogAction
+              data-testid="fork-chat-button"
+              className={`${buttonVariants({ variant: "outline" })} w-full text-foreground`}
+              onClick={() => handleRestoreToMessage(false)}
+            >
+              Fork chat only
+            </AlertDialogAction>
+            <AlertDialogCancel className="w-full">Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  ) : null;
+
   return (
     <div
       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
@@ -258,63 +324,9 @@ const ChatMessage = ({
                 : "relative ml-24 bg-(--sidebar-accent)"
             }`}
           >
-            {showRestoreButton && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        data-testid="restore-to-message-button"
-                        onClick={() => setShowRestoreConfirm(true)}
-                        disabled={isAnyVersionMutationPending}
-                        aria-label="Restore to this point"
-                        className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 shadow-sm transition-colors duration-200 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200"
-                      />
-                    }
-                  >
-                    {isRestoringToMessage ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Undo2 className="h-3.5 w-3.5" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Fork or restore to before this message in a new chat
-                  </TooltipContent>
-                </Tooltip>
-                <AlertDialog
-                  open={showRestoreConfirm}
-                  onOpenChange={setShowRestoreConfirm}
-                >
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        Restore to this point?
-                      </AlertDialogTitle>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter className="flex-col sm:flex-col sm:justify-normal">
-                      <AlertDialogAction
-                        data-testid="confirm-restore-to-message-button"
-                        className="w-full"
-                        onClick={() => handleRestoreToMessage(true)}
-                      >
-                        Restore code & fork chat
-                      </AlertDialogAction>
-                      <AlertDialogAction
-                        data-testid="fork-chat-button"
-                        className={`${buttonVariants({ variant: "outline" })} w-full text-foreground`}
-                        onClick={() => handleRestoreToMessage(false)}
-                      >
-                        Fork chat only
-                      </AlertDialogAction>
-                      <AlertDialogCancel className="w-full">
-                        Cancel
-                      </AlertDialogCancel>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </>
-            )}
+            {/* Text prompts anchor the button to the message box; attachment-only
+                prompts render it next to the attachment block below instead. */}
+            {hasUserText && restoreButtonNode}
             {message.role === "assistant" &&
             !hasAssistantText &&
             isStreaming &&
@@ -406,7 +418,10 @@ const ChatMessage = ({
         )}
         {/* Render attachments outside the message box */}
         {attachments.length > 0 && (
-          <div className="mt-2 ml-24 flex flex-wrap gap-2 justify-end">
+          <div className="relative mt-2 ml-24 flex flex-wrap gap-2 justify-end">
+            {/* Attachment-only prompts have no message box, so anchor the restore
+                button here instead. Text prompts render it above. */}
+            {!hasUserText && restoreButtonNode}
             {attachments.map((att, i) => (
               <DyadAttachment
                 key={i}

@@ -236,6 +236,7 @@ function emitPnpmMinimumReleaseAgeWarning({
 
   safeSend(event.sender, "app:output", {
     type: "package-manager-warning",
+    warningKind: "release-age",
     message,
     appId,
   });
@@ -303,19 +304,24 @@ function notifyPnpmVersionMigrationAvailable({
   event: Electron.IpcMainInvokeEvent;
 }): void {
   try {
-    if (pnpmVersionMigrationNotifiedAppIds.has(appId)) {
-      return;
-    }
     if (!isPnpmVersionMigrationNeeded(appPath)) {
       return;
     }
     const managedMajor = getManagedPnpmMajorVersion();
+    if (!pnpmVersionMigrationNotifiedAppIds.has(appId)) {
+      safeSend(event.sender, "app:output", {
+        type: "stdout",
+        message: `[dyad] This pnpm project needs a pnpm ${managedMajor} migration (pre-9 lockfile, pnpm <= 8 pin, or missing packageManager pin). Dyad already runs pnpm ${managedMajor}, so deploys, CI, and teammates' installs can drift without the matching project pin. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
+        appId,
+      });
+      pnpmVersionMigrationNotifiedAppIds.add(appId);
+    }
     safeSend(event.sender, "app:output", {
-      type: "stdout",
-      message: `[dyad] This pnpm project needs a pnpm ${managedMajor} migration (pre-9 lockfile, pnpm <= 8 pin, or missing packageManager pin). Dyad already runs pnpm ${managedMajor}, so deploys, CI, and teammates' installs can drift without the matching project pin. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
+      type: "package-manager-warning",
+      warningKind: "pnpm-migration",
+      message: `This app pins an older pnpm that can't read the lockfile Dyad writes. Migrate to pnpm ${managedMajor} so CI, deploys, and teammates can install it reliably.`,
       appId,
     });
-    pnpmVersionMigrationNotifiedAppIds.add(appId);
   } catch (error) {
     logger.warn("Failed to check pnpm version migration status:", error);
   }

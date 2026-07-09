@@ -310,6 +310,7 @@ export const AppOutputSchema = z.object({
   ]),
   message: z.string(),
   appId: z.number(),
+  warningKind: z.enum(["release-age", "pnpm-migration"]).optional(),
   timestamp: z.number().optional(),
   exitCode: z.number().nullable().optional(),
   signal: z.string().nullable().optional(),

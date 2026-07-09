@@ -620,12 +620,28 @@ realPnpmStrictBuildsTestSkipIfWindows(
       `${JSON.stringify(packageJson, null, 2)}\n`,
     );
 
-    await po.appManagement.getTitleBarAppNameButton().click();
-    await po.appManagement.clickAppUpgradeButton({
-      upgradeId: "pnpm-version-migration",
+    await po.clickRestart();
+    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible({
+      timeout: Timeout.MEDIUM,
     });
-    await po.appManagement.expectAppUpgradeButtonIsNotVisible({
-      upgradeId: "pnpm-version-migration",
+
+    const warningBanner = po.page.getByTestId("package-manager-warning-banner");
+    await expect(warningBanner).toContainText("This app pins an older pnpm", {
+      timeout: Timeout.EXTRA_LONG,
+    });
+    await warningBanner
+      .getByTestId("package-manager-warning-run-upgrade")
+      .click();
+    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.previewPanel.expectPreviewIframeIsVisible(
+      SOCKET_FIREWALL_TEST_TIMEOUT,
+    );
+    await expect(
+      po.page.getByTestId("package-manager-warning-banner"),
+    ).toBeHidden({
+      timeout: Timeout.MEDIUM,
     });
 
     const migratedPackageJson = JSON.parse(

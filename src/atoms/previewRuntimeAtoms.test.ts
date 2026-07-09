@@ -73,12 +73,16 @@ describe("preview runtime atoms", () => {
     );
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 1,
-      warning: { message: "Install pnpm 10.16.0 or newer" },
+      warning: {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      },
     });
 
     expect(store.get(currentPreviewLoadingAtom)).toBe(true);
     expect(store.get(currentAppUrlAtom).appUrl).toBe("http://localhost:3000");
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
       message: "Install pnpm 10.16.0 or newer",
       appId: 1,
     });
@@ -97,7 +101,10 @@ describe("preview runtime atoms", () => {
     store.set(selectedAppIdAtom, 1);
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 2,
-      warning: { message: "Install pnpm 10.16.0 or newer" },
+      warning: {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      },
     });
 
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
@@ -105,6 +112,7 @@ describe("preview runtime atoms", () => {
     store.set(selectedAppIdAtom, 2);
 
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
       message: "Install pnpm 10.16.0 or newer",
       appId: 2,
     });
@@ -138,24 +146,67 @@ describe("preview runtime atoms", () => {
     });
   });
 
-  it("dismisses package manager warnings for all apps for the session", () => {
+  it("dismisses package manager warnings for one app for the session", () => {
     const store = createStore();
     store.set(selectedAppIdAtom, 1);
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 1,
-      warning: { message: "Install pnpm 10.16.0 or newer" },
+      warning: {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      },
     });
 
-    store.set(dismissPackageManagerWarningsAtom);
+    store.set(dismissPackageManagerWarningsAtom, 1);
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 2,
-      warning: { message: "Install pnpm 10.16.0 or newer" },
+      warning: {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      },
     });
 
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
 
     store.set(selectedAppIdAtom, 2);
 
-    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
+      message: "Install pnpm 10.16.0 or newer",
+      appId: 2,
+    });
+  });
+
+  it("keeps release-age warnings ahead of pnpm migration warnings", () => {
+    const store = createStore();
+    store.set(selectedAppIdAtom, 1);
+
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: {
+        kind: "pnpm-migration",
+        message: "Migrate to pnpm 11",
+      },
+    });
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      },
+    });
+    store.set(setPackageManagerWarningForAppAtom, {
+      appId: 1,
+      warning: {
+        kind: "pnpm-migration",
+        message: "Migrate to pnpm 11",
+      },
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
+      message: "Install pnpm 10.16.0 or newer",
+      appId: 1,
+    });
   });
 });

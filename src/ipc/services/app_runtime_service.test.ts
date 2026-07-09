@@ -599,6 +599,14 @@ describe("executeApp", () => {
         );
       });
       expect(migrationNudges).toHaveLength(1);
+      const migrationWarnings = safeSendMock.mock.calls.filter((call) => {
+        return (
+          call[1] === "app:output" &&
+          call[2]?.type === "package-manager-warning" &&
+          call[2]?.warningKind === "pnpm-migration"
+        );
+      });
+      expect(migrationWarnings).toHaveLength(2);
     } finally {
       await rm(appPath, { recursive: true, force: true });
     }

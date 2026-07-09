@@ -142,7 +142,7 @@ export function useStreamChat({
         if (warningAppId !== null) {
           setPackageManagerWarning({
             appId: warningAppId,
-            warning: { message: warningMessage },
+            warning: { kind: "release-age", message: warningMessage },
           });
         } else {
           showWarning(warningMessage);

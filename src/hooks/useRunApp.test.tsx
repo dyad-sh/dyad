@@ -308,6 +308,7 @@ describe("useAppOutputSubscription", () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "package-manager-warning",
+          warningKind: "release-age",
           message: "Install pnpm 10.16.0 or newer for the strongest protection",
           appId: 1,
         });
@@ -315,6 +316,7 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 1,
     });
@@ -332,6 +334,7 @@ describe("useAppOutputSubscription", () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "package-manager-warning",
+          warningKind: "release-age",
           message: "Install pnpm 10.16.0 or newer for the strongest protection",
           appId: 1,
         });
@@ -339,6 +342,37 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+
+    unmount();
+  });
+
+  it("stores pnpm migration warnings even when the release-age warning setting is disabled", () => {
+    settingsMock.current = {
+      hidePnpmMinimumReleaseAgeWarning: true,
+    };
+    const { store, Wrapper } = makeWrapper(1);
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "package-manager-warning",
+          warningKind: "pnpm-migration",
+          message:
+            "This app pins an older pnpm that can't read the lockfile Dyad writes.",
+          appId: 1,
+        });
+      }
+    });
+
+    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "pnpm-migration",
+      message:
+        "This app pins an older pnpm that can't read the lockfile Dyad writes.",
+      appId: 1,
+    });
 
     unmount();
   });
@@ -356,6 +390,7 @@ describe("useAppOutputSubscription", () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "package-manager-warning",
+          warningKind: "release-age",
           message: "Install pnpm 10.16.0 or newer for the strongest protection",
           appId: 2,
         });
@@ -369,6 +404,7 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 2,
     });
@@ -420,6 +456,7 @@ describe("useAppOutputSubscription", () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "package-manager-warning",
+          warningKind: "release-age",
           message: "Install pnpm 10.16.0 or newer for the strongest protection",
           appId: 1,
         });
@@ -449,6 +486,7 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+      kind: "release-age",
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 1,
     });

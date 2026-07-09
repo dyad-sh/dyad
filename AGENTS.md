@@ -32,6 +32,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/claude-github-workflows.md](rules/claude-github-workflows.md) | Editing `.github/workflows/*.yml` that invoke `anthropics/claude-code-action` — workflow shape, untrusted-input handling, and **permission/`.claude/settings.json` hardening** |
 | [rules/ui-styling.md](rules/ui-styling.md)                           | Adding provider/brand icons, styling scrollable popovers, or using Tailwind v4 arbitrary values                                                                                |
 | [rules/auto-update.md](rules/auto-update.md)                         | Debugging Squirrel/update-electron-app failures, update feed URLs, or updater log capture in bug reports and session debug bundles                                             |
+| [rules/safe-storage.md](rules/safe-storage.md)                       | Working with Electron `safeStorage`, macOS Keychain identities, or legacy os_crypt secret recovery                                                                             |
 
 ## Project setup and lints
 

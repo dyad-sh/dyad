@@ -79,8 +79,8 @@ function makeFakeReader(map: Record<string, string>): FakeReader {
   };
 }
 
-const DYAD_KEY = "dyad Safe Storage::dyad";
-const CHROMIUM_KEY = "Chromium Safe Storage::Chromium";
+const DYAD_KEY = "dyad Safe Storage::dyad Key";
+const CHROMIUM_KEY = "Chromium Safe Storage::Chromium Key";
 
 describe("deriveLegacyOsCryptKey", () => {
   it("uses Chromium's fixed PBKDF2 parameters", () => {
@@ -167,8 +167,8 @@ describe("recoverLegacySafeStorageSecret", () => {
     // Both identities are consulted before returning so a later plausible
     // decrypt cannot be skipped.
     expect(reader.calls).toEqual([
-      { service: "dyad Safe Storage", account: "dyad" },
-      { service: "Chromium Safe Storage", account: "Chromium" },
+      { service: "dyad Safe Storage", account: "dyad Key" },
+      { service: "Chromium Safe Storage", account: "Chromium Key" },
     ]);
     expect(getRecoveryStatsForTesting()).toEqual({
       attempted: 1,
@@ -188,8 +188,8 @@ describe("recoverLegacySafeStorageSecret", () => {
       );
     });
     expect(reader.calls).toEqual([
-      { service: "dyad Safe Storage", account: "dyad" },
-      { service: "Chromium Safe Storage", account: "Chromium" },
+      { service: "dyad Safe Storage", account: "dyad Key" },
+      { service: "Chromium Safe Storage", account: "Chromium Key" },
     ]);
   });
 
@@ -247,8 +247,8 @@ describe("recoverLegacySafeStorageSecret", () => {
       expect(recoverLegacySafeStorageSecret(ciphertext, reader)).toBeNull();
     });
     expect(reader.calls).toEqual([
-      { service: "dyad Safe Storage", account: "dyad" },
-      { service: "Chromium Safe Storage", account: "Chromium" },
+      { service: "dyad Safe Storage", account: "dyad Key" },
+      { service: "Chromium Safe Storage", account: "Chromium Key" },
     ]);
     expect(getRecoveryStatsForTesting()).toEqual({
       attempted: 1,
@@ -395,7 +395,7 @@ describe.skipIf(process.platform !== "darwin")(
         "-s",
         "dyad Safe Storage",
         "-a",
-        "dyad",
+        "dyad Key",
         "-w",
         storedPassword,
         keychainPath,
@@ -416,7 +416,7 @@ describe.skipIf(process.platform !== "darwin")(
 
     it("reads a stored password from the temp keychain", () => {
       const reader = new SecurityCliKeychainPasswordReader(keychainPath);
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBe(
         storedPassword,
       );
     });
@@ -443,7 +443,7 @@ describe.skipIf(process.platform !== "darwin")(
       // under the reader: cached answers must keep being served without any
       // further CLI calls (a re-read of the now-missing item would return
       // null, and a prompt-per-secret would stall startup on real machines).
-      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+      expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBe(
         storedPassword,
       );
       expect(reader.readPassword("Missing Safe Storage", "nobody")).toBeNull();
@@ -454,7 +454,7 @@ describe.skipIf(process.platform !== "darwin")(
         keychainPath,
       ]);
       try {
-        expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+        expect(reader.readPassword("dyad Safe Storage", "dyad Key")).toBe(
           storedPassword,
         );
         expect(
@@ -465,7 +465,7 @@ describe.skipIf(process.platform !== "darwin")(
         expect(
           new SecurityCliKeychainPasswordReader(keychainPath).readPassword(
             "dyad Safe Storage",
-            "dyad",
+            "dyad Key",
           ),
         ).toBeNull();
       } finally {
@@ -476,7 +476,7 @@ describe.skipIf(process.platform !== "darwin")(
           "-s",
           "dyad Safe Storage",
           "-a",
-          "dyad",
+          "dyad Key",
           "-w",
           storedPassword,
           keychainPath,

@@ -17,7 +17,7 @@ const logger = log.scope("safe_storage_recovery");
  * Chromium macOS os_crypt scheme (verified byte-for-byte against Electron
  * 40/43 output):
  *   - Keychain generic password: service "<product> Safe Storage",
- *     account "<product>" -> the password string.
+ *     account "<product> Key" -> the password string.
  *   - key = PBKDF2-HMAC-SHA1(password, salt "saltysalt", 1003 iters, 16 bytes)
  *   - ciphertext = "v10" + AES-128-CBC(key, IV = 16 * 0x20, PKCS#7) of UTF-8
  *     plaintext.
@@ -42,8 +42,8 @@ interface LegacyIdentity {
 // Ordered by likelihood on a current install: the post-`ready` "dyad" identity
 // first, then the legacy "Chromium" identity from the pre-`ready` race.
 const LEGACY_IDENTITIES: LegacyIdentity[] = [
-  { service: "dyad Safe Storage", account: "dyad" },
-  { service: "Chromium Safe Storage", account: "Chromium" },
+  { service: "dyad Safe Storage", account: "dyad Key" },
+  { service: "Chromium Safe Storage", account: "Chromium Key" },
 ];
 
 /**

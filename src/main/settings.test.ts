@@ -1424,6 +1424,18 @@ describe("legacy keychain recovery integration", () => {
     expect(mockRecover).toHaveBeenCalledWith(locked.value);
   });
 
+  it("trims recovered plaintext before returning it to consumers", () => {
+    const locked = lockedSecret("github");
+    store[mockSettingsPath] = JSON.stringify({ githubAccessToken: locked });
+    mockRecover.mockReturnValue("  gh_recovered_token\n");
+
+    const settings = readSettings();
+    expect(settings.githubAccessToken).toEqual({
+      value: "gh_recovered_token",
+      encryptionType: "electron-safe-storage",
+    });
+  });
+
   it("re-encrypts a recovered secret through the normal write path", () => {
     const locked = lockedSecret("github");
     store[mockSettingsPath] = JSON.stringify({ githubAccessToken: locked });

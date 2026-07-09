@@ -715,7 +715,7 @@ function resolveStoredSecret(
           `Recovered ${label} using a legacy safeStorage Keychain identity.`,
         );
         return {
-          value: recovered,
+          value: recovered.trim(),
           encryptionType: storedSecret.encryptionType,
         };
       }

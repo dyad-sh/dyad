@@ -12,7 +12,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { formatCompact, formatCurrency, formatPercent } from "@/lib/format";
 import { useProjects, useWorkspaceOverview } from "@/hooks/useOpsQueries";
 import { importedCorpusOverview } from "@/fixture-corpus";
-import { importedCorpusOverview } from "@/fixture-corpus";
 
 const Index = () => {
   const overview = useWorkspaceOverview();
@@ -27,7 +26,6 @@ const Index = () => {
         <MetricCard title="Deployment health" value={data ? formatPercent(data.deploymentHealth) : "..."} detail="Across preview, staging, production" icon={<Rocket className="h-4 w-4" />} />
         <MetricCard title="Open incidents" value={data?.incidentLoad.open ?? "..."} detail="Deterministic fixture data" icon={<AlertTriangle className="h-4 w-4" />} />
         <MetricCard title="Automations" value={data?.automations ?? "..."} detail="Enabled workflow rules" icon={<Activity className="h-4 w-4" />} />
-        <MetricCard title="Imported corpus" value={formatCompact(importedCorpusOverview.moduleCount)} detail={`${formatCompact(importedCorpusOverview.recordCount)} records in Vite graph`} icon={<Activity className="h-4 w-4" />} />
         <MetricCard title="Imported corpus" value={formatCompact(importedCorpusOverview.moduleCount)} detail={`${formatCompact(importedCorpusOverview.recordCount)} records in Vite graph`} icon={<Activity className="h-4 w-4" />} />
       </section>
       <section className="mt-6 grid gap-4 lg:grid-cols-2">

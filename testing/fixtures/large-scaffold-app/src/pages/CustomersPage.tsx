@@ -19,7 +19,7 @@ export default function CustomersPage() {
           <CardContent className="space-y-3 p-4">
             <p className="text-sm font-semibold">Fixture records</p>
             <p className="text-sm text-slate-600">This page renders {filtered.length} typed records through React Query and local mock services.</p>
-            <div className="space-y-2">{filtered.slice(0, 5).map((item) => <Button key={item.id} asChild variant="secondary" className="w-full justify-start"><Link to={`/customers/${item.id}`}>{item.name ?? item.title ?? item.id}</Link></Button>)}</div>
+            <div className="space-y-2">{filtered.slice(0, 5).map((item) => <Button key={item.id} asChild variant="secondary" className="w-full justify-start"><Link to={`/customers/${item.id}`}>{item.name}</Link></Button>)}</div>
           </CardContent>
         </Card>
       </section>

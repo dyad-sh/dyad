@@ -17,6 +17,7 @@ import KnowledgePage from "./pages/KnowledgePage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
+import { corpusRoutes } from "@/fixture-corpus/routes";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,9 @@ const App = () => (
             <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            {corpusRoutes.map((route) => (
+              <Route key={route.path} path={route.path} element={route.element} />
+            ))}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppShell>

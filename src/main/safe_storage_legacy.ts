@@ -33,6 +33,9 @@ const PBKDF2_SALT = "saltysalt";
 const PBKDF2_ITERATIONS = 1003;
 const PBKDF2_KEY_LENGTH = 16;
 const SECURITY_CLI_TIMEOUT_MS = 30_000;
+const ERR_SEC_SUCCESS = 0;
+const ERR_SEC_INTERACTION_NOT_ALLOWED = -25308;
+const ERR_SEC_AUTH_FAILED = -25293;
 // Chromium uses a fixed IV of 16 space (0x20) bytes for its os_crypt v10 scheme.
 const AES_IV = Buffer.alloc(16, 0x20);
 
@@ -93,12 +96,19 @@ export interface KeychainPasswordReader {
   readPassword(service: string, account: string): string | null;
 }
 
+interface KeychainReadResult {
+  status: number;
+  password: string | null;
+}
+
 interface KeychainReaderBinding {
   readGenericPassword(
     service: string,
     account: string,
     keychainPath?: string,
-  ): string | null;
+    allowUI?: boolean,
+  ): KeychainReadResult;
+  isDefaultKeychainLocked(keychainPath?: string): boolean | null;
 }
 
 type KeychainReaderBindingLoader = () => KeychainReaderBinding;
@@ -107,6 +117,8 @@ let inProcessBinding: KeychainReaderBinding | null | undefined;
 let inProcessBindingLoadFailureLogged = false;
 let inProcessBindingLoader: KeychainReaderBindingLoader = () =>
   require("dyad-keychain-reader") as KeychainReaderBinding;
+let interactionNeededIdentities = new Set<string>();
+let unlockPromptAttempted = false;
 
 function loadInProcessKeychainReaderBinding(): KeychainReaderBinding | null {
   if (inProcessBinding !== undefined) {
@@ -129,6 +141,25 @@ function createDefaultKeychainPasswordReader(): KeychainPasswordReader {
   return process.env.DYAD_SAFE_STORAGE_READER === "cli"
     ? new SecurityCliKeychainPasswordReader()
     : new InProcessKeychainPasswordReader();
+}
+
+function keychainIdentityCacheKey(service: string, account: string): string {
+  return `${service}\u0000${account}`;
+}
+
+function normalizeReadResult(result: unknown): KeychainReadResult {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    typeof (result as KeychainReadResult).status === "number"
+  ) {
+    const password = (result as KeychainReadResult).password;
+    return {
+      status: (result as KeychainReadResult).status,
+      password: typeof password === "string" ? password : null,
+    };
+  }
+  return { status: -1, password: null };
 }
 
 /**
@@ -161,7 +192,7 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
     if (process.platform !== "darwin") {
       return null;
     }
-    const cacheKey = `${service}\u0000${account}`;
+    const cacheKey = keychainIdentityCacheKey(service, account);
     const cached = this.passwordCache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
@@ -211,22 +242,35 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
  */
 export class InProcessKeychainPasswordReader implements KeychainPasswordReader {
   private readonly keychainPath?: string;
+  private readonly allowUI: boolean;
   private readonly passwordCache = new Map<string, string | null>();
 
-  constructor(keychainPath?: string) {
+  constructor(keychainPath?: string, options: { allowUI?: boolean } = {}) {
     this.keychainPath = keychainPath;
+    this.allowUI = options.allowUI ?? false;
   }
 
   readPassword(service: string, account: string): string | null {
     if (process.platform !== "darwin") {
       return null;
     }
-    const cacheKey = `${service}\u0000${account}`;
+    const cacheKey = keychainIdentityCacheKey(service, account);
     const cached = this.passwordCache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
-    const password = this.readPasswordUncached(service, account);
+    const result = this.readPasswordUncached(service, account);
+    const password =
+      result.status === ERR_SEC_SUCCESS && result.password !== null
+        ? result.password
+        : null;
+    if (
+      !this.allowUI &&
+      (result.status === ERR_SEC_INTERACTION_NOT_ALLOWED ||
+        result.status === ERR_SEC_AUTH_FAILED)
+    ) {
+      interactionNeededIdentities.add(cacheKey);
+    }
     this.passwordCache.set(cacheKey, password);
     return password;
   }
@@ -234,16 +278,23 @@ export class InProcessKeychainPasswordReader implements KeychainPasswordReader {
   private readPasswordUncached(
     service: string,
     account: string,
-  ): string | null {
+  ): KeychainReadResult {
     const binding = loadInProcessKeychainReaderBinding();
     if (binding === null) {
-      return null;
+      return { status: -1, password: null };
     }
     try {
-      return binding.readGenericPassword(service, account, this.keychainPath);
+      return normalizeReadResult(
+        binding.readGenericPassword(
+          service,
+          account,
+          this.keychainPath,
+          this.allowUI,
+        ),
+      );
     } catch (error) {
       logger.debug("In-process Keychain reader failed", error);
-      return null;
+      return { status: -1, password: null };
     }
   }
 }
@@ -284,6 +335,90 @@ const stats: RecoveryStats = { attempted: 0, recovered: 0, failed: 0 };
 const recoveryCache = new Map<string, string | null>();
 
 let defaultReader: KeychainPasswordReader | undefined;
+
+function clearRecoveryFailureCache(): void {
+  for (const [ciphertextBase64, recovery] of recoveryCache) {
+    if (recovery === null) {
+      recoveryCache.delete(ciphertextBase64);
+    }
+  }
+}
+
+export function getRecoveryStats(): RecoveryStats {
+  return { ...stats };
+}
+
+export function isDefaultKeychainLockedForSafeStorageRecovery(
+  keychainPath?: string,
+): boolean | null {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  const binding = loadInProcessKeychainReaderBinding();
+  if (binding === null) {
+    return null;
+  }
+  try {
+    const locked = binding.isDefaultKeychainLocked(keychainPath);
+    return typeof locked === "boolean" ? locked : null;
+  } catch (error) {
+    logger.debug("Failed to check default Keychain lock state", error);
+    return null;
+  }
+}
+
+export function recoveryNeedsKeychainUnlock(): boolean {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY === "1") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_UNLOCK_PROMPT === "1") {
+    return false;
+  }
+  if (interactionNeededIdentities.size === 0 || stats.failed === 0) {
+    return false;
+  }
+  return isDefaultKeychainLockedForSafeStorageRecovery() === true;
+}
+
+export function retryRecoveryWithKeychainUnlock(): boolean {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY === "1") {
+    return false;
+  }
+  if (process.env.DYAD_DISABLE_SAFE_STORAGE_UNLOCK_PROMPT === "1") {
+    return false;
+  }
+  if (unlockPromptAttempted) {
+    return false;
+  }
+  if (!recoveryNeedsKeychainUnlock()) {
+    return false;
+  }
+  unlockPromptAttempted = true;
+
+  const retryReader = new InProcessKeychainPasswordReader(undefined, {
+    allowUI: true,
+  });
+  let obtainedPassword = false;
+  for (const identity of LEGACY_IDENTITIES) {
+    if (retryReader.readPassword(identity.service, identity.account) !== null) {
+      obtainedPassword = true;
+    }
+  }
+  if (!obtainedPassword) {
+    return false;
+  }
+
+  clearRecoveryFailureCache();
+  interactionNeededIdentities = new Set();
+  defaultReader = retryReader;
+  return true;
+}
 
 /**
  * Attempts to recover a plaintext secret from a legacy `safeStorage` "v10"
@@ -378,6 +513,8 @@ export function clearRecoveryCacheForTesting(): void {
   stats.recovered = 0;
   stats.failed = 0;
   defaultReader = undefined;
+  interactionNeededIdentities = new Set();
+  unlockPromptAttempted = false;
   inProcessBinding = undefined;
   inProcessBindingLoadFailureLogged = false;
   inProcessBindingLoader = () =>
@@ -386,7 +523,7 @@ export function clearRecoveryCacheForTesting(): void {
 
 /** Test-only: snapshot of the recovery counters. */
 export function getRecoveryStatsForTesting(): RecoveryStats {
-  return { ...stats };
+  return getRecoveryStats();
 }
 
 /** Test-only: injects a fake native binding loader. */

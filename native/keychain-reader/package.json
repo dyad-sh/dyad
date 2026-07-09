@@ -4,6 +4,9 @@
   "private": true,
   "description": "macOS Security.framework Keychain reader for Dyad safeStorage recovery",
   "main": "index.js",
+  "scripts": {
+    "install": "node-gyp rebuild"
+  },
   "gypfile": true,
   "os": [
     "darwin"

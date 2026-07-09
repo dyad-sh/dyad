@@ -30,7 +30,12 @@ import {
   readRendererCrashRecord,
   clearRendererCrashRecord,
   setInitialLoadIsFirstSession,
+  rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock,
 } from "./main/settings";
+import {
+  recoveryNeedsKeychainUnlock,
+  retryRecoveryWithKeychainUnlock,
+} from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
 import { sendTelemetryEvent } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
@@ -466,6 +471,7 @@ export async function onReady() {
   await onFirstRunMaybe(settings);
   createWindow();
   createApplicationMenu();
+  scheduleSafeStorageKeychainUnlockRetry();
 
   sendTelemetryEvent("runtime_source", {
     runtime_source: settings.customNodePath
@@ -502,6 +508,17 @@ export async function onReady() {
       },
     }); // additional configuration options available
   }
+}
+
+function scheduleSafeStorageKeychainUnlockRetry(): void {
+  setImmediate(() => {
+    if (!recoveryNeedsKeychainUnlock()) {
+      return;
+    }
+    if (retryRecoveryWithKeychainUnlock()) {
+      rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock();
+    }
+  });
 }
 
 export async function onFirstRunMaybe(settings: UserSettings) {

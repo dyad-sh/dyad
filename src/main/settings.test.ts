@@ -15,12 +15,16 @@ import {
   writeCrashSentinel,
   setSentinelActiveChat,
   readCrashSentinel,
+  rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock,
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getRemoteDesktopConfig } from "@/ipc/shared/remote_desktop_config";
-import { recoverLegacySafeStorageSecret } from "@/main/safe_storage_legacy";
+import {
+  getRecoveryStats,
+  recoverLegacySafeStorageSecret,
+} from "@/main/safe_storage_legacy";
 import { ZodError } from "zod";
 
 const mockSend = vi.fn();
@@ -59,6 +63,7 @@ vi.mock("@/ipc/shared/remote_desktop_config", () => ({
 // settings.ts falls back to legacy Keychain recovery when a secret fails to
 // decrypt; unit tests must never shell out to the real `security` CLI.
 vi.mock("@/main/safe_storage_legacy", () => ({
+  getRecoveryStats: vi.fn(() => ({ attempted: 0, recovered: 0, failed: 0 })),
   recoverLegacySafeStorageSecret: vi.fn(() => null),
 }));
 
@@ -1354,6 +1359,7 @@ describe("legacy keychain recovery integration", () => {
   const mockSettingsPath = "/mock/user/data/user-settings.json";
   let store: Record<string, string>;
   const mockRecover = vi.mocked(recoverLegacySafeStorageSecret);
+  const mockGetRecoveryStats = vi.mocked(getRecoveryStats);
 
   const b64 = (value: string) => Buffer.from(value).toString("base64");
   const lockedSecret = (marker: string) => ({
@@ -1402,6 +1408,11 @@ describe("legacy keychain recovery integration", () => {
       return `decrypted:${marker}`;
     });
     mockRecover.mockReturnValue(null);
+    mockGetRecoveryStats.mockReturnValue({
+      attempted: 0,
+      recovered: 0,
+      failed: 0,
+    });
   });
 
   afterEach(() => {
@@ -1445,6 +1456,21 @@ describe("legacy keychain recovery integration", () => {
     // under the current session identity. With encryption unavailable in this
     // harness, encrypt() stores the recovered value as plaintext.
     writeSettings({ enableAutoUpdate: false });
+    expect(readStoredFile().githubAccessToken).toEqual({
+      value: "gh_recovered_token",
+      encryptionType: "plaintext",
+    });
+  });
+
+  it("rewrites settings after Keychain unlock when recovery succeeds", () => {
+    const locked = lockedSecret("github");
+    store[mockSettingsPath] = JSON.stringify({ githubAccessToken: locked });
+    mockRecover.mockReturnValue("gh_recovered_token");
+    mockGetRecoveryStats
+      .mockReturnValueOnce({ attempted: 1, recovered: 0, failed: 1 })
+      .mockReturnValueOnce({ attempted: 2, recovered: 1, failed: 1 });
+
+    expect(rewriteRecoveredSafeStorageSecretsAfterKeychainUnlock()).toBe(1);
     expect(readStoredFile().githubAccessToken).toEqual({
       value: "gh_recovered_token",
       encryptionType: "plaintext",

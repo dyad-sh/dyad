@@ -1076,15 +1076,18 @@ async function handleListCollaborators(
       );
     }
 
-    const response = await fetch(
+    const collaboratorsUrl = new URL(
       `${getGitHubApiBase()}/repos/${app.githubOrg}/${app.githubRepo}/collaborators`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github+json",
-        },
-      },
     );
+    collaboratorsUrl.searchParams.set("_", String(Date.now()));
+
+    const response = await fetch(collaboratorsUrl.toString(), {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -1158,6 +1161,7 @@ async function handleInviteCollaborator(
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
           Accept: "application/vnd.github+json",
         },
         body: JSON.stringify({

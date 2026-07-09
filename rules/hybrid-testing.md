@@ -77,3 +77,8 @@ like `Failed to resolve ref 'main'` or a branch banner showing `master`, check
 the fixture repo's `git init` default branch. Either make production code use
 the current branch instead of assuming `main`, or force the fixture branch name
 in the test so local and CI exercise the same branch layout.
+
+When replacing `node-fetch` with native/global `fetch` in IPC handlers, re-run
+hybrid tests that perform a GET after a mutation. The happy-dom/native fetch
+path can reuse a stale GET response unless the request explicitly bypasses
+cache, which `node-fetch` did not model.

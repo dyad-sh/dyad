@@ -365,6 +365,57 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+  # Opt-in macOS-only regression tests for the safeStorage Keychain-identity bug
+  # (issue #3837). This spec temporarily swaps the machine-global DEFAULT macOS
+  # keychain to a throwaway one (safeStorage always uses the default keychain),
+  # so it MUST run only on GitHub-hosted, ephemeral macos-latest VMs — NEVER on
+  # the self-hosted macOS runner, whose keychain is shared across jobs and would
+  # be corrupted by the swap. It reuses the macOS build artifact but is a
+  # standalone job (not part of the sharded e2e-tests matrix or merge-reports).
+  safe-storage-e2e:
+    needs: [check-changes, build-e2e-artifacts]
+    if: needs.check-changes.outputs.should_run_tests == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v5
+        with:
+          node-version: v24.13.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - name: Install node modules
+        run: bash scripts/npm-ci-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: build-macos
+      - name: Extract macOS app bundle
+        run: tar -xf out-macos.tar
+      - name: Safe storage keychain identity tests
+        run: DYAD_E2E_SAFE_STORAGE=1 npx playwright test e2e-tests/safe_storage_keychain_identity.spec.ts --workers=1
+      - name: Upload Playwright report
+        # In CI the reporter is "blob" (blob-report/) and traces/screenshots are
+        # retained under test-results/ on failure; there is no playwright-report/.
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: safe-storage-e2e-report
+          path: |
+            blob-report
+            test-results
+          retention-days: 3
+          if-no-files-found: ignore
+
   e2e-tests:
     needs: [check-changes, build-e2e-artifacts]
     strategy:

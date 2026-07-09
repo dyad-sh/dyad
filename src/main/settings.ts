@@ -26,6 +26,7 @@ import {
 } from "@/ipc/shared/remote_desktop_config";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ZodError } from "zod";
+import { recoverLegacySafeStorageSecret } from "./safe_storage_legacy";
 
 const logger = log.scope("settings");
 
@@ -302,7 +303,7 @@ export function readSettings(): UserSettings {
       fs.writeFileSync(filePath, JSON.stringify(DEFAULT_SETTINGS, null, 2));
       return DEFAULT_SETTINGS;
     }
-    return readExistingSettingsFile(filePath);
+    return readExistingSettingsFile(filePath).settings;
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;
@@ -335,6 +336,12 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const filePath = getSettingsFilePath();
     const settingsForWrite = readSettingsForWrite(filePath);
     const newSettings = { ...settingsForWrite.settings, ...settings };
+    // Decide which still-locked ciphertext secrets must survive this write, and
+    // strip untouched ones out so the encryption pass below can't corrupt them.
+    const preservedToReinject = reconcilePreservedSecrets(
+      newSettings,
+      settingsForWrite.preserved,
+    );
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -394,6 +401,14 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         v.serviceAccountKey = encrypt(v.serviceAccountKey.value);
       }
     }
+    // Write the preserved ciphertext back verbatim — NOT through encrypt(), which
+    // would double-encrypt it (or, in test builds, turn ciphertext into plaintext).
+    for (const { path, secret } of preservedToReinject) {
+      setAtPath(newSettings, path, {
+        value: secret.value,
+        encryptionType: secret.encryptionType,
+      });
+    }
     // Use StoredUserSettingsSchema for writing to maintain backwards compatibility
     const validatedSettings = StoredUserSettingsSchema.parse(newSettings);
     writeSettingsFileAtomically(
@@ -436,34 +451,66 @@ function toSettingsWriteError(error: unknown): DyadError {
   });
 }
 
-function readExistingSettingsFile(filePath: string): UserSettings {
+// A secret that failed to decrypt but whose ciphertext must be preserved on disk
+// so a later session can recover it once the encryption key is available again.
+// `path` locates the field within a settings object; `secret` is the untouched
+// stored ciphertext (never passed back through encrypt()).
+interface PreservedSecret {
+  path: string[];
+  secret: Secret;
+}
+
+interface DecryptContext {
+  // When true (the write path) a secret that fails to decrypt is kept verbatim as
+  // ciphertext and recorded in `preserved`; when false (the consumer read path) it
+  // is dropped so the UI shows "not connected".
+  preserveUndecryptable: boolean;
+  preserved: PreservedSecret[];
+}
+
+// Warn at most once per field per process. Reads happen constantly, so a failed
+// decrypt must not spam the log on every read.
+const warnedPreservedSecrets = new Set<string>();
+
+function readExistingSettingsFile(
+  filePath: string,
+  options: { preserveUndecryptable?: boolean } = {},
+): { settings: UserSettings; preserved: PreservedSecret[] } {
   const rawSettings = JSON.parse(fs.readFileSync(filePath, "utf-8"));
   const combinedSettings: UserSettings = {
     ...DEFAULT_SETTINGS,
     ...rawSettings,
     hasRunBefore: rawSettings.hasRunBefore ?? true,
   };
+  const ctx: DecryptContext = {
+    preserveUndecryptable: options.preserveUndecryptable ?? false,
+    preserved: [],
+  };
   const supabase = combinedSettings.supabase;
   if (supabase) {
     // Decrypt legacy tokens (kept but ignored)
     if (supabase.refreshToken) {
-      const decrypted = decryptStoredSecret(
+      const resolved = resolveStoredSecret(
         supabase.refreshToken,
         "Supabase refresh token",
+        ["supabase", "refreshToken"],
+        ctx,
       );
-      if (decrypted) {
-        supabase.refreshToken = decrypted;
+      if (resolved) {
+        supabase.refreshToken = resolved;
       } else {
         delete supabase.refreshToken;
       }
     }
     if (supabase.accessToken) {
-      const decrypted = decryptStoredSecret(
+      const resolved = resolveStoredSecret(
         supabase.accessToken,
         "Supabase access token",
+        ["supabase", "accessToken"],
+        ctx,
       );
-      if (decrypted) {
-        supabase.accessToken = decrypted;
+      if (resolved) {
+        supabase.accessToken = resolved;
       } else {
         delete supabase.accessToken;
       }
@@ -473,18 +520,26 @@ function readExistingSettingsFile(filePath: string): UserSettings {
       for (const orgId in supabase.organizations) {
         const org = supabase.organizations[orgId];
         const accessToken = org.accessToken
-          ? decryptStoredSecret(
+          ? resolveStoredSecret(
               org.accessToken,
               `Supabase access token for organization ${orgId}`,
+              ["supabase", "organizations", orgId, "accessToken"],
+              ctx,
             )
           : undefined;
         const refreshToken = org.refreshToken
-          ? decryptStoredSecret(
+          ? resolveStoredSecret(
               org.refreshToken,
               `Supabase refresh token for organization ${orgId}`,
+              ["supabase", "organizations", orgId, "refreshToken"],
+              ctx,
             )
           : undefined;
 
+        // In preserve mode a failed decrypt returns the ciphertext (truthy), so the
+        // org is only dropped when a token field is genuinely absent. In drop mode a
+        // failed decrypt returns undefined, keeping the original "drop the whole org"
+        // behavior for the consumer-facing read.
         if (!accessToken || !refreshToken) {
           delete supabase.organizations[orgId];
           continue;
@@ -498,58 +553,68 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   const neon = combinedSettings.neon;
   if (neon) {
     if (neon.refreshToken) {
-      const decrypted = decryptStoredSecret(
+      const resolved = resolveStoredSecret(
         neon.refreshToken,
         "Neon refresh token",
+        ["neon", "refreshToken"],
+        ctx,
       );
-      if (decrypted) {
-        neon.refreshToken = decrypted;
+      if (resolved) {
+        neon.refreshToken = resolved;
       } else {
         delete neon.refreshToken;
       }
     }
     if (neon.accessToken) {
-      const decrypted = decryptStoredSecret(
+      const resolved = resolveStoredSecret(
         neon.accessToken,
         "Neon access token",
+        ["neon", "accessToken"],
+        ctx,
       );
-      if (decrypted) {
-        neon.accessToken = decrypted;
+      if (resolved) {
+        neon.accessToken = resolved;
       } else {
         delete neon.accessToken;
       }
     }
   }
   if (combinedSettings.githubAccessToken) {
-    const decrypted = decryptStoredSecret(
+    const resolved = resolveStoredSecret(
       combinedSettings.githubAccessToken,
       "GitHub access token",
+      ["githubAccessToken"],
+      ctx,
     );
-    if (decrypted) {
-      combinedSettings.githubAccessToken = decrypted;
+    if (resolved) {
+      combinedSettings.githubAccessToken = resolved;
     } else {
       delete combinedSettings.githubAccessToken;
     }
   }
   if (combinedSettings.vercelAccessToken) {
-    const decrypted = decryptStoredSecret(
+    const resolved = resolveStoredSecret(
       combinedSettings.vercelAccessToken,
       "Vercel access token",
+      ["vercelAccessToken"],
+      ctx,
     );
-    if (decrypted) {
-      combinedSettings.vercelAccessToken = decrypted;
+    if (resolved) {
+      combinedSettings.vercelAccessToken = resolved;
     } else {
       delete combinedSettings.vercelAccessToken;
     }
   }
   for (const provider in combinedSettings.providerSettings) {
     if (combinedSettings.providerSettings[provider].apiKey) {
-      const decrypted = decryptStoredSecret(
+      const resolved = resolveStoredSecret(
         combinedSettings.providerSettings[provider].apiKey,
         `${provider} API key`,
+        ["providerSettings", provider, "apiKey"],
+        ctx,
       );
-      if (decrypted) {
-        combinedSettings.providerSettings[provider].apiKey = decrypted;
+      if (resolved) {
+        combinedSettings.providerSettings[provider].apiKey = resolved;
       } else {
         delete combinedSettings.providerSettings[provider].apiKey;
       }
@@ -559,12 +624,14 @@ function readExistingSettingsFile(filePath: string): UserSettings {
       provider
     ] as VertexProviderSetting;
     if (provider === "vertex" && v?.serviceAccountKey) {
-      const decrypted = decryptStoredSecret(
+      const resolved = resolveStoredSecret(
         v.serviceAccountKey,
         "Vertex service account key",
+        ["providerSettings", provider, "serviceAccountKey"],
+        ctx,
       );
-      if (decrypted) {
-        v.serviceAccountKey = decrypted;
+      if (resolved) {
+        v.serviceAccountKey = resolved;
       } else {
         delete v.serviceAccountKey;
       }
@@ -580,23 +647,74 @@ function readExistingSettingsFile(filePath: string): UserSettings {
   // Migrate stored settings to active settings (converts deprecated values)
   const migratedSettings = migrateStoredSettings(storedSettings);
   // Validate the migrated settings against the active schema
-  return UserSettingsSchema.parse(migratedSettings);
+  const settings = UserSettingsSchema.parse(migratedSettings);
+  return { settings, preserved: ctx.preserved };
 }
 
-function decryptStoredSecret(data: Secret, label: string): Secret | undefined {
+// Decrypts a stored secret. On success returns the decrypted secret. On failure:
+// in preserve mode returns the untouched ciphertext (and records it so the write
+// path can persist it verbatim); in drop mode returns undefined. A safeStorage
+// not-ready error is always rethrown so the caller falls back to defaults.
+function resolveStoredSecret(
+  data: Secret,
+  label: string,
+  path: string[],
+  ctx: DecryptContext,
+): Secret | undefined {
   try {
-    const encryptionType = data.encryptionType;
     return {
       value: decrypt(data),
-      encryptionType,
+      encryptionType: data.encryptionType,
     };
   } catch (error) {
     if (isSafeStorageNotReadyError(error)) {
       throw error;
     }
-    logger.warn(`Could not decrypt ${label}; ignoring stored secret.`, error);
+    // The Keychain identity safeStorage resolved for this session may simply
+    // be the wrong one for this ciphertext (issue #3837). Try decrypting with
+    // the passwords of the known legacy identities read straight from the
+    // Keychain. On the write path the recovered plaintext then flows through
+    // the normal encrypt() pass, organically re-encrypting the secret under
+    // the current session identity.
+    if (data.encryptionType === "electron-safe-storage") {
+      const recovered = recoverLegacySafeStorageSecret(data.value);
+      if (recovered !== null) {
+        logger.info(
+          `Recovered ${label} using a legacy safeStorage Keychain identity.`,
+        );
+        return {
+          value: recovered,
+          encryptionType: data.encryptionType,
+        };
+      }
+    }
+    warnPreservedSecretOnce(path.join("."), label, error);
+    if (ctx.preserveUndecryptable) {
+      const ciphertext: Secret = {
+        value: data.value,
+        encryptionType: data.encryptionType,
+      };
+      ctx.preserved.push({ path, secret: ciphertext });
+      return ciphertext;
+    }
     return undefined;
   }
+}
+
+function warnPreservedSecretOnce(
+  key: string,
+  label: string,
+  error: unknown,
+): void {
+  if (warnedPreservedSecrets.has(key)) {
+    return;
+  }
+  warnedPreservedSecrets.add(key);
+  logger.warn(
+    `Could not decrypt ${label}; preserving the stored secret so it can be ` +
+      `recovered if the encryption key becomes available again.`,
+    error,
+  );
 }
 
 function isSafeStorageNotReadyError(error: unknown): boolean {
@@ -606,19 +724,103 @@ function isSafeStorageNotReadyError(error: unknown): boolean {
   );
 }
 
+function getAtPath(root: unknown, path: string[]): unknown {
+  let current: unknown = root;
+  for (const key of path) {
+    if (current === null || typeof current !== "object") {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function setAtPath(root: unknown, path: string[], value: unknown): void {
+  let current: unknown = root;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (current === null || typeof current !== "object") {
+      return;
+    }
+    current = (current as Record<string, unknown>)[path[i]];
+  }
+  if (current && typeof current === "object") {
+    (current as Record<string, unknown>)[path[path.length - 1]] = value;
+  }
+}
+
+function deleteAtPath(root: unknown, path: string[]): void {
+  const parent = getAtPath(root, path.slice(0, -1));
+  if (parent && typeof parent === "object") {
+    delete (parent as Record<string, unknown>)[path[path.length - 1]];
+  }
+}
+
+function isMatchingSecretValue(current: unknown, secret: Secret): boolean {
+  return (
+    !!current &&
+    typeof current === "object" &&
+    (current as Secret).value === secret.value &&
+    (current as Secret).encryptionType === secret.encryptionType
+  );
+}
+
+// Given the merged settings about to be written, decides what to do with each
+// secret that failed to decrypt during the read-merge. Untouched ciphertext is
+// removed from `newSettings` (so the encryption pass can't double-encrypt it) and
+// returned for verbatim re-injection; ciphertext that a shallow merge dropped from
+// a replaced container is re-injected too. A field the caller gave a new value, or
+// deliberately removed, is left alone.
+function reconcilePreservedSecrets(
+  newSettings: UserSettings,
+  preserved: PreservedSecret[],
+): PreservedSecret[] {
+  const toReinject: PreservedSecret[] = [];
+  for (const entry of preserved) {
+    const { path } = entry;
+    const current = getAtPath(newSettings, path);
+    if (isMatchingSecretValue(current, entry.secret)) {
+      // The untouched ciphertext is still sitting in the merged settings. Remove it
+      // so the encryption pass below doesn't re-encrypt (and corrupt) it; it is
+      // written back verbatim after encryption.
+      deleteAtPath(newSettings, path);
+      toReinject.push(entry);
+    } else if (current !== undefined) {
+      // A new value replaced the still-locked secret (e.g. the user reconnected).
+      // Let it flow through normal encryption; preservation for this field ends.
+      continue;
+    } else if (path.length > 1) {
+      const parent = getAtPath(newSettings, path.slice(0, -1));
+      if (parent && typeof parent === "object") {
+        // A shallow merge replaced the container (e.g. providerSettings) with one
+        // that omits the still-locked secret — as happens when a caller writes a
+        // providerSettings object rebuilt from readSettings(), where the locked
+        // field was dropped. Re-inject the ciphertext so the write doesn't lose it.
+        toReinject.push(entry);
+      }
+      // If the container itself is gone, treat it as a deliberate removal.
+    }
+    // A top-level secret absent from the merge means the caller explicitly cleared
+    // it (a partial with the key set to undefined); honor the removal.
+  }
+  return toReinject;
+}
+
 function readSettingsForWrite(filePath: string): {
   settings: UserSettings;
   wasUnreadable: boolean;
+  preserved: PreservedSecret[];
 } {
   if (!fs.existsSync(filePath)) {
-    return { settings: DEFAULT_SETTINGS, wasUnreadable: false };
+    return { settings: DEFAULT_SETTINGS, wasUnreadable: false, preserved: [] };
   }
 
   try {
-    return {
-      settings: readExistingSettingsFile(filePath),
-      wasUnreadable: false,
-    };
+    // Preserve mode: secrets that fail to decrypt are kept as ciphertext so the
+    // write below never destroys them.
+    const { settings, preserved } = readExistingSettingsFile(filePath, {
+      preserveUndecryptable: true,
+    });
+    return { settings, wasUnreadable: false, preserved };
   } catch (error) {
     logger.error("Existing settings file is unreadable:", error);
     notifyRendererError({
@@ -629,7 +831,7 @@ function readSettingsForWrite(filePath: string): {
         url: RESTORE_SETTINGS_DOCS_URL,
       },
     });
-    return { settings: DEFAULT_SETTINGS, wasUnreadable: true };
+    return { settings: DEFAULT_SETTINGS, wasUnreadable: true, preserved: [] };
   }
 }
 

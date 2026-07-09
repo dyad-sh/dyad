@@ -136,8 +136,8 @@ function freshTempKeychain(): void {
   // items via the `security` CLI (the -A ACL lets it read them without a
   // prompt), which is what makes the fallback exercisable in this environment.
   for (const [service, account, password] of [
-    [CHROMIUM_SERVICE, "Chromium", "e2e-chromium-identity-key"],
-    [DYAD_SERVICE, "dyad", "e2e-dyad-identity-key"],
+    [CHROMIUM_SERVICE, "Chromium Key", "e2e-chromium-identity-key"],
+    [DYAD_SERVICE, "dyad Key", "e2e-dyad-identity-key"],
   ]) {
     security([
       "add-generic-password",

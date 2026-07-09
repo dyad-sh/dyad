@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getUserDataPath } from "../paths/paths";
 import {
+  SecretSchema,
   StoredUserSettingsSchema,
   UserSettingsSchema,
   type UserSettings,
@@ -342,6 +343,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const preservedToReinject = reconcilePreservedSecrets(
       newSettings,
       settings,
+      settingsForWrite.settings,
       settingsForWrite.preserved,
     );
     if (newSettings.githubAccessToken) {
@@ -687,23 +689,35 @@ function resolveStoredSecret(
     // safe: the ciphertext is preserved (write path) or simply omitted (read
     // path) with no write, and the first post-`ready` read — readEffectiveSettings
     // in onReady, the get-user-settings IPC, or any write — performs recovery.
-    if (data.encryptionType === "electron-safe-storage" && app.isReady()) {
-      const recovered = recoverLegacySafeStorageSecret(data.value);
+    const parsedSecret = SecretSchema.safeParse(data);
+    if (!parsedSecret.success) {
+      logger.warn(
+        `Could not decrypt ${label}; stored secret shape is invalid, so it will not be preserved.`,
+        parsedSecret.error,
+      );
+      return undefined;
+    }
+    const storedSecret = parsedSecret.data;
+    if (
+      storedSecret.encryptionType === "electron-safe-storage" &&
+      app.isReady()
+    ) {
+      const recovered = recoverLegacySafeStorageSecret(storedSecret.value);
       if (recovered !== null) {
         logger.info(
           `Recovered ${label} using a legacy safeStorage Keychain identity.`,
         );
         return {
           value: recovered,
-          encryptionType: data.encryptionType,
+          encryptionType: storedSecret.encryptionType,
         };
       }
     }
     warnPreservedSecretOnce(path.join("."), label, error);
     if (ctx.preserveUndecryptable) {
       const ciphertext: Secret = {
-        value: data.value,
-        encryptionType: data.encryptionType,
+        value: storedSecret.value,
+        encryptionType: storedSecret.encryptionType,
       };
       ctx.preserved.push({ path, secret: ciphertext });
       return ciphertext;
@@ -790,6 +804,42 @@ function isMatchingSecretValue(current: unknown, secret: Secret): boolean {
   );
 }
 
+function isSupabaseOrganizationSecretPath(path: string[]): boolean {
+  return (
+    path.length === 4 &&
+    path[0] === "supabase" &&
+    path[1] === "organizations" &&
+    (path[3] === "accessToken" || path[3] === "refreshToken")
+  );
+}
+
+function restoreSupabaseOrganizationForPreservedSecret(
+  newSettings: UserSettings,
+  incomingSettings: Partial<UserSettings>,
+  baselineSettings: UserSettings,
+  path: string[],
+): boolean {
+  if (!isSupabaseOrganizationSecretPath(path)) {
+    return false;
+  }
+  if (!getAtPath(newSettings, ["supabase", "organizations"])) {
+    return false;
+  }
+  const organizationPath = path.slice(0, 3);
+  if (
+    hasOwnPropertyAtPath(incomingSettings, organizationPath) ||
+    hasOwnPropertyAtPath(incomingSettings, path)
+  ) {
+    return false;
+  }
+  const baselineOrganization = getAtPath(baselineSettings, organizationPath);
+  if (!baselineOrganization || typeof baselineOrganization !== "object") {
+    return false;
+  }
+  setAtPath(newSettings, organizationPath, { ...baselineOrganization });
+  return true;
+}
+
 // Given the merged settings about to be written, decides what to do with each
 // secret that failed to decrypt during the read-merge. Untouched ciphertext is
 // removed from `newSettings` (so the encryption pass can't double-encrypt it) and
@@ -799,6 +849,7 @@ function isMatchingSecretValue(current: unknown, secret: Secret): boolean {
 function reconcilePreservedSecrets(
   newSettings: UserSettings,
   incomingSettings: Partial<UserSettings>,
+  baselineSettings: UserSettings,
   preserved: PreservedSecret[],
 ): PreservedSecret[] {
   const toReinject: PreservedSecret[] = [];
@@ -820,6 +871,16 @@ function reconcilePreservedSecrets(
       // an explicit clear, distinct from a readSettings()-rebuilt object where the
       // locked field was omitted because it could not be decrypted.
       continue;
+    } else if (
+      restoreSupabaseOrganizationForPreservedSecret(
+        newSettings,
+        incomingSettings,
+        baselineSettings,
+        path,
+      )
+    ) {
+      deleteAtPath(newSettings, path);
+      toReinject.push(entry);
     } else if (path.length > 1) {
       const parent = getAtPath(newSettings, path.slice(0, -1));
       if (parent && typeof parent === "object") {

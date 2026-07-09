@@ -1174,6 +1174,76 @@ describe("preserving undecryptable secrets", () => {
     });
   });
 
+  it("preserves a locked supabase organization when the organizations map is rebuilt", () => {
+    const lockedAccess = lockedSecret("supabase-access");
+    store[mockSettingsPath] = JSON.stringify({
+      supabase: {
+        organizations: {
+          myorg: {
+            accessToken: lockedAccess,
+            refreshToken: {
+              value: b64("refresh"),
+              encryptionType: "electron-safe-storage",
+            },
+            expiresIn: 3600,
+            tokenTimestamp: 123,
+          },
+        },
+      },
+    });
+
+    // Consumer reads hide the locked org, and Supabase handlers rebuild the
+    // organizations map from that consumer-facing state when adding/removing orgs.
+    expect(readSettings().supabase?.organizations).toEqual({});
+
+    writeSettings({
+      supabase: {
+        organizations: {
+          otherorg: {
+            accessToken: { value: "other-access", encryptionType: "plaintext" },
+            refreshToken: {
+              value: "other-refresh",
+              encryptionType: "plaintext",
+            },
+            expiresIn: 7200,
+            tokenTimestamp: 456,
+          },
+        },
+      },
+    });
+
+    const organizations = readStoredFile().supabase.organizations;
+    expect(organizations.myorg.accessToken).toEqual(lockedAccess);
+    expect(organizations.myorg.refreshToken).toEqual({
+      value: "decrypted:refresh",
+      encryptionType: "plaintext",
+    });
+    expect(organizations.otherorg.accessToken).toEqual({
+      value: "other-access",
+      encryptionType: "plaintext",
+    });
+  });
+
+  it("drops a malformed secret without resetting unrelated settings on write", () => {
+    store[mockSettingsPath] = JSON.stringify({
+      telemetryConsent: "opted_in",
+      providerSettings: {
+        openai: {
+          apiKey: {
+            encryptionType: "plaintext",
+          },
+        },
+      },
+    });
+
+    writeSettings({ enableAutoUpdate: false });
+
+    const stored = readStoredFile();
+    expect(stored.telemetryConsent).toBe("opted_in");
+    expect(stored.enableAutoUpdate).toBe(false);
+    expect(stored.providerSettings.openai.apiKey).toBeUndefined();
+  });
+
   it("removes a working secret when the caller explicitly clears it (no resurrection)", () => {
     store[mockSettingsPath] = JSON.stringify({
       githubAccessToken: {

@@ -90,6 +90,7 @@ const TEMP_KEYCHAIN = path.join(
 
 let originalDefaultKeychain: string | null = null;
 let originalSearchList: string[] = [];
+const launchedApps = new Set<ElectronApplication>();
 
 function security(args: string[]): string {
   return execFileSync("security", args, { encoding: "utf8" });
@@ -184,19 +185,29 @@ async function launchDyad({
       OPENAI_API_KEY: "sk-test",
     },
   });
-  // Ensures the app is fully ready before main-process evaluate calls.
-  await electronApp.firstWindow();
-  return electronApp;
+  launchedApps.add(electronApp);
+  try {
+    // Ensures the app is fully ready before main-process evaluate calls.
+    await electronApp.firstWindow();
+    return electronApp;
+  } catch (error) {
+    await closeDyad(electronApp);
+    throw error;
+  }
 }
 
 async function closeDyad(electronApp: ElectronApplication): Promise<void> {
+  launchedApps.delete(electronApp);
   const child = electronApp.process();
-  await Promise.race([
-    electronApp.close(),
-    new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
-  ]);
-  if (child.pid && child.exitCode === null && !child.signalCode) {
-    child.kill("SIGKILL");
+  try {
+    await Promise.race([
+      electronApp.close().catch(() => undefined),
+      new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
+    ]);
+  } finally {
+    if (child.pid && child.exitCode === null && !child.signalCode) {
+      child.kill("SIGKILL");
+    }
   }
 }
 
@@ -306,6 +317,12 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
   test.afterAll(() => {
     if (!ENABLED) return;
     restoreOriginalKeychains();
+  });
+
+  test.afterEach(async () => {
+    await Promise.all(
+      [...launchedApps].map((electronApp) => closeDyad(electronApp)),
+    );
   });
 
   test.beforeEach(() => {

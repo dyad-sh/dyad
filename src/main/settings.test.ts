@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { safeStorage } from "electron";
+import { app, safeStorage } from "electron";
 import {
   readSettings,
   resolveEffectiveSettings,
@@ -37,6 +37,9 @@ vi.mock("node:path");
 vi.mock("electron", () => ({
   app: {
     on: vi.fn(),
+    // Legacy safeStorage recovery is gated on app readiness; default to ready so
+    // recovery-path tests exercise it. Individual tests override as needed.
+    isReady: vi.fn(() => true),
   },
   BrowserWindow: {
     fromWebContents: vi.fn(() => mockWindow),
@@ -1293,6 +1296,8 @@ describe("legacy keychain recovery integration", () => {
     mockGetUserDataPath.mockReturnValue(mockUserDataPath);
     mockPath.join.mockReturnValue(mockSettingsPath);
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(false);
+    // Recovery is gated on app readiness; default these tests to ready.
+    vi.mocked(app.isReady).mockReturnValue(true);
 
     store = {};
     mockFs.existsSync.mockImplementation((p) => (p as string) in store);
@@ -1385,5 +1390,33 @@ describe("legacy keychain recovery integration", () => {
     const settings = readSettings();
     expect(settings.githubAccessToken).toBeUndefined();
     expect(mockRecover).not.toHaveBeenCalled();
+  });
+
+  it("does not shell out to recovery before the app is ready", () => {
+    // Electron 40 can run safeStorage pre-`ready`, so a decrypt failure can
+    // occur before the window exists. Recovery must not fire then (it would
+    // block the cold-start path and could raise a Keychain prompt).
+    vi.mocked(app.isReady).mockReturnValue(false);
+    const locked = lockedSecret("github");
+    store[mockSettingsPath] = JSON.stringify({ githubAccessToken: locked });
+    mockRecover.mockReturnValue("gh_recovered_token");
+
+    // Pre-ready read: the secret is omitted and recovery is never attempted.
+    expect(readSettings().githubAccessToken).toBeUndefined();
+    expect(mockRecover).not.toHaveBeenCalled();
+
+    // Pre-ready write still preserves the ciphertext verbatim (never destroyed),
+    // so a later post-ready read can recover it.
+    writeSettings({ enableAutoUpdate: false });
+    expect(mockRecover).not.toHaveBeenCalled();
+    expect(readStoredFile().githubAccessToken).toEqual(locked);
+
+    // Once ready, the same stored ciphertext is recovered.
+    vi.mocked(app.isReady).mockReturnValue(true);
+    expect(readSettings().githubAccessToken).toEqual({
+      value: "gh_recovered_token",
+      encryptionType: "electron-safe-storage",
+    });
+    expect(mockRecover).toHaveBeenCalledWith(locked.value);
   });
 });

@@ -10,6 +10,7 @@ import {
   migrateStoredSettings,
 } from "../lib/schemas";
 import {
+  app,
   BrowserWindow,
   safeStorage,
   type WebContents,
@@ -677,7 +678,16 @@ function resolveStoredSecret(
     // Keychain. On the write path the recovered plaintext then flows through
     // the normal encrypt() pass, organically re-encrypting the secret under
     // the current session identity.
-    if (data.encryptionType === "electron-safe-storage") {
+    //
+    // Gate on app.isReady(): recovery shells out to the `security` CLI, which
+    // blocks synchronously and can raise a Keychain permission prompt. On
+    // Electron 40 a failed decrypt can happen pre-`ready` (safeStorage runs
+    // before ready there), so without this gate the prompt/stall would land on
+    // the cold-start path before the window exists. Skipping it pre-`ready` is
+    // safe: the ciphertext is preserved (write path) or simply omitted (read
+    // path) with no write, and the first post-`ready` read — readEffectiveSettings
+    // in onReady, the get-user-settings IPC, or any write — performs recovery.
+    if (data.encryptionType === "electron-safe-storage" && app.isReady()) {
       const recovered = recoverLegacySafeStorageSecret(data.value);
       if (recovered !== null) {
         logger.info(

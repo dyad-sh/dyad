@@ -5,20 +5,12 @@ import { useVersionChanges } from "@/hooks/useVersionChanges";
 import type { VersionChangedFile } from "@/ipc/types";
 import { selectedVersionDiffFileAtom } from "@/atoms/appAtoms";
 import { FileDiffEditor } from "./FileDiffEditor";
+import { STATUS_META } from "./versionChangeMeta";
 
 interface VersionDiffViewProps {
   appId: number;
   versionId: string;
 }
-
-export const STATUS_META: Record<
-  VersionChangedFile["type"],
-  { label: string; className: string }
-> = {
-  added: { label: "A", className: "text-green-600 dark:text-green-400" },
-  modified: { label: "M", className: "text-amber-600 dark:text-amber-400" },
-  deleted: { label: "D", className: "text-red-600 dark:text-red-400" },
-};
 
 function StatusBadge({ type }: { type: VersionChangedFile["type"] }) {
   const meta = STATUS_META[type];

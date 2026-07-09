@@ -148,12 +148,14 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     setIsRetryLoading(true);
     try {
       // The last message is usually an assistant, but it might not be.
+      // versions[0] may be undefined if the versions query hasn't populated yet;
+      // in that case fall through to a plain redo rather than throwing.
       const lastVersion = versions[0];
       const lastMessage = messages[messages.length - 1];
       let shouldRedo = true;
       if (
-        lastVersion.oid === lastMessage.commitHash &&
-        lastMessage.role === "assistant"
+        lastMessage?.role === "assistant" &&
+        lastVersion?.oid === lastMessage.commitHash
       ) {
         const previousAssistantMessage = messages[messages.length - 3];
         if (

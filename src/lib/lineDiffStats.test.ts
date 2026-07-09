@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { computeLineDiffStats } from "./lineDiffStats";
+import {
+  DIFF_BINARY_PLACEHOLDER,
+  DIFF_TOO_LARGE_PLACEHOLDER,
+} from "@/shared/diff_placeholders";
 
 describe("computeLineDiffStats", () => {
   it("returns zeros for identical content", () => {
@@ -78,6 +82,20 @@ describe("computeLineDiffStats", () => {
       additions: 1,
       deletions: 1,
     });
+  });
+
+  it("returns zeros when either side is a sanitized placeholder", () => {
+    // Binary/oversized files are replaced by placeholder strings upstream;
+    // diffing those against real content would report meaningless line counts.
+    expect(
+      computeLineDiffStats(DIFF_BINARY_PLACEHOLDER, "line1\nline2"),
+    ).toEqual({ additions: 0, deletions: 0 });
+    expect(
+      computeLineDiffStats("line1\nline2", DIFF_TOO_LARGE_PLACEHOLDER),
+    ).toEqual({ additions: 0, deletions: 0 });
+    expect(
+      computeLineDiffStats(DIFF_TOO_LARGE_PLACEHOLDER, DIFF_BINARY_PLACEHOLDER),
+    ).toEqual({ additions: 0, deletions: 0 });
   });
 
   it("falls back to worst-case counts for a huge fully-different middle", () => {

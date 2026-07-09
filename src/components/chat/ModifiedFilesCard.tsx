@@ -11,7 +11,7 @@ import {
   selectedVersionDiffFileAtom,
 } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { STATUS_META } from "@/components/preview_panel/VersionDiffView";
+import { STATUS_META } from "@/components/preview_panel/versionChangeMeta";
 
 interface ModifiedFilesCardProps {
   appId: number;
@@ -77,28 +77,17 @@ export function ModifiedFilesCard({
   // available); only the header + list are hidden.
   const hasChanges = !loading && !error && !!changes && changes.length > 0;
 
+  // Undo and Retry both revert/replace the same last generation, so while either
+  // is in flight both are disabled to prevent overlapping operations.
+  const actionsDisabled = isUndoLoading || isRetryLoading;
+
   const footer = (
     <div className="px-3 py-2 border-t border-border/60 flex justify-end gap-2">
       <Button
         variant="outline"
         size="sm"
-        data-testid="modified-files-retry"
-        disabled={isRetryLoading}
-        onClick={onRetry}
-        className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
-      >
-        {isRetryLoading ? (
-          <Loader2 size={16} className="animate-spin" />
-        ) : (
-          <RefreshCw size={16} />
-        )}
-        Retry
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
         data-testid="modified-files-undo"
-        disabled={isUndoLoading}
+        disabled={actionsDisabled}
         onClick={onUndo}
         className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
       >
@@ -108,6 +97,21 @@ export function ModifiedFilesCard({
           <Undo size={16} />
         )}
         Undo
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="modified-files-retry"
+        disabled={actionsDisabled}
+        onClick={onRetry}
+        className="gap-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:border-border cursor-pointer transition-colors disabled:cursor-not-allowed"
+      >
+        {isRetryLoading ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : (
+          <RefreshCw size={16} />
+        )}
+        Retry
       </Button>
     </div>
   );

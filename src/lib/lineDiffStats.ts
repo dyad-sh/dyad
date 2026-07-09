@@ -1,3 +1,5 @@
+import { isDiffPlaceholder } from "@/shared/diff_placeholders";
+
 export interface LineDiffStats {
   additions: number;
   deletions: number;
@@ -103,6 +105,13 @@ export function computeLineDiffStats(
   newContent: string,
 ): LineDiffStats {
   if (oldContent === newContent) {
+    return EMPTY_STATS;
+  }
+
+  // Either side may be a sanitized placeholder (binary/oversized file) rather
+  // than real content. Diffing the placeholder string would report meaningless
+  // line counts, so bail out with zeros instead.
+  if (isDiffPlaceholder(oldContent) || isDiffPlaceholder(newContent)) {
     return EMPTY_STATS;
   }
 

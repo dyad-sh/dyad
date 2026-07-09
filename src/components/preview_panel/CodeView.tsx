@@ -2,7 +2,7 @@ import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { useEffect, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { RefreshCw, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
+import { RefreshCw, Maximize2, Minimize2, ArrowLeft, X } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -10,7 +10,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useAtomValue, useSetAtom } from "jotai";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
-import { selectedVersionIdAtom } from "@/atoms/appAtoms";
+import {
+  selectedVersionIdAtom,
+  selectedVersionDiffFileAtom,
+} from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -35,8 +38,18 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const selectedVersionId = useAtomValue(selectedVersionIdAtom);
   const stagedDiffFile = useAtomValue(stagedDiffFileAtom);
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
+  const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
+  const setSelectedVersionDiffFile = useSetAtom(selectedVersionDiffFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const { hasUncommittedFiles } = useUncommittedFiles(app?.id ?? null);
+
+  // Exits version-diff mode (entered via the version history pane or the chat's
+  // modified-files card) and returns to the live file tree. Without this the
+  // Code tab would stay pinned to a commit diff with no in-context way back.
+  const closeVersionDiff = () => {
+    setSelectedVersionId(null);
+    setSelectedVersionDiffFile(null);
+  };
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -131,6 +144,24 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                 ? t("preview.viewingStagedChanges")
                 : `${app.files?.length ?? 0} ${t("preview.files")}`}
           </div>
+          {isVersionDiffMode && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    data-testid="close-version-diff"
+                    onClick={closeVersionDiff}
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                  />
+                }
+              >
+                <X size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("preview.closeVersionChanges")}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <div className="flex-1" />
           {app.id != null && <CommitMenu appId={app.id} />}
           <Tooltip>

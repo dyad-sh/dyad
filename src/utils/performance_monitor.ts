@@ -161,7 +161,7 @@ function capturePerformanceMetrics() {
     // Skip saving if CPU is null (first call for either metric)
     if (cpuUsagePercent === null || systemCpuPercent === null) {
       logger.debug(
-        `Performance: Memory=${memoryUsageMB}MB, CPU=initializing, System Memory=${systemMemory.usagePercent}%, System CPU=initializing`,
+        `Performance: Memory=${memoryUsageMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=initializing, System Memory=${systemMemory.usagePercent}%, System CPU=initializing`,
       );
       return;
     }

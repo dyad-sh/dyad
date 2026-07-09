@@ -62,6 +62,9 @@ export const processCounter = {
 export function getRunningAppProcessPids(): { appId: number; pid: number }[] {
   const pairs: { appId: number; pid: number }[] = [];
   for (const [appId, appInfo] of runningApps.entries()) {
+    if (appInfo.mode !== "host") {
+      continue;
+    }
     const pid = appInfo.process?.pid;
     if (typeof pid === "number") {
       pairs.push({ appId, pid });

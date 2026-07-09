@@ -5,6 +5,7 @@ import {
   parsePsProcessTable,
   parseSwapUsage,
   parseVmStat,
+  round2,
   topProcessesByRss,
 } from "../utils/process_memory_diagnostics";
 
@@ -162,5 +163,11 @@ describe("topProcessesByRss", () => {
     ];
     topProcessesByRss(entries, 1);
     expect(entries[0].pid).toBe(1);
+  });
+});
+
+describe("round2", () => {
+  it("preserves useful sub-MB precision", () => {
+    expect(round2(0.1875)).toBe(0.19);
   });
 });

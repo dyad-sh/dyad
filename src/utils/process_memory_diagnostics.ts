@@ -8,7 +8,7 @@ const logger = log.scope("process_memory_diagnostics");
 // All shell-outs are best-effort and must finish quickly: diagnostics run
 // on-demand (session-export time), never on a hot path.
 const EXEC_TIMEOUT_MS = 3_000;
-const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+const MAX_OUTPUT_BYTES = 1 * 1024 * 1024;
 
 const BYTES_PER_MB = 1024 * 1024;
 const KB_PER_MB = 1024;
@@ -287,8 +287,12 @@ export function topProcessesByRss(
 // Collectors
 // =============================================================================
 
-function round2(value: number): number {
+export function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function bytesToMb(value: number): number {
+  return round2(value / BYTES_PER_MB);
 }
 
 function pagesToMb(pages: number, pageSizeBytes: number): number {
@@ -328,17 +332,17 @@ export async function collectElectronProcessMetrics(): Promise<ElectronProcessMe
     processes: [],
     totalWorkingSetSizeMb: 0,
     mainProcess: {
-      rssMb: Math.round(memoryUsage.rss / BYTES_PER_MB),
-      heapTotalMb: Math.round(memoryUsage.heapTotal / BYTES_PER_MB),
-      heapUsedMb: Math.round(memoryUsage.heapUsed / BYTES_PER_MB),
-      externalMb: Math.round(memoryUsage.external / BYTES_PER_MB),
+      rssMb: bytesToMb(memoryUsage.rss),
+      heapTotalMb: bytesToMb(memoryUsage.heapTotal),
+      heapUsedMb: bytesToMb(memoryUsage.heapUsed),
+      externalMb: bytesToMb(memoryUsage.external),
     },
     v8Heap: {
-      heapSizeLimitMb: Math.round(heapStats.heap_size_limit / BYTES_PER_MB),
-      totalHeapSizeMb: Math.round(heapStats.total_heap_size / BYTES_PER_MB),
-      usedHeapSizeMb: Math.round(heapStats.used_heap_size / BYTES_PER_MB),
-      mallocedMemoryMb: Math.round(heapStats.malloced_memory / BYTES_PER_MB),
-      externalMemoryMb: Math.round(heapStats.external_memory / BYTES_PER_MB),
+      heapSizeLimitMb: bytesToMb(heapStats.heap_size_limit),
+      totalHeapSizeMb: bytesToMb(heapStats.total_heap_size),
+      usedHeapSizeMb: bytesToMb(heapStats.used_heap_size),
+      mallocedMemoryMb: bytesToMb(heapStats.malloced_memory),
+      externalMemoryMb: bytesToMb(heapStats.external_memory),
     },
   };
 
@@ -361,7 +365,7 @@ export async function collectElectronProcessMetrics(): Promise<ElectronProcessMe
       });
       result.totalWorkingSetSizeMb += metric.memory.workingSetSize / KB_PER_MB;
     }
-    result.totalWorkingSetSizeMb = Math.round(result.totalWorkingSetSizeMb);
+    result.totalWorkingSetSizeMb = round2(result.totalWorkingSetSizeMb);
   } catch (err) {
     result.error = `Failed to collect Electron app metrics: ${errorToString(err)}`;
   }

@@ -7,7 +7,6 @@ import {
 } from "../contracts/core";
 import { ConsoleEntrySchema } from "./supabase";
 import { ProblemReportSchema } from "./agent";
-import type { ProcessMemoryDiagnostics } from "@/utils/process_memory_diagnostics";
 
 // =============================================================================
 // Portal Schemas
@@ -240,6 +239,104 @@ const DebugMcpServerSchema = z.object({
   // NOTE: envJson and headersJson are intentionally EXCLUDED (may contain secrets)
 });
 
+// -- Process memory diagnostics --
+
+const ProcessMetricSchema = z.object({
+  pid: z.number(),
+  rssKb: z.number(),
+  command: z.string(),
+});
+
+const ElectronProcessMetricSchema = z.object({
+  type: z.string(),
+  pid: z.number(),
+  workingSetSizeKb: z.number(),
+  creationTime: z.number(),
+  name: z.string().optional(),
+  serviceName: z.string().optional(),
+});
+
+const ElectronProcessMetricsResultSchema = z.object({
+  processes: z.array(ElectronProcessMetricSchema),
+  totalWorkingSetSizeMb: z.number(),
+  mainProcess: z.object({
+    rssMb: z.number(),
+    heapTotalMb: z.number(),
+    heapUsedMb: z.number(),
+    externalMb: z.number(),
+  }),
+  v8Heap: z.object({
+    heapSizeLimitMb: z.number(),
+    totalHeapSizeMb: z.number(),
+    usedHeapSizeMb: z.number(),
+    mallocedMemoryMb: z.number(),
+    externalMemoryMb: z.number(),
+  }),
+  error: z.string().optional(),
+});
+
+const AppProcessTreeSchema = z.object({
+  appId: z.number(),
+  rootPid: z.number(),
+  processes: z.array(ProcessMetricSchema),
+  totalRssMb: z.number(),
+  note: z.string().optional(),
+});
+
+const AppProcessTreesResultSchema = z.object({
+  supported: z.boolean(),
+  trees: z.array(AppProcessTreeSchema),
+  error: z.string().optional(),
+});
+
+const VmStatSummarySchema = z.object({
+  pageSizeBytes: z.number(),
+  freePages: z.number(),
+  activePages: z.number(),
+  inactivePages: z.number(),
+  speculativePages: z.number(),
+  wiredPages: z.number(),
+  purgeablePages: z.number(),
+  compressorPages: z.number(),
+  pageouts: z.number(),
+});
+
+const SystemMemorySignalsSchema = z.object({
+  platform: z.string(),
+  totalMemoryMb: z.number(),
+  appMemoryMb: z.number().optional(),
+  reclaimableMb: z.number().optional(),
+  freeMb: z.number().optional(),
+  swapUsedMb: z.number().optional(),
+  swapTotalMb: z.number().optional(),
+  pressureDetected: z.boolean().optional(),
+  vmStat: VmStatSummarySchema.optional(),
+  fallback: z
+    .object({
+      usedMemoryMb: z.number(),
+      freeMemoryMb: z.number(),
+      usagePercent: z.number(),
+    })
+    .optional(),
+  error: z.string().optional(),
+});
+
+const TopProcessesResultSchema = z.object({
+  captured: z.boolean(),
+  reason: z.string(),
+  processes: z.array(ProcessMetricSchema).optional(),
+  error: z.string().optional(),
+});
+
+const ProcessMemoryDiagnosticsSchema = z.object({
+  collectedAt: z.string(),
+  platform: z.string(),
+  electron: ElectronProcessMetricsResultSchema,
+  appProcessTrees: AppProcessTreesResultSchema,
+  systemMemory: SystemMemorySignalsSchema,
+  topProcesses: TopProcessesResultSchema,
+});
+
 // -- Top-level bundle --
 
 /**
@@ -280,10 +377,10 @@ export const SessionDebugBundleSchema = z.object({
    * Process-level memory diagnostics: Electron process metrics, per-app child
    * process tree RSS, and real system memory-pressure signals (darwin).
    * Best-effort — sections may carry an `error` field instead of data. The
-   * shape is owned by src/utils/process_memory_diagnostics.ts; validated
-   * loosely here so diagnostics failures can never break the export.
+   * shape is owned by src/utils/process_memory_diagnostics.ts. Each section
+   * can carry an error field so diagnostics failures never break the export.
    */
-  memoryDiagnostics: z.custom<ProcessMemoryDiagnostics>(() => true).nullable(),
+  memoryDiagnostics: ProcessMemoryDiagnosticsSchema.nullable(),
 });
 
 export type SessionDebugBundle = z.infer<typeof SessionDebugBundleSchema>;

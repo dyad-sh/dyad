@@ -143,6 +143,50 @@ describe("removeUnusedAppPackageFiles", () => {
     await Promise.all(windowsBuildArtifacts.map((file) => expectMissing(file)));
     await expectMissing(path.join(betterSqlitePath, "src/addon.cpp"));
   });
+
+  it("keeps keychain reader runtime files and removes build intermediates", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-package-cleanup-keychain-"),
+    );
+    tempDirectories.push(buildPath);
+
+    const keychainReaderPath = path.join(
+      buildPath,
+      "node_modules/dyad-keychain-reader",
+    );
+    const runtimeJs = path.join(keychainReaderPath, "index.js");
+    const runtimeBinary = path.join(
+      keychainReaderPath,
+      "build/Release/keychain_reader.node",
+    );
+    const sourceFile = path.join(keychainReaderPath, "src/keychain_reader.c");
+    const buildObject = path.join(
+      keychainReaderPath,
+      "build/Release/obj.target/keychain_reader/src/keychain_reader.o",
+    );
+    const debugSymbols = path.join(
+      keychainReaderPath,
+      "build/Release/keychain_reader.pdb",
+    );
+
+    await Promise.all([
+      writeFixtureFile(runtimeJs),
+      writeFixtureFile(runtimeBinary),
+      writeFixtureFile(sourceFile),
+      writeFixtureFile(buildObject),
+      writeFixtureFile(debugSymbols),
+      writeFixtureFile(path.join(keychainReaderPath, "binding.gyp")),
+    ]);
+
+    await removeUnusedAppPackageFiles(buildPath, "darwin", "arm64");
+
+    await expect(fs.readFile(runtimeJs, "utf8")).resolves.toBe("fixture");
+    await expect(fs.readFile(runtimeBinary, "utf8")).resolves.toBe("fixture");
+    await expectMissing(sourceFile);
+    await expectMissing(buildObject);
+    await expectMissing(debugSymbols);
+    await expectMissing(path.join(keychainReaderPath, "binding.gyp"));
+  });
 });
 
 describe("removeUnusedCopiedResources", () => {

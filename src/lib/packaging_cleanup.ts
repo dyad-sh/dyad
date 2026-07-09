@@ -60,6 +60,18 @@ const BETTER_SQLITE3_REMOVE_RELATIVE_PATHS = [
   "build/Release/sqlite3.a",
 ] as const;
 
+const KEYCHAIN_READER_REMOVE_RELATIVE_PATHS = [
+  "binding.gyp",
+  "src",
+  "build/Makefile",
+  "build/binding.Makefile",
+  "build/config.gypi",
+  "build/keychain_reader.target.mk",
+  "build/Release/.deps",
+  "build/Release/obj.target",
+  "build/Release/obj",
+] as const;
+
 const NATIVE_BUILD_ARTIFACT_EXTENSIONS = new Set([
   ".exp",
   ".iobj",
@@ -193,6 +205,17 @@ async function pruneBetterSqlite3(betterSqlite3Path: string): Promise<void> {
   );
 }
 
+async function pruneKeychainReader(keychainReaderPath: string): Promise<void> {
+  await removeRelativePaths(
+    keychainReaderPath,
+    KEYCHAIN_READER_REMOVE_RELATIVE_PATHS,
+  );
+
+  await removeFilesMatching(keychainReaderPath, ({ name }) =>
+    hasNativeBuildArtifactExtension(name),
+  );
+}
+
 export async function removeUnusedAppPackageFiles(
   appPath: string,
   platform: PackagerPlatform,
@@ -205,6 +228,9 @@ export async function removeUnusedAppPackageFiles(
       arch,
     ),
     pruneBetterSqlite3(path.join(appPath, "node_modules", "better-sqlite3")),
+    pruneKeychainReader(
+      path.join(appPath, "node_modules", "dyad-keychain-reader"),
+    ),
   ]);
 }
 

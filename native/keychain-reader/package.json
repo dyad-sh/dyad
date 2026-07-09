@@ -1,0 +1,11 @@
+{
+  "name": "dyad-keychain-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "macOS Security.framework Keychain reader for Dyad safeStorage recovery",
+  "main": "index.js",
+  "gypfile": true,
+  "os": [
+    "darwin"
+  ]
+}

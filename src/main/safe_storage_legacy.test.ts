@@ -14,12 +14,15 @@ import os from "node:os";
 import path from "node:path";
 import {
   clearRecoveryCacheForTesting,
+  createDefaultKeychainPasswordReaderForTesting,
   decryptLegacyV10Ciphertext,
   deriveLegacyOsCryptKey,
   getRecoveryStatsForTesting,
+  InProcessKeychainPasswordReader,
   KeychainPasswordReader,
   recoverLegacySafeStorageSecret,
   SecurityCliKeychainPasswordReader,
+  setInProcessKeychainBindingLoaderForTesting,
 } from "./safe_storage_legacy";
 
 // --- Test crypto helpers: mirror Chromium's frozen os_crypt v10 scheme. ---
@@ -138,12 +141,148 @@ describe("decryptLegacyV10Ciphertext", () => {
   });
 });
 
+describe("InProcessKeychainPasswordReader", () => {
+  beforeEach(() => {
+    clearRecoveryCacheForTesting();
+  });
+
+  afterEach(() => {
+    clearRecoveryCacheForTesting();
+  });
+
+  it("returns null on non-darwin without loading the addon", async () => {
+    let loadCount = 0;
+    setInProcessKeychainBindingLoaderForTesting(() => {
+      loadCount++;
+      throw new Error("should not load");
+    });
+
+    await withPlatform("linux", () => {
+      const reader = new InProcessKeychainPasswordReader();
+      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBeNull();
+    });
+    expect(loadCount).toBe(0);
+  });
+
+  it("caches hits and null misses per identity", async () => {
+    const calls: Array<{
+      service: string;
+      account: string;
+      keychainPath?: string;
+    }> = [];
+    setInProcessKeychainBindingLoaderForTesting(() => ({
+      readGenericPassword(service, account, keychainPath) {
+        calls.push({ service, account, keychainPath });
+        if (service === "dyad Safe Storage") {
+          return "stored-password";
+        }
+        return null;
+      },
+    }));
+
+    await withPlatform("darwin", () => {
+      const reader = new InProcessKeychainPasswordReader("/tmp/test.keychain");
+      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+        "stored-password",
+      );
+      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+        "stored-password",
+      );
+      expect(
+        reader.readPassword("Chromium Safe Storage", "Chromium"),
+      ).toBeNull();
+      expect(
+        reader.readPassword("Chromium Safe Storage", "Chromium"),
+      ).toBeNull();
+    });
+
+    expect(calls).toEqual([
+      {
+        service: "dyad Safe Storage",
+        account: "dyad",
+        keychainPath: "/tmp/test.keychain",
+      },
+      {
+        service: "Chromium Safe Storage",
+        account: "Chromium",
+        keychainPath: "/tmp/test.keychain",
+      },
+    ]);
+  });
+
+  it("returns null forever after addon load failure", async () => {
+    let loadCount = 0;
+    setInProcessKeychainBindingLoaderForTesting(() => {
+      loadCount++;
+      throw new Error("missing addon");
+    });
+
+    await withPlatform("darwin", () => {
+      const reader = new InProcessKeychainPasswordReader();
+      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBeNull();
+      expect(
+        reader.readPassword("Chromium Safe Storage", "Chromium"),
+      ).toBeNull();
+    });
+    expect(loadCount).toBe(1);
+  });
+
+  it("env var selects CLI vs in-process default reader", () => {
+    const savedReader = process.env.DYAD_SAFE_STORAGE_READER;
+    try {
+      delete process.env.DYAD_SAFE_STORAGE_READER;
+      expect(createDefaultKeychainPasswordReaderForTesting()).toBeInstanceOf(
+        InProcessKeychainPasswordReader,
+      );
+
+      process.env.DYAD_SAFE_STORAGE_READER = "cli";
+      expect(createDefaultKeychainPasswordReaderForTesting()).toBeInstanceOf(
+        SecurityCliKeychainPasswordReader,
+      );
+    } finally {
+      if (savedReader === undefined) {
+        delete process.env.DYAD_SAFE_STORAGE_READER;
+      } else {
+        process.env.DYAD_SAFE_STORAGE_READER = savedReader;
+      }
+    }
+  });
+
+  it("recoverLegacySafeStorageSecret uses the in-process reader by default", async () => {
+    const key = deriveLegacyOsCryptKey("in-process-default-pw");
+    const ciphertext = encryptV10Base64("default-reader-secret", key);
+    const calls: Array<{ service: string; account: string }> = [];
+
+    setInProcessKeychainBindingLoaderForTesting(() => ({
+      readGenericPassword(service, account) {
+        calls.push({ service, account });
+        if (service === "dyad Safe Storage") {
+          return "in-process-default-pw";
+        }
+        return null;
+      },
+    }));
+
+    await withPlatform("darwin", () => {
+      expect(recoverLegacySafeStorageSecret(ciphertext)).toBe(
+        "default-reader-secret",
+      );
+    });
+    expect(calls).toEqual([
+      { service: "dyad Safe Storage", account: "dyad" },
+      { service: "Chromium Safe Storage", account: "Chromium" },
+    ]);
+  });
+});
+
 describe("recoverLegacySafeStorageSecret", () => {
   const savedKillSwitch = process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY;
+  const savedReader = process.env.DYAD_SAFE_STORAGE_READER;
 
   beforeEach(() => {
     clearRecoveryCacheForTesting();
     delete process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY;
+    delete process.env.DYAD_SAFE_STORAGE_READER;
   });
 
   afterEach(() => {
@@ -151,6 +290,11 @@ describe("recoverLegacySafeStorageSecret", () => {
       delete process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY;
     } else {
       process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY = savedKillSwitch;
+    }
+    if (savedReader === undefined) {
+      delete process.env.DYAD_SAFE_STORAGE_READER;
+    } else {
+      process.env.DYAD_SAFE_STORAGE_READER = savedReader;
     }
   });
 
@@ -482,6 +626,99 @@ describe.skipIf(process.platform !== "darwin")(
           keychainPath,
         ]);
       }
+    });
+  },
+);
+
+describe.skipIf(process.platform !== "darwin")(
+  "InProcessKeychainPasswordReader (darwin integration)",
+  () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "dyad-safe-storage-in-process-"),
+    );
+    const keychainPath = path.join(tmpDir, "dyad-recovery-test.keychain");
+    const keychainPassword = "testpass";
+    const storedPassword = "integration-test-password";
+    const promptService = "dyad Prompt Test Safe Storage";
+
+    beforeAll(() => {
+      execFileSync("security", [
+        "create-keychain",
+        "-p",
+        keychainPassword,
+        keychainPath,
+      ]);
+      execFileSync("security", [
+        "unlock-keychain",
+        "-p",
+        keychainPassword,
+        keychainPath,
+      ]);
+      execFileSync("security", [
+        "add-generic-password",
+        "-A",
+        "-s",
+        "dyad Safe Storage",
+        "-a",
+        "dyad",
+        "-w",
+        storedPassword,
+        keychainPath,
+      ]);
+      execFileSync("security", [
+        "add-generic-password",
+        "-s",
+        promptService,
+        "-a",
+        "dyad",
+        "-w",
+        "prompt-required-password",
+        keychainPath,
+      ]);
+    });
+
+    afterAll(() => {
+      try {
+        execFileSync("security", ["delete-keychain", keychainPath]);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    beforeEach(() => {
+      clearRecoveryCacheForTesting();
+    });
+
+    it("reads a stored password from the temp keychain", () => {
+      const reader = new InProcessKeychainPasswordReader(keychainPath);
+      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+        storedPassword,
+      );
+    });
+
+    it("returns null for a missing item", () => {
+      const reader = new InProcessKeychainPasswordReader(keychainPath);
+      expect(
+        reader.readPassword("Nonexistent Safe Storage", "nobody"),
+      ).toBeNull();
+    });
+
+    it("recovers an end-to-end encrypted secret from the temp keychain", () => {
+      const key = deriveLegacyOsCryptKey(storedPassword);
+      const ciphertext = encryptV10Base64("integration-secret", key);
+      const reader = new InProcessKeychainPasswordReader(keychainPath);
+      expect(recoverLegacySafeStorageSecret(ciphertext, reader)).toBe(
+        "integration-secret",
+      );
+    });
+
+    it("returns null promptly instead of prompting when Keychain UI would be required", () => {
+      const reader = new InProcessKeychainPasswordReader(keychainPath);
+      const startedAt = Date.now();
+
+      expect(reader.readPassword(promptService, "dyad")).toBeNull();
+
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
     });
   },
 );

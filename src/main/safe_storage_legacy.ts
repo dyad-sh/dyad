@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
+import { createRequire } from "node:module";
 import log from "electron-log";
 
 const logger = log.scope("safe_storage_recovery");
+const require = createRequire(import.meta.url);
 
 /**
  * Recovery for Bug #3837: on macOS, Electron `safeStorage` ciphertext can
@@ -91,6 +93,44 @@ export interface KeychainPasswordReader {
   readPassword(service: string, account: string): string | null;
 }
 
+interface KeychainReaderBinding {
+  readGenericPassword(
+    service: string,
+    account: string,
+    keychainPath?: string,
+  ): string | null;
+}
+
+type KeychainReaderBindingLoader = () => KeychainReaderBinding;
+
+let inProcessBinding: KeychainReaderBinding | null | undefined;
+let inProcessBindingLoadFailureLogged = false;
+let inProcessBindingLoader: KeychainReaderBindingLoader = () =>
+  require("dyad-keychain-reader") as KeychainReaderBinding;
+
+function loadInProcessKeychainReaderBinding(): KeychainReaderBinding | null {
+  if (inProcessBinding !== undefined) {
+    return inProcessBinding;
+  }
+  try {
+    inProcessBinding = inProcessBindingLoader();
+    return inProcessBinding;
+  } catch (error) {
+    inProcessBinding = null;
+    if (!inProcessBindingLoadFailureLogged) {
+      inProcessBindingLoadFailureLogged = true;
+      logger.debug("Failed to load in-process Keychain reader addon", error);
+    }
+    return null;
+  }
+}
+
+function createDefaultKeychainPasswordReader(): KeychainPasswordReader {
+  return process.env.DYAD_SAFE_STORAGE_READER === "cli"
+    ? new SecurityCliKeychainPasswordReader()
+    : new InProcessKeychainPasswordReader();
+}
+
 /**
  * Reads a Keychain generic-password item via the `security` CLI.
  *
@@ -155,6 +195,54 @@ export class SecurityCliKeychainPasswordReader implements KeychainPasswordReader
       return output.replace(/\r?\n$/, "");
     } catch {
       // Nonzero exit (item not found), timeout, spawn failure, etc. Never throw.
+      return null;
+    }
+  }
+}
+
+/**
+ * Reads a Keychain generic-password item in-process via SecItemCopyMatching.
+ *
+ * The native addon suppresses Keychain UI for the query; if macOS would need
+ * user interaction (for example, an item created by another app), the read
+ * returns null and recovery preserves the original ciphertext. Dev/adhoc builds
+ * may not be trusted by Keychain items created by a signed release build, which
+ * is expected to return null rather than prompting.
+ */
+export class InProcessKeychainPasswordReader implements KeychainPasswordReader {
+  private readonly keychainPath?: string;
+  private readonly passwordCache = new Map<string, string | null>();
+
+  constructor(keychainPath?: string) {
+    this.keychainPath = keychainPath;
+  }
+
+  readPassword(service: string, account: string): string | null {
+    if (process.platform !== "darwin") {
+      return null;
+    }
+    const cacheKey = `${service}\u0000${account}`;
+    const cached = this.passwordCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const password = this.readPasswordUncached(service, account);
+    this.passwordCache.set(cacheKey, password);
+    return password;
+  }
+
+  private readPasswordUncached(
+    service: string,
+    account: string,
+  ): string | null {
+    const binding = loadInProcessKeychainReaderBinding();
+    if (binding === null) {
+      return null;
+    }
+    try {
+      return binding.readGenericPassword(service, account, this.keychainPath);
+    } catch (error) {
+      logger.debug("In-process Keychain reader failed", error);
       return null;
     }
   }
@@ -229,7 +317,7 @@ export function recoverLegacySafeStorageSecret(
   }
 
   const activeReader =
-    reader ?? (defaultReader ??= new SecurityCliKeychainPasswordReader());
+    reader ?? (defaultReader ??= createDefaultKeychainPasswordReader());
 
   stats.attempted++;
 
@@ -290,9 +378,27 @@ export function clearRecoveryCacheForTesting(): void {
   stats.recovered = 0;
   stats.failed = 0;
   defaultReader = undefined;
+  inProcessBinding = undefined;
+  inProcessBindingLoadFailureLogged = false;
+  inProcessBindingLoader = () =>
+    require("dyad-keychain-reader") as KeychainReaderBinding;
 }
 
 /** Test-only: snapshot of the recovery counters. */
 export function getRecoveryStatsForTesting(): RecoveryStats {
   return { ...stats };
+}
+
+/** Test-only: injects a fake native binding loader. */
+export function setInProcessKeychainBindingLoaderForTesting(
+  loader: KeychainReaderBindingLoader,
+): void {
+  inProcessBinding = undefined;
+  inProcessBindingLoadFailureLogged = false;
+  inProcessBindingLoader = loader;
+}
+
+/** Test-only: constructs the env-selected default reader without caching it. */
+export function createDefaultKeychainPasswordReaderForTesting(): KeychainPasswordReader {
+  return createDefaultKeychainPasswordReader();
 }

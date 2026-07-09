@@ -233,6 +233,11 @@ export function recoverLegacySafeStorageSecret(
 
   stats.attempted++;
 
+  const plausibleRecoveries: Array<{
+    identity: LegacyIdentity;
+    plaintext: string;
+  }> = [];
+
   for (const identity of LEGACY_IDENTITIES) {
     const password = activeReader.readPassword(
       identity.service,
@@ -251,17 +256,29 @@ export function recoverLegacySafeStorageSecret(
     }
     const plaintext = isPlausiblePlaintext(decrypted);
     if (plaintext !== null) {
-      stats.recovered++;
-      recoveryCache.set(ciphertextBase64, plaintext);
-      logger.info(
-        `Recovered legacy safeStorage secret using identity "${identity.service}"`,
-      );
-      return plaintext;
+      plausibleRecoveries.push({ identity, plaintext });
     }
+  }
+
+  if (plausibleRecoveries.length === 1) {
+    const [{ identity, plaintext }] = plausibleRecoveries;
+    stats.recovered++;
+    recoveryCache.set(ciphertextBase64, plaintext);
+    logger.info(
+      `Recovered legacy safeStorage secret using identity "${identity.service}"`,
+    );
+    return plaintext;
   }
 
   stats.failed++;
   recoveryCache.set(ciphertextBase64, null);
+  if (plausibleRecoveries.length > 1) {
+    logger.warn(
+      "Ambiguous legacy safeStorage recovery: multiple Keychain identities " +
+        "produced plausible plaintext. Preserving ciphertext instead.",
+    );
+    return null;
+  }
   logger.info("Failed to recover legacy safeStorage secret for ciphertext");
   return null;
 }

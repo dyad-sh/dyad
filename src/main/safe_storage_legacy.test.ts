@@ -164,9 +164,11 @@ describe("recoverLegacySafeStorageSecret", () => {
         "dyad-real-secret",
       );
     });
-    // Only the first (dyad) identity is consulted.
+    // Both identities are consulted before returning so a later plausible
+    // decrypt cannot be skipped.
     expect(reader.calls).toEqual([
       { service: "dyad Safe Storage", account: "dyad" },
+      { service: "Chromium Safe Storage", account: "Chromium" },
     ]);
     expect(getRecoveryStatsForTesting()).toEqual({
       attempted: 1,
@@ -233,6 +235,28 @@ describe("recoverLegacySafeStorageSecret", () => {
     expect(reader.calls).toHaveLength(2);
   });
 
+  it("preserves ciphertext when multiple identities decrypt plausibly", async () => {
+    const key = deriveLegacyOsCryptKey("shared-keychain-pw");
+    const ciphertext = encryptV10Base64("ambiguous-secret", key);
+    const reader = makeFakeReader({
+      [DYAD_KEY]: "shared-keychain-pw",
+      [CHROMIUM_KEY]: "shared-keychain-pw",
+    });
+
+    await withPlatform("darwin", () => {
+      expect(recoverLegacySafeStorageSecret(ciphertext, reader)).toBeNull();
+    });
+    expect(reader.calls).toEqual([
+      { service: "dyad Safe Storage", account: "dyad" },
+      { service: "Chromium Safe Storage", account: "Chromium" },
+    ]);
+    expect(getRecoveryStatsForTesting()).toEqual({
+      attempted: 1,
+      recovered: 0,
+      failed: 1,
+    });
+  });
+
   it("returns null under the kill switch and never reads the keychain", async () => {
     process.env.DYAD_DISABLE_SAFE_STORAGE_RECOVERY = "1";
     const key = deriveLegacyOsCryptKey("pw");
@@ -284,8 +308,8 @@ describe("recoverLegacySafeStorageSecret", () => {
         "cached-secret",
       );
     });
-    // One read total, despite three recovery calls.
-    expect(reader.calls).toHaveLength(1);
+    // Two reads total (one per identity), despite three recovery calls.
+    expect(reader.calls).toHaveLength(2);
     expect(getRecoveryStatsForTesting()).toEqual({
       attempted: 1,
       recovered: 1,

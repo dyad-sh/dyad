@@ -226,6 +226,11 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 ## Real Socket Firewall E2E tests
 
+- If a package-manager E2E fixture mutates `package.json` after importing an
+  app and then runs a custom `pnpm install` command, include
+  `--no-frozen-lockfile`. CI sets frozen lockfile by default, and
+  `ERR_PNPM_OUTDATED_LOCKFILE` can otherwise mask the intended Socket Firewall
+  or ignored-build behavior.
 - If you change the add-dependency/socket-firewall command launch path (for example `spawn` vs PTY execution), proactively run `npm run e2e e2e-tests/package_manager.spec.ts` after `npm run build`. Unit tests and package builds do not cover the real packaged-Electron Socket Firewall flow.
 - When exercising the real `sfw` binary in E2E, set fresh per-test `npm_config_cache`, `npm_config_store_dir`, and `pnpm_config_store_dir` in the launch hooks. Reused caches/stores can make Socket Firewall report that it did not detect package fetches, which turns blocked-package tests into false negatives.
 - With fresh npm caches, warm the pinned `sfw` npx package in the test hook before Electron launches. Otherwise the app's short Socket Firewall probe can fail cold-cache installation and fall back to a direct package-manager install.

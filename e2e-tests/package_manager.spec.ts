@@ -217,6 +217,15 @@ const upgradePnpmTestSkipIfWindows = testWithConfigSkipIfWindows({
   postLaunchHook: restorePackageManagerCache,
 });
 
+const realPnpmStrictBuildsTestSkipIfWindows = testWithConfigSkipIfWindows({
+  preLaunchHook: async ({ userDataDir, fakeLlmPort }) => {
+    execFileSync("pnpm", ["--version"], { encoding: "utf8" });
+    await configurePackageManagerCache(userDataDir);
+    process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
+  },
+  postLaunchHook: restorePackageManagerCache,
+});
+
 async function openMinimalBuildChat(po: PageObject) {
   await po.setUp();
   await po.page.evaluate(
@@ -250,6 +259,62 @@ async function openMinimalBuildChat(po: PageObject) {
     pnpmLockPath: path.join(appPath, "pnpm-lock.yaml"),
     pnpmWorkspacePath: path.join(appPath, "pnpm-workspace.yaml"),
   };
+}
+
+async function getCurrentAppId(po: PageObject): Promise<number> {
+  const appPath = await po.appManagement.getCurrentAppPath();
+  const currentAppName = await po.appManagement.getCurrentAppName();
+  const apps = await po.page.evaluate(async () => {
+    return (window as any).electron.ipcRenderer.invoke("list-apps", undefined);
+  });
+  const matchingApp = apps.apps.find(
+    (app: { id: number; name: string; resolvedPath?: string }) =>
+      app.resolvedPath === appPath || app.name === currentAppName,
+  );
+  if (!matchingApp) {
+    throw new Error(`Could not find current app ${currentAppName}`);
+  }
+  return matchingApp.id;
+}
+
+async function addLocalDependencyWithIgnoredBuild(appPath: string) {
+  const dependencyDir = path.join(appPath, "packages", "fake-build-dep");
+  await fs.mkdir(dependencyDir, { recursive: true });
+  await fs.writeFile(
+    path.join(dependencyDir, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "fake-build-dep",
+        version: "1.0.0",
+        scripts: {
+          postinstall: "node postinstall.js",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await fs.writeFile(
+    path.join(dependencyDir, "postinstall.js"),
+    [
+      'require("node:fs").writeFileSync(',
+      '  require("node:path").join(__dirname, "postinstall-ran.txt"),',
+      '  "yes",',
+      ");",
+      "",
+    ].join("\n"),
+  );
+
+  const packageJsonPath = path.join(appPath, "package.json");
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+  packageJson.dependencies = {
+    ...packageJson.dependencies,
+    "fake-build-dep": "file:./packages/fake-build-dep",
+  };
+  await fs.writeFile(
+    packageJsonPath,
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
 }
 
 function extendSocketFirewallTestTimeout(testInfo: TestInfo) {
@@ -474,5 +539,61 @@ upgradePnpmTestSkipIfWindows(
     });
     await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
     await expect(warningBanner).toBeHidden({ timeout: Timeout.MEDIUM });
+  },
+);
+
+realPnpmStrictBuildsTestSkipIfWindows(
+  "custom pnpm install auto-denies ignored builds and recovers preview",
+  async ({ po }, testInfo) => {
+    testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
+
+    await po.setUp();
+    await po.importApp("minimal");
+    await po.previewPanel.expectPreviewIframeIsVisible(
+      SOCKET_FIREWALL_TEST_TIMEOUT,
+    );
+
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const appId = await getCurrentAppId(po);
+    await addLocalDependencyWithIgnoredBuild(appPath);
+
+    await po.page.evaluate(
+      async ({ appId }) => {
+        await (window as any).electron.ipcRenderer.invoke(
+          "update-app-commands",
+          {
+            appId,
+            installCommand: "pnpm --config.strictDepBuilds=true install",
+            startCommand: "pnpm run dev -- --host 127.0.0.1",
+          },
+        );
+      },
+      { appId },
+    );
+
+    await po.previewPanel.clickRebuild();
+    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.previewPanel.expectPreviewIframeIsVisible(
+      SOCKET_FIREWALL_TEST_TIMEOUT,
+    );
+
+    const pnpmWorkspaceConfig = await fs.readFile(
+      path.join(appPath, "pnpm-workspace.yaml"),
+      "utf8",
+    );
+    expect(pnpmWorkspaceConfig).toContain(
+      "fake-build-dep: false # dyad-auto-denied",
+    );
+    await expect(async () => {
+      const modulesConfig = await fs.readFile(
+        path.join(appPath, "node_modules", ".modules.yaml"),
+        "utf8",
+      );
+      expect(modulesConfig).not.toContain(
+        "fake-build-dep@file:packages/fake-build-dep",
+      );
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
   },
 );

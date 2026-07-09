@@ -785,6 +785,11 @@ async function selfHealDeniedPnpmBuilds({
     return false;
   }
 
+  await fs.promises.rm(path.join(appPath, "node_modules"), {
+    recursive: true,
+    force: true,
+  });
+
   sendTelemetryEvent("pnpm:build-auto-denied", {
     packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
     source: telemetrySource,

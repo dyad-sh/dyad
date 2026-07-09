@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
@@ -10,7 +10,10 @@ const {
   getPnpmMinimumReleaseAgeSupportMock,
   ensurePnpmAllowBuildsConfiguredMock,
   readSettingsMock,
+  readPnpmIgnoredBuildsMock,
+  recordDeniedPnpmBuildsMock,
   safeSendMock,
+  sendTelemetryEventMock,
   spawnMock,
   killPortMock,
   startProxyMock,
@@ -34,7 +37,10 @@ const {
   readSettingsMock: vi.fn<() => Record<string, unknown>>(() => ({
     runtimeMode2: "host",
   })),
+  readPnpmIgnoredBuildsMock: vi.fn(),
+  recordDeniedPnpmBuildsMock: vi.fn(),
   safeSendMock: vi.fn(),
+  sendTelemetryEventMock: vi.fn(),
   spawnMock: vi.fn(),
   killPortMock: vi.fn<() => Promise<void>>(async () => {}),
   startProxyMock: vi.fn(),
@@ -89,8 +95,10 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
   isPnpmIgnoredBuildsError: (error: unknown) =>
     String(error).includes("ERR_PNPM_IGNORED_BUILDS"),
   parsePnpmIgnoredBuildsFromOutput: vi.fn(() => []),
-  readPnpmIgnoredBuilds: vi.fn(async () => []),
-  recordDeniedPnpmBuilds: vi.fn(async () => ({ deniedBuilds: [] })),
+  readPnpmIgnoredBuilds: (...args: unknown[]) =>
+    readPnpmIgnoredBuildsMock(...args),
+  recordDeniedPnpmBuilds: (...args: unknown[]) =>
+    recordDeniedPnpmBuildsMock(...args),
   PNPM_INSTALL_POLICY_ARGS: [
     "--config.pm-on-fail=ignore",
     "--minimum-release-age=1440",
@@ -99,7 +107,7 @@ vi.mock("@/ipc/utils/socket_firewall", () => ({
 }));
 
 vi.mock("@/ipc/utils/telemetry", () => ({
-  sendTelemetryEvent: vi.fn(),
+  sendTelemetryEvent: (...args: unknown[]) => sendTelemetryEventMock(...args),
 }));
 
 vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
@@ -190,6 +198,24 @@ async function withCorepackProjectSpecEnv<T>(
   }
 }
 
+async function waitForAssertion(assertion: () => void): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
+  assertion();
+}
+
 describe("executeApp", () => {
   beforeEach(() => {
     runningApps.clear();
@@ -208,7 +234,12 @@ describe("executeApp", () => {
     readSettingsMock.mockReturnValue({
       runtimeMode2: "host",
     });
+    readPnpmIgnoredBuildsMock.mockReset();
+    readPnpmIgnoredBuildsMock.mockResolvedValue([]);
+    recordDeniedPnpmBuildsMock.mockReset();
+    recordDeniedPnpmBuildsMock.mockResolvedValue({ deniedBuilds: [] });
     safeSendMock.mockReset();
+    sendTelemetryEventMock.mockReset();
     spawnMock.mockReset();
     killPortMock.mockReset();
     killPortMock.mockResolvedValue(undefined);
@@ -580,6 +611,80 @@ describe("executeApp", () => {
       expect(getPnpmMinimumReleaseAgeSupportMock).not.toHaveBeenCalled();
       expect(ensurePnpmAllowBuildsConfiguredMock).not.toHaveBeenCalled();
     });
+  });
+
+  it("clears node_modules before retrying custom pnpm commands after ignored builds are denied", async () => {
+    const appPath = await createTempAppDir();
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    await mkdir(nodeModulesPath, { recursive: true });
+    readPnpmIgnoredBuildsMock.mockResolvedValue([
+      {
+        packageSpec: "fake-build-dep@file:packages/fake-build-dep",
+        packageName: "fake-build-dep",
+      },
+    ]);
+    recordDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: [
+        {
+          packageSpec: "fake-build-dep@file:packages/fake-build-dep",
+          packageName: "fake-build-dep",
+        },
+      ],
+    });
+
+    try {
+      const firstProcess = new FakeChildProcess(101);
+      const secondProcess = new FakeChildProcess(102);
+      spawnMock
+        .mockReturnValueOnce(firstProcess)
+        .mockReturnValueOnce(secondProcess);
+
+      await executeApp({
+        appPath,
+        appId: 1,
+        event: createEvent(),
+        isNeon: false,
+        installCommand: "pnpm --config.strictDepBuilds=true install",
+        startCommand: "pnpm run dev",
+      });
+
+      firstProcess.stderr.emit(
+        "data",
+        "ERR_PNPM_IGNORED_BUILDS Ignored build scripts: fake-build-dep@file:packages/fake-build-dep",
+      );
+      firstProcess.emit("close", 1, null);
+
+      await waitForAssertion(() => {
+        expect(spawnMock).toHaveBeenCalledTimes(2);
+      });
+      await expect(stat(nodeModulesPath)).rejects.toThrow();
+      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+        appPath,
+        ignoredBuilds: [
+          {
+            packageSpec: "fake-build-dep@file:packages/fake-build-dep",
+            packageName: "fake-build-dep",
+          },
+        ],
+      });
+      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
+        "pnpm:build-auto-denied",
+        {
+          packages: ["fake-build-dep@file:packages/fake-build-dep"],
+          source: "self-heal",
+        },
+      );
+      expect(runningApps.get(1)?.process).toBe(
+        secondProcess as unknown as ChildProcess,
+      );
+      expect(safeSendMock).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "app:output",
+        expect.objectContaining({ type: "app-exit" }),
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
   });
 
   it("starts the proxy on the deterministic port without killing the occupant", async () => {

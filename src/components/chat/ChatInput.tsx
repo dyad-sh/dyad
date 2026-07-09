@@ -1287,6 +1287,28 @@ function KeepGoingButton() {
   );
 }
 
+function AddTypeScriptButton() {
+  const { t } = useTranslation("chat");
+  const { streamMessage } = useStreamChat();
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const onClick = () => {
+    if (!chatId) {
+      console.error("No chat id found");
+      return;
+    }
+    streamMessage({
+      prompt:
+        "Add TypeScript to this project: install `typescript` as a dev dependency and create a lenient tsconfig (`allowJs: true`, `strict: false`) so existing JavaScript keeps working.",
+      chatId,
+    });
+  };
+  return (
+    <SuggestionButton onClick={onClick} tooltipText={t("addTypeScript")}>
+      {t("addTypeScript")}
+    </SuggestionButton>
+  );
+}
+
 export function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
@@ -1303,6 +1325,8 @@ export function mapActionToButton(action: SuggestedAction) {
       return <RefreshButton />;
     case "keep-going":
       return <KeepGoingButton />;
+    case "add-typescript":
+      return <AddTypeScriptButton />;
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (

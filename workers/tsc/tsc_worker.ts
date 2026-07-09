@@ -6,10 +6,21 @@ import {
   Problem,
   ProblemReport,
   SyncVirtualFileSystem,
+  TscWorkerErrorKind,
   WorkerInput,
   WorkerOutput,
 } from "../../shared/tsc_types";
 import { SyncVirtualFileSystemImpl } from "../../shared/VirtualFilesystem";
+
+class TscWorkerPreconditionError extends Error {
+  constructor(
+    readonly errorKind: TscWorkerErrorKind,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TscWorkerPreconditionError";
+  }
+}
 
 function loadLocalTypeScript(appPath: string): typeof import("typescript") {
   try {
@@ -18,7 +29,8 @@ function loadLocalTypeScript(appPath: string): typeof import("typescript") {
     const ts = require(requirePath);
     return ts;
   } catch (error) {
-    throw new Error(
+    throw new TscWorkerPreconditionError(
+      "typescript-not-found",
       `Failed to load TypeScript from ${appPath} because of ${error}`,
     );
   }
@@ -43,7 +55,8 @@ function findTypeScriptConfig(appPath: string): string {
     }
   }
 
-  throw new Error(
+  throw new TscWorkerPreconditionError(
+    "tsconfig-not-found",
     `No TypeScript configuration file found in ${appPath}. Expected one of: ${possibleConfigs.join(", ")}`,
   );
 }
@@ -299,6 +312,10 @@ async function processTypeScriptCheck(
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
+      errorKind:
+        error instanceof TscWorkerPreconditionError
+          ? error.errorKind
+          : undefined,
     };
   }
 }

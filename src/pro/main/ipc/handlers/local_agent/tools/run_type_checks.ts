@@ -5,8 +5,12 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import { generateProblemReport } from "@/ipc/processors/tsc";
-import type { Problem } from "@/ipc/types";
+import {
+  generateProblemReport,
+  getTypeCheckPreconditionGuidance,
+  getTypeCheckPreconditionKind,
+} from "@/ipc/processors/tsc";
+import type { Problem, ProblemReport } from "@/ipc/types";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 import { normalizePath } from "../../../../../../../shared/normalizePath";
@@ -93,11 +97,31 @@ export const runTypeChecksTool: ToolDefinition<
       `<dyad-status title="${escapeXmlAttr(title)}"></dyad-status>`,
     );
 
-    // Run TypeScript type checking using existing infrastructure
-    const problemReport = await generateProblemReport({
-      fullResponse: "",
-      appPath: ctx.appPath,
-    });
+    let problemReport: ProblemReport;
+    try {
+      // Run TypeScript type checking using existing infrastructure
+      problemReport = await generateProblemReport({
+        fullResponse: "",
+        appPath: ctx.appPath,
+      });
+    } catch (error) {
+      const preconditionKind = getTypeCheckPreconditionKind(error);
+      if (!preconditionKind) {
+        throw error;
+      }
+
+      const result = await getTypeCheckPreconditionGuidance({
+        kind: preconditionKind,
+        appPath: ctx.appPath,
+        includeAgentInstructions: true,
+      });
+
+      ctx.onXmlComplete(
+        `<dyad-status title="${escapeXmlAttr(title)}">\n${escapeXmlContent(result)}\n</dyad-status>`,
+      );
+
+      return result;
+    }
 
     // Send the full problem report to update the Problems panel in the UI
     safeSend(ctx.event.sender, "agent-tool:problems-update", {

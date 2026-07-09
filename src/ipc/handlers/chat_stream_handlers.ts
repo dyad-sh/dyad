@@ -81,7 +81,10 @@ import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/
 import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
-import { generateProblemReport } from "../processors/tsc";
+import {
+  generateProblemReport,
+  getTypeCheckPreconditionKind,
+} from "../processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
@@ -1826,11 +1829,19 @@ ${problemReport.problems
                 });
               }
             } catch (error) {
-              logger.error(
-                "Error generating problem report or auto-fixing:",
-                settings.enableAutoFixProblems,
-                error,
-              );
+              const preconditionKind = getTypeCheckPreconditionKind(error);
+              if (preconditionKind) {
+                logger.info(
+                  "Skipping auto-fix because type checking is unavailable:",
+                  preconditionKind,
+                );
+              } else {
+                logger.error(
+                  "Error generating problem report or auto-fixing:",
+                  settings.enableAutoFixProblems,
+                  error,
+                );
+              }
             }
           }
         } catch (streamError) {

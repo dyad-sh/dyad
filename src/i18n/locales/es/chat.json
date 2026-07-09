@@ -85,6 +85,7 @@
   "refreshApp": "Actualizar aplicación",
   "refreshAppDescription": "Actualizar la vista previa de la aplicación",
   "keepGoing": "Continuar",
+  "addTypeScript": "Añadir TypeScript",
   "tipProposal": "Propuesta de consejo",
   "securityRisks": "Riesgos de Seguridad",
   "sqlQueries": "Consultas SQL",

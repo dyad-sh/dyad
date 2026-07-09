@@ -27,6 +27,10 @@ vi.mock("../preview_panel/FileEditor", () => ({
   FileEditor: () => null,
 }));
 
+vi.mock("@/hooks/useStreamChat", () => ({
+  useStreamChat: () => ({ streamMessage: vi.fn() }),
+}));
+
 import { DyadMarkdownParser } from "./DyadMarkdownParser";
 
 describe("DyadMarkdownParser dyad-status", () => {
@@ -47,6 +51,25 @@ describe("DyadMarkdownParser dyad-status", () => {
 
     expect(screen.getByText("Supabase functions failed")).toBeTruthy();
     expect(statusCard.className).toContain("border-l-red-500");
+  });
+});
+
+describe("DyadMarkdownParser dyad-command", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders the add TypeScript command as a supported action button", () => {
+    render(
+      <DyadMarkdownParser
+        content={'<dyad-command type="add-typescript"></dyad-command>'}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /add typescript/i }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Unsupported:/)).toBeNull();
   });
 });
 

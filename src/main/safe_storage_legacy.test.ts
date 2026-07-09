@@ -412,5 +412,52 @@ describe.skipIf(process.platform !== "darwin")(
         "integration-secret",
       );
     });
+
+    it("caches per-identity lookups so several locked secrets shell out once per identity", () => {
+      const reader = new SecurityCliKeychainPasswordReader(keychainPath);
+      // Prime both a hit and a miss, then delete the keychain item out from
+      // under the reader: cached answers must keep being served without any
+      // further CLI calls (a re-read of the now-missing item would return
+      // null, and a prompt-per-secret would stall startup on real machines).
+      expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+        storedPassword,
+      );
+      expect(reader.readPassword("Missing Safe Storage", "nobody")).toBeNull();
+      execFileSync("security", [
+        "delete-generic-password",
+        "-s",
+        "dyad Safe Storage",
+        keychainPath,
+      ]);
+      try {
+        expect(reader.readPassword("dyad Safe Storage", "dyad")).toBe(
+          storedPassword,
+        );
+        expect(
+          reader.readPassword("Missing Safe Storage", "nobody"),
+        ).toBeNull();
+        // A fresh reader (no cache) sees the deletion, proving the values
+        // above came from the cache.
+        expect(
+          new SecurityCliKeychainPasswordReader(keychainPath).readPassword(
+            "dyad Safe Storage",
+            "dyad",
+          ),
+        ).toBeNull();
+      } finally {
+        // Restore the item for any tests that run after this one.
+        execFileSync("security", [
+          "add-generic-password",
+          "-A",
+          "-s",
+          "dyad Safe Storage",
+          "-a",
+          "dyad",
+          "-w",
+          storedPassword,
+          keychainPath,
+        ]);
+      }
+    });
   },
 );

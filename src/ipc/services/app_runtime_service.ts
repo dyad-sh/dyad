@@ -36,10 +36,17 @@ import {
   ensurePnpmAllowBuildsConfigured,
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
+  isPnpmIgnoredBuildsError,
+  parsePnpmIgnoredBuildsFromOutput,
   type PackageManager,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_INSTALL_POLICY_ARGS,
+  getBestEffortPnpmRebuildCommand,
 } from "@/ipc/utils/socket_firewall";
+import {
+  recordAndReportDeniedPnpmBuilds,
+  resolvePnpmIgnoredBuilds,
+} from "@/ipc/utils/pnpm_denied_builds";
 import {
   choosePackageManagerFromSignal,
   getPackageManagerSignal,
@@ -90,6 +97,19 @@ function getPnpmRunCommand(): string {
   return `pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} run dev`;
 }
 
+function buildPnpmInstallAndRunCommand(input: {
+  promotedPackages: string[];
+  port: number;
+}): string {
+  return [
+    getPnpmInstallCommand(),
+    getBestEffortPnpmRebuildCommand(input.promotedPackages),
+    `${getPnpmRunCommand()} --port ${input.port}`,
+  ]
+    .filter(Boolean)
+    .join(" && ");
+}
+
 function getNpmInstallCommand(): string {
   return "npm install --legacy-peer-deps";
 }
@@ -113,9 +133,14 @@ async function getDefaultCommand({
 }): Promise<AppRuntimeCommand> {
   const port = getAppPort(appId);
   if (runtimeMode === "docker") {
-    await ensurePnpmAllowBuildsConfigured({ appPath });
+    const allowBuildsResult = await ensurePnpmAllowBuildsConfigured({
+      appPath,
+    });
     return {
-      command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
+      command: buildPnpmInstallAndRunCommand({
+        promotedPackages: allowBuildsResult.promotedPackages,
+        port,
+      }),
       isCustom: false,
       packageManager: "pnpm",
     };
@@ -147,9 +172,12 @@ async function getDefaultCommand({
     };
   }
 
-  await ensurePnpmAllowBuildsConfigured({ appPath });
+  const allowBuildsResult = await ensurePnpmAllowBuildsConfigured({ appPath });
   return {
-    command: `${getPnpmInstallCommand()} && ${getPnpmRunCommand()} --port ${port}`,
+    command: buildPnpmInstallAndRunCommand({
+      promotedPackages: allowBuildsResult.promotedPackages,
+      port,
+    }),
     isCustom: false,
     packageManager: "pnpm",
   };
@@ -373,6 +401,7 @@ async function executeAppLocalNode({
   isNeon,
   installCommand,
   startCommand,
+  ignoredBuildsSelfHealAttempted = false,
 }: {
   appPath: string;
   appId: number;
@@ -380,6 +409,7 @@ async function executeAppLocalNode({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
   const command = await getCommand({
     runtimeMode: "host",
@@ -457,8 +487,42 @@ Details: ${details || "n/a"}
   listenToProcess({
     process: spawnedProcess,
     appId,
+    appPath,
     isNeon,
     event,
+    onPnpmIgnoredBuildsFailure:
+      command.isCustom && !ignoredBuildsSelfHealAttempted
+        ? async (output) => {
+            const healed = await selfHealDeniedPnpmBuilds({
+              appPath,
+              output,
+              telemetrySource: "self-heal",
+            });
+            if (!healed) {
+              return false;
+            }
+
+            // Per "Transparent Over Magical": tell the user why the
+            // process restarted instead of silently reinstalling.
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message:
+                "[dyad] pnpm blocked dependency build scripts. Recorded the decision in pnpm-workspace.yaml and reinstalling...",
+              appId,
+            });
+
+            await executeAppLocalNode({
+              appPath,
+              appId,
+              event,
+              isNeon,
+              installCommand,
+              startCommand,
+              ignoredBuildsSelfHealAttempted: true,
+            });
+            return true;
+          }
+        : undefined,
   });
 }
 
@@ -560,19 +624,57 @@ export function registerCloudSandboxSyncUpdateListener(): void {
   cloudSandboxSyncUpdateListenerRegistered = true;
 }
 
+// Records builds that a successful install skipped (the "Ignored build
+// scripts" warning path) so the decision lands in pnpm-workspace.yaml and a
+// later plain `pnpm install` (export/CI/Rebuild) cannot fail on
+// ERR_PNPM_IGNORED_BUILDS. Best-effort: reads [] when .modules.yaml is
+// absent (npm apps, Docker-volume installs).
+async function recordIgnoredBuildsAfterInstall(appPath: string): Promise<void> {
+  try {
+    const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath);
+    await recordAndReportDeniedPnpmBuilds({
+      appPath,
+      ignoredBuilds,
+      source: "app-run",
+    });
+  } catch (error) {
+    logger.warn("Failed to record ignored pnpm builds after install:", error);
+  }
+}
+
 function listenToProcess({
   process: spawnedProcess,
   appId,
+  appPath,
   isNeon,
   event,
+  onPnpmIgnoredBuildsFailure,
 }: {
   process: ChildProcess;
   appId: number;
+  appPath?: string;
   isNeon: boolean;
   event: Electron.IpcMainInvokeEvent;
+  onPnpmIgnoredBuildsFailure?: (output: string) => Promise<boolean>;
 }) {
+  // Rolling tail, kept only while a self-heal callback could still use it:
+  // dev servers run for hours and unbounded accumulation would leak memory.
+  // The ERR_PNPM_IGNORED_BUILDS marker appears at the end of a failed
+  // install, so a bounded tail is sufficient for the close-handler check.
+  const MAX_PROCESS_OUTPUT_TAIL_LENGTH = 64 * 1024;
+  let processOutput = "";
+  let ignoredBuildsRecordedAfterInstall = false;
+  const appendProcessOutput = (message: string) => {
+    if (!onPnpmIgnoredBuildsFailure) {
+      return;
+    }
+    processOutput = (processOutput + message).slice(
+      -MAX_PROCESS_OUTPUT_TAIL_LENGTH,
+    );
+  };
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
+    appendProcessOutput(message);
     logger.debug(
       `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
     );
@@ -610,6 +712,13 @@ function listenToProcess({
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
         const originalUrl = urlMatch[1];
+        // The dev-server URL appearing means the install phase completed
+        // successfully — the one point in the `install && dev` chain where
+        // ignored builds can be read and recorded.
+        if (appPath && !ignoredBuildsRecordedAfterInstall) {
+          ignoredBuildsRecordedAfterInstall = true;
+          void recordIgnoredBuildsAfterInstall(appPath);
+        }
         await ensureProxyForRunningApp({
           appId,
           event,
@@ -622,6 +731,7 @@ function listenToProcess({
 
   spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
+    appendProcessOutput(message);
     logger.error(
       `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
     );
@@ -642,25 +752,56 @@ function listenToProcess({
   });
 
   spawnedProcess.on("close", (code, signal) => {
-    logger.log(
-      `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
-    );
-    flushAllAppOutputs();
-    const currentAppInfo = runningApps.get(appId);
-    if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
-      removeAppIfCurrentProcess(appId, spawnedProcess);
-      return;
-    }
+    void (async () => {
+      try {
+        logger.log(
+          `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
+        );
+        flushAllAppOutputs();
+        const currentAppInfo = runningApps.get(appId);
+        if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
+          removeAppIfCurrentProcess(appId, spawnedProcess);
+          return;
+        }
 
-    safeSend(event.sender, "app:output", {
-      type: "app-exit",
-      message: `App process exited with code ${code ?? "null"}`,
-      appId,
-      exitCode: code,
-      signal,
-      timestamp: Date.now(),
-    });
-    removeAppIfCurrentProcess(appId, spawnedProcess);
+        if (
+          code !== 0 &&
+          onPnpmIgnoredBuildsFailure &&
+          isPnpmIgnoredBuildsError(processOutput)
+        ) {
+          let retried = false;
+          try {
+            retried = await onPnpmIgnoredBuildsFailure(processOutput);
+          } catch (error) {
+            logger.warn(
+              `Failed to self-heal pnpm ignored builds for app ${appId}:`,
+              error,
+            );
+          }
+          if (retried) {
+            return;
+          }
+        }
+
+        safeSend(event.sender, "app:output", {
+          type: "app-exit",
+          message: `App process exited with code ${code ?? "null"}`,
+          appId,
+          exitCode: code,
+          signal,
+          timestamp: Date.now(),
+        });
+        removeAppIfCurrentProcess(appId, spawnedProcess);
+      } catch (error) {
+        // The close handler is a critical lifecycle point; never let an
+        // unexpected error leave a stale runningApps entry behind.
+        logger.error(
+          `Unexpected error in close handler for app ${appId}:`,
+          error,
+        );
+        removeAppIfCurrentProcess(appId, spawnedProcess);
+      }
+    })();
   });
 
   spawnedProcess.on("error", (err) => {
@@ -671,6 +812,44 @@ function listenToProcess({
   });
 }
 
+async function selfHealDeniedPnpmBuilds({
+  appPath,
+  output,
+  telemetrySource,
+  removeNodeModules = true,
+}: {
+  appPath: string;
+  output: string;
+  telemetrySource: "self-heal";
+  // Docker installs use the container volume, not host node_modules, and an
+  // explicit `pkg: false` entry passes even a fast-path install — so the
+  // Docker caller skips the host cleanup.
+  removeNodeModules?: boolean;
+}): Promise<boolean> {
+  const ignoredBuilds = await resolvePnpmIgnoredBuilds(appPath, output);
+  // recordDeniedPnpmBuilds may also promote previously auto-denied packages
+  // as a side effect; no explicit `pnpm rebuild` is needed here because
+  // node_modules is removed below, so the retry's fresh install runs build
+  // scripts for newly-allowed packages natively.
+  const { deniedBuilds } = await recordAndReportDeniedPnpmBuilds({
+    appPath,
+    ignoredBuilds,
+    source: telemetrySource,
+  });
+  if (deniedBuilds.length === 0) {
+    return false;
+  }
+
+  if (removeNodeModules) {
+    await fs.promises.rm(path.join(appPath, "node_modules"), {
+      recursive: true,
+      force: true,
+    });
+  }
+
+  return true;
+}
+
 async function executeAppInDocker({
   appPath,
   appId,
@@ -678,6 +857,7 @@ async function executeAppInDocker({
   isNeon,
   installCommand,
   startCommand,
+  ignoredBuildsSelfHealAttempted = false,
 }: {
   appPath: string;
   appId: number;
@@ -685,6 +865,7 @@ async function executeAppInDocker({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
   const containerName = `dyad-app-${appId}`;
 
@@ -861,11 +1042,49 @@ ${errorOutput || "(empty)"}`,
     lastViewedAt: Date.now(),
   });
 
+  // Mirrors the host path: custom `install && start` chains run strict pnpm
+  // inside the container, so an ERR_PNPM_IGNORED_BUILDS exit needs the same
+  // record-denials-and-retry treatment (executeAppInDocker is restart-safe —
+  // it stops and removes the previous container first).
+  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   listenToProcess({
     process,
     appId,
+    appPath,
     isNeon,
     event,
+    onPnpmIgnoredBuildsFailure:
+      hasCustomCommands && !ignoredBuildsSelfHealAttempted
+        ? async (output) => {
+            const healed = await selfHealDeniedPnpmBuilds({
+              appPath,
+              output,
+              telemetrySource: "self-heal",
+              removeNodeModules: false,
+            });
+            if (!healed) {
+              return false;
+            }
+
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message:
+                "[dyad] pnpm blocked dependency build scripts. Recorded the decision in pnpm-workspace.yaml and reinstalling...",
+              appId,
+            });
+
+            await executeAppInDocker({
+              appPath,
+              appId,
+              event,
+              isNeon,
+              installCommand,
+              startCommand,
+              ignoredBuildsSelfHealAttempted: true,
+            });
+            return true;
+          }
+        : undefined,
   });
 }
 
@@ -956,6 +1175,7 @@ async function executeAppInCloud({
 
   startCloudSandboxLogStream({
     appId,
+    appPath,
     event,
     sandboxId,
     cloudLogAbortController,
@@ -964,10 +1184,47 @@ async function executeAppInCloud({
 
 export function startCloudSandboxLogStream(input: {
   appId: number;
+  appPath?: string;
   event: Electron.IpcMainInvokeEvent;
   sandboxId: string;
   cloudLogAbortController: AbortController;
 }) {
+  // The sandbox install runs remotely and node_modules is never synced back,
+  // so the only way to observe ignored builds is the "Ignored build scripts"
+  // line in the streamed install output. Keep a bounded tail across chunks
+  // (the line may be split) and record denials locally once, best-effort.
+  const MAX_LOG_TAIL_LENGTH = 16 * 1024;
+  let logTail = "";
+  let ignoredBuildsRecorded = false;
+  const maybeRecordIgnoredBuilds = (message: string) => {
+    if (!input.appPath || ignoredBuildsRecorded) {
+      return;
+    }
+    logTail = (logTail + message).slice(-MAX_LOG_TAIL_LENGTH);
+    const ignoredBuilds = parsePnpmIgnoredBuildsFromOutput(logTail);
+    if (ignoredBuilds.length === 0) {
+      return;
+    }
+    ignoredBuildsRecorded = true;
+    const appPath = input.appPath;
+    void (async () => {
+      try {
+        // Output-only on purpose: the install ran remotely, so the local
+        // .modules.yaml (if any) does not describe this sandbox.
+        await recordAndReportDeniedPnpmBuilds({
+          appPath,
+          ignoredBuilds,
+          source: "cloud-sandbox",
+        });
+      } catch (error) {
+        logger.warn(
+          "Failed to record ignored pnpm builds from cloud sandbox logs:",
+          error,
+        );
+      }
+    })();
+  };
+
   void (async () => {
     try {
       for await (const message of streamCloudSandboxLogs(
@@ -978,6 +1235,8 @@ export function startCloudSandboxLogStream(input: {
         if (!appInfo || appInfo.cloudSandboxId !== input.sandboxId) {
           return;
         }
+
+        maybeRecordIgnoredBuilds(message);
 
         addLog({
           level: "info",

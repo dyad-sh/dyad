@@ -33,6 +33,10 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitCommit: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../ipc/utils/telemetry", () => ({
+  sendTelemetryEvent: vi.fn(),
+}));
+
 describe("isComponentTaggerUpgradeNeeded Heuristics", () => {
   const mockPath = "/mock/app";
 

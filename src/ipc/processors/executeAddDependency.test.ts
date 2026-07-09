@@ -17,6 +17,8 @@ const {
   commitPnpmAllowBuildsConfigIfChangedMock,
   ensureSocketFirewallInstalledMock,
   getPnpmMinimumReleaseAgeSupportMock,
+  resolvePnpmIgnoredBuildsMock,
+  recordAndReportDeniedPnpmBuildsMock,
   runCommandMock,
   readEffectiveSettingsMock,
   dbUpdateSetMock,
@@ -25,6 +27,8 @@ const {
   commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
   ensureSocketFirewallInstalledMock: vi.fn(),
   getPnpmMinimumReleaseAgeSupportMock: vi.fn(),
+  resolvePnpmIgnoredBuildsMock: vi.fn(),
+  recordAndReportDeniedPnpmBuildsMock: vi.fn(),
   runCommandMock: vi.fn(),
   readEffectiveSettingsMock: vi.fn(),
   dbUpdateSetMock: vi.fn(),
@@ -62,6 +66,11 @@ vi.mock("@/ipc/utils/socket_firewall", async () => {
   };
 });
 
+vi.mock("@/ipc/utils/pnpm_denied_builds", () => ({
+  resolvePnpmIgnoredBuilds: resolvePnpmIgnoredBuildsMock,
+  recordAndReportDeniedPnpmBuilds: recordAndReportDeniedPnpmBuildsMock,
+}));
+
 describe("executeAddDependency", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,7 +83,13 @@ describe("executeAddDependency", () => {
       minimumReleaseAgeSupported: true,
       version: "10.16.0",
     });
-    commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue(undefined);
+    commitPnpmAllowBuildsConfigIfChangedMock.mockResolvedValue({
+      promotedPackages: [],
+    });
+    resolvePnpmIgnoredBuildsMock.mockResolvedValue([]);
+    recordAndReportDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: [],
+    });
     readEffectiveSettingsMock.mockResolvedValue({
       blockUnsafeNpmPackages: true,
     });
@@ -576,6 +591,49 @@ describe("executeAddDependency", () => {
     expect(dbUpdateSetMock).toHaveBeenCalledWith({
       content:
         '<dyad-add-dependency packages="react-safe">installed &lt;react&gt;</dyad-add-dependency>',
+    });
+  });
+
+  it("records denied pnpm builds and surfaces the security-policy note", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+    });
+    runCommandMock.mockResolvedValueOnce({
+      stdout: "installed via pnpm",
+      stderr: "",
+    });
+    resolvePnpmIgnoredBuildsMock.mockResolvedValue([
+      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+    ]);
+    recordAndReportDeniedPnpmBuildsMock.mockResolvedValue({
+      deniedBuilds: [{ packageName: "core-js", packageSpec: "core-js@3.49.0" }],
+    });
+
+    const result = await executeAddDependency({
+      packages: ["core-js"],
+      message: {
+        id: 1,
+        content:
+          '<dyad-add-dependency packages="core-js"></dyad-add-dependency>',
+      } as any,
+      appPath: "/tmp/app",
+    });
+
+    expect(result.installResults).toContain("installed via pnpm");
+    expect(result.installResults).toContain(
+      "Note: build scripts for core-js were not run (Dyad security policy).",
+    );
+    expect(recordAndReportDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+      appPath: "/tmp/app",
+      ignoredBuilds: [
+        { packageName: "core-js", packageSpec: "core-js@3.49.0" },
+      ],
+      source: "add-dependency",
+    });
+    expect(dbUpdateSetMock).toHaveBeenCalledWith({
+      content: expect.stringContaining(
+        "Note: build scripts for core-js were not run",
+      ),
     });
   });
 });

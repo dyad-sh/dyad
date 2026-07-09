@@ -820,10 +820,15 @@ async function selfHealDeniedPnpmBuilds({
   appPath,
   output,
   telemetrySource,
+  removeNodeModules = true,
 }: {
   appPath: string;
   output: string;
   telemetrySource: "self-heal";
+  // Docker installs use the container volume, not host node_modules, and an
+  // explicit `pkg: false` entry passes even a fast-path install — so the
+  // Docker caller skips the host cleanup.
+  removeNodeModules?: boolean;
 }): Promise<boolean> {
   const ignoredBuildsFromModulesYaml = await readPnpmIgnoredBuilds(appPath);
   const ignoredBuilds =
@@ -842,10 +847,12 @@ async function selfHealDeniedPnpmBuilds({
     return false;
   }
 
-  await fs.promises.rm(path.join(appPath, "node_modules"), {
-    recursive: true,
-    force: true,
-  });
+  if (removeNodeModules) {
+    await fs.promises.rm(path.join(appPath, "node_modules"), {
+      recursive: true,
+      force: true,
+    });
+  }
 
   sendTelemetryEvent("pnpm:build-auto-denied", {
     packages: deniedBuilds.map((ignoredBuild) => ignoredBuild.packageSpec),
@@ -861,6 +868,7 @@ async function executeAppInDocker({
   isNeon,
   installCommand,
   startCommand,
+  ignoredBuildsSelfHealAttempted = false,
 }: {
   appPath: string;
   appId: number;
@@ -868,6 +876,7 @@ async function executeAppInDocker({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
   const containerName = `dyad-app-${appId}`;
 
@@ -1044,12 +1053,49 @@ ${errorOutput || "(empty)"}`,
     lastViewedAt: Date.now(),
   });
 
+  // Mirrors the host path: custom `install && start` chains run strict pnpm
+  // inside the container, so an ERR_PNPM_IGNORED_BUILDS exit needs the same
+  // record-denials-and-retry treatment (executeAppInDocker is restart-safe —
+  // it stops and removes the previous container first).
+  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   listenToProcess({
     process,
     appId,
     appPath,
     isNeon,
     event,
+    onPnpmIgnoredBuildsFailure:
+      hasCustomCommands && !ignoredBuildsSelfHealAttempted
+        ? async (output) => {
+            const healed = await selfHealDeniedPnpmBuilds({
+              appPath,
+              output,
+              telemetrySource: "self-heal",
+              removeNodeModules: false,
+            });
+            if (!healed) {
+              return false;
+            }
+
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message:
+                "[dyad] pnpm blocked dependency build scripts. Recorded the decision in pnpm-workspace.yaml and reinstalling...",
+              appId,
+            });
+
+            await executeAppInDocker({
+              appPath,
+              appId,
+              event,
+              isNeon,
+              installCommand,
+              startCommand,
+              ignoredBuildsSelfHealAttempted: true,
+            });
+            return true;
+          }
+        : undefined,
   });
 }
 

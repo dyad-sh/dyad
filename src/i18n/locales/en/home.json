@@ -235,6 +235,8 @@
     "noChangesInVersion": "No file changes in this version",
     "viewingVersionChanges": "Viewing changes in this version",
     "noStagedChanges": "No staged changes",
+    "failedToLoadChanges": "Couldn't load changes for this file. Select another file or try again.",
+    "noChangesToDisplay": "No changes to display",
     "viewingStagedChanges": "Viewing staged changes",
     "backToEditor": "Back to editor",
     "commit": "Commit",

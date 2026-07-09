@@ -31,10 +31,11 @@ export function StagedDiffView({ appId }: StagedDiffViewProps) {
     uncommittedFiles[0] ??
     null;
 
-  const { diff, loading: diffLoading } = useUncommittedFileDiff(
-    appId,
-    selected?.path ?? null,
-  );
+  const {
+    diff,
+    loading: diffLoading,
+    error: diffError,
+  } = useUncommittedFileDiff(appId, selected?.path ?? null);
 
   if (isLoading) {
     return (
@@ -87,9 +88,18 @@ export function StagedDiffView({ appId }: StagedDiffViewProps) {
             oldContent={diff.oldContent}
             newContent={diff.newContent}
           />
-        ) : (
+        ) : diffLoading ? (
           <div className="flex h-full items-center justify-center text-gray-500">
             {t("preview.loadingChanges")}
+          </div>
+        ) : (
+          // Not loading and no diff: the request failed (or returned nothing).
+          // Show an error instead of a perpetual "loading" state so the user can
+          // pick another file or retry.
+          <div className="flex h-full items-center justify-center text-gray-500">
+            {diffError
+              ? t("preview.failedToLoadChanges")
+              : t("preview.noChangesToDisplay")}
           </div>
         )}
       </div>

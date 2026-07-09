@@ -65,10 +65,14 @@ export const CommitChangesParamsSchema = z.object({
 export const UncommittedFileSchema = z.object({
   path: z.string(),
   status: z.enum(["added", "modified", "deleted", "renamed"]),
+  // For renamed files, the original path at HEAD (so the "before" side of the
+  // diff / line stats can still be located). Absent for non-renames.
+  oldPath: z.string().optional(),
   // Number of added / deleted lines relative to HEAD (git diff --numstat
-  // semantics). Default to 0 so older producers / mocks remain valid.
-  additions: z.number().default(0),
-  deletions: z.number().default(0),
+  // semantics). Line counts are always non-negative integers. Default to 0 so
+  // older producers / mocks remain valid.
+  additions: z.number().int().nonnegative().default(0),
+  deletions: z.number().int().nonnegative().default(0),
 });
 
 export const GetUncommittedFileDiffParamsSchema = z.object({

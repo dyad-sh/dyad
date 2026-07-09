@@ -2,6 +2,10 @@ import { test, Timeout } from "./helpers/test_helper";
 import { expect, type Page } from "@playwright/test";
 import path from "path";
 import { execFileSync, execSync } from "child_process";
+import {
+  replaceEditorContent,
+  selectFileAndWaitForEditor,
+} from "./helpers/monaco_editor";
 
 function configureGitForE2eCommit(appPath: string) {
   execFileSync("git", ["config", "user.email", "test@example.com"], {
@@ -41,68 +45,6 @@ function commitRuntimeBaselineChanges(appPath: string) {
     ],
     { cwd: appPath },
   );
-}
-
-async function getActiveEditorModelContent(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
-    // Monaco attaches itself to the window in the packaged app.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const monaco = (window as any).monaco;
-    if (!monaco) {
-      return null;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const editor =
-      monaco.editor.getEditors().find((candidate: any) => {
-        return candidate.hasTextFocus?.() && candidate.getModel();
-      }) ??
-      monaco.editor.getEditors().find((candidate: any) => {
-        return candidate.getModel();
-      });
-    return editor?.getModel()?.getValue() ?? null;
-  });
-}
-
-async function getActiveEditorModelPath(page: Page): Promise<string | null> {
-  return page.evaluate(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const monaco = (window as any).monaco;
-    if (!monaco) {
-      return null;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const editor =
-      monaco.editor.getEditors().find((candidate: any) => {
-        return candidate.hasTextFocus?.() && candidate.getModel();
-      }) ??
-      monaco.editor.getEditors().find((candidate: any) => {
-        return candidate.getModel();
-      });
-    return editor?.getModel()?.uri?.path ?? null;
-  });
-}
-
-async function selectFileAndWaitForEditor(page: Page, fileName: string) {
-  await page.getByText(fileName, { exact: true }).click();
-  await expect(async () => {
-    const modelPath = await getActiveEditorModelPath(page);
-    expect(modelPath).toContain(fileName);
-  }).toPass({ timeout: Timeout.MEDIUM });
-}
-
-async function replaceEditorContent(page: Page, content: string) {
-  const editorContent = page.locator(".monaco-editor textarea").first();
-  await expect(editorContent).toBeVisible();
-  await editorContent.focus();
-  // Small delay to let Monaco settle after click before selecting all
-  await page.waitForTimeout(100);
-  await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.press("Backspace");
-  await page.keyboard.insertText(content);
-  await expect
-    .poll(() => getActiveEditorModelContent(page), { timeout: Timeout.MEDIUM })
-    .toEqual(content);
 }
 
 async function editAndSaveFile(page: Page, fileName: string, content: string) {

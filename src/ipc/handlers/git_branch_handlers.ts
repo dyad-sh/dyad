@@ -396,9 +396,31 @@ async function handleGetUncommittedFileDiff(
   }
 
   // "before" side: the file at HEAD. Missing (newly added file) → empty.
-  const oldContent =
+  let oldContent =
     (await getFileAtCommit({ path: appPath, filePath, commitHash: "HEAD" })) ??
     "";
+
+  // A renamed file has no HEAD blob under its new path, so the lookup above
+  // returns empty and the diff would show the whole file as added. Recover the
+  // original path from status and read the HEAD content there instead, so the
+  // rename renders as an actual before/after diff.
+  if (!oldContent) {
+    const uncommitted = await getGitUncommittedFilesWithStatus({
+      path: appPath,
+    });
+    const renamed = uncommitted.find(
+      (file) =>
+        file.path === filePath && file.status === "renamed" && file.oldPath,
+    );
+    if (renamed?.oldPath) {
+      oldContent =
+        (await getFileAtCommit({
+          path: appPath,
+          filePath: renamed.oldPath,
+          commitHash: "HEAD",
+        })) ?? "";
+    }
+  }
 
   // "after" side: the current working-tree contents. Missing (deleted) → empty.
   let newContent = "";

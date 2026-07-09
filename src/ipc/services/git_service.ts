@@ -14,7 +14,11 @@ import {
  * hand-rolled at each call site, so callers depend on a single mockable
  * service instead of sequencing individual git functions themselves.
  *
- * Keep methods here limited to sequences with more than one call site;
+ * Prefer methods here for stage/commit flows so call sites depend on one
+ * mockable seam. Multi-step sequences (stage-all-and-commit, init-and-commit)
+ * clearly belong here; the single-file `stageFile`/`commitFile` helpers live
+ * here too so the "save = stage, commit later" flow shares that same seam and
+ * documents the .gitignore no-op behavior in one place. Genuinely unrelated
  * one-off git operations should keep using `git_utils.ts` directly.
  */
 export class GitService {

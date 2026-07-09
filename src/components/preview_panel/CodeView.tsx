@@ -16,6 +16,7 @@ import { VersionDiffView } from "./VersionDiffView";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { StagedDiffView } from "./StagedDiffView";
 import { CommitMenu } from "./CommitMenu";
+import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 
 interface App {
   id?: number;
@@ -35,6 +36,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const stagedDiffFile = useAtomValue(stagedDiffFileAtom);
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
+  const { hasUncommittedFiles } = useUncommittedFiles(app?.id ?? null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -76,10 +78,14 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // The version diff view is driven by the selected commit, not the current
   // working-tree files, so it must render even when the checkout has no files
   // (e.g. a deletion-only version or an otherwise empty working tree).
+  // Likewise, render the toolbar (and its Commit menu) whenever there are
+  // uncommitted changes, so deletion-only staged changes remain committable
+  // even if no files are left to list.
   if (
     isVersionDiffMode ||
     isStagedDiffMode ||
-    (app.files && app.files.length > 0)
+    (app.files && app.files.length > 0) ||
+    (app.id != null && hasUncommittedFiles)
   ) {
     return (
       <div
@@ -107,6 +113,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                 render={
                   <button
                     onClick={() => setStagedDiffFile(null)}
+                    aria-label={t("preview.backToEditor")}
                     className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                     data-testid="staged-diff-back-button"
                   />

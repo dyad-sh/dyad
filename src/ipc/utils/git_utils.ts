@@ -919,7 +919,19 @@ export function countChangedLines(
 
   const lcs =
     m <= n ? lcsLength(oldLines, newLines) : lcsLength(newLines, oldLines);
-  return { additions: m - lcs, deletions: n - lcs };
+  const result = { additions: m - lcs, deletions: n - lcs };
+  // A file that differs only by whether it ends in a trailing newline still
+  // counts as one changed line in `git diff --numstat` (the final line is shown
+  // as removed and re-added). The trailing-newline stripping above discards that
+  // distinction, so restore it explicitly when nothing else changed.
+  if (
+    result.additions === 0 &&
+    result.deletions === 0 &&
+    oldContent.endsWith("\n") !== newContent.endsWith("\n")
+  ) {
+    return { additions: 1, deletions: 1 };
+  }
+  return result;
 }
 
 async function readWorkingFileContent(
@@ -936,12 +948,25 @@ async function readWorkingFileContent(
   }
 }
 
+// Skip diffing files larger than this. Line stats are polled every few seconds
+// (see LINE_STATS_CONCURRENCY), so reading big lockfiles, minified bundles, or
+// binary assets into memory on each poll would repeatedly spike memory and
+// stall the main process. Such files still appear in the list; they just report
+// 0/0 instead of exact counts.
+const MAX_STATS_FILE_BYTES = 512 * 1024; // 512 KB
+
+// A decoded file that contains a NUL byte is almost certainly binary; computing
+// a line diff on it is meaningless (and potentially huge), so we skip it.
+function looksBinary(content: string): boolean {
+  return content.includes("\u0000");
+}
+
 async function getFileLineStats({
   path,
   file,
 }: {
   path: string;
-  file: { path: string; status: UncommittedFileStatus };
+  file: { path: string; status: UncommittedFileStatus; oldPath?: string };
 }): Promise<{ additions: number; deletions: number }> {
   try {
     if (file.status === "deleted") {
@@ -950,21 +975,44 @@ async function getFileLineStats({
         filePath: file.path,
         commitHash: "HEAD",
       });
-      return { additions: 0, deletions: countLines(head ?? "") };
+      if (
+        head == null ||
+        head.length > MAX_STATS_FILE_BYTES ||
+        looksBinary(head)
+      )
+        return { additions: 0, deletions: 0 };
+      return { additions: 0, deletions: countLines(head) };
     }
+
+    // Guard against reading a very large working-tree file into memory on every
+    // status poll.
+    try {
+      const stat = await fsPromises.stat(safeJoin(path, file.path));
+      if (stat.size > MAX_STATS_FILE_BYTES) {
+        return { additions: 0, deletions: 0 };
+      }
+    } catch {
+      // Can't stat (e.g. deleted between status and here) — fall through; the
+      // read below will handle it.
+    }
+
     const newContent = await readWorkingFileContent(path, file.path);
-    // A renamed file has no HEAD blob under its new path, so treat it like an
-    // add and count its contents as additions.
-    const head =
-      file.status === "renamed"
-        ? null
-        : await getFileAtCommit({
-            path,
-            filePath: file.path,
-            commitHash: "HEAD",
-          });
+    if (looksBinary(newContent)) return { additions: 0, deletions: 0 };
+
+    // A rename keeps the original content under its old path at HEAD; diff
+    // old→new so a pure rename reports 0/0 rather than all-added. A rename with
+    // no known old path (or any other status) falls back to the current path.
+    const headPath =
+      file.status === "renamed" && file.oldPath ? file.oldPath : file.path;
+    const head = await getFileAtCommit({
+      path,
+      filePath: headPath,
+      commitHash: "HEAD",
+    });
     if (head == null)
       return { additions: countLines(newContent), deletions: 0 };
+    if (head.length > MAX_STATS_FILE_BYTES || looksBinary(head))
+      return { additions: 0, deletions: 0 };
     return countChangedLines(head, newContent);
   } catch (error) {
     logger.warn(`Failed to compute line stats for '${file.path}'`, error);
@@ -983,7 +1031,11 @@ async function attachLineStats({
   files,
 }: {
   path: string;
-  files: Array<{ path: string; status: UncommittedFileStatus }>;
+  files: Array<{
+    path: string;
+    status: UncommittedFileStatus;
+    oldPath?: string;
+  }>;
 }): Promise<UncommittedFile[]> {
   const results: UncommittedFile[] = [];
   for (let i = 0; i < files.length; i += LINE_STATS_CONCURRENCY) {
@@ -997,6 +1049,108 @@ async function attachLineStats({
     results.push(...batchResults);
   }
   return results;
+}
+
+/**
+ * Decodes a path as printed by `git status --porcelain`. Git prints paths
+ * containing "unusual" bytes (spaces are fine, but non-ASCII, control chars,
+ * quotes, or backslashes trigger it) wrapped in double quotes with C-style
+ * escapes — e.g. `café.txt` becomes `"caf\303\251.txt"`. Passing that literal
+ * string to the filesystem would fail to find the file, so decode it back to
+ * the real path. Unquoted paths are returned unchanged.
+ */
+export function unquoteGitPath(raw: string): string {
+  if (raw.length < 2 || !raw.startsWith('"') || !raw.endsWith('"')) {
+    return raw;
+  }
+  const body = raw.slice(1, -1);
+  const bytes: number[] = [];
+  const simpleEscapes: Record<string, number> = {
+    a: 0x07,
+    b: 0x08,
+    t: 0x09,
+    n: 0x0a,
+    v: 0x0b,
+    f: 0x0c,
+    r: 0x0d,
+    '"': 0x22,
+    "\\": 0x5c,
+  };
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch !== "\\") {
+      bytes.push(...Buffer.from(ch, "utf-8"));
+      continue;
+    }
+    const next = body[i + 1];
+    if (next === undefined) break;
+    if (next >= "0" && next <= "7") {
+      // Octal escape \nnn (1-3 digits) => a single raw byte.
+      let oct = "";
+      let j = i + 1;
+      while (
+        j < body.length &&
+        oct.length < 3 &&
+        body[j] >= "0" &&
+        body[j] <= "7"
+      ) {
+        oct += body[j];
+        j++;
+      }
+      bytes.push(parseInt(oct, 8) & 0xff);
+      i = j - 1;
+      continue;
+    }
+    if (next in simpleEscapes) {
+      bytes.push(simpleEscapes[next]);
+    } else {
+      bytes.push(...Buffer.from(next, "utf-8"));
+    }
+    i += 1;
+  }
+  return Buffer.from(bytes).toString("utf-8");
+}
+
+/**
+ * Parses one line of `git status --porcelain` output into a path + status,
+ * unquoting C-quoted paths and preserving the original path for renames so the
+ * HEAD blob can still be located. Returns null for blank lines.
+ */
+function parsePorcelainStatusLine(line: string): {
+  path: string;
+  status: UncommittedFileStatus;
+  oldPath?: string;
+} | null {
+  if (line.trim() === "") return null;
+  // Git status --porcelain format: "XY path" (X = staged, Y = unstaged status).
+  const statusCode = line.substring(0, 2);
+  const rest = line.slice(3).trim();
+
+  // Renames are printed as "old -> new"; each side may be quoted independently.
+  if (statusCode.startsWith("R")) {
+    const arrowIndex = rest.indexOf(" -> ");
+    if (arrowIndex !== -1) {
+      return {
+        path: unquoteGitPath(rest.slice(arrowIndex + 4).trim()),
+        oldPath: unquoteGitPath(rest.slice(0, arrowIndex).trim()),
+        status: "renamed",
+      };
+    }
+    return { path: unquoteGitPath(rest), status: "renamed" };
+  }
+
+  const path = unquoteGitPath(rest);
+  // Check deleted first: for status code "AD" (added to index, then deleted from
+  // working directory) the file no longer exists, so report it as deleted.
+  let status: UncommittedFileStatus;
+  if (statusCode.includes("D")) {
+    status = "deleted";
+  } else if (statusCode === "??" || statusCode.includes("A")) {
+    status = "added";
+  } else {
+    status = "modified";
+  }
+  return { path, status };
 }
 
 /**
@@ -1019,45 +1173,16 @@ export async function getGitUncommittedFilesWithStatus({
     const files = result.stdout
       .toString()
       .split("\n")
-      .filter((line) => line.trim() !== "")
-      .filter((line) => {
-        const filePath = line.slice(3).trim();
-        return isUserVisibleGitPath(
-          filePath.includes(" -> ")
-            ? filePath.substring(filePath.indexOf(" -> ") + 4)
-            : filePath,
-        );
-      })
-      .map((line) => {
-        // Git status --porcelain format: XY filename
-        // X = staged status, Y = unstaged status
-        // Common codes: M=modified, A=added, D=deleted, R=renamed, ??=untracked
-        const statusCode = line.substring(0, 2);
-        let filePath = line.slice(3).trim();
-
-        // Handle renamed files: R  old -> new
-        if (statusCode.startsWith("R")) {
-          const arrowIndex = filePath.indexOf(" -> ");
-          if (arrowIndex !== -1) {
-            filePath = filePath.substring(arrowIndex + 4);
-          }
-          return { path: filePath, status: "renamed" as UncommittedFileStatus };
-        }
-
-        // Determine status based on status codes
-        // Check deleted first: for status code "AD" (added to index, then deleted
-        // from working directory), the file no longer exists so report as deleted
-        let status: UncommittedFileStatus;
-        if (statusCode.includes("D")) {
-          status = "deleted";
-        } else if (statusCode === "??" || statusCode.includes("A")) {
-          status = "added";
-        } else {
-          status = "modified";
-        }
-
-        return { path: filePath, status };
-      });
+      .map(parsePorcelainStatusLine)
+      .filter(
+        (
+          file,
+        ): file is {
+          path: string;
+          status: UncommittedFileStatus;
+          oldPath?: string;
+        } => file !== null && isUserVisibleGitPath(file.path),
+      );
     return attachLineStats({ path, files });
   } else {
     // For isomorphic-git, we use the status matrix

@@ -36,6 +36,17 @@ const HEADER_STREAM_COUNT_OFF = 8;
 const HEADER_DIR_RVA_OFF = 12;
 const HEADER_SIZE = 32;
 
+// Crashpad dumps are normally only a few megabytes. Refuse pathological files
+// before following any of their RVAs, and cap the amount of data the random-
+// access parser may materialize even for an otherwise valid dump.
+export const MAX_MINIDUMP_FILE_BYTES = 128 * 1024 * 1024;
+const MAX_MINIDUMP_BYTES_READ = 2 * 1024 * 1024;
+const MAX_STREAM_COUNT = 1024;
+const MAX_MODULE_COUNT = 4096;
+const MAX_CRASHPAD_MODULE_COUNT = 1024;
+const MAX_ANNOTATION_COUNT = 1024;
+const MAX_STRING_BYTES = 16 * 1024;
+
 // MINIDUMP_DIRECTORY entry (one per stream): a u32 stream type, then a
 // LOCATION_DESCRIPTOR { u32 dataSize @4, u32 rva @8 }. 12 bytes total.
 const DIR_ENTRY_SIZE = 12;
@@ -112,10 +123,56 @@ const NTSTATUS_NAMES: Record<number, string> = {
   0x80000003: "BREAKPOINT",
 };
 
-interface MinidumpModule {
-  base: bigint;
-  size: number;
-  name: string;
+interface MinidumpSource {
+  readonly length: number;
+  read(offset: number, length: number): Buffer | null;
+}
+
+class BufferMinidumpSource implements MinidumpSource {
+  readonly length: number;
+
+  constructor(private readonly buffer: Buffer) {
+    this.length = buffer.length;
+  }
+
+  read(offset: number, length: number): Buffer | null {
+    if (!isValidRange(this.length, offset, length)) return null;
+    return this.buffer.subarray(offset, offset + length);
+  }
+}
+
+class FileMinidumpSource implements MinidumpSource {
+  private bytesRead = 0;
+
+  constructor(
+    private readonly fd: number,
+    readonly length: number,
+  ) {}
+
+  read(offset: number, length: number): Buffer | null {
+    if (
+      !isValidRange(this.length, offset, length) ||
+      this.bytesRead + length > MAX_MINIDUMP_BYTES_READ
+    ) {
+      return null;
+    }
+
+    const buffer = Buffer.allocUnsafe(length);
+    let position = 0;
+    while (position < length) {
+      const bytesRead = fs.readSync(
+        this.fd,
+        buffer,
+        position,
+        length - position,
+        offset + position,
+      );
+      if (bytesRead === 0) return null;
+      position += bytesRead;
+    }
+    this.bytesRead += length;
+    return buffer;
+  }
 }
 
 // Byte offset of the instruction pointer (where the crash happened) within each
@@ -151,13 +208,33 @@ export function parseMinidumpSummary(
   platform: NodeJS.Platform = process.platform,
   arch: NodeJS.Architecture = process.arch,
 ): MinidumpSummary | null {
-  let buf: Buffer;
+  let fd: number | undefined;
   try {
-    buf = fs.readFileSync(filePath);
+    fd = fs.openSync(filePath, "r");
+    const stat = fs.fstatSync(fd);
+    if (
+      !stat.isFile() ||
+      stat.size < HEADER_SIZE ||
+      stat.size > MAX_MINIDUMP_FILE_BYTES
+    ) {
+      return null;
+    }
+    return parseMinidumpSource(
+      new FileMinidumpSource(fd, stat.size),
+      platform,
+      arch,
+    );
   } catch {
     return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Best effort. Parsing has already completed or failed.
+      }
+    }
   }
-  return parseMinidumpBuffer(buf, platform, arch);
 }
 
 // Parse an in-memory minidump into a MinidumpSummary. Finds the streams it needs
@@ -170,16 +247,24 @@ export function parseMinidumpBuffer(
   platform: NodeJS.Platform = process.platform,
   arch: NodeJS.Architecture = process.arch,
 ): MinidumpSummary | null {
+  return parseMinidumpSource(new BufferMinidumpSource(buf), platform, arch);
+}
+
+function parseMinidumpSource(
+  source: MinidumpSource,
+  platform: NodeJS.Platform,
+  arch: NodeJS.Architecture,
+): MinidumpSummary | null {
   try {
-    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    if (
-      buf.length < HEADER_SIZE ||
-      view.getUint32(0, true) !== MINIDUMP_SIGNATURE
-    ) {
+    const header = source.read(0, HEADER_SIZE);
+    if (!header || header.readUInt32LE(0) !== MINIDUMP_SIGNATURE) {
       return null;
     }
-    const numStreams = view.getUint32(HEADER_STREAM_COUNT_OFF, true);
-    const dirRva = view.getUint32(HEADER_DIR_RVA_OFF, true);
+    const numStreams = header.readUInt32LE(HEADER_STREAM_COUNT_OFF);
+    const dirRva = header.readUInt32LE(HEADER_DIR_RVA_OFF);
+    if (numStreams > MAX_STREAM_COUNT) return null;
+    const directory = source.read(dirRva, numStreams * DIR_ENTRY_SIZE);
+    if (!directory) return null;
 
     // Walk the stream directory, recording the file offset (rva) of each stream
     // we care about.
@@ -188,11 +273,10 @@ export function parseMinidumpBuffer(
     let crashpadInfoRva = 0;
     let crashpadInfoSize = 0;
     for (let i = 0; i < numStreams; i++) {
-      const entry = dirRva + i * DIR_ENTRY_SIZE;
-      if (entry + DIR_ENTRY_SIZE > buf.length) break;
-      const type = view.getUint32(entry + DIR_ENTRY_TYPE_OFF, true);
-      const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
-      const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
+      const entry = i * DIR_ENTRY_SIZE;
+      const type = directory.readUInt32LE(entry + DIR_ENTRY_TYPE_OFF);
+      const size = directory.readUInt32LE(entry + DIR_ENTRY_SIZE_OFF);
+      const rva = directory.readUInt32LE(entry + DIR_ENTRY_RVA_OFF);
       if (type === STREAM_MODULE_LIST) moduleListRva = rva;
       else if (type === STREAM_EXCEPTION) exceptionRva = rva;
       else if (type === STREAM_CRASHPAD_INFO) {
@@ -201,10 +285,10 @@ export function parseMinidumpBuffer(
       }
     }
 
-    if (exceptionRva === 0 || exceptionRva + EXC_CONTEXT_RVA_OFF > buf.length) {
-      return null;
-    }
-    const exceptionCode = view.getUint32(exceptionRva + EXC_CODE_OFF, true);
+    if (exceptionRva === 0) return null;
+    const exception = source.read(exceptionRva, EXC_CONTEXT_RVA_OFF + 4);
+    if (!exception) return null;
+    const exceptionCode = exception.readUInt32LE(EXC_CODE_OFF);
 
     const crashReason =
       platform === "win32"
@@ -219,39 +303,23 @@ export function parseMinidumpBuffer(
     // context; the IP sits at an arch-specific offset within it.
     let instructionPointer = 0n;
     const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
-    if (
-      ipOffset !== undefined &&
-      exceptionRva + EXC_CONTEXT_RVA_OFF + 4 <= buf.length
-    ) {
-      const contextRva = view.getUint32(
-        exceptionRva + EXC_CONTEXT_RVA_OFF,
-        true,
-      );
-      if (contextRva + ipOffset + 8 <= buf.length) {
-        instructionPointer = view.getBigUint64(contextRva + ipOffset, true);
-      }
+    if (ipOffset !== undefined) {
+      const contextRva = exception.readUInt32LE(EXC_CONTEXT_RVA_OFF);
+      instructionPointer = readBigUInt64(source, contextRva + ipOffset) ?? 0n;
     }
 
     // On arm64 the saved pointer can carry pointer-auth / top-byte tag bits.
     // Crashpad records an address_mask to recover the real address before module
     // lookup.
     if (instructionPointer !== 0n && crashpadInfoRva) {
-      const mask = readAddressMask(
-        view,
-        buf,
-        crashpadInfoRva,
-        crashpadInfoSize,
-      );
+      const mask = readAddressMask(source, crashpadInfoRva, crashpadInfoSize);
       instructionPointer = applyAddressMask(instructionPointer, mask);
     }
 
     let faultingModule: string | undefined;
     let faultingOffset: string | undefined;
     if (moduleListRva !== 0 && instructionPointer !== 0n) {
-      const module = findModule(
-        parseModules(view, buf, moduleListRva),
-        instructionPointer,
-      );
+      const module = findModule(source, moduleListRva, instructionPointer);
       if (module) {
         faultingModule = basename(module.name);
         faultingOffset = "0x" + (instructionPointer - module.base).toString(16);
@@ -263,9 +331,7 @@ export function parseMinidumpBuffer(
       exceptionCode,
       faultingModule,
       faultingOffset,
-      ptype: crashpadInfoRva
-        ? parsePtype(view, buf, crashpadInfoRva)
-        : undefined,
+      ptype: crashpadInfoRva ? parsePtype(source, crashpadInfoRva) : undefined,
     };
   } catch {
     return null;
@@ -285,35 +351,37 @@ export function parseMinidumpBuffer(
 //
 // name and value are length-prefixed UTF-8; return the value named "ptype".
 function parsePtype(
-  view: DataView,
-  buf: Buffer,
+  source: MinidumpSource,
   infoRva: number,
 ): string | undefined {
   try {
-    if (infoRva + CRASHPAD_MODULE_LIST_RVA_OFF + 4 > buf.length) {
+    const modListRva = readUInt32(
+      source,
+      infoRva + CRASHPAD_MODULE_LIST_RVA_OFF,
+    );
+    if (!modListRva) return undefined;
+    const moduleCount = readUInt32(source, modListRva);
+    if (moduleCount === undefined || moduleCount > MAX_CRASHPAD_MODULE_COUNT) {
       return undefined;
     }
-    const modListRva = view.getUint32(
-      infoRva + CRASHPAD_MODULE_LIST_RVA_OFF,
-      true,
-    );
-    if (modListRva === 0 || modListRva + 4 > buf.length) return undefined;
-    const moduleCount = view.getUint32(modListRva, true);
+    const links = source.read(modListRva + 4, moduleCount * 12);
+    if (!links) return undefined;
+
     for (let i = 0; i < moduleCount; i++) {
-      const link = modListRva + 4 + i * 12;
-      if (link + 12 > buf.length) break;
-      const moduleInfoRva = view.getUint32(link + 8, true);
-      if (moduleInfoRva + 28 > buf.length) continue;
-      const objectsRva = view.getUint32(moduleInfoRva + 24, true);
-      if (objectsRva === 0 || objectsRva + 4 > buf.length) continue;
-      const objectCount = view.getUint32(objectsRva, true);
+      const moduleInfoRva = links.readUInt32LE(i * 12 + 8);
+      const objectsRva = readUInt32(source, moduleInfoRva + 24);
+      if (!objectsRva) continue;
+      const objectCount = readUInt32(source, objectsRva);
+      if (objectCount === undefined || objectCount > MAX_ANNOTATION_COUNT) {
+        continue;
+      }
+      const objects = source.read(objectsRva + 4, objectCount * 12);
+      if (!objects) continue;
+
       for (let j = 0; j < objectCount; j++) {
-        const obj = objectsRva + 4 + j * 12;
-        if (obj + 12 > buf.length) break;
-        if (
-          readLengthPrefixed(view, buf, view.getUint32(obj, true)) === "ptype"
-        ) {
-          return readLengthPrefixed(view, buf, view.getUint32(obj + 8, true));
+        const obj = j * 12;
+        if (readLengthPrefixed(source, objects.readUInt32LE(obj)) === "ptype") {
+          return readLengthPrefixed(source, objects.readUInt32LE(obj + 8));
         }
       }
     }
@@ -327,18 +395,14 @@ function parsePtype(
 // pointer-tag bits from addresses (arm64). Returns 0n when absent — older dumps
 // don't have the field, so only read it when the stream is long enough.
 function readAddressMask(
-  view: DataView,
-  buf: Buffer,
+  source: MinidumpSource,
   infoRva: number,
   infoSize: number,
 ): bigint {
-  if (
-    infoSize < CRASHPAD_INFO_MIN_SIZE_FOR_MASK ||
-    infoRva + CRASHPAD_ADDRESS_MASK_OFF + 8 > buf.length
-  ) {
+  if (infoSize < CRASHPAD_INFO_MIN_SIZE_FOR_MASK) {
     return 0n;
   }
-  return view.getBigUint64(infoRva + CRASHPAD_ADDRESS_MASK_OFF, true);
+  return readBigUInt64(source, infoRva + CRASHPAD_ADDRESS_MASK_OFF) ?? 0n;
 }
 
 // Recover a real address from a tagged arm64 pointer using Crashpad's mask. Per
@@ -351,54 +415,72 @@ function applyAddressMask(pointer: bigint, mask: bigint): bigint {
 }
 
 // A u32 byte-length followed by UTF-8 bytes (MinidumpUTF8String / ByteArray).
-function readLengthPrefixed(view: DataView, buf: Buffer, rva: number): string {
-  if (rva === 0 || rva + 4 > buf.length) return "";
-  const len = view.getUint32(rva, true);
-  const start = rva + 4;
-  if (len <= 0 || start + len > buf.length) return "";
-  return buf.toString("utf8", start, start + len);
+function readLengthPrefixed(source: MinidumpSource, rva: number): string {
+  if (rva === 0) return "";
+  const length = readUInt32(source, rva);
+  if (!length || length > MAX_STRING_BYTES) return "";
+  return source.read(rva + 4, length)?.toString("utf8") ?? "";
 }
 
 // Parse the module list stream into the base address, size, and name of each
 // loaded module. (MINIDUMP_MODULE_LIST: a u32 count, then `count` fixed-size
 // module records.)
-function parseModules(
-  view: DataView,
-  buf: Buffer,
-  rva: number,
-): MinidumpModule[] {
-  if (rva + 4 > buf.length) return [];
-  const count = view.getUint32(rva, true);
-  const modules: MinidumpModule[] = [];
-  for (let i = 0; i < count; i++) {
-    const m = rva + 4 + i * MODULE_RECORD_SIZE;
-    if (m + MODULE_RECORD_SIZE > buf.length) break;
-    const base = view.getBigUint64(m + MODULE_BASE_OFF, true);
-    const size = view.getUint32(m + MODULE_SIZE_OFF, true);
-    const nameRva = view.getUint32(m + MODULE_NAME_RVA_OFF, true);
-    modules.push({ base, size, name: readMinidumpString(view, buf, nameRva) });
-  }
-  return modules;
-}
-
-// Find the loaded module whose address range contains the given address (the
-// crash IP), or undefined if it falls outside every module.
 function findModule(
-  modules: MinidumpModule[],
+  source: MinidumpSource,
+  rva: number,
   address: bigint,
-): MinidumpModule | undefined {
-  return modules.find(
-    (m) => address >= m.base && address < m.base + BigInt(m.size),
-  );
+): { base: bigint; size: number; name: string } | undefined {
+  const count = readUInt32(source, rva);
+  if (count === undefined || count > MAX_MODULE_COUNT) return undefined;
+  const records = source.read(rva + 4, count * MODULE_RECORD_SIZE);
+  if (!records) return undefined;
+
+  for (let i = 0; i < count; i++) {
+    const m = i * MODULE_RECORD_SIZE;
+    const base = records.readBigUInt64LE(m + MODULE_BASE_OFF);
+    const size = records.readUInt32LE(m + MODULE_SIZE_OFF);
+    if (address >= base && address < base + BigInt(size)) {
+      const nameRva = records.readUInt32LE(m + MODULE_NAME_RVA_OFF);
+      return { base, size, name: readMinidumpString(source, nameRva) };
+    }
+  }
+  return undefined;
 }
 
 // MINIDUMP_STRING: u32 byte-length followed by UTF-16LE.
-function readMinidumpString(view: DataView, buf: Buffer, rva: number): string {
-  if (rva === 0 || rva + 4 > buf.length) return "";
-  const byteLength = view.getUint32(rva, true);
-  const start = rva + 4;
-  if (byteLength <= 0 || start + byteLength > buf.length) return "";
-  return buf.toString("utf16le", start, start + byteLength);
+function readMinidumpString(source: MinidumpSource, rva: number): string {
+  if (rva === 0) return "";
+  const byteLength = readUInt32(source, rva);
+  if (!byteLength || byteLength > MAX_STRING_BYTES) return "";
+  return source.read(rva + 4, byteLength)?.toString("utf16le") ?? "";
+}
+
+function readUInt32(
+  source: MinidumpSource,
+  offset: number,
+): number | undefined {
+  return source.read(offset, 4)?.readUInt32LE(0);
+}
+
+function readBigUInt64(
+  source: MinidumpSource,
+  offset: number,
+): bigint | undefined {
+  return source.read(offset, 8)?.readBigUInt64LE(0);
+}
+
+function isValidRange(
+  sourceLength: number,
+  offset: number,
+  length: number,
+): boolean {
+  return (
+    Number.isSafeInteger(offset) &&
+    Number.isSafeInteger(length) &&
+    offset >= 0 &&
+    length >= 0 &&
+    offset <= sourceLength - length
+  );
 }
 
 // Last path segment of a module path, handling both / and \ separators (module

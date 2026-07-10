@@ -38,6 +38,58 @@ export function listDumpFilesRecursive(dir: string): string[] {
   return sortNewestFirst(found);
 }
 
+// Keep only the `max` newest pending dumps while scanning, deleting older
+// dumps (and sidecars) as soon as they fall outside the bounded candidate set.
+// This preserves the eventual prune behavior without first retaining every
+// path in memory or parsing an unbounded backlog during startup.
+export function pruneAndListNewestDumpFilesRecursive(
+  dir: string,
+  max: number,
+): string[] {
+  if (!Number.isSafeInteger(max) || max < 0) {
+    throw new RangeError("max must be a non-negative safe integer");
+  }
+
+  const newest: Array<{ path: string; mtime: number }> = [];
+  const directories = [dir];
+
+  while (directories.length > 0) {
+    const currentDir = directories.pop()!;
+    let directory: fs.Dir | undefined;
+    try {
+      directory = fs.opendirSync(currentDir);
+      let entry: fs.Dirent | null;
+      while ((entry = directory.readSync()) !== null) {
+        const entryPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          directories.push(entryPath);
+        } else if (entry.name.endsWith(".dmp")) {
+          const candidate = { path: entryPath, mtime: mtimeMs(entryPath) };
+          const insertAt = newest.findIndex(
+            (existing) => candidate.mtime > existing.mtime,
+          );
+          if (insertAt === -1) newest.push(candidate);
+          else newest.splice(insertAt, 0, candidate);
+
+          if (newest.length > max) {
+            deleteDump(newest.pop()!.path);
+          }
+        }
+      }
+    } catch {
+      // Crashpad directories can disappear while it rotates reports.
+    } finally {
+      try {
+        directory?.closeSync();
+      } catch {
+        // Best effort; startup crash reporting must never prevent app launch.
+      }
+    }
+  }
+
+  return newest.map((candidate) => candidate.path);
+}
+
 // Delete a dump and its Crashpad metadata sidecar (best effort).
 export function deleteDump(dumpPath: string): void {
   unlinkQuiet(dumpPath);

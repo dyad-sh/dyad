@@ -7,6 +7,7 @@ import {
   listDumpFilesRecursive,
   deleteDump,
   moveDump,
+  pruneAndListNewestDumpFilesRecursive,
   pruneDumps,
 } from "@/utils/crash_dumps";
 
@@ -57,6 +58,32 @@ describe("crash_dumps", () => {
 
     const files = listDumpFilesRecursive(dir).map((f) => path.basename(f));
     expect(files).toEqual(["b.dmp", "a.dmp"]);
+  });
+
+  it("bounds a large pending backlog to the newest dumps while scanning", () => {
+    fs.mkdirSync(path.join(dir, "pending"));
+    fs.mkdirSync(path.join(dir, "reports"));
+    for (let i = 0; i < 30; i++) {
+      const subdir = i % 2 === 0 ? "pending" : "reports";
+      makeDump(path.join(subdir, `${i}.dmp`), i + 1);
+    }
+
+    const kept = pruneAndListNewestDumpFilesRecursive(dir, 5).map((file) =>
+      path.basename(file),
+    );
+
+    expect(kept).toEqual(["0.dmp", "1.dmp", "2.dmp", "3.dmp", "4.dmp"]);
+    expect(listDumpFilesRecursive(dir)).toHaveLength(5);
+    expect(fs.existsSync(path.join(dir, "reports", "29.meta"))).toBe(false);
+  });
+
+  it("can drain a pending dump tree without retaining candidates", () => {
+    fs.mkdirSync(path.join(dir, "pending"));
+    makeDump(path.join("pending", "a.dmp"), 1);
+    makeDump(path.join("pending", "b.dmp"), 2);
+
+    expect(pruneAndListNewestDumpFilesRecursive(dir, 0)).toEqual([]);
+    expect(listDumpFilesRecursive(dir)).toEqual([]);
   });
 
   it("deletes a dump and its .meta sidecar", () => {

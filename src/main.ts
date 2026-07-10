@@ -62,8 +62,8 @@ import {
   type MinidumpSummary,
 } from "./utils/minidump_summary";
 import {
-  listDumpFilesRecursive,
   moveDump,
+  pruneAndListNewestDumpFilesRecursive,
   pruneDumps,
 } from "./utils/crash_dumps";
 import {
@@ -185,6 +185,7 @@ const logger = log.scope("main");
 // Cap retained dumps so they don't accumulate indefinitely; keep only a few
 // recent ones for examination/export.
 const MAX_RETAINED_DUMPS = 5;
+const MAX_PENDING_DUMPS_TO_PROCESS = 10;
 let nativeCrashDumpsProcessed = false;
 let pendingNativeBrowserCrash: MinidumpSummary | null = null;
 
@@ -213,7 +214,10 @@ function processNativeCrashDumps(): void {
     return;
   }
 
-  for (const file of listDumpFilesRecursive(crashDumpsDir)) {
+  for (const file of pruneAndListNewestDumpFilesRecursive(
+    crashDumpsDir,
+    MAX_PENDING_DUMPS_TO_PROCESS,
+  )) {
     const summary = parseMinidumpSummary(file);
     if (summary) {
       logger.info(

@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { parseMinidumpBuffer } from "@/utils/minidump_summary";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import {
+  MAX_MINIDUMP_FILE_BYTES,
+  parseMinidumpBuffer,
+  parseMinidumpSummary,
+} from "@/utils/minidump_summary";
 
 // Build a minimal but valid minidump containing only the streams the parser
 // reads (module list + exception, and optionally a CrashpadInfo stream with a
@@ -288,5 +295,68 @@ describe("parseMinidumpBuffer", () => {
 
   it("rejects a truncated buffer", () => {
     expect(parseMinidumpBuffer(Buffer.alloc(8), "linux", "x64")).toBeNull();
+  });
+});
+
+describe("parseMinidumpSummary", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "minidump-summary-test-"));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("parses a normal dump from bounded random-access reads", () => {
+    const file = path.join(dir, "normal.dmp");
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10500n,
+      ipOffset: 248,
+      ptype: "browser",
+    });
+    fs.writeFileSync(file, dump);
+    const readSpy = vi.spyOn(fs, "readSync");
+
+    expect(parseMinidumpSummary(file, "linux", "x64")).toEqual({
+      crashReason: "SIGSEGV",
+      exceptionCode: 11,
+      faultingModule: "libc.so.6",
+      faultingOffset: "0x500",
+      ptype: "browser",
+    });
+    expect(readSpy).toHaveBeenCalled();
+    expect(
+      readSpy.mock.calls.every((call) => {
+        const length = (call as unknown[])[3];
+        return typeof length === "number" && length < dump.length;
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects an oversized sparse dump before reading its contents", () => {
+    const file = path.join(dir, "oversized.dmp");
+    fs.writeFileSync(file, "");
+    fs.truncateSync(file, MAX_MINIDUMP_FILE_BYTES + 1);
+    const readSpy = vi.spyOn(fs, "readSync");
+
+    expect(parseMinidumpSummary(file, "linux", "x64")).toBeNull();
+    expect(readSpy).not.toHaveBeenCalled();
+  });
+
+  it("handles corrupt and truncated ranges without leaking the file", () => {
+    const file = path.join(dir, "truncated.dmp");
+    const header = Buffer.alloc(32);
+    header.writeUInt32LE(0x504d444d, 0);
+    header.writeUInt32LE(1, 8);
+    header.writeUInt32LE(0xfffffff0, 12);
+    fs.writeFileSync(file, header);
+
+    expect(parseMinidumpSummary(file, "linux", "x64")).toBeNull();
+    fs.renameSync(file, path.join(dir, "handled.dmp"));
   });
 });

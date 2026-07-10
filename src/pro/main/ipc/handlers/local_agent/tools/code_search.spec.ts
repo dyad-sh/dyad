@@ -18,9 +18,20 @@ vi.mock("electron-log", () => ({
 
 const mocks = vi.hoisted(() => ({
   engineFetch: vi.fn(),
+  extractCodebase: vi.fn(),
   readSettings: vi.fn(() => ({ enableCodeExplorer: false })),
   isCodeExplorerReady: vi.fn(() => false),
 }));
+
+vi.mock("../../../../../../utils/codebase", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../../../../utils/codebase")>();
+  mocks.extractCodebase.mockImplementation(actual.extractCodebase);
+  return {
+    ...actual,
+    extractCodebase: mocks.extractCodebase,
+  };
+});
 
 const engineFetchMock = mocks.engineFetch;
 vi.mock("./engine_fetch", () => ({
@@ -242,6 +253,38 @@ describe("codeSearchTool", () => {
 
       const xmlCall = (mockContext.onXmlComplete as any).mock.calls[0]?.[0];
       expect(xmlCall).not.toContain("app_name=");
+    });
+
+    it("qualifies empty results when the extracted codebase was truncated", async () => {
+      mocks.extractCodebase.mockResolvedValueOnce({
+        formattedOutput: "",
+        files: [{ path: "current.ts", content: "export {};", force: false }],
+        truncation: {
+          totalFileCount: 3,
+          includedFileCount: 1,
+          omittedFileCount: 2,
+          includedContentBytes: 10,
+          maxFiles: 1,
+          maxTotalBytes: 100,
+          reasons: ["file-count"],
+        },
+      });
+      mockEngineResponse([]);
+
+      const result = await codeSearchTool.execute(
+        { query: "missing" },
+        mockContext,
+      );
+
+      expect(result).toContain("1 of 3 files were included");
+      expect(result).toContain(
+        "No relevant files were found in the included subset.",
+      );
+      const xmlCall = (mockContext.onXmlComplete as any).mock.calls[0]?.[0];
+      expect(xmlCall).toContain("Results based only on the included files");
+      expect(xmlCall).not.toContain(
+        "No relevant files found.</dyad-code-search>",
+      );
     });
   });
 });

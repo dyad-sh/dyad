@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { extractCodebase, listCodebaseFileMetadata } from "@/utils/codebase";
+import {
+  extractCodebase,
+  formatCodebaseTruncationWarning,
+  listCodebaseFileMetadata,
+  mapWithConcurrency,
+} from "@/utils/codebase";
 import { readSettings } from "@/main/settings";
 import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
 
@@ -213,6 +218,59 @@ describe("extractCodebase", () => {
     });
   });
 
+  it("does not spend the byte budget on normally omitted file contents", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.mkdir(path.join(appDir, "src", "components", "ui"), {
+      recursive: true,
+    });
+    await fs.promises.writeFile(path.join(appDir, "app.ts"), "a");
+    await fs.promises.writeFile(
+      path.join(appDir, "src", "components", "ui", "Button.tsx"),
+      "export const Button = () => null;",
+    );
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+      limits: {
+        maxFiles: 10,
+        maxTotalBytes: 1,
+      },
+    });
+
+    expect(result.files).toHaveLength(2);
+    expect(result.files).toContainEqual({
+      path: "app.ts",
+      content: "a",
+      force: false,
+    });
+    expect(result.files).toContainEqual({
+      path: "src/components/ui/Button.tsx",
+      content: "// File contents excluded from context",
+      force: false,
+    });
+    expect(result.truncation).toBeUndefined();
+  });
+
+  it("formats truncation warnings for files-only consumers", () => {
+    expect(
+      formatCodebaseTruncationWarning({
+        totalFileCount: 10,
+        includedFileCount: 4,
+        omittedFileCount: 6,
+        includedContentBytes: 123,
+        maxFiles: 4,
+        maxTotalBytes: 1_000,
+        reasons: ["file-count"],
+      }),
+    ).toBe(
+      "Codebase context is incomplete: 4 of 10 files were included (6 omitted; limits reached: file-count). Results based only on the included files may be incomplete.",
+    );
+  });
+
   it("prioritizes forced smart-context files when a budget truncates", async () => {
     appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
     await fs.promises.writeFile(path.join(appDir, "a.ts"), "a");
@@ -287,6 +345,23 @@ describe("extractCodebase", () => {
     expect(result.files).toHaveLength(fileCount);
     expect(totalReads).toBe(fileCount);
     expect(maxActiveReads).toBeLessThanOrEqual(3);
+  });
+
+  it("stops concurrency workers after the first mapper failure", async () => {
+    const startedIndexes: number[] = [];
+
+    await expect(
+      mapWithConcurrency([0, 1, 2, 3], 2, async (_item, index) => {
+        startedIndexes.push(index);
+        if (index === 0) {
+          throw new Error("mapper failed");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return index;
+      }),
+    ).rejects.toThrow("mapper failed");
+
+    expect(startedIndexes).toEqual([0, 1]);
   });
 
   it("lists metadata without reading file contents", async () => {

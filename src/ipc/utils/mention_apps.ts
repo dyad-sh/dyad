@@ -1,7 +1,11 @@
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
-import { CodebaseFile, extractCodebase } from "../../utils/codebase";
+import {
+  type CodebaseFile,
+  type CodebaseTruncation,
+  extractCodebase,
+} from "../../utils/codebase";
 import { validateChatContext } from "../utils/context_paths_utils";
 import log from "electron-log";
 import { parseKnownAppMentions } from "@/shared/parse_mention_apps";
@@ -16,6 +20,7 @@ export interface MentionedAppReference {
 export interface MentionedAppCodebaseEntry extends MentionedAppReference {
   codebaseInfo: string;
   files: CodebaseFile[];
+  truncation?: CodebaseTruncation;
 }
 
 async function resolveMentionedApps(
@@ -82,7 +87,7 @@ async function extractCodebasesForApps(
       const appPath = getDyadAppPath(app.path);
       const chatContext = validateChatContext(app.chatContext);
 
-      const { formattedOutput, files } = await extractCodebase({
+      const { formattedOutput, files, truncation } = await extractCodebase({
         appPath,
         chatContext,
       });
@@ -92,6 +97,7 @@ async function extractCodebasesForApps(
         appPath,
         codebaseInfo: formattedOutput,
         files,
+        truncation,
       });
 
       logger.log(`Extracted codebase for mentioned app: ${app.name}`);

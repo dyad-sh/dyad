@@ -154,7 +154,7 @@ const gitIgnoreMtimes = new Map<string, number>();
 /**
  * Map items with bounded concurrency while preserving input order.
  */
-async function mapWithConcurrency<T, R>(
+export async function mapWithConcurrency<T, R>(
   items: readonly T[],
   concurrency: number,
   mapper: (item: T, index: number) => Promise<R>,
@@ -166,16 +166,29 @@ async function mapWithConcurrency<T, R>(
   const results: R[] = [];
   results.length = items.length;
   let nextIndex = 0;
+  let hasFailed = false;
+  let firstError: unknown;
   const workerCount = Math.min(Math.max(1, concurrency), items.length);
 
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
+      while (!hasFailed && nextIndex < items.length) {
         const index = nextIndex++;
-        results[index] = await mapper(items[index], index);
+        try {
+          results[index] = await mapper(items[index], index);
+        } catch (error) {
+          if (!hasFailed) {
+            hasFailed = true;
+            firstError = error;
+          }
+        }
       }
     }),
   );
+
+  if (hasFailed) {
+    throw firstError;
+  }
 
   return results;
 }
@@ -273,6 +286,9 @@ export async function readFileWithCache(
     if (fileContentCache.has(filePath)) {
       const cache = fileContentCache.get(filePath)!;
       if (cache.mtime === currentMtime) {
+        // Refresh insertion order so byte/count eviction behaves as an LRU.
+        fileContentCache.delete(filePath);
+        fileContentCache.set(filePath, cache);
         return cache.content;
       }
     }
@@ -283,6 +299,8 @@ export async function readFileWithCache(
     const previousEntry = fileContentCache.get(filePath);
     if (previousEntry) {
       fileContentCacheBytes -= previousEntry.byteLength;
+      // Map#set does not refresh insertion order for an existing key.
+      fileContentCache.delete(filePath);
     }
     const byteLength = Buffer.byteLength(content, "utf8");
     fileContentCache.set(filePath, {
@@ -573,6 +591,7 @@ interface PreparedCodebaseFile {
   absolutePath: string;
   path: string;
   force: boolean;
+  shouldReadContent: boolean;
   estimatedContentBytes: number;
 }
 
@@ -732,10 +751,15 @@ async function prepareCodebaseFiles({
       .relative(appPath, file)
       .split(path.sep)
       .join("/");
-    const needsContent = shouldReadFileContentsForSmartContext({
-      filePath: file,
-      normalizedRelativePath,
-    });
+    const shouldReadContent = isSmartContextEnabled
+      ? shouldReadFileContentsForSmartContext({
+          filePath: file,
+          normalizedRelativePath,
+        })
+      : shouldReadFileContents({
+          filePath: file,
+          normalizedRelativePath,
+        });
     const virtualContent = virtualContentByPath.get(file);
 
     return {
@@ -744,7 +768,8 @@ async function prepareCodebaseFiles({
       force:
         autoIncludedFiles.has(path.normalize(file)) &&
         !excludedFiles.has(path.normalize(file)),
-      estimatedContentBytes: needsContent
+      shouldReadContent,
+      estimatedContentBytes: shouldReadContent
         ? virtualContent === undefined
           ? size
           : Buffer.byteLength(virtualContent, "utf8")
@@ -792,17 +817,16 @@ function selectFilesWithinLimits(
   let selectedBytes = 0;
 
   for (const file of prioritizedFiles) {
-    const exceedsFileLimit = selectedPaths.size >= limits.maxFiles;
+    if (selectedPaths.size >= limits.maxFiles) {
+      reasons.add("file-count");
+      break;
+    }
+
     const exceedsByteLimit =
       file.estimatedContentBytes > limits.maxTotalBytes - selectedBytes;
 
-    if (exceedsFileLimit || exceedsByteLimit) {
-      if (exceedsFileLimit) {
-        reasons.add("file-count");
-      }
-      if (exceedsByteLimit) {
-        reasons.add("total-bytes");
-      }
+    if (exceedsByteLimit) {
+      reasons.add("total-bytes");
       continue;
     }
 
@@ -828,6 +852,12 @@ function selectFilesWithinLimits(
       reasons: Array.from(reasons),
     },
   };
+}
+
+export function formatCodebaseTruncationWarning(
+  truncation: CodebaseTruncation,
+): string {
+  return `Codebase context is incomplete: ${truncation.includedFileCount} of ${truncation.totalFileCount} files were included (${truncation.omittedFileCount} omitted; limits reached: ${truncation.reasons.join(", ")}). Results based only on the included files may be incomplete.`;
 }
 
 function formatTruncationMarker(truncation: CodebaseTruncation): string {
@@ -876,11 +906,7 @@ export async function extractCodebase({
     selection.files,
     limits.ioConcurrency,
     async (file) => {
-      const needsContent = shouldReadFileContentsForSmartContext({
-        filePath: file.absolutePath,
-        normalizedRelativePath: file.path,
-      });
-      let content = needsContent
+      let content = file.shouldReadContent
         ? await readFileWithCache(file.absolutePath, virtualFileSystem)
         : undefined;
       if (
@@ -902,7 +928,7 @@ export async function extractCodebase({
         contentBytes: content == null ? 0 : Buffer.byteLength(content, "utf8"),
         file: {
           path: file.path,
-          content: needsContent
+          content: file.shouldReadContent
             ? (content ?? "// Error reading file")
             : OMITTED_FILE_CONTENT,
           force: file.force,

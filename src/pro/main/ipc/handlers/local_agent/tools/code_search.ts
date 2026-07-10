@@ -6,7 +6,10 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import { extractCodebase } from "../../../../../../utils/codebase";
+import {
+  extractCodebase,
+  formatCodebaseTruncationWarning,
+} from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
@@ -130,7 +133,7 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
     const targetAppPath = resolveTargetAppPath(ctx, args.app_name);
 
     // Gather all files from the project
-    const { files } = await extractCodebase({
+    const { files, truncation } = await extractCodebase({
       appPath: targetAppPath,
       chatContext: {
         contextPaths: [],
@@ -162,22 +165,35 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
     );
 
     // Format results
+    const truncationWarning = truncation
+      ? formatCodebaseTruncationWarning(truncation)
+      : undefined;
     const resultText =
       relevantFiles.length === 0
-        ? "No relevant files found."
+        ? truncation
+          ? "No relevant files were found in the included subset."
+          : "No relevant files found."
         : relevantFiles.map((f) => ` - ${f}`).join("\n");
+    const surfacedResult = truncationWarning
+      ? `${truncationWarning}\n${resultText}`
+      : resultText;
 
     // Write final result to UI and DB with dyad-code-search wrapper
     ctx.onXmlComplete(
-      `<dyad-code-search${buildCodeSearchAttributes(args)}>${escapeXmlContent(resultText)}</dyad-code-search>`,
+      `<dyad-code-search${buildCodeSearchAttributes(args)}>${escapeXmlContent(surfacedResult)}</dyad-code-search>`,
     );
 
     logger.log(`Code search completed for query: ${args.query}`);
 
     if (relevantFiles.length === 0) {
-      return "No relevant files found for the given query.";
+      return truncationWarning
+        ? surfacedResult
+        : "No relevant files found for the given query.";
     }
 
-    return `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
+    const foundResult = `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
+    return truncationWarning
+      ? `${truncationWarning}\n${foundResult}`
+      : foundResult;
   },
 };

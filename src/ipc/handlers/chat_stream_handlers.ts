@@ -40,6 +40,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   CodebaseFile,
   extractCodebase,
+  formatCodebaseTruncationWarning,
   readFileWithCache,
 } from "../../utils/codebase";
 import {
@@ -780,10 +781,11 @@ ${componentSnippet}
             : validateChatContext(updatedChat.app.chatContext);
 
         // Extract codebase for current app
-        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
-          appPath,
-          chatContext,
-        });
+        const {
+          formattedOutput: codebaseInfo,
+          files,
+          truncation: codebaseTruncation,
+        } = await extractCodebase({ appPath, chatContext });
 
         // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching
@@ -1079,6 +1081,29 @@ This conversation includes one or more image attachments. When the user uploads 
 4. For diagrams or wireframes, try to understand the content and structure shown.
 5. For screenshots of code or errors, try to identify the issue or explain the code.
 `;
+        }
+
+        if (isEngineEnabled) {
+          const truncationWarnings: string[] = [];
+          if (codebaseTruncation) {
+            truncationWarnings.push(
+              `- Current app: ${formatCodebaseTruncationWarning(codebaseTruncation)}`,
+            );
+          }
+          for (const mentionedApp of mentionedAppsCodebases) {
+            if (mentionedApp.truncation) {
+              truncationWarnings.push(
+                `- Referenced app "${mentionedApp.appName}": ${formatCodebaseTruncationWarning(mentionedApp.truncation)}`,
+              );
+            }
+          }
+          if (truncationWarnings.length > 0) {
+            systemPrompt += `
+
+# Partial Codebase Context
+${truncationWarnings.join("\n")}
+Do not assume an absent file or symbol does not exist. Inspect files on demand when possible, and qualify conclusions that depend on complete codebase coverage.`;
+          }
         }
 
         const codebasePrefix = isEngineEnabled

@@ -27,23 +27,27 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
 }));
 
-vi.mock("jotai", () => ({
-  useAtomValue: (atom: symbol) => {
-    if (atom === mocks.previewModeAtom) {
-      return "preview";
-    }
-    if (atom === mocks.selectedAppIdAtom) {
-      return 1;
-    }
-    if (atom === mocks.currentPreviewReloadTokenAtom) {
-      return 0;
-    }
-    if (atom === mocks.currentConsoleEntriesAtom) {
-      return [];
-    }
-    return undefined;
-  },
-}));
+vi.mock("jotai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("jotai")>();
+  return {
+    ...actual,
+    useAtomValue: (atom: symbol) => {
+      if (atom === mocks.previewModeAtom) {
+        return "preview";
+      }
+      if (atom === mocks.selectedAppIdAtom) {
+        return 1;
+      }
+      if (atom === mocks.currentPreviewReloadTokenAtom) {
+        return 0;
+      }
+      if (atom === mocks.currentConsoleEntriesAtom) {
+        return [];
+      }
+      return undefined;
+    },
+  };
+});
 
 vi.mock("../../atoms/appAtoms", () => ({
   previewModeAtom: mocks.previewModeAtom,

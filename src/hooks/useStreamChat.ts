@@ -443,9 +443,16 @@ export function useStreamChat({
                   // renderer-side re-scan would duplicate the same full
                   // TypeScript build moments later. The Problems panel is
                   // refreshed manually in agent mode.
+                  // The effective-mode chunk always arrives before onEnd, so
+                  // the fallbacks are defensive only; prefer the per-chat
+                  // stored mode over the global selection (chat mode is
+                  // per-chat, see effectiveChatModeForTurn above).
                   const ranAsLocalAgent =
-                    (effectiveChatModeForTurn ?? settings?.selectedChatMode) ===
-                    "local-agent";
+                    (effectiveChatModeForTurn ??
+                      queryClient.getQueryData<Chat>(
+                        queryKeys.chats.detail({ chatId }),
+                      )?.chatMode ??
+                      settings?.selectedChatMode) === "local-agent";
                   if (
                     settings?.enableAutoFixProblems &&
                     targetAppId &&

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -84,6 +84,18 @@ describe("crash_dumps", () => {
 
     expect(pruneAndListNewestDumpFilesRecursive(dir, 0)).toEqual([]);
     expect(listDumpFilesRecursive(dir)).toEqual([]);
+  });
+
+  it("leaves a dump untouched when its modification time cannot be read", () => {
+    const dump = makeDump("still-rotating.dmp", 1);
+    const statSpy = vi.spyOn(fs, "statSync").mockImplementation(() => {
+      throw new Error("report rotated during stat");
+    });
+
+    expect(pruneAndListNewestDumpFilesRecursive(dir, 0)).toEqual([]);
+    statSpy.mockRestore();
+    expect(fs.existsSync(dump)).toBe(true);
+    expect(fs.existsSync(dump.replace(/\.dmp$/, ".meta"))).toBe(true);
   });
 
   it("deletes a dump and its .meta sidecar", () => {

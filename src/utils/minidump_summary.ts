@@ -168,10 +168,10 @@ class FileMinidumpSource implements MinidumpSource {
         length - position,
         offset + position,
       );
+      this.bytesRead += bytesRead;
       if (bytesRead === 0) return null;
       position += bytesRead;
     }
-    this.bytesRead += length;
     return buffer;
   }
 }

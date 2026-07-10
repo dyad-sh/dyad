@@ -64,7 +64,13 @@ export function pruneAndListNewestDumpFilesRecursive(
         if (entry.isDirectory()) {
           directories.push(entryPath);
         } else if (entry.name.endsWith(".dmp")) {
-          const candidate = { path: entryPath, mtime: mtimeMs(entryPath) };
+          const mtime = mtimeMs(entryPath);
+          // Crashpad may still be rotating this report. If stat fails, leave the
+          // dump untouched for a later launch rather than treating it as the
+          // oldest entry and deleting a potentially fresh report.
+          if (mtime === undefined) continue;
+
+          const candidate = { path: entryPath, mtime };
           const insertAt = newest.findIndex(
             (existing) => candidate.mtime > existing.mtime,
           );
@@ -113,16 +119,16 @@ export function pruneDumps(dir: string, max: number): void {
 // comparator, which would re-stat on every comparison).
 function sortNewestFirst(paths: string[]): string[] {
   return paths
-    .map((p) => ({ p, mtime: mtimeMs(p) }))
+    .map((p) => ({ p, mtime: mtimeMs(p) ?? 0 }))
     .sort((a, b) => b.mtime - a.mtime)
     .map((x) => x.p);
 }
 
-function mtimeMs(p: string): number {
+function mtimeMs(p: string): number | undefined {
   try {
     return fs.statSync(p).mtimeMs;
   } catch {
-    return 0;
+    return undefined;
   }
 }
 

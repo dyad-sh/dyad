@@ -388,4 +388,99 @@ describe("parseMinidumpSummary", () => {
     expect(parseMinidumpSummary(file, "linux", "x64")).toBeNull();
     fs.renameSync(file, path.join(dir, "handled.dmp"));
   });
+
+  it("charges partial reads to the cumulative file I/O budget", () => {
+    const file = path.join(dir, "concurrently-truncated.dmp");
+    const dump = buildReadBudgetMinidump();
+    fs.writeFileSync(file, dump.buffer);
+
+    const realReadSync = fs.readSync.bind(fs);
+    let contextReadCount = 0;
+    let actualBytesRead = 0;
+    vi.spyOn(fs, "readSync").mockImplementation(
+      (
+        fd: number,
+        buffer: NodeJS.ArrayBufferView,
+        offsetOrOptions?: number | fs.ReadSyncOptions,
+        length?: number,
+        position?: fs.ReadPosition | null,
+      ) => {
+        let bytesRead: number;
+        if (typeof offsetOrOptions !== "number") {
+          bytesRead = realReadSync(fd, buffer, offsetOrOptions);
+        } else if (length === undefined) {
+          bytesRead = realReadSync(fd, buffer, { offset: offsetOrOptions });
+        } else if (position === dump.contextIpRva && contextReadCount === 0) {
+          contextReadCount++;
+          bytesRead = realReadSync(
+            fd,
+            buffer,
+            offsetOrOptions,
+            4,
+            position ?? null,
+          );
+        } else if (
+          position === dump.contextIpRva + 4 &&
+          contextReadCount === 1
+        ) {
+          contextReadCount++;
+          bytesRead = 0;
+        } else {
+          bytesRead = realReadSync(
+            fd,
+            buffer,
+            offsetOrOptions,
+            length,
+            position ?? null,
+          );
+        }
+        actualBytesRead += bytesRead;
+        return bytesRead;
+      },
+    );
+
+    expect(parseMinidumpSummary(file, "linux", "x64")).not.toBeNull();
+    expect(contextReadCount).toBe(2);
+    expect(actualBytesRead).toBeLessThanOrEqual(2 * 1024 * 1024);
+  });
 });
+
+// Build a valid minidump whose optional Crashpad annotation traversal consumes
+// the entire 2 MiB random-access read budget. The CPU context read is made
+// partial by the test above; charging those four bytes is what prevents one
+// additional read after the budget is exhausted.
+function buildReadBudgetMinidump(): { buffer: Buffer; contextIpRva: number } {
+  const exceptionRva = 80;
+  const contextRva = 300;
+  const crashpadInfoRva = 400;
+  const crashpadModuleListRva = 500;
+  const moduleInfoRva = 4_000;
+  const annotationObjectsRva = 5_000;
+  const moduleCount = 203;
+  const annotationCount = 969;
+  const buffer = Buffer.alloc(annotationObjectsRva + 4 + annotationCount * 12);
+
+  buffer.writeUInt32LE(0x504d444d, 0);
+  buffer.writeUInt32LE(2, 8);
+  buffer.writeUInt32LE(32, 12);
+
+  buffer.writeUInt32LE(6, 32);
+  buffer.writeUInt32LE(168, 36);
+  buffer.writeUInt32LE(exceptionRva, 40);
+  buffer.writeUInt32LE(0x43500001, 44);
+  buffer.writeUInt32LE(52, 48);
+  buffer.writeUInt32LE(crashpadInfoRva, 52);
+
+  buffer.writeUInt32LE(11, exceptionRva + 8);
+  buffer.writeUInt32LE(contextRva, exceptionRva + 164);
+  buffer.writeUInt32LE(crashpadModuleListRva, crashpadInfoRva + 48);
+
+  buffer.writeUInt32LE(moduleCount, crashpadModuleListRva);
+  for (let i = 0; i < moduleCount; i++) {
+    buffer.writeUInt32LE(moduleInfoRva, crashpadModuleListRva + 4 + i * 12 + 8);
+  }
+  buffer.writeUInt32LE(annotationObjectsRva, moduleInfoRva + 24);
+  buffer.writeUInt32LE(annotationCount, annotationObjectsRva);
+
+  return { buffer, contextIpRva: contextRva + 248 };
+}

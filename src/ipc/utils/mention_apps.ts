@@ -2,6 +2,7 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import {
+  DEFAULT_CODEBASE_EXTRACTION_LIMITS,
   type CodebaseFile,
   type CodebaseTruncation,
   extractCodebase,
@@ -81,16 +82,29 @@ async function extractCodebasesForApps(
   dedupedApps: (typeof apps.$inferSelect)[],
 ): Promise<MentionedAppCodebaseEntry[]> {
   const results: MentionedAppCodebaseEntry[] = [];
+  let remainingFiles = DEFAULT_CODEBASE_EXTRACTION_LIMITS.maxFiles;
+  let remainingContentBytes = DEFAULT_CODEBASE_EXTRACTION_LIMITS.maxTotalBytes;
 
   for (const app of dedupedApps) {
     try {
       const appPath = getDyadAppPath(app.path);
       const chatContext = validateChatContext(app.chatContext);
 
-      const { formattedOutput, files, truncation } = await extractCodebase({
-        appPath,
-        chatContext,
-      });
+      const { formattedOutput, files, includedContentBytes, truncation } =
+        await extractCodebase({
+          appPath,
+          chatContext,
+          limits: {
+            maxFiles: remainingFiles,
+            maxTotalBytes: remainingContentBytes,
+          },
+        });
+
+      remainingFiles = Math.max(0, remainingFiles - files.length);
+      remainingContentBytes = Math.max(
+        0,
+        remainingContentBytes - includedContentBytes,
+      );
 
       results.push({
         appName: app.name,

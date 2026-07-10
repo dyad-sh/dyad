@@ -785,7 +785,7 @@ async function prepareCodebaseFiles({
 export async function listCodebaseFileMetadata({
   appPath,
   chatContext,
-  maxFiles = DEFAULT_CODEBASE_EXTRACTION_LIMITS.maxFiles,
+  maxFiles,
 }: {
   appPath: string;
   chatContext: AppChatContext;
@@ -797,6 +797,17 @@ export async function listCodebaseFileMetadata({
     limits: DEFAULT_CODEBASE_EXTRACTION_LIMITS,
   });
   const preparedFiles = files ?? [];
+
+  if (maxFiles === undefined) {
+    return {
+      files: preparedFiles.map((file) => ({
+        path: file.path,
+        force: file.force,
+      })),
+      totalFileCount: preparedFiles.length,
+    };
+  }
+
   const selection = selectFilesWithinLimits(preparedFiles, {
     ...DEFAULT_CODEBASE_EXTRACTION_LIMITS,
     maxFiles: Math.max(0, Math.floor(maxFiles)),
@@ -828,8 +839,10 @@ function selectFilesWithinLimits(
   const selectedPaths = new Set<string>();
   const reasons = new Set<CodebaseTruncationReason>();
   let selectedBytes = 0;
+  let nextFileIndex = 0;
 
-  for (const file of prioritizedFiles) {
+  for (; nextFileIndex < prioritizedFiles.length; nextFileIndex++) {
+    const file = prioritizedFiles[nextFileIndex];
     if (selectedPaths.size >= limits.maxFiles) {
       reasons.add("file-count");
       break;
@@ -845,6 +858,16 @@ function selectFilesWithinLimits(
 
     selectedPaths.add(file.absolutePath);
     selectedBytes += file.estimatedContentBytes;
+  }
+
+  if (nextFileIndex < prioritizedFiles.length) {
+    const remainingBytes = limits.maxTotalBytes - selectedBytes;
+    for (let index = nextFileIndex; index < prioritizedFiles.length; index++) {
+      if (prioritizedFiles[index].estimatedContentBytes > remainingBytes) {
+        reasons.add("total-bytes");
+        break;
+      }
+    }
   }
 
   const selectedFiles = files.filter((file) =>
@@ -896,6 +919,7 @@ export async function extractCodebase({
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
+  includedContentBytes: number;
   truncation?: CodebaseTruncation;
 }> {
   const limits = resolveExtractionLimits(requestedLimits);
@@ -911,6 +935,7 @@ export async function extractCodebase({
     return {
       formattedOutput: `# Error: Directory ${appPath} does not exist or is not accessible`,
       files: [],
+      includedContentBytes: 0,
     };
   }
 
@@ -950,13 +975,14 @@ export async function extractCodebase({
     },
   );
 
+  const includedContentBytes = formattedResults.reduce(
+    (total, result) => total + result.contentBytes,
+    0,
+  );
   const truncation = selection.truncation
     ? {
         ...selection.truncation,
-        includedContentBytes: formattedResults.reduce(
-          (total, result) => total + result.contentBytes,
-          0,
-        ),
+        includedContentBytes,
       }
     : undefined;
   const filesArray = formattedResults.map((result) => result.file);
@@ -980,6 +1006,7 @@ export async function extractCodebase({
   return {
     formattedOutput,
     files: filesArray,
+    includedContentBytes,
     truncation,
   };
 }
@@ -1005,7 +1032,7 @@ async function sortFilesByModificationTime(
         // virtual files differently between runs.
         // This can happen with virtual files, so it's not a big deal.
         logger.warn(`Error getting file stats for ${file}:`, error);
-        return { file, mtime: 0, size: 0 };
+        return { file, mtime: 0, size: MAX_FILE_SIZE };
       }
     },
   );

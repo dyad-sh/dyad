@@ -10,6 +10,7 @@ import {
 } from "@/utils/codebase";
 import { readSettings } from "@/main/settings";
 import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
+import { gitListFilesNative } from "@/ipc/utils/git_utils";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -40,6 +41,7 @@ describe("extractCodebase", () => {
   let appDir: string | undefined;
 
   beforeEach(() => {
+    vi.mocked(gitListFilesNative).mockReset().mockResolvedValue([]);
     vi.mocked(readSettings).mockReturnValue({
       enableNativeGit: false,
       enableDyadPro: false,
@@ -216,6 +218,47 @@ describe("extractCodebase", () => {
       omittedFileCount: 2,
       reasons: ["file-count"],
     });
+  });
+
+  it("reports both limits when omitted files exceed the remaining byte budget", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await Promise.all(
+      ["a.ts", "b.ts", "c.ts"].map((file) =>
+        fs.promises.writeFile(path.join(appDir!, file), "data"),
+      ),
+    );
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      limits: { maxFiles: 2, maxTotalBytes: 8 },
+    });
+
+    expect(result.truncation?.reasons).toEqual(["file-count", "total-bytes"]);
+  });
+
+  it("conservatively budgets real files whose final stat fails", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "unstable.ts"), "content");
+    vi.mocked(readSettings).mockReturnValue({
+      enableNativeGit: true,
+      enableDyadPro: false,
+      enableProSmartFilesContextMode: false,
+    } as ReturnType<typeof readSettings>);
+    vi.mocked(gitListFilesNative).mockResolvedValue(["unstable.ts"]);
+    vi.spyOn(fs.promises, "stat").mockRejectedValueOnce(
+      new Error("transient stat failure"),
+    );
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      limits: { maxFiles: 10, maxTotalBytes: 100 },
+    });
+
+    expect(result.files).toEqual([]);
+    expect(result.includedContentBytes).toBe(0);
+    expect(result.truncation?.reasons).toEqual(["total-bytes"]);
   });
 
   it("does not spend the byte budget on normally omitted file contents", async () => {

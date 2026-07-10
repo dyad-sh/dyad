@@ -166,14 +166,13 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
           smartContextAutoIncludes: [],
           excludePaths: [],
         },
-        maxFiles: MAX_PATHS_TO_RETURN,
       });
 
       const filteredFiles = filterDyadInternalFiles(
         metadata.files,
         args.app_name,
       );
-      totalPathCount = metadata.totalFileCount;
+      totalPathCount = filteredFiles.length;
 
       // Build the list of file paths
       allPaths = sortListedPaths(

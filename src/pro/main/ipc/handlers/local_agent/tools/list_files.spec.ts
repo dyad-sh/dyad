@@ -326,6 +326,35 @@ describe("listFilesTool", () => {
       expect(result).toContain("other-a.ts");
     });
 
+    it("filters referenced-app internals before applying the result cap", async () => {
+      const generatedDir = path.join(otherAppDir, "generated");
+      await fs.promises.mkdir(generatedDir);
+      await Promise.all(
+        Array.from({ length: 1_001 }, (_, index) =>
+          fs.promises.writeFile(
+            path.join(
+              generatedDir,
+              `file-${String(index).padStart(4, "0")}.ts`,
+            ),
+            "generated",
+          ),
+        ),
+      );
+      mockContext.referencedApps.set("other-app", otherAppDir);
+
+      const result = await listFilesTool.execute(
+        { app_name: "other-app", recursive: true },
+        mockContext,
+      );
+      const listedPathCount = result
+        .split("\n")
+        .filter((line) => line.startsWith(" - ")).length;
+
+      expect(listedPathCount).toBe(1_000);
+      expect(result).toContain("[TRUNCATED: Showing 1000 of 1003 paths.");
+      expect(result).not.toContain(".dyad/rules.md");
+    });
+
     it("emits app_name attribute in the final XML output", async () => {
       mockContext.referencedApps.set("other-app", otherAppDir);
       await listFilesTool.execute({ app_name: "other-app" }, mockContext);

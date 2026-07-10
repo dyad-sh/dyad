@@ -9,6 +9,7 @@ import {
 
 import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import {
+  includeSelectedComponentsInSmartContext,
   removeDyadTags,
   hasUnclosedDyadWrite,
 } from "@/ipc/handlers/chat_stream_handlers";
@@ -91,6 +92,41 @@ vi.mock("@/db", () => ({
     })),
   },
 }));
+
+describe("includeSelectedComponentsInSmartContext", () => {
+  it("adds selected component paths as forced smart-context inputs", () => {
+    const chatContext = {
+      contextPaths: [],
+      smartContextAutoIncludes: [{ globPath: "src/existing.ts" }],
+      excludePaths: [],
+    };
+
+    const result = includeSelectedComponentsInSmartContext(chatContext, [
+      {
+        id: "component-1",
+        name: "Selected",
+        relativePath: "src/Selected.tsx",
+        lineNumber: 1,
+        columnNumber: 1,
+      },
+      {
+        id: "component-2",
+        name: "Existing",
+        relativePath: "src/existing.ts",
+        lineNumber: 1,
+        columnNumber: 1,
+      },
+    ]);
+
+    expect(result.smartContextAutoIncludes).toEqual([
+      { globPath: "src/existing.ts" },
+      { globPath: "src/Selected.tsx" },
+    ]);
+    expect(chatContext.smartContextAutoIncludes).toEqual([
+      { globPath: "src/existing.ts" },
+    ]);
+  });
+});
 
 describe("getDyadAddDependencyTags", () => {
   it("should return an empty array when no dyad-add-dependency tags are found", () => {

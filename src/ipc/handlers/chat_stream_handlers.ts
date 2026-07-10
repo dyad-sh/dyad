@@ -21,7 +21,7 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import type { SmartContextMode } from "../../lib/schemas";
+import type { AppChatContext, SmartContextMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -264,6 +264,28 @@ async function processStreamChunks({
   }
 
   return { fullResponse, incrementalResponse };
+}
+
+export function includeSelectedComponentsInSmartContext(
+  chatContext: AppChatContext,
+  selectedComponents: ChatStreamParams["selectedComponents"],
+): AppChatContext {
+  if (!selectedComponents?.length) {
+    return chatContext;
+  }
+
+  const smartContextAutoIncludes = [...chatContext.smartContextAutoIncludes];
+  const includedPaths = new Set(
+    smartContextAutoIncludes.map((entry) => entry.globPath),
+  );
+  for (const component of selectedComponents) {
+    if (!includedPaths.has(component.relativePath)) {
+      includedPaths.add(component.relativePath);
+      smartContextAutoIncludes.push({ globPath: component.relativePath });
+    }
+  }
+
+  return { ...chatContext, smartContextAutoIncludes };
 }
 
 export function registerChatStreamHandlers() {
@@ -768,7 +790,7 @@ ${componentSnippet}
         //
         // If we have selected components and smart context is enabled,
         // we handle this specially below.
-        const chatContext =
+        const baseChatContext =
           req.selectedComponents &&
           req.selectedComponents.length > 0 &&
           !isSmartContextEnabled
@@ -779,6 +801,12 @@ ${componentSnippet}
                 smartContextAutoIncludes: [],
               }
             : validateChatContext(updatedChat.app.chatContext);
+        const chatContext = isSmartContextEnabled
+          ? includeSelectedComponentsInSmartContext(
+              baseChatContext,
+              req.selectedComponents,
+            )
+          : baseChatContext;
 
         // Extract codebase for current app
         const {
@@ -1083,7 +1111,7 @@ This conversation includes one or more image attachments. When the user uploads 
 `;
         }
 
-        if (isEngineEnabled) {
+        if (isEngineEnabled && !isSummarizeIntent) {
           const truncationWarnings: string[] = [];
           if (codebaseTruncation) {
             truncationWarnings.push(

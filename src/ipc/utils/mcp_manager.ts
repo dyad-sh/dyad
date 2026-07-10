@@ -9,6 +9,7 @@ import {
   DyadOAuthClientProvider,
   decryptFromString,
 } from "./mcp_oauth_provider";
+import { settleWithinTimeout } from "./promise_utils";
 
 type ClientInitialization = {
   cancelled: boolean;
@@ -16,23 +17,6 @@ type ClientInitialization = {
 };
 
 const MCP_CLIENT_DISPOSAL_TIMEOUT_MS = 1_500;
-
-function settleWithinTimeout(
-  promise: Promise<unknown>,
-  timeoutMs: number,
-): Promise<void> {
-  return new Promise((resolve) => {
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timeout);
-      resolve();
-    };
-    const timeout = setTimeout(finish, timeoutMs);
-    void promise.then(finish, finish);
-  });
-}
 
 export class McpManager {
   private static _instance: McpManager;
@@ -47,16 +31,10 @@ export class McpManager {
   private disposeAllPromise: Promise<void> | undefined;
 
   async getClient(serverId: number): Promise<MCPClient> {
-    const disposeAllPromise = this.disposeAllPromise;
-    if (disposeAllPromise) {
-      await disposeAllPromise;
-      return this.getClient(serverId);
-    }
-
-    const disposal = this.disposals.get(serverId);
-    if (disposal) {
+    while (true) {
+      const disposal = this.disposeAllPromise ?? this.disposals.get(serverId);
+      if (!disposal) break;
       await disposal;
-      return this.getClient(serverId);
     }
 
     const existing = this.clients.get(serverId);
@@ -71,8 +49,9 @@ export class McpManager {
       .then(async (client) => {
         if (initialization.cancelled) {
           await Promise.allSettled([this.closeClient(client)]);
-          throw new Error(
+          throw new DyadError(
             `MCP client initialization cancelled for server ${serverId}`,
+            DyadErrorKind.Precondition,
           );
         }
 

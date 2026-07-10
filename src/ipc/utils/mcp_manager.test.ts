@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MCPClient } from "@ai-sdk/mcp";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const mocks = vi.hoisted(() => ({
   rows: new Map<number, Record<string, unknown>>(),
@@ -142,8 +143,11 @@ describe("McpManager lifecycle", () => {
 
     await expect(disposal).resolves.toBeUndefined();
     await expect(initializationResult).resolves.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.Precondition,
       message: "MCP client initialization cancelled for server 3",
     });
+    await expect(initializationResult).resolves.toBeInstanceOf(DyadError);
     expect(close).toHaveBeenCalledTimes(1);
     await expect(manager.getClient(3)).resolves.toBe(replacement);
   });

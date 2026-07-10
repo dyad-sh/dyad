@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { forkMock } = vi.hoisted(() => ({ forkMock: vi.fn() }));
 
@@ -49,6 +49,10 @@ const explorerResult: CodeExplorerResult = {
 };
 
 describe("TypeScript utility process exclusion", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("fully exits each resident process before starting the other kind", async () => {
     const children: FakeUtilityProcess[] = [];
     forkMock.mockImplementation(() => {
@@ -123,6 +127,71 @@ describe("TypeScript utility process exclusion", () => {
     });
 
     // Clear the reusable resident and its idle timer for test isolation.
+    secondExplorer.emit("exit", 0);
+  });
+
+  it("waits for an idle explorer to exit before starting its replacement", async () => {
+    const children: FakeUtilityProcess[] = [];
+    forkMock.mockImplementation(() => {
+      const child = new FakeUtilityProcess();
+      children.push(child);
+      return child;
+    });
+
+    const firstRequest = runCodeExplorer({
+      appPath: "/tmp/idle-race-app",
+      query: "first query",
+    });
+    await vi.waitFor(() => expect(children).toHaveLength(1));
+    const firstExplorer = children[0];
+    firstExplorer.emit("spawn");
+    await vi.waitFor(() =>
+      expect(firstExplorer.postMessage).toHaveBeenCalledOnce(),
+    );
+
+    // Install the idle timer under fake timers, then let it begin shutdown
+    // without emitting the process exit yet.
+    vi.useFakeTimers();
+    const firstRequestId = firstExplorer.postMessage.mock.calls[0][0].requestId;
+    firstExplorer.emit("message", {
+      requestId: firstRequestId,
+      success: true,
+      data: { ...explorerResult, query: "first query" },
+    });
+    await expect(firstRequest).resolves.toEqual({
+      ...explorerResult,
+      query: "first query",
+    });
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(firstExplorer.kill).toHaveBeenCalledOnce();
+
+    const secondRequest = runCodeExplorer({
+      appPath: "/tmp/idle-race-app",
+      query: "second query",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(children).toHaveLength(1);
+
+    // The scheduler may fork the replacement only after the dying resident's
+    // actual exit event clears its registration.
+    firstExplorer.emit("exit", 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(children).toHaveLength(2);
+    const secondExplorer = children[1];
+    secondExplorer.emit("spawn");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(secondExplorer.postMessage).toHaveBeenCalledOnce();
+    const secondRequestId =
+      secondExplorer.postMessage.mock.calls[0][0].requestId;
+    secondExplorer.emit("message", {
+      requestId: secondRequestId,
+      success: true,
+      data: { ...explorerResult, query: "second query" },
+    });
+    await expect(secondRequest).resolves.toEqual({
+      ...explorerResult,
+      query: "second query",
+    });
     secondExplorer.emit("exit", 0);
   });
 });

@@ -364,10 +364,10 @@ function getHost(): CodeExplorerHost {
     resolveReady = resolve;
     rejectReady = reject;
   });
-  let registration: ResidentProcessRegistration | undefined;
+  let registration!: ResidentProcessRegistration;
   let hostState!: CodeExplorerHost;
 
-  const stop = async (): Promise<void> => {
+  const stopProcess = async (): Promise<void> => {
     intentionallyStopped = true;
     clearIdleTimer();
     if (host === hostState) {
@@ -381,13 +381,21 @@ function getHost(): CodeExplorerHost {
     await exitPromise;
   };
 
-  hostState = { child, generation, ready, stop };
   registration = typescriptUtilityProcessScheduler.registerResidentProcess({
     kind: "code-explorer",
     reusable: true,
     token: child,
-    stop,
+    stop: stopProcess,
   });
+  // Always enter shutdown through the scheduler registration so the resident
+  // is marked stopping during the asynchronous kill-to-exit gap. The raw
+  // stopProcess callback is private to the scheduler to prevent bypasses.
+  hostState = {
+    child,
+    generation,
+    ready,
+    stop: () => registration.stop(),
+  };
   host = hostState;
 
   child.on("spawn", () => {
@@ -425,7 +433,7 @@ function getHost(): CodeExplorerHost {
   });
 
   child.on("exit", (code) => {
-    registration?.clear();
+    registration.clear();
     resolveExit();
     if (!spawned) {
       rejectReady(

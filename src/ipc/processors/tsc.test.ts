@@ -85,7 +85,10 @@ describe("toProblemReportError", () => {
  */
 class FakeUtilityProcess extends EventEmitter {
   postMessage = vi.fn();
-  kill = vi.fn(() => true);
+  kill = vi.fn(() => {
+    this.emit("exit", 0);
+    return true;
+  });
 }
 
 const TSC_WORKER_TIMEOUT_MS = 5 * 60 * 1000;

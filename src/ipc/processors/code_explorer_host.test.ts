@@ -55,6 +55,8 @@ describe("code explorer host telemetry", () => {
       query: "find the entry point",
     });
 
+    await vi.waitFor(() => expect(forkMock).toHaveBeenCalledOnce());
+    child.emit("spawn");
     await vi.waitFor(() => expect(child.postMessage).toHaveBeenCalledOnce());
 
     child.emit(

@@ -17,6 +17,7 @@ import {
   getDyadWriteTags,
 } from "../utils/dyad_tag_parser";
 import { getTypeScriptCachePath } from "@/paths/paths";
+import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
 
 const logger = log.scope("tsc");
 
@@ -147,6 +148,18 @@ export async function generateProblemReport({
   fullResponse: string;
   appPath: string;
 }): Promise<ProblemReport> {
+  return typescriptUtilityProcessScheduler.runExclusive("tsc", () =>
+    runProblemReportWorker({ fullResponse, appPath }),
+  );
+}
+
+function runProblemReportWorker({
+  fullResponse,
+  appPath,
+}: {
+  fullResponse: string;
+  appPath: string;
+}): Promise<ProblemReport> {
   return new Promise((resolve, reject) => {
     // Determine the worker script path. The worker is emitted next to main.js
     // (`.vite/build`), so this resolves in both dev and packaged (ASAR) builds.
@@ -162,6 +175,31 @@ export async function generateProblemReport({
     const child = utilityProcess.fork(workerPath, [], {
       serviceName: "dyad-tsc-worker",
     });
+
+    let resolveExit!: () => void;
+    const exitPromise = new Promise<void>((exitResolve) => {
+      resolveExit = exitResolve;
+    });
+    let killRequested = false;
+    const registration =
+      typescriptUtilityProcessScheduler.registerResidentProcess({
+        kind: "tsc",
+        reusable: false,
+        token: child,
+        stop: async () => {
+          if (!killRequested) {
+            killRequested = true;
+            child.kill();
+          }
+          await exitPromise;
+        },
+      });
+
+    const stopChild = () => {
+      void registration.stop().catch((error) => {
+        logger.error(`Failed to stop TSC worker for app ${appPath}:`, error);
+      });
+    };
 
     // The child settles the promise at most once (message, error, timeout, or
     // exit — whichever comes first).
@@ -188,7 +226,7 @@ export async function generateProblemReport({
           ),
         );
       });
-      child.kill();
+      stopChild();
     }, TSC_WORKER_TIMEOUT_MS);
 
     // Handle worker messages (the worker sends a single reply)
@@ -207,7 +245,7 @@ export async function generateProblemReport({
           );
         }
       });
-      child.kill();
+      stopChild();
     });
 
     // Handle fatal V8 errors in the worker (e.g. heap OOM). The exit event
@@ -218,7 +256,6 @@ export async function generateProblemReport({
         `TSC worker fatal error for app ${appPath}: ${type} at ${location}`,
         report,
       );
-      child.kill();
       // A V8 FatalError in the worker is almost always heap exhaustion while
       // type-checking a very large app; surface that instead of the raw type.
       const message: string =
@@ -226,11 +263,14 @@ export async function generateProblemReport({
           ? "Type check failed: the TypeScript worker ran out of memory. This can happen with very large apps."
           : `Worker error: ${type}`;
       settle(() => reject(toProblemReportError(new Error(message))));
+      stopChild();
     });
 
     // Handle worker exit. Any exit before we received a reply is unexpected
     // (including an OOM abort) and must fail the type check rather than hang.
     child.on("exit", (code) => {
+      registration.clear();
+      resolveExit();
       settle(() => {
         logger.error(`TSC worker exited with code ${code} for app ${appPath}`);
         reject(
@@ -244,6 +284,9 @@ export async function generateProblemReport({
     // buffering is not documented API, so wait for the documented event. If
     // the child fails to spawn, the "exit" handler above rejects instead.
     child.on("spawn", () => {
+      if (settled) {
+        return;
+      }
       try {
         const writeTags = getDyadWriteTags(fullResponse);
         const renameTags = getDyadRenameTags(fullResponse);
@@ -265,8 +308,8 @@ export async function generateProblemReport({
 
         child.postMessage(input);
       } catch (error) {
-        child.kill();
         settle(() => reject(toProblemReportError(error)));
+        stopChild();
       }
     });
   });

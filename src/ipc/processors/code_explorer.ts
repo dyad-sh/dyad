@@ -11,6 +11,10 @@ import type {
 import log from "electron-log";
 import { getTypeScriptCachePath } from "@/paths/paths";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import {
+  type ResidentProcessRegistration,
+  typescriptUtilityProcessScheduler,
+} from "./typescript_utility_process_scheduler";
 
 const logger = log.scope("code-explorer");
 const DEFAULT_CONFIGS = ["tsconfig.app.json", "tsconfig.json"];
@@ -215,7 +219,14 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
-let host: UtilityProcess | null = null;
+interface CodeExplorerHost {
+  child: UtilityProcess;
+  generation: number;
+  ready: Promise<void>;
+  stop: () => Promise<void>;
+}
+
+let host: CodeExplorerHost | null = null;
 let hostGeneration = 0;
 let nextRequestId = 1;
 let idleTimer: NodeJS.Timeout | undefined;
@@ -245,7 +256,11 @@ export async function runCodeExplorer(
   const prior = keyQueues.get(key) ?? Promise.resolve();
   const run = prior
     .catch(() => undefined)
-    .then(() => sendToHost(key, workerInput));
+    .then(() =>
+      typescriptUtilityProcessScheduler.runExclusive("code-explorer", () =>
+        sendToHost(key, workerInput),
+      ),
+    );
   const tail = run.catch(() => undefined);
   keyQueues.set(key, tail);
   void tail.then(() => {
@@ -267,29 +282,45 @@ function keyUnavailableError(): DyadError {
   );
 }
 
-function sendToHost(
+async function sendToHost(
   key: string,
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerResult> {
+  // Re-check after waiting in both queues: the key may have been marked
+  // unavailable by a crash that happened while this request was queued.
+  if (unavailableKeys.has(key)) {
+    throw keyUnavailableError();
+  }
+
+  clearIdleTimer();
+  const hostForRequest = getHost();
+  await hostForRequest.ready;
+
   return new Promise((resolve, reject) => {
-    // Re-check after waiting in the queue: the key may have been marked
-    // unavailable by a crash that happened while this request was queued.
+    // The host can exit while its spawn promise is resolving. Do not post to
+    // a detached process; a later queued request will lazily start a new one.
+    if (host !== hostForRequest) {
+      reject(
+        toCodeExplorerError(
+          new Error("Code explorer host exited before accepting the request"),
+        ),
+      );
+      return;
+    }
     if (unavailableKeys.has(key)) {
       reject(keyUnavailableError());
       return;
     }
 
-    clearIdleTimer();
-    const child = getHost();
     const requestId = nextRequestId++;
     pendingRequests.set(requestId, {
       key,
-      hostGeneration,
+      hostGeneration: hostForRequest.generation,
       resolve,
       reject,
     });
     try {
-      child.postMessage({ requestId, input });
+      hostForRequest.child.postMessage({ requestId, input });
     } catch (error) {
       pendingRequests.delete(requestId);
       scheduleIdleKillIfIdle();
@@ -298,7 +329,7 @@ function sendToHost(
   });
 }
 
-function getHost(): UtilityProcess {
+function getHost(): CodeExplorerHost {
   if (host) {
     return host;
   }
@@ -319,8 +350,50 @@ function getHost(): UtilityProcess {
     serviceName: "dyad-code-explorer",
     execArgv: ["--expose-gc", "--max-old-space-size=3584"],
   });
-  host = child;
   let fatalError: { type: string; location: string } | null = null;
+  let intentionallyStopped = false;
+  let killRequested = false;
+  let resolveExit!: () => void;
+  const exitPromise = new Promise<void>((resolve) => {
+    resolveExit = resolve;
+  });
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+  let spawned = false;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  let registration: ResidentProcessRegistration | undefined;
+  let hostState!: CodeExplorerHost;
+
+  const stop = async (): Promise<void> => {
+    intentionallyStopped = true;
+    clearIdleTimer();
+    if (host === hostState) {
+      // Detach before killing so no later request can post to a dying host.
+      host = null;
+    }
+    if (!killRequested) {
+      killRequested = true;
+      child.kill();
+    }
+    await exitPromise;
+  };
+
+  hostState = { child, generation, ready, stop };
+  registration = typescriptUtilityProcessScheduler.registerResidentProcess({
+    kind: "code-explorer",
+    reusable: true,
+    token: child,
+    stop,
+  });
+  host = hostState;
+
+  child.on("spawn", () => {
+    spawned = true;
+    resolveReady();
+  });
 
   child.on("message", (response: CodeExplorerHostResponse) => {
     const request = pendingRequests.get(response.requestId);
@@ -345,11 +418,23 @@ function getHost(): UtilityProcess {
       `Code explorer host fatal error: ${type} at ${location}`,
       report,
     );
-    child.kill();
+    if (!killRequested) {
+      killRequested = true;
+      child.kill();
+    }
   });
 
   child.on("exit", (code) => {
-    if (host === child) {
+    registration?.clear();
+    resolveExit();
+    if (!spawned) {
+      rejectReady(
+        toCodeExplorerError(
+          new Error(`Code explorer host exited with code ${code} before spawn`),
+        ),
+      );
+    }
+    if (host === hostState) {
       host = null;
       clearIdleTimer();
     }
@@ -369,16 +454,20 @@ function getHost(): UtilityProcess {
     // one oversized project.
     const activeRequest = failed[0]?.[1];
     const crashLoopedKey =
-      activeRequest && recordHostDeathForKey(activeRequest.key)
+      !intentionallyStopped &&
+      activeRequest &&
+      recordHostDeathForKey(activeRequest.key)
         ? activeRequest.key
         : null;
-    const crashReason = fatalError
-      ? "v8_fatal_error"
-      : code !== 0
-        ? "nonzero_exit"
-        : failed.length > 0
-          ? "exited_with_pending_requests"
-          : null;
+    const crashReason = intentionallyStopped
+      ? null
+      : fatalError
+        ? "v8_fatal_error"
+        : code !== 0
+          ? "nonzero_exit"
+          : failed.length > 0
+            ? "exited_with_pending_requests"
+            : null;
     if (crashReason) {
       sendTelemetryEvent("code_explorer:host_crash", {
         error: true,
@@ -408,7 +497,7 @@ function getHost(): UtilityProcess {
     }
   });
 
-  return child;
+  return hostState;
 }
 
 /** Returns true when the key just crossed the crash-loop threshold. */
@@ -446,10 +535,8 @@ function scheduleIdleKillIfIdle(): void {
       return;
     }
     logger.info("Killing idle code explorer host");
-    const child = host;
-    // Detach first so a request racing the kill spawns a fresh host instead
-    // of posting to the dying one.
-    host = null;
-    child.kill();
+    void host.stop().catch((error) => {
+      logger.error("Failed to stop idle code explorer host:", error);
+    });
   }, WORKER_IDLE_TIMEOUT_MS);
 }

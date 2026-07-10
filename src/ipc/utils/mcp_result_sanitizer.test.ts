@@ -147,6 +147,60 @@ describe("sanitizeMcpToolResult", () => {
     );
   });
 
+  it("does not count ordinary data and blob strings as embedded media", () => {
+    const input = {
+      rows: Array.from({ length: 8 }, (_, index) => ({
+        data: index % 2 === 0 ? "success" : "pending",
+        blob: `record-${index}`,
+      })),
+    };
+
+    const result = sanitizeMcpToolResult(input);
+
+    expect(result).toEqual({
+      value: input,
+      serialized: JSON.stringify(input),
+      truncated: false,
+    });
+  });
+
+  it("counts discarded overlong keys against the aggregate item limit", () => {
+    const input = Object.fromEntries(
+      Array.from({ length: MCP_RESULT_MAX_ITEMS * 2 }, (_, index) => [
+        `${index}-${"k".repeat(600)}`,
+        index,
+      ]),
+    );
+
+    const result = sanitizeMcpToolResult(input);
+    const parsed = JSON.parse(result.serialized);
+
+    expect(result.truncated).toBe(true);
+    expect(parsed._dyadMcpTruncation.reasons).toEqual(
+      expect.arrayContaining(["byte-budget", "item-limit"]),
+    );
+    expect(parsed._dyadMcpTruncation.omittedItems).toBeGreaterThanOrEqual(
+      MCP_RESULT_MAX_ITEMS,
+    );
+  });
+
+  it("preserves __proto__ as an own data property without mutating prototypes", () => {
+    const input = JSON.parse(
+      '{"__proto__":{"polluted":true},"safe":"value"}',
+    ) as Record<string, unknown>;
+
+    const result = sanitizeMcpToolResult(input);
+    const value = result.value as Record<string, unknown>;
+    const parsed = JSON.parse(result.serialized);
+
+    expect(result.truncated).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(value, "__proto__")).toBe(true);
+    expect(value.__proto__).toEqual({ polluted: true });
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(parsed).toEqual(input);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it("handles circular structures and binary values without serializing their contents", () => {
     const input: Record<string, unknown> = {
       bytes: new Uint8Array(MCP_RESULT_MAX_BYTES * 2),

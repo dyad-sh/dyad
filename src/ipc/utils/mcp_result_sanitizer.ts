@@ -218,13 +218,14 @@ function replaceLargeEmbeddedMedia(
   const data = isMediaContent(value) ? value.data : value.resource.blob;
   const decodedBytes = approximateDecodedBase64Bytes(data);
   const exceedsByteLimit = decodedBytes > MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES;
+  state.mediaItemCount = nextMediaItemCount;
   if (!exceedsItemLimit && !exceedsByteLimit) {
-    // The generic data/blob property path below will count this item without
-    // requiring another traversal or marker on ordinary small media.
+    // The explicit MCP media shape is enough to count this item. The generic
+    // data/blob path only removes oversized payloads, so ordinary structured
+    // strings cannot consume the media item budget.
     return undefined;
   }
 
-  state.mediaItemCount = nextMediaItemCount;
   const reason = exceedsItemLimit ? "media-item-limit" : "media-byte-limit";
   markTruncated(state, reason);
   state.omittedMediaItems += 1;
@@ -292,15 +293,16 @@ function replaceLargeBase64Property(
     payloadLength,
     value,
   );
-  state.mediaItemCount += 1;
-  const exceedsItemLimit = state.mediaItemCount > MCP_RESULT_MAX_MEDIA_ITEMS;
-  if (
-    !exceedsItemLimit &&
-    decodedBytes <= MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES
-  ) {
+  // Generic data/blob/base64 keys are common in ordinary structured output.
+  // Only treat them as media when the payload is independently large enough
+  // to violate the embedded-media byte limit. Explicit MCP media shapes are
+  // counted by replaceLargeEmbeddedMedia instead.
+  if (decodedBytes <= MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES) {
     return value;
   }
 
+  state.mediaItemCount += 1;
+  const exceedsItemLimit = state.mediaItemCount > MCP_RESULT_MAX_MEDIA_ITEMS;
   const reason = exceedsItemLimit ? "media-item-limit" : "media-byte-limit";
   markTruncated(state, reason);
   state.omittedMediaItems += 1;
@@ -443,6 +445,10 @@ function sanitizeNode(
           markTruncated(state, "item-limit");
           break;
         }
+        // Count every visited own property, including keys that cannot be
+        // retained. Otherwise an attacker can bypass the traversal bound with
+        // an arbitrary number of overlong keys.
+        state.itemCount += 1;
 
         const keyResult = takeJsonStringPrefix(key, 512);
         if (keyResult.truncated) {
@@ -471,14 +477,18 @@ function sanitizeNode(
           propertyValue = "[omitted: unreadable MCP result property]";
           markTruncated(state, "unreadable-property");
         }
-        state.itemCount += 1;
         const child = sanitizeNode(propertyValue, state, remaining, depth + 1);
         if (child.jsonBytes > remaining) {
           state.omittedItems += 1;
           markTruncated(state, "byte-budget");
           break;
         }
-        result[keyResult.value] = child.value;
+        Object.defineProperty(result, keyResult.value, {
+          value: child.value,
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
         includedProperties += 1;
         bytes += propertyOverhead + child.jsonBytes;
       }

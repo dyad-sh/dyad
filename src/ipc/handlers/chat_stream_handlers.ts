@@ -235,7 +235,7 @@ async function processStreamChunks({
       chunk = `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(part.output);
+      const content = escapeXmlContent(part.output);
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-result>\n`;
     } else if (part.type === "tool-error") {
       // Emit an errored result so the merged card terminates in an error
@@ -243,7 +243,9 @@ async function processStreamChunks({
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
       const message =
         part.error instanceof Error ? part.error.message : String(part.error);
-      const content = escapeDyadTags(sanitizeMcpToolResult(message).serialized);
+      const content = escapeXmlContent(
+        sanitizeMcpToolResult(message).serialized,
+      );
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}" is-error="true">\n${content}\n</dyad-mcp-tool-result>\n`;
     }
 

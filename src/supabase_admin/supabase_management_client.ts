@@ -841,6 +841,7 @@ async function deploySupabaseFunctionUnqueued({
   );
 
   // Load files only after the byte-aware queue admits this request.
+  await assertFunctionFilesPlanCurrent(deployPlan.functionFiles, functionName);
   const functionFiles = await loadZipEntries(
     deployPlan.functionFiles.statEntries,
     functionName,
@@ -1192,6 +1193,36 @@ async function getSharedFiles(
   }
 }
 
+async function assertFunctionFilesPlanCurrent(
+  plan: FunctionFilesPlan,
+  functionName: string,
+): Promise<void> {
+  let currentEntries: FileStatEntry[];
+  try {
+    currentEntries = await listFilesWithStats(
+      plan.sourceKey,
+      functionName,
+      createSupabaseDeployPayloadBudget(`Supabase function ${functionName}`),
+    );
+  } catch (error) {
+    if (error instanceof DyadError) {
+      throw error;
+    }
+    throw new DyadError(
+      `Supabase deployment source changed while preparing ${functionName}. Please retry the deployment.`,
+      DyadErrorKind.Conflict,
+      { cause: error },
+    );
+  }
+
+  if (buildSignature(currentEntries) !== plan.signature) {
+    throw new DyadError(
+      `Supabase deployment source changed while preparing ${functionName}. Please retry the deployment.`,
+      DyadErrorKind.Conflict,
+    );
+  }
+}
+
 async function assertSharedFilesPlanCurrent(
   plan: SharedFilesPlan,
   sourceKey: string,
@@ -1304,7 +1335,16 @@ async function readStatBoundFile(
   entry: FileStatEntry,
   context: string,
 ): Promise<Buffer> {
-  const file = await fsPromises.open(entry.absolutePath, "r");
+  let file: fs.promises.FileHandle;
+  try {
+    file = await fsPromises.open(entry.absolutePath, "r");
+  } catch (error) {
+    throw new DyadError(
+      `Supabase deployment source changed while preparing ${context}: ${entry.relativePath}. Please retry the deployment.`,
+      DyadErrorKind.Conflict,
+      { cause: error },
+    );
+  }
   try {
     const currentStat = await file.stat();
     if (

@@ -41,6 +41,7 @@ describe("Supabase function deployment memory bounds", () => {
 
   afterEach(async () => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     resetSupabaseDeployQueuesForTests();
     resetSupabaseSharedFilesCacheForTests();
     await Promise.all(
@@ -236,6 +237,57 @@ describe("Supabase function deployment memory bounds", () => {
     await blocker;
     await queuedDeployExpectation;
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a queued deploy when the function file listing changes", async () => {
+    const appPath = await createApp();
+    const fetchMock = vi.fn(async () => successResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    let releaseBlocker!: () => void;
+    const blocker = enqueueSupabaseDeploy(
+      "project-id",
+      false,
+      () =>
+        new Promise<void>((resolve) => {
+          releaseBlocker = resolve;
+        }),
+    );
+    const queuedDeploy = deploy(appPath);
+    const queuedDeployExpectation = expect(queuedDeploy).rejects.toMatchObject({
+      kind: DyadErrorKind.Conflict,
+      message: expect.stringContaining("source changed"),
+    });
+
+    await vi.waitFor(() => {
+      expect(getSupabaseDeployQueueStatsForTests().pending).toBe(1);
+    });
+    await fs.writeFile(
+      path.join(appPath, "supabase", "functions", "hello", "added.ts"),
+      "export const added = true;",
+    );
+    releaseBlocker();
+
+    await blocker;
+    await queuedDeployExpectation;
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a function file open failure as a deployment conflict", async () => {
+    const appPath = await createApp();
+    const openError = Object.assign(new Error("file disappeared"), {
+      code: "ENOENT",
+    });
+    vi.spyOn(fs, "open").mockRejectedValueOnce(openError);
+    const fetchMock = vi.fn(async () => successResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deploy(appPath)).rejects.toMatchObject({
+      kind: DyadErrorKind.Conflict,
+      message: expect.stringContaining("source changed"),
+      cause: openError,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   async function createApp(): Promise<string> {

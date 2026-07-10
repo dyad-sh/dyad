@@ -1,8 +1,11 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import log from "electron-log";
 import {
   MAX_SUPABASE_DEPLOY_PENDING_TASKS_PER_PROJECT,
   SUPABASE_DEPLOY_ACTIVE_PAYLOAD_BYTE_BUDGET,
 } from "./supabase_deploy_limits";
+
+const logger = log.scope("supabase_deploy_queue");
 
 export const SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY = 8;
 export const SUPABASE_ACTIVATING_DEPLOY_CONCURRENCY = 1;
@@ -143,10 +146,28 @@ class SupabaseDeployQueue {
   }
 
   private decrementActiveCount(task: QueueTask<unknown>): void {
+    const hasAccountingUnderflow = task.bundleOnly
+      ? this.activeBundleOnlyCount <= 0
+      : this.activeActivatingCount <= 0;
+    if (
+      hasAccountingUnderflow ||
+      activeTaskCount <= 0 ||
+      activePayloadBytes < task.estimatedBytes
+    ) {
+      logger.warn("Supabase deploy queue accounting underflow", {
+        taskType: task.bundleOnly ? "bundle" : "activate",
+        taskEstimatedBytes: task.estimatedBytes,
+        activeBundleOnlyCount: this.activeBundleOnlyCount,
+        activeActivatingCount: this.activeActivatingCount,
+        activeTaskCount,
+        activePayloadBytes,
+      });
+    }
+
     if (task.bundleOnly) {
-      this.activeBundleOnlyCount--;
+      this.activeBundleOnlyCount = Math.max(0, this.activeBundleOnlyCount - 1);
     } else {
-      this.activeActivatingCount--;
+      this.activeActivatingCount = Math.max(0, this.activeActivatingCount - 1);
     }
     activeTaskCount = Math.max(0, activeTaskCount - 1);
     activePayloadBytes = Math.max(0, activePayloadBytes - task.estimatedBytes);

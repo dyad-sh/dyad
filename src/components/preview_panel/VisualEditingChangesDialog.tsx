@@ -19,11 +19,12 @@ interface VisualEditingChangesDialogProps {
 
 interface TextContentRequest {
   generation: number;
-  source: Window;
+  source: Window | null;
   appId: number;
   changes: VisualEditingChange[];
   expectedComponentIds: Set<string>;
   textContentByComponentId: Map<string, string>;
+  textBytesByComponentId: Map<string, number>;
   totalTextBytes: number;
   timeoutId: ReturnType<typeof setTimeout> | null;
 }
@@ -65,16 +66,87 @@ function utf8ByteLengthWithinLimit(
   return byteLength;
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return "Unknown error";
+}
+
+function getInitialTextContent(changes: VisualEditingChange[]):
+  | {
+      ok: true;
+      textContentByComponentId: Map<string, string>;
+      textBytesByComponentId: Map<string, number>;
+      totalTextBytes: number;
+    }
+  | { ok: false; message: string } {
+  const textContentByComponentId = new Map<string, string>();
+  const textBytesByComponentId = new Map<string, number>();
+  let totalTextBytes = 0;
+
+  for (const change of changes) {
+    if (typeof change.textContent !== "string") {
+      continue;
+    }
+
+    const textBytes = utf8ByteLengthWithinLimit(
+      change.textContent,
+      MAX_VISUAL_TEXT_ENTRY_BYTES,
+    );
+    if (textBytes === null) {
+      return {
+        ok: false,
+        message: `Could not save visual changes: text content for component "${change.componentId}" exceeds the 1 MiB limit.`,
+      };
+    }
+    if (totalTextBytes + textBytes > MAX_VISUAL_TEXT_TOTAL_BYTES) {
+      return {
+        ok: false,
+        message:
+          "Could not save visual changes: collected text content exceeds the 5 MiB limit.",
+      };
+    }
+
+    textContentByComponentId.set(change.componentId, change.textContent);
+    textBytesByComponentId.set(change.componentId, textBytes);
+    totalTextBytes += textBytes;
+  }
+
+  return {
+    ok: true,
+    textContentByComponentId,
+    textBytesByComponentId,
+    totalTextBytes,
+  };
+}
+
 export function VisualEditingChangesDialog({
   onReset,
   iframeRef,
 }: VisualEditingChangesDialogProps) {
   const [pendingChanges, setPendingChanges] = useAtom(pendingVisualChangesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const iframeWindow = iframeRef?.current?.contentWindow ?? null;
   const [savePhase, setSavePhase] = useState<SavePhase>("idle");
   const activeTextRequestRef = useRef<TextContentRequest | null>(null);
+  const activeApplyRequestRef = useRef<TextContentRequest | null>(null);
   const saveGenerationRef = useRef(0);
-  const iframeWindow = iframeRef?.current?.contentWindow ?? null;
+  const isMountedRef = useRef(true);
+  const previousContextRef = useRef({ selectedAppId, iframeWindow });
+  const onResetRef = useRef(onReset);
+  onResetRef.current = onReset;
 
   const clearTextRequest = useCallback((request: TextContentRequest) => {
     if (request.timeoutId !== null) {
@@ -83,6 +155,7 @@ export function VisualEditingChangesDialog({
     }
     request.expectedComponentIds.clear();
     request.textContentByComponentId.clear();
+    request.textBytesByComponentId.clear();
     request.totalTextBytes = 0;
     if (activeTextRequestRef.current === request) {
       activeTextRequestRef.current = null;
@@ -96,7 +169,7 @@ export function VisualEditingChangesDialog({
       if (request) {
         clearTextRequest(request);
       }
-      if (updateUi) {
+      if (updateUi && activeApplyRequestRef.current === null) {
         setSavePhase("idle");
       }
     },
@@ -105,6 +178,7 @@ export function VisualEditingChangesDialog({
 
   const applyChanges = useCallback(
     async (request: TextContentRequest) => {
+      activeApplyRequestRef.current = request;
       const updatedChanges = request.changes.map((change) => {
         const cachedText = request.textContentByComponentId.get(
           change.componentId,
@@ -116,6 +190,7 @@ export function VisualEditingChangesDialog({
 
       request.expectedComponentIds.clear();
       request.textContentByComponentId.clear();
+      request.textBytesByComponentId.clear();
       request.totalTextBytes = 0;
 
       try {
@@ -128,22 +203,41 @@ export function VisualEditingChangesDialog({
           return;
         }
 
-        setPendingChanges(new Map());
+        let hasRemainingChanges = false;
+        setPendingChanges((currentChanges) => {
+          const nextChanges = new Map(currentChanges);
+          for (const savedChange of request.changes) {
+            if (nextChanges.get(savedChange.componentId) === savedChange) {
+              nextChanges.delete(savedChange.componentId);
+            }
+          }
+          hasRemainingChanges = nextChanges.size > 0;
+          return nextChanges;
+        });
         showSuccess("Visual changes saved to source files");
-        onReset?.();
+        if (!hasRemainingChanges) {
+          onResetRef.current?.();
+        }
       } catch (error) {
         if (saveGenerationRef.current !== request.generation) {
           return;
         }
         console.error("Failed to save visual editing changes:", error);
-        showError(`Failed to save changes: ${error}`);
+        showError(`Failed to save changes: ${getErrorMessage(error)}`);
       } finally {
-        if (saveGenerationRef.current === request.generation) {
+        const wasActiveApply = activeApplyRequestRef.current === request;
+        if (wasActiveApply) {
+          activeApplyRequestRef.current = null;
+        }
+        if (
+          isMountedRef.current &&
+          (saveGenerationRef.current === request.generation || wasActiveApply)
+        ) {
           setSavePhase("idle");
         }
       }
     },
-    [onReset, setPendingChanges],
+    [setPendingChanges],
   );
 
   const finishTextRequest = useCallback(
@@ -206,16 +300,6 @@ export function VisualEditingChangesDialog({
       }
 
       if (typeof data.text === "string") {
-        if (
-          request.textContentByComponentId.size >= MAX_VISUAL_TEXT_CACHE_ENTRIES
-        ) {
-          failTextRequest(
-            request,
-            `Could not save visual changes: more than ${MAX_VISUAL_TEXT_CACHE_ENTRIES} text responses were received.`,
-          );
-          return;
-        }
-
         const textBytes = utf8ByteLengthWithinLimit(
           data.text,
           MAX_VISUAL_TEXT_ENTRY_BYTES,
@@ -227,7 +311,11 @@ export function VisualEditingChangesDialog({
           );
           return;
         }
-        if (request.totalTextBytes + textBytes > MAX_VISUAL_TEXT_TOTAL_BYTES) {
+        const previousTextBytes =
+          request.textBytesByComponentId.get(data.componentId) ?? 0;
+        const nextTotalTextBytes =
+          request.totalTextBytes - previousTextBytes + textBytes;
+        if (nextTotalTextBytes > MAX_VISUAL_TEXT_TOTAL_BYTES) {
           failTextRequest(
             request,
             "Could not save visual changes: collected text content exceeds the 5 MiB limit.",
@@ -236,7 +324,8 @@ export function VisualEditingChangesDialog({
         }
 
         request.textContentByComponentId.set(data.componentId, data.text);
-        request.totalTextBytes += textBytes;
+        request.textBytesByComponentId.set(data.componentId, textBytes);
+        request.totalTextBytes = nextTotalTextBytes;
       }
 
       request.expectedComponentIds.delete(data.componentId);
@@ -249,11 +338,25 @@ export function VisualEditingChangesDialog({
     return () => window.removeEventListener("message", handleMessage);
   }, [failTextRequest, finishTextRequest, iframeWindow]);
 
-  // Changing app/iframe invalidates stale responses. Cleanup also covers unmount.
+  // Changing app/iframe invalidates stale responses, but not on initial mount.
   useEffect(() => {
-    invalidateSave(true);
-    return () => invalidateSave(false);
+    const previousContext = previousContextRef.current;
+    previousContextRef.current = { selectedAppId, iframeWindow };
+    if (
+      previousContext.selectedAppId !== selectedAppId ||
+      previousContext.iframeWindow !== iframeWindow
+    ) {
+      invalidateSave(true);
+    }
   }, [iframeWindow, invalidateSave, selectedAppId]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      invalidateSave(false);
+    };
+  }, [invalidateSave]);
 
   if (pendingChanges.size === 0) return null;
 
@@ -274,19 +377,26 @@ export function VisualEditingChangesDialog({
       return;
     }
 
+    const initialTextContent = getInitialTextContent(changesToSave);
+    if (!initialTextContent.ok) {
+      showError(initialTextContent.message);
+      return;
+    }
+
     const generation = saveGenerationRef.current + 1;
     saveGenerationRef.current = generation;
 
     const request: TextContentRequest = {
       generation,
-      source: iframeWindow ?? window,
+      source: iframeWindow,
       appId: selectedAppId,
       changes: changesToSave,
       expectedComponentIds: new Set(
         changesToSave.map((change) => change.componentId),
       ),
-      textContentByComponentId: new Map(),
-      totalTextBytes: 0,
+      textContentByComponentId: initialTextContent.textContentByComponentId,
+      textBytesByComponentId: initialTextContent.textBytesByComponentId,
+      totalTextBytes: initialTextContent.totalTextBytes,
       timeoutId: null,
     };
 
@@ -322,7 +432,7 @@ export function VisualEditingChangesDialog({
     } catch (error) {
       failTextRequest(
         request,
-        `Failed to request text content from the preview: ${error}`,
+        `Failed to request text content from the preview: ${getErrorMessage(error)}`,
       );
     }
   };
@@ -330,7 +440,7 @@ export function VisualEditingChangesDialog({
   const handleDiscard = () => {
     invalidateSave(true);
     setPendingChanges(new Map());
-    onReset?.();
+    onResetRef.current?.();
   };
 
   return (

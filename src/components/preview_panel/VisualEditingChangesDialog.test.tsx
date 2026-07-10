@@ -14,6 +14,7 @@ import type { VisualEditingChange } from "@/ipc/types";
 import {
   MAX_VISUAL_TEXT_CACHE_ENTRIES,
   MAX_VISUAL_TEXT_ENTRY_BYTES,
+  MAX_VISUAL_TEXT_TOTAL_BYTES,
   VISUAL_TEXT_RESPONSE_TIMEOUT_MS,
   VisualEditingChangesDialog,
 } from "./VisualEditingChangesDialog";
@@ -86,7 +87,7 @@ function renderDialog({
 }: {
   changes?: VisualEditingChange[];
   appId?: number;
-  iframe?: HTMLIFrameElement;
+  iframe?: HTMLIFrameElement | null;
   onReset?: () => void;
 } = {}) {
   const store = createStore();
@@ -238,6 +239,64 @@ describe("VisualEditingChangesDialog", () => {
     );
   });
 
+  it("rejects oversized pre-existing text before applying without an iframe", () => {
+    renderDialog({
+      iframe: null,
+      changes: [
+        {
+          ...makeChange("component-a"),
+          textContent: "x".repeat(MAX_VISUAL_TEXT_ENTRY_BYTES + 1),
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(applyChangesMock).not.toHaveBeenCalled();
+    expect(showErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("exceeds the 1 MiB limit"),
+    );
+  });
+
+  it("rejects aggregate pre-existing text before applying", () => {
+    const textLength = MAX_VISUAL_TEXT_TOTAL_BYTES / 5;
+    renderDialog({
+      iframe: null,
+      changes: Array.from({ length: 6 }, (_, index) => ({
+        ...makeChange(`component-${index}`),
+        textContent: "x".repeat(textLength),
+      })),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(applyChangesMock).not.toHaveBeenCalled();
+    expect(showErrorMock).toHaveBeenCalledWith(
+      expect.stringContaining("exceeds the 5 MiB limit"),
+    );
+  });
+
+  it("applies bounded pre-existing text directly without an iframe", async () => {
+    renderDialog({
+      iframe: null,
+      changes: [{ ...makeChange("component-a"), textContent: "Existing text" }],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(applyChangesMock).toHaveBeenCalledWith({
+        appId: 1,
+        changes: [
+          expect.objectContaining({
+            componentId: "component-a",
+            textContent: "Existing text",
+          }),
+        ],
+      });
+    });
+  });
+
   it("rejects more pending components than the cache entry budget", () => {
     const { iframe, postMessageMock } = createIframe();
     renderDialog({
@@ -331,6 +390,140 @@ describe("VisualEditingChangesDialog", () => {
     expect(applyChangesMock).toHaveBeenCalledWith(
       expect.objectContaining({ appId: 2 }),
     );
+  });
+
+  it("keeps save disabled until an invalidated apply call settles", async () => {
+    let resolveApply: (() => void) | undefined;
+    applyChangesMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveApply = resolve;
+      }),
+    );
+    const { iframe, iframeWindow } = createIframe();
+    const { store } = renderDialog({ iframe });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    sendTextResponse(iframeWindow, "component-a", "Saved text");
+    await waitFor(() => expect(applyChangesMock).toHaveBeenCalledTimes(1));
+
+    act(() => store.set(selectedAppIdAtom, 2));
+    const savingButton = screen.getByRole("button", { name: "Saving..." });
+    expect((savingButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(savingButton);
+    expect(applyChangesMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveApply?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Save Changes",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+    expect(store.get(pendingVisualChangesAtom).size).toBe(1);
+    expect(showSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves edits added or replaced while apply is in flight", async () => {
+    let resolveApply: (() => void) | undefined;
+    applyChangesMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveApply = resolve;
+      }),
+    );
+    const originalChange = makeChange("component-a");
+    const { iframe, iframeWindow } = createIframe();
+    const { store, onReset } = renderDialog({
+      iframe,
+      changes: [originalChange],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    sendTextResponse(iframeWindow, "component-a", "Saved text");
+    await waitFor(() => expect(applyChangesMock).toHaveBeenCalledTimes(1));
+
+    const newerSameComponent = {
+      ...originalChange,
+      textContent: "Newer text",
+    };
+    const newComponent = makeChange("component-b");
+    act(() => {
+      store.set(
+        pendingVisualChangesAtom,
+        new Map([
+          [newerSameComponent.componentId, newerSameComponent],
+          [newComponent.componentId, newComponent],
+        ]),
+      );
+    });
+
+    await act(async () => {
+      resolveApply?.();
+      await Promise.resolve();
+    });
+
+    expect(store.get(pendingVisualChangesAtom)).toEqual(
+      new Map([
+        [newerSameComponent.componentId, newerSameComponent],
+        [newComponent.componentId, newComponent],
+      ]),
+    );
+    expect(showSuccessMock).toHaveBeenCalledTimes(1);
+    expect(onReset).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest onReset callback without replacing the message listener", async () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+    const firstOnReset = vi.fn();
+    const latestOnReset = vi.fn();
+    const { iframe, iframeWindow } = createIframe();
+    const { iframeRef, rerender } = renderDialog({
+      iframe,
+      onReset: firstOnReset,
+    });
+    const initialMessageListenerAdds = addEventListenerSpy.mock.calls.filter(
+      ([eventName]) => eventName === "message",
+    ).length;
+
+    rerender(
+      <VisualEditingChangesDialog
+        iframeRef={iframeRef}
+        onReset={latestOnReset}
+      />,
+    );
+    expect(
+      addEventListenerSpy.mock.calls.filter(
+        ([eventName]) => eventName === "message",
+      ).length,
+    ).toBe(initialMessageListenerAdds);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    sendTextResponse(iframeWindow, "component-a", "Saved text");
+    await waitFor(() => expect(latestOnReset).toHaveBeenCalledTimes(1));
+    expect(firstOnReset).not.toHaveBeenCalled();
+    addEventListenerSpy.mockRestore();
+  });
+
+  it("shows a readable message for structured apply errors", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    applyChangesMock.mockRejectedValueOnce({ message: "Structured failure" });
+    renderDialog({ iframe: null });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Failed to save changes: Structured failure",
+      );
+    });
+    consoleErrorSpy.mockRestore();
   });
 
   it("clears partial responses when the iframe is replaced", async () => {

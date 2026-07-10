@@ -9,6 +9,7 @@ import {
   Wrench,
   RefreshCw,
   Check,
+  Info,
 } from "lucide-react";
 import { Problem, ProblemReport } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
+import { useChatMode } from "@/hooks/useChatMode";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { showError } from "@/lib/toast";
 import { useTranslation } from "react-i18next";
@@ -231,6 +233,8 @@ export function _Problems() {
     `${p.file}:${p.line}:${p.column}:${p.code}`;
   const { streamMessage } = useStreamChat();
   const [selectedChatId] = useAtom(selectedChatIdAtom);
+  const { effectiveMode } = useChatMode(selectedChatId);
+  const isLocalAgentMode = effectiveMode === "local-agent";
 
   // Whenever the problems pane is shown or the report updates, select all problems
   useEffect(() => {
@@ -299,6 +303,15 @@ export function _Problems() {
 
   return (
     <div className="flex flex-col h-full">
+      {isLocalAgentMode && (
+        <div
+          className="flex items-start gap-2 px-4 py-2 text-xs text-muted-foreground border-b border-border"
+          data-testid="problems-agent-mode-notice"
+        >
+          <Info size={14} className="mt-0.5 flex-shrink-0" />
+          <span>{t("home:preview.problems_panel.agentModeNotice")}</span>
+        </div>
+      )}
       <ProblemsSummary
         problemReport={problemReport}
         appId={selectedAppId}

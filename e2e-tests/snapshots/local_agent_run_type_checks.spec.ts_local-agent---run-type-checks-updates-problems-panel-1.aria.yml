@@ -1,4 +1,6 @@
 - img
+- text: In Agent mode, problems don't refresh automatically after agent turns because the agent runs its own type checks. Use Run checks to refresh.
+- img
 - text: 3 errors
 - button "Run checks":
   - img

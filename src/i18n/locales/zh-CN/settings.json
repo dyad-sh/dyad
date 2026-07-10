@@ -82,7 +82,7 @@
     "autoApprove": "自动批准更改",
     "autoApproveDescription": "将自动批准代码更改并运行。",
     "autoFixProblems": "自动修复问题",
-    "autoFixProblemsDescription": "将自动修复 TypeScript 错误。"
+    "autoFixProblemsDescription": "将在构建模式下自动修复 TypeScript 错误。在 Agent 模式下，Agent 会自行运行类型检查。"
   },
   "ai": {
     "title": "AI 设置",

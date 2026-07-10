@@ -6,10 +6,16 @@ import { readSettings } from "../../main/settings"; // Assuming settings are rea
 import { UserBudgetInfo, UserBudgetInfoSchema } from "@/ipc/types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { z } from "zod";
-import { audioContracts } from "../types/audio";
+import {
+  audioContracts,
+  MAX_AUDIO_FILENAME_LENGTH,
+  MAX_AUDIO_RECORDING_BYTES,
+  MAX_AUDIO_REQUEST_ID_LENGTH,
+} from "../types/audio";
 import type { TranscribeAudioParams } from "../types/audio";
 import { transcribeWithDyadEngine } from "../utils/llm_engine_provider";
 import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const UserInfoResponseSchema = z.object({
   usedCredits: z.number(),
@@ -23,6 +29,37 @@ export type UserInfoResponse = z.infer<typeof UserInfoResponseSchema>;
 const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
 const typedHandle = createLoggedTypedHandler(logger);
+
+function validateAudioTranscriptionRequest(input: TranscribeAudioParams) {
+  if (
+    input.audioData.byteLength === 0 ||
+    input.audioData.byteLength > MAX_AUDIO_RECORDING_BYTES
+  ) {
+    throw new DyadError(
+      `Audio data must be between 1 and ${MAX_AUDIO_RECORDING_BYTES} bytes`,
+      DyadErrorKind.Validation,
+    );
+  }
+
+  if (
+    input.filename.trim().length === 0 ||
+    input.filename.length > MAX_AUDIO_FILENAME_LENGTH ||
+    input.filename.includes("/") ||
+    input.filename.includes("\\")
+  ) {
+    throw new DyadError("Invalid audio filename", DyadErrorKind.Validation);
+  }
+
+  if (
+    input.requestId.trim().length === 0 ||
+    input.requestId.length > MAX_AUDIO_REQUEST_ID_LENGTH
+  ) {
+    throw new DyadError(
+      "Invalid transcription request ID",
+      DyadErrorKind.Validation,
+    );
+  }
+}
 
 function getUserInfoUrl() {
   // Overridable so tests point at the fake LLM server instead of the real API.
@@ -122,7 +159,13 @@ export function registerProHandlers() {
         );
       }
 
-      const audioBuffer = Buffer.from(input.audioData);
+      validateAudioTranscriptionRequest(input);
+
+      const audioBuffer = Buffer.from(
+        input.audioData.buffer,
+        input.audioData.byteOffset,
+        input.audioData.byteLength,
+      );
 
       const text = await transcribeWithDyadEngine(
         audioBuffer,

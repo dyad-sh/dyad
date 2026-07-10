@@ -164,6 +164,11 @@ export class TypeScriptUtilityProcessScheduler {
           // Keep the resident registered for safety, but allow a later queued
           // operation to retry stopping it instead of caching a rejection.
           entry.stopPromise = undefined;
+          // Owners detach their process handle before awaiting exit, so a
+          // resident whose stop was attempted can never be reused. Without
+          // this, a same-kind operation would skip the stop retry and fork a
+          // second process against the still-registered resident.
+          entry.reusable = false;
         }
         throw error;
       });

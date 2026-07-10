@@ -181,6 +181,41 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     expect(secondOperation).toHaveBeenCalledOnce();
   });
 
+  it("does not reuse an explorer whose stop attempt failed", async () => {
+    const scheduler = new TypeScriptUtilityProcessScheduler();
+    let stopAttempts = 0;
+    let registration: ReturnType<typeof scheduler.registerResidentProcess>;
+
+    await scheduler.runExclusive("code-explorer", async () => {
+      registration = scheduler.registerResidentProcess({
+        kind: "code-explorer",
+        reusable: true,
+        token: {},
+        stop: async () => {
+          stopAttempts++;
+          if (stopAttempts === 1) {
+            throw new Error("temporary stop failure");
+          }
+          registration.clear();
+        },
+      });
+    });
+
+    // Idle shutdown path: the stop fails, leaving the resident registered.
+    await expect(registration!.stop()).rejects.toThrow(
+      "temporary stop failure",
+    );
+
+    // A same-kind operation must retry the stop instead of reusing the
+    // resident, since the owner already detached its handle.
+    const nextOperation = vi.fn(async () => undefined);
+    await expect(
+      scheduler.runExclusive("code-explorer", nextOperation),
+    ).resolves.toBeUndefined();
+    expect(stopAttempts).toBe(2);
+    expect(nextOperation).toHaveBeenCalledOnce();
+  });
+
   it("times out a hung stop without starting the incompatible operation", async () => {
     vi.useFakeTimers();
     const scheduler = new TypeScriptUtilityProcessScheduler();

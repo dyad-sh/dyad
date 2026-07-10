@@ -383,12 +383,19 @@ function getHost(): CodeExplorerHost {
     await exitPromise;
   };
 
-  registration = typescriptUtilityProcessScheduler.registerResidentProcess({
-    kind: "code-explorer",
-    reusable: true,
-    token: child,
-    stop: stopProcess,
-  });
+  try {
+    registration = typescriptUtilityProcessScheduler.registerResidentProcess({
+      kind: "code-explorer",
+      reusable: true,
+      token: child,
+      stop: stopProcess,
+    });
+  } catch (error) {
+    // No listeners are attached yet, so a registration failure would
+    // otherwise leak the freshly forked process.
+    child.kill();
+    throw error;
+  }
   // Always enter shutdown through the scheduler registration so the resident
   // is marked stopping during the asynchronous kill-to-exit gap. The raw
   // stopProcess callback is private to the scheduler to prevent bypasses.

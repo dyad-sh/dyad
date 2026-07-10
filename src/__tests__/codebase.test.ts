@@ -364,13 +364,35 @@ describe("extractCodebase", () => {
     expect(startedIndexes).toEqual([0, 1]);
   });
 
+  it("uses stable path ordering when virtual-file stats are unavailable", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    const virtualFileSystem = new AsyncVirtualFileSystem(appDir);
+    virtualFileSystem.applyResponseChanges({
+      deletePaths: [],
+      renameTags: [],
+      writeTags: [
+        { path: "b.ts", content: "b" },
+        { path: "a.ts", content: "a" },
+      ],
+    });
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      virtualFileSystem,
+      limits: { maxFiles: 1, maxTotalBytes: 100 },
+    });
+
+    expect(result.files.map((file) => file.path)).toEqual(["a.ts"]);
+  });
+
   it("lists metadata without reading file contents", async () => {
     appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
     await fs.promises.writeFile(path.join(appDir, "a.ts"), "secret content");
     await fs.promises.writeFile(path.join(appDir, "b.ts"), "more content");
     const readFileSpy = vi.spyOn(fs.promises, "readFile");
 
-    const files = await listCodebaseFileMetadata({
+    const result = await listCodebaseFileMetadata({
       appPath: appDir,
       chatContext: {
         contextPaths: [],
@@ -378,7 +400,26 @@ describe("extractCodebase", () => {
       },
     });
 
-    expect(files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
+    expect(result.files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
+    expect(result.totalFileCount).toBe(2);
     expect(readFileSpy).not.toHaveBeenCalled();
+  });
+
+  it("bounds metadata results while retaining the total file count", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await Promise.all(
+      ["a.ts", "b.ts", "c.ts"].map((file) =>
+        fs.promises.writeFile(path.join(appDir!, file), file),
+      ),
+    );
+
+    const result = await listCodebaseFileMetadata({
+      appPath: appDir,
+      chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      maxFiles: 2,
+    });
+
+    expect(result.files).toHaveLength(2);
+    expect(result.totalFileCount).toBe(3);
   });
 });

@@ -785,20 +785,33 @@ async function prepareCodebaseFiles({
 export async function listCodebaseFileMetadata({
   appPath,
   chatContext,
+  maxFiles = DEFAULT_CODEBASE_EXTRACTION_LIMITS.maxFiles,
 }: {
   appPath: string;
   chatContext: AppChatContext;
-}): Promise<BaseFile[]> {
+  maxFiles?: number;
+}): Promise<{ files: BaseFile[]; totalFileCount: number }> {
   const files = await prepareCodebaseFiles({
     appPath,
     chatContext,
     limits: DEFAULT_CODEBASE_EXTRACTION_LIMITS,
   });
+  const preparedFiles = files ?? [];
+  const selection = selectFilesWithinLimits(preparedFiles, {
+    ...DEFAULT_CODEBASE_EXTRACTION_LIMITS,
+    maxFiles: Math.max(0, Math.floor(maxFiles)),
+    // Metadata listing does not retain contents, so only the file-count limit
+    // should truncate it.
+    maxTotalBytes: Number.MAX_SAFE_INTEGER,
+  });
 
-  return (files ?? []).map((file) => ({
-    path: file.path,
-    force: file.force,
-  }));
+  return {
+    files: selection.files.map((file) => ({
+      path: file.path,
+      force: file.force,
+    })),
+    totalFileCount: preparedFiles.length,
+  };
 }
 
 function selectFilesWithinLimits(
@@ -988,10 +1001,11 @@ async function sortFilesByModificationTime(
         const stats = await fsAsync.stat(file);
         return { file, mtime: stats.mtimeMs, size: stats.size };
       } catch (error) {
-        // If there's an error getting stats, use current time as fallback
+        // Use a stable fallback so concurrent stat failures cannot reorder
+        // virtual files differently between runs.
         // This can happen with virtual files, so it's not a big deal.
         logger.warn(`Error getting file stats for ${file}:`, error);
-        return { file, mtime: Date.now(), size: 0 };
+        return { file, mtime: 0, size: 0 };
       }
     },
   );

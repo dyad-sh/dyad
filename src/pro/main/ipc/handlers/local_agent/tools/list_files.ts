@@ -135,6 +135,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       : globSuffix.slice(1); // Remove leading "/" for root directory
 
     let allPaths: ListedPath[];
+    let totalPathCount: number | undefined;
 
     if (args.include_ignored) {
       const normalizedAppPath = targetAppPath.replace(/\\/g, "/");
@@ -158,16 +159,21 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
         })),
       );
     } else {
-      const files = await listCodebaseFileMetadata({
+      const metadata = await listCodebaseFileMetadata({
         appPath: targetAppPath,
         chatContext: {
           contextPaths: [{ globPath }],
           smartContextAutoIncludes: [],
           excludePaths: [],
         },
+        maxFiles: MAX_PATHS_TO_RETURN,
       });
 
-      const filteredFiles = filterDyadInternalFiles(files, args.app_name);
+      const filteredFiles = filterDyadInternalFiles(
+        metadata.files,
+        args.app_name,
+      );
+      totalPathCount = metadata.totalFileCount;
 
       // Build the list of file paths
       allPaths = sortListedPaths(
@@ -178,7 +184,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       );
     }
 
-    const totalCount = allPaths.length;
+    const totalCount = totalPathCount ?? allPaths.length;
     const cappedPaths = allPaths.slice(0, MAX_PATHS_TO_RETURN);
     const wasTruncated = totalCount > cappedPaths.length;
 

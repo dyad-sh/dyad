@@ -42,13 +42,14 @@ function validateAudioTranscriptionRequest(input: TranscribeAudioParams) {
     );
   }
 
+  const trimmedFilename = input.filename.trim();
   if (
-    input.filename.trim().length === 0 ||
-    input.filename.length > MAX_AUDIO_FILENAME_LENGTH ||
-    input.filename.includes("/") ||
-    input.filename.includes("\\") ||
-    input.filename === "." ||
-    input.filename === ".."
+    trimmedFilename.length === 0 ||
+    trimmedFilename.length > MAX_AUDIO_FILENAME_LENGTH ||
+    trimmedFilename.includes("/") ||
+    trimmedFilename.includes("\\") ||
+    trimmedFilename === "." ||
+    trimmedFilename === ".."
   ) {
     throw new DyadError("Invalid audio filename", DyadErrorKind.Validation);
   }
@@ -158,8 +159,9 @@ export function registerProHandlers() {
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
       if (!apiKey || !settings.enableDyadPro) {
-        throw new Error(
+        throw new DyadError(
           "Dyad Pro is not enabled. Voice-to-text requires a Pro subscription.",
+          DyadErrorKind.Auth,
         );
       }
 

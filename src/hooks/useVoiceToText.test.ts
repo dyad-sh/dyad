@@ -71,6 +71,7 @@ describe("useVoiceToText", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("stops the active microphone stream when unmounted mid-recording", async () => {

@@ -131,6 +131,14 @@ describe("pro audio transcription handler", () => {
       },
     },
     {
+      name: "whitespace-padded traversal filename",
+      input: {
+        audioData: new Uint8Array([1]),
+        filename: " .. ",
+        requestId: "request-123",
+      },
+    },
+    {
       name: "header-unsafe request ID",
       input: {
         audioData: new Uint8Array([1]),
@@ -142,6 +150,22 @@ describe("pro audio transcription handler", () => {
     await expect(transcribeAudio({} as never, input)).rejects.toMatchObject({
       kind: DyadErrorKind.Validation,
     });
+    expect(mocks.transcribeWithDyadEngine).not.toHaveBeenCalled();
+  });
+
+  it("classifies a missing Pro subscription as an auth error", async () => {
+    mocks.readSettings.mockReturnValue({
+      enableDyadPro: false,
+      providerSettings: {},
+    });
+
+    await expect(
+      transcribeAudio({} as never, {
+        audioData: new Uint8Array([1]),
+        filename: "recording.webm",
+        requestId: "request-123",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
     expect(mocks.transcribeWithDyadEngine).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,7 @@ import {
   selectedChatIdAtom,
   removeChatIdFromAllTrackingAtom,
   ensureRecentViewedChatIdAtom,
+  evictChatRuntimeStateAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
@@ -111,6 +112,7 @@ export function ChatList({
     removeChatIdFromAllTrackingAtom,
   );
   const ensureRecentViewedChatId = useSetAtom(ensureRecentViewedChatIdAtom);
+  const evictChatRuntimeState = useSetAtom(evictChatRuntimeStateAtom);
 
   // Update selectedChatId when route changes and ensure chat appears in tabs.
   // Uses ensureRecentViewedChatId (not push) to avoid moving existing tabs to
@@ -180,6 +182,7 @@ export function ChatList({
 
       // Remove from tab tracking to prevent stale IDs
       removeChatIdFromAllTracking(chatId);
+      evictChatRuntimeState({ chatIds: [chatId], force: true });
 
       // If the deleted chat was selected, navigate to home (matches tab-close behavior)
       if (selectedChatId === chatId) {

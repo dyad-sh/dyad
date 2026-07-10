@@ -183,6 +183,9 @@ vi.mock("@/db", () => ({
       chats: {
         findFirst: vi.fn(async () => mockChatData),
       },
+      messages: {
+        findFirst: vi.fn(async () => undefined),
+      },
     },
     update: vi.fn(() => ({
       set: vi.fn((data: Record<string, unknown>) => ({
@@ -1179,6 +1182,52 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Stream processing - text content", () => {
+    it("does not send AI SDK history in full renderer message chunks", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          {
+            id: 1,
+            role: "user",
+            content: "Visible prompt",
+            aiMessagesJson: {
+              version: 6,
+              messages: [
+                {
+                  role: "user",
+                  content: "MAIN_PROCESS_ONLY_SECRET_PAYLOAD",
+                },
+              ],
+            },
+          },
+        ],
+      });
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Done" },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const fullChunks = getMessagesByChannel("chat:response:chunk")
+        .map((message) => message.args[0] as { messages?: unknown[] })
+        .filter((payload) => payload.messages !== undefined);
+      expect(fullChunks.length).toBeGreaterThan(0);
+      expect(JSON.stringify(fullChunks)).not.toContain("aiMessagesJson");
+      expect(JSON.stringify(fullChunks)).not.toContain(
+        "MAIN_PROCESS_ONLY_SECRET_PAYLOAD",
+      );
+    });
+
     it("should accumulate text-delta parts and update database", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();

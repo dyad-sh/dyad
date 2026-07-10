@@ -18,6 +18,7 @@ import {
   pruneClosedChatIdsAtom,
   sessionOpenedChatIdsAtom,
   closeMultipleTabsAtom,
+  evictChatRuntimeStateAtom,
   hydrateChatTabSessionAtom,
   persistChatTabSessionAtom,
   groupTabsByAppAtom,
@@ -235,6 +236,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
   const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
+  const evictChatRuntimeState = useSetAtom(evictChatRuntimeStateAtom);
   const hydrateChatTabSession = useSetAtom(hydrateChatTabSessionAtom);
   const persistChatTabSession = useSetAtom(persistChatTabSessionAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
@@ -526,6 +528,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         .filter((record): record is ClosedTabRecord => record !== null);
 
       closeMultipleTabs(records);
+      evictChatRuntimeState({ chatIds: idsToClose });
 
       // Switch to fallback when a fallback is provided and either there is
       // no selected chat (null) or the currently selected chat is being closed.
@@ -546,6 +549,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [
       clearNotification,
       closeMultipleTabs,
+      evictChatRuntimeState,
       selectedChatId,
       chatsById,
       selectChat,

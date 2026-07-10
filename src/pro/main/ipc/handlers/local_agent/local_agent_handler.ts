@@ -16,7 +16,7 @@ import log from "electron-log";
 
 import { db } from "@/db";
 import { chats, messages, mcpServers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, gte } from "drizzle-orm";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import {
   requireMcpToolConsent,
@@ -125,6 +125,8 @@ import {
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
+import { getPostCompactionMessageStartId } from "@/ipc/utils/chat_history_query";
+import { toRendererMessage } from "@/ipc/utils/renderer_chat_message";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -481,16 +483,22 @@ export async function handleLocalAgentStream(
     return false;
   }
 
-  const loadChat = async () =>
-    db.query.chats.findFirst({
+  const loadChat = async () => {
+    const historyStartId = await getPostCompactionMessageStartId(req.chatId);
+    return db.query.chats.findFirst({
       where: eq(chats.id, req.chatId),
       with: {
         messages: {
+          where:
+            historyStartId === undefined
+              ? undefined
+              : gte(messages.id, historyStartId),
           orderBy: (messages, { asc }) => [asc(messages.createdAt)],
         },
         app: true,
       },
     });
+  };
 
   // Get the chat and app — may be re-queried after compaction
   const initialChat = await loadChat();
@@ -1917,9 +1925,11 @@ function sendResponseChunk(
   lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
-    const currentMessages = [...chat.messages].filter(
-      (message) => !hiddenMessageIds?.has(message.id),
-    );
+    const currentMessages = (
+      chat.messages as Array<Parameters<typeof toRendererMessage>[0]>
+    )
+      .filter((message) => !hiddenMessageIds?.has(message.id))
+      .map(toRendererMessage);
     const placeholderMsg = currentMessages.find(
       (m) => m.id === placeholderMessageId,
     );

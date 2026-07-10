@@ -16,6 +16,7 @@ import {
   streamingPreviewByChatIdAtom,
   queuePausedByIdAtom,
   publishChatCompletionEventAtom,
+  evictChatRuntimeStateAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
@@ -124,6 +125,7 @@ export function useStreamChat({
   const setStreamingPreviewByChatId = useSetAtom(streamingPreviewByChatIdAtom);
   const queuePausedById = useAtomValue(queuePausedByIdAtom);
   const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
+  const evictChatRuntimeState = useSetAtom(evictChatRuntimeStateAtom);
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -523,6 +525,13 @@ export function useStreamChat({
                     appId: targetAppId,
                   }),
                 });
+                // A tab may have been closed while its stream was active. Its
+                // close-time eviction was intentionally deferred; retry once
+                // the terminal DB sync is complete and queued work is empty.
+                evictChatRuntimeState({
+                  chatIds: [chatId],
+                  requireClosed: true,
+                });
                 onSettled?.({
                   success: true,
                   pausedByStepLimit: response.pausePromptQueue === true,
@@ -609,6 +618,7 @@ export function useStreamChat({
       setStreamCompletedSuccessfullyById,
       setQueuePausedById,
       setStreamingPreviewByChatId,
+      evictChatRuntimeState,
       selectedAppId,
       refetchUserBudget,
       settings,

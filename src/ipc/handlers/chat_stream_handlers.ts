@@ -157,16 +157,17 @@ import {
   type PendingStoredChatAttachment,
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
+import {
+  rendererMessageColumns,
+  toRendererMessage,
+} from "../utils/renderer_chat_message";
+import { ChatStreamRuntimeState } from "../utils/chat_stream_runtime";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
 
-// Track active streams for cancellation
-const activeStreams = new Map<number, AbortController>();
-
-// Track partial responses for cancelled streams
-const partialResponses = new Map<number, string>();
+const chatStreamRuntime = new ChatStreamRuntimeState();
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
 
@@ -270,11 +271,7 @@ export function registerChatStreamHandlers() {
   // the module-level stream-tracking maps don't outlive their renderer.
   // (Guarded: `app` is undefined when this module is imported in unit tests.)
   app?.on?.("before-quit", () => {
-    for (const controller of activeStreams.values()) {
-      controller.abort();
-    }
-    activeStreams.clear();
-    partialResponses.clear();
+    chatStreamRuntime.abortAll();
   });
 
   createTypedHandler(
@@ -290,7 +287,7 @@ export function registerChatStreamHandlers() {
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
-      activeStreams.set(req.chatId, abortController);
+      chatStreamRuntime.start(req.chatId, abortController);
 
       // Notify renderer that stream is starting
       safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
@@ -300,6 +297,10 @@ export function registerChatStreamHandlers() {
         where: eq(chats.id, req.chatId),
         with: {
           messages: {
+            columns: {
+              id: true,
+              role: true,
+            },
             orderBy: (messages, { asc }) => [asc(messages.createdAt)],
           },
           app: true, // Include app information
@@ -722,6 +723,7 @@ ${componentSnippet}
         where: eq(chats.id, req.chatId),
         with: {
           messages: {
+            columns: rendererMessageColumns,
             orderBy: (messages, { asc }) => [asc(messages.createdAt)],
           },
           app: true, // Include app information
@@ -738,7 +740,7 @@ ${componentSnippet}
       // Send the messages right away so that the loading state is shown for the message.
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
-        messages: updatedChat.messages,
+        messages: updatedChat.messages.map(toRendererMessage),
       });
 
       let fullResponse = "";
@@ -1302,7 +1304,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
               // Clean up the abort controller
-              activeStreams.delete(req.chatId);
+              chatStreamRuntime.deleteController(req.chatId);
             },
             abortSignal: abortController.signal,
           });
@@ -1338,7 +1340,7 @@ This conversation includes one or more image attachments. When the user uploads 
           fullResponse: string;
         }) => {
           // Store the current partial response
-          partialResponses.set(req.chatId, fullResponse);
+          chatStreamRuntime.setPartialResponse(req.chatId, fullResponse);
           // Save to DB (in case user is switching chats during the stream)
           const now = Date.now();
           if (now - lastDbSaveAt >= 150) {
@@ -1850,7 +1852,9 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            const partialResponse = chatStreamRuntime.getPartialResponse(
+              req.chatId,
+            );
             try {
               // Update the placeholder assistant message with the partial content and cancellation note
               await db
@@ -1863,7 +1867,7 @@ ${problemReport.problems
               logger.log(
                 `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
               );
-              partialResponses.delete(req.chatId);
+              chatStreamRuntime.deletePartialResponse(req.chatId);
             } catch (error) {
               logger.error(
                 `Error saving partial response for chat ${chatId}:`,
@@ -1879,7 +1883,9 @@ ${problemReport.problems
       // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
       // save the cancellation notice to the placeholder message.
       if (abortController.signal.aborted) {
-        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        const partialResponse = chatStreamRuntime.getPartialResponse(
+          req.chatId,
+        );
         try {
           await db
             .update(messages)
@@ -1887,7 +1893,7 @@ ${problemReport.problems
               content: appendCancelledResponseNotice(partialResponse),
             })
             .where(eq(messages.id, placeholderAssistantMessage.id));
-          partialResponses.delete(req.chatId);
+          chatStreamRuntime.deletePartialResponse(req.chatId);
         } catch (error) {
           logger.error(
             `Error saving cancelled response for chat ${req.chatId}:`,
@@ -1937,6 +1943,7 @@ ${problemReport.problems
             where: eq(chats.id, req.chatId),
             with: {
               messages: {
+                columns: rendererMessageColumns,
                 orderBy: (messages, { asc }) => [asc(messages.createdAt)],
               },
             },
@@ -1944,7 +1951,7 @@ ${problemReport.problems
 
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
-            messages: chat!.messages,
+            messages: chat!.messages.map(toRendererMessage),
           });
 
           if (status.error) {
@@ -1984,8 +1991,9 @@ ${problemReport.problems
 
       return "error";
     } finally {
-      // Clean up the abort controller
-      activeStreams.delete(req.chatId);
+      // Release both the controller and the potentially large accumulated
+      // response on every terminal path, including successful completion.
+      chatStreamRuntime.finish(req.chatId);
 
       // Notify renderer that stream has ended
       safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
@@ -1996,12 +2004,12 @@ ${problemReport.problems
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
-    const abortController = activeStreams.get(chatId);
+    const abortController = chatStreamRuntime.getController(chatId);
 
     if (abortController) {
       // Abort the stream
       abortController.abort();
-      activeStreams.delete(chatId);
+      chatStreamRuntime.deleteController(chatId);
       logger.log(`Aborted stream for chat ${chatId}`);
     } else {
       logger.warn(`No active stream found for chat ${chatId}`);

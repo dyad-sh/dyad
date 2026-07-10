@@ -546,3 +546,99 @@ export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());
 export const streamingPreviewByChatIdAtom = atom<Map<number, string>>(
   new Map(),
 );
+
+function withoutChatId<T>(map: Map<number, T>, chatId: number): Map<number, T> {
+  if (!map.has(chatId)) return map;
+  const next = new Map(map);
+  next.delete(chatId);
+  return next;
+}
+
+export interface EvictChatRuntimeStateOptions {
+  chatIds: readonly number[];
+  /** Use only after the chat itself has been permanently deleted. */
+  force?: boolean;
+  /** Useful for terminal callbacks that should only clean already-closed tabs. */
+  requireClosed?: boolean;
+}
+
+/**
+ * Releases renderer runtime state for chats that no longer have an open tab.
+ * Close-time eviction skips active streams and queued work; deletion can force
+ * cleanup because the backing chat no longer exists.
+ */
+export const evictChatRuntimeStateAtom = atom(
+  null,
+  (
+    get,
+    set,
+    {
+      chatIds,
+      force = false,
+      requireClosed = false,
+    }: EvictChatRuntimeStateOptions,
+  ) => {
+    for (const chatId of new Set(chatIds)) {
+      if (requireClosed && !get(closedChatIdsAtom).has(chatId)) {
+        continue;
+      }
+      const isStreaming = get(isStreamingByIdAtom).get(chatId) === true;
+      const hasQueuedMessages =
+        (get(queuedMessagesByIdAtom).get(chatId)?.length ?? 0) > 0;
+      if (!force && (isStreaming || hasQueuedMessages)) {
+        continue;
+      }
+
+      set(
+        chatMessagesByIdAtom,
+        withoutChatId(get(chatMessagesByIdAtom), chatId),
+      );
+      set(chatErrorByIdAtom, withoutChatId(get(chatErrorByIdAtom), chatId));
+      set(isStreamingByIdAtom, withoutChatId(get(isStreamingByIdAtom), chatId));
+      set(
+        chatInputValuesByIdAtom,
+        withoutChatId(get(chatInputValuesByIdAtom), chatId),
+      );
+      set(
+        chatStreamCountByIdAtom,
+        withoutChatId(get(chatStreamCountByIdAtom), chatId),
+      );
+      set(
+        agentTodosByChatIdAtom,
+        withoutChatId(get(agentTodosByChatIdAtom), chatId),
+      );
+      set(
+        queuedMessagesByIdAtom,
+        withoutChatId(get(queuedMessagesByIdAtom), chatId),
+      );
+      set(
+        streamCompletedSuccessfullyByIdAtom,
+        withoutChatId(get(streamCompletedSuccessfullyByIdAtom), chatId),
+      );
+      set(queuePausedByIdAtom, withoutChatId(get(queuePausedByIdAtom), chatId));
+      set(
+        streamingPreviewByChatIdAtom,
+        withoutChatId(get(streamingPreviewByChatIdAtom), chatId),
+      );
+      set(
+        planAcceptInNewChatByChatIdAtom,
+        withoutChatId(get(planAcceptInNewChatByChatIdAtom), chatId),
+      );
+
+      const recentStreamChatIds = get(recentStreamChatIdsAtom);
+      if (recentStreamChatIds.has(chatId)) {
+        const next = new Set(recentStreamChatIds);
+        next.delete(chatId);
+        set(recentStreamChatIdsAtom, next);
+      }
+
+      const pendingConsents = get(pendingToolConsentsAtom);
+      const nextPendingConsents = pendingConsents.filter(
+        (consent) => consent.chatId !== chatId,
+      );
+      if (nextPendingConsents.length !== pendingConsents.length) {
+        set(pendingToolConsentsAtom, nextPendingConsents);
+      }
+    }
+  },
+);

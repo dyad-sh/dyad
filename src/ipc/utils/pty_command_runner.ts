@@ -1,5 +1,9 @@
 import { spawn as spawnProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
+import {
+  BoundedOutputBuffer,
+  DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
+} from "./bounded_output_buffer";
 
 const DEFAULT_PTY_NAME = "xterm-color";
 const DEFAULT_PTY_COLS = 160;
@@ -9,6 +13,110 @@ export const DEFAULT_PTY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const ANSI_OSC_PATTERN = /\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g;
 const ANSI_CSI_PATTERN = /(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]/g;
 const ANSI_SINGLE_CHAR_PATTERN = /\u001B[@-Z\\-_]/g;
+const MAX_UNTERMINATED_OSC_CHARACTERS = 8 * 1024;
+
+type AnsiParserState = "text" | "escape" | "csi" | "osc" | "osc-escape";
+
+/**
+ * Removes terminal control sequences before output enters the bounded buffer.
+ * The parser state spans PTY chunks so truncation can never expose the middle
+ * of an ANSI sequence as user-visible text.
+ */
+class StreamingAnsiStripper {
+  private state: AnsiParserState = "text";
+  private oscCharacters = 0;
+
+  write(value: string): string {
+    let output = "";
+    let visibleStart = this.state === "text" ? 0 : -1;
+
+    const enterControlSequence = (
+      index: number,
+      state: Exclude<AnsiParserState, "text">,
+    ) => {
+      if (visibleStart >= 0) {
+        output += value.slice(visibleStart, index);
+      }
+      visibleStart = -1;
+      this.state = state;
+    };
+
+    const resumeText = (nextIndex: number) => {
+      this.state = "text";
+      this.oscCharacters = 0;
+      visibleStart = nextIndex;
+    };
+
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index);
+
+      switch (this.state) {
+        case "text":
+          if (code === 0x1b) {
+            enterControlSequence(index, "escape");
+          } else if (code === 0x9b) {
+            enterControlSequence(index, "csi");
+          }
+          break;
+        case "escape":
+          if (value[index] === "[") {
+            this.state = "csi";
+          } else if (value[index] === "]") {
+            this.state = "osc";
+            this.oscCharacters = 0;
+          } else if (code >= 0x40 && code <= 0x5f) {
+            resumeText(index + 1);
+          } else {
+            // Match normalizePtyOutput's behavior for an unknown escape:
+            // discard ESC but preserve the following visible character.
+            output += value[index];
+            resumeText(index + 1);
+          }
+          break;
+        case "csi":
+          if (code >= 0x40 && code <= 0x7e) {
+            resumeText(index + 1);
+          }
+          break;
+        case "osc":
+          this.oscCharacters += 1;
+          if (code === 0x07) {
+            resumeText(index + 1);
+          } else if (code === 0x0a) {
+            // OSC payloads cannot contain line feeds. Recover from malformed
+            // output so an unterminated title sequence cannot hide every
+            // later user-visible error line.
+            resumeText(index + 1);
+          } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
+            // Also recover when a producer never emits a line break or OSC
+            // terminator. Discard the bounded malformed prefix and resume.
+            resumeText(index + 1);
+          } else if (code === 0x1b) {
+            this.state = "osc-escape";
+          }
+          break;
+        case "osc-escape":
+          this.oscCharacters += 1;
+          if (value[index] === "\\") {
+            resumeText(index + 1);
+          } else if (code === 0x0a) {
+            resumeText(index + 1);
+          } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
+            resumeText(index + 1);
+          } else if (code !== 0x1b) {
+            this.state = "osc";
+          }
+          break;
+      }
+    }
+
+    if (this.state === "text" && visibleStart >= 0) {
+      output += value.slice(visibleStart);
+    }
+
+    return output;
+  }
+}
 
 export interface PtyCommandExecutionOptions {
   cwd?: string;
@@ -18,6 +126,7 @@ export interface PtyCommandExecutionOptions {
   rows?: number;
   name?: string;
   displayCommand?: string;
+  maxOutputBytes?: number;
 }
 
 export interface PtyCommandExecutionResult {
@@ -237,7 +346,10 @@ export async function runPtyCommand(
     const displayedCommand =
       options.displayCommand ?? buildDisplayedCommand(command, args);
     const timeoutMs = options.timeoutMs ?? DEFAULT_PTY_COMMAND_TIMEOUT_MS;
-    const outputChunks: string[] = [];
+    const outputBuffer = new BoundedOutputBuffer(
+      options.maxOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
+    );
+    const ansiStripper = new StreamingAnsiStripper();
     let didSettle = false;
     let timeoutId: NodeJS.Timeout | undefined;
     let dataSubscription: { dispose(): void } = { dispose: () => {} };
@@ -279,14 +391,15 @@ export async function runPtyCommand(
     }
 
     dataSubscription = ptyProcess.onData((chunk) => {
-      outputChunks.push(chunk);
+      outputBuffer.append(ansiStripper.write(chunk));
     });
 
     exitSubscription = ptyProcess.onExit(({ exitCode, signal }) => {
       const failed = exitCode !== 0 || hasSignal(signal);
-      const output = normalizePtyOutput(outputChunks.join(""), {
+      const output = normalizePtyOutput(outputBuffer.toString(), {
         preserveCarriageReturnFrames: failed,
       });
+      outputBuffer.clear();
 
       if (!failed) {
         settle(() => resolve({ output }));
@@ -306,19 +419,14 @@ export async function runPtyCommand(
     });
 
     timeoutId = setTimeout(() => {
-      try {
-        terminatePtyProcess(ptyProcess);
-      } catch {
-        // Best effort only. The timeout error below remains the source of truth.
-      }
-
       const timeoutMessage = buildTimeoutMessage(displayedCommand, timeoutMs);
       const output = appendCommandMessage(
-        normalizePtyOutput(outputChunks.join(""), {
+        normalizePtyOutput(outputBuffer.toString(), {
           preserveCarriageReturnFrames: true,
         }),
         timeoutMessage,
       );
+      outputBuffer.clear();
 
       settle(() =>
         reject(
@@ -328,6 +436,12 @@ export async function runPtyCommand(
           }),
         ),
       );
+
+      try {
+        terminatePtyProcess(ptyProcess);
+      } catch {
+        // Best effort only. The timeout error above remains the source of truth.
+      }
     }, timeoutMs);
   });
 }

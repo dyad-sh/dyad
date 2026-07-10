@@ -132,11 +132,11 @@ function buildGrepAttributes(
 }
 
 function truncateLineText(text: string): string {
-  const characterLimited =
-    text.length <= MAX_LINE_LENGTH
-      ? text
-      : text.slice(0, MAX_LINE_LENGTH) + "...";
-  return truncateUtf8(characterLimited, MAX_GREP_LINE_BYTES).text;
+  const byteLimited = truncateUtf8(text, MAX_GREP_LINE_BYTES);
+  if (byteLimited.truncated) return byteLimited.text;
+  return text.length <= MAX_LINE_LENGTH
+    ? text
+    : text.slice(0, MAX_LINE_LENGTH) + "...";
 }
 
 export function normalizeRipgrepMatchPath(matchPath: string): string {

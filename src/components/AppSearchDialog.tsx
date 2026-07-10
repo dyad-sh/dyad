@@ -38,16 +38,16 @@ export function AppSearchDialog({
 
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const { apps: searchResults } = useSearchApps(debouncedQuery);
-  const searchResultsTruncated = searchResults.some(
-    (result) => result.searchTruncated,
-  );
+  const isDatabaseSearch =
+    debouncedQuery.trim().length >= MIN_APP_SEARCH_QUERY_LENGTH;
+  const searchResultsTruncated =
+    isDatabaseSearch && searchResults.some((result) => result.searchTruncated);
 
   // Keep one-character searches local to app names. Database-wide chat
   // searches start at two characters to avoid very broad result sets.
-  const appsToShow: AppSearchResult[] =
-    debouncedQuery.trim().length < MIN_APP_SEARCH_QUERY_LENGTH
-      ? allApps
-      : searchResults;
+  const appsToShow: AppSearchResult[] = isDatabaseSearch
+    ? searchResults
+    : allApps;
 
   const commandFilter = (
     value: string,
@@ -161,7 +161,8 @@ export function AppSearchDialog({
               className="px-2 py-1 text-xs text-muted-foreground"
               role="status"
             >
-              Showing the first 50 results. Refine your search to see more.
+              Showing the first {appsToShow.length} results. Refine your search
+              to see more.
             </div>
           )}
         </CommandGroup>

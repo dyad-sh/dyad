@@ -245,8 +245,8 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
                 : t("preview.match", { count: matchesByPath.size })}
             </span>
             {searchResultsTruncated && (
-              <span title="Search results were limited to protect memory">
-                Results limited; refine search
+              <span title={t("preview.searchResultsLimitedTitle")}>
+                {t("preview.searchResultsLimited")}
               </span>
             )}
           </div>

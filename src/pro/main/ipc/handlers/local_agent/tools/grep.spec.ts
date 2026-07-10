@@ -588,6 +588,7 @@ function deepHello() {
         MAX_GREP_OUTPUT_BYTES,
       );
       expect(result).not.toContain("�");
+      expect(matchLine).not.toContain("......");
     });
   });
 

@@ -225,8 +225,9 @@ export function limitAgentSqlQuery(
     return { query, limited: false };
   }
 
+  const cleanSql = schemaStatement.sql.trim().replace(/;+$/, "");
   return {
-    query: `SELECT * FROM (\n${schemaStatement.sql}\n) AS "dyad_limited_result"\nLIMIT ${maxRows + 1}`,
+    query: `SELECT * FROM (\n${cleanSql}\n) AS "dyad_limited_result"\nLIMIT ${maxRows + 1}`,
     limited: true,
   };
 }

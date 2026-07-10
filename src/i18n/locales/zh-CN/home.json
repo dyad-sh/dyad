@@ -223,6 +223,8 @@
     "match_one": "{{count}} 个匹配",
     "match_other": "{{count}} 个匹配",
     "noFilesMatchedSearch": "没有文件匹配您的搜索。",
+    "searchResultsLimited": "结果已限制；请缩小搜索范围",
+    "searchResultsLimitedTitle": "为保护内存，搜索结果已受到限制",
     "saveChanges": "保存更改",
     "noUnsavedChanges": "没有未保存的更改",
     "fileSaved": "文件已保存",

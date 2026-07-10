@@ -223,6 +223,8 @@
     "match_one": "{{count}} resultado",
     "match_other": "{{count}} resultados",
     "noFilesMatchedSearch": "Nenhum arquivo corresponde à sua pesquisa.",
+    "searchResultsLimited": "Resultados limitados; refine a pesquisa",
+    "searchResultsLimitedTitle": "Os resultados da pesquisa foram limitados para proteger a memória",
     "saveChanges": "Salvar alterações",
     "noUnsavedChanges": "Sem alterações não salvas",
     "fileSaved": "Arquivo salvo",

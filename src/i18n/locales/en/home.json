@@ -226,6 +226,8 @@
     "match_one": "{{count}} match",
     "match_other": "{{count}} matches",
     "noFilesMatchedSearch": "No files matched your search.",
+    "searchResultsLimited": "Results limited; refine search",
+    "searchResultsLimitedTitle": "Search results were limited to protect memory",
     "saveChanges": "Save changes",
     "noUnsavedChanges": "No unsaved changes",
     "fileSaved": "File saved",

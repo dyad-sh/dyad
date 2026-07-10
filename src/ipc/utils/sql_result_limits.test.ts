@@ -49,9 +49,11 @@ describe("agent SQL query limiting", () => {
   it("wraps a single read SELECT with a sentinel row", () => {
     const result = limitAgentSqlQuery("SELECT * FROM users;", 100);
 
-    expect(result.limited).toBe(true);
-    expect(result.query).toContain("SELECT * FROM users");
-    expect(result.query).toContain("LIMIT 101");
+    expect(result).toEqual({
+      limited: true,
+      query:
+        'SELECT * FROM (\nSELECT * FROM users\n) AS "dyad_limited_result"\nLIMIT 101',
+    });
   });
 
   it.each([

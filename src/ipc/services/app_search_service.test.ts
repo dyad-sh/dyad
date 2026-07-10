@@ -5,6 +5,7 @@ import {
   searchAppsWithResultLimits,
 } from "./app_search_service";
 import { messages } from "../../db/schema";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
@@ -40,6 +41,26 @@ describe("searchAppsWithResultLimits", () => {
   it("does not run broad one-character database searches", async () => {
     await expect(searchAppsWithResultLimits("a")).resolves.toEqual([]);
     expect(mocks.select).not.toHaveBeenCalled();
+  });
+
+  it("treats SQLite LIKE wildcard characters as literal search text", async () => {
+    const builders = [
+      queryReturning([]),
+      queryReturning([]),
+      queryReturning([]),
+    ];
+    const queries = [...builders];
+    mocks.select.mockImplementation(() => queries.shift());
+
+    await searchAppsWithResultLimits("100%_\\");
+
+    const dialect = new SQLiteSyncDialect();
+    for (const builder of builders) {
+      const condition = builder.where.mock.calls[0][0];
+      const compiled = dialect.sqlToQuery(condition);
+      expect(compiled.sql).toContain("LIKE ? ESCAPE '\\'");
+      expect(compiled.params).toEqual(["%100\\%\\_\\\\%"]);
+    }
   });
 
   it("limits every source query and reports broad-result truncation", async () => {

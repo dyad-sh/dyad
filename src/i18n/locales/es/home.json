@@ -226,6 +226,8 @@
     "match_one": "{{count}} coincidencia",
     "match_other": "{{count}} coincidencias",
     "noFilesMatchedSearch": "Ningún archivo coincidió con tu búsqueda.",
+    "searchResultsLimited": "Resultados limitados; refina la búsqueda",
+    "searchResultsLimitedTitle": "Los resultados de búsqueda se limitaron para proteger la memoria",
     "saveChanges": "Guardar cambios",
     "noUnsavedChanges": "No hay cambios sin guardar",
     "fileSaved": "Archivo guardado",

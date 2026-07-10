@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import log from "electron-log";
 import type { AppFileSearchResult } from "../types/app";
 import { normalizePath } from "../../../shared/normalizePath";
@@ -27,10 +28,19 @@ function byteOffsetToCharIndex(text: string, byteOffset: number): number {
   const safeByteOffset = Math.max(0, byteOffset);
   let bytes = 0;
   let characterIndex = 0;
-  for (const character of text) {
+  while (characterIndex < text.length) {
     if (bytes >= safeByteOffset) return characterIndex;
-    bytes += Buffer.byteLength(character, "utf8");
-    characterIndex += character.length;
+    const codePoint = text.codePointAt(characterIndex);
+    if (codePoint === undefined) break;
+    bytes +=
+      codePoint <= 0x7f
+        ? 1
+        : codePoint <= 0x7ff
+          ? 2
+          : codePoint <= 0xffff
+            ? 3
+            : 4;
+    characterIndex += codePoint > 0xffff ? 2 : 1;
   }
   return text.length;
 }
@@ -116,6 +126,7 @@ export async function searchAppFilesWithRipgrep({
     ];
 
     const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
+    const stdoutDecoder = new StringDecoder("utf8");
     let buffer = "";
     let resultBytes = 0;
     let snippetCount = 0;
@@ -128,11 +139,11 @@ export async function searchAppFilesWithRipgrep({
       rg.kill();
     };
 
-    rg.stdout.on("data", (data) => {
+    const consumeStdout = (decoded: string, flush = false) => {
       if (stoppedEarly) return;
-      buffer += data.toString();
+      buffer += decoded;
       const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+      buffer = flush ? "" : (lines.pop() ?? "");
 
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -203,6 +214,10 @@ export async function searchAppFilesWithRipgrep({
           logger.warn("Failed to parse ripgrep output line:", line, error);
         }
       }
+    };
+
+    rg.stdout.on("data", (data) => {
+      consumeStdout(stdoutDecoder.write(data));
     });
 
     rg.stderr.on("data", (data) => {
@@ -212,6 +227,9 @@ export async function searchAppFilesWithRipgrep({
     });
 
     rg.on("close", (code) => {
+      if (!stoppedEarly) {
+        consumeStdout(stdoutDecoder.end(), true);
+      }
       if (!stoppedEarly && code !== 0 && code !== 1) {
         reject(new Error(`ripgrep exited with code ${code}`));
         return;
@@ -223,6 +241,8 @@ export async function searchAppFilesWithRipgrep({
       resolve(values);
     });
 
-    rg.on("error", reject);
+    rg.on("error", (error) => {
+      if (!stoppedEarly) reject(error);
+    });
   });
 }

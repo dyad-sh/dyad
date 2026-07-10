@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
-import { desc, eq, like, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import type { AppSearchResult } from "@/lib/schemas";
 import { truncateUtf8 } from "../utils/result_limits";
 import { MIN_APP_SEARCH_QUERY_LENGTH } from "../types/app";
@@ -50,7 +50,7 @@ export async function searchAppsWithResultLimits(
   const query = rawQuery.trim();
   if (query.length < MIN_APP_SEARCH_QUERY_LENGTH) return [];
 
-  const pattern = `%${query.replace(/[%_]/g, "\\$&")}%`;
+  const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
 
   const appNameMatches = await db
     .select({
@@ -59,7 +59,7 @@ export async function searchAppsWithResultLimits(
       createdAt: apps.createdAt,
     })
     .from(apps)
-    .where(like(apps.name, pattern))
+    .where(sql`${apps.name} LIKE ${pattern} ESCAPE '\\'`)
     .orderBy(desc(apps.createdAt))
     .limit(SOURCE_QUERY_LIMIT);
 
@@ -72,7 +72,7 @@ export async function searchAppsWithResultLimits(
     })
     .from(apps)
     .innerJoin(chats, eq(apps.id, chats.appId))
-    .where(like(chats.title, pattern))
+    .where(sql`${chats.title} LIKE ${pattern} ESCAPE '\\'`)
     .groupBy(apps.id)
     .orderBy(desc(apps.createdAt))
     .limit(SOURCE_QUERY_LIMIT);
@@ -88,7 +88,7 @@ export async function searchAppsWithResultLimits(
     .from(apps)
     .innerJoin(chats, eq(apps.id, chats.appId))
     .innerJoin(messages, eq(chats.id, messages.chatId))
-    .where(like(messages.content, pattern))
+    .where(sql`${messages.content} LIKE ${pattern} ESCAPE '\\'`)
     .groupBy(apps.id)
     .orderBy(desc(apps.createdAt))
     .limit(SOURCE_QUERY_LIMIT);
@@ -118,9 +118,7 @@ export async function searchAppsWithResultLimits(
   ].map(normalizeResult);
   const uniqueApps = Array.from(
     new Map(allMatches.map((appResult) => [appResult.id, appResult])).values(),
-  ).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const truncated =
     sourceTruncated || uniqueApps.length > MAX_APP_SEARCH_RESULTS;
 

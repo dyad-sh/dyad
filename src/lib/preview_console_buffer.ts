@@ -38,11 +38,15 @@ function utf8CodePointByteLength(codePoint: number): number {
  * Measures and, when necessary, truncates without first allocating a full
  * UTF-8 copy of an attacker-controlled string.
  */
-function boundUtf8String(
+export function boundUtf8String(
   value: string,
   maxBytes: number,
   truncationSuffix: string,
 ): BoundedUtf8String {
+  if (maxBytes <= 0) {
+    return { value: "", byteLength: 0 };
+  }
+
   let byteLength = 0;
   let prefixByteLength = 0;
   let prefixEnd = 0;
@@ -62,6 +66,28 @@ function boundUtf8String(
     }
 
     if (byteLength > maxBytes) {
+      if (suffixByteLength > maxBytes) {
+        let boundedSuffixByteLength = 0;
+        let suffixEnd = 0;
+
+        for (let suffixIndex = 0; suffixIndex < truncationSuffix.length; ) {
+          const suffixCodePoint =
+            truncationSuffix.codePointAt(suffixIndex) ?? 0;
+          const codeUnitLength = suffixCodePoint > 0xffff ? 2 : 1;
+          const nextByteLength =
+            boundedSuffixByteLength + utf8CodePointByteLength(suffixCodePoint);
+          if (nextByteLength > maxBytes) break;
+          boundedSuffixByteLength = nextByteLength;
+          suffixIndex += codeUnitLength;
+          suffixEnd = suffixIndex;
+        }
+
+        return {
+          value: truncationSuffix.slice(0, suffixEnd),
+          byteLength: boundedSuffixByteLength,
+        };
+      }
+
       return {
         value: value.slice(0, prefixEnd) + truncationSuffix,
         byteLength: prefixByteLength + suffixByteLength,
@@ -121,19 +147,18 @@ export function boundPreviewConsoleEntry(
 
 export function formatPreviewConsoleMessage(
   prefix: string,
-  values: unknown,
+  values: readonly unknown[],
 ): string {
   const boundedPrefix = boundUtf8String(
     prefix,
     MAX_FORMATTED_ARGUMENT_BYTES,
     MESSAGE_TRUNCATION_SUFFIX,
   ).value;
-  const rawValues = Array.isArray(values) ? values : [values];
   const formattedValues: string[] = [];
-  const valueCount = Math.min(rawValues.length, MAX_FORMATTED_ARGUMENTS);
+  const valueCount = Math.min(values.length, MAX_FORMATTED_ARGUMENTS);
 
   for (let index = 0; index < valueCount; index++) {
-    const value = rawValues[index];
+    const value = values[index];
     let stringValue: string;
     try {
       stringValue = typeof value === "string" ? value : String(value);
@@ -149,8 +174,8 @@ export function formatPreviewConsoleMessage(
     );
   }
 
-  if (rawValues.length > valueCount) {
-    formattedValues.push(`… [${rawValues.length - valueCount} values omitted]`);
+  if (values.length > valueCount) {
+    formattedValues.push(`… [${values.length - valueCount} values omitted]`);
   }
 
   return boundUtf8String(
@@ -158,6 +183,10 @@ export function formatPreviewConsoleMessage(
     MAX_PREVIEW_CONSOLE_MESSAGE_BYTES,
     MESSAGE_TRUNCATION_SUFFIX,
   ).value;
+}
+
+export function formatPreviewNetworkStatus(status: unknown): string {
+  return typeof status === "number" ? `[${status}]` : "[unknown status]";
 }
 
 function isOmissionMarker(entry: ConsoleEntry): boolean {

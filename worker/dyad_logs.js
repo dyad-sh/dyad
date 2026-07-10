@@ -147,7 +147,7 @@
       if (typeof value.toJSON === "function") {
         const jsonValue = value.toJSON();
         if (jsonValue !== value) {
-          return sanitizeValue(jsonValue, state, depth);
+          return sanitizeValue(jsonValue, state, depth + 1);
         }
       }
     } catch {
@@ -217,7 +217,7 @@
           state,
           MAX_OBJECT_KEY_BYTES,
         );
-        if (!safeKey) {
+        if (!safeKey && key !== "") {
           hasMoreKeys = true;
           break;
         }

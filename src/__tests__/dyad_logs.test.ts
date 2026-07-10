@@ -100,6 +100,43 @@ describe("dyad console interception", () => {
     );
   });
 
+  it("applies the depth limit to chained toJSON results", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+    const createToJsonChain = (remainingDepth: number): unknown => ({
+      toJSON: () =>
+        remainingDepth === 0 ? "leaf" : createToJsonChain(remainingDepth - 1),
+    });
+
+    scriptConsole.log(createToJsonChain(20));
+
+    expect(messages[0].args[0]).toContain("[Maximum log depth reached]");
+  });
+
+  it("preserves empty object keys without skipping later properties", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+
+    scriptConsole.log({ "": "empty-key value", after: "later value" });
+
+    expect(JSON.parse(messages[0].args[0])).toEqual({
+      "": "empty-key value",
+      after: "later value",
+    });
+  });
+
+  it("marks arrays and objects when their inner byte budget is exhausted", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+    const hugeValue = "x".repeat(20_000);
+
+    scriptConsole.log([hugeValue, hugeValue, "omitted array value"], {
+      first: hugeValue,
+      second: hugeValue,
+      third: "omitted object value",
+    });
+
+    expect(messages[0].args[0]).toContain("[console value truncated]");
+    expect(messages[0].args[1]).toContain("[console value truncated]");
+  });
+
   it("stops reading nested values when the argument byte budget is exhausted", () => {
     const { messages, scriptConsole } = loadConsoleInterceptor();
     let getterReads = 0;

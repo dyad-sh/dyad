@@ -81,6 +81,7 @@ import type { DeviceMode } from "@/lib/schemas";
 import {
   boundPreviewConsoleEntry,
   formatPreviewConsoleMessage,
+  formatPreviewNetworkStatus,
 } from "@/lib/preview_console_buffer";
 import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
@@ -725,7 +726,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       // Handle console logs from the iframe
       if (event.data?.type === "console-log") {
-        const { level, args } = event.data;
+        const { level } = event.data;
+        const rawArgs: unknown = event.data.args;
+        const args: unknown[] = Array.isArray(rawArgs) ? rawArgs : [rawArgs];
         const levelLabel =
           level === "log" ||
           level === "warn" ||
@@ -788,7 +791,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             ? `(${duration}ms)`
             : "(unknown duration)";
         const formattedMessage = formatPreviewConsoleMessage(
-          numericStatus ? `[${numericStatus}]` : "[unknown status]",
+          formatPreviewNetworkStatus(status),
           [method, url, durationLabel],
         );
         const level: "info" | "warn" | "error" =

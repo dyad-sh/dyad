@@ -164,18 +164,7 @@ export const createChatCompletionHandler =
       });
     }
 
-    // Check if the last message contains "[429]" to simulate rate limiting
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.content === "[429]") {
-      return res.status(429).json({
-        error: {
-          message: "Too many requests. Please try again later.",
-          type: "rate_limit_error",
-          param: null,
-          code: "rate_limit_exceeded",
-        },
-      });
-    }
 
     // Check for local-agent fixture requests (tc=local-agent/*)
     // We need to check ALL user messages, not just the last one, because
@@ -199,6 +188,19 @@ export const createChatCompletionHandler =
     const userTextContent = lastUserMessage
       ? getTextContent(lastUserMessage)
       : "";
+    const lastMessageText = lastMessage ? getTextContent(lastMessage) : "";
+
+    // Check if the last user message contains "[429]" to simulate rate limiting.
+    if (userTextContent === "[429]") {
+      return res.status(429).json({
+        error: {
+          message: "Too many requests. Please try again later.",
+          type: "rate_limit_error",
+          param: null,
+          code: "rate_limit_exceeded",
+        },
+      });
+    }
 
     // First, check if the LAST user message is a fixture trigger
     let localAgentFixture = extractLocalAgentFixture(userTextContent);
@@ -276,18 +278,10 @@ export const createChatCompletionHandler =
       messageContent += "\n\n" + generateDump(req);
     }
 
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.includes("[sleep=medium]")
-    ) {
+    if (userTextContent.includes("[sleep=medium]")) {
       await new Promise((resolve) => setTimeout(resolve, 10_000));
     }
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.includes("[sleep=long]")
-    ) {
+    if (userTextContent.includes("[sleep=long]")) {
       await new Promise((resolve) => setTimeout(resolve, 30_000));
     }
 
@@ -473,13 +467,10 @@ export default Index;
 
     // Check if the last message starts with "tc=" to load test case file
     if (
-      lastMessage &&
-      lastMessage.content &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("tc=") &&
-      !lastMessage.content.startsWith("tc=local-agent/")
+      userTextContent.startsWith("tc=") &&
+      !userTextContent.startsWith("tc=local-agent/")
     ) {
-      const testCaseName = lastMessage.content.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
+      const testCaseName = userTextContent.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
       fakeLlmLog(`* Loading test case: ${testCaseName}`);
       const testFilePath = path.join(
         resolveFixturesDir(),
@@ -516,8 +507,7 @@ export default Index;
     }
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
     // classifier, shared with the responses fake route.
-    const lastUserText = lastMessage ? getTextContent(lastMessage) : "";
-    const consentMatch = matchConsentClassifierPayload(lastUserText);
+    const consentMatch = matchConsentClassifierPayload(lastMessageText);
     if (consentMatch) {
       messageContent = consentMatch.content;
       if (consentMatch.toolName === SLOW_CONSENT_TOOL) {
@@ -536,16 +526,12 @@ export default Index;
       }
     }
     const isToolCall = !!(
-      lastMessage &&
-      lastMessage.content &&
-      lastMessage.content.includes("[call_tool=calculator_add]")
+      lastMessage && lastMessageText.includes("[call_tool=calculator_add]")
     );
     // Emit two parallel tool calls (slow first, fast second) so their results
     // land out of order. See mcp_out_of_order.spec.ts.
     const isParallelOutOfOrderToolCall = !!(
-      lastMessage &&
-      lastMessage.content &&
-      lastMessage.content.includes("[call_tools_out_of_order]")
+      lastMessage && lastMessageText.includes("[call_tools_out_of_order]")
     );
     let message = {
       role: "assistant",

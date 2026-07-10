@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { Worker } from "node:worker_threads";
+import { utilityProcess } from "electron";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ProblemReport } from "@/ipc/types";
@@ -138,6 +138,8 @@ export function toProblemReportError(
   return error instanceof Error ? error : new Error(message);
 }
 
+const TSC_WORKER_TIMEOUT_MS = 5 * 60 * 1000;
+
 export async function generateProblemReport({
   fullResponse,
   appPath,
@@ -146,67 +148,126 @@ export async function generateProblemReport({
   appPath: string;
 }): Promise<ProblemReport> {
   return new Promise((resolve, reject) => {
-    // Determine the worker script path
+    // Determine the worker script path. The worker is emitted next to main.js
+    // (`.vite/build`), so this resolves in both dev and packaged (ASAR) builds.
     const workerPath = path.join(__dirname, "tsc_worker.js");
 
     logger.info(`Starting TSC worker for app ${appPath}`);
 
-    // Create the worker
-    const worker = new Worker(workerPath);
+    // Run the type check in a utility process rather than a worker thread:
+    // Electron builds V8 with pointer compression, so every worker thread
+    // shares a single ~4GB heap cage with the main process, and a worker
+    // hitting that limit aborts the whole process. A utility process gets its
+    // own cage and an OOM there degrades to a failed type check instead.
+    const child = utilityProcess.fork(workerPath, [], {
+      serviceName: "dyad-tsc-worker",
+    });
 
-    // Handle worker messages
-    worker.on("message", (output: WorkerOutput) => {
-      worker.terminate();
+    // The child settles the promise at most once (message, error, timeout, or
+    // exit — whichever comes first).
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      fn();
+    };
 
-      if (output.success && output.data) {
-        logger.info(`TSC worker completed successfully for app ${appPath}`);
-        resolve(output.data);
-      } else {
-        logger.error(`TSC worker failed for app ${appPath}: ${output.error}`);
+    const timeout = setTimeout(() => {
+      settle(() => {
+        logger.error(
+          `TSC worker timed out after ${TSC_WORKER_TIMEOUT_MS}ms for app ${appPath}`,
+        );
         reject(
           toProblemReportError(
-            new Error(output.error || "Unknown worker error"),
-            output.errorKind,
+            new Error(
+              `Type check timed out after ${TSC_WORKER_TIMEOUT_MS / 1000}s`,
+            ),
           ),
         );
-      }
+      });
+      child.kill();
+    }, TSC_WORKER_TIMEOUT_MS);
+
+    // Handle worker messages (the worker sends a single reply)
+    child.on("message", (output: WorkerOutput) => {
+      settle(() => {
+        if (output.success && output.data) {
+          logger.info(`TSC worker completed successfully for app ${appPath}`);
+          resolve(output.data);
+        } else {
+          logger.error(`TSC worker failed for app ${appPath}: ${output.error}`);
+          reject(
+            toProblemReportError(
+              new Error(output.error || "Unknown worker error"),
+              output.errorKind,
+            ),
+          );
+        }
+      });
+      child.kill();
     });
 
-    // Handle worker errors
-    worker.on("error", (error) => {
-      logger.error(`TSC worker error for app ${appPath}:`, error);
-      worker.terminate();
-      reject(toProblemReportError(error));
+    // Handle fatal V8 errors in the worker (e.g. heap OOM). The exit event
+    // still fires afterwards, but settle() guards against double rejection.
+    // NOTE: Electron's UtilityProcess "error" event is currently experimental.
+    child.on("error", (type, location, report) => {
+      logger.error(
+        `TSC worker fatal error for app ${appPath}: ${type} at ${location}`,
+        report,
+      );
+      child.kill();
+      // A V8 FatalError in the worker is almost always heap exhaustion while
+      // type-checking a very large app; surface that instead of the raw type.
+      const message: string =
+        type === "FatalError"
+          ? "Type check failed: the TypeScript worker ran out of memory. This can happen with very large apps."
+          : `Worker error: ${type}`;
+      settle(() => reject(toProblemReportError(new Error(message))));
     });
 
-    // Handle worker exit
-    worker.on("exit", (code) => {
-      if (code !== 0) {
+    // Handle worker exit. Any exit before we received a reply is unexpected
+    // (including an OOM abort) and must fail the type check rather than hang.
+    child.on("exit", (code) => {
+      settle(() => {
         logger.error(`TSC worker exited with code ${code} for app ${appPath}`);
         reject(
           toProblemReportError(new Error(`Worker exited with code ${code}`)),
         );
-      }
+      });
     });
 
-    const writeTags = getDyadWriteTags(fullResponse);
-    const renameTags = getDyadRenameTags(fullResponse);
-    const deletePaths = getDyadDeleteTags(fullResponse);
-    const virtualChanges = {
-      deletePaths,
-      renameTags,
-      writeTags,
-    };
+    // Send the request only after the child's IPC channel is established.
+    // Electron happens to buffer messages posted before "spawn", but that
+    // buffering is not documented API, so wait for the documented event. If
+    // the child fails to spawn, the "exit" handler above rejects instead.
+    child.on("spawn", () => {
+      try {
+        const writeTags = getDyadWriteTags(fullResponse);
+        const renameTags = getDyadRenameTags(fullResponse);
+        const deletePaths = getDyadDeleteTags(fullResponse);
+        const virtualChanges = {
+          deletePaths,
+          renameTags,
+          writeTags,
+        };
 
-    // Send input to worker
-    const input: WorkerInput = {
-      virtualChanges,
-      appPath,
-      tsBuildInfoCacheDir: getTypeScriptCachePath(),
-    };
+        // Send input to worker
+        const input: WorkerInput = {
+          virtualChanges,
+          appPath,
+          tsBuildInfoCacheDir: getTypeScriptCachePath(),
+        };
 
-    logger.info(`Sending input to TSC worker for app ${appPath}`);
+        logger.info(`Sending input to TSC worker for app ${appPath}`);
 
-    worker.postMessage(input);
+        child.postMessage(input);
+      } catch (error) {
+        child.kill();
+        settle(() => reject(toProblemReportError(error)));
+      }
+    });
   });
 }

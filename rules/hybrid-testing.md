@@ -61,6 +61,11 @@ when OAuth, proxy, or hybrid harness suites bind/connect to loopback ports. If
 the failure is `listen EPERM` or `connect EPERM` for `127.0.0.1`, `localhost`,
 or `::1`, re-run the same command outside the sandbox before debugging tests.
 
+If a hybrid suite fails before test logic with
+`better_sqlite3.node was compiled against a different Node.js version` and a
+`NODE_MODULE_VERSION` mismatch, run `npm rebuild better-sqlite3` in the worktree
+before debugging the suite.
+
 When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 `process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block
 before app imports. `setupHybridChatHarness({ testBuild: true })` sets the flag

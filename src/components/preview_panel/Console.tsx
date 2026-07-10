@@ -161,28 +161,23 @@ export const Console = () => {
     return Array.from(sources).sort();
   }, [consoleEntries]);
 
-  // Producers append in chronological delivery order. Avoid sorting a copy of
-  // the complete console on every update; filtering only allocates when active.
+  // The bounded buffer keeps this copy small. Sort at display time because
+  // browser and dev-server producers can deliver timestamped entries out of
+  // order relative to each other.
   const filteredEntries = useMemo(() => {
-    if (
-      levelFilter === "all" &&
-      typeFilter === "all" &&
-      (!sourceFilter || sourceFilter === "all")
-    ) {
-      return consoleEntries;
-    }
-
-    return consoleEntries.filter((entry) => {
-      if (levelFilter !== "all" && entry.level !== levelFilter) return false;
-      if (typeFilter !== "all" && entry.type !== typeFilter) return false;
-      if (
-        sourceFilter &&
-        sourceFilter !== "all" &&
-        entry.sourceName !== sourceFilter
-      )
-        return false;
-      return true;
-    });
+    return consoleEntries
+      .filter((entry) => {
+        if (levelFilter !== "all" && entry.level !== levelFilter) return false;
+        if (typeFilter !== "all" && entry.type !== typeFilter) return false;
+        if (
+          sourceFilter &&
+          sourceFilter !== "all" &&
+          entry.sourceName !== sourceFilter
+        )
+          return false;
+        return true;
+      })
+      .sort((a, b) => a.timestamp - b.timestamp);
   }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 
   // Generate unique key for each entry

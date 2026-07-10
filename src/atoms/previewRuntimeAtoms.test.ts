@@ -91,6 +91,7 @@ describe("preview runtime atoms", () => {
     expect(retained).toHaveLength(MAX_PREVIEW_CONSOLE_ENTRIES_PER_APP);
     expect(retained[0].message).toBe(PREVIEW_CONSOLE_OMISSION_MESSAGE);
     expect(retained[1].message).toBe("log-3");
+    expect(retained[0].timestamp).toBe(retained[1].timestamp);
     expect(retained.at(-1)?.message).toBe(
       `log-${MAX_PREVIEW_CONSOLE_ENTRIES_PER_APP + 1}`,
     );

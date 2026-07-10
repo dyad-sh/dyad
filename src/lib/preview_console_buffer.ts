@@ -230,11 +230,11 @@ export function createPreviewConsoleTail(
   }
 
   if (omittedEntries && retainedNewestFirst.length > 0) {
-    const marker = createOmissionMarker(
+    const markerForSizing = createOmissionMarker(
       appId,
       retainedNewestFirst[retainedNewestFirst.length - 1],
     );
-    const markerBytes = getPreviewConsoleEntryByteLength(marker);
+    const markerBytes = getPreviewConsoleEntryByteLength(markerForSizing);
 
     // The marker is part of both budgets. Remove the oldest retained entries
     // until it fits, while always preserving the newest useful log.
@@ -249,7 +249,21 @@ export function createPreviewConsoleTail(
       }
     }
 
-    retainedNewestFirst.push(marker);
+    // Build the marker after trimming so its timestamp matches the actual
+    // oldest retained entry. Keep the final guard even though the current
+    // per-entry limit is smaller than the aggregate byte budget: it preserves
+    // both invariants if those constants change independently in the future.
+    if (
+      retainedNewestFirst.length + 1 <= MAX_PREVIEW_CONSOLE_ENTRIES_PER_APP &&
+      retainedBytes + markerBytes <= MAX_PREVIEW_CONSOLE_BYTES_PER_APP
+    ) {
+      retainedNewestFirst.push(
+        createOmissionMarker(
+          appId,
+          retainedNewestFirst[retainedNewestFirst.length - 1],
+        ),
+      );
+    }
   }
 
   retainedNewestFirst.reverse();

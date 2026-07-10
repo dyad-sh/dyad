@@ -83,4 +83,47 @@ describe("dyad console interception", () => {
     expect(messages[0].args[1]).toContain("[Maximum log depth reached]");
     expect(messages[0].args[2]).toContain("[console value truncated]");
   });
+
+  it("honors toJSON while retaining the output byte limit", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+    const date = new Date("2026-07-10T00:00:00.000Z");
+    const custom = {
+      toJSON: () => ({ value: "x".repeat(20_000) }),
+    };
+
+    scriptConsole.log(date, custom);
+
+    expect(JSON.parse(messages[0].args[0])).toBe(date.toISOString());
+    expect(messages[0].args[1]).toContain("[console value truncated]");
+    expect(Buffer.byteLength(messages[0].args[1], "utf8")).toBeLessThanOrEqual(
+      8 * 1024,
+    );
+  });
+
+  it("stops reading nested values when the argument byte budget is exhausted", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+    let getterReads = 0;
+    const nested: Record<string, unknown> = {};
+
+    for (let outer = 0; outer < 20; outer++) {
+      const child: Record<string, unknown> = {};
+      for (let inner = 0; inner < 20; inner++) {
+        Object.defineProperty(child, `value-${inner}`, {
+          enumerable: true,
+          get() {
+            getterReads++;
+            return "x".repeat(4 * 1024);
+          },
+        });
+      }
+      nested[`child-${outer}`] = child;
+    }
+
+    scriptConsole.log(nested);
+
+    expect(getterReads).toBeLessThan(10);
+    expect(Buffer.byteLength(messages[0].args[0], "utf8")).toBeLessThanOrEqual(
+      8 * 1024,
+    );
+  });
 });

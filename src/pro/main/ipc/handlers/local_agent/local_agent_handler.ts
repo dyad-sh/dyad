@@ -125,6 +125,10 @@ import {
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
+import {
+  toRendererMessage,
+  type RendererMessageRow,
+} from "@/ipc/utils/renderer_chat_message";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -1917,9 +1921,9 @@ function sendResponseChunk(
   lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
-    const currentMessages = [...chat.messages].filter(
-      (message) => !hiddenMessageIds?.has(message.id),
-    );
+    const currentMessages = (chat.messages as RendererMessageRow[])
+      .filter((message) => !hiddenMessageIds?.has(message.id))
+      .map(toRendererMessage);
     const placeholderMsg = currentMessages.find(
       (m) => m.id === placeholderMessageId,
     );

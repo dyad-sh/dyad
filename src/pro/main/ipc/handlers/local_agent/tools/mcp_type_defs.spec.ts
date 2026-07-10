@@ -13,6 +13,10 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
+import {
+  MCP_RESULT_MAX_BYTES,
+  MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES,
+} from "@/ipc/utils/mcp_result_sanitizer";
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
@@ -361,6 +365,48 @@ describe("buildMcpCapabilityMap", () => {
       .mock.calls.map((c) => c[0])
       .find((x) => x.startsWith("<dyad-mcp-tool-result"));
     expect(resultXml).toContain("hello world");
+  });
+
+  it("bounds oversized text and embedded media before returning or emitting the result", async () => {
+    vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
+    const hugeText = "z".repeat(MCP_RESULT_MAX_BYTES * 3);
+    const hugeImage = "A".repeat(
+      Math.ceil((MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES * 8) / 3) * 4,
+    );
+    const execute = vi.fn().mockResolvedValue({
+      content: [
+        { type: "image", data: hugeImage, mimeType: "image/png" },
+        { type: "text", text: hugeText },
+      ],
+    });
+    vi.mocked(mcpManager.getClient).mockResolvedValue({
+      tools: async () => ({ hello: { execute } }),
+    } as any);
+
+    const ctx = createCtx();
+    const map = buildMcpCapabilityMap({
+      event: {} as any,
+      ctx,
+      defs: [makeDef()],
+    });
+
+    const result = await map.srv__hello({});
+    const serializedResult = JSON.stringify(result);
+    expect(Buffer.byteLength(serializedResult, "utf8")).toBeLessThanOrEqual(
+      MCP_RESULT_MAX_BYTES,
+    );
+    expect(serializedResult).not.toContain(hugeText);
+    expect(serializedResult).not.toContain(hugeImage);
+    expect(serializedResult).toContain("_dyadMcpTruncation");
+    expect(serializedResult).toContain("_dyadOmittedMedia");
+
+    const resultXml = vi
+      .mocked(ctx.onXmlComplete)
+      .mock.calls.map((call) => call[0])
+      .find((xml) => xml.startsWith("<dyad-mcp-tool-result"));
+    expect(resultXml).toContain("_dyadMcpTruncation");
+    expect(resultXml).not.toContain(hugeText);
+    expect(resultXml).not.toContain(hugeImage);
   });
 
   it("throws a DyadError(UserCancelled) and skips execution when consent is denied", async () => {

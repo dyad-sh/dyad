@@ -26,7 +26,6 @@ export async function runPortalMigrationCommand({
   logger.info(`Running migrate:create for app ${appId} at ${appPath}`);
 
   let createdMigration = false;
-  let respondedToRenamePrompt = false;
   let stdoutSearchTail = "";
 
   let result;
@@ -43,14 +42,21 @@ export async function runPortalMigrationCommand({
           MIGRATION_CREATED_MESSAGE,
         );
 
-        if (
-          !respondedToRenamePrompt &&
-          searchableOutput.includes(MIGRATION_RENAME_PROMPT)
-        ) {
-          child.stdin?.write("\r\n");
-          respondedToRenamePrompt = true;
-          logger.info(
-            `App ${appId} (PID: ${child.pid}) wrote enter to stdin to automatically respond to drizzle migrate input`,
+        // Drizzle prompts once per ambiguous rename, so answer every
+        // occurrence. Skip matches that end inside the carried-over tail:
+        // those were already answered when they first streamed in.
+        let promptIndex = searchableOutput.indexOf(MIGRATION_RENAME_PROMPT);
+        while (promptIndex !== -1) {
+          const promptEnd = promptIndex + MIGRATION_RENAME_PROMPT.length;
+          if (promptEnd > stdoutSearchTail.length) {
+            child.stdin?.write("\r\n");
+            logger.info(
+              `App ${appId} (PID: ${child.pid}) wrote enter to stdin to automatically respond to drizzle migrate input`,
+            );
+          }
+          promptIndex = searchableOutput.indexOf(
+            MIGRATION_RENAME_PROMPT,
+            promptEnd,
           );
         }
 

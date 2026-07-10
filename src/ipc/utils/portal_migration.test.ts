@@ -39,7 +39,7 @@ describe("runPortalMigrationCommand", () => {
     vi.clearAllMocks();
   });
 
-  it("recognizes split status messages and answers the rename prompt once", async () => {
+  it("answers each rename prompt exactly once, including split ones", async () => {
     const write = vi.fn();
     const child = {
       pid: 123,
@@ -66,7 +66,9 @@ describe("runPortalMigrationCommand", () => {
     ).resolves.toBe(
       "bounded stdout tail\n\nErrors/Warnings:\nbounded warning tail",
     );
-    expect(write).toHaveBeenCalledTimes(1);
+    // One answer for the prompt split across chunks and one for the second
+    // prompt; the tail overlap must not re-answer the first prompt.
+    expect(write).toHaveBeenCalledTimes(2);
     expect(write).toHaveBeenCalledWith("\r\n");
     expect(runBufferedProcessMock).toHaveBeenCalledWith(
       expect.objectContaining({

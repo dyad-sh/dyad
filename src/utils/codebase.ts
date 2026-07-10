@@ -486,6 +486,157 @@ export interface CodebaseFileReference extends BaseFile {
   fileId: string;
 }
 
+interface PreparedCodebaseFile extends BaseFile {
+  absolutePath: string;
+}
+
+async function prepareCodebaseFiles({
+  appPath,
+  chatContext,
+  virtualFileSystem,
+}: {
+  appPath: string;
+  chatContext: AppChatContext;
+  virtualFileSystem?: AsyncVirtualFileSystem;
+}): Promise<PreparedCodebaseFile[] | undefined> {
+  const settings = readSettings();
+  const isSmartContextEnabled =
+    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
+
+  try {
+    await fsAsync.access(appPath);
+  } catch {
+    return undefined;
+  }
+
+  let files = settings.enableNativeGit
+    ? await collectFilesNativeGit(appPath)
+    : await collectFilesIsoGit(appPath, appPath);
+
+  if (virtualFileSystem) {
+    const deletedFiles = new Set(
+      virtualFileSystem
+        .getDeletedFiles()
+        .map((relativePath) => path.resolve(appPath, relativePath)),
+    );
+    files = files.filter((file) => !deletedFiles.has(file));
+
+    for (const virtualFile of virtualFileSystem.getVirtualFiles()) {
+      const absolutePath = path.resolve(appPath, virtualFile.path);
+      if (!files.includes(absolutePath)) {
+        files.push(absolutePath);
+      }
+    }
+  }
+
+  const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
+  const includedFiles = new Set<string>();
+  const autoIncludedFiles = new Set<string>();
+  const excludedFiles = new Set<string>();
+
+  if (contextPaths && contextPaths.length > 0) {
+    for (const contextPath of contextPaths) {
+      const matches = await glob(
+        createFullGlobPath({ appPath, globPath: contextPath.globPath }),
+        {
+          nodir: true,
+          absolute: true,
+          ignore: "**/node_modules/**",
+        },
+      );
+      matches.forEach((file) => includedFiles.add(path.normalize(file)));
+    }
+  }
+
+  if (
+    isSmartContextEnabled &&
+    smartContextAutoIncludes &&
+    smartContextAutoIncludes.length > 0
+  ) {
+    for (const autoInclude of smartContextAutoIncludes) {
+      const matches = await glob(
+        createFullGlobPath({ appPath, globPath: autoInclude.globPath }),
+        {
+          nodir: true,
+          absolute: true,
+          ignore: "**/node_modules/**",
+        },
+      );
+      matches.forEach((file) => {
+        const normalizedFile = path.normalize(file);
+        autoIncludedFiles.add(normalizedFile);
+        includedFiles.add(normalizedFile);
+      });
+    }
+  }
+
+  if (excludePaths && excludePaths.length > 0) {
+    for (const excludePath of excludePaths) {
+      const matches = await glob(
+        createFullGlobPath({ appPath, globPath: excludePath.globPath }),
+        {
+          nodir: true,
+          absolute: true,
+          ignore: "**/node_modules/**",
+        },
+      );
+      matches.forEach((file) => excludedFiles.add(path.normalize(file)));
+    }
+  }
+
+  if (contextPaths && contextPaths.length > 0) {
+    files = files.filter((file) => includedFiles.has(path.normalize(file)));
+  }
+  if (excludedFiles.size > 0) {
+    files = files.filter((file) => !excludedFiles.has(path.normalize(file)));
+  }
+
+  const sortedFiles = await sortFilesByModificationTime(
+    [...new Set(files)],
+    Boolean(settings.isTestMode),
+  );
+
+  return sortedFiles.map((file) => ({
+    absolutePath: file,
+    path: path.relative(appPath, file).split(path.sep).join("/"),
+    force:
+      autoIncludedFiles.has(path.normalize(file)) &&
+      !excludedFiles.has(path.normalize(file)),
+  }));
+}
+
+/**
+ * List codebase files without reading their contents.
+ */
+export async function listCodebaseFileMetadata({
+  appPath,
+  chatContext,
+  maxFiles,
+}: {
+  appPath: string;
+  chatContext: AppChatContext;
+  maxFiles?: number;
+}): Promise<{ files: BaseFile[]; totalFileCount: number }> {
+  const preparedFiles =
+    (await prepareCodebaseFiles({ appPath, chatContext })) ?? [];
+  const prioritizedFiles = [
+    ...preparedFiles.filter((file) => file.force),
+    ...preparedFiles.filter((file) => !file.force),
+  ];
+  const selectedFiles =
+    maxFiles === undefined
+      ? preparedFiles
+      : prioritizedFiles.slice(0, Math.max(0, Math.floor(maxFiles)));
+
+  return {
+    files: selectedFiles.map(({ path: filePath, force }) => ({
+      path: filePath,
+      force,
+    })),
+    totalFileCount: preparedFiles.length,
+  };
+}
+
 /**
  * Extract and format codebase files as a string to be included in prompts
  * @param appPath - Path to the codebase to extract
@@ -504,148 +655,28 @@ export async function extractCodebase({
   formattedOutput: string;
   files: CodebaseFile[];
 }> {
-  const settings = readSettings();
-  const isSmartContextEnabled =
-    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
-
-  try {
-    await fsAsync.access(appPath);
-  } catch {
+  const startTime = Date.now();
+  const preparedFiles = await prepareCodebaseFiles({
+    appPath,
+    chatContext,
+    virtualFileSystem,
+  });
+  if (!preparedFiles) {
     return {
       formattedOutput: `# Error: Directory ${appPath} does not exist or is not accessible`,
       files: [],
     };
   }
-  const startTime = Date.now();
-
-  // Collect all relevant files
-  let files = settings.enableNativeGit
-    ? await collectFilesNativeGit(appPath)
-    : await collectFilesIsoGit(appPath, appPath);
-
-  // Apply virtual filesystem modifications if provided
-  if (virtualFileSystem) {
-    // Filter out deleted files
-    const deletedFiles = new Set(
-      virtualFileSystem
-        .getDeletedFiles()
-        .map((relativePath) => path.resolve(appPath, relativePath)),
-    );
-    files = files.filter((file) => !deletedFiles.has(file));
-
-    // Add virtual files
-    const virtualFiles = virtualFileSystem.getVirtualFiles();
-    for (const virtualFile of virtualFiles) {
-      const absolutePath = path.resolve(appPath, virtualFile.path);
-      if (!files.includes(absolutePath)) {
-        files.push(absolutePath);
-      }
-    }
-  }
-
-  // Collect files from contextPaths and smartContextAutoIncludes
-  const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
-  const includedFiles = new Set<string>();
-  const autoIncludedFiles = new Set<string>();
-  const excludedFiles = new Set<string>();
-
-  // Add files from contextPaths
-  if (contextPaths && contextPaths.length > 0) {
-    for (const p of contextPaths) {
-      const pattern = createFullGlobPath({
-        appPath,
-        globPath: p.globPath,
-      });
-      const matches = await glob(pattern, {
-        nodir: true,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      });
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        includedFiles.add(normalizedFile);
-      });
-    }
-  }
-
-  // Add files from smartContextAutoIncludes
-  if (
-    isSmartContextEnabled &&
-    smartContextAutoIncludes &&
-    smartContextAutoIncludes.length > 0
-  ) {
-    for (const p of smartContextAutoIncludes) {
-      const pattern = createFullGlobPath({
-        appPath,
-        globPath: p.globPath,
-      });
-      const matches = await glob(pattern, {
-        nodir: true,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      });
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        autoIncludedFiles.add(normalizedFile);
-        includedFiles.add(normalizedFile); // Also add to included files
-      });
-    }
-  }
-
-  // Add files from excludePaths
-  if (excludePaths && excludePaths.length > 0) {
-    for (const p of excludePaths) {
-      const pattern = createFullGlobPath({
-        appPath,
-        globPath: p.globPath,
-      });
-      const matches = await glob(pattern, {
-        nodir: true,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      });
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        excludedFiles.add(normalizedFile);
-      });
-    }
-  }
-
-  // Only filter files if contextPaths are provided
-  // If only smartContextAutoIncludes are provided, keep all files and just mark auto-includes as forced
-  if (contextPaths && contextPaths.length > 0) {
-    files = files.filter((file) => includedFiles.has(path.normalize(file)));
-  }
-
-  // Filter out excluded files (this takes precedence over include paths)
-  if (excludedFiles.size > 0) {
-    files = files.filter((file) => !excludedFiles.has(path.normalize(file)));
-  }
-
-  // Sort files by modification time (oldest first)
-  // This is important for cache-ability.
-  const sortedFiles = await sortFilesByModificationTime(
-    [...new Set(files)],
-    Boolean(settings.isTestMode),
-  );
 
   // Format files and collect individual file contents
-  const formatPromises = sortedFiles.map(async (file) => {
-    // Get raw content for the files array
-    const normalizedRelativePath = path
-      .relative(appPath, file)
-      // Why? Normalize Windows-style paths which causes lots of weird issues (e.g. Git commit)
-      .split(path.sep)
-      .join("/");
+  const formatPromises = preparedFiles.map(async (preparedFile) => {
+    const file = preparedFile.absolutePath;
+    const normalizedRelativePath = preparedFile.path;
     const formattedContent = await formatFile({
       filePath: file,
       normalizedRelativePath,
       virtualFileSystem,
     });
-
-    const isForced =
-      autoIncludedFiles.has(path.normalize(file)) &&
-      !excludedFiles.has(path.normalize(file));
 
     // Determine file content based on whether we should read it
     let fileContent: string;
@@ -666,7 +697,7 @@ export async function extractCodebase({
       file: {
         path: normalizedRelativePath,
         content: fileContent,
-        force: isForced,
+        force: preparedFile.force,
       } satisfies CodebaseFile,
     };
   });

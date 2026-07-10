@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { extractCodebase } from "@/utils/codebase";
+import {
+  extractCodebase,
+  listCodebaseFileMetadata,
+} from "@/utils/codebase";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -106,5 +109,24 @@ describe("extractCodebase", () => {
       "src.ts",
     ]);
     expect(result.formattedOutput).not.toContain(".gitattributes");
+  });
+
+  it("lists file metadata without reading file contents", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "secret content");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "more content");
+    const readFileSpy = vi.spyOn(fs.promises, "readFile");
+
+    const result = await listCodebaseFileMetadata({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+    });
+
+    expect(result.files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
+    expect(result.totalFileCount).toBe(2);
+    expect(readFileSpy).not.toHaveBeenCalled();
   });
 });

@@ -47,7 +47,7 @@ describe("dyad console interception", () => {
   it("bounds giant values and argument lists before posting to the parent", () => {
     const { messages, originalLog, scriptConsole } = loadConsoleInterceptor();
     const args = Array.from(
-      { length: 20 },
+      { length: 25 },
       (_, index) => `${index}:${"x".repeat(20_000)}`,
     );
 
@@ -55,15 +55,30 @@ describe("dyad console interception", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0].type).toBe("console-log");
-    expect(messages[0].args).toHaveLength(11);
     expect(messages[0].args[0]).toContain("[console value truncated]");
-    expect(messages[0].args.at(-1)).toBe("… [10 arguments omitted]");
+    expect(messages[0].args.at(-1)).toMatch(/arguments omitted\]$/);
     expect(
       messages[0].args.every(
         (arg) => Buffer.byteLength(arg, "utf8") <= 8 * 1024,
       ),
     ).toBe(true);
+    expect(
+      messages[0].args.reduce(
+        (total, arg) => total + Buffer.byteLength(arg, "utf8"),
+        0,
+      ),
+    ).toBeLessThanOrEqual(64 * 1024);
     expect(originalLog).toHaveBeenCalledWith(...args);
+  });
+
+  it("preserves up to 20 small arguments before adding an omission marker", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+    const args = Array.from({ length: 25 }, (_, index) => `arg-${index}`);
+
+    scriptConsole.log(...args);
+
+    expect(messages[0].args.slice(0, 20)).toEqual(args.slice(0, 20));
+    expect(messages[0].args.at(-1)).toBe("… [5 arguments omitted]");
   });
 
   it("bounds deep and circular object traversal", () => {
@@ -82,6 +97,20 @@ describe("dyad console interception", () => {
     expect(messages[0].args[0]).toContain("[Circular]");
     expect(messages[0].args[1]).toContain("[Maximum log depth reached]");
     expect(messages[0].args[2]).toContain("[console value truncated]");
+  });
+
+  it("preserves up to 50 object keys before marking additional keys", () => {
+    const { messages, scriptConsole } = loadConsoleInterceptor();
+    const wideObject = Object.fromEntries(
+      Array.from({ length: 60 }, (_, index) => [`key-${index}`, index]),
+    );
+
+    scriptConsole.log(wideObject);
+
+    const serialized = JSON.parse(messages[0].args[0]);
+    expect(serialized["key-49"]).toBe(49);
+    expect(serialized["key-50"]).toBeUndefined();
+    expect(serialized.__dyad_truncated__).toBe("Additional keys omitted");
   });
 
   it("honors toJSON while retaining the output byte limit", () => {

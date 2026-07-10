@@ -14,8 +14,9 @@ export const PREVIEW_CONSOLE_OMISSION_MESSAGE =
 const MESSAGE_TRUNCATION_SUFFIX = "\n… [log payload truncated]";
 const SOURCE_NAME_TRUNCATION_SUFFIX = "… [source truncated]";
 const OMISSION_MARKER_SOURCE = "Dyad";
-const MAX_FORMATTED_ARGUMENTS = 10;
+const MAX_FORMATTED_ARGUMENTS = 20;
 const MAX_FORMATTED_ARGUMENT_BYTES = 8 * 1024;
+const FORWARDED_ARGUMENT_OMISSION_PATTERN = /^… \[\d+ arguments omitted\]$/;
 const CONSOLE_OMISSION_MARKER_FIELD = "__dyadConsoleOmissionMarker";
 
 type BufferedConsoleEntry = ConsoleEntry & {
@@ -155,7 +156,14 @@ export function formatPreviewConsoleMessage(
     MESSAGE_TRUNCATION_SUFFIX,
   ).value;
   const formattedValues: string[] = [];
-  const valueCount = Math.min(values.length, MAX_FORMATTED_ARGUMENTS);
+  const lastValue = values.at(-1);
+  const forwardedOmissionMarker =
+    typeof lastValue === "string" &&
+    FORWARDED_ARGUMENT_OMISSION_PATTERN.test(lastValue)
+      ? lastValue
+      : undefined;
+  const candidateValueCount = values.length - (forwardedOmissionMarker ? 1 : 0);
+  const valueCount = Math.min(candidateValueCount, MAX_FORMATTED_ARGUMENTS);
 
   for (let index = 0; index < valueCount; index++) {
     const value = values[index];
@@ -174,8 +182,12 @@ export function formatPreviewConsoleMessage(
     );
   }
 
-  if (values.length > valueCount) {
-    formattedValues.push(`… [${values.length - valueCount} values omitted]`);
+  if (candidateValueCount > valueCount) {
+    formattedValues.push(
+      `… [${candidateValueCount - valueCount} values omitted]`,
+    );
+  } else if (forwardedOmissionMarker) {
+    formattedValues.push(forwardedOmissionMarker);
   }
 
   return boundUtf8String(

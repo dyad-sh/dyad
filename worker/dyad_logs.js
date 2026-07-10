@@ -4,13 +4,15 @@
  */
 
 (function () {
-  const MAX_ARGUMENTS = 10;
+  const MAX_ARGUMENTS = 20;
   const MAX_ARGUMENT_BYTES = 8 * 1024;
+  const MAX_CONSOLE_CALL_BYTES = 64 * 1024;
+  const ARGUMENT_OMISSION_MARKER_RESERVE_BYTES = 64;
   const MAX_STRING_VALUE_BYTES = 4 * 1024;
-  const MAX_OBJECT_DEPTH = 4;
-  const MAX_OBJECT_KEYS = 20;
+  const MAX_OBJECT_DEPTH = 6;
+  const MAX_OBJECT_KEYS = 50;
   const MAX_OBJECT_KEY_BYTES = 256;
-  const MAX_SERIALIZED_NODES = 100;
+  const MAX_SERIALIZED_NODES = 250;
   const VALUE_TRUNCATION_SUFFIX = "… [console value truncated]";
 
   // Store original console methods
@@ -248,17 +250,25 @@
     return result;
   }
 
-  function stringifyArg(arg) {
-    if (arg === null) return "null";
-    if (arg === undefined) return "undefined";
+  function stringifyArg(arg, maxBytes = MAX_ARGUMENT_BYTES) {
+    const argumentByteBudget = Math.min(
+      MAX_ARGUMENT_BYTES,
+      Math.max(0, maxBytes),
+    );
+    if (argumentByteBudget === 0) return "";
+    if (arg === null) return truncateUtf8("null", argumentByteBudget);
+    if (arg === undefined) return truncateUtf8("undefined", argumentByteBudget);
     if (typeof arg === "string") {
-      return truncateUtf8(arg, MAX_ARGUMENT_BYTES);
+      return truncateUtf8(arg, argumentByteBudget);
     }
     if (typeof arg !== "object") {
       if (typeof arg === "function") {
-        return `[Function ${truncateUtf8(arg.name || "anonymous", MAX_OBJECT_KEY_BYTES)}]`;
+        return truncateUtf8(
+          `[Function ${truncateUtf8(arg.name || "anonymous", MAX_OBJECT_KEY_BYTES)}]`,
+          argumentByteBudget,
+        );
       }
-      return truncateUtf8(String(arg), MAX_ARGUMENT_BYTES);
+      return truncateUtf8(String(arg), argumentByteBudget);
     }
 
     try {
@@ -267,13 +277,13 @@
         {
           seen: new WeakSet(),
           remainingNodes: MAX_SERIALIZED_NODES,
-          remainingBytes: MAX_ARGUMENT_BYTES,
+          remainingBytes: argumentByteBudget,
         },
         0,
       );
       return truncateUtf8(
         JSON.stringify(sanitized, null, 2),
-        MAX_ARGUMENT_BYTES,
+        argumentByteBudget,
       );
     } catch {
       return "[Object: unable to stringify]";
@@ -284,10 +294,35 @@
   // structured-clone boundary so a single console call cannot balloon either
   // the preview iframe or the parent renderer.
   function stringifyArgs(args) {
-    const includedArgs = args.slice(0, MAX_ARGUMENTS).map(stringifyArg);
-    if (args.length > MAX_ARGUMENTS) {
-      includedArgs.push(`… [${args.length - MAX_ARGUMENTS} arguments omitted]`);
+    const includedArgs = [];
+    const valueCount = Math.min(args.length, MAX_ARGUMENTS);
+    const valueByteBudget = Math.max(
+      0,
+      MAX_CONSOLE_CALL_BYTES - ARGUMENT_OMISSION_MARKER_RESERVE_BYTES,
+    );
+    let usedBytes = 0;
+
+    for (let index = 0; index < valueCount; index++) {
+      const remainingBytes = valueByteBudget - usedBytes;
+      if (remainingBytes <= 0) break;
+
+      const stringified = stringifyArg(
+        args[index],
+        Math.min(MAX_ARGUMENT_BYTES, remainingBytes),
+      );
+      includedArgs.push(stringified);
+      usedBytes += utf8ByteLength(stringified);
     }
+
+    const omittedArgumentCount = args.length - includedArgs.length;
+    if (omittedArgumentCount > 0) {
+      const marker = truncateUtf8(
+        `… [${omittedArgumentCount} arguments omitted]`,
+        MAX_CONSOLE_CALL_BYTES - usedBytes,
+      );
+      if (marker) includedArgs.push(marker);
+    }
+
     return includedArgs;
   }
 

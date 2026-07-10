@@ -36,4 +36,27 @@ describe("preview console formatting", () => {
       "[LOG] hello 42",
     );
   });
+
+  it("formats up to 20 values before adding an omission marker", () => {
+    const values = Array.from({ length: 25 }, (_, index) => `value-${index}`);
+
+    const formatted = formatPreviewConsoleMessage("[LOG]", values);
+
+    expect(formatted).toContain("value-19");
+    expect(formatted).not.toContain("value-20");
+    expect(formatted).toContain("… [5 values omitted]");
+  });
+
+  it("does not count the worker omission marker as an extra argument", () => {
+    const values = [
+      ...Array.from({ length: 20 }, (_, index) => `value-${index}`),
+      "… [5 arguments omitted]",
+    ];
+
+    const formatted = formatPreviewConsoleMessage("[LOG]", values);
+
+    expect(formatted).toContain("value-19");
+    expect(formatted).toContain("… [5 arguments omitted]");
+    expect(formatted).not.toContain("1 values omitted");
+  });
 });

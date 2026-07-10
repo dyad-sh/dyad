@@ -44,10 +44,12 @@ async function resolveContainedMediaPath(
     throw new MediaThumbnailError("Forbidden", 403);
   }
 
+  let realAppPath: string;
   let realTargetDir: string;
   let realCandidatePath: string;
   try {
-    [realTargetDir, realCandidatePath] = await Promise.all([
+    [realAppPath, realTargetDir, realCandidatePath] = await Promise.all([
+      fs.realpath(appPath),
       fs.realpath(targetDir),
       fs.realpath(candidatePath),
     ]);
@@ -56,6 +58,17 @@ async function resolveContainedMediaPath(
       throw new MediaThumbnailError("Not Found", 404);
     }
     throw error;
+  }
+
+  // Do not let .dyad or its media subdirectory redirect the protocol to a
+  // different directory through a symlink.
+  const expectedTargetDir = path.resolve(
+    realAppPath,
+    DYAD_INTERNAL_DIR_NAME,
+    subdir,
+  );
+  if (path.relative(expectedTargetDir, realTargetDir) !== "") {
+    throw new MediaThumbnailError("Forbidden", 403);
   }
 
   // Prevent a symlink inside .dyad/media from escaping the app directory.
@@ -128,10 +141,11 @@ export function createDyadMediaProtocolHandler({
         cacheKeyPath,
       );
       const requestedVersion = url.searchParams.get("v");
-      const responseBody = thumbnail.data.buffer.slice(
+      const responseBody = new Uint8Array(
+        thumbnail.data.buffer as ArrayBuffer,
         thumbnail.data.byteOffset,
-        thumbnail.data.byteOffset + thumbnail.data.byteLength,
-      ) as ArrayBuffer;
+        thumbnail.data.byteLength,
+      );
       return new Response(responseBody, {
         status: 200,
         headers: {

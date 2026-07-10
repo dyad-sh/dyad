@@ -126,7 +126,7 @@ describe("media library actions (integration)", () => {
     const targetApp = await createAppWithMedia("media-target", []);
 
     mountMediaLibrary();
-    await screen.findByText("Media");
+    await screen.findByRole("heading", { name: "Media" });
     await openMediaFolder(sourceApp);
 
     await openActionsForFile("move-image.png");

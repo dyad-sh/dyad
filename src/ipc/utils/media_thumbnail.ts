@@ -9,6 +9,7 @@ export const MAX_MEDIA_THUMBNAIL_SOURCE_DIMENSION = 10_000;
 export const MAX_MEDIA_THUMBNAIL_OUTPUT_BYTES = 1024 * 1024;
 
 const MAX_IMAGE_HEADER_BYTES = 128 * 1024;
+const SNAPSHOT_COPY_BUFFER_BYTES = 64 * 1024;
 const MEDIA_THUMBNAIL_CACHE_VERSION = "v1";
 const MAX_QUEUED_THUMBNAILS = 64;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -164,9 +165,7 @@ async function readAndValidateImageDimensions(
 ): Promise<ImageDimensions> {
   const file = await fs.open(sourcePath, "r");
   try {
-    const header = Buffer.allocUnsafe(
-      Math.min(sourceBytes, MAX_IMAGE_HEADER_BYTES),
-    );
+    const header = Buffer.alloc(Math.min(sourceBytes, MAX_IMAGE_HEADER_BYTES));
     const { bytesRead } = await file.read(header, 0, header.length, 0);
     const dimensions = parseImageDimensions(header.subarray(0, bytesRead));
     if (!dimensions) {
@@ -187,6 +186,66 @@ async function readAndValidateImageDimensions(
     return dimensions;
   } finally {
     await file.close();
+  }
+}
+
+async function createBoundedSourceSnapshot(
+  sourcePath: string,
+  snapshotPath: string,
+): Promise<number> {
+  const source = await fs.open(sourcePath, "r");
+  let destination: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    const initialStat = await source.stat();
+    if (!initialStat.isFile()) {
+      throw new MediaThumbnailError("Image not found", 404);
+    }
+    if (initialStat.size <= 0) {
+      throw new MediaThumbnailError("Image file is empty", 400);
+    }
+    if (initialStat.size > MAX_MEDIA_THUMBNAIL_SOURCE_BYTES) {
+      throw new MediaThumbnailError("Image file is too large", 413);
+    }
+
+    destination = await fs.open(snapshotPath, "wx", 0o600);
+    const buffer = Buffer.alloc(SNAPSHOT_COPY_BUFFER_BYTES);
+    let snapshotBytes = 0;
+
+    while (snapshotBytes <= MAX_MEDIA_THUMBNAIL_SOURCE_BYTES) {
+      const bytesAllowed = MAX_MEDIA_THUMBNAIL_SOURCE_BYTES + 1 - snapshotBytes;
+      const { bytesRead } = await source.read(
+        buffer,
+        0,
+        Math.min(buffer.length, bytesAllowed),
+        null,
+      );
+      if (bytesRead === 0) break;
+
+      let bytesWritten = 0;
+      while (bytesWritten < bytesRead) {
+        const result = await destination.write(
+          buffer,
+          bytesWritten,
+          bytesRead - bytesWritten,
+          null,
+        );
+        if (result.bytesWritten === 0) {
+          throw new Error("Could not write image snapshot");
+        }
+        bytesWritten += result.bytesWritten;
+      }
+      snapshotBytes += bytesRead;
+    }
+
+    if (snapshotBytes <= 0) {
+      throw new MediaThumbnailError("Image file is empty", 400);
+    }
+    if (snapshotBytes > MAX_MEDIA_THUMBNAIL_SOURCE_BYTES) {
+      throw new MediaThumbnailError("Image file is too large", 413);
+    }
+    return snapshotBytes;
+  } finally {
+    await Promise.allSettled([source.close(), destination?.close()]);
   }
 }
 
@@ -277,7 +336,8 @@ async function writeCachedThumbnail(
         .filter(
           (entry) =>
             entry.isFile() &&
-            path.join(directory, entry.name) !== destinationPath,
+            path.join(directory, entry.name) !== destinationPath &&
+            !entry.name.endsWith(".tmp"),
         )
         .map((entry) =>
           fs.rm(path.join(directory, entry.name), { force: true }),
@@ -327,41 +387,57 @@ export function createMediaThumbnailService({
   const generateThumbnail = async (
     sourcePath: string,
     sourceVersion: string,
-    sourceSize: number,
     destinationPath: string,
   ): Promise<Buffer> => {
-    await readAndValidateImageDimensions(sourcePath, sourceSize);
+    const directory = path.dirname(destinationPath);
+    await fs.mkdir(directory, { recursive: true });
+    const snapshotPath = `${destinationPath}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.source.tmp`;
 
-    let image: ThumbnailImage;
+    let output: Buffer;
     try {
-      image = await createThumbnailFromPath(sourcePath, {
-        width: MEDIA_THUMBNAIL_SIZE,
-        height: MEDIA_THUMBNAIL_SIZE,
-      });
-    } catch {
-      throw new MediaThumbnailError("Could not create image thumbnail", 415);
-    }
+      // Decode a private snapshot so a mutable source path cannot be replaced
+      // with an oversized file after validation but before native decoding.
+      const snapshotBytes = await createBoundedSourceSnapshot(
+        sourcePath,
+        snapshotPath,
+      );
+      await readAndValidateImageDimensions(snapshotPath, snapshotBytes);
 
-    const outputSize = image.getSize();
-    if (
-      image.isEmpty() ||
-      outputSize.width <= 0 ||
-      outputSize.height <= 0 ||
-      outputSize.width > MEDIA_THUMBNAIL_SIZE ||
-      outputSize.height > MEDIA_THUMBNAIL_SIZE ||
-      outputSize.width * outputSize.height >
-        MEDIA_THUMBNAIL_SIZE * MEDIA_THUMBNAIL_SIZE
-    ) {
-      throw new MediaThumbnailError("Invalid thumbnail output", 415);
-    }
+      let image: ThumbnailImage;
+      try {
+        image = await createThumbnailFromPath(snapshotPath, {
+          width: MEDIA_THUMBNAIL_SIZE,
+          height: MEDIA_THUMBNAIL_SIZE,
+        });
+      } catch {
+        throw new MediaThumbnailError("Could not create image thumbnail", 415);
+      }
 
-    const output = image.toPNG();
-    if (
-      output.length === 0 ||
-      output.length > MAX_MEDIA_THUMBNAIL_OUTPUT_BYTES ||
-      !output.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
-    ) {
-      throw new MediaThumbnailError("Thumbnail output is too large", 413);
+      const outputSize = image.getSize();
+      if (
+        image.isEmpty() ||
+        outputSize.width <= 0 ||
+        outputSize.height <= 0 ||
+        outputSize.width > MEDIA_THUMBNAIL_SIZE ||
+        outputSize.height > MEDIA_THUMBNAIL_SIZE ||
+        outputSize.width * outputSize.height >
+          MEDIA_THUMBNAIL_SIZE * MEDIA_THUMBNAIL_SIZE
+      ) {
+        throw new MediaThumbnailError("Invalid thumbnail output", 415);
+      }
+
+      output = image.toPNG();
+      if (
+        output.length === 0 ||
+        !output.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+      ) {
+        throw new MediaThumbnailError("Invalid thumbnail output format", 415);
+      }
+      if (output.length > MAX_MEDIA_THUMBNAIL_OUTPUT_BYTES) {
+        throw new MediaThumbnailError("Thumbnail output is too large", 413);
+      }
+    } finally {
+      await fs.rm(snapshotPath, { force: true });
     }
 
     const currentStat = await fs.stat(sourcePath);
@@ -390,7 +466,10 @@ export function createMediaThumbnailService({
       if (!stat.isFile()) {
         throw new MediaThumbnailError("Image not found", 404);
       }
-      if (stat.size <= 0 || stat.size > MAX_MEDIA_THUMBNAIL_SOURCE_BYTES) {
+      if (stat.size <= 0) {
+        throw new MediaThumbnailError("Image file is empty", 400);
+      }
+      if (stat.size > MAX_MEDIA_THUMBNAIL_SOURCE_BYTES) {
         throw new MediaThumbnailError("Image file is too large", 413);
       }
 
@@ -410,17 +489,12 @@ export function createMediaThumbnailService({
         return {
           data: await existing,
           sourceVersion,
-          cacheHit: true,
+          cacheHit: false,
         };
       }
 
       const pending = limiter.run(() =>
-        generateThumbnail(
-          sourcePath,
-          sourceVersion,
-          stat.size,
-          destinationPath,
-        ),
+        generateThumbnail(sourcePath, sourceVersion, destinationPath),
       );
       inFlight.set(destinationPath, pending);
 

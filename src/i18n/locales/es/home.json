@@ -231,6 +231,9 @@
     "fileSaved": "Archivo guardado",
     "loadingFileContent": "Cargando contenido del archivo...",
     "noContentAvailable": "No hay contenido disponible",
+    "tooManyVersionChanges": "Este commit cambia demasiados archivos para mostrarlos todos.",
+    "fileTooLarge": "Este archivo es demasiado grande para mostrarlo.",
+    "binaryNotSupported": "No se pueden mostrar archivos binarios.",
     "sendToChat": "Enviar al chat",
     "systemMessages": "Mensajes del Sistema",
     "consoleFilters": {

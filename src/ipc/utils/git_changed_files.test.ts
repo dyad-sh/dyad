@@ -28,6 +28,7 @@ import {
   getOldFileContent,
   getFileAtCommit,
   getFileSizeAtCommit,
+  getParentCommitOid,
   gitLogNative,
 } from "@/ipc/utils/git_utils";
 import { readSettings } from "@/main/settings";
@@ -347,6 +348,9 @@ describe.each([
     await expect(
       getOldFileContent({ path: dir, filePath: "file.txt", commitHash: root }),
     ).resolves.toBeNull();
+    await expect(
+      getParentCommitOid({ path: dir, commitHash: second }),
+    ).resolves.toBe(root);
   });
 });
 
@@ -381,5 +385,31 @@ describe("bounded version history", () => {
       new Set([...firstPage, ...secondPage].map((entry) => entry.oid)).size,
     ).toBe(6);
     expect(secondPage[0].oid).toBe(firstWindow[3].oid);
+  });
+
+  it("preserves leading whitespace without padding short commit messages", async () => {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-message-"));
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@example.com"]);
+    await runGit(repoDir, ["config", "user.name", "Test"]);
+    const messagePath = path.join(repoDir, "message.txt");
+    await fs.promises.writeFile(
+      messagePath,
+      "  intentionally indented subject\n\nbody\n",
+    );
+    await runGit(repoDir, [
+      "commit",
+      "--allow-empty",
+      "--cleanup=verbatim",
+      "--no-gpg-sign",
+      "-F",
+      messagePath,
+    ]);
+
+    const [commit] = await gitLogNative(repoDir, 1);
+
+    expect(commit.commit.message).toBe(
+      "  intentionally indented subject\n\nbody",
+    );
   });
 });

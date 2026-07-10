@@ -14,6 +14,22 @@ const { metadataState, useVersionFileChangeMock } = vi.hoisted(() => ({
   useVersionFileChangeMock: vi.fn(),
 }));
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      ({
+        "preview.loadingChanges": "Loading changes...",
+        "preview.errorLoadingChanges":
+          "Couldn't load changes for this version.",
+        "preview.noChangesInVersion": "No file changes in this version",
+        "preview.tooManyVersionChanges":
+          "This commit changes too many files to show them all.",
+        "preview.fileTooLarge": "This file is too large to display.",
+        "preview.binaryNotSupported": "Binary files can't be displayed.",
+      })[key] ?? key,
+  }),
+}));
+
 vi.mock("@/hooks/useVersionChanges", () => ({
   useVersionChanges: () => ({
     changes: metadataState.changes,
@@ -100,4 +116,26 @@ describe("VersionDiffView", () => {
       screen.getByText("This commit changes too many files to show them all."),
     ).not.toBeNull();
   });
+
+  it.each([
+    ["too-large", "This file is too large to display."],
+    ["binary", "Binary files can't be displayed."],
+  ] as const)(
+    "shows a friendly message instead of a diff for %s content",
+    (status, message) => {
+      useVersionFileChangeMock.mockReturnValue({
+        change: {
+          ...makeFileChange(metadataState.changes[0]),
+          newContentStatus: status,
+        },
+        loading: false,
+        error: null,
+      });
+
+      render(<VersionDiffView appId={1} versionId={"c".repeat(40)} />);
+
+      expect(screen.getByText(message)).not.toBeNull();
+      expect(screen.queryByTestId("mock-diff-editor")).toBeNull();
+    },
+  );
 });

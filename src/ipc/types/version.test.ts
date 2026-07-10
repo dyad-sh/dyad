@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 import {
   DEFAULT_VERSION_PAGE_SIZE,
   MAX_VERSION_PAGE_SIZE,
@@ -46,7 +47,7 @@ describe("version metadata schemas", () => {
 });
 
 describe("version IPC limits", () => {
-  it("applies a bounded default version page size", () => {
+  it("defaults to DEFAULT_VERSION_PAGE_SIZE when limit is omitted", () => {
     expect(
       versionContracts.listVersions.input.parse({ appId: 1 }),
     ).toMatchObject({ limit: DEFAULT_VERSION_PAGE_SIZE });
@@ -58,6 +59,6 @@ describe("version IPC limits", () => {
         appId: 1,
         limit: MAX_VERSION_PAGE_SIZE + 1,
       }),
-    ).toThrow();
+    ).toThrow(ZodError);
   });
 });

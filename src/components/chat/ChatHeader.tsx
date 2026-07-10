@@ -55,6 +55,7 @@ export function ChatHeader({
     versions,
     totalVersionCount,
     hasMoreVersions,
+    versionHistoryLimitReached,
     loading: versionsLoading,
   } = useVersions(appId);
   const { navigate } = useRouter();
@@ -116,7 +117,10 @@ export function ChatHeader({
   };
 
   const versionPostfix =
-    hasMoreVersions && totalVersionCount === versions.length ? "+" : "";
+    (hasMoreVersions || versionHistoryLimitReached) &&
+    totalVersionCount === versions.length
+      ? "+"
+      : "";
 
   const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
 

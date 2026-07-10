@@ -1002,7 +1002,7 @@ export async function getFileSizeAtCommit({
  * Resolves the parent commit oid of the given commit, or null if the commit is
  * a root commit (no parents). Used to look up the "before" content of a file.
  */
-async function getParentCommitOid({
+export async function getParentCommitOid({
   path,
   commitHash,
 }: GitListChangedFilesParams): Promise<string | null> {
@@ -1856,10 +1856,10 @@ export async function gitLogNative(
     "--max-count",
     String(depth),
     ...(skip > 0 ? ["--skip", String(skip)] : []),
-    // Bound each message before Git writes it. The handler applies an exact
-    // UTF-8 byte limit too; this display-column cap keeps child stdout bounded
-    // even for a malicious commit with a gigantic message.
-    "--format=%H%x00%at%x00%<(8192,trunc)%B%x00---END-COMMIT---",
+    // execGit's maxBuffer below provides the hard aggregate bound. Avoid a
+    // pretty-format width specifier here because Git pads every short message
+    // to that width, causing otherwise small histories to exhaust the buffer.
+    "--format=%H%x00%at%x00%B%x00---END-COMMIT---",
     ref,
   ];
 
@@ -1892,9 +1892,9 @@ export async function gitLogNative(
       const oid = parts[0].trim();
       const timestamp = Number(parts[1]);
       // Message is everything after the second null byte, may contain null bytes itself
-      // The pretty-format width guard pads short messages with spaces. Remove
-      // only surrounding display padding/newlines before returning the text.
-      const message = parts.slice(2).join("\x00").trim();
+      // Preserve intentional leading whitespace in the commit message while
+      // removing the separator/newlines Git appends after each record.
+      const message = parts.slice(2).join("\x00").trimEnd();
 
       entries.push({
         oid,

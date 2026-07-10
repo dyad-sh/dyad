@@ -18,6 +18,17 @@ describe("truncateUtf8", () => {
     expect(result.value).not.toContain("�");
     expect(result.value.endsWith("…")).toBe(true);
   });
+
+  it("returns an empty marker when the byte budget cannot fit an ellipsis", () => {
+    expect(truncateUtf8("hello", 1)).toEqual({
+      value: "",
+      truncated: true,
+    });
+    expect(truncateUtf8("hello", 2)).toEqual({
+      value: "",
+      truncated: true,
+    });
+  });
 });
 
 describe("loadBoundedDiffContent", () => {
@@ -45,5 +56,15 @@ describe("loadBoundedDiffContent", () => {
         read: async () => "hello",
       }),
     ).resolves.toEqual({ content: "hello", status: "available" });
+  });
+
+  it("reports a blob that disappears before the read as missing", async () => {
+    await expect(
+      loadBoundedDiffContent({
+        maxBytes: 100,
+        getSize: async () => 20,
+        read: async () => null,
+      }),
+    ).resolves.toEqual({ content: "", status: "missing" });
   });
 });

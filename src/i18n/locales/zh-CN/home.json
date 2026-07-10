@@ -228,6 +228,9 @@
     "fileSaved": "文件已保存",
     "loadingFileContent": "正在加载文件内容...",
     "noContentAvailable": "没有可用内容",
+    "tooManyVersionChanges": "此提交更改的文件过多，无法全部显示。",
+    "fileTooLarge": "此文件过大，无法显示。",
+    "binaryNotSupported": "无法显示二进制文件。",
     "sendToChat": "发送到聊天",
     "systemMessages": "系统消息",
     "consoleFilters": {

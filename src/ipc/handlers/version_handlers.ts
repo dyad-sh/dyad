@@ -33,6 +33,7 @@ import {
   getChangedFilesForCommitBounded,
   getFileAtCommit,
   getFileSizeAtCommit,
+  getParentCommitOid,
 } from "../utils/git_utils";
 
 import {
@@ -237,8 +238,9 @@ export function registerVersionHandlers() {
       return { versions: [], nextCursor: null, totalCount: 0 };
     }
 
-    // Ask for one extra entry so it can become the next page's cursor. Git
-    // bounds both child stdout and individual messages before Node sees them.
+    // Ask for one extra entry so it can become the next page's cursor. The Git
+    // helper caps aggregate stdout; messages are then truncated to an exact
+    // UTF-8 byte budget below.
     const commitsWithCursor = await gitLogNative(
       appPath,
       limit + 1,
@@ -426,12 +428,19 @@ export function registerVersionHandlers() {
           );
         }
         const { type } = changedFile;
-        const [oldSide, newSide] = await Promise.all([
+        const parentCommitHash =
           type === "added"
+            ? null
+            : await getParentCommitOid({
+                path: appPath,
+                commitHash: versionId,
+              });
+        const [oldSide, newSide] = await Promise.all([
+          parentCommitHash === null
             ? Promise.resolve({ content: "", status: "missing" as const })
             : loadVersionDiffContent({
                 appPath,
-                commitHash: `${versionId}^`,
+                commitHash: parentCommitHash,
                 filePath,
               }),
           type === "deleted"

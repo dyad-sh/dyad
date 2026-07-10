@@ -31,8 +31,15 @@ describe("version diff memory limits (integration)", () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
       autoApprove: true,
-      settings: { isTestMode: true },
+      settings: { isTestMode: true, enableNativeGit: false },
     });
+
+    await fs.promises.writeFile(
+      path.join(harness.appDir, "001-normal.txt"),
+      "content before the version\n",
+    );
+    git(harness.appDir, ["add", "-A"]);
+    git(harness.appDir, ["commit", "-m", "version diff baseline"]);
 
     await fs.promises.writeFile(
       path.join(harness.appDir, "000-large.txt"),
@@ -89,5 +96,7 @@ describe("version diff memory limits (integration)", () => {
     });
     expect(normal.newContentStatus).toBe("available");
     expect(normal.newContent).toBe("normal diff content\n");
+    expect(normal.oldContentStatus).toBe("available");
+    expect(normal.oldContent).toBe("content before the version\n");
   });
 });

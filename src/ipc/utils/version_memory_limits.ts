@@ -26,7 +26,10 @@ export async function loadBoundedDiffContent({
     return { content: "<file too large to display>", status: "too-large" };
   }
 
-  const content = (await read()) ?? "";
+  const content = await read();
+  if (content === null) {
+    return { content: "", status: "missing" };
+  }
   // Defense in depth if a future backend's size check and read stop referring
   // to the same immutable object.
   if (Buffer.byteLength(content, "utf8") > maxBytes) {
@@ -46,6 +49,9 @@ export function truncateUtf8(value: string, maxBytes: number): TruncatedUtf8 {
   }
 
   const marker = Buffer.from("…", "utf8");
+  if (maxBytes < marker.byteLength) {
+    return { value: "", truncated: true };
+  }
   let end = Math.max(0, maxBytes - marker.byteLength);
   // A UTF-8 code point is at most four bytes, so this loop backs up only a few
   // bytes before finding a valid boundary.

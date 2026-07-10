@@ -66,6 +66,15 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
     loading: fileLoading,
     error: fileError,
   } = useVersionFileChange(appId, versionId, selected);
+  const contentUnavailableReason = selectedChange
+    ? selectedChange.oldContentStatus === "too-large" ||
+      selectedChange.newContentStatus === "too-large"
+      ? "too-large"
+      : selectedChange.oldContentStatus === "binary" ||
+          selectedChange.newContentStatus === "binary"
+        ? "binary"
+        : null
+    : null;
 
   if (loading) {
     return (
@@ -124,7 +133,7 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
             className="border-t px-3 py-2 text-xs text-muted-foreground"
             role="status"
           >
-            This commit changes too many files to show them all.
+            {t("preview.tooManyVersionChanges")}
           </div>
         )}
       </div>
@@ -133,6 +142,12 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
           <div className="text-gray-500">{t("preview.loadingChanges")}</div>
         ) : fileError || !selectedChange ? (
           <div className="text-red-500">{t("preview.errorLoadingChanges")}</div>
+        ) : contentUnavailableReason ? (
+          <div className="px-4 text-center text-sm text-muted-foreground">
+            {contentUnavailableReason === "too-large"
+              ? t("preview.fileTooLarge")
+              : t("preview.binaryNotSupported")}
+          </div>
         ) : (
           <FileDiffEditor
             key={`${appId}:${versionId}:${selectedChange.path}`}

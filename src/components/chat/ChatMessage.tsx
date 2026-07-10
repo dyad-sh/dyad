@@ -150,7 +150,10 @@ const ChatMessage = ({
   // Calculate version number (sequential: oldest = 1, newest = liveVersions.length)
   const versionNumber = useMemo(() => {
     if (messageVersion && liveVersions.length) {
-      return totalVersionCount - liveVersions.indexOf(messageVersion);
+      const index = liveVersions.findIndex(
+        (version) => version.oid === messageVersion.oid,
+      );
+      return index === -1 ? null : totalVersionCount - index;
     }
     return null;
   }, [messageVersion, liveVersions, totalVersionCount]);

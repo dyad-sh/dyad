@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   BufferedProcessSpawnError,
   DEFAULT_BUFFERED_PROCESS_TIMEOUT_MS,
@@ -83,9 +84,11 @@ describe("simpleSpawn", () => {
       errorPrefix: "build failed",
     });
 
-    await expect(promise).rejects.toThrow(
-      "build failed (exit code 2)\n\nSTDOUT:\nstdout tail\n\nSTDERR:\nstderr tail",
-    );
+    await expect(promise).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message:
+        "build failed (exit code 2)\n\nSTDOUT:\nstdout tail\n\nSTDERR:\nstderr tail",
+    });
   });
 
   it("reports timeout and cancellation distinctly", async () => {
@@ -106,7 +109,12 @@ describe("simpleSpawn", () => {
         errorPrefix: "install failed",
         timeoutMs: 25,
       }),
-    ).rejects.toThrow("install failed (timed out after 25 ms)");
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining(
+        "install failed (timed out after 25 ms)",
+      ),
+    });
 
     runBufferedProcessMock.mockResolvedValueOnce({
       code: null,
@@ -124,7 +132,10 @@ describe("simpleSpawn", () => {
         successMessage: "installed",
         errorPrefix: "install failed",
       }),
-    ).rejects.toThrow("install failed (was cancelled)");
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("install failed (was cancelled)"),
+    });
   });
 
   it("preserves captured output from spawn failures", async () => {
@@ -143,8 +154,10 @@ describe("simpleSpawn", () => {
         successMessage: "done",
         errorPrefix: "failed",
       }),
-    ).rejects.toThrow(
-      "Failed to spawn command: ENOENT\n\nSTDOUT:\nbounded stdout\n\nSTDERR:\nbounded stderr",
-    );
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message:
+        "Failed to spawn command: ENOENT\n\nSTDOUT:\nbounded stdout\n\nSTDERR:\nbounded stderr",
+    });
   });
 });

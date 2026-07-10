@@ -13,6 +13,7 @@ export const DEFAULT_PTY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const ANSI_OSC_PATTERN = /\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g;
 const ANSI_CSI_PATTERN = /(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]/g;
 const ANSI_SINGLE_CHAR_PATTERN = /\u001B[@-Z\\-_]/g;
+const MAX_UNTERMINATED_OSC_CHARACTERS = 8 * 1024;
 
 type AnsiParserState = "text" | "escape" | "csi" | "osc" | "osc-escape";
 
@@ -23,6 +24,7 @@ type AnsiParserState = "text" | "escape" | "csi" | "osc" | "osc-escape";
  */
 class StreamingAnsiStripper {
   private state: AnsiParserState = "text";
+  private oscCharacters = 0;
 
   write(value: string): string {
     let output = "";
@@ -41,6 +43,7 @@ class StreamingAnsiStripper {
 
     const resumeText = (nextIndex: number) => {
       this.state = "text";
+      this.oscCharacters = 0;
       visibleStart = nextIndex;
     };
 
@@ -60,6 +63,7 @@ class StreamingAnsiStripper {
             this.state = "csi";
           } else if (value[index] === "]") {
             this.state = "osc";
+            this.oscCharacters = 0;
           } else if (code >= 0x40 && code <= 0x5f) {
             resumeText(index + 1);
           } else {
@@ -75,14 +79,29 @@ class StreamingAnsiStripper {
           }
           break;
         case "osc":
+          this.oscCharacters += 1;
           if (code === 0x07) {
+            resumeText(index + 1);
+          } else if (code === 0x0a) {
+            // OSC payloads cannot contain line feeds. Recover from malformed
+            // output so an unterminated title sequence cannot hide every
+            // later user-visible error line.
+            resumeText(index + 1);
+          } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
+            // Also recover when a producer never emits a line break or OSC
+            // terminator. Discard the bounded malformed prefix and resume.
             resumeText(index + 1);
           } else if (code === 0x1b) {
             this.state = "osc-escape";
           }
           break;
         case "osc-escape":
+          this.oscCharacters += 1;
           if (value[index] === "\\") {
+            resumeText(index + 1);
+          } else if (code === 0x0a) {
+            resumeText(index + 1);
+          } else if (this.oscCharacters >= MAX_UNTERMINATED_OSC_CHARACTERS) {
             resumeText(index + 1);
           } else if (code !== 0x1b) {
             this.state = "osc";

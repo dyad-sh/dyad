@@ -176,6 +176,7 @@ describe("runBufferedProcess", () => {
     await vi.advanceTimersByTimeAsync(BUFFERED_PROCESS_FORCE_KILL_GRACE_MS);
     await expect(promise).resolves.toMatchObject({
       code: null,
+      signal: "SIGKILL",
       timedOut: true,
     });
     expect(treeKillMock).toHaveBeenLastCalledWith(

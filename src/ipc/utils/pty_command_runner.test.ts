@@ -210,6 +210,21 @@ describe("runPtyCommand", () => {
     } satisfies Partial<PtyCommandExecutionError>);
   });
 
+  it("recovers after an unterminated OSC sequence reaches a new line", async () => {
+    const controller = createMockPtyController();
+    spawnMock.mockReturnValue(controller.pty);
+
+    const promise = runPtyCommand("pnpm", ["install"]);
+
+    controller.emitData("\u001b]0;unterminated title");
+    controller.emitData("\nvisible failure\n");
+    controller.emitExit({ exitCode: 1 });
+
+    await expect(promise).rejects.toMatchObject({
+      output: "visible failure",
+    } satisfies Partial<PtyCommandExecutionError>);
+  });
+
   it("rejects with the captured output when the PTY exits non-zero", async () => {
     const controller = createMockPtyController();
     spawnMock.mockReturnValue(controller.pty);

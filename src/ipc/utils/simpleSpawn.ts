@@ -1,4 +1,5 @@
 import log from "electron-log/main";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   BufferedProcessSpawnError,
   DEFAULT_BUFFERED_PROCESS_TIMEOUT_MS,
@@ -48,8 +49,10 @@ export async function simpleSpawn({
   } catch (error) {
     if (error instanceof BufferedProcessSpawnError) {
       logger.error(`Failed to spawn command: ${command}`, error);
-      throw new Error(
+      throw new DyadError(
         `Failed to spawn command: ${error.message}\n\nSTDOUT:\n${error.stdout}\n\nSTDERR:\n${error.stderr}`,
+        DyadErrorKind.External,
+        { cause: error },
       );
     }
     throw error;
@@ -72,7 +75,8 @@ export async function simpleSpawn({
   }
 
   logger.error(`${errorPrefix}, ${failureReason}`);
-  throw new Error(
+  throw new DyadError(
     `${errorPrefix} (${failureReason})\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
+    DyadErrorKind.External,
   );
 }

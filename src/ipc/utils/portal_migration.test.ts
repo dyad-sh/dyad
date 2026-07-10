@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { BufferedProcessSpawnError } from "./buffered_process";
 import { runPortalMigrationCommand } from "./portal_migration";
 
@@ -88,9 +89,11 @@ describe("runPortalMigrationCommand", () => {
 
     await expect(
       runPortalMigrationCommand({ appId: 7, appPath: "/tmp/app" }),
-    ).rejects.toThrow(
-      "Migration creation failed (exit code 2)\n\nstdout tail\n\nErrors/Warnings:\nstderr tail",
-    );
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message:
+        "Migration creation failed (exit code 2)\n\nstdout tail\n\nErrors/Warnings:\nstderr tail",
+    });
 
     runBufferedProcessMock.mockResolvedValueOnce({
       code: null,
@@ -107,9 +110,28 @@ describe("runPortalMigrationCommand", () => {
         appPath: "/tmp/app",
         timeoutMs: 25,
       }),
-    ).rejects.toThrow(
-      "Migration creation timed out after 25 ms\n\ntimeout tail",
-    );
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: "Migration creation timed out after 25 ms\n\ntimeout tail",
+    });
+  });
+
+  it("classifies a successful no-op migration as a precondition failure", async () => {
+    runBufferedProcessMock.mockResolvedValue({
+      code: 0,
+      signal: null,
+      stdout: "No schema changes",
+      stderr: "",
+      aborted: false,
+      timedOut: false,
+    });
+
+    await expect(
+      runPortalMigrationCommand({ appId: 7, appPath: "/tmp/app" }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message: "No migration was created because no changes were found.",
+    });
   });
 
   it("preserves bounded output when the migration process cannot spawn", async () => {
@@ -123,8 +145,10 @@ describe("runPortalMigrationCommand", () => {
 
     await expect(
       runPortalMigrationCommand({ appId: 7, appPath: "/tmp/app" }),
-    ).rejects.toThrow(
-      "Failed to run migration command: ENOENT\n\nOutput:\nbounded stdout\n\nErrors:\nbounded stderr",
-    );
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message:
+        "Failed to run migration command: ENOENT\n\nOutput:\nbounded stdout\n\nErrors:\nbounded stderr",
+    });
   });
 });

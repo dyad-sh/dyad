@@ -179,7 +179,7 @@ export async function runBufferedProcess(
       terminate("SIGTERM");
       forceKillId = setTimeout(() => {
         terminate("SIGKILL");
-        finish(null, null);
+        finish(null, "SIGKILL");
       }, BUFFERED_PROCESS_FORCE_KILL_GRACE_MS);
     };
 

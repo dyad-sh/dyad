@@ -18,6 +18,30 @@ describe("BoundedOutputBuffer", () => {
     );
   });
 
+  it("wraps small appends around the ring and reassembles them in order", () => {
+    const output = new BoundedOutputBuffer(8);
+
+    output.append("abcde");
+    // Crosses the physical end of the ring: "fgh" lands at the tail and "ij"
+    // wraps to the front, so toString() must stitch the two regions together.
+    output.append("fghij");
+
+    expect(output.byteLength).toBe(8);
+    expect(output.wasTruncated).toBe(true);
+    expect(output.toString()).toBe(OUTPUT_TRUNCATION_MARKER + "cdefghij");
+  });
+
+  it("does not report truncation when small appends exactly fill the ring", () => {
+    const output = new BoundedOutputBuffer(8);
+
+    output.append("abcde");
+    output.append("fgh");
+
+    expect(output.byteLength).toBe(8);
+    expect(output.wasTruncated).toBe(false);
+    expect(output.toString()).toBe("abcdefgh");
+  });
+
   it("reconstructs UTF-8 characters split across Buffer chunks", () => {
     const output = new BoundedOutputBuffer(64);
     const encoded = Buffer.from("start 🙂 end");

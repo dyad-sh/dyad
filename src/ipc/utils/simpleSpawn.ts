@@ -77,6 +77,8 @@ export async function simpleSpawn({
   logger.error(`${errorPrefix}, ${failureReason}`);
   throw new DyadError(
     `${errorPrefix} (${failureReason})\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
-    DyadErrorKind.External,
+    // An abort comes from the caller's AbortSignal, so it is not an upstream
+    // failure worth reporting to telemetry.
+    result.aborted ? DyadErrorKind.UserCancelled : DyadErrorKind.External,
   );
 }

@@ -133,7 +133,7 @@ describe("simpleSpawn", () => {
         errorPrefix: "install failed",
       }),
     ).rejects.toMatchObject({
-      kind: DyadErrorKind.External,
+      kind: DyadErrorKind.UserCancelled,
       message: expect.stringContaining("install failed (was cancelled)"),
     });
   });

@@ -251,6 +251,15 @@ describe("applyPnpmVersionMigration", () => {
       resolvePnpmIgnoredBuildsMock.mockResolvedValue([
         { packageName: "core-js", packageSpec: "core-js@3.49.0" },
       ]);
+      let packageManagerAtInstall: string | undefined;
+      simpleSpawnWithDeniedPnpmBuildSelfHealMock.mockImplementationOnce(
+        async () => {
+          const packageJson = JSON.parse(
+            await readFile(path.join(appPath, "package.json"), "utf8"),
+          );
+          packageManagerAtInstall = packageJson.packageManager;
+        },
+      );
 
       await applyPnpmVersionMigration({ appPath });
 
@@ -258,6 +267,7 @@ describe("applyPnpmVersionMigration", () => {
         await readFile(path.join(appPath, "package.json"), "utf8"),
       );
       expect(packageJson.packageManager).toBe("pnpm@11.10.0");
+      expect(packageManagerAtInstall).toBe("pnpm@11.10.0");
 
       expect(simpleSpawnWithDeniedPnpmBuildSelfHealMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -338,8 +348,9 @@ describe("applyPnpmVersionMigration", () => {
       ).rejects.toMatchObject({
         kind: DyadErrorKind.External,
         message:
-          "Dependencies were reinstalled but the packageManager pin could not be updated. Please update package.json manually.",
+          "The packageManager pin could not be updated. Please update package.json manually.",
       });
+      expect(simpleSpawnWithDeniedPnpmBuildSelfHealMock).not.toHaveBeenCalled();
       expect(gitCommitMock).not.toHaveBeenCalled();
     } finally {
       await rm(appPath, { recursive: true, force: true });

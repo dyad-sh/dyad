@@ -193,6 +193,23 @@ describe("runPtyCommand", () => {
     } satisfies Partial<PtyCommandExecutionError>);
   });
 
+  it("strips split ANSI sequences before truncating PTY output", async () => {
+    const controller = createMockPtyController();
+    spawnMock.mockReturnValue(controller.pty);
+
+    const promise = runPtyCommand("pnpm", ["install"], {
+      maxOutputBytes: 10,
+    });
+
+    controller.emitData("1234567890\u001b[38;");
+    controller.emitData("5;123mFAILURE");
+    controller.emitExit({ exitCode: 1 });
+
+    await expect(promise).rejects.toMatchObject({
+      output: OUTPUT_TRUNCATION_MARKER.trimEnd() + "\n890FAILURE",
+    } satisfies Partial<PtyCommandExecutionError>);
+  });
+
   it("rejects with the captured output when the PTY exits non-zero", async () => {
     const controller = createMockPtyController();
     spawnMock.mockReturnValue(controller.pty);

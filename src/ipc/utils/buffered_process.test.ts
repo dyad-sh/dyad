@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import type { ChildProcess } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -133,6 +134,7 @@ describe("runBufferedProcess", () => {
   it("does not decode retained logs when successful output is unused", async () => {
     const controller = createMockChildController();
     spawnMock.mockReturnValue(controller.child);
+    const decoderWriteSpy = vi.spyOn(StringDecoder.prototype, "write");
 
     const promise = runBufferedProcess({
       command: "npm test",
@@ -149,6 +151,8 @@ describe("runBufferedProcess", () => {
       stdout: "",
       stderr: "",
     });
+    expect(decoderWriteSpy).not.toHaveBeenCalled();
+    decoderWriteSpy.mockRestore();
   });
 
   it("tree-kills timed-out commands and removes every listener", async () => {

@@ -14,6 +14,91 @@ const ANSI_OSC_PATTERN = /\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g;
 const ANSI_CSI_PATTERN = /(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]/g;
 const ANSI_SINGLE_CHAR_PATTERN = /\u001B[@-Z\\-_]/g;
 
+type AnsiParserState = "text" | "escape" | "csi" | "osc" | "osc-escape";
+
+/**
+ * Removes terminal control sequences before output enters the bounded buffer.
+ * The parser state spans PTY chunks so truncation can never expose the middle
+ * of an ANSI sequence as user-visible text.
+ */
+class StreamingAnsiStripper {
+  private state: AnsiParserState = "text";
+
+  write(value: string): string {
+    let output = "";
+    let visibleStart = this.state === "text" ? 0 : -1;
+
+    const enterControlSequence = (
+      index: number,
+      state: Exclude<AnsiParserState, "text">,
+    ) => {
+      if (visibleStart >= 0) {
+        output += value.slice(visibleStart, index);
+      }
+      visibleStart = -1;
+      this.state = state;
+    };
+
+    const resumeText = (nextIndex: number) => {
+      this.state = "text";
+      visibleStart = nextIndex;
+    };
+
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index);
+
+      switch (this.state) {
+        case "text":
+          if (code === 0x1b) {
+            enterControlSequence(index, "escape");
+          } else if (code === 0x9b) {
+            enterControlSequence(index, "csi");
+          }
+          break;
+        case "escape":
+          if (value[index] === "[") {
+            this.state = "csi";
+          } else if (value[index] === "]") {
+            this.state = "osc";
+          } else if (code >= 0x40 && code <= 0x5f) {
+            resumeText(index + 1);
+          } else {
+            // Match normalizePtyOutput's behavior for an unknown escape:
+            // discard ESC but preserve the following visible character.
+            output += value[index];
+            resumeText(index + 1);
+          }
+          break;
+        case "csi":
+          if (code >= 0x40 && code <= 0x7e) {
+            resumeText(index + 1);
+          }
+          break;
+        case "osc":
+          if (code === 0x07) {
+            resumeText(index + 1);
+          } else if (code === 0x1b) {
+            this.state = "osc-escape";
+          }
+          break;
+        case "osc-escape":
+          if (value[index] === "\\") {
+            resumeText(index + 1);
+          } else if (code !== 0x1b) {
+            this.state = "osc";
+          }
+          break;
+      }
+    }
+
+    if (this.state === "text" && visibleStart >= 0) {
+      output += value.slice(visibleStart);
+    }
+
+    return output;
+  }
+}
+
 export interface PtyCommandExecutionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -245,6 +330,7 @@ export async function runPtyCommand(
     const outputBuffer = new BoundedOutputBuffer(
       options.maxOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
     );
+    const ansiStripper = new StreamingAnsiStripper();
     let didSettle = false;
     let timeoutId: NodeJS.Timeout | undefined;
     let dataSubscription: { dispose(): void } = { dispose: () => {} };
@@ -286,7 +372,7 @@ export async function runPtyCommand(
     }
 
     dataSubscription = ptyProcess.onData((chunk) => {
-      outputBuffer.append(chunk);
+      outputBuffer.append(ansiStripper.write(chunk));
     });
 
     exitSubscription = ptyProcess.onExit(({ exitCode, signal }) => {

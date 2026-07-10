@@ -82,8 +82,12 @@ export async function runBufferedProcess(
   return new Promise<BufferedProcessResult>((resolve, reject) => {
     const stdoutBuffer = new BoundedOutputBuffer(maxOutputBytes);
     const stderrBuffer = new BoundedOutputBuffer(maxOutputBytes);
-    const stdoutDecoder = new StringDecoder("utf8");
-    const stderrDecoder = new StringDecoder("utf8");
+    const stdoutDecoder = options.onStdout
+      ? new StringDecoder("utf8")
+      : undefined;
+    const stderrDecoder = options.onStderr
+      ? new StringDecoder("utf8")
+      : undefined;
 
     let child: ChildProcess;
     try {
@@ -202,24 +206,30 @@ export async function runBufferedProcess(
     function handleStdout(chunk: unknown) {
       const bytes = toBuffer(chunk);
       stdoutBuffer.append(bytes);
-      const decoded = stdoutDecoder.write(bytes);
-      invokeOutputCallback(options.onStdout, decoded);
+      if (stdoutDecoder) {
+        invokeOutputCallback(options.onStdout, stdoutDecoder.write(bytes));
+      }
     }
 
     function handleStderr(chunk: unknown) {
       const bytes = toBuffer(chunk);
       stderrBuffer.append(bytes);
-      const decoded = stderrDecoder.write(bytes);
-      invokeOutputCallback(options.onStderr, decoded);
+      if (stderrDecoder) {
+        invokeOutputCallback(options.onStderr, stderrDecoder.write(bytes));
+      }
     }
 
     function handleClose(code: number | null, signal: NodeJS.Signals | null) {
-      const stdoutRemainder = stdoutDecoder.end();
-      if (!invokeOutputCallback(options.onStdout, stdoutRemainder)) {
+      if (
+        stdoutDecoder &&
+        !invokeOutputCallback(options.onStdout, stdoutDecoder.end())
+      ) {
         return;
       }
-      const stderrRemainder = stderrDecoder.end();
-      if (!invokeOutputCallback(options.onStderr, stderrRemainder)) {
+      if (
+        stderrDecoder &&
+        !invokeOutputCallback(options.onStderr, stderrDecoder.end())
+      ) {
         return;
       }
       finish(code, signal);

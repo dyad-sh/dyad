@@ -11,7 +11,9 @@ import { VersionPane } from "./VersionPane";
 const {
   checkoutVersionMock,
   currentBranchMock,
+  hasMoreVersionsMock,
   listAppScreenshotsMock,
+  loadMoreVersionsMock,
   refreshAppMock,
   refreshVersionsMock,
   restartAppMock,
@@ -22,7 +24,9 @@ const {
 } = vi.hoisted(() => ({
   checkoutVersionMock: vi.fn(),
   currentBranchMock: { branch: "main" },
+  hasMoreVersionsMock: { value: false },
   listAppScreenshotsMock: vi.fn(),
+  loadMoreVersionsMock: vi.fn(),
   refreshAppMock: vi.fn(),
   refreshVersionsMock: vi.fn(),
   restartAppMock: vi.fn(),
@@ -64,6 +68,11 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
 vi.mock("@/hooks/useVersions", () => ({
   useVersions: () => ({
     versions: versionsMock,
+    totalVersionCount: versionsMock.length,
+    hasMoreVersions: hasMoreVersionsMock.value,
+    versionHistoryLimitReached: false,
+    loadMoreVersions: loadMoreVersionsMock,
+    isLoadingMoreVersions: false,
     loading: false,
     error: null,
     refreshVersions: refreshVersionsMock,
@@ -141,6 +150,7 @@ function makeWrapper() {
 describe("VersionPane", () => {
   beforeEach(() => {
     checkoutVersionMock.mockReset();
+    loadMoreVersionsMock.mockReset();
     listAppScreenshotsMock.mockReset();
     refreshAppMock.mockReset();
     refreshVersionsMock.mockReset();
@@ -150,6 +160,7 @@ describe("VersionPane", () => {
     setVersionNoteMock.mockReset();
 
     versionsMock.length = 0;
+    hasMoreVersionsMock.value = false;
     currentBranchMock.branch = "main";
     listAppScreenshotsMock.mockResolvedValue({ screenshots: [] });
   });
@@ -173,6 +184,20 @@ describe("VersionPane", () => {
       ).toBe(String(versionCount));
     });
     expect(screen.getAllByTestId(/^version-row-/)).toHaveLength(20);
+  });
+
+  it("loads older versions only when requested", async () => {
+    versionsMock.push(makeVersion(2));
+    hasMoreVersionsMock.value = true;
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    loadMoreVersionsMock.mockResolvedValue(undefined);
+
+    render(<VersionPane isVisible onClose={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByText("Load older versions"));
+    expect(loadMoreVersionsMock).toHaveBeenCalledTimes(1);
   });
 
   it("restores selected versions on the branch active before checkout", async () => {

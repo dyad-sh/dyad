@@ -23,8 +23,12 @@ vi.mock("@/main/settings", () => ({
 
 import {
   getChangedFilesForCommit,
+  getChangedFileForCommit,
+  getChangedFilesForCommitBounded,
   getOldFileContent,
   getFileAtCommit,
+  getFileSizeAtCommit,
+  gitLogNative,
 } from "@/ipc/utils/git_utils";
 import { readSettings } from "@/main/settings";
 
@@ -243,6 +247,82 @@ describe.each([
     expect(changes).toEqual([{ path: "app.ts", type: "modified" }]);
   });
 
+  it("caps changed-file metadata and reports truncation", async () => {
+    const dir = await setupRepo();
+    for (let index = 0; index < 5; index++) {
+      await write(dir, `file-${index}.txt`, `${index}\n`);
+    }
+    const commit = await commitAll(dir, "many files");
+
+    const result = await getChangedFilesForCommitBounded({
+      path: dir,
+      commitHash: commit,
+      maxFiles: 2,
+      maxPathBytes: 1_024,
+      maxOutputBytes: 4_096,
+    });
+
+    expect(result.files).toHaveLength(2);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("caps git stdout before a changed-path list can grow unbounded", async () => {
+    const dir = await setupRepo();
+    for (let index = 0; index < 5; index++) {
+      await write(dir, `long-file-name-${index}.txt`, `${index}\n`);
+    }
+    const commit = await commitAll(dir, "many long paths");
+
+    const result = await getChangedFilesForCommitBounded({
+      path: dir,
+      commitHash: commit,
+      maxFiles: 100,
+      maxPathBytes: 1_024,
+      maxOutputBytes: 40,
+    });
+
+    expect(result.files.length).toBeLessThan(5);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("looks up one changed path without loading other file metadata", async () => {
+    const dir = await setupRepo();
+    await write(dir, "changed.txt", "before\n");
+    await write(dir, "untouched.txt", "same\n");
+    await commitAll(dir, "init");
+    await write(dir, "changed.txt", "after\n");
+    const commit = await commitAll(dir, "edit one file");
+
+    await expect(
+      getChangedFileForCommit({
+        path: dir,
+        commitHash: commit,
+        filePath: "changed.txt",
+      }),
+    ).resolves.toEqual({ path: "changed.txt", type: "modified" });
+    await expect(
+      getChangedFileForCommit({
+        path: dir,
+        commitHash: commit,
+        filePath: "untouched.txt",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("reads blob size metadata without reading file content", async () => {
+    const dir = await setupRepo();
+    await write(dir, "large.txt", "x".repeat(20_000));
+    const commit = await commitAll(dir, "large file");
+
+    await expect(
+      getFileSizeAtCommit({
+        path: dir,
+        filePath: "large.txt",
+        commitHash: commit,
+      }),
+    ).resolves.toBe(20_000);
+  });
+
   it("getOldFileContent returns parent content and null for root", async () => {
     const dir = await setupRepo();
     await write(dir, "file.txt", "first\n");
@@ -267,5 +347,39 @@ describe.each([
     await expect(
       getOldFileContent({ path: dir, filePath: "file.txt", commitHash: root }),
     ).resolves.toBeNull();
+  });
+});
+
+describe("bounded version history", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  it("continues a long history from a bounded cursor page", async () => {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-pages-"));
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@example.com"]);
+    await runGit(repoDir, ["config", "user.name", "Test"]);
+    for (let index = 0; index < 7; index++) {
+      await write(repoDir, "counter.txt", `${index}\n`);
+      await commitAll(repoDir, `version ${index}`);
+    }
+
+    const firstWindow = await gitLogNative(repoDir, 4);
+    const firstPage = firstWindow.slice(0, 3);
+    const secondWindow = await gitLogNative(repoDir, 4, "HEAD", 3);
+    const secondPage = secondWindow.slice(0, 3);
+
+    expect(firstPage).toHaveLength(3);
+    expect(secondPage).toHaveLength(3);
+    expect(
+      new Set([...firstPage, ...secondPage].map((entry) => entry.oid)).size,
+    ).toBe(6);
+    expect(secondPage[0].oid).toBe(firstWindow[3].oid);
   });
 });

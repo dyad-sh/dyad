@@ -1,5 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, act } from "@testing-library/react";
+import {
+  type InfiniteData,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -90,7 +94,18 @@ describe("useVersions", () => {
       isFavorite: false,
       note: null,
     };
-    queryClient.setQueryData(queryKeys.versions.list({ appId }), [version]);
+    type VersionPage = {
+      versions: Version[];
+      nextCursor: string | null;
+      totalCount: number | null;
+    };
+    queryClient.setQueryData<InfiniteData<VersionPage>>(
+      queryKeys.versions.list({ appId }),
+      {
+        pages: [{ versions: [version], nextCursor: null, totalCount: 1 }],
+        pageParams: [undefined],
+      },
+    );
     setVersionNoteMock.mockResolvedValue({
       oid,
       isFavorite: false,
@@ -115,13 +130,114 @@ describe("useVersions", () => {
       note: "Launch note",
     });
     expect(
-      queryClient.getQueryData<Version[]>(
+      queryClient.getQueryData<InfiniteData<VersionPage>>(
         queryKeys.versions.list({ appId }),
-      )?.[0],
+      )?.pages[0].versions[0],
     ).toMatchObject({
       oid,
       note: "Launch note",
       isFavorite: false,
     });
+  });
+
+  it("loads version history one bounded cursor page at a time", async () => {
+    const appId = 42;
+    const firstOid = "a".repeat(40);
+    const nextOid = "b".repeat(40);
+    const nextCursor = { head: firstOid, offset: 1 };
+    const makeVersion = (oid: string, message: string): Version => ({
+      oid,
+      message,
+      timestamp: 1,
+      dbTimestamp: null,
+      isFavorite: false,
+      note: null,
+    });
+    listVersionsMock
+      .mockResolvedValueOnce({
+        versions: [makeVersion(firstOid, "newest")],
+        nextCursor,
+        totalCount: 2,
+      })
+      .mockResolvedValueOnce({
+        versions: [makeVersion(nextOid, "oldest")],
+        nextCursor: null,
+        totalCount: null,
+      });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useVersions(appId), {
+      wrapper: makeWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.versions).toHaveLength(1));
+    expect(result.current.totalVersionCount).toBe(2);
+    expect(result.current.hasMoreVersions).toBe(true);
+
+    await act(async () => {
+      await result.current.loadMoreVersions();
+    });
+
+    expect(listVersionsMock).toHaveBeenNthCalledWith(1, {
+      appId,
+      cursor: undefined,
+      limit: 100,
+    });
+    expect(listVersionsMock).toHaveBeenNthCalledWith(2, {
+      appId,
+      cursor: nextCursor,
+      limit: 100,
+    });
+    await waitFor(() =>
+      expect(result.current.versions.map((version) => version.oid)).toEqual([
+        firstOid,
+        nextOid,
+      ]),
+    );
+    expect(result.current.hasMoreVersions).toBe(false);
+  });
+
+  it("stops retaining history after the client page budget", async () => {
+    const appId = 42;
+    const oidFor = (index: number) => index.toString(16).padStart(40, "0");
+    listVersionsMock.mockImplementation(
+      async ({ cursor }: { cursor?: { head: string; offset: number } }) => {
+        const index = cursor?.offset ?? 0;
+        return {
+          versions: [
+            {
+              oid: oidFor(index),
+              message: `version ${index}`,
+              timestamp: index,
+              dbTimestamp: null,
+              isFavorite: false,
+              note: null,
+            },
+          ],
+          nextCursor: { head: oidFor(0), offset: index + 1 },
+          totalCount: cursor ? null : 10_000,
+        };
+      },
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useVersions(appId), {
+      wrapper: makeWrapper(queryClient),
+    });
+    await waitFor(() => expect(result.current.versions).toHaveLength(1));
+
+    for (let page = 1; page < 20; page++) {
+      await act(async () => {
+        await result.current.loadMoreVersions();
+      });
+    }
+    await waitFor(() => expect(result.current.versions).toHaveLength(20));
+
+    expect(result.current.hasMoreVersions).toBe(false);
+    expect(result.current.versionHistoryLimitReached).toBe(true);
+    expect(listVersionsMock).toHaveBeenCalledTimes(20);
   });
 });

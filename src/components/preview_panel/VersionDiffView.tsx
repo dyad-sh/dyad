@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import { useVersionChanges } from "@/hooks/useVersionChanges";
+import {
+  useVersionChanges,
+  useVersionFileChange,
+} from "@/hooks/useVersionChanges";
 import type { VersionChangedFile } from "@/ipc/types";
 import { FileDiffEditor } from "./FileDiffEditor";
 
@@ -40,11 +43,29 @@ function StatusBadge({ type }: { type: VersionChangedFile["type"] }) {
  */
 export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
   const { t } = useTranslation("home");
-  const { changes, loading, error } = useVersionChanges(appId, versionId);
+  const { changes, truncated, loading, error } = useVersionChanges(
+    appId,
+    versionId,
+  );
   // Tracks the file the user explicitly clicked. The displayed selection is
   // derived during render (below) so switching versions never flashes the
   // placeholder while waiting for an effect to reconcile a stale path.
   const [userSelectedPath, setUserSelectedPath] = useState<string | null>(null);
+  // Derive the displayed file from the user's explicit selection, falling back
+  // to the first changed file. Computing this during render means a version
+  // switch immediately selects a valid path without an effect race.
+  const selected =
+    (userSelectedPath
+      ? changes?.find((change) => change.path === userSelectedPath)
+      : undefined) ??
+    changes?.[0] ??
+    null;
+  const selectedPath = selected?.path ?? null;
+  const {
+    change: selectedChange,
+    loading: fileLoading,
+    error: fileError,
+  } = useVersionFileChange(appId, versionId, selected);
 
   if (loading) {
     return (
@@ -74,46 +95,52 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
     );
   }
 
-  // Derive the displayed file from the user's explicit selection, falling back
-  // to the first changed file. Computing this during render (rather than via an
-  // effect) means a version switch immediately shows a valid selection even
-  // when the previously selected path is absent in the new version.
-  const selected =
-    (userSelectedPath
-      ? changes.find((c) => c.path === userSelectedPath)
-      : undefined) ?? changes[0];
-  const selectedPath = selected?.path ?? null;
-
   return (
     <div
       className="flex flex-1 overflow-hidden"
       data-testid="version-diff-view"
     >
-      <div className="w-1/3 border-r overflow-auto min-h-0">
-        {changes.map((file) => (
-          <button
-            key={file.path}
-            onClick={() => setUserSelectedPath(file.path)}
-            data-testid="version-diff-file"
-            className={cn(
-              "flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--background-darkest)]",
-              selectedPath === file.path && "bg-[var(--background-darkest)]",
-            )}
+      <div className="w-1/3 border-r min-h-0 flex flex-col">
+        <div className="overflow-auto min-h-0 flex-1">
+          {changes.map((file) => (
+            <button
+              key={file.path}
+              onClick={() => setUserSelectedPath(file.path)}
+              data-testid="version-diff-file"
+              className={cn(
+                "flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--background-darkest)]",
+                selectedPath === file.path && "bg-[var(--background-darkest)]",
+              )}
+            >
+              <StatusBadge type={file.type} />
+              <span className="truncate" title={file.path}>
+                {file.path}
+              </span>
+            </button>
+          ))}
+        </div>
+        {truncated && (
+          <div
+            className="border-t px-3 py-2 text-xs text-muted-foreground"
+            role="status"
           >
-            <StatusBadge type={file.type} />
-            <span className="truncate" title={file.path}>
-              {file.path}
-            </span>
-          </button>
-        ))}
+            This commit changes too many files to show them all.
+          </div>
+        )}
       </div>
-      <div className="w-2/3 min-h-0">
-        <FileDiffEditor
-          key={`${appId}:${selected.path}`}
-          filePath={selected.path}
-          oldContent={selected.oldContent}
-          newContent={selected.newContent}
-        />
+      <div className="w-2/3 min-h-0 flex items-center justify-center">
+        {fileLoading ? (
+          <div className="text-gray-500">{t("preview.loadingChanges")}</div>
+        ) : fileError || !selectedChange ? (
+          <div className="text-red-500">{t("preview.errorLoadingChanges")}</div>
+        ) : (
+          <FileDiffEditor
+            key={`${appId}:${versionId}:${selectedChange.path}`}
+            filePath={selectedChange.path}
+            oldContent={selectedChange.oldContent}
+            newContent={selectedChange.newContent}
+          />
+        )}
       </div>
     </div>
   );

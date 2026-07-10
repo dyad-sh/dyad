@@ -107,6 +107,15 @@ export const queryKeys = {
       appId: number | null;
       versionId: string | null;
     }) => ["versions", appId, "changes", versionId] as const,
+    fileChange: ({
+      appId,
+      versionId,
+      filePath,
+    }: {
+      appId: number | null;
+      versionId: string | null;
+      filePath: string | null;
+    }) => ["versions", appId, "changes", versionId, filePath] as const,
   },
 
   branches: {

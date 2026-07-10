@@ -1,13 +1,22 @@
 import { useAtomValue, useSetAtom } from "jotai";
+import { useMemo } from "react";
 import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
+import { DEFAULT_VERSION_PAGE_SIZE } from "@/ipc/types/version";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
+
+const MAX_LOADED_VERSION_PAGES = 20;
 
 export function useVersions(appId: number | null) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -15,38 +24,84 @@ export function useVersions(appId: number | null) {
   const queryClient = useQueryClient();
   const { restartApp } = useRunApp();
   const { settings } = useSettings();
+  type VersionPage = Awaited<ReturnType<typeof ipc.version.listVersions>>;
+  type VersionCursor = NonNullable<VersionPage["nextCursor"]>;
 
   const updateVersionMetadataCache = (
     oid: string,
     updates: Partial<Pick<Version, "isFavorite" | "note">>,
     targetAppId = appId,
   ) => {
-    queryClient.setQueryData<Version[]>(
+    queryClient.setQueryData<InfiniteData<VersionPage>>(
       queryKeys.versions.list({ appId: targetAppId }),
-      (oldVersions) =>
-        oldVersions?.map((version) =>
-          version.oid === oid ? { ...version, ...updates } : version,
-        ),
+      (oldData) =>
+        oldData
+          ? {
+              ...oldData,
+              pages: oldData.pages.map((page) => ({
+                ...page,
+                versions: page.versions.map((version) =>
+                  version.oid === oid ? { ...version, ...updates } : version,
+                ),
+              })),
+            }
+          : oldData,
     );
   };
 
   const {
-    data: versions,
+    data,
     isLoading: loading,
     error,
     refetch: refreshVersions,
-  } = useQuery<Version[], Error>({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<
+    VersionPage,
+    Error,
+    InfiniteData<VersionPage>,
+    ReturnType<typeof queryKeys.versions.list>,
+    VersionCursor | undefined
+  >({
     queryKey: queryKeys.versions.list({ appId }),
-    queryFn: async (): Promise<Version[]> => {
+    queryFn: async ({ pageParam }): Promise<VersionPage> => {
       if (appId === null) {
-        return [];
+        return { versions: [], nextCursor: null, totalCount: 0 };
       }
-      return ipc.version.listVersions({ appId });
+      return ipc.version.listVersions({
+        appId,
+        cursor: pageParam,
+        limit: DEFAULT_VERSION_PAGE_SIZE,
+      });
     },
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage, allPages) =>
+      allPages.length >= MAX_LOADED_VERSION_PAGES
+        ? undefined
+        : (lastPage.nextCursor ?? undefined),
     enabled: appId !== null,
-    placeholderData: [],
     meta: { showErrorToast: true },
   });
+
+  const loadedVersions = useMemo(
+    () => data?.pages.flatMap((page) => page.versions) ?? [],
+    [data?.pages],
+  );
+  const firstPageTotal = data?.pages[0]?.totalCount;
+  const totalVersionCount = firstPageTotal ?? loadedVersions.length;
+  const versionHistoryLimitReached =
+    !hasNextPage &&
+    ((data?.pages.at(-1)?.nextCursor ?? null) !== null ||
+      loadedVersions.length < totalVersionCount);
+
+  const refreshVersionList = async () => {
+    const result = await refreshVersions();
+    return {
+      ...result,
+      data: result.data?.pages.flatMap((page) => page.versions),
+    };
+  };
 
   const revertVersionMutation = useMutation<
     RevertVersionResponse,
@@ -160,10 +215,15 @@ export function useVersions(appId: number | null) {
   });
 
   return {
-    versions: versions || [],
+    versions: loadedVersions,
+    totalVersionCount,
+    hasMoreVersions: hasNextPage,
+    versionHistoryLimitReached,
+    loadMoreVersions: fetchNextPage,
+    isLoadingMoreVersions: isFetchingNextPage,
     loading,
     error,
-    refreshVersions,
+    refreshVersions: refreshVersionList,
     revertVersion: revertVersionMutation.mutateAsync,
     isRevertingVersion: revertVersionMutation.isPending,
     setVersionFavorite: setVersionFavoriteMutation.mutateAsync,

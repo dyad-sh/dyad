@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { apps, messages, versions } from "../../db/schema";
-import { desc, eq, and, gt, gte } from "drizzle-orm";
+import { desc, eq, and, gt, gte, inArray } from "drizzle-orm";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,7 +8,14 @@ import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
-import { versionContracts } from "../types/version";
+import {
+  MAX_VERSION_CHANGED_FILES,
+  MAX_VERSION_CHANGED_PATH_BYTES,
+  MAX_VERSION_COMMIT_MESSAGE_BYTES,
+  MAX_VERSION_CURSOR_OFFSET,
+  MAX_VERSION_DIFF_CONTENT_BYTES,
+  versionContracts,
+} from "../types/version";
 
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import { readSettings } from "../../main/settings";
@@ -19,11 +26,13 @@ import {
   getCurrentCommitHash,
   gitCommitExists,
   gitCurrentBranch,
-  gitLog,
+  gitCommitCount,
+  gitLogNative,
   isGitStatusClean,
-  getChangedFilesForCommit,
+  getChangedFileForCommit,
+  getChangedFilesForCommitBounded,
   getFileAtCommit,
-  getOldFileContent,
+  getFileSizeAtCommit,
 } from "../utils/git_utils";
 
 import {
@@ -41,30 +50,29 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
+import {
+  loadBoundedDiffContent,
+  truncateUtf8,
+} from "../utils/version_memory_limits";
 
 const logger = log.scope("version_handlers");
 
-// Guard against dumping binary blobs or huge files into the renderer's diff
-// editor. Binary files render as garbage and large files hurt performance.
-const MAX_DIFF_CONTENT_BYTES = 1_000_000; // ~1 MB
+const MAX_VERSION_CHANGES_GIT_OUTPUT_BYTES = 512 * 1_024;
 
-function sanitizeDiffContent(content: string): string {
-  // Size guard first: content.length is an O(1) check that short-circuits
-  // oversized files before the O(N) NUL scan / byte-length traversal below.
-  // Fast-path: every UTF-8 character is at least 1 byte, so if the string
-  // length already exceeds the limit, the byte length must too — which lets us
-  // skip the Buffer.byteLength traversal for large files entirely.
-  if (
-    content.length > MAX_DIFF_CONTENT_BYTES ||
-    Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES
-  ) {
-    return "<file too large to display>";
-  }
-  // A NUL byte is a strong signal the file is binary.
-  if (/\u0000/.test(content)) {
-    return "<binary file not shown>";
-  }
-  return content;
+async function loadVersionDiffContent({
+  appPath,
+  commitHash,
+  filePath,
+}: {
+  appPath: string;
+  commitHash: string;
+  filePath: string;
+}) {
+  return loadBoundedDiffContent({
+    maxBytes: MAX_VERSION_DIFF_CONTENT_BYTES,
+    getSize: () => getFileSizeAtCommit({ path: appPath, filePath, commitHash }),
+    read: () => getFileAtCommit({ path: appPath, filePath, commitHash }),
+  });
 }
 
 /**
@@ -212,32 +220,69 @@ async function restoreBranchForPreview({
 
 export function registerVersionHandlers() {
   createTypedHandler(versionContracts.listVersions, async (_, params) => {
-    const { appId } = params;
+    const { appId, cursor, limit } = params;
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
 
     if (!app) {
-      // The app might have just been deleted, so we return an empty array.
-      return [];
+      // The app might have just been deleted, so return an empty page.
+      return { versions: [], nextCursor: null, totalCount: 0 };
     }
 
     const appPath = getDyadAppPath(app.path);
 
     // Just return an empty array if the app is not a git repo.
     if (!fs.existsSync(path.join(appPath, ".git"))) {
-      return [];
+      return { versions: [], nextCursor: null, totalCount: 0 };
     }
 
-    const commits = await gitLog({
-      path: appPath,
-      depth: 100_000, // KEEP UP TO DATE WITH ChatHeader.tsx
-    });
+    // Ask for one extra entry so it can become the next page's cursor. Git
+    // bounds both child stdout and individual messages before Node sees them.
+    const commitsWithCursor = await gitLogNative(
+      appPath,
+      limit + 1,
+      cursor?.head ?? "HEAD",
+      cursor?.offset ?? 0,
+    );
+    const pageCommits = commitsWithCursor.slice(0, limit);
+    const historyHead = cursor?.head ?? pageCommits[0]?.oid ?? null;
+    const nextOffset = (cursor?.offset ?? 0) + limit;
+    const nextCursor =
+      commitsWithCursor.length > limit &&
+      historyHead &&
+      nextOffset <= MAX_VERSION_CURSOR_OFFSET
+        ? {
+            head: historyHead,
+            offset: nextOffset,
+          }
+        : null;
 
-    // Get all stored version metadata for this app to match with commits.
-    const appVersionMetadata = await db.query.versions.findMany({
-      where: eq(versions.appId, appId),
-    });
+    let totalCount: number | null = null;
+    if (!cursor) {
+      try {
+        totalCount = await gitCommitCount({ path: appPath });
+      } catch (error) {
+        logger.warn(
+          "Could not count versions; falling back to a partial count",
+          error,
+        );
+        totalCount = nextCursor ? null : pageCommits.length;
+      }
+    }
+
+    // Only fetch metadata for this page. A long-lived app may have metadata for
+    // every historical commit, which must not defeat the page budget.
+    const commitHashes = pageCommits.map((commit) => commit.oid);
+    const appVersionMetadata =
+      commitHashes.length === 0
+        ? []
+        : await db.query.versions.findMany({
+            where: and(
+              eq(versions.appId, appId),
+              inArray(versions.commitHash, commitHashes),
+            ),
+          });
 
     // Create a map of commitHash -> version metadata for quick lookup.
     const metadataMap = new Map<
@@ -256,17 +301,26 @@ export function registerVersionHandlers() {
       });
     }
 
-    return commits.map((commit: GitCommit) => {
-      const metadata = metadataMap.get(commit.oid);
-      return {
-        oid: commit.oid,
-        message: commit.commit.message,
-        timestamp: commit.commit.author.timestamp,
-        dbTimestamp: metadata?.neonDbTimestamp,
-        isFavorite: metadata?.isFavorite ?? false,
-        note: metadata?.note ?? null,
-      };
-    });
+    return {
+      versions: pageCommits.map((commit: GitCommit) => {
+        const metadata = metadataMap.get(commit.oid);
+        const message = truncateUtf8(
+          commit.commit.message,
+          MAX_VERSION_COMMIT_MESSAGE_BYTES,
+        );
+        return {
+          oid: commit.oid,
+          message: message.value,
+          messageTruncated: message.truncated,
+          timestamp: commit.commit.author.timestamp,
+          dbTimestamp: metadata?.neonDbTimestamp,
+          isFavorite: metadata?.isFavorite ?? false,
+          note: metadata?.note ?? null,
+        };
+      }),
+      nextCursor,
+      totalCount,
+    };
   });
 
   createTypedHandler(versionContracts.setVersionFavorite, async (_, params) => {
@@ -328,46 +382,13 @@ export function registerVersionHandlers() {
     }
 
     try {
-      const changedFiles = await getChangedFilesForCommit({
+      return await getChangedFilesForCommitBounded({
         path: appPath,
         commitHash: versionId,
+        maxFiles: MAX_VERSION_CHANGED_FILES,
+        maxPathBytes: MAX_VERSION_CHANGED_PATH_BYTES,
+        maxOutputBytes: MAX_VERSION_CHANGES_GIT_OUTPUT_BYTES,
       });
-
-      const loadFileChange = async (file: (typeof changedFiles)[number]) => {
-        const newContent =
-          file.type === "deleted"
-            ? ""
-            : ((await getFileAtCommit({
-                path: appPath,
-                filePath: file.path,
-                commitHash: versionId,
-              })) ?? "");
-        const oldContent =
-          file.type === "added"
-            ? ""
-            : ((await getOldFileContent({
-                path: appPath,
-                filePath: file.path,
-                commitHash: versionId,
-              })) ?? "");
-        return {
-          path: file.path,
-          type: file.type,
-          oldContent: sanitizeDiffContent(oldContent),
-          newContent: sanitizeDiffContent(newContent),
-        };
-      };
-
-      // Each file may spawn up to two git child processes (native git). Bound
-      // the concurrency so commits touching many files (e.g. an initial commit
-      // of a generated app) don't exhaust file descriptors.
-      const CONCURRENCY = 10;
-      const results: Awaited<ReturnType<typeof loadFileChange>>[] = [];
-      for (let i = 0; i < changedFiles.length; i += CONCURRENCY) {
-        const batch = changedFiles.slice(i, i + CONCURRENCY);
-        results.push(...(await Promise.all(batch.map(loadFileChange))));
-      }
-      return results;
     } catch (error: any) {
       // Preserve the original error kind for DyadErrors thrown by inner
       // functions; only wrap unexpected (non-Dyad) failures as External.
@@ -384,6 +405,67 @@ export function registerVersionHandlers() {
       );
     }
   });
+
+  createTypedHandler(
+    versionContracts.getVersionFileChange,
+    async (_, params) => {
+      const { appId, versionId, filePath } = params;
+      const appPath = await getVersionAppPath(appId);
+      await assertVersionExists({ appPath, versionId });
+
+      try {
+        const changedFile = await getChangedFileForCommit({
+          path: appPath,
+          commitHash: versionId,
+          filePath,
+        });
+        if (!changedFile) {
+          throw new DyadError(
+            "Changed file not found in this version",
+            DyadErrorKind.NotFound,
+          );
+        }
+        const { type } = changedFile;
+        const [oldSide, newSide] = await Promise.all([
+          type === "added"
+            ? Promise.resolve({ content: "", status: "missing" as const })
+            : loadVersionDiffContent({
+                appPath,
+                commitHash: `${versionId}^`,
+                filePath,
+              }),
+          type === "deleted"
+            ? Promise.resolve({ content: "", status: "missing" as const })
+            : loadVersionDiffContent({
+                appPath,
+                commitHash: versionId,
+                filePath,
+              }),
+        ]);
+
+        return {
+          path: filePath,
+          type,
+          oldContent: oldSide.content,
+          newContent: newSide.content,
+          oldContentStatus: oldSide.status,
+          newContentStatus: newSide.status,
+        };
+      } catch (error: any) {
+        if (error instanceof DyadError) {
+          throw error;
+        }
+        logger.error(
+          `Error getting file change for app ${appId} version ${versionId} path ${filePath}:`,
+          error,
+        );
+        throw new DyadError(
+          `Failed to get version file change: ${error.message}`,
+          DyadErrorKind.External,
+        );
+      }
+    },
+  );
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
     const { appId, previousVersionId, currentChatMessageId, targetBranchName } =

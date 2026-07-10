@@ -51,7 +51,12 @@ export function ChatHeader({
 }: ChatHeaderProps) {
   const { t } = useTranslation("chat");
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions, loading: versionsLoading } = useVersions(appId);
+  const {
+    versions,
+    totalVersionCount,
+    hasMoreVersions,
+    loading: versionsLoading,
+  } = useVersions(appId);
   const { navigate } = useRouter();
   const [selectedChatId] = useAtom(selectedChatIdAtom);
   const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
@@ -110,8 +115,8 @@ export function ChatHeader({
     }
   };
 
-  // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
-  const versionPostfix = versions.length === 100_000 ? `+` : "";
+  const versionPostfix =
+    hasMoreVersions && totalVersionCount === versions.length ? "+" : "";
 
   const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
 
@@ -231,7 +236,7 @@ export function ChatHeader({
             <History size={16} />
             {versionsLoading
               ? "..."
-              : `${t("header.versionCount", { count: versions.length })}${versionPostfix}`}
+              : `${t("header.versionCount", { count: totalVersionCount })}${versionPostfix}`}
           </Button>
         </div>
 

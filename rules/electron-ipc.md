@@ -133,6 +133,8 @@ When modifying `ChatResponseChunkSchema` or adding new `safeSend("chat:response:
 
 **Zod schema contract changes:** Making a field optional (e.g., `messages` → `messages.optional()`) causes TypeScript errors in all consumers that assume the field is always present. Search for all destructuring/usage sites and add guards before committing.
 
+**Zod defaults in contract inputs:** A field declared with `.default(...)` is required by the generated client's inferred TypeScript input even though runtime parsing can fill it in. Pass the value explicitly from typed clients, or use `.optional()` and apply the default in the handler when omission should be part of the client API.
+
 **Renderer-visible fields must be in the output schema:** `createTypedHandler` validates handler output through the contract's Zod schema. If the handler returns extra fields that are not declared in the output schema, renderer code cannot type-safely consume them and they may be stripped by parsing. Add any consumed fields (for example `appId` on `ChatSchema`) to the IPC output schema when relying on them in renderer code.
 
 ## End-of-turn warnings

@@ -8,6 +8,7 @@ import { defineContract, createClient } from "../contracts/core";
 export const VersionSchema = z.object({
   oid: z.string(), // commit hash
   message: z.string(),
+  messageTruncated: z.boolean().optional(),
   timestamp: z.number(),
   dbTimestamp: z.string().nullable().optional(),
   isFavorite: z.boolean(),
@@ -15,6 +16,14 @@ export const VersionSchema = z.object({
 });
 
 export type Version = z.infer<typeof VersionSchema>;
+
+export const DEFAULT_VERSION_PAGE_SIZE = 100;
+export const MAX_VERSION_PAGE_SIZE = 200;
+export const MAX_VERSION_CURSOR_OFFSET = 100_000;
+export const MAX_VERSION_COMMIT_MESSAGE_BYTES = 4_096;
+export const MAX_VERSION_CHANGED_FILES = 1_000;
+export const MAX_VERSION_CHANGED_PATH_BYTES = 256 * 1_024;
+export const MAX_VERSION_DIFF_CONTENT_BYTES = 1_000_000;
 
 export const BranchResultSchema = z.object({
   branch: z.string(),
@@ -65,11 +74,32 @@ export const VersionChangeTypeSchema = z.enum(["added", "modified", "deleted"]);
 export const VersionChangedFileSchema = z.object({
   path: z.string(),
   type: VersionChangeTypeSchema,
-  oldContent: z.string(), // "" when added (or old side absent/binary)
-  newContent: z.string(), // "" when deleted (or new side absent/binary)
 });
 
 export type VersionChangedFile = z.infer<typeof VersionChangedFileSchema>;
+
+export const VersionChangesResultSchema = z.object({
+  files: z.array(VersionChangedFileSchema),
+  truncated: z.boolean(),
+});
+
+export type VersionChangesResult = z.infer<typeof VersionChangesResultSchema>;
+
+export const VersionDiffContentStatusSchema = z.enum([
+  "available",
+  "missing",
+  "binary",
+  "too-large",
+]);
+
+export const VersionFileChangeSchema = VersionChangedFileSchema.extend({
+  oldContent: z.string(),
+  newContent: z.string(),
+  oldContentStatus: VersionDiffContentStatusSchema,
+  newContentStatus: VersionDiffContentStatusSchema,
+});
+
+export type VersionFileChange = z.infer<typeof VersionFileChangeSchema>;
 
 export const GetVersionChangesParamsSchema = z.object({
   appId: z.number(),
@@ -80,6 +110,22 @@ export const GetVersionChangesParamsSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{4,64}$/, "versionId must be a hex commit SHA"),
 });
+
+export const GetVersionFileChangeParamsSchema =
+  GetVersionChangesParamsSchema.extend({
+    filePath: z
+      .string()
+      .min(1)
+      .max(4_096)
+      .refine((value) => !value.includes("\0"), "filePath contains a NUL byte")
+      .refine(
+        (value) =>
+          !value.startsWith("/") &&
+          !/^[a-zA-Z]:[\\/]/.test(value) &&
+          !value.split(/[\\/]/).includes(".."),
+        "filePath must be repository-relative",
+      ),
+  });
 
 export const CheckoutVersionResponseSchema = z.object({
   warningMessage: z.string().optional(),
@@ -92,6 +138,10 @@ export type CheckoutVersionResponse = z.infer<
 const CommitHashSchema = z
   .string()
   .regex(/^[a-f0-9]{40,64}$/i, "versionId must be a full hex commit SHA");
+export const VersionCursorSchema = z.object({
+  head: CommitHashSchema,
+  offset: z.number().int().min(1).max(MAX_VERSION_CURSOR_OFFSET),
+});
 export const MAX_VERSION_NOTE_LENGTH = 10_000;
 
 export const SetVersionFavoriteParamsSchema = z.object({
@@ -119,8 +169,21 @@ export const VersionMetadataResultSchema = z.object({
 export const versionContracts = {
   listVersions: defineContract({
     channel: "list-versions",
-    input: z.object({ appId: z.number() }),
-    output: z.array(VersionSchema),
+    input: z.object({
+      appId: z.number(),
+      cursor: VersionCursorSchema.optional(),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_VERSION_PAGE_SIZE)
+        .default(DEFAULT_VERSION_PAGE_SIZE),
+    }),
+    output: z.object({
+      versions: z.array(VersionSchema),
+      nextCursor: VersionCursorSchema.nullable(),
+      totalCount: z.number().int().nonnegative().nullable(),
+    }),
   }),
 
   revertVersion: defineContract({
@@ -138,7 +201,13 @@ export const versionContracts = {
   getVersionChanges: defineContract({
     channel: "get-version-changes",
     input: GetVersionChangesParamsSchema,
-    output: z.array(VersionChangedFileSchema),
+    output: VersionChangesResultSchema,
+  }),
+
+  getVersionFileChange: defineContract({
+    channel: "get-version-file-change",
+    input: GetVersionFileChangeParamsSchema,
+    output: VersionFileChangeSchema,
   }),
 
   setVersionFavorite: defineContract({

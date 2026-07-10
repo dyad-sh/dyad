@@ -96,7 +96,7 @@ const ChatMessage = ({
 }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions: liveVersions } = useVersions(appId);
+  const { versions: liveVersions, totalVersionCount } = useVersions(appId);
   const assistantTextContent =
     message.role === "assistant"
       ? stripCancelledResponseNotice(message.content)
@@ -150,10 +150,10 @@ const ChatMessage = ({
   // Calculate version number (sequential: oldest = 1, newest = liveVersions.length)
   const versionNumber = useMemo(() => {
     if (messageVersion && liveVersions.length) {
-      return liveVersions.length - liveVersions.indexOf(messageVersion);
+      return totalVersionCount - liveVersions.indexOf(messageVersion);
     }
     return null;
-  }, [messageVersion, liveVersions]);
+  }, [messageVersion, liveVersions, totalVersionCount]);
 
   // handle copy request id
   const [copiedRequestId, setCopiedRequestId] = useState(false);

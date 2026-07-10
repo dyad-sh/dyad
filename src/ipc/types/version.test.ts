@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_VERSION_PAGE_SIZE,
+  MAX_VERSION_PAGE_SIZE,
   SetVersionFavoriteParamsSchema,
   SetVersionNoteParamsSchema,
+  versionContracts,
 } from "./version";
 
 describe("version metadata schemas", () => {
@@ -39,5 +42,22 @@ describe("version metadata schemas", () => {
         note: "release candidate",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("version IPC limits", () => {
+  it("applies a bounded default version page size", () => {
+    expect(
+      versionContracts.listVersions.input.parse({ appId: 1 }),
+    ).toMatchObject({ limit: DEFAULT_VERSION_PAGE_SIZE });
+  });
+
+  it("rejects version pages above the hard cap", () => {
+    expect(() =>
+      versionContracts.listVersions.input.parse({
+        appId: 1,
+        limit: MAX_VERSION_PAGE_SIZE + 1,
+      }),
+    ).toThrow();
   });
 });

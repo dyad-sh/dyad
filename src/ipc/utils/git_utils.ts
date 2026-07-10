@@ -3,6 +3,7 @@ import git from "isomorphic-git";
 import http from "isomorphic-git/http/node";
 import {
   exec,
+  ExecError,
   type IGitStringExecutionOptions,
   type IGitStringResult,
 } from "dugite";
@@ -975,6 +976,29 @@ export async function getFileAtCommit({
 }
 
 /**
+ * Returns a blob's byte size without loading its contents into the Node heap.
+ * This deliberately uses Git's object metadata even when isomorphic-git is the
+ * selected mutation backend: readBlob has to inflate the whole object before
+ * its size is known, which defeats the preflight guard used by version diffs.
+ */
+export async function getFileSizeAtCommit({
+  path,
+  filePath,
+  commitHash,
+}: GitFileAtCommitParams): Promise<number | null> {
+  const result = await execGit(
+    ["cat-file", "-s", `${commitHash}:${filePath}`],
+    path,
+    { maxBuffer: 64 * 1_024 },
+  );
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const size = Number(result.stdout.trim());
+  return Number.isSafeInteger(size) && size >= 0 ? size : null;
+}
+
+/**
  * Resolves the parent commit oid of the given commit, or null if the commit is
  * a root commit (no parents). Used to look up the "before" content of a file.
  */
@@ -1158,6 +1182,140 @@ export async function getChangedFilesForCommit({
   return (results as (GitChangedFile | undefined)[])
     .filter((entry): entry is GitChangedFile => Boolean(entry))
     .filter((entry) => isUserVisibleGitPath(entry.path));
+}
+
+export interface BoundedChangedFilesResult {
+  files: GitChangedFile[];
+  truncated: boolean;
+}
+
+/** Looks up one exact changed path without enumerating the rest of the commit. */
+export async function getChangedFileForCommit({
+  path,
+  commitHash,
+  filePath,
+}: GitListChangedFilesParams & {
+  filePath: string;
+}): Promise<GitChangedFile | null> {
+  const parentOid = await getParentCommitOid({ path, commitHash });
+  const result = await execGit(
+    [
+      "diff-tree",
+      "--no-commit-id",
+      "--no-renames",
+      "--name-status",
+      "-r",
+      "-z",
+      ...(parentOid ? [parentOid, commitHash] : ["--root", commitHash]),
+      "--",
+      filePath,
+    ],
+    path,
+    { maxBuffer: 64 * 1_024 },
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      result.stderr.toString() || result.stdout.toString(),
+      DyadErrorKind.External,
+    );
+  }
+  const [status, returnedPath] = result.stdout.split("\0");
+  const type = mapDiffStatusToChangeType(status ?? "");
+  if (
+    !type ||
+    returnedPath !== filePath ||
+    !isUserVisibleGitPath(returnedPath)
+  ) {
+    return null;
+  }
+  return { path: returnedPath, type };
+}
+
+/**
+ * Lists changed-file metadata with producer-side stdout and result budgets.
+ * The normal helper above is intentionally exhaustive for internal git flows;
+ * renderer-facing version history must use this bounded variant instead.
+ */
+export async function getChangedFilesForCommitBounded({
+  path,
+  commitHash,
+  maxFiles,
+  maxPathBytes,
+  maxOutputBytes,
+}: GitListChangedFilesParams & {
+  maxFiles: number;
+  maxPathBytes: number;
+  maxOutputBytes: number;
+}): Promise<BoundedChangedFilesResult> {
+  const parentOid = await getParentCommitOid({ path, commitHash });
+  let output = "";
+  let outputTruncated = false;
+
+  try {
+    const result = await execGit(
+      [
+        "diff-tree",
+        "--no-commit-id",
+        "--no-renames",
+        "--name-status",
+        "-r",
+        "-z",
+        ...(parentOid ? [parentOid, commitHash] : ["--root", commitHash]),
+      ],
+      path,
+      { maxBuffer: maxOutputBytes },
+    );
+    if (result.exitCode !== 0) {
+      throw new DyadError(
+        result.stderr.toString() || result.stdout.toString(),
+        DyadErrorKind.External,
+      );
+    }
+    output = result.stdout;
+  } catch (error) {
+    if (
+      error instanceof ExecError &&
+      error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+    ) {
+      output = error.stdout.toString();
+      outputTruncated = true;
+    } else {
+      throw error;
+    }
+  }
+
+  // A maxBuffer termination can cut through a path. Only parse complete
+  // NUL-terminated tokens so a partial path is never exposed to the renderer.
+  const lastTerminator = output.lastIndexOf("\0");
+  const completeOutput =
+    lastTerminator === -1 ? "" : output.slice(0, lastTerminator + 1);
+  const tokens = completeOutput.split("\0").filter(Boolean);
+  const files: GitChangedFile[] = [];
+  let pathBytes = 0;
+  let truncated = outputTruncated;
+  let processedPairs = 0;
+
+  for (let i = 0; i + 1 < tokens.length; i += 2) {
+    processedPairs += 1;
+    const type = mapDiffStatusToChangeType(tokens[i]);
+    const filePath = tokens[i + 1];
+    if (!type || !isUserVisibleGitPath(filePath)) {
+      continue;
+    }
+    const nextPathBytes = Buffer.byteLength(filePath, "utf8");
+    if (files.length >= maxFiles || pathBytes + nextPathBytes > maxPathBytes) {
+      truncated = true;
+      processedPairs -= 1;
+      break;
+    }
+    files.push({ path: filePath, type });
+    pathBytes += nextPathBytes;
+  }
+
+  if (processedPairs * 2 < tokens.length) {
+    truncated = true;
+  }
+  return { files, truncated };
 }
 
 function mapDiffStatusToChangeType(status: string): GitChangedFileType | null {
@@ -1590,6 +1748,27 @@ export async function gitLog({
   }
 }
 
+/** Returns the repository history size while buffering only a tiny integer. */
+export async function gitCommitCount({
+  path,
+  ref = "HEAD",
+}: GitBaseParams & { ref?: string }): Promise<number> {
+  const result = await execGit(["rev-list", "--count", ref], path, {
+    maxBuffer: 64 * 1_024,
+  });
+  if (result.exitCode !== 0) {
+    throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
+  }
+  const count = Number(result.stdout.trim());
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new DyadError(
+      "Git returned an invalid commit count",
+      DyadErrorKind.External,
+    );
+  }
+  return count;
+}
+
 export async function gitIsIgnored({
   path,
   filepath,
@@ -1666,6 +1845,8 @@ export async function gitListFilesNative({
 export async function gitLogNative(
   path: string,
   depth = 100_000,
+  ref = "HEAD",
+  skip = 0,
 ): Promise<GitCommit[]> {
   // Use git log with custom format to get all data in a single process
   // Format: %H = commit hash, %at = author timestamp (unix), %B = raw body (message)
@@ -1674,11 +1855,22 @@ export async function gitLogNative(
     "log",
     "--max-count",
     String(depth),
-    "--format=%H%x00%at%x00%B%x00---END-COMMIT---",
-    "HEAD",
+    ...(skip > 0 ? ["--skip", String(skip)] : []),
+    // Bound each message before Git writes it. The handler applies an exact
+    // UTF-8 byte limit too; this display-column cap keeps child stdout bounded
+    // even for a malicious commit with a gigantic message.
+    "--format=%H%x00%at%x00%<(8192,trunc)%B%x00---END-COMMIT---",
+    ref,
   ];
 
-  const logResult = await execGit(logArgs, path);
+  const logResult = await execGit(logArgs, path, {
+    // A page uses at most a few MiB even when every message hits the cap. Keep
+    // a hard ceiling so accidental large-depth callers cannot exhaust memory.
+    maxBuffer: Math.min(
+      32 * 1_024 * 1_024,
+      Math.max(1_024 * 1_024, depth * 40_000),
+    ),
+  });
 
   if (logResult.exitCode !== 0) {
     throw new DyadError(logResult.stderr.toString(), DyadErrorKind.Conflict);
@@ -1700,7 +1892,9 @@ export async function gitLogNative(
       const oid = parts[0].trim();
       const timestamp = Number(parts[1]);
       // Message is everything after the second null byte, may contain null bytes itself
-      const message = parts.slice(2).join("\x00");
+      // The pretty-format width guard pads short messages with spaces. Remove
+      // only surrounding display padding/newlines before returning the text.
+      const message = parts.slice(2).join("\x00").trim();
 
       entries.push({
         oid,

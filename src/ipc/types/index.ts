@@ -256,6 +256,8 @@ export type {
   RevertVersionParams,
   RevertVersionResponse,
   VersionChangedFile,
+  VersionChangesResult,
+  VersionFileChange,
   CheckoutVersionResponse,
 } from "./version";
 

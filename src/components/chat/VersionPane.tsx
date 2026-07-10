@@ -341,6 +341,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const { restartApp } = useRunApp();
   const {
     versions: liveVersions,
+    totalVersionCount,
+    hasMoreVersions,
+    versionHistoryLimitReached,
+    loadMoreVersions,
+    isLoadingMoreVersions,
     refreshVersions,
     revertVersion,
     isRevertingVersion,
@@ -463,11 +468,12 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const versionNumberByOid = useMemo(() => {
     const map = new Map<string, number>();
+    const count = Math.max(totalVersionCount, versions.length);
     for (let index = 0; index < versions.length; index++) {
-      map.set(versions[index].oid, versions.length - index);
+      map.set(versions[index].oid, count - index);
     }
     return map;
-  }, [versions]);
+  }, [totalVersionCount, versions]);
 
   useEffect(() => {
     if (branchInfo?.branch && branchInfo.branch !== "<no-branch>") {
@@ -538,12 +544,23 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     };
   }, [flushPendingNoteSaves]);
 
-  // Initial load of cached versions when live versions become available
+  // Keep optimistic note/favorite edits while incorporating newly loaded pages.
   useEffect(() => {
-    if (isVisible && liveVersions.length > 0 && cachedVersions.length === 0) {
-      setCachedVersions(liveVersions);
+    if (!isVisible || liveVersions.length === 0) {
+      return;
     }
-  }, [isVisible, liveVersions, cachedVersions.length]);
+    setCachedVersions((previous) => {
+      if (previous.length === 0) {
+        return liveVersions;
+      }
+      const previousByOid = new Map(
+        previous.map((version) => [version.oid, version]),
+      );
+      return liveVersions.map(
+        (version) => previousByOid.get(version.oid) ?? version,
+      );
+    });
+  }, [isVisible, liveVersions]);
 
   if (!isVisible) {
     return null;
@@ -795,47 +812,93 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         {versions.length === 0 ? (
           <div className="p-4">No versions available</div>
         ) : filteredVersions.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">
-            {showFavoritesOnly && !searchQuery.trim()
-              ? "No favorite versions"
-              : "No matching versions"}
+          <div className="p-4 text-sm text-muted-foreground flex flex-col items-start gap-3">
+            <span>
+              {showFavoritesOnly && !searchQuery.trim()
+                ? "No favorite versions"
+                : "No matching versions"}
+            </span>
+            {(hasMoreVersions || versionHistoryLimitReached) && (
+              <>
+                <span className="text-xs">
+                  Search and favorites currently cover loaded history only.
+                </span>
+                {hasMoreVersions && (
+                  <button
+                    type="button"
+                    className="text-primary hover:underline disabled:opacity-50"
+                    disabled={isLoadingMoreVersions}
+                    onClick={() => void loadMoreVersions()}
+                  >
+                    {isLoadingMoreVersions
+                      ? "Loading older versions..."
+                      : "Load older versions"}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         ) : (
-          <Virtuoso
-            style={{ height: "100%" }}
-            data={filteredVersions}
-            defaultItemHeight={96}
-            increaseViewportBy={{ top: 400, bottom: 400 }}
-            computeItemKey={(_, version) => version.oid}
-            itemContent={(_, version) => {
-              const versionNumber = versionNumberByOid.get(version.oid) ?? 0;
-              return (
-                <VersionRow
-                  version={version}
-                  versionNumber={versionNumber}
-                  thumbnailUrl={screenshotByHash.get(version.oid)}
-                  searchQuery={searchQuery}
-                  selectedVersionId={selectedVersionId}
-                  isCheckingOutVersion={isCheckingOutVersion}
-                  isRevertingVersion={isRevertingVersion}
-                  showNoteEditor={
-                    expandedNoteVersionIds.has(version.oid) || !!version.note
-                  }
-                  shouldAutoFocusNote={autoFocusNoteVersionIds.has(version.oid)}
-                  versionNumberByOid={versionNumberByOid}
-                  onVersionClick={(clickedVersion) => {
-                    void handleVersionClick(clickedVersion);
-                  }}
-                  onToggleFavorite={handleToggleFavorite}
-                  onNoteFocus={handleNoteFocus}
-                  onNoteChange={handleNoteChange}
-                  onNoteBlur={flushVersionNoteSave}
-                  onExpandNote={handleExpandNote}
-                  onRestoreVersion={handleRestoreVersion}
-                />
-              );
-            }}
-          />
+          <div className="h-full min-h-0 flex flex-col">
+            <Virtuoso
+              style={{ flex: 1 }}
+              data={filteredVersions}
+              defaultItemHeight={96}
+              increaseViewportBy={{ top: 400, bottom: 400 }}
+              computeItemKey={(_, version) => version.oid}
+              itemContent={(_, version) => {
+                const versionNumber = versionNumberByOid.get(version.oid) ?? 0;
+                return (
+                  <VersionRow
+                    version={version}
+                    versionNumber={versionNumber}
+                    thumbnailUrl={screenshotByHash.get(version.oid)}
+                    searchQuery={searchQuery}
+                    selectedVersionId={selectedVersionId}
+                    isCheckingOutVersion={isCheckingOutVersion}
+                    isRevertingVersion={isRevertingVersion}
+                    showNoteEditor={
+                      expandedNoteVersionIds.has(version.oid) || !!version.note
+                    }
+                    shouldAutoFocusNote={autoFocusNoteVersionIds.has(
+                      version.oid,
+                    )}
+                    versionNumberByOid={versionNumberByOid}
+                    onVersionClick={(clickedVersion) => {
+                      void handleVersionClick(clickedVersion);
+                    }}
+                    onToggleFavorite={handleToggleFavorite}
+                    onNoteFocus={handleNoteFocus}
+                    onNoteChange={handleNoteChange}
+                    onNoteBlur={flushVersionNoteSave}
+                    onExpandNote={handleExpandNote}
+                    onRestoreVersion={handleRestoreVersion}
+                  />
+                );
+              }}
+            />
+            {hasMoreVersions && (
+              <button
+                type="button"
+                className="border-t px-3 py-2 text-sm text-primary hover:bg-accent disabled:opacity-50"
+                disabled={isLoadingMoreVersions}
+                onClick={() => void loadMoreVersions()}
+              >
+                {isLoadingMoreVersions
+                  ? "Loading older versions..."
+                  : "Load older versions"}
+              </button>
+            )}
+            {versionHistoryLimitReached && (
+              <div
+                className="border-t px-3 py-2 text-xs text-muted-foreground"
+                role="status"
+              >
+                Showing the newest {versions.length.toLocaleString()} versions
+                to keep memory usage bounded.
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

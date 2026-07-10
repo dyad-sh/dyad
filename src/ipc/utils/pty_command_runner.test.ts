@@ -5,6 +5,7 @@ import {
   PtyCommandExecutionError,
   runPtyCommand,
 } from "./pty_command_runner";
+import { OUTPUT_TRUNCATION_MARKER } from "./bounded_output_buffer";
 
 const { processSpawnMock, spawnMock } = vi.hoisted(() => ({
   processSpawnMock: vi.fn(),
@@ -37,6 +38,8 @@ vi.mock("node-pty", () => ({
 interface MockPtyController {
   emitData(data: string): void;
   emitExit(event: { exitCode: number; signal?: number }): void;
+  dataListenerCount(): number;
+  exitListenerCount(): number;
   pty: {
     pid: number;
     kill: ReturnType<typeof vi.fn>;
@@ -62,6 +65,8 @@ function createMockPtyController(): MockPtyController {
         listener(event);
       }
     },
+    dataListenerCount: () => dataListeners.size,
+    exitListenerCount: () => exitListeners.size,
     pty: {
       pid: 1234,
       kill: vi.fn(),
@@ -167,6 +172,25 @@ describe("runPtyCommand", () => {
     await expect(promise).resolves.toEqual({
       output: "Resolved\nadded 1 package",
     });
+    expect(controller.dataListenerCount()).toBe(0);
+    expect(controller.exitListenerCount()).toBe(0);
+  });
+
+  it("retains only the newest output bytes from noisy commands", async () => {
+    const controller = createMockPtyController();
+    spawnMock.mockReturnValue(controller.pty);
+
+    const promise = runPtyCommand("pnpm", ["install"], {
+      maxOutputBytes: 16,
+    });
+
+    controller.emitData("a".repeat(1_000_000));
+    controller.emitData("0123456789abcdef");
+    controller.emitExit({ exitCode: 1 });
+
+    await expect(promise).rejects.toMatchObject({
+      output: OUTPUT_TRUNCATION_MARKER.trimEnd() + "\n0123456789abcdef",
+    } satisfies Partial<PtyCommandExecutionError>);
   });
 
   it("rejects with the captured output when the PTY exits non-zero", async () => {

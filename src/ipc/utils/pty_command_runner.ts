@@ -1,5 +1,9 @@
 import { spawn as spawnProcess } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
+import {
+  BoundedOutputBuffer,
+  DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
+} from "./bounded_output_buffer";
 
 const DEFAULT_PTY_NAME = "xterm-color";
 const DEFAULT_PTY_COLS = 160;
@@ -18,6 +22,7 @@ export interface PtyCommandExecutionOptions {
   rows?: number;
   name?: string;
   displayCommand?: string;
+  maxOutputBytes?: number;
 }
 
 export interface PtyCommandExecutionResult {
@@ -237,7 +242,9 @@ export async function runPtyCommand(
     const displayedCommand =
       options.displayCommand ?? buildDisplayedCommand(command, args);
     const timeoutMs = options.timeoutMs ?? DEFAULT_PTY_COMMAND_TIMEOUT_MS;
-    const outputChunks: string[] = [];
+    const outputBuffer = new BoundedOutputBuffer(
+      options.maxOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
+    );
     let didSettle = false;
     let timeoutId: NodeJS.Timeout | undefined;
     let dataSubscription: { dispose(): void } = { dispose: () => {} };
@@ -279,14 +286,15 @@ export async function runPtyCommand(
     }
 
     dataSubscription = ptyProcess.onData((chunk) => {
-      outputChunks.push(chunk);
+      outputBuffer.append(chunk);
     });
 
     exitSubscription = ptyProcess.onExit(({ exitCode, signal }) => {
       const failed = exitCode !== 0 || hasSignal(signal);
-      const output = normalizePtyOutput(outputChunks.join(""), {
+      const output = normalizePtyOutput(outputBuffer.toString(), {
         preserveCarriageReturnFrames: failed,
       });
+      outputBuffer.clear();
 
       if (!failed) {
         settle(() => resolve({ output }));
@@ -306,19 +314,14 @@ export async function runPtyCommand(
     });
 
     timeoutId = setTimeout(() => {
-      try {
-        terminatePtyProcess(ptyProcess);
-      } catch {
-        // Best effort only. The timeout error below remains the source of truth.
-      }
-
       const timeoutMessage = buildTimeoutMessage(displayedCommand, timeoutMs);
       const output = appendCommandMessage(
-        normalizePtyOutput(outputChunks.join(""), {
+        normalizePtyOutput(outputBuffer.toString(), {
           preserveCarriageReturnFrames: true,
         }),
         timeoutMessage,
       );
+      outputBuffer.clear();
 
       settle(() =>
         reject(
@@ -328,6 +331,12 @@ export async function runPtyCommand(
           }),
         ),
       );
+
+      try {
+        terminatePtyProcess(ptyProcess);
+      } catch {
+        // Best effort only. The timeout error above remains the source of truth.
+      }
     }, timeoutMs);
   });
 }

@@ -1,5 +1,9 @@
-import { spawn } from "child_process";
 import log from "electron-log/main";
+import {
+  BufferedProcessSpawnError,
+  DEFAULT_BUFFERED_PROCESS_TIMEOUT_MS,
+  runBufferedProcess,
+} from "./buffered_process";
 import { getPackageManagerCommandEnv } from "./socket_firewall";
 
 const logger = log.scope("simpleSpawn");
@@ -10,6 +14,8 @@ export async function simpleSpawn({
   successMessage,
   errorPrefix,
   env,
+  signal,
+  timeoutMs = DEFAULT_BUFFERED_PROCESS_TIMEOUT_MS,
 }: {
   command: string;
   cwd: string;
@@ -19,47 +25,54 @@ export async function simpleSpawn({
   // the managed pnpm and the Corepack project-spec disable without every
   // call site having to remember to pass it.
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<void> {
   const spawnEnv = env ?? getPackageManagerCommandEnv();
-  return new Promise<void>((resolve, reject) => {
-    logger.info(`Running: ${command}`);
-    const process = spawn(command, {
+  logger.info(`Running: ${command}`);
+
+  let result;
+  try {
+    result = await runBufferedProcess({
+      command,
       cwd,
-      shell: true,
-      stdio: "pipe",
       env: spawnEnv,
+      signal,
+      timeoutMs,
+      // The output is only needed for failures. On success, release the
+      // bounded byte buffers without decoding them into additional strings.
+      captureOutputOnSuccess: false,
+      onStdout: (output) => logger.info(output),
+      onStderr: (output) => logger.error(output),
     });
+  } catch (error) {
+    if (error instanceof BufferedProcessSpawnError) {
+      logger.error(`Failed to spawn command: ${command}`, error);
+      throw new Error(
+        `Failed to spawn command: ${error.message}\n\nSTDOUT:\n${error.stdout}\n\nSTDERR:\n${error.stderr}`,
+      );
+    }
+    throw error;
+  }
 
-    let stdout = "";
-    let stderr = "";
+  if (result.code === 0 && !result.aborted && !result.timedOut) {
+    logger.info(successMessage);
+    return;
+  }
 
-    process.stdout?.on("data", (data) => {
-      const output = data.toString();
-      stdout += output;
-      logger.info(output);
-    });
+  let failureReason: string;
+  if (result.timedOut) {
+    failureReason = `timed out after ${timeoutMs} ms`;
+  } else if (result.aborted) {
+    failureReason = "was cancelled";
+  } else if (result.signal) {
+    failureReason = `terminated by signal ${result.signal}`;
+  } else {
+    failureReason = `exit code ${result.code}`;
+  }
 
-    process.stderr?.on("data", (data) => {
-      const output = data.toString();
-      stderr += output;
-      logger.error(output);
-    });
-
-    process.on("close", (code) => {
-      if (code === 0) {
-        logger.info(successMessage);
-        resolve();
-      } else {
-        logger.error(`${errorPrefix}, exit code ${code}`);
-        const errorMessage = `${errorPrefix} (exit code ${code})\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`;
-        reject(new Error(errorMessage));
-      }
-    });
-
-    process.on("error", (err) => {
-      logger.error(`Failed to spawn command: ${command}`, err);
-      const errorMessage = `Failed to spawn command: ${err.message}\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`;
-      reject(new Error(errorMessage));
-    });
-  });
+  logger.error(`${errorPrefix}, ${failureReason}`);
+  throw new Error(
+    `${errorPrefix} (${failureReason})\n\nSTDOUT:\n${result.stdout}\n\nSTDERR:\n${result.stderr}`,
+  );
 }

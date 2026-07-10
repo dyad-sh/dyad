@@ -1,0 +1,130 @@
+import type { ChildProcess } from "node:child_process";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BufferedProcessSpawnError } from "./buffered_process";
+import { runPortalMigrationCommand } from "./portal_migration";
+
+const { logger, runBufferedProcessMock } = vi.hoisted(() => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+  runBufferedProcessMock: vi.fn(),
+}));
+
+vi.mock("electron-log", () => ({
+  default: {
+    scope: () => logger,
+  },
+}));
+
+vi.mock("./socket_firewall", () => ({
+  getPackageManagerCommandEnv: () => ({ PATH: "/managed" }),
+}));
+
+vi.mock("./buffered_process", async () => {
+  const actual =
+    await vi.importActual<typeof import("./buffered_process")>(
+      "./buffered_process",
+    );
+  return {
+    ...actual,
+    runBufferedProcess: runBufferedProcessMock,
+  };
+});
+
+describe("runPortalMigrationCommand", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("recognizes split status messages and answers the rename prompt once", async () => {
+    const write = vi.fn();
+    const child = {
+      pid: 123,
+      stdin: { write },
+    } as unknown as ChildProcess;
+
+    runBufferedProcessMock.mockImplementation(async (options) => {
+      options.onStdout?.("Migration crea", child);
+      options.onStdout?.("ted at drizzle/0001.sql\ncreated or renamed ", child);
+      options.onStdout?.("from another\n", child);
+      options.onStdout?.("created or renamed from another\n", child);
+      return {
+        code: 0,
+        signal: null,
+        stdout: "bounded stdout tail",
+        stderr: "bounded warning tail",
+        aborted: false,
+        timedOut: false,
+      };
+    });
+
+    await expect(
+      runPortalMigrationCommand({ appId: 7, appPath: "/tmp/app" }),
+    ).resolves.toBe(
+      "bounded stdout tail\n\nErrors/Warnings:\nbounded warning tail",
+    );
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith("\r\n");
+    expect(runBufferedProcessMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "npm run migrate:create -- --skip-empty",
+        cwd: "/tmp/app",
+        env: { PATH: "/managed" },
+      }),
+    );
+  });
+
+  it("returns useful bounded tails in exit and timeout failures", async () => {
+    runBufferedProcessMock.mockResolvedValueOnce({
+      code: 2,
+      signal: null,
+      stdout: "stdout tail",
+      stderr: "stderr tail",
+      aborted: false,
+      timedOut: false,
+    });
+
+    await expect(
+      runPortalMigrationCommand({ appId: 7, appPath: "/tmp/app" }),
+    ).rejects.toThrow(
+      "Migration creation failed (exit code 2)\n\nstdout tail\n\nErrors/Warnings:\nstderr tail",
+    );
+
+    runBufferedProcessMock.mockResolvedValueOnce({
+      code: null,
+      signal: null,
+      stdout: "timeout tail",
+      stderr: "",
+      aborted: false,
+      timedOut: true,
+    });
+
+    await expect(
+      runPortalMigrationCommand({
+        appId: 7,
+        appPath: "/tmp/app",
+        timeoutMs: 25,
+      }),
+    ).rejects.toThrow(
+      "Migration creation timed out after 25 ms\n\ntimeout tail",
+    );
+  });
+
+  it("preserves bounded output when the migration process cannot spawn", async () => {
+    runBufferedProcessMock.mockRejectedValue(
+      new BufferedProcessSpawnError(
+        "ENOENT",
+        "bounded stdout",
+        "bounded stderr",
+      ),
+    );
+
+    await expect(
+      runPortalMigrationCommand({ appId: 7, appPath: "/tmp/app" }),
+    ).rejects.toThrow(
+      "Failed to run migration command: ENOENT\n\nOutput:\nbounded stdout\n\nErrors:\nbounded stderr",
+    );
+  });
+});

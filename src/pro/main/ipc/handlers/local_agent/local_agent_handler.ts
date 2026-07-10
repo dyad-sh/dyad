@@ -126,7 +126,11 @@ import {
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
 import { getPostCompactionMessageStartId } from "@/ipc/utils/chat_history_query";
-import { toRendererMessage } from "@/ipc/utils/renderer_chat_message";
+import {
+  rendererMessageColumns,
+  toRendererMessage,
+  type RendererMessageRow,
+} from "@/ipc/utils/renderer_chat_message";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -417,6 +421,10 @@ export async function handleLocalAgentStream(
   // Mid-turn compaction inserts a DB summary row for LLM history, but we render
   // the user-facing compaction indicator inline in the active assistant turn.
   const hiddenMessageIdsForStreaming = new Set<number>();
+  // The model only needs post-compaction rows, but a full renderer update must
+  // remain authoritative for the complete visible conversation. Keep that
+  // lightweight projection separate so compaction cannot truncate the UI.
+  let rendererMessages: RendererMessageRow[] = [];
   // Convenience wrapper that binds the stream-invariant context args so call
   // sites only pass the two things that vary: the current response content and
   // whether to send the full messages array.
@@ -427,7 +435,7 @@ export async function handleLocalAgentStream(
     sendResponseChunk(
       event,
       req.chatId,
-      chat,
+      rendererMessages,
       response,
       placeholderMessageId,
       hiddenMessageIdsForStreaming,
@@ -500,8 +508,19 @@ export async function handleLocalAgentStream(
     });
   };
 
+  const loadRendererMessages = async () =>
+    db.query.messages.findMany({
+      where: eq(messages.chatId, req.chatId),
+      columns: rendererMessageColumns,
+      orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+    });
+
   // Get the chat and app — may be re-queried after compaction
-  const initialChat = await loadChat();
+  const [initialChat, initialRendererMessages] = await Promise.all([
+    loadChat(),
+    loadRendererMessages(),
+  ]);
+  rendererMessages = initialRendererMessages;
 
   if (!initialChat || !initialChat.app) {
     throw new DyadError(
@@ -571,7 +590,11 @@ export async function handleLocalAgentStream(
     // Only update if compaction succeeded — a failed compaction may have left
     // partial state that would corrupt subsequent message history.
     if (compactionResult.success) {
-      const refreshedChat = await loadChat();
+      const [refreshedChat, refreshedRendererMessages] = await Promise.all([
+        loadChat(),
+        loadRendererMessages(),
+      ]);
+      rendererMessages = refreshedRendererMessages;
       if (refreshedChat?.app) {
         chat = refreshedChat;
       }
@@ -1915,7 +1938,7 @@ async function updateResponseInDb(messageId: number, content: string) {
 function sendResponseChunk(
   event: IpcMainInvokeEvent,
   chatId: number,
-  chat: any,
+  rendererMessages: readonly RendererMessageRow[],
   fullResponse: string,
   placeholderMessageId: number,
   hiddenMessageIds: Set<number> | undefined,
@@ -1925,9 +1948,7 @@ function sendResponseChunk(
   lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
-    const currentMessages = (
-      chat.messages as Array<Parameters<typeof toRendererMessage>[0]>
-    )
+    const currentMessages = rendererMessages
       .filter((message) => !hiddenMessageIds?.has(message.id))
       .map(toRendererMessage);
     const placeholderMsg = currentMessages.find(
@@ -1959,7 +1980,7 @@ function sendResponseChunk(
       sendResponseChunk(
         event,
         chatId,
-        chat,
+        rendererMessages,
         fullResponse,
         placeholderMessageId,
         hiddenMessageIds,

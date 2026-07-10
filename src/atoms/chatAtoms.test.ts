@@ -123,4 +123,25 @@ describe("evictChatRuntimeStateAtom", () => {
     expect(store.get(chatMessagesByIdAtom).has(1)).toBe(false);
     expect(store.get(chatMessagesByIdAtom).has(2)).toBe(true);
   });
+
+  it("evicts synchronously after a closed chat transitions to idle", () => {
+    const store = createStore();
+    store.set(chatMessagesByIdAtom, new Map([[1, [message]]]));
+    store.set(isStreamingByIdAtom, new Map([[1, true]]));
+    store.set(closedChatIdsAtom, new Set([1]));
+
+    store.set(evictChatRuntimeStateAtom, {
+      chatIds: [1],
+      requireClosed: true,
+    });
+    expect(store.get(chatMessagesByIdAtom).has(1)).toBe(true);
+
+    store.set(isStreamingByIdAtom, new Map([[1, false]]));
+    store.set(evictChatRuntimeStateAtom, {
+      chatIds: [1],
+      requireClosed: true,
+    });
+
+    expect(store.get(chatMessagesByIdAtom).has(1)).toBe(false);
+  });
 });

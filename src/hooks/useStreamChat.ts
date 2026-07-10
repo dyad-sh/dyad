@@ -546,6 +546,10 @@ export function useStreamChat({
                   next.set(chatId, false);
                   return next;
                 });
+                evictChatRuntimeState({
+                  chatIds: [chatId],
+                  requireClosed: true,
+                });
                 onSettled?.({ success: false });
               });
             },
@@ -580,7 +584,19 @@ export function useStreamChat({
                 next.set(chatId, false);
                 return next;
               });
-              syncChatFromDb(chatId, setMessagesById, "[CHAT] onError", store);
+              void syncChatFromDb(
+                chatId,
+                setMessagesById,
+                "[CHAT] onError",
+                store,
+              ).finally(() => {
+                // Synchronize before eviction so an in-flight DB response
+                // cannot recreate state for a tab closed during the stream.
+                evictChatRuntimeState({
+                  chatIds: [chatId],
+                  requireClosed: true,
+                });
+              });
               invalidateChats();
               refreshApp();
               refreshVersions();
@@ -607,6 +623,10 @@ export function useStreamChat({
               error instanceof Error ? error.message : String(error),
             );
           return next;
+        });
+        evictChatRuntimeState({
+          chatIds: [chatId],
+          requireClosed: true,
         });
         onSettled?.({ success: false });
       }

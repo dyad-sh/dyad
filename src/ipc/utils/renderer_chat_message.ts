@@ -21,7 +21,7 @@ export const rendererMessageColumns = {
   createdAt: true,
 } as const;
 
-type RendererMessageRow = Pick<
+export type RendererMessageRow = Pick<
   typeof messages.$inferSelect,
   keyof typeof rendererMessageColumns
 >;

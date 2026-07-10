@@ -176,6 +176,8 @@ const dbOperations: {
 } = { updates: [], queries: [] };
 
 let mockChatData: ReturnType<typeof buildTestChat> | null = null;
+let mockRendererMessages: ReturnType<typeof buildTestChat>["messages"] | null =
+  null;
 
 vi.mock("@/db", () => ({
   db: {
@@ -185,6 +187,9 @@ vi.mock("@/db", () => ({
       },
       messages: {
         findFirst: vi.fn(async () => undefined),
+        findMany: vi.fn(
+          async () => mockRendererMessages ?? mockChatData?.messages ?? [],
+        ),
       },
     },
     update: vi.fn(() => ({
@@ -340,6 +345,7 @@ describe("handleLocalAgentStream", () => {
     dbOperations.updates = [];
     dbOperations.queries = [];
     mockChatData = null;
+    mockRendererMessages = null;
     mockSettings = buildTestSettings();
     mockStreamResult = null;
     mockStreamTextImpl = null;
@@ -1182,6 +1188,50 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Stream processing - text content", () => {
+    it("keeps pre-compaction messages in full renderer updates", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          { id: 3, role: "user", content: "Current task" },
+          { id: 10, role: "assistant", content: "" },
+        ],
+      });
+      mockRendererMessages = [
+        { id: 1, role: "user", content: "Visible older prompt" },
+        { id: 2, role: "assistant", content: "Visible older response" },
+        ...mockChatData.messages,
+      ];
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Done" },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const fullChunks = getMessagesByChannel("chat:response:chunk")
+        .map(
+          (message) => message.args[0] as { messages?: Array<{ id: number }> },
+        )
+        .filter((payload) => payload.messages !== undefined);
+
+      expect(fullChunks.length).toBeGreaterThan(0);
+      expect(fullChunks[0].messages?.map((message) => message.id)).toEqual([
+        1, 2, 3, 10,
+      ]);
+      expect(
+        JSON.stringify(vi.mocked(streamText).mock.calls[0][0].messages),
+      ).not.toContain("Visible older prompt");
+    });
+
     it("does not send AI SDK history in full renderer message chunks", async () => {
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });

@@ -48,36 +48,34 @@ type SetMessagesById = (
  * Skips the write if a new stream has become active while the fetch was
  * in-flight (checked via store.get to read the live atom state).
  */
-export function syncChatFromDb(
+export async function syncChatFromDb(
   chatId: number,
   setMessagesById: SetMessagesById,
   label: string,
   store: ReturnType<typeof getDefaultStore>,
-): void {
-  ipc.chat
-    .getChat(chatId)
-    .then((chat) => {
-      // A new stream may have started while getChat was in flight; bail out to
-      // avoid overwriting its in-progress or placeholder messages.
-      if (store.get(isStreamingByIdAtom).get(chatId) === true) return;
-      setMessagesById((prev) => {
-        const currentMessages = prev.get(chatId);
-        if (!currentMessages) {
-          const next = new Map(prev);
-          next.set(chatId, chat.messages);
-          return next;
-        }
-        // New stream added messages while fetch was in flight; skip overwrite.
-        if (currentMessages.length > chat.messages.length) return prev;
-        const merged = mergeResyncMessages(chat.messages, currentMessages);
+): Promise<void> {
+  try {
+    const chat = await ipc.chat.getChat(chatId);
+    // A new stream may have started while getChat was in flight; bail out to
+    // avoid overwriting its in-progress or placeholder messages.
+    if (store.get(isStreamingByIdAtom).get(chatId) === true) return;
+    setMessagesById((prev) => {
+      const currentMessages = prev.get(chatId);
+      if (!currentMessages) {
         const next = new Map(prev);
-        next.set(chatId, merged);
+        next.set(chatId, chat.messages);
         return next;
-      });
-    })
-    .catch((err) => {
-      console.warn(`${label} DB sync failed for chat`, chatId, err);
+      }
+      // New stream added messages while fetch was in flight; skip overwrite.
+      if (currentMessages.length > chat.messages.length) return prev;
+      const merged = mergeResyncMessages(chat.messages, currentMessages);
+      const next = new Map(prev);
+      next.set(chatId, merged);
+      return next;
     });
+  } catch (err) {
+    console.warn(`${label} DB sync failed for chat`, chatId, err);
+  }
 }
 
 /**

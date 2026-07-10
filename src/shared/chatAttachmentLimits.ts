@@ -3,6 +3,7 @@ const MEBIBYTE = 1024 * 1024;
 export const MAX_CHAT_ATTACHMENTS = 10;
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * MEBIBYTE;
 export const MAX_CHAT_ATTACHMENTS_TOTAL_BYTES = 25 * MEBIBYTE;
+export const CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE = `You can attach up to ${MAX_CHAT_ATTACHMENTS} files at a time.`;
 
 const BASE64_MARKER = ";base64,";
 const MAX_DATA_URL_PREFIX_CHARS = 1024;
@@ -126,7 +127,7 @@ export function validateChatAttachmentFiles(
     return {
       ok: false,
       code: "too-many-files",
-      message: `You can attach up to ${MAX_CHAT_ATTACHMENTS} files at a time.`,
+      message: CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
     };
   }
 
@@ -167,7 +168,7 @@ export function validateSerializedChatAttachments(
     return {
       ok: false,
       code: "too-many-files",
-      message: `You can attach up to ${MAX_CHAT_ATTACHMENTS} files at a time.`,
+      message: CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
     };
   }
 

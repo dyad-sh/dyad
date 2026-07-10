@@ -12,8 +12,8 @@ import {
   type ChatMode,
 } from "../../lib/schemas";
 import {
+  CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
   MAX_CHAT_ATTACHMENTS,
-  MAX_CHAT_ATTACHMENT_DATA_URL_CHARS,
   validateSerializedChatAttachments,
 } from "../../shared/chatAttachmentLimits";
 
@@ -80,7 +80,7 @@ export const ChatAttachmentSchema = z
   .object({
     name: z.string(),
     type: z.string(),
-    data: z.string().max(MAX_CHAT_ATTACHMENT_DATA_URL_CHARS), // Base64 encoded
+    data: z.string(), // Base64 encoded
     attachmentType: z.enum(["upload-to-codebase", "chat-context"]),
   })
   .superRefine((attachment, context) => {
@@ -106,6 +106,23 @@ export interface FileAttachment {
 }
 
 /**
+ * Reject excessive counts before Zod parses any attachment payloads. Keeping
+ * this as an outer pipeline avoids walking arbitrarily many large base64
+ * strings before reporting the count violation.
+ */
+const ChatAttachmentsSchema = z
+  .unknown()
+  .superRefine((value, context) => {
+    if (Array.isArray(value) && value.length > MAX_CHAT_ATTACHMENTS) {
+      context.addIssue({
+        code: "custom",
+        message: CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
+      });
+    }
+  })
+  .pipe(z.array(ChatAttachmentSchema));
+
+/**
  * Schema for chat stream parameters.
  */
 export const ChatStreamParamsSchema = z
@@ -113,10 +130,7 @@ export const ChatStreamParamsSchema = z
     chatId: z.number(),
     prompt: z.string(),
     redo: z.boolean().optional(),
-    attachments: z
-      .array(ChatAttachmentSchema)
-      .max(MAX_CHAT_ATTACHMENTS)
-      .optional(),
+    attachments: ChatAttachmentsSchema.optional(),
     selectedComponents: z.array(ComponentSelectionSchema).optional(),
     requestedChatMode: ChatModeSchema.optional(),
   })

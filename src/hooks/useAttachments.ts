@@ -16,7 +16,10 @@ export function useAttachments() {
   };
 
   const validateFiles = useCallback(
-    (files: readonly File[], existingAttachments = attachments): boolean => {
+    (
+      files: readonly File[],
+      existingAttachments: readonly FileAttachment[],
+    ): boolean => {
       const validation = validateChatAttachmentFiles([
         ...existingAttachments.map(({ file }) => file),
         ...files,
@@ -27,7 +30,7 @@ export function useAttachments() {
       }
       return true;
     },
-    [attachments],
+    [],
   );
 
   const addAttachments = useCallback(
@@ -35,15 +38,19 @@ export function useAttachments() {
       files: File[],
       type: "chat-context" | "upload-to-codebase" = "chat-context",
     ): boolean => {
-      if (!validateFiles(files)) {
-        return false;
-      }
       const fileAttachments: FileAttachment[] = files.map((file) => ({
         file,
         type,
       }));
-      setAttachments((current) => [...current, ...fileAttachments]);
-      return true;
+      let didAdd = false;
+      setAttachments((current) => {
+        if (!validateFiles(files, current)) {
+          return current;
+        }
+        didAdd = true;
+        return [...current, ...fileAttachments];
+      });
+      return didAdd;
     },
     [setAttachments, validateFiles],
   );
@@ -91,7 +98,7 @@ export function useAttachments() {
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      if (validateFiles(files)) {
+      if (validateFiles(files, attachments)) {
         setPendingFiles(files);
       }
     }
@@ -121,6 +128,8 @@ export function useAttachments() {
     );
     if (!validation.ok) {
       showError(validation.message);
+      setAttachments([]);
+      setPendingFiles(null);
       return false;
     }
     setAttachments(newAttachments);
@@ -162,7 +171,7 @@ export function useAttachments() {
         }
       }
 
-      if (imageFiles.length > 0 && validateFiles(imageFiles)) {
+      if (imageFiles.length > 0 && validateFiles(imageFiles, attachments)) {
         setPendingFiles(imageFiles);
       }
     }

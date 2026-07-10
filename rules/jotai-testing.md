@@ -48,3 +48,7 @@ The vitest setup does not register `@testing-library/jest-dom`, so matchers like
 ## Hooks That Indirectly Use React Query
 
 If a `renderHook` test starts failing with `No QueryClient set, use QueryClientProvider to set one`, check whether the hook now calls another hook such as `useSettings()` or `useAppVersion()` that uses TanStack Query internally. Either wrap the test in a `QueryClientProvider` or mock the indirect hook when the test is only exercising Jotai/event behavior.
+
+## Partial `jotai` Mocks
+
+When a component test mocks `jotai`, preserve the real module exports with `importOriginal` and override only the needed hooks. A full mock that only returns `useAtomValue` can fail during test collection with `[vitest] No "atom" export is defined on the "jotai" mock` once an indirectly imported atom module calls `atom(...)`.

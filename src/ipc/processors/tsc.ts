@@ -219,9 +219,13 @@ export async function generateProblemReport({
         report,
       );
       child.kill();
-      settle(() =>
-        reject(toProblemReportError(new Error(`Worker error: ${type}`))),
-      );
+      // A V8 FatalError in the worker is almost always heap exhaustion while
+      // type-checking a very large app; surface that instead of the raw type.
+      const message: string =
+        type === "FatalError"
+          ? "Type check failed: the TypeScript worker ran out of memory. This can happen with very large apps."
+          : `Worker error: ${type}`;
+      settle(() => reject(toProblemReportError(new Error(message))));
     });
 
     // Handle worker exit. Any exit before we received a reply is unexpected
@@ -235,29 +239,35 @@ export async function generateProblemReport({
       });
     });
 
-    try {
-      const writeTags = getDyadWriteTags(fullResponse);
-      const renameTags = getDyadRenameTags(fullResponse);
-      const deletePaths = getDyadDeleteTags(fullResponse);
-      const virtualChanges = {
-        deletePaths,
-        renameTags,
-        writeTags,
-      };
+    // Send the request only after the child's IPC channel is established.
+    // Electron happens to buffer messages posted before "spawn", but that
+    // buffering is not documented API, so wait for the documented event. If
+    // the child fails to spawn, the "exit" handler above rejects instead.
+    child.on("spawn", () => {
+      try {
+        const writeTags = getDyadWriteTags(fullResponse);
+        const renameTags = getDyadRenameTags(fullResponse);
+        const deletePaths = getDyadDeleteTags(fullResponse);
+        const virtualChanges = {
+          deletePaths,
+          renameTags,
+          writeTags,
+        };
 
-      // Send input to worker
-      const input: WorkerInput = {
-        virtualChanges,
-        appPath,
-        tsBuildInfoCacheDir: getTypeScriptCachePath(),
-      };
+        // Send input to worker
+        const input: WorkerInput = {
+          virtualChanges,
+          appPath,
+          tsBuildInfoCacheDir: getTypeScriptCachePath(),
+        };
 
-      logger.info(`Sending input to TSC worker for app ${appPath}`);
+        logger.info(`Sending input to TSC worker for app ${appPath}`);
 
-      child.postMessage(input);
-    } catch (error) {
-      child.kill();
-      settle(() => reject(toProblemReportError(error)));
-    }
+        child.postMessage(input);
+      } catch (error) {
+        child.kill();
+        settle(() => reject(toProblemReportError(error)));
+      }
+    });
   });
 }

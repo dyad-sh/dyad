@@ -1,9 +1,5 @@
 import { useCallback } from "react";
-import type {
-  ComponentSelection,
-  FileAttachment,
-  ChatAttachment,
-} from "@/ipc/types";
+import type { ComponentSelection, FileAttachment } from "@/ipc/types";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   chatErrorByIdAtom,
@@ -37,7 +33,7 @@ import {
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { useVersions } from "./useVersions";
-import { showExtraFilesToast, showWarning } from "@/lib/toast";
+import { showError, showExtraFilesToast, showWarning } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -53,6 +49,8 @@ import { resolveAppIdForChat } from "@/lib/chatUtils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { isFreeProModel } from "@/lib/freeProModel";
+import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
+import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -196,6 +194,15 @@ export function useStreamChat({
         return;
       }
 
+      const attachmentValidation = validateChatAttachmentFiles(
+        (attachments ?? []).map(({ file }) => file),
+      );
+      if (!attachmentValidation.ok) {
+        showError(attachmentValidation.message);
+        onSettled?.({ success: false });
+        return;
+      }
+
       // Prevent duplicate streams - check module-level set to avoid race conditions
       if (pendingStreamChatIds.has(chatId)) {
         console.warn(
@@ -232,44 +239,10 @@ export function useStreamChat({
         return next;
       });
 
-      // Convert FileAttachment[] (with File objects) to ChatAttachment[] (base64 encoded)
-      let convertedAttachments: ChatAttachment[] | undefined;
-      if (attachments && attachments.length > 0) {
-        convertedAttachments = await Promise.all(
-          attachments.map(
-            (attachment) =>
-              new Promise<ChatAttachment>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                  resolve({
-                    name: attachment.file.name,
-                    type: attachment.file.type,
-                    data: reader.result as string,
-                    attachmentType: attachment.type,
-                  });
-                };
-                reader.onerror = () => reject(reader.error);
-                reader.readAsDataURL(attachment.file);
-              }),
-          ),
-        );
-      }
-
       let hasIncrementedStreamCount = false;
       const shouldInvalidateFreeModelQuota = isFreeProModel(
         settings?.selectedModel,
       );
-      // Resolve the target app from the chat itself when the caller didn't
-      // pass one. Falling back to `selectedAppId` is wrong for background
-      // queue processing, where the user may have switched to a different
-      // app while a queued message streams for the original chat.
-      const resolvedAppIdFromChat =
-        appId === undefined
-          ? await resolveAppIdForChat(chatId, queryClient)
-          : null;
-      const targetAppId =
-        appId ?? resolvedAppIdFromChat ?? selectedAppId ?? null;
-
       const finalizeStream = (chatId: number) => {
         pendingStreamChatIds.delete(chatId);
         latestChunkByChatId.delete(chatId);
@@ -278,6 +251,24 @@ export function useStreamChat({
       };
 
       try {
+        // Convert one file at a time so FileReader does not hold every source
+        // buffer concurrently alongside all encoded strings.
+        const convertedAttachments =
+          attachments && attachments.length > 0
+            ? await convertFileAttachmentsToChatAttachments(attachments)
+            : undefined;
+
+        // Resolve the target app from the chat itself when the caller didn't
+        // pass one. Falling back to `selectedAppId` is wrong for background
+        // queue processing, where the user may have switched to a different
+        // app while a queued message streams for the original chat.
+        const resolvedAppIdFromChat =
+          appId === undefined
+            ? await resolveAppIdForChat(chatId, queryClient)
+            : null;
+        const targetAppId =
+          appId ?? resolvedAppIdFromChat ?? selectedAppId ?? null;
+
         const cachedChat =
           requestedChatMode === null
             ? undefined

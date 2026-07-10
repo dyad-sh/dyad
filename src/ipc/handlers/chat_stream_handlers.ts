@@ -5,7 +5,7 @@ import {
   computeStreamingPatch,
   fastTextOutput,
 } from "../utils/stream_text_utils";
-import { chatContracts } from "../types/chat";
+import { chatContracts, ChatStreamParamsSchema } from "../types/chat";
 import {
   ModelMessage,
   TextPart,
@@ -36,7 +36,7 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import {
   CodebaseFile,
   extractCodebase,
@@ -157,6 +157,7 @@ import {
   type PendingStoredChatAttachment,
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
+import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -287,6 +288,17 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     let attachmentPaths: string[] = [];
     try {
+      // This legacy stream handler predates createTypedHandler, so enforce the
+      // contract explicitly before any attachment string is decoded.
+      const parsedRequest = ChatStreamParamsSchema.safeParse(req);
+      if (!parsedRequest.success) {
+        throw new DyadError(
+          parsedRequest.error.issues[0]?.message ?? "Invalid chat request.",
+          DyadErrorKind.Validation,
+        );
+      }
+      req = parsedRequest.data;
+
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
@@ -366,7 +378,12 @@ export function registerChatStreamHandlers() {
       const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
 
-      if (req.attachments && req.attachments.length > 0) {
+      // Detach the serialized payloads from the long-lived stream request as
+      // soon as they are persisted. Otherwise every base64 string remains
+      // reachable for the entire LLM turn and duplicates later disk reads.
+      let incomingAttachments = req.attachments;
+      req.attachments = undefined;
+      if (incomingAttachments && incomingAttachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
         // Create persistent .dyad/media directory for this app
@@ -376,9 +393,15 @@ export function registerChatStreamHandlers() {
         }
         await ensureDyadGitignored(appPath);
 
-        for (const attachment of req.attachments) {
-          // Extract the base64 data (remove the data:mime/type;base64, prefix)
-          const base64Data = attachment.data.split(";base64,").pop() || "";
+        for (const attachment of incomingAttachments) {
+          const inspection = inspectBase64DataUrl(attachment.data);
+          if (!inspection.ok) {
+            throw new DyadError(
+              `"${attachment.name}" is not a valid base64 attachment.`,
+              DyadErrorKind.Validation,
+            );
+          }
+          const base64Data = attachment.data.slice(inspection.payloadStart);
           const fileBuffer = Buffer.from(base64Data, "base64");
           const hash = crypto
             .createHash("sha256")
@@ -443,6 +466,7 @@ export function registerChatStreamHandlers() {
           }
         }
       }
+      incomingAttachments = undefined;
 
       // Build the full AI prompt. Attachment-specific instructions are added
       // to the user message, never the system prompt.
@@ -1977,9 +2001,10 @@ ${problemReport.problems
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
+      const errorMessage = isDyadError(error) ? error.message : String(error);
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
-        error: `Sorry, there was an error processing your request: ${error}`,
+        error: `Sorry, there was an error processing your request: ${errorMessage}`,
       });
 
       return "error";

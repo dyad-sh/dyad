@@ -443,6 +443,7 @@ import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
 import { testsClient, testsEventClient } from "./tests";
+import { queueClient } from "./queue";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -507,6 +508,7 @@ export const ipc = {
   appCollection: appCollectionClient,
   terminal: terminalClient,
   tests: testsClient,
+  queue: queueClient,
 
   // Event clients for main->renderer pub/sub
   events: {

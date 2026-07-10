@@ -52,6 +52,7 @@ import {
 import { appCollectionContracts } from "../types/app_collections";
 import { terminalContracts } from "../types/terminal";
 import { testsContracts, testsEvents } from "../types/tests";
+import { queueContracts } from "../types/queue";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -117,6 +118,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(appCollectionContracts),
   ...getInvokeChannels(terminalContracts),
   ...getInvokeChannels(testsContracts),
+  ...getInvokeChannels(queueContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

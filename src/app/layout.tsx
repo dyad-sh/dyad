@@ -16,6 +16,7 @@ import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
+import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import i18n from "@/i18n";
@@ -58,6 +59,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Process queued messages globally (even when not on chat page)
   useQueueProcessor();
+
+  // Persist queued messages to disk and hydrate them on startup, so queued
+  // prompts survive app restarts / crashes.
+  useQueuePersistence();
 
   // Auto-send integration continuation messages and clean up stale integration
   // state at the root level — keeps the dispatch alive even if the in-chat

@@ -10,6 +10,7 @@ import type {
 } from "../../../shared/code_explorer_types";
 import log from "electron-log";
 import { getTypeScriptCachePath } from "@/paths/paths";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 
 const logger = log.scope("code-explorer");
 const DEFAULT_CONFIGS = ["tsconfig.app.json", "tsconfig.json"];
@@ -319,6 +320,7 @@ function getHost(): UtilityProcess {
     execArgv: ["--expose-gc", "--max-old-space-size=3584"],
   });
   host = child;
+  let fatalError: { type: string; location: string } | null = null;
 
   child.on("message", (response: CodeExplorerHostResponse) => {
     const request = pendingRequests.get(response.requestId);
@@ -338,6 +340,7 @@ function getHost(): UtilityProcess {
   // Fatal V8 errors in the host (e.g. heap OOM). The exit event still fires
   // afterwards and performs the pending-request cleanup.
   child.on("error", (type, location, report) => {
+    fatalError = { type, location };
     logger.error(
       `Code explorer host fatal error: ${type} at ${location}`,
       report,
@@ -369,6 +372,28 @@ function getHost(): UtilityProcess {
       activeRequest && recordHostDeathForKey(activeRequest.key)
         ? activeRequest.key
         : null;
+    const crashReason = fatalError
+      ? "v8_fatal_error"
+      : code !== 0
+        ? "nonzero_exit"
+        : failed.length > 0
+          ? "exited_with_pending_requests"
+          : null;
+    if (crashReason) {
+      sendTelemetryEvent("code_explorer:host_crash", {
+        error: true,
+        generation,
+        reason: crashReason,
+        exit_code: code,
+        pending_request_count: failed.length,
+        had_active_request: activeRequest !== undefined,
+        crash_loop_guard_triggered: crashLoopedKey !== null,
+        ...(fatalError && {
+          fatal_error_type: fatalError.type,
+          fatal_error_location: fatalError.location,
+        }),
+      });
+    }
     for (const [requestId, request] of failed) {
       pendingRequests.delete(requestId);
       request.reject(

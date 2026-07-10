@@ -19,10 +19,10 @@ import { evictionPlan } from "./eviction";
 
 // This process's heap is bounded by the V8 pointer-compression cage (~4GB;
 // Electron 40 ignores a lower --max-old-space-size passed via execArgv).
-// Keeping cached indexes under ~2.5GB leaves headroom for the transient
+// Keeping cached indexes under ~2GB leaves headroom for the transient
 // ts.Program built during (re)indexing (released before the index is cached,
 // as before).
-const INDEX_CACHE_BUDGET_BYTES = 2.5 * 1024 * 1024 * 1024;
+const INDEX_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 // Secondary cap so many tiny projects don't accumulate unbounded metadata.
 const INDEX_CACHE_MAX_ENTRIES = 4;
 

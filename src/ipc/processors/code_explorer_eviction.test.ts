@@ -22,7 +22,7 @@ describe("evictionPlan", () => {
       evictionPlan({
         entries: [entry("a", 1, 200 * MB), entry("b", 2, 300 * MB)],
         usedHeapBytes: 1 * GB,
-        budgetBytes: 2.5 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 4,
       }),
     ).toEqual([]);
@@ -33,7 +33,7 @@ describe("evictionPlan", () => {
       evictionPlan({
         entries: [],
         usedHeapBytes: 3 * GB,
-        budgetBytes: 2.5 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 4,
       }),
     ).toEqual([]);
@@ -47,11 +47,11 @@ describe("evictionPlan", () => {
           entry("oldest", 10, 400 * MB),
           entry("middle", 20, 500 * MB),
         ],
-        usedHeapBytes: 3.2 * GB,
-        budgetBytes: 2.5 * GB,
+        usedHeapBytes: 2.7 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 4,
       }),
-      // oldest alone (400MB) leaves 2.8GB > 2.5GB; middle brings it to 2.3GB.
+      // Oldest alone leaves 2.3GB > 2GB; middle brings it to 1.8GB.
     ).toEqual(["oldest", "middle"]);
   });
 
@@ -60,7 +60,7 @@ describe("evictionPlan", () => {
       evictionPlan({
         entries: [entry("a", 1, 100 * MB), entry("b", 2, 100 * MB)],
         usedHeapBytes: 4 * GB,
-        budgetBytes: 2.5 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 4,
       }),
     ).toEqual(["a", "b"]);
@@ -76,7 +76,7 @@ describe("evictionPlan", () => {
           entry("b", 2, 1 * MB),
         ],
         usedHeapBytes: 100 * MB,
-        budgetBytes: 2.5 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 4,
       }),
     ).toEqual(["a"]);
@@ -92,7 +92,7 @@ describe("evictionPlan", () => {
           entry("tiny-newest", 4, 1 * MB),
         ],
         usedHeapBytes: 3 * GB,
-        budgetBytes: 2.5 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 3,
       }),
       // big-old satisfies the budget, but three remaining entries + the
@@ -110,7 +110,7 @@ describe("evictionPlan", () => {
           entry("d", 4, 0),
         ],
         usedHeapBytes: 50 * MB,
-        budgetBytes: 2.5 * GB,
+        budgetBytes: 2 * GB,
         maxEntries: 4,
       }),
     ).toEqual(["a"]);

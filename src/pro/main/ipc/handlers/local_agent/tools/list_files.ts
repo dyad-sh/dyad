@@ -7,7 +7,7 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import { extractCodebase } from "../../../../../../utils/codebase";
+import { listCodebaseFileMetadata } from "../../../../../../utils/codebase";
 import { resolveDirectoryWithinAppPath } from "./path_safety";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -158,7 +158,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
         })),
       );
     } else {
-      const { files } = await extractCodebase({
+      const files = await listCodebaseFileMetadata({
         appPath: targetAppPath,
         chatContext: {
           contextPaths: [{ globPath }],

@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { extractCodebase } from "@/utils/codebase";
+import { extractCodebase, listCodebaseFileMetadata } from "@/utils/codebase";
+import { readSettings } from "@/main/settings";
+import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -32,11 +34,20 @@ vi.mock("@/ipc/utils/git_utils", () => ({
 describe("extractCodebase", () => {
   let appDir: string | undefined;
 
+  beforeEach(() => {
+    vi.mocked(readSettings).mockReturnValue({
+      enableNativeGit: false,
+      enableDyadPro: false,
+      enableProSmartFilesContextMode: false,
+    } as ReturnType<typeof readSettings>);
+  });
+
   afterEach(async () => {
     if (appDir) {
       await fs.promises.rm(appDir, { recursive: true, force: true });
       appDir = undefined;
     }
+    vi.restoreAllMocks();
   });
 
   it("includes shader source file contents", async () => {
@@ -106,5 +117,193 @@ describe("extractCodebase", () => {
       "src.ts",
     ]);
     expect(result.formattedOutput).not.toContain(".gitattributes");
+  });
+
+  it("deterministically truncates at the aggregate byte budget", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "aaaa");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "bbbb");
+    await fs.promises.writeFile(path.join(appDir, "c.ts"), "c");
+    const fixedTime = new Date("2020-01-01T00:00:00.000Z");
+    await Promise.all(
+      ["a.ts", "b.ts", "c.ts"].map((fileName) =>
+        fs.promises.utimes(path.join(appDir!, fileName), fixedTime, fixedTime),
+      ),
+    );
+
+    const extract = () =>
+      extractCodebase({
+        appPath: appDir!,
+        chatContext: {
+          contextPaths: [],
+          smartContextAutoIncludes: [],
+        },
+        limits: {
+          maxFiles: 10,
+          maxTotalBytes: 5,
+          ioConcurrency: 2,
+        },
+      });
+
+    const firstResult = await extract();
+    const secondResult = await extract();
+
+    expect(firstResult.files.map((file) => file.path)).toEqual([
+      "a.ts",
+      "c.ts",
+    ]);
+    expect(secondResult).toEqual(firstResult);
+    expect(firstResult.truncation).toEqual({
+      totalFileCount: 3,
+      includedFileCount: 2,
+      omittedFileCount: 1,
+      includedContentBytes: 5,
+      maxFiles: 10,
+      maxTotalBytes: 5,
+      reasons: ["total-bytes"],
+    });
+    expect(firstResult.formattedOutput).toContain(
+      '<dyad-codebase-truncated included_files="2" omitted_files="1" included_content_bytes="5" max_files="10" max_total_bytes="5" reasons="total-bytes" />',
+    );
+  });
+
+  it("applies the file-count limit at its exact boundary", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        fs.promises.writeFile(
+          path.join(appDir!, `file-${index}.ts`),
+          String(index),
+        ),
+      ),
+    );
+    const fixedTime = new Date("2020-01-01T00:00:00.000Z");
+    await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        fs.promises.utimes(
+          path.join(appDir!, `file-${index}.ts`),
+          fixedTime,
+          fixedTime,
+        ),
+      ),
+    );
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+      limits: {
+        maxFiles: 3,
+        maxTotalBytes: 100,
+      },
+    });
+
+    expect(result.files.map((file) => file.path)).toEqual([
+      "file-0.ts",
+      "file-1.ts",
+      "file-2.ts",
+    ]);
+    expect(result.truncation).toMatchObject({
+      totalFileCount: 5,
+      includedFileCount: 3,
+      omittedFileCount: 2,
+      reasons: ["file-count"],
+    });
+  });
+
+  it("prioritizes forced smart-context files when a budget truncates", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "a");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "b");
+    await fs.promises.writeFile(path.join(appDir, "forced.ts"), "forced");
+    vi.mocked(readSettings).mockReturnValue({
+      enableNativeGit: false,
+      enableDyadPro: true,
+      enableProSmartFilesContextMode: true,
+    } as ReturnType<typeof readSettings>);
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [{ globPath: "forced.ts" }],
+      },
+      limits: {
+        maxFiles: 1,
+        maxTotalBytes: 100,
+      },
+    });
+
+    expect(result.files).toEqual([
+      { path: "forced.ts", content: "forced", force: true },
+    ]);
+  });
+
+  it("bounds concurrent reads and reads each selected file once", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    const fileCount = 12;
+    await Promise.all(
+      Array.from({ length: fileCount }, (_, index) =>
+        fs.promises.writeFile(
+          path.join(appDir!, `file-${String(index).padStart(2, "0")}.ts`),
+          `export const value${index} = ${index};`,
+        ),
+      ),
+    );
+
+    let activeReads = 0;
+    let maxActiveReads = 0;
+    let totalReads = 0;
+    const virtualFileSystem = new AsyncVirtualFileSystem(appDir, {
+      readFile: async (fileName) => {
+        activeReads++;
+        totalReads++;
+        maxActiveReads = Math.max(maxActiveReads, activeReads);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return await fs.promises.readFile(fileName, "utf8");
+        } finally {
+          activeReads--;
+        }
+      },
+    });
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+      virtualFileSystem,
+      limits: {
+        maxFiles: fileCount,
+        maxTotalBytes: 10_000,
+        ioConcurrency: 3,
+      },
+    });
+
+    expect(result.files).toHaveLength(fileCount);
+    expect(totalReads).toBe(fileCount);
+    expect(maxActiveReads).toBeLessThanOrEqual(3);
+  });
+
+  it("lists metadata without reading file contents", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.writeFile(path.join(appDir, "a.ts"), "secret content");
+    await fs.promises.writeFile(path.join(appDir, "b.ts"), "more content");
+    const readFileSpy = vi.spyOn(fs.promises, "readFile");
+
+    const files = await listCodebaseFileMetadata({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+    });
+
+    expect(files.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
+    expect(readFileSpy).not.toHaveBeenCalled();
   });
 });

@@ -115,22 +115,70 @@ const OMITTED_FILES = [
 // Maximum file size to include (in bytes) - 1MB
 const MAX_FILE_SIZE = 1000 * 1024;
 
+export interface CodebaseExtractionLimits {
+  maxFiles: number;
+  maxTotalBytes: number;
+  ioConcurrency: number;
+}
+
+/**
+ * Keep codebase extraction comfortably below the Electron main process heap
+ * ceiling even when callers retain both the formatted prompt and raw files.
+ */
+export const DEFAULT_CODEBASE_EXTRACTION_LIMITS: CodebaseExtractionLimits = {
+  maxFiles: 2_000,
+  maxTotalBytes: 20 * 1024 * 1024,
+  ioConcurrency: 16,
+};
+
 // Maximum size for fileContentCache
 const MAX_FILE_CACHE_SIZE = 500;
+const MAX_FILE_CACHE_BYTES = 50 * 1024 * 1024;
 
 // File content cache with timestamps
 type FileCache = {
   content: string;
   mtime: number;
+  byteLength: number;
 };
 
 // Cache for file contents
 const fileContentCache = new Map<string, FileCache>();
+let fileContentCacheBytes = 0;
 
 // Cache for git ignored paths
 const gitIgnoreCache = new Map<string, boolean>();
 // Map to store .gitignore file paths and their modification times
 const gitIgnoreMtimes = new Map<string, number>();
+
+/**
+ * Map items with bounded concurrency while preserving input order.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results: R[] = [];
+  results.length = items.length;
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(items[index], index);
+      }
+    }),
+  );
+
+  return results;
+}
 
 /**
  * Check if a path should be ignored based on git ignore rules. Uses isomorphic-git
@@ -232,10 +280,17 @@ export async function readFileWithCache(
     // Read file and update cache
     const rawContent = await fsAsync.readFile(filePath, "utf-8");
     const content = rawContent;
+    const previousEntry = fileContentCache.get(filePath);
+    if (previousEntry) {
+      fileContentCacheBytes -= previousEntry.byteLength;
+    }
+    const byteLength = Buffer.byteLength(content, "utf8");
     fileContentCache.set(filePath, {
       content,
       mtime: currentMtime,
+      byteLength,
     });
+    fileContentCacheBytes += byteLength;
 
     // Manage cache size by clearing oldest entries when it gets too large
     if (fileContentCache.size > MAX_FILE_CACHE_SIZE) {
@@ -245,8 +300,27 @@ export async function readFileWithCache(
 
       // Remove oldest entries (first in, first out)
       for (let i = 0; i < entriesToDelete; i++) {
-        fileContentCache.delete(keys[i]);
+        const entry = fileContentCache.get(keys[i]);
+        if (entry) {
+          fileContentCacheBytes -= entry.byteLength;
+          fileContentCache.delete(keys[i]);
+        }
       }
+    }
+
+    while (
+      fileContentCacheBytes > MAX_FILE_CACHE_BYTES &&
+      fileContentCache.size > 0
+    ) {
+      const oldestKey = fileContentCache.keys().next().value;
+      if (oldestKey === undefined) {
+        break;
+      }
+      const entry = fileContentCache.get(oldestKey);
+      if (entry) {
+        fileContentCacheBytes -= entry.byteLength;
+      }
+      fileContentCache.delete(oldestKey);
     }
 
     return content;
@@ -259,7 +333,10 @@ export async function readFileWithCache(
 /**
  * Traverses a directory and collects all relevant files using native Git.
  */
-async function collectFilesNativeGit(dir: string): Promise<string[]> {
+async function collectFilesNativeGit(
+  dir: string,
+  ioConcurrency: number,
+): Promise<string[]> {
   let files: string[] = [];
 
   try {
@@ -280,25 +357,23 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     );
     // Since collectFilesIsoGit traverses the directory tree manually,
     // we'll still be able to collect the files even if git fails
-    return await collectFilesIsoGit(dir, dir);
+    return await collectFilesIsoGit(dir, dir, ioConcurrency);
   }
 
   // Git cannot exclude files by size, so we still need to do that manually
   return (
-    await Promise.all(
-      files.map(async (file) => {
-        try {
-          const stats = await fsAsync.lstat(file);
-          if (!stats.isFile() || stats.size > MAX_FILE_SIZE) {
-            return "";
-          }
-          return file;
-        } catch (error) {
-          logger.error(`Failed to read file ${file}:`, error);
+    await mapWithConcurrency(files, ioConcurrency, async (file) => {
+      try {
+        const stats = await fsAsync.lstat(file);
+        if (!stats.isFile() || stats.size > MAX_FILE_SIZE) {
           return "";
         }
-      }),
-    )
+        return file;
+      } catch (error) {
+        logger.error(`Failed to read file ${file}:`, error);
+        return "";
+      }
+    })
   ).filter(Boolean);
 }
 
@@ -309,6 +384,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
 async function collectFilesIsoGit(
   dir: string,
   baseDir: string,
+  ioConcurrency: number,
 ): Promise<string[]> {
   const files: string[] = [];
 
@@ -320,53 +396,60 @@ async function collectFilesIsoGit(
     return files;
   }
 
-  try {
-    // Read directory contents
-    const entries = await fsAsync.readdir(dir, { withFileTypes: true });
+  const directories = [dir];
 
-    // Process entries concurrently
-    const promises = entries.map(async (entry) => {
-      const fullPath = path.join(dir, entry.name);
+  while (directories.length > 0) {
+    const currentDir = directories.pop()!;
+    try {
+      const entries = await fsAsync.readdir(currentDir, {
+        withFileTypes: true,
+      });
+      const results = await mapWithConcurrency(
+        entries,
+        ioConcurrency,
+        async (entry) => {
+          const fullPath = path.join(currentDir, entry.name);
 
-      // Skip excluded directories
-      if (entry.isDirectory() && EXCLUDED_DIRS.includes(entry.name)) {
-        return;
-      }
-
-      // Skip if the entry is git ignored
-      if (await isGitIgnoredIso(fullPath, baseDir)) {
-        return;
-      }
-
-      if (entry.isDirectory()) {
-        // Recursively process subdirectories
-        const subDirFiles = await collectFilesIsoGit(fullPath, baseDir);
-        files.push(...subDirFiles);
-      } else if (entry.isFile()) {
-        // Skip excluded files
-        if (EXCLUDED_FILES.includes(entry.name)) {
-          return;
-        }
-
-        // Skip files that are too large
-        try {
-          const stats = await fsAsync.stat(fullPath);
-          if (stats.size > MAX_FILE_SIZE) {
-            return;
+          if (entry.isDirectory() && EXCLUDED_DIRS.includes(entry.name)) {
+            return undefined;
           }
-        } catch (error) {
-          logger.error(`Error checking file size: ${fullPath}`, error);
-          return;
+
+          if (await isGitIgnoredIso(fullPath, baseDir)) {
+            return undefined;
+          }
+
+          if (entry.isDirectory()) {
+            return { directory: fullPath };
+          }
+
+          if (!entry.isFile() || EXCLUDED_FILES.includes(entry.name)) {
+            return undefined;
+          }
+
+          try {
+            const stats = await fsAsync.stat(fullPath);
+            if (stats.size > MAX_FILE_SIZE) {
+              return undefined;
+            }
+          } catch (error) {
+            logger.error(`Error checking file size: ${fullPath}`, error);
+            return undefined;
+          }
+
+          return { file: fullPath };
+        },
+      );
+
+      for (const result of results) {
+        if (result?.directory) {
+          directories.push(result.directory);
+        } else if (result?.file) {
+          files.push(result.file);
         }
-
-        // Include all files in the list
-        files.push(fullPath);
       }
-    });
-
-    await Promise.all(promises);
-  } catch (error) {
-    logger.error(`Error reading directory ${dir}:`, error);
+    } catch (error) {
+      logger.error(`Error reading directory ${currentDir}:`, error);
+    }
   }
 
   return files;
@@ -428,48 +511,36 @@ function shouldReadFileContentsForSmartContext({
 /**
  * Format a file for inclusion in the codebase extract
  */
-async function formatFile({
+function formatFile({
   filePath,
   normalizedRelativePath,
-  virtualFileSystem,
+  content,
 }: {
   filePath: string;
   normalizedRelativePath: string;
-  virtualFileSystem?: AsyncVirtualFileSystem;
-}): Promise<string> {
-  try {
-    // Check if we should read file contents
-    if (!shouldReadFileContents({ filePath, normalizedRelativePath })) {
-      return `<dyad-file path="${normalizedRelativePath}">
+  content: string | undefined;
+}): string {
+  if (!shouldReadFileContents({ filePath, normalizedRelativePath })) {
+    return `<dyad-file path="${normalizedRelativePath}">
 ${OMITTED_FILE_CONTENT}
 </dyad-file>
 
 `;
-    }
+  }
 
-    const content = await readFileWithCache(filePath, virtualFileSystem);
-
-    if (content == null) {
-      return `<dyad-file path="${normalizedRelativePath}">
+  if (content == null) {
+    return `<dyad-file path="${normalizedRelativePath}">
 // Error reading file
 </dyad-file>
 
 `;
-    }
+  }
 
-    return `<dyad-file path="${normalizedRelativePath}">
+  return `<dyad-file path="${normalizedRelativePath}">
 ${content}
 </dyad-file>
 
 `;
-  } catch (error) {
-    logger.error(`Error reading file: ${filePath}`, error);
-    return `<dyad-file path="${normalizedRelativePath}">
-// Error reading file: ${error}
-</dyad-file>
-
-`;
-  }
 }
 
 export interface BaseFile {
@@ -486,6 +557,283 @@ export interface CodebaseFileReference extends BaseFile {
   fileId: string;
 }
 
+export type CodebaseTruncationReason = "file-count" | "total-bytes";
+
+export interface CodebaseTruncation {
+  totalFileCount: number;
+  includedFileCount: number;
+  omittedFileCount: number;
+  includedContentBytes: number;
+  maxFiles: number;
+  maxTotalBytes: number;
+  reasons: CodebaseTruncationReason[];
+}
+
+interface PreparedCodebaseFile {
+  absolutePath: string;
+  path: string;
+  force: boolean;
+  estimatedContentBytes: number;
+}
+
+function resolveExtractionLimits(
+  limits?: Partial<CodebaseExtractionLimits>,
+): CodebaseExtractionLimits {
+  return {
+    maxFiles: Math.max(
+      0,
+      Math.floor(
+        limits?.maxFiles ?? DEFAULT_CODEBASE_EXTRACTION_LIMITS.maxFiles,
+      ),
+    ),
+    maxTotalBytes: Math.max(
+      0,
+      Math.floor(
+        limits?.maxTotalBytes ??
+          DEFAULT_CODEBASE_EXTRACTION_LIMITS.maxTotalBytes,
+      ),
+    ),
+    ioConcurrency: Math.max(
+      1,
+      Math.floor(
+        limits?.ioConcurrency ??
+          DEFAULT_CODEBASE_EXTRACTION_LIMITS.ioConcurrency,
+      ),
+    ),
+  };
+}
+
+async function prepareCodebaseFiles({
+  appPath,
+  chatContext,
+  virtualFileSystem,
+  limits,
+}: {
+  appPath: string;
+  chatContext: AppChatContext;
+  virtualFileSystem?: AsyncVirtualFileSystem;
+  limits: CodebaseExtractionLimits;
+}): Promise<PreparedCodebaseFile[] | undefined> {
+  try {
+    await fsAsync.access(appPath);
+  } catch {
+    return undefined;
+  }
+
+  const settings = readSettings();
+  const isSmartContextEnabled =
+    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
+
+  let files = settings.enableNativeGit
+    ? await collectFilesNativeGit(appPath, limits.ioConcurrency)
+    : await collectFilesIsoGit(appPath, appPath, limits.ioConcurrency);
+
+  const virtualContentByPath = new Map<string, string>();
+
+  if (virtualFileSystem) {
+    const deletedFiles = new Set(
+      virtualFileSystem
+        .getDeletedFiles()
+        .map((relativePath) => path.resolve(appPath, relativePath)),
+    );
+    files = files.filter((file) => !deletedFiles.has(file));
+
+    const oversizedVirtualFiles = new Set<string>();
+    for (const virtualFile of virtualFileSystem.getVirtualFiles()) {
+      const absolutePath = path.resolve(appPath, virtualFile.path);
+      const contentBytes = Buffer.byteLength(virtualFile.content, "utf8");
+      if (contentBytes > MAX_FILE_SIZE) {
+        oversizedVirtualFiles.add(absolutePath);
+        continue;
+      }
+
+      virtualContentByPath.set(absolutePath, virtualFile.content);
+      if (!files.includes(absolutePath)) {
+        files.push(absolutePath);
+      }
+    }
+    files = files.filter((file) => !oversizedVirtualFiles.has(file));
+  }
+
+  const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
+  const includedFiles = new Set<string>();
+  const autoIncludedFiles = new Set<string>();
+  const excludedFiles = new Set<string>();
+
+  if (contextPaths && contextPaths.length > 0) {
+    for (const contextPath of contextPaths) {
+      const pattern = createFullGlobPath({
+        appPath,
+        globPath: contextPath.globPath,
+      });
+      const matches = await glob(pattern, {
+        nodir: true,
+        absolute: true,
+        ignore: "**/node_modules/**",
+      });
+      matches.forEach((file) => includedFiles.add(path.normalize(file)));
+    }
+  }
+
+  if (
+    isSmartContextEnabled &&
+    smartContextAutoIncludes &&
+    smartContextAutoIncludes.length > 0
+  ) {
+    for (const contextPath of smartContextAutoIncludes) {
+      const pattern = createFullGlobPath({
+        appPath,
+        globPath: contextPath.globPath,
+      });
+      const matches = await glob(pattern, {
+        nodir: true,
+        absolute: true,
+        ignore: "**/node_modules/**",
+      });
+      matches.forEach((file) => {
+        const normalizedFile = path.normalize(file);
+        autoIncludedFiles.add(normalizedFile);
+        includedFiles.add(normalizedFile);
+      });
+    }
+  }
+
+  if (excludePaths && excludePaths.length > 0) {
+    for (const excludePath of excludePaths) {
+      const pattern = createFullGlobPath({
+        appPath,
+        globPath: excludePath.globPath,
+      });
+      const matches = await glob(pattern, {
+        nodir: true,
+        absolute: true,
+        ignore: "**/node_modules/**",
+      });
+      matches.forEach((file) => excludedFiles.add(path.normalize(file)));
+    }
+  }
+
+  if (contextPaths && contextPaths.length > 0) {
+    files = files.filter((file) => includedFiles.has(path.normalize(file)));
+  }
+
+  if (excludedFiles.size > 0) {
+    files = files.filter((file) => !excludedFiles.has(path.normalize(file)));
+  }
+
+  const sortedFileStats = await sortFilesByModificationTime(
+    [...new Set(files)],
+    Boolean(settings.isTestMode),
+    limits.ioConcurrency,
+  );
+
+  return sortedFileStats.map(({ file, size }) => {
+    const normalizedRelativePath = path
+      .relative(appPath, file)
+      .split(path.sep)
+      .join("/");
+    const needsContent = shouldReadFileContentsForSmartContext({
+      filePath: file,
+      normalizedRelativePath,
+    });
+    const virtualContent = virtualContentByPath.get(file);
+
+    return {
+      absolutePath: file,
+      path: normalizedRelativePath,
+      force:
+        autoIncludedFiles.has(path.normalize(file)) &&
+        !excludedFiles.has(path.normalize(file)),
+      estimatedContentBytes: needsContent
+        ? virtualContent === undefined
+          ? size
+          : Buffer.byteLength(virtualContent, "utf8")
+        : 0,
+    };
+  });
+}
+
+/**
+ * List codebase files without reading their contents. This is used by tools
+ * that only need paths and avoids constructing two full codebase copies.
+ */
+export async function listCodebaseFileMetadata({
+  appPath,
+  chatContext,
+}: {
+  appPath: string;
+  chatContext: AppChatContext;
+}): Promise<BaseFile[]> {
+  const files = await prepareCodebaseFiles({
+    appPath,
+    chatContext,
+    limits: DEFAULT_CODEBASE_EXTRACTION_LIMITS,
+  });
+
+  return (files ?? []).map((file) => ({
+    path: file.path,
+    force: file.force,
+  }));
+}
+
+function selectFilesWithinLimits(
+  files: PreparedCodebaseFile[],
+  limits: CodebaseExtractionLimits,
+): {
+  files: PreparedCodebaseFile[];
+  truncation: Omit<CodebaseTruncation, "includedContentBytes"> | undefined;
+} {
+  const prioritizedFiles = [
+    ...files.filter((file) => file.force),
+    ...files.filter((file) => !file.force),
+  ];
+  const selectedPaths = new Set<string>();
+  const reasons = new Set<CodebaseTruncationReason>();
+  let selectedBytes = 0;
+
+  for (const file of prioritizedFiles) {
+    const exceedsFileLimit = selectedPaths.size >= limits.maxFiles;
+    const exceedsByteLimit =
+      file.estimatedContentBytes > limits.maxTotalBytes - selectedBytes;
+
+    if (exceedsFileLimit || exceedsByteLimit) {
+      if (exceedsFileLimit) {
+        reasons.add("file-count");
+      }
+      if (exceedsByteLimit) {
+        reasons.add("total-bytes");
+      }
+      continue;
+    }
+
+    selectedPaths.add(file.absolutePath);
+    selectedBytes += file.estimatedContentBytes;
+  }
+
+  const selectedFiles = files.filter((file) =>
+    selectedPaths.has(file.absolutePath),
+  );
+  if (selectedFiles.length === files.length) {
+    return { files: selectedFiles, truncation: undefined };
+  }
+
+  return {
+    files: selectedFiles,
+    truncation: {
+      totalFileCount: files.length,
+      includedFileCount: selectedFiles.length,
+      omittedFileCount: files.length - selectedFiles.length,
+      maxFiles: limits.maxFiles,
+      maxTotalBytes: limits.maxTotalBytes,
+      reasons: Array.from(reasons),
+    },
+  };
+}
+
+function formatTruncationMarker(truncation: CodebaseTruncation): string {
+  return `<dyad-codebase-truncated included_files="${truncation.includedFileCount}" omitted_files="${truncation.omittedFileCount}" included_content_bytes="${truncation.includedContentBytes}" max_files="${truncation.maxFiles}" max_total_bytes="${truncation.maxTotalBytes}" reasons="${truncation.reasons.join(",")}" />\n`;
+}
+
 /**
  * Extract and format codebase files as a string to be included in prompts
  * @param appPath - Path to the codebase to extract
@@ -496,187 +844,90 @@ export async function extractCodebase({
   appPath,
   chatContext,
   virtualFileSystem,
+  limits: requestedLimits,
 }: {
   appPath: string;
   chatContext: AppChatContext;
   virtualFileSystem?: AsyncVirtualFileSystem;
+  limits?: Partial<CodebaseExtractionLimits>;
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
+  truncation?: CodebaseTruncation;
 }> {
-  const settings = readSettings();
-  const isSmartContextEnabled =
-    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
+  const limits = resolveExtractionLimits(requestedLimits);
+  const startTime = Date.now();
+  const preparedFiles = await prepareCodebaseFiles({
+    appPath,
+    chatContext,
+    virtualFileSystem,
+    limits,
+  });
 
-  try {
-    await fsAsync.access(appPath);
-  } catch {
+  if (!preparedFiles) {
     return {
       formattedOutput: `# Error: Directory ${appPath} does not exist or is not accessible`,
       files: [],
     };
   }
-  const startTime = Date.now();
 
-  // Collect all relevant files
-  let files = settings.enableNativeGit
-    ? await collectFilesNativeGit(appPath)
-    : await collectFilesIsoGit(appPath, appPath);
-
-  // Apply virtual filesystem modifications if provided
-  if (virtualFileSystem) {
-    // Filter out deleted files
-    const deletedFiles = new Set(
-      virtualFileSystem
-        .getDeletedFiles()
-        .map((relativePath) => path.resolve(appPath, relativePath)),
-    );
-    files = files.filter((file) => !deletedFiles.has(file));
-
-    // Add virtual files
-    const virtualFiles = virtualFileSystem.getVirtualFiles();
-    for (const virtualFile of virtualFiles) {
-      const absolutePath = path.resolve(appPath, virtualFile.path);
-      if (!files.includes(absolutePath)) {
-        files.push(absolutePath);
+  const selection = selectFilesWithinLimits(preparedFiles, limits);
+  const formattedResults = await mapWithConcurrency(
+    selection.files,
+    limits.ioConcurrency,
+    async (file) => {
+      const needsContent = shouldReadFileContentsForSmartContext({
+        filePath: file.absolutePath,
+        normalizedRelativePath: file.path,
+      });
+      let content = needsContent
+        ? await readFileWithCache(file.absolutePath, virtualFileSystem)
+        : undefined;
+      if (
+        content != null &&
+        Buffer.byteLength(content, "utf8") > MAX_FILE_SIZE
+      ) {
+        logger.warn(
+          `Skipping file that grew beyond the size limit: ${file.path}`,
+        );
+        content = undefined;
       }
-    }
-  }
 
-  // Collect files from contextPaths and smartContextAutoIncludes
-  const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
-  const includedFiles = new Set<string>();
-  const autoIncludedFiles = new Set<string>();
-  const excludedFiles = new Set<string>();
-
-  // Add files from contextPaths
-  if (contextPaths && contextPaths.length > 0) {
-    for (const p of contextPaths) {
-      const pattern = createFullGlobPath({
-        appPath,
-        globPath: p.globPath,
-      });
-      const matches = await glob(pattern, {
-        nodir: true,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      });
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        includedFiles.add(normalizedFile);
-      });
-    }
-  }
-
-  // Add files from smartContextAutoIncludes
-  if (
-    isSmartContextEnabled &&
-    smartContextAutoIncludes &&
-    smartContextAutoIncludes.length > 0
-  ) {
-    for (const p of smartContextAutoIncludes) {
-      const pattern = createFullGlobPath({
-        appPath,
-        globPath: p.globPath,
-      });
-      const matches = await glob(pattern, {
-        nodir: true,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      });
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        autoIncludedFiles.add(normalizedFile);
-        includedFiles.add(normalizedFile); // Also add to included files
-      });
-    }
-  }
-
-  // Add files from excludePaths
-  if (excludePaths && excludePaths.length > 0) {
-    for (const p of excludePaths) {
-      const pattern = createFullGlobPath({
-        appPath,
-        globPath: p.globPath,
-      });
-      const matches = await glob(pattern, {
-        nodir: true,
-        absolute: true,
-        ignore: "**/node_modules/**",
-      });
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        excludedFiles.add(normalizedFile);
-      });
-    }
-  }
-
-  // Only filter files if contextPaths are provided
-  // If only smartContextAutoIncludes are provided, keep all files and just mark auto-includes as forced
-  if (contextPaths && contextPaths.length > 0) {
-    files = files.filter((file) => includedFiles.has(path.normalize(file)));
-  }
-
-  // Filter out excluded files (this takes precedence over include paths)
-  if (excludedFiles.size > 0) {
-    files = files.filter((file) => !excludedFiles.has(path.normalize(file)));
-  }
-
-  // Sort files by modification time (oldest first)
-  // This is important for cache-ability.
-  const sortedFiles = await sortFilesByModificationTime(
-    [...new Set(files)],
-    Boolean(settings.isTestMode),
+      return {
+        formattedContent: formatFile({
+          filePath: file.absolutePath,
+          normalizedRelativePath: file.path,
+          content,
+        }),
+        contentBytes: content == null ? 0 : Buffer.byteLength(content, "utf8"),
+        file: {
+          path: file.path,
+          content: needsContent
+            ? (content ?? "// Error reading file")
+            : OMITTED_FILE_CONTENT,
+          force: file.force,
+        } satisfies CodebaseFile,
+      };
+    },
   );
 
-  // Format files and collect individual file contents
-  const formatPromises = sortedFiles.map(async (file) => {
-    // Get raw content for the files array
-    const normalizedRelativePath = path
-      .relative(appPath, file)
-      // Why? Normalize Windows-style paths which causes lots of weird issues (e.g. Git commit)
-      .split(path.sep)
-      .join("/");
-    const formattedContent = await formatFile({
-      filePath: file,
-      normalizedRelativePath,
-      virtualFileSystem,
-    });
-
-    const isForced =
-      autoIncludedFiles.has(path.normalize(file)) &&
-      !excludedFiles.has(path.normalize(file));
-
-    // Determine file content based on whether we should read it
-    let fileContent: string;
-    if (
-      !shouldReadFileContentsForSmartContext({
-        filePath: file,
-        normalizedRelativePath,
-      })
-    ) {
-      fileContent = OMITTED_FILE_CONTENT;
-    } else {
-      const readContent = await readFileWithCache(file, virtualFileSystem);
-      fileContent = readContent ?? "// Error reading file";
-    }
-
-    return {
-      formattedContent,
-      file: {
-        path: normalizedRelativePath,
-        content: fileContent,
-        force: isForced,
-      } satisfies CodebaseFile,
-    };
-  });
-
-  const formattedResults = await Promise.all(formatPromises);
-  const formattedFiles = formattedResults.map(
-    (result) => result.formattedContent,
-  );
+  const truncation = selection.truncation
+    ? {
+        ...selection.truncation,
+        includedContentBytes: formattedResults.reduce(
+          (total, result) => total + result.contentBytes,
+          0,
+        ),
+      }
+    : undefined;
   const filesArray = formattedResults.map((result) => result.file);
-  const formattedOutput = formattedFiles.join("");
+  let formattedOutput = formattedResults
+    .map((result) => result.formattedContent)
+    .join("");
+  if (truncation) {
+    formattedOutput += formatTruncationMarker(truncation);
+    logger.warn("Codebase extraction truncated", truncation);
+  }
 
   const endTime = Date.now();
   logger.debug("extractCodebase: time taken", endTime - startTime);
@@ -690,6 +941,7 @@ export async function extractCodebase({
   return {
     formattedOutput,
     files: filesArray,
+    truncation,
   };
 }
 
@@ -699,20 +951,23 @@ export async function extractCodebase({
 async function sortFilesByModificationTime(
   files: string[],
   forcePathSort = false,
-): Promise<string[]> {
+  ioConcurrency = DEFAULT_CODEBASE_EXTRACTION_LIMITS.ioConcurrency,
+): Promise<Array<{ file: string; mtime: number; size: number }>> {
   // Get stats for all files
-  const fileStats = await Promise.all(
-    files.map(async (file) => {
+  const fileStats = await mapWithConcurrency(
+    files,
+    ioConcurrency,
+    async (file) => {
       try {
         const stats = await fsAsync.stat(file);
-        return { file, mtime: stats.mtimeMs };
+        return { file, mtime: stats.mtimeMs, size: stats.size };
       } catch (error) {
         // If there's an error getting stats, use current time as fallback
         // This can happen with virtual files, so it's not a big deal.
         logger.warn(`Error getting file stats for ${file}:`, error);
-        return { file, mtime: Date.now() };
+        return { file, mtime: Date.now(), size: 0 };
       }
-    }),
+    },
   );
 
   if (IS_TEST_BUILD || forcePathSort) {
@@ -720,14 +975,12 @@ async function sortFilesByModificationTime(
     // This is a workaround to ensure stable ordering, although
     // ideally we'd like to sort it by modification time which is
     // important for cache-ability.
-    return fileStats
-      .sort((a, b) => a.file.localeCompare(b.file))
-      .map((item) => item.file);
+    return fileStats.sort((a, b) => a.file.localeCompare(b.file));
   }
   // Sort by modification time (oldest first)
-  return fileStats
-    .sort((a, b) => a.mtime - b.mtime || a.file.localeCompare(b.file))
-    .map((item) => item.file);
+  return fileStats.sort(
+    (a, b) => a.mtime - b.mtime || a.file.localeCompare(b.file),
+  );
 }
 
 function createFullGlobPath({

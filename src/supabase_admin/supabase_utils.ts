@@ -215,6 +215,7 @@ function isClearlyExternalSpecifier(specifier: string): boolean {
   return (
     specifier.startsWith("npm:") ||
     specifier.startsWith("jsr:") ||
+    specifier.startsWith("node:") ||
     specifier.startsWith("http://") ||
     specifier.startsWith("https://") ||
     specifier.startsWith("@supabase/")

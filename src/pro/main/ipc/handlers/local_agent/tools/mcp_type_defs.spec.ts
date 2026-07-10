@@ -13,10 +13,7 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AgentContext } from "./types";
-import {
-  MCP_RESULT_MAX_BYTES,
-  MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES,
-} from "@/ipc/utils/mcp_result_sanitizer";
+import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
@@ -370,9 +367,7 @@ describe("buildMcpCapabilityMap", () => {
   it("bounds oversized text and embedded media before returning or emitting the result", async () => {
     vi.mocked(requireMcpToolConsent).mockResolvedValue({ approved: true });
     const hugeText = "z".repeat(MCP_RESULT_MAX_BYTES * 3);
-    const hugeImage = "A".repeat(
-      Math.ceil((MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES * 8) / 3) * 4,
-    );
+    const hugeImage = "A".repeat(MCP_RESULT_MAX_BYTES * 3);
     const execute = vi.fn().mockResolvedValue({
       content: [
         { type: "image", data: hugeImage, mimeType: "image/png" },
@@ -398,7 +393,6 @@ describe("buildMcpCapabilityMap", () => {
     expect(serializedResult).not.toContain(hugeText);
     expect(serializedResult).not.toContain(hugeImage);
     expect(serializedResult).toContain("_dyadMcpTruncation");
-    expect(serializedResult).toContain("_dyadOmittedMedia");
 
     const resultXml = vi
       .mocked(ctx.onXmlComplete)

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   MCP_RESULT_MAX_BYTES,
-  MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES,
-  MCP_RESULT_MAX_ITEMS,
   sanitizeMcpToolResult,
 } from "./mcp_result_sanitizer";
 
@@ -51,112 +49,37 @@ describe("sanitizeMcpToolResult", () => {
     );
   });
 
-  it("bounds nested JSON by depth and aggregate item count", () => {
+  it("does not impose depth or item-count limits", () => {
     const nested: Record<string, unknown> = {};
     let cursor = nested;
     for (let i = 0; i < 30; i += 1) {
       cursor.next = {};
       cursor = cursor.next as Record<string, unknown>;
     }
-    nested.rows = Array.from({ length: MCP_RESULT_MAX_ITEMS * 3 }, (_, i) => ({
-      id: i,
-    }));
+    cursor.rows = Array.from({ length: 300 }, (_, i) => ({ id: i }));
 
     const result = sanitizeMcpToolResult(nested);
-    const parsed = JSON.parse(result.serialized);
-    expect(result.truncated).toBe(true);
-    expect(parsed._dyadMcpTruncation.reasons).toEqual(
-      expect.arrayContaining(["depth-limit", "item-limit"]),
-    );
-    expect(Buffer.byteLength(result.serialized, "utf8")).toBeLessThanOrEqual(
-      MCP_RESULT_MAX_BYTES,
-    );
+    expect(result.truncated).toBe(false);
+    expect(JSON.parse(result.serialized)).toEqual(nested);
   });
 
-  it("replaces oversized image and resource blobs while retaining metadata references", () => {
-    const hugeBase64 = "A".repeat(
-      Math.ceil((MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES * 8) / 3) * 4,
-    );
+  it("does not impose a separate embedded-media limit", () => {
+    const base64 = "A".repeat(32 * 1024);
     const input = {
       content: [
-        { type: "image", data: hugeBase64, mimeType: "image/png" },
+        { type: "image", data: base64, mimeType: "image/png" },
         {
           type: "resource",
           resource: {
             uri: "file:///report.bin",
             mimeType: "application/octet-stream",
-            blob: hugeBase64,
+            blob: base64,
           },
         },
       ],
     };
 
     const result = sanitizeMcpToolResult(input);
-    const parsed = JSON.parse(result.serialized);
-    expect(result.truncated).toBe(true);
-    expect(result.serialized).not.toContain(hugeBase64);
-    expect(parsed.content[0]).toMatchObject({
-      type: "image",
-      data: "",
-      mimeType: "image/png",
-      _dyadOmittedMedia: { omitted: true, kind: "image" },
-    });
-    expect(parsed.content[1].resource).toMatchObject({
-      uri: "file:///report.bin",
-      blob: "",
-      _dyadOmittedMedia: { omitted: true, kind: "resource-blob" },
-    });
-  });
-
-  it("replaces oversized base64 fields inside arbitrary structured content", () => {
-    const hugeBase64 = "B".repeat(
-      Math.ceil((MCP_RESULT_MAX_EMBEDDED_MEDIA_BYTES * 8) / 3) * 4,
-    );
-    const result = sanitizeMcpToolResult({
-      structuredContent: { nested: { blob: hugeBase64 } },
-    });
-    const parsed = JSON.parse(result.serialized);
-
-    expect(result.truncated).toBe(true);
-    expect(result.serialized).not.toContain(hugeBase64);
-    expect(parsed.structuredContent.nested.blob).toMatchObject({
-      _dyadOmittedMedia: { omitted: true, kind: "blob" },
-    });
-  });
-
-  it("enforces the aggregate media item limit without reprocessing summaries", () => {
-    const tinyBlob = "AAAA";
-    const result = sanitizeMcpToolResult({
-      content: Array.from({ length: 6 }, (_, index) => ({
-        type: "resource",
-        resource: {
-          uri: `file:///resource-${index}.bin`,
-          blob: tinyBlob,
-        },
-      })),
-    });
-    const parsed = JSON.parse(result.serialized);
-
-    expect(result.truncated).toBe(true);
-    expect(parsed._dyadMcpTruncation.reasons).toContain("media-item-limit");
-    expect(parsed.content[4].resource._dyadOmittedMedia.reason).toBe(
-      "media-item-limit",
-    );
-    expect(parsed.content[5].resource._dyadOmittedMedia.reason).toBe(
-      "media-item-limit",
-    );
-  });
-
-  it("does not count ordinary data and blob strings as embedded media", () => {
-    const input = {
-      rows: Array.from({ length: 8 }, (_, index) => ({
-        data: index % 2 === 0 ? "success" : "pending",
-        blob: `record-${index}`,
-      })),
-    };
-
-    const result = sanitizeMcpToolResult(input);
-
     expect(result).toEqual({
       value: input,
       serialized: JSON.stringify(input),
@@ -164,10 +87,10 @@ describe("sanitizeMcpToolResult", () => {
     });
   });
 
-  it("counts discarded overlong keys against the aggregate item limit", () => {
+  it("bounds results with keys that exhaust the byte budget", () => {
     const input = Object.fromEntries(
-      Array.from({ length: MCP_RESULT_MAX_ITEMS * 2 }, (_, index) => [
-        `${index}-${"k".repeat(600)}`,
+      Array.from({ length: 300 }, (_, index) => [
+        `${index}-${"k".repeat(1024)}`,
         index,
       ]),
     );
@@ -176,12 +99,10 @@ describe("sanitizeMcpToolResult", () => {
     const parsed = JSON.parse(result.serialized);
 
     expect(result.truncated).toBe(true);
-    expect(parsed._dyadMcpTruncation.reasons).toEqual(
-      expect.arrayContaining(["byte-budget", "item-limit"]),
-    );
-    expect(parsed._dyadMcpTruncation.omittedItems).toBeGreaterThanOrEqual(
-      MCP_RESULT_MAX_ITEMS,
-    );
+    expect(parsed._dyadMcpTruncation.reasons).toEqual(["byte-budget"]);
+    expect(parsed._dyadMcpTruncation.limits).toEqual({
+      maxBytes: MCP_RESULT_MAX_BYTES,
+    });
   });
 
   it("preserves __proto__ as an own data property without mutating prototypes", () => {

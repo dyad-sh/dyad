@@ -33,13 +33,26 @@ testSkipIfWindows("local-agent - explore_code experiment", async ({ po }) => {
   await po.chatActions.selectLocalAgentMode();
   await po.sendPrompt("tc=local-agent/explore-code");
 
-  const card = po.page.getByTestId("dyad-explore-code");
+  // .first(): while the run streams, the live-preview overlay card and the
+  // committed card can briefly coexist during the overlay→commit handoff.
+  const card = po.page.getByTestId("subagent-card").first();
   await expect(card).toBeVisible({ timeout: Timeout.LONG });
+  await expect(card).toContainText("App component render flow");
+  await expect(
+    po.page.getByTestId("subagent-card-subtitle").first(),
+  ).toContainText("confidence");
+
+  // Clicking the card opens the Agents panel deep-linked to this run.
   await card.click();
-  await expect(card).toContainText("explore_code report");
-  await expect(card).toContainText("src/App.tsx");
-  await expect(card).toContainText("compiler-backed symbol window");
-  await expect(card).toContainText("Read targets");
+  const detail = po.page.getByTestId("agents-panel-detail");
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText("App component render flow");
+  // Step timeline records the forced explore_code first step.
+  await expect(detail).toContainText("explore_code");
+  // Structured output renders the flow with jump-to-code file links.
+  await expect(detail).toContainText("src/App.tsx");
+  await expect(detail).toContainText("confidence");
+  await expect(detail).toContainText("Read targets");
 
   await po.snapshotMessages();
 });

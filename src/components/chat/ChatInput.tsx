@@ -66,6 +66,7 @@ import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
+import { ActiveSubagentsBar } from "@/components/subagents/ActiveSubagentsBar";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 import {
   selectedComponentsPreviewAtom,
@@ -822,6 +823,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         >
           {/* Show active questionnaire if exists */}
           <QuestionnaireInput />
+
+          {/* Sub-agent runs for the in-flight turn (click opens Agents panel) */}
+          <ActiveSubagentsBar />
 
           {/* Show todo list if there are todos for this chat */}
           {chatTodos.length > 0 && <TodoList todos={chatTodos} />}

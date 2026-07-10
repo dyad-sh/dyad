@@ -205,6 +205,7 @@
     "publish": "Publish",
     "tests": "Tests",
     "plan": "Plan",
+    "agents": "Agents",
     "moreOptions": "More options",
     "rebuild": "Rebuild",
     "rebuildDescription": "Re-installs node_modules and restarts",

@@ -6,9 +6,11 @@ import {
   selectedVersionIdAtom,
 } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { hasLiveSubagentRunAtom } from "@/atoms/subagentAtoms";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import {
   AlertTriangle,
+  Bot,
   Code,
   Diff,
   Eye,
@@ -43,6 +45,7 @@ const OVERFLOW_MODES = [
   "problems",
   "security",
   "tests",
+  "agents",
 ] as const satisfies readonly Exclude<PreviewMode, "plan">[];
 // Modes that show an experimental pill in their toolbar entry.
 const EXPERIMENTAL_MODES = new Set<PreviewMode>(["tests"]);
@@ -60,6 +63,7 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
   const selectedVersionId = useAtomValue(selectedVersionIdAtom);
   const isVersionSelected = selectedVersionId != null;
   const { problemReport } = useCheckProblems(selectedAppId);
+  const hasLiveSubagentRun = useAtomValue(hasLiveSubagentRunAtom);
 
   // When a version is selected, only the preview/diff panels are available.
   // Coerce a stale previewMode (e.g. "configure", "problems") to the preview
@@ -133,6 +137,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
       label: t("preview.tests"),
       testId: "tests-mode-button",
     },
+    agents: {
+      icon: <Bot size={16} />,
+      label: t("preview.agents"),
+      testId: "agents-mode-button",
+    },
   };
 
   const renderButton = (mode: ToolbarMode) => {
@@ -143,6 +152,11 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
         <span className="absolute -top-1 -right-1 px-1 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
           {displayCount}
         </span>
+      ) : mode === "agents" && hasLiveSubagentRun ? (
+        <span
+          className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500 animate-pulse"
+          data-testid="agents-live-indicator"
+        />
       ) : null;
     return (
       <Tooltip key={mode}>
@@ -232,6 +246,9 @@ const PreviewToolbarModeButtons = ({ isCompact }: ModeButtonsProps) => {
                     <span className="ml-auto px-1.5 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
                       {displayCount}
                     </span>
+                  )}
+                  {mode === "agents" && hasLiveSubagentRun && (
+                    <span className="ml-auto size-2 rounded-full bg-amber-500 animate-pulse" />
                   )}
                 </DropdownMenuItem>
               );

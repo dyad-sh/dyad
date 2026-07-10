@@ -202,6 +202,7 @@
     "publish": "发布",
     "tests": "测试",
     "plan": "计划",
+    "agents": "智能体",
     "moreOptions": "更多选项",
     "rebuild": "重新构建",
     "rebuildDescription": "重新安装 node_modules 并重启",

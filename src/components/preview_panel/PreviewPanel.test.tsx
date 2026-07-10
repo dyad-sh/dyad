@@ -174,6 +174,16 @@ vi.mock("./SecurityPanel", () => ({
   SecurityPanel: () => <div>Security panel</div>,
 }));
 
+vi.mock("./AgentsPanel", () => ({
+  AgentsPanel: () => <div>Agents panel</div>,
+}));
+
+// TestsPanel imports chatAtoms, whose module-scope atom() calls are
+// incompatible with this file's full jotai mock.
+vi.mock("./TestsPanel", () => ({
+  TestsPanel: () => <div>Tests panel</div>,
+}));
+
 describe("PreviewPanel", () => {
   beforeEach(() => {
     resetPreviewAutoInstallGuardForTests();

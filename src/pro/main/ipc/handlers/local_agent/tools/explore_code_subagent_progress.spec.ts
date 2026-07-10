@@ -3,9 +3,8 @@ import { describe, expect, it } from "vitest";
 import type {
   CandidateId,
   ExplorerCandidate,
-  SubagentObservation,
 } from "./explore_code_subagent_candidates";
-import { formatExploreProgressLog } from "./explore_code_subagent_progress";
+import { formatExploreStepSummary } from "./explore_code_subagent_progress";
 
 function createCandidate(id: CandidateId): ExplorerCandidate {
   return {
@@ -25,26 +24,28 @@ function createCandidate(id: CandidateId): ExplorerCandidate {
   };
 }
 
-describe("formatExploreProgressLog", () => {
-  it("returns a placeholder when there are no observations yet", () => {
-    expect(formatExploreProgressLog([])).toBe("Exploring...");
-  });
-
-  it("formats a compact step log for common sub-agent tools", () => {
-    const observations: SubagentObservation[] = [
-      {
+describe("formatExploreStepSummary", () => {
+  it("formats compact summaries for common sub-agent tools", () => {
+    expect(
+      formatExploreStepSummary({
         toolName: "explore_code",
         args: { query: "create booking flow" },
         result: "",
         candidates: [createCandidate("c1")],
-      },
-      {
+      }),
+    ).toBe('explore_code "create booking flow" → 1 candidate');
+
+    expect(
+      formatExploreStepSummary({
         toolName: "grep",
         args: { query: "handleSubmit", include_pattern: "src/**/*.ts" },
         result: "",
         candidates: [createCandidate("c2"), createCandidate("c3")],
-      },
-      {
+      }),
+    ).toBe('grep "handleSubmit" in src/**/*.ts → 2 candidates');
+
+    expect(
+      formatExploreStepSummary({
         toolName: "read_file",
         args: {
           path: "src/App.tsx",
@@ -53,48 +54,31 @@ describe("formatExploreProgressLog", () => {
         },
         result: "",
         candidates: [],
-      },
-    ];
-
-    const log = formatExploreProgressLog(observations);
-
-    expect(log).toContain("Exploring...");
-    expect(log).toContain(
-      '1. explore_code "create booking flow" → 1 candidate',
-    );
-    expect(log).toContain(
-      '2. grep "handleSubmit" in src/**/*.ts → 2 candidates',
-    );
-    expect(log).toContain("3. read_file src/App.tsx:10-40 → 0 candidates");
+      }),
+    ).toBe("read_file src/App.tsx:10-40 → 0 candidates");
   });
 
   it("truncates very long queries", () => {
     const longQuery = "a".repeat(100);
-    const log = formatExploreProgressLog([
-      {
-        toolName: "explore_code",
-        args: { query: longQuery },
-        result: "",
-        candidates: [],
-      },
-    ]);
-
-    expect(log).toContain(`${"a".repeat(71)}…`);
-    expect(log).not.toContain(longQuery);
-  });
-
-  it("shows only the most recent steps when the log is long", () => {
-    const observations = Array.from({ length: 35 }, (_, index) => ({
-      toolName: "grep",
-      args: { query: `term-${index}` },
+    const summary = formatExploreStepSummary({
+      toolName: "explore_code",
+      args: { query: longQuery },
       result: "",
       candidates: [],
-    }));
+    });
 
-    const log = formatExploreProgressLog(observations);
+    expect(summary).toContain(`${"a".repeat(71)}…`);
+    expect(summary).not.toContain(longQuery);
+  });
 
-    expect(log).toContain("showing last 30 of 35 steps");
-    expect(log).not.toContain("term-0");
-    expect(log).toContain('grep "term-34"');
+  it("omits the candidate suffix for failed observations", () => {
+    const summary = formatExploreStepSummary({
+      toolName: "grep",
+      args: { query: "term" },
+      result: "Tool grep failed: boom",
+      candidates: [],
+    });
+
+    expect(summary).toBe('grep "term"');
   });
 });

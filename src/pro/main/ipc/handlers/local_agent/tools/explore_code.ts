@@ -5,19 +5,16 @@ import {
   formatCodeExplorerDisabledReason,
   getCodeExplorerAvailability,
 } from "@/ipc/processors/code_explorer";
-import {
-  AgentContext,
-  ToolDefinition,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
-import type { CodeExplorerResult } from "../../../../../../../shared/code_explorer_types";
+import { AgentContext, ToolDefinition, escapeXmlAttr } from "./types";
 import {
   exploreCodeSchema,
   normalizeExploreCodeArgsForApp,
 } from "./explore_code_raw";
 import { runExploreCodeSubagent } from "./explore_code_subagent";
+import { formatExploreStepSummary } from "./explore_code_subagent_progress";
+import { createSubagentUiEmitter } from "./subagent_ui";
 import { resolveTargetAppPath } from "./resolve_app_context";
+import type { ExplorerOutputData } from "@/shared/subagent_types";
 
 export function getExploreCodeAvailability(ctx: AgentContext): {
   enabled: boolean;
@@ -62,25 +59,17 @@ function getExploreCodeAvailabilityForAppPath(
   };
 }
 
-function buildExploreCodeAttributes(
-  args: Partial<z.infer<typeof exploreCodeSchema>>,
-  result?: CodeExplorerResult,
-): string {
-  const attrs: string[] = [];
-  if (args.query) attrs.push(`query="${escapeXmlAttr(args.query)}"`);
-  if (args.intent) attrs.push(`intent="${escapeXmlAttr(args.intent)}"`);
-  if (args.app_name) attrs.push(`app_name="${escapeXmlAttr(args.app_name)}"`);
-  if (args.tsconfig_path) {
-    attrs.push(`tsconfig_path="${escapeXmlAttr(args.tsconfig_path)}"`);
+function formatExplorerOutputSummary(output: ExplorerOutputData): string {
+  const paths = new Set<string>([
+    ...output.flow.map((entry) => entry.path),
+    ...output.readTargets.map((target) => target.path),
+  ]);
+  const fileCount = paths.size;
+  const fileText = `${fileCount} file${fileCount === 1 ? "" : "s"}`;
+  if (output.action === "skip_explore_result") {
+    return "nothing relevant found";
   }
-  if (result) {
-    attrs.push(`files="${result.files.length}"`);
-    attrs.push(`symbols="${result.totalSymbols}"`);
-    attrs.push(`index_ms="${result.indexMs}"`);
-    attrs.push(`search_ms="${result.searchMs}"`);
-    if (result.truncated) attrs.push(`truncated="true"`);
-  }
-  return attrs.join(" ");
+  return `${output.confidence} confidence · ${fileText}`;
 }
 
 export const exploreCodeTool: ToolDefinition<
@@ -120,7 +109,16 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
   buildXml: (args, isComplete) => {
     if (!args.query) return undefined;
     if (isComplete) return undefined;
-    return `<dyad-explore-code ${buildExploreCodeAttributes(args)}>Exploring...`;
+    // Placeholder while the tool-call args stream; execute() replaces this
+    // with the run's streamed <dyad-subagent> events (see subagent_ui.ts).
+    const attrs = [
+      `type="code-explorer"`,
+      `title="${escapeXmlAttr(args.query)}"`,
+    ];
+    if (args.app_name) {
+      attrs.push(`app-name="${escapeXmlAttr(args.app_name)}"`);
+    }
+    return `<dyad-subagent ${attrs.join(" ")}>\n`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -135,22 +133,44 @@ Only use this for files included in the app's TypeScript config. JavaScript and 
       fallbackTsconfigPath: availability.tsconfigPath,
     });
 
-    const streamExploreProgress = (progressText: string) => {
-      ctx.onXmlStream(
-        `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)}>\n${escapeXmlContent(progressText)}`,
-      );
-    };
-
-    streamExploreProgress("Exploring...");
-
-    const resultText = await runExploreCodeSubagent({
-      args: effectiveArgs,
+    const emitter = createSubagentUiEmitter({
+      type: "code-explorer",
+      title: effectiveArgs.query,
+      appName: effectiveArgs.app_name,
       ctx,
-      onProgress: streamExploreProgress,
     });
-    ctx.onXmlComplete(
-      `<dyad-explore-code ${buildExploreCodeAttributes(effectiveArgs)}>\n${escapeXmlContent(resultText)}\n</dyad-explore-code>`,
-    );
+
+    let structuredOutput: ExplorerOutputData | null = null;
+    let resultText: string;
+    try {
+      resultText = await runExploreCodeSubagent({
+        args: effectiveArgs,
+        ctx,
+        onObservation: (observation, index) => {
+          emitter.step({
+            index: index + 1,
+            toolName: observation.toolName,
+            summary: formatExploreStepSummary(observation),
+            detail: observation.result,
+            status: "done",
+          });
+        },
+        onOutput: (output) => {
+          structuredOutput = output;
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      emitter.error(`Exploration failed: ${message}`);
+      throw error;
+    }
+
+    emitter.complete({
+      summary: structuredOutput
+        ? formatExplorerOutputSummary(structuredOutput)
+        : "report ready",
+      data: structuredOutput,
+    });
     return resultText;
   },
 };

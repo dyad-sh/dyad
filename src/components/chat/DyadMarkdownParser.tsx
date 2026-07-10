@@ -63,6 +63,7 @@ import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { DyadScript } from "./DyadScript";
+import { SubagentCard } from "@/components/subagents/SubagentCard";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -750,6 +751,16 @@ function renderCustomTag(
         </DyadGrep>
       );
 
+    case "dyad-subagent":
+      return (
+        <SubagentCard
+          state={getState({ isStreaming, inProgress })}
+          attributes={attributes}
+          content={content}
+        />
+      );
+
+    // Legacy tag kept for messages persisted before the sub-agent panel.
     case "dyad-explore-code":
       return (
         <DyadExploreCode

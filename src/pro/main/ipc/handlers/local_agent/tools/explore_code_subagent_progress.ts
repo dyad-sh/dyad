@@ -1,30 +1,24 @@
 import type { SubagentObservation } from "./explore_code_subagent_candidates";
 
 const MAX_QUERY_CHARS = 72;
-const MAX_PROGRESS_LINES = 30;
 
-export function formatExploreProgressLog(
-  observations: SubagentObservation[],
+/**
+ * One-line human-readable summary of a single sub-agent observation, e.g.
+ * `grep "handleSubmit" in src → 2 candidates`. Used as the step summary in
+ * the streamed <dyad-subagent> events.
+ */
+export function formatExploreStepSummary(
+  observation: SubagentObservation,
 ): string {
-  if (observations.length === 0) {
-    return "Exploring...";
-  }
+  return `${formatObservationSummary(observation)}${formatCandidateSuffix(observation)}`;
+}
 
-  const visible = observations.slice(-MAX_PROGRESS_LINES);
-  const offset = observations.length - visible.length;
-  const lines = visible.map((observation, index) => {
-    const step = offset + index + 1;
-    const summary = formatObservationSummary(observation);
-    const candidateSuffix = formatCandidateSuffix(observation);
-    return `${step}. ${summary}${candidateSuffix}`;
-  });
-
-  const header =
-    observations.length > MAX_PROGRESS_LINES
-      ? `Exploring... (showing last ${MAX_PROGRESS_LINES} of ${observations.length} steps)\n\n`
-      : "Exploring...\n\n";
-
-  return `${header}${lines.join("\n")}`;
+export function isObservationFailure(result: string): boolean {
+  return (
+    result.includes("budget exhausted") ||
+    result.startsWith("Tool ") ||
+    result.startsWith("Sub-agent read-only tool budget")
+  );
 }
 
 function formatCandidateSuffix(observation: SubagentObservation): string {
@@ -33,14 +27,6 @@ function formatCandidateSuffix(observation: SubagentObservation): string {
     return "";
   }
   return ` → ${count} candidate${count === 1 ? "" : "s"}`;
-}
-
-function isObservationFailure(result: string): boolean {
-  return (
-    result.includes("budget exhausted") ||
-    result.startsWith("Tool ") ||
-    result.startsWith("Sub-agent read-only tool budget")
-  );
 }
 
 function formatObservationSummary(observation: SubagentObservation): string {

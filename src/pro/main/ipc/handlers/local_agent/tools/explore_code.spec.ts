@@ -97,25 +97,28 @@ describe("exploreCodeTool", () => {
           args: expect.objectContaining({ intent: "locate" }),
         }),
       );
-      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
-        expect.stringContaining('intent="locate"'),
-      );
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });
     }
   });
 
-  it("streams in-progress XML while the sub-agent runs", async () => {
+  it("streams sub-agent step events while the sub-agent runs", async () => {
     const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-stream-"));
     const ctx = createMockContext(appPath);
     mocks.runExploreCodeSubagent.mockImplementation(
       async ({
-        onProgress,
+        onObservation,
       }: {
-        onProgress?: (progressText: string) => void;
+        onObservation?: (observation: unknown, index: number) => void;
       }) => {
-        onProgress?.(
-          'Exploring...\n\n1. explore_code "App flow" → 2 candidates',
+        onObservation?.(
+          {
+            toolName: "explore_code",
+            args: { query: "App flow" },
+            result: "observed",
+            candidates: [{}, {}],
+          },
+          0,
         );
         return buildReport("src/App.tsx", "1-10");
       },
@@ -127,12 +130,83 @@ describe("exploreCodeTool", () => {
         ctx,
       );
 
+      // Meta event streams before the first step.
       expect(ctx.onXmlStream).toHaveBeenCalledWith(
-        expect.stringContaining("Exploring..."),
+        expect.stringContaining("<dyad-subagent"),
       );
+      // The step summary lives inside a JSON-encoded NDJSON line, so its
+      // quotes appear backslash-escaped in the streamed XML body.
       expect(ctx.onXmlStream).toHaveBeenCalledWith(
-        expect.stringContaining('1. explore_code "App flow" → 2 candidates'),
+        expect.stringContaining('explore_code \\"App flow\\"'),
       );
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("commits a closed dyad-subagent tag with the structured output", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-done-"));
+    const ctx = createMockContext(appPath);
+    mocks.runExploreCodeSubagent.mockImplementation(
+      async ({ onOutput }: { onOutput?: (output: unknown) => void }) => {
+        onOutput?.({
+          query: "App flow",
+          intent: "locate",
+          confidence: "high",
+          action: "read_targets",
+          flow: [
+            {
+              path: "src/App.tsx",
+              range: "1-10",
+              role: "entry",
+              fact: "App is rendered.",
+              quote: "export const App = 1;",
+            },
+          ],
+          readTargets: [],
+          missing: [],
+          searchTargets: [],
+        });
+        return buildReport("src/App.tsx", "1-10");
+      },
+    );
+
+    try {
+      const result = await exploreCodeTool.execute(
+        { query: "App flow", intent: "locate" },
+        ctx,
+      );
+
+      // The parent model still receives the text report.
+      expect(result).toContain("## explore_code report");
+
+      const finalXml = (ctx.onXmlComplete as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(finalXml).toContain('type="code-explorer"');
+      expect(finalXml).toContain('run-id="run_');
+      expect(finalXml).toContain('status="completed"');
+      expect(finalXml).toContain("</dyad-subagent>");
+      expect(finalXml).toContain("high confidence · 1 file");
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("commits an error tag when the sub-agent throws", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-err-"));
+    const ctx = createMockContext(appPath);
+    mocks.runExploreCodeSubagent.mockRejectedValue(new Error("boom"));
+
+    try {
+      await expect(
+        exploreCodeTool.execute({ query: "App flow", intent: "locate" }, ctx),
+      ).rejects.toThrow("boom");
+
+      const finalXml = (ctx.onXmlComplete as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(finalXml).toContain('status="error"');
+      expect(finalXml).toContain("Exploration failed: boom");
+      expect(finalXml).toContain("</dyad-subagent>");
     } finally {
       await fs.rm(appPath, { recursive: true, force: true });
     }
@@ -162,9 +236,6 @@ describe("exploreCodeTool", () => {
         }),
       );
       expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
-        expect.stringContaining('tsconfig_path="tsconfig.json"'),
-      );
-      expect(ctx.onXmlComplete).toHaveBeenLastCalledWith(
         expect.not.stringContaining("webapp/tsconfig.json"),
       );
     } finally {
@@ -191,12 +262,11 @@ describe("exploreCodeTool", () => {
         { query: "App flow", intent: "locate", app_name: "other-app" },
         false,
       );
-      expect(xml).toContain("<dyad-explore-code");
-      expect(xml).toContain('query="App flow"');
-      expect(xml).toContain('intent="locate"');
-      expect(xml).toContain('app_name="other-app"');
-      expect(xml).toContain("Exploring...");
-      expect(xml).not.toContain("</dyad-explore-code>");
+      expect(xml).toContain("<dyad-subagent");
+      expect(xml).toContain('type="code-explorer"');
+      expect(xml).toContain('title="App flow"');
+      expect(xml).toContain('app-name="other-app"');
+      expect(xml).not.toContain("</dyad-subagent>");
     });
   });
 });

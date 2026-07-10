@@ -14,14 +14,19 @@ import {
   type SubagentObservation,
 } from "./explore_code_subagent_candidates";
 import { getRankedCandidates } from "./explore_code_subagent_candidates";
+import type {
+  ExploreAction,
+  ExploreConfidence,
+  ExploreIntent,
+  ExplorerOutputData,
+} from "@/shared/subagent_types";
 
-export type ExploreIntent = "explain" | "locate" | "edit" | "debug";
-export type ReportAction =
-  | "answer_from_report"
-  | "read_targets"
-  | "targeted_gap_search"
-  | "skip_explore_result";
-export type Confidence = "high" | "medium" | "low";
+// Canonical definitions live in src/shared/subagent_types.ts so the renderer
+// (sub-agent panel) can share them; re-exported here under the report module's
+// historical names.
+export type { ExploreIntent };
+export type ReportAction = ExploreAction;
+export type Confidence = ExploreConfidence;
 
 export const MAX_PRIMARY_FILES = 5;
 export const MAX_READ_TARGETS = 8;
@@ -486,6 +491,89 @@ export interface ReportMachine {
   action: ReportAction;
   confidence: Confidence;
   paths: Array<{ path: string; range: string }>;
+}
+
+// Structured projection of an accepted report for the renderer's sub-agent
+// panel. Unlike the text report (token-budgeted for the parent model), this
+// keeps the full resolved flow/read-target lists for rich display.
+export function buildStructuredOutput({
+  query,
+  intent,
+  resolved,
+  outcome,
+}: {
+  query: string;
+  intent: ExploreIntent;
+  resolved: ResolvedSelection;
+  outcome: Outcome;
+}): ExplorerOutputData {
+  return {
+    query,
+    intent,
+    confidence: outcome.confidence,
+    action: outcome.action,
+    flow: resolved.flow.map((link) => ({
+      path: link.candidate.path,
+      range: rangeForOutput(link.candidate),
+      role: link.role,
+      fact: link.fact,
+      quote: link.quote,
+    })),
+    readTargets: effectiveReadTargets(resolved).map((target) => ({
+      path: target.candidate.path,
+      range: rangeForOutput(target.candidate),
+      purpose: target.purpose,
+    })),
+    missing: resolved.missingCoverage,
+    searchTargets: resolved.searchTargets,
+  };
+}
+
+// Structured counterpart of buildDeterministicReport for runs where the model
+// never produced a usable selection.
+export function buildDeterministicStructuredOutput({
+  query,
+  intent,
+  observations,
+}: {
+  query: string;
+  intent: ExploreIntent;
+  observations: SubagentObservation[];
+}): ExplorerOutputData {
+  const candidates = getRankedCandidates(observations, query);
+  const primary = candidates.slice(0, MAX_PRIMARY_FILES);
+  const readTargets = primary.filter((candidate) => candidate.range);
+  const action: ReportAction =
+    readTargets.length > 0 ? "read_targets" : "targeted_gap_search";
+  return {
+    query,
+    intent,
+    confidence: "low",
+    action,
+    flow: primary.map((candidate) => ({
+      path: candidate.path,
+      range: rangeForOutput(candidate),
+      role: "observed",
+      fact: candidate.provenance.join("; "),
+      quote: "",
+    })),
+    readTargets: readTargets.map((candidate) => ({
+      path: candidate.path,
+      range: rangeForOutput(candidate),
+      purpose: "observed fallback target",
+    })),
+    missing: [
+      primary.length > 0
+        ? "submit_report was not called"
+        : "no relevant candidates observed",
+    ],
+    searchTargets: action === "targeted_gap_search" ? getQueryTerms(query) : [],
+  };
+}
+
+function rangeForOutput(candidate: ExplorerCandidate): string | null {
+  const clamped = clampRangeForReport(candidate.range);
+  return clamped ? formatRange(clamped) : null;
 }
 
 // Deterministic fallback when the model never produced a usable selection

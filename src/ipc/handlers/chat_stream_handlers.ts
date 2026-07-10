@@ -158,6 +158,7 @@ import {
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
 import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
+import { toRendererMessage } from "../utils/renderer_chat_message";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -762,7 +763,7 @@ ${componentSnippet}
       // Send the messages right away so that the loading state is shown for the message.
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
-        messages: updatedChat.messages,
+        messages: updatedChat.messages.map(toRendererMessage),
       });
 
       let fullResponse = "";
@@ -1968,7 +1969,7 @@ ${problemReport.problems
 
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
-            messages: chat!.messages,
+            messages: chat!.messages.map(toRendererMessage),
           });
 
           if (status.error) {

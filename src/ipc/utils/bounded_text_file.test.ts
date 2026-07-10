@@ -40,6 +40,21 @@ describe("bounded text file reads", () => {
       ).resolves.toBe("const greeting = 'héllo 🙂';\n");
     });
 
+    it("allows in-root paths whose first segment starts with two dots", async () => {
+      const directoryPath = path.join(rootPath, "..foo");
+      const filePath = path.join(directoryPath, "valid.txt");
+      await fs.mkdir(directoryPath);
+      await fs.writeFile(filePath, "still inside the app\n");
+
+      await expect(
+        readAppFileForEditor({
+          rootPath,
+          filePath,
+          displayPath: "..foo/valid.txt",
+        }),
+      ).resolves.toBe("still inside the app\n");
+    });
+
     it("rejects an oversized sparse file before reading its contents", async () => {
       const filePath = path.join(rootPath, "huge.txt");
       await fs.writeFile(filePath, "small prefix");

@@ -52,7 +52,11 @@ function isNodeErrorWithCode(
 
 function isOutsideRoot(rootPath: string, candidatePath: string): boolean {
   const relative = path.relative(rootPath, candidatePath);
-  return relative.startsWith("..") || path.isAbsolute(relative);
+  return (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  );
 }
 
 async function openContainedFile({

@@ -231,12 +231,16 @@ export function resetSupabaseDeployQueuesForTests(): void {
 
 function canReservePayloadBytes(estimatedBytes: number): boolean {
   if (estimatedBytes === 0) {
-    return true;
+    // Zero means the caller has no payload estimate. Let these lightweight
+    // operations share the normal budget, but do not admit them alongside an
+    // oversized payload that was granted the run-alone escape hatch below.
+    return activePayloadBytes <= SUPABASE_DEPLOY_ACTIVE_PAYLOAD_BYTE_BUDGET;
   }
-  if (activePayloadBytes === 0) {
+  if (estimatedBytes > SUPABASE_DEPLOY_ACTIVE_PAYLOAD_BYTE_BUDGET) {
     // Avoid deadlock if a future caller raises the per-payload limit without
-    // also updating the active budget. Such a payload still runs alone.
-    return true;
+    // also updating the active budget. Admit that payload only when no other
+    // task is active, including tasks without a byte estimate.
+    return activeTaskCount === 0;
   }
   return (
     activePayloadBytes + estimatedBytes <=

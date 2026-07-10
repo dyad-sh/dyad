@@ -920,7 +920,17 @@ async function deploySupabaseFunctionUnqueued({
     });
     if (res.status === 429) {
       const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"));
-      await res.body?.cancel().catch(() => undefined);
+      const responseBody = res.body as unknown as {
+        cancel?: () => unknown;
+      } | null;
+      if (typeof responseBody?.cancel === "function") {
+        try {
+          await responseBody.cancel();
+        } catch {
+          // The response is being discarded before a retry, so cancellation
+          // failures must not replace the original rate-limit signal.
+        }
+      }
       throw new RateLimitError(
         `Rate limited (429): ${res.statusText}`,
         res,
@@ -1148,6 +1158,8 @@ async function getSharedFiles(
     return { signature: "", files: [], byteSize: 0 };
   }
 
+  await assertSharedFilesPlanCurrent(plan, plan.sourceKey, functionName);
+
   const cached = sharedFilesCache.get(plan.sourceKey, plan.signature);
   if (cached) {
     return cached;
@@ -1180,6 +1192,39 @@ async function getSharedFiles(
   }
 }
 
+async function assertSharedFilesPlanCurrent(
+  plan: SharedFilesPlan,
+  sourceKey: string,
+  functionName: string,
+): Promise<void> {
+  let currentEntries: FileStatEntry[];
+  try {
+    currentEntries = await listFilesWithStats(
+      sourceKey,
+      "_shared",
+      createSupabaseDeployPayloadBudget(
+        `Supabase function ${functionName} shared modules`,
+      ),
+    );
+  } catch (error) {
+    if (error instanceof DyadError) {
+      throw error;
+    }
+    throw new DyadError(
+      `Supabase deployment source changed while preparing ${functionName} shared modules. Please retry the deployment.`,
+      DyadErrorKind.Conflict,
+      { cause: error },
+    );
+  }
+
+  if (buildSignature(currentEntries) !== plan.signature) {
+    throw new DyadError(
+      `Supabase deployment source changed while preparing ${functionName} shared modules. Please retry the deployment.`,
+      DyadErrorKind.Conflict,
+    );
+  }
+}
+
 export async function listFilesWithStats(
   directory: string,
   prefix: string,
@@ -1202,6 +1247,12 @@ export async function listFilesWithStats(
       entries.push(...nestedEntries);
     } else if (dirent.isFile() || dirent.isSymbolicLink()) {
       const stat = await fsPromises.stat(absolutePath);
+      if (!stat.isFile()) {
+        throw new DyadError(
+          `Cannot deploy Supabase source: ${toPosixPath(relativePath)} is not a regular file`,
+          DyadErrorKind.Validation,
+        );
+      }
       if (budget) {
         addFileToSupabaseDeployPayloadBudget(
           budget,

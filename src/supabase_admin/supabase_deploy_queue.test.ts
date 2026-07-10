@@ -91,4 +91,60 @@ describe("Supabase deploy payload scheduling", () => {
     expect(operationCalls).toBe(1);
     expect(getSupabaseDeployQueueStatsForTests().projects).toBe(0);
   });
+
+  it("runs payloads over the active byte budget without unestimated tasks", async () => {
+    let releaseUnestimatedBefore!: () => void;
+    const unestimatedBefore = enqueueSupabaseDeploy(
+      "project-1",
+      true,
+      () =>
+        new Promise<void>((resolve) => {
+          releaseUnestimatedBefore = resolve;
+        }),
+    );
+
+    let oversizedStarted = false;
+    let signalOversizedStarted!: () => void;
+    const oversizedStartedPromise = new Promise<void>((resolve) => {
+      signalOversizedStarted = resolve;
+    });
+    let releaseOversized!: () => void;
+    const oversized = enqueueSupabaseDeploy(
+      "project-2",
+      true,
+      async () => {
+        oversizedStarted = true;
+        signalOversizedStarted();
+        await new Promise<void>((resolve) => {
+          releaseOversized = resolve;
+        });
+      },
+      {
+        estimatedBytes: SUPABASE_DEPLOY_ACTIVE_PAYLOAD_BYTE_BUDGET + 1,
+      },
+    );
+
+    expect(oversizedStarted).toBe(false);
+    releaseUnestimatedBefore();
+    await unestimatedBefore;
+    await oversizedStartedPromise;
+
+    let unestimatedAfterStarted = false;
+    const unestimatedAfter = enqueueSupabaseDeploy(
+      "project-3",
+      true,
+      async () => {
+        unestimatedAfterStarted = true;
+      },
+    );
+    await Promise.resolve();
+    expect(unestimatedAfterStarted).toBe(false);
+
+    releaseOversized();
+    await expect(Promise.all([oversized, unestimatedAfter])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(unestimatedAfterStarted).toBe(true);
+  });
 });

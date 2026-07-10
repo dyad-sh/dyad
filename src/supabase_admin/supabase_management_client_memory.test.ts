@@ -10,7 +10,11 @@ import {
   getSupabaseSharedFilesCacheStatsForTests,
   resetSupabaseSharedFilesCacheForTests,
 } from "./supabase_management_client";
-import { resetSupabaseDeployQueuesForTests } from "./supabase_deploy_queue";
+import {
+  enqueueSupabaseDeploy,
+  getSupabaseDeployQueueStatsForTests,
+  resetSupabaseDeployQueuesForTests,
+} from "./supabase_deploy_queue";
 import {
   MAX_SUPABASE_DEPLOY_FILE_BYTES,
   MAX_SUPABASE_DEPLOY_TOTAL_BYTES,
@@ -115,10 +119,12 @@ describe("Supabase function deployment memory bounds", () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       requestBodies.push(init?.body as FormData);
       if (requestBodies.length === 1) {
-        return new Response("", {
+        return {
           status: 429,
-          headers: { "Retry-After": "0" },
-        });
+          statusText: "Too Many Requests",
+          headers: new Headers({ "Retry-After": "0" }),
+          body: {},
+        } as unknown as Response;
       }
       return successResponse();
     });
@@ -166,6 +172,70 @@ describe("Supabase function deployment memory bounds", () => {
       );
     expect(latestSharedFile).toBeDefined();
     await expect(latestSharedFile!.text()).resolves.toBe(updatedSource);
+  });
+
+  it("rejects a stable symlink to a directory as a non-regular file", async () => {
+    const appPath = await createApp();
+    const sharedDirectory = path.join(
+      appPath,
+      "supabase",
+      "functions",
+      "_shared",
+    );
+    const targetDirectory = path.join(sharedDirectory, "target");
+    await fs.mkdir(targetDirectory, { recursive: true });
+    await fs.symlink(
+      targetDirectory,
+      path.join(sharedDirectory, "linked-directory"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const fetchMock = vi.fn(() => {
+      throw new Error("upload should not start");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deploy(appPath)).rejects.toMatchObject({
+      kind: DyadErrorKind.Validation,
+      message: expect.stringContaining(
+        "_shared/linked-directory is not a regular file",
+      ),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a queued deploy when cached shared sources change", async () => {
+    const appPath = await createApp();
+    await writeSharedFile(appPath, "export const value = 1;");
+    const fetchMock = vi.fn(async () => successResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deploy(appPath);
+    expect(getSupabaseSharedFilesCacheStatsForTests().entries).toBe(1);
+
+    let releaseBlocker!: () => void;
+    const blocker = enqueueSupabaseDeploy(
+      "project-id",
+      false,
+      () =>
+        new Promise<void>((resolve) => {
+          releaseBlocker = resolve;
+        }),
+    );
+    const queuedDeploy = deploy(appPath);
+    const queuedDeployExpectation = expect(queuedDeploy).rejects.toMatchObject({
+      kind: DyadErrorKind.Conflict,
+      message: expect.stringContaining("source changed"),
+    });
+
+    await vi.waitFor(() => {
+      expect(getSupabaseDeployQueueStatsForTests().pending).toBe(1);
+    });
+    await writeSharedFile(appPath, "export const value = 222;");
+    releaseBlocker();
+
+    await blocker;
+    await queuedDeployExpectation;
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   async function createApp(): Promise<string> {

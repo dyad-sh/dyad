@@ -197,4 +197,63 @@ describe("McpManager lifecycle", () => {
     expect(failingClose).toHaveBeenCalledTimes(1);
     expect(successfulClose).toHaveBeenCalledTimes(1);
   });
+
+  it("allows a retry when client close never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      seedStdioServer(8);
+      const pendingClose = deferred<void>();
+      const first = createClient(vi.fn(() => pendingClose.promise));
+      const replacement = createClient();
+      mocks.createMCPClient
+        .mockResolvedValueOnce(first)
+        .mockResolvedValueOnce(replacement);
+      const manager = new McpManager();
+
+      await manager.getClient(8);
+      const disposal = manager.dispose(8);
+      const retry = manager.getClient(8);
+
+      await vi.advanceTimersByTimeAsync(1_500);
+      await expect(disposal).resolves.toBeUndefined();
+      await expect(retry).resolves.toBe(replacement);
+
+      pendingClose.resolve(undefined);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("allows a retry when cancelled initialization never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      seedStdioServer(9);
+      const pendingClient = deferred<MCPClient>();
+      const replacement = createClient();
+      mocks.createMCPClient
+        .mockReturnValueOnce(pendingClient.promise)
+        .mockResolvedValueOnce(replacement);
+      const manager = new McpManager();
+
+      const firstInitialization = manager.getClient(9);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.createMCPClient).toHaveBeenCalledTimes(1);
+
+      const disposal = manager.dispose(9);
+      const retry = manager.getClient(9);
+
+      await vi.advanceTimersByTimeAsync(1_500);
+      await expect(disposal).resolves.toBeUndefined();
+      await expect(retry).resolves.toBe(replacement);
+
+      const staleClose = vi.fn(async () => {});
+      pendingClient.resolve(createClient(staleClose));
+      await expect(firstInitialization).rejects.toThrow(
+        "MCP client initialization cancelled for server 9",
+      );
+      expect(staleClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

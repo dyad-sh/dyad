@@ -15,6 +15,25 @@ type ClientInitialization = {
   promise: Promise<MCPClient>;
 };
 
+const MCP_CLIENT_DISPOSAL_TIMEOUT_MS = 1_500;
+
+function settleWithinTimeout(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = setTimeout(finish, timeoutMs);
+    void promise.then(finish, finish);
+  });
+}
+
 export class McpManager {
   private static _instance: McpManager;
   static get instance(): McpManager {
@@ -138,23 +157,30 @@ export class McpManager {
     if (existingDisposal) return existingDisposal;
 
     const initialization = this.initializations.get(serverId);
-    if (initialization) initialization.cancelled = true;
+    if (initialization) {
+      initialization.cancelled = true;
+      // Detach the cancelled initialization immediately. If startup itself is
+      // hung, a later getClient can retry after the bounded disposal window.
+      // Its eventual result still observes `cancelled` and closes itself.
+      this.initializations.delete(serverId);
+    }
 
     // Delete from the cache before yielding so getClient cannot hand out a
     // client once disposal has begun.
     const client = this.clients.get(serverId);
     this.clients.delete(serverId);
 
-    const disposal = Promise.allSettled([
-      ...(client ? [this.closeClient(client)] : []),
-      ...(initialization ? [initialization.promise] : []),
-    ])
-      .then(() => undefined)
-      .finally(() => {
-        if (this.disposals.get(serverId) === disposal) {
-          this.disposals.delete(serverId);
-        }
-      });
+    const disposal = settleWithinTimeout(
+      Promise.allSettled([
+        ...(client ? [this.closeClient(client)] : []),
+        ...(initialization ? [initialization.promise] : []),
+      ]),
+      MCP_CLIENT_DISPOSAL_TIMEOUT_MS,
+    ).finally(() => {
+      if (this.disposals.get(serverId) === disposal) {
+        this.disposals.delete(serverId);
+      }
+    });
 
     this.disposals.set(serverId, disposal);
     return disposal;

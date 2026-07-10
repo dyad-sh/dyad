@@ -97,7 +97,7 @@ import {
   getManagedNodeVersion,
   maybeUpgradeManagedNode,
 } from "./ipc/utils/managed_node";
-import { disposeMcpClientsForShutdown } from "./ipc/utils/mcp_shutdown";
+import { createMcpBeforeQuitHandler } from "./ipc/utils/mcp_shutdown";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -1152,10 +1152,14 @@ app.on("window-all-closed", () => {
 // Clear the crash sentinel as early as possible on clean exit so that slow
 // cleanup in will-quit cannot race against OS-imposed termination timeouts
 // (e.g. Windows WM_ENDSESSION) and leave the sentinel behind as a false positive.
-app.on("before-quit", () => {
+const handleMcpBeforeQuit = createMcpBeforeQuitHandler({
+  quit: () => app.quit(),
+});
+
+app.on("before-quit", (event) => {
   isAppQuitting = true;
   clearCrashSentinel();
-  void disposeMcpClientsForShutdown();
+  handleMcpBeforeQuit(event);
 });
 
 // IMPORTANT: This handler must be synchronous because Electron's EventEmitter

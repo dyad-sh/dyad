@@ -88,6 +88,37 @@ async function extractCodebasesForApps(
   for (const app of dedupedApps) {
     try {
       const appPath = getDyadAppPath(app.path);
+
+      // With no file slots left, extraction cannot include anything. Preserve
+      // an entry for the referenced app so downstream prompts can disclose
+      // that it was skipped, without traversing and statting its whole tree.
+      if (remainingFiles <= 0) {
+        const reasons: CodebaseTruncation["reasons"] = ["file-count"];
+        if (remainingContentBytes <= 0) {
+          reasons.push("total-bytes");
+        }
+        results.push({
+          appName: app.name,
+          appPath,
+          codebaseInfo: "",
+          files: [],
+          truncation: {
+            totalFileCount: 0,
+            includedFileCount: 0,
+            omittedFileCount: 0,
+            includedContentBytes: 0,
+            maxFiles: remainingFiles,
+            maxTotalBytes: remainingContentBytes,
+            reasons,
+            budgetExhaustedBeforeScan: true,
+          },
+        });
+        logger.warn(
+          `Skipped codebase extraction for mentioned app ${app.name}: shared file budget exhausted`,
+        );
+        continue;
+      }
+
       const chatContext = validateChatContext(app.chatContext);
 
       const { formattedOutput, files, includedContentBytes, truncation } =

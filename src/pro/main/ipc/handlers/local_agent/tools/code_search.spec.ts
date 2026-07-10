@@ -221,6 +221,25 @@ describe("codeSearchTool", () => {
       expect(searchedPaths).not.toContain("current.ts");
     });
 
+    it("excludes referenced-app internals before extraction limits apply", async () => {
+      mockContext.referencedApps.set("other-app", otherAppDir);
+      mockEngineResponse(["other.ts"]);
+
+      await codeSearchTool.execute(
+        { query: "bar", app_name: "other-app" },
+        mockContext,
+      );
+
+      expect(mocks.extractCodebase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appPath: otherAppDir,
+          chatContext: expect.objectContaining({
+            excludePaths: [{ globPath: ".dyad/**" }],
+          }),
+        }),
+      );
+    });
+
     it("throws a clear error when app_name is not in the allow-list", async () => {
       mockContext.referencedApps.set("other-app", otherAppDir);
       await expect(

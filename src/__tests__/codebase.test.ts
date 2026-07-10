@@ -314,6 +314,23 @@ describe("extractCodebase", () => {
     );
   });
 
+  it("formats a clear warning when a shared budget prevents scanning", () => {
+    expect(
+      formatCodebaseTruncationWarning({
+        totalFileCount: 0,
+        includedFileCount: 0,
+        omittedFileCount: 0,
+        includedContentBytes: 0,
+        maxFiles: 0,
+        maxTotalBytes: 100,
+        reasons: ["file-count"],
+        budgetExhaustedBeforeScan: true,
+      }),
+    ).toBe(
+      "Codebase context was not scanned because the shared extraction budget was already exhausted (limits reached: file-count). Results do not include files from this app.",
+    );
+  });
+
   it("prioritizes forced smart-context files when a budget truncates", async () => {
     appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
     await fs.promises.writeFile(path.join(appDir, "a.ts"), "a");

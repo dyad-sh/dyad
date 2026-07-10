@@ -132,4 +132,50 @@ describe("mention app utilities", () => {
       }),
     );
   });
+
+  it("skips later app traversal after the shared file budget is exhausted", async () => {
+    dbMocks.findMany.mockResolvedValue([
+      {
+        id: 1,
+        name: "First",
+        path: "first",
+        chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      },
+      {
+        id: 2,
+        name: "Second",
+        path: "second",
+        chatContext: { contextPaths: [], smartContextAutoIncludes: [] },
+      },
+    ]);
+    vi.mocked(extractCodebase).mockResolvedValueOnce({
+      formattedOutput: "first",
+      files: Array.from({ length: 2_000 }, (_, index) => ({
+        path: `file-${index}.ts`,
+        content: "",
+        force: false,
+      })),
+      includedContentBytes: 0,
+    });
+
+    const result = await extractMentionedAppsCodebasesFromPrompt(
+      "Compare @app:First and @app:Second",
+    );
+
+    expect(extractCodebase).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(2);
+    expect(result[1]).toMatchObject({
+      appName: "Second",
+      appPath: "/dyad-apps/second",
+      codebaseInfo: "",
+      files: [],
+      truncation: {
+        includedFileCount: 0,
+        includedContentBytes: 0,
+        maxFiles: 0,
+        reasons: ["file-count"],
+        budgetExhaustedBeforeScan: true,
+      },
+    });
+  });
 });

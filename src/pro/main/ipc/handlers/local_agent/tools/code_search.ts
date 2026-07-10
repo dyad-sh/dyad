@@ -138,7 +138,10 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
       chatContext: {
         contextPaths: [],
         smartContextAutoIncludes: [],
-        excludePaths: [],
+        // Referenced-app internals are outside the @app contract. Exclude
+        // them before extraction limits are applied so they cannot consume
+        // the bounded search context and hide visible source files.
+        excludePaths: args.app_name ? [{ globPath: ".dyad/**" }] : [],
       },
     });
 

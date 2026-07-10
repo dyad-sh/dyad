@@ -585,6 +585,8 @@ export interface CodebaseTruncation {
   maxFiles: number;
   maxTotalBytes: number;
   reasons: CodebaseTruncationReason[];
+  /** No file scan occurred because a shared caller budget was already spent. */
+  budgetExhaustedBeforeScan?: true;
 }
 
 interface PreparedCodebaseFile {
@@ -853,6 +855,9 @@ function selectFilesWithinLimits(
 
     if (exceedsByteLimit) {
       reasons.add("total-bytes");
+      // Keep scanning intentionally: a later file may fit the remaining byte
+      // budget. This O(n) pass preserves deterministic coverage instead of
+      // letting one oversized file hide every smaller file after it.
       continue;
     }
 
@@ -893,6 +898,9 @@ function selectFilesWithinLimits(
 export function formatCodebaseTruncationWarning(
   truncation: CodebaseTruncation,
 ): string {
+  if (truncation.budgetExhaustedBeforeScan) {
+    return `Codebase context was not scanned because the shared extraction budget was already exhausted (limits reached: ${truncation.reasons.join(", ")}). Results do not include files from this app.`;
+  }
   return `Codebase context is incomplete: ${truncation.includedFileCount} of ${truncation.totalFileCount} files were included (${truncation.omittedFileCount} omitted; limits reached: ${truncation.reasons.join(", ")}). Results based only on the included files may be incomplete.`;
 }
 

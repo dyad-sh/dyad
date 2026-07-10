@@ -1,7 +1,16 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { generateText } from "ai";
 
 import type { UserSettings } from "../../lib/schemas";
-import { getModelClient } from "./get_model_client";
+import {
+  getModelClient,
+  setModelClientFetchForTesting,
+} from "./get_model_client";
+import {
+  OPENROUTER_APP_CATEGORIES,
+  OPENROUTER_APP_REFERER,
+  OPENROUTER_APP_TITLE,
+} from "./openrouter_attribution";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -79,6 +88,10 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 }));
 
 describe("getModelClient", () => {
+  afterEach(() => {
+    setModelClientFetchForTesting(undefined);
+  });
+
   test("keeps the Anthropic gateway prefix for Dyad Engine models", async () => {
     const { modelClient } = await getModelClient(
       {
@@ -186,5 +199,62 @@ describe("getModelClient", () => {
 
     expect((modelClient.model as { modelId: string }).modelId).toBe("free-pro");
     expect(modelClient.builtinProviderId).toBe("auto");
+  });
+
+  test("sends OpenRouter app attribution headers", async () => {
+    let capturedHeaders: Headers | undefined;
+    setModelClientFetchForTesting(
+      vi.fn(async (_url, init) => {
+        capturedHeaders = new Headers(init?.headers);
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl-test",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: "ok",
+                },
+                finish_reason: "stop",
+              },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }),
+    );
+
+    const { modelClient } = await getModelClient(
+      {
+        provider: "openrouter",
+        name: "openrouter/free",
+      },
+      {
+        providerSettings: {
+          openrouter: {
+            apiKey: {
+              value: "openrouter-key",
+            },
+          },
+        },
+      } as unknown as UserSettings,
+    );
+
+    await generateText({
+      model: modelClient.model,
+      prompt: "hi",
+      maxRetries: 0,
+    });
+
+    expect(capturedHeaders?.get("Authorization")).toBe("Bearer openrouter-key");
+    expect(capturedHeaders?.get("HTTP-Referer")).toBe(OPENROUTER_APP_REFERER);
+    expect(capturedHeaders?.get("X-OpenRouter-Title")).toBe(
+      OPENROUTER_APP_TITLE,
+    );
+    expect(capturedHeaders?.get("X-OpenRouter-Categories")).toBe(
+      OPENROUTER_APP_CATEGORIES,
+    );
   });
 });

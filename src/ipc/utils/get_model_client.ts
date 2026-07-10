@@ -38,6 +38,7 @@ import {
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
 import { FREE_PRO_MODEL_NAME, isFreeProModel } from "@/lib/freeProModel";
+import { getOpenRouterAppAttributionHeaders } from "./openrouter_attribution";
 
 // The test-only fetch seam lives in ./test_fetch_override (dependency-free,
 // so secondary factories can use it without import cycles). Re-exported here
@@ -490,6 +491,7 @@ function getRegularModelClient(
         name: "openrouter",
         baseURL: "https://openrouter.ai/api/v1",
         apiKey,
+        headers: getOpenRouterAppAttributionHeaders(),
         ...getModelClientFetchOption(),
       });
       return {

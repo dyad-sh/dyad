@@ -326,27 +326,36 @@ function execCommand(file: string, args: string[]): Promise<string> {
  * Utility) plus main-process heap statistics. Never throws.
  */
 export async function collectElectronProcessMetrics(): Promise<ElectronProcessMetricsResult> {
-  const memoryUsage = process.memoryUsage();
-  const heapStats = v8.getHeapStatistics();
   const result: ElectronProcessMetricsResult = {
     processes: [],
     totalWorkingSetSizeMb: 0,
-    mainProcess: {
+    mainProcess: { rssMb: 0, heapTotalMb: 0, heapUsedMb: 0, externalMb: 0 },
+    v8Heap: {
+      heapSizeLimitMb: 0,
+      totalHeapSizeMb: 0,
+      usedHeapSizeMb: 0,
+      mallocedMemoryMb: 0,
+      externalMemoryMb: 0,
+    },
+  };
+
+  try {
+    const memoryUsage = process.memoryUsage();
+    result.mainProcess = {
       rssMb: bytesToMb(memoryUsage.rss),
       heapTotalMb: bytesToMb(memoryUsage.heapTotal),
       heapUsedMb: bytesToMb(memoryUsage.heapUsed),
       externalMb: bytesToMb(memoryUsage.external),
-    },
-    v8Heap: {
+    };
+    const heapStats = v8.getHeapStatistics();
+    result.v8Heap = {
       heapSizeLimitMb: bytesToMb(heapStats.heap_size_limit),
       totalHeapSizeMb: bytesToMb(heapStats.total_heap_size),
       usedHeapSizeMb: bytesToMb(heapStats.used_heap_size),
       mallocedMemoryMb: bytesToMb(heapStats.malloced_memory),
       externalMemoryMb: bytesToMb(heapStats.external_memory),
-    },
-  };
+    };
 
-  try {
     // Imported lazily so this module stays importable outside an Electron
     // runtime (unit tests exercise the pure parsers above).
     const { app } = await import("electron");
@@ -367,7 +376,7 @@ export async function collectElectronProcessMetrics(): Promise<ElectronProcessMe
     }
     result.totalWorkingSetSizeMb = round2(result.totalWorkingSetSizeMb);
   } catch (err) {
-    result.error = `Failed to collect Electron app metrics: ${errorToString(err)}`;
+    result.error = `Failed to collect Electron process metrics: ${errorToString(err)}`;
   }
   return result;
 }

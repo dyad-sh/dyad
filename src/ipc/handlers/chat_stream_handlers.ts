@@ -1303,8 +1303,6 @@ This conversation includes one or more image attachments. When the user uploads 
                 chatId: req.chatId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
-              // Clean up the abort controller
-              chatStreamRuntime.deleteController(req.chatId);
             },
             abortSignal: abortController.signal,
           });

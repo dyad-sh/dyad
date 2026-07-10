@@ -38,6 +38,22 @@ describe("getPostCompactionMessageStartId", () => {
     );
   });
 
+  it("starts at the summary when no triggering user exists", async () => {
+    const summaryResult = harness.db
+      .insert(messages)
+      .values({
+        chatId,
+        role: "assistant",
+        content: "first message is a compaction summary",
+        isCompactionSummary: true,
+      })
+      .run();
+
+    await expect(getPostCompactionMessageStartId(chatId)).resolves.toBe(
+      Number(summaryResult.lastInsertRowid),
+    );
+  });
+
   it("starts at the triggering user for the latest compaction", async () => {
     harness.db
       .insert(messages)

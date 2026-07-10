@@ -56,10 +56,24 @@ describe("agent SQL query limiting", () => {
     });
   });
 
+  it("wraps a single read-only CTE with a sentinel row", () => {
+    const result = limitAgentSqlQuery(
+      "WITH active AS (SELECT * FROM users) SELECT * FROM active;",
+      100,
+    );
+
+    expect(result).toEqual({
+      limited: true,
+      query:
+        'SELECT * FROM (\nWITH active AS (SELECT * FROM users) SELECT * FROM active\n) AS "dyad_limited_result"\nLIMIT 101',
+    });
+  });
+
   it.each([
     "CREATE TABLE users (id bigint);",
     "UPDATE users SET name = 'Ada';",
     "DELETE FROM users;",
+    "WITH inserted AS (INSERT INTO users (name) VALUES ('Ada') RETURNING *) SELECT * FROM inserted;",
     "SELECT 1; SELECT 2;",
     "DO $$ BEGIN DELETE FROM users; END $$;",
   ])("does not rewrite non-read or multi-statement SQL: %s", (query) => {

@@ -38,9 +38,35 @@ beforeEach(() => {
 });
 
 describe("searchAppsWithResultLimits", () => {
-  it("does not run broad one-character database searches", async () => {
-    await expect(searchAppsWithResultLimits("a")).resolves.toEqual([]);
-    expect(mocks.select).not.toHaveBeenCalled();
+  it.each(["a", "😀"])(
+    "does not run broad one-character database searches: %s",
+    async (query) => {
+      await expect(searchAppsWithResultLimits(query)).resolves.toEqual([]);
+      expect(mocks.select).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns null for projected snippets whose column does not match", async () => {
+    const builders = [
+      queryReturning([]),
+      queryReturning([]),
+      queryReturning([]),
+    ];
+    const queries = [...builders];
+    mocks.select.mockImplementation(() => queries.shift());
+
+    await searchAppsWithResultLimits("needle");
+
+    const messageProjection = mocks.select.mock.calls[2][0] as {
+      matchedChatTitle: unknown;
+    };
+    const compiled = new SQLiteSyncDialect().sqlToQuery(
+      messageProjection.matchedChatTitle as never,
+    );
+    expect(compiled.sql).toMatch(
+      /instr\(lower\(.+\), lower\(\?\)\) = 0\s+THEN NULL/i,
+    );
+    expect(mocks.select).toHaveBeenCalledTimes(3);
   });
 
   it("treats SQLite LIKE wildcard characters as literal search text", async () => {

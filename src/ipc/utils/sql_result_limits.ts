@@ -201,9 +201,11 @@ export type LimitedSqlQuery = {
 };
 
 /**
- * Bound only a classifier-proven, single SELECT. DDL, DML, dynamic SQL,
+ * Bound only a classifier-proven single read query. DDL, DML, dynamic SQL,
  * multiple statements, and incomplete SQL are returned byte-for-byte so a
- * safety limit never changes their execution semantics.
+ * safety limit never changes their execution semantics. WITH statements are
+ * handled conservatively because a data-modifying CTE cannot be nested inside
+ * the outer limiting SELECT in PostgreSQL.
  */
 export function limitAgentSqlQuery(
   query: string,
@@ -213,15 +215,20 @@ export function limitAgentSqlQuery(
   const deletionAnalysis = getSqlDataDeletionAnalysis(query);
   const schemaStatement = schemaAnalysis.statements[0];
   const deletionStatement = deletionAnalysis.statements[0];
-  const isSingleReadSelect =
+  const command = schemaStatement?.command;
+  const isReadCommand =
+    command === "SELECT" ||
+    (command === "WITH" &&
+      !/\b(?:INSERT|UPDATE|DELETE|MERGE)\b/i.test(schemaStatement.sql));
+  const isSingleReadQuery =
     !schemaAnalysis.mutatesSchema &&
     !deletionAnalysis.deletesData &&
     schemaAnalysis.statements.length === 1 &&
     deletionAnalysis.statements.length === 1 &&
-    schemaStatement?.command === "SELECT" &&
-    deletionStatement?.command === "SELECT";
+    command === deletionStatement?.command &&
+    isReadCommand;
 
-  if (!isSingleReadSelect || !schemaStatement) {
+  if (!isSingleReadQuery || !schemaStatement) {
     return { query, limited: false };
   }
 

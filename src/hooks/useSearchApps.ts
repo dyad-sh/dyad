@@ -1,10 +1,10 @@
-import { ipc, MIN_APP_SEARCH_QUERY_LENGTH } from "@/ipc/types";
+import { ipc, isAppSearchQueryLongEnough } from "@/ipc/types";
 import { AppSearchResult } from "@/lib/schemas";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useSearchApps(query: string) {
-  const enabled = query.trim().length >= MIN_APP_SEARCH_QUERY_LENGTH;
+  const enabled = isAppSearchQueryLongEnough(query);
 
   const { data, isFetching, isLoading } = useQuery({
     queryKey: queryKeys.apps.search({ query }),

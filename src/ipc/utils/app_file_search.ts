@@ -159,7 +159,13 @@ export async function searchAppFilesWithRipgrep({
           const relativePath = normalizePath(
             path.relative(appPath, absolutePath),
           );
-          if (relativePath.startsWith("..")) continue;
+          if (
+            relativePath === ".." ||
+            relativePath.startsWith("../") ||
+            path.isAbsolute(relativePath)
+          ) {
+            continue;
+          }
 
           const lineText = event.data.lines?.text as string;
           const lineNumber = event.data.line_number as number;

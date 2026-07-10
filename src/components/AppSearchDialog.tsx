@@ -9,7 +9,11 @@ import {
 import { useState, useEffect } from "react";
 import { useSearchApps } from "@/hooks/useSearchApps";
 import type { AppSearchResult } from "@/lib/schemas";
-import { MIN_APP_SEARCH_QUERY_LENGTH } from "@/ipc/types";
+import {
+  getAppSearchQueryLength,
+  isAppSearchQueryLongEnough,
+  MIN_APP_SEARCH_QUERY_LENGTH,
+} from "@/ipc/types";
 
 type AppSearchDialogProps = {
   open: boolean;
@@ -38,8 +42,10 @@ export function AppSearchDialog({
 
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const { apps: searchResults } = useSearchApps(debouncedQuery);
-  const isDatabaseSearch =
-    debouncedQuery.trim().length >= MIN_APP_SEARCH_QUERY_LENGTH;
+  const isDatabaseSearch = isAppSearchQueryLongEnough(debouncedQuery);
+  const currentQueryLength = getAppSearchQueryLength(searchQuery);
+  const showMinimumSearchHint =
+    currentQueryLength > 0 && currentQueryLength < MIN_APP_SEARCH_QUERY_LENGTH;
   const searchResultsTruncated =
     isDatabaseSearch && searchResults.some((result) => result.searchTruncated);
 
@@ -120,6 +126,16 @@ export function AppSearchDialog({
         onValueChange={setSearchQuery}
         data-testid="app-search-input"
       />
+      {showMinimumSearchHint && (
+        <div
+          className="border-b px-3 py-1.5 text-xs text-muted-foreground"
+          role="status"
+          data-testid="app-search-minimum-hint"
+        >
+          Type at least {MIN_APP_SEARCH_QUERY_LENGTH} characters to search chat
+          history.
+        </div>
+      )}
       <CommandList data-testid="app-search-list">
         <CommandEmpty data-testid="app-search-empty">
           No results found.

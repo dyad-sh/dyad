@@ -345,6 +345,15 @@ export const SelectAppLocationResultSchema = z.object({
  */
 export const MIN_APP_SEARCH_QUERY_LENGTH = 2;
 
+/** Count user-visible code points rather than UTF-16 code units. */
+export function getAppSearchQueryLength(query: string): number {
+  return Array.from(query.trim()).length;
+}
+
+export function isAppSearchQueryLongEnough(query: string): boolean {
+  return getAppSearchQueryLength(query) >= MIN_APP_SEARCH_QUERY_LENGTH;
+}
+
 export const AppSearchResultSchema = z.object({
   id: z.number(),
   name: z.string(),

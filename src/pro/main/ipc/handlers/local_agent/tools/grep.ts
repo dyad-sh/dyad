@@ -134,9 +134,17 @@ function buildGrepAttributes(
 function truncateLineText(text: string): string {
   const byteLimited = truncateUtf8(text, MAX_GREP_LINE_BYTES);
   if (byteLimited.truncated) return byteLimited.text;
-  return text.length <= MAX_LINE_LENGTH
-    ? text
-    : text.slice(0, MAX_LINE_LENGTH) + "...";
+
+  let end = 0;
+  let codePoints = 0;
+  for (const character of text) {
+    if (codePoints === MAX_LINE_LENGTH) {
+      return text.slice(0, end) + "...";
+    }
+    end += character.length;
+    codePoints += 1;
+  }
+  return text;
 }
 
 export function normalizeRipgrepMatchPath(matchPath: string): string {
@@ -308,7 +316,7 @@ async function runRipgrep({
     });
 
     rg.on("error", (error) => {
-      reject(error);
+      if (!stoppedEarly) reject(error);
     });
   });
 }

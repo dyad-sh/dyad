@@ -3,7 +3,7 @@ import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import type { AppSearchResult } from "@/lib/schemas";
 import { truncateUtf8 } from "../utils/result_limits";
-import { MIN_APP_SEARCH_QUERY_LENGTH } from "../types/app";
+import { isAppSearchQueryLongEnough } from "../types/app";
 
 export const MAX_APP_SEARCH_RESULTS = 50;
 export const MAX_APP_SEARCH_TEXT_BYTES = 1024;
@@ -33,7 +33,8 @@ function matchingSnippet(
 ) {
   return sql<string | null>`
     CASE
-      WHEN ${column} IS NULL THEN NULL
+      WHEN ${column} IS NULL
+        OR instr(lower(${column}), lower(${query})) = 0 THEN NULL
       ELSE substr(
         ${column},
         max(1, instr(lower(${column}), lower(${query})) - ${SQL_SNIPPET_RADIUS}),
@@ -48,7 +49,7 @@ export async function searchAppsWithResultLimits(
   rawQuery: string,
 ): Promise<AppSearchResult[]> {
   const query = rawQuery.trim();
-  if (query.length < MIN_APP_SEARCH_QUERY_LENGTH) return [];
+  if (!isAppSearchQueryLongEnough(query)) return [];
 
   const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
 

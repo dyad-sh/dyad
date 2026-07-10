@@ -590,6 +590,20 @@ function deepHello() {
       expect(result).not.toContain("�");
       expect(matchLine).not.toContain("......");
     });
+
+    it("does not split a surrogate pair at the character limit", async () => {
+      const query = "unicodeBoundaryNeedle";
+      const beforeEmoji = query + "a".repeat(499 - query.length);
+      await fs.promises.writeFile(
+        path.join(testDir, "unicode-boundary.ts"),
+        `${beforeEmoji}😀tail\n`,
+      );
+
+      const result = await grepTool.execute({ query }, mockContext);
+
+      expect(result).toContain("😀...");
+      expect(result).not.toContain("�");
+    });
   });
 
   describe("execute - result sorting", () => {

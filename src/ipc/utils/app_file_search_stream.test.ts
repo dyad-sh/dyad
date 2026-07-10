@@ -100,4 +100,23 @@ describe("searchAppFilesWithRipgrep stream handling", () => {
     expect(results).toHaveLength(MAX_APP_FILE_SEARCH_FILES);
     expect(results.every((result) => result.truncated)).toBe(true);
   });
+
+  it("keeps legal names beginning with two dots while rejecting traversal", async () => {
+    const search = searchAppFilesWithRipgrep({
+      appPath: "/tmp/test-app",
+      query: "needle",
+    });
+
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${matchEvent("..config", "needle", "needle")}\n${matchEvent("../outside.txt", "needle", "needle")}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    await expect(search).resolves.toEqual([
+      expect.objectContaining({ path: "..config" }),
+    ]);
+  });
 });

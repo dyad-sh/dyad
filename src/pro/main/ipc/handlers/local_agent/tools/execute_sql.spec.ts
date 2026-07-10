@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeSqlTool } from "./execute_sql";
+import { AGENT_SQL_RESULT_LIMITS } from "@/ipc/utils/sql_result_limits";
 
 const mocks = vi.hoisted(() => ({
   executeSupabaseSqlMock: vi.fn(),
@@ -28,6 +29,7 @@ describe("executeSqlTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.executeSupabaseSqlMock.mockResolvedValue("[]");
+    mocks.executeNeonSqlMock.mockResolvedValue("[]");
     mocks.writeMigrationFileMock.mockResolvedValue(
       "supabase/migrations/0000_test.sql",
     );
@@ -105,6 +107,7 @@ describe("executeSqlTool", () => {
       supabaseProjectId: "project",
       query: "CREATE TABLE users (id bigint);",
       organizationSlug: "org",
+      resultLimits: AGENT_SQL_RESULT_LIMITS,
     });
     expect(mocks.writeMigrationFileMock).toHaveBeenCalledWith(
       "/app",
@@ -128,9 +131,47 @@ describe("executeSqlTool", () => {
 
     expect(mocks.executeSupabaseSqlMock).toHaveBeenCalledWith({
       supabaseProjectId: "project",
-      query: "SELECT * FROM users;",
+      query: expect.stringMatching(
+        /SELECT \* FROM \([\s\S]*SELECT \* FROM users[\s\S]*LIMIT 101/,
+      ),
       organizationSlug: null,
+      resultLimits: AGENT_SQL_RESULT_LIMITS,
     });
     expect(mocks.writeMigrationFileMock).not.toHaveBeenCalled();
+  });
+
+  it("does not rewrite data-changing SQL to add a result limit", async () => {
+    await executeSqlTool.execute(
+      {
+        query: "UPDATE users SET active = false RETURNING *;",
+      },
+      {
+        appPath: "/app",
+        supabaseProjectId: "project",
+        supabaseOrganizationSlug: null,
+      } as any,
+    );
+
+    expect(mocks.executeSupabaseSqlMock).toHaveBeenCalledWith({
+      supabaseProjectId: "project",
+      query: "UPDATE users SET active = false RETURNING *;",
+      organizationSlug: null,
+      resultLimits: AGENT_SQL_RESULT_LIMITS,
+    });
+  });
+
+  it("applies the same bounded SELECT policy to Neon", async () => {
+    await executeSqlTool.execute({ query: "SELECT * FROM users;" }, {
+      appPath: "/app",
+      neonProjectId: "neon-project",
+      neonActiveBranchId: "branch",
+    } as any);
+
+    expect(mocks.executeNeonSqlMock).toHaveBeenCalledWith({
+      projectId: "neon-project",
+      branchId: "branch",
+      query: expect.stringContaining("LIMIT 101"),
+      resultLimits: AGENT_SQL_RESULT_LIMITS,
+    });
   });
 });

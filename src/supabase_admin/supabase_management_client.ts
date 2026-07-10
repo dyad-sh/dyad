@@ -16,6 +16,10 @@ import {
 } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
+import {
+  serializeSqlResult,
+  type SqlResultLimits,
+} from "@/ipc/utils/sql_result_limits";
 
 const fsPromises = fs.promises;
 
@@ -608,10 +612,12 @@ export async function executeSupabaseSql({
   supabaseProjectId,
   query,
   organizationSlug,
+  resultLimits,
 }: {
   supabaseProjectId: string;
   query: string;
   organizationSlug: string | null;
+  resultLimits?: SqlResultLimits;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
@@ -622,7 +628,9 @@ export async function executeSupabaseSql({
     () => supabase.runQuery(supabaseProjectId, query),
     `Execute SQL on ${supabaseProjectId}`,
   );
-  return JSON.stringify(result);
+  return resultLimits
+    ? serializeSqlResult(result, resultLimits).text
+    : JSON.stringify(result);
 }
 
 export async function deleteSupabaseFunction({

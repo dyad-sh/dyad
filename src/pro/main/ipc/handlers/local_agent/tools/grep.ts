@@ -17,12 +17,17 @@ import {
 } from "./resolve_app_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import log from "electron-log";
+import { truncateUtf8 } from "@/ipc/utils/result_limits";
 
 const logger = log.scope("grep");
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 250;
 const MAX_LINE_LENGTH = 500;
+export const MAX_GREP_LINE_BYTES = 1024;
+export const MAX_GREP_OUTPUT_BYTES = 128 * 1024;
+const MAX_RETAINED_MATCH_BYTES = MAX_GREP_OUTPUT_BYTES - 2 * 1024;
+const MAX_RIPGREP_STDERR_BYTES = 64 * 1024;
 
 const grepSchema = z.object({
   query: z
@@ -92,6 +97,7 @@ function buildGrepAttributes(
   args: Partial<z.infer<typeof grepSchema>>,
   count?: number,
   totalCount?: number,
+  truncated = false,
 ): string {
   const attrs: string[] = [];
   if (args.query) {
@@ -118,7 +124,7 @@ function buildGrepAttributes(
   if (count !== undefined) {
     attrs.push(`count="${count}"`);
   }
-  if (totalCount !== undefined && totalCount > (count ?? 0)) {
+  if (totalCount !== undefined && (truncated || totalCount > (count ?? 0))) {
     attrs.push(`total="${totalCount}"`);
     attrs.push(`truncated="true"`);
   }
@@ -126,10 +132,11 @@ function buildGrepAttributes(
 }
 
 function truncateLineText(text: string): string {
-  if (text.length <= MAX_LINE_LENGTH) {
-    return text;
-  }
-  return text.slice(0, MAX_LINE_LENGTH) + "...";
+  const characterLimited =
+    text.length <= MAX_LINE_LENGTH
+      ? text
+      : text.slice(0, MAX_LINE_LENGTH) + "...";
+  return truncateUtf8(characterLimited, MAX_GREP_LINE_BYTES).text;
 }
 
 export function normalizeRipgrepMatchPath(matchPath: string): string {
@@ -145,6 +152,7 @@ async function runRipgrep({
   caseSensitive,
   literal,
   maxMatches,
+  maxResultBytes,
   excludeDyadFolder,
 }: {
   appPath: string;
@@ -155,11 +163,18 @@ async function runRipgrep({
   caseSensitive?: boolean;
   literal?: boolean;
   maxMatches?: number;
+  maxResultBytes: number;
   excludeDyadFolder?: boolean;
-}): Promise<{ matches: RipgrepMatch[]; stoppedEarly: boolean }> {
+}): Promise<{
+  matches: RipgrepMatch[];
+  stoppedEarly: boolean;
+  observedCount: number;
+}> {
   return new Promise((resolve, reject) => {
     const results: RipgrepMatch[] = [];
     let stoppedEarly = false;
+    let observedCount = 0;
+    let resultBytes = 0;
     const args: string[] = [
       "--json",
       "--no-config",
@@ -236,8 +251,19 @@ async function runRipgrep({
           }
 
           const normalizedPath = normalizeRipgrepMatchPath(matchPath);
+          const truncatedLine = truncateLineText(
+            lineText.replace(/\r?\n$/, ""),
+          );
+          const matchBytes =
+            Buffer.byteLength(normalizedPath, "utf8") +
+            Buffer.byteLength(truncatedLine, "utf8") +
+            32;
+          observedCount += 1;
 
-          if (maxMatches !== undefined && results.length >= maxMatches) {
+          if (
+            (maxMatches !== undefined && results.length >= maxMatches) ||
+            resultBytes + matchBytes > maxResultBytes
+          ) {
             stoppedEarly = true;
             rg.kill();
             break;
@@ -246,8 +272,9 @@ async function runRipgrep({
           results.push({
             path: normalizedPath,
             lineNumber,
-            lineText: lineText.replace(/\r?\n$/, ""),
+            lineText: truncatedLine,
           });
+          resultBytes += matchBytes;
 
           if (maxMatches !== undefined && results.length >= maxMatches) {
             stoppedEarly = true;
@@ -262,13 +289,13 @@ async function runRipgrep({
 
     rg.stderr.on("data", (data) => {
       const text = data.toString();
-      stderr += text;
+      stderr = truncateUtf8(stderr + text, MAX_RIPGREP_STDERR_BYTES, "").text;
       logger.warn("ripgrep stderr", text);
     });
 
     rg.on("close", (code) => {
       if (stoppedEarly) {
-        resolve({ matches: results, stoppedEarly });
+        resolve({ matches: results, stoppedEarly, observedCount });
         return;
       }
 
@@ -277,7 +304,7 @@ async function runRipgrep({
         reject(new RipgrepError(`ripgrep exited with code ${code}`, stderr));
         return;
       }
-      resolve({ matches: results, stoppedEarly });
+      resolve({ matches: results, stoppedEarly, observedCount });
     });
 
     rg.on("error", (error) => {
@@ -338,6 +365,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     // behavior). We never infer literal from the query's shape.
     let allMatches: RipgrepMatch[];
     let stoppedEarly: boolean;
+    let observedCount: number;
     try {
       const result = await runRipgrep({
         appPath: targetAppPath,
@@ -347,11 +375,13 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
         includeIgnored: args.include_ignored,
         caseSensitive: args.case_sensitive,
         literal: args.literal,
-        maxMatches: args.include_ignored ? limit + 1 : undefined,
+        maxMatches: limit + 1,
+        maxResultBytes: MAX_RETAINED_MATCH_BYTES,
         excludeDyadFolder: Boolean(args.app_name),
       });
       allMatches = result.matches;
       stoppedEarly = result.stoppedEarly;
+      observedCount = result.observedCount;
     } catch (error) {
       // A bad regex is thrown as a clear, regex-specific error (with a hint to
       // retry with literal=true) rather than silently re-running the query as a
@@ -370,7 +400,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
       throw error;
     }
 
-    const totalCount = allMatches.length;
+    const totalCount = observedCount;
     // Sort for deterministic output (ripgrep's parallel execution can produce varying order)
     const sortedMatches = [...allMatches].sort(
       (a, b) => a.path.localeCompare(b.path) || a.lineNumber - b.lineNumber,
@@ -378,7 +408,12 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     const matches = sortedMatches.slice(0, limit);
     const wasTruncated = stoppedEarly || totalCount > limit;
 
-    const attrs = buildGrepAttributes(args, matches.length, totalCount);
+    const attrs = buildGrepAttributes(
+      args,
+      matches.length,
+      totalCount,
+      wasTruncated,
+    );
 
     if (matches.length === 0) {
       ctx.onXmlComplete(`<dyad-grep ${attrs}>No matches found.</dyad-grep>`);
@@ -387,7 +422,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
     // Format output: path:line: content (with truncated line text)
     const lines = matches.map(
-      (m) => `${m.path}:${m.lineNumber}: ${truncateLineText(m.lineText)}`,
+      (m) => `${m.path}:${m.lineNumber}: ${m.lineText}`,
     );
     let resultText = lines.join("\n");
 

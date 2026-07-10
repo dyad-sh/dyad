@@ -252,6 +252,7 @@ export const AppFileSearchResultSchema = z.object({
   path: z.string(),
   matchesContent: z.boolean(),
   snippets: z.array(FileSearchSnippetSchema).optional(),
+  truncated: z.boolean().optional(),
 });
 
 /**
@@ -342,12 +343,15 @@ export const SelectAppLocationResultSchema = z.object({
 /**
  * Schema for app search result.
  */
+export const MIN_APP_SEARCH_QUERY_LENGTH = 2;
+
 export const AppSearchResultSchema = z.object({
   id: z.number(),
   name: z.string(),
   createdAt: z.date(),
   matchedChatTitle: z.string().nullable(),
   matchedChatMessage: z.string().nullable(),
+  searchTruncated: z.boolean().optional(),
 });
 
 // =============================================================================

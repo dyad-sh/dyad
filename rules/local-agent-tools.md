@@ -11,6 +11,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Async I/O
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.
+- When a parallel ripgrep search enforces a global cap by killing the process early, the retained subset depends on arrival order; sorting afterward only orders that subset. Tests should assert the cap and truncation notice rather than pinning the exact first match unless the producer itself guarantees ordering.
 
 ## User-visible tool output
 

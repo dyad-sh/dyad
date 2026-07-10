@@ -9,6 +9,7 @@ import {
 import { useState, useEffect } from "react";
 import { useSearchApps } from "@/hooks/useSearchApps";
 import type { AppSearchResult } from "@/lib/schemas";
+import { MIN_APP_SEARCH_QUERY_LENGTH } from "@/ipc/types";
 
 type AppSearchDialogProps = {
   open: boolean;
@@ -37,10 +38,16 @@ export function AppSearchDialog({
 
   const debouncedQuery = useDebouncedValue(searchQuery, 150);
   const { apps: searchResults } = useSearchApps(debouncedQuery);
+  const searchResultsTruncated = searchResults.some(
+    (result) => result.searchTruncated,
+  );
 
-  // Show all apps if search is empty, otherwise show search results
+  // Keep one-character searches local to app names. Database-wide chat
+  // searches start at two characters to avoid very broad result sets.
   const appsToShow: AppSearchResult[] =
-    debouncedQuery.trim() === "" ? allApps : searchResults;
+    debouncedQuery.trim().length < MIN_APP_SEARCH_QUERY_LENGTH
+      ? allApps
+      : searchResults;
 
   const commandFilter = (
     value: string,
@@ -149,6 +156,14 @@ export function AppSearchDialog({
               </CommandItem>
             );
           })}
+          {searchResultsTruncated && (
+            <div
+              className="px-2 py-1 text-xs text-muted-foreground"
+              role="status"
+            >
+              Showing the first 50 results. Refine your search to see more.
+            </div>
+          )}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

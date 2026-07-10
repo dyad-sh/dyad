@@ -27,7 +27,7 @@
 // =============================================================================
 
 export { settingsContracts } from "./settings";
-export { appContracts } from "./app";
+export { appContracts, MIN_APP_SEARCH_QUERY_LENGTH } from "./app";
 export { chatContracts, chatStreamContract } from "./chat";
 export { agentContracts, agentEvents } from "./agent";
 export { githubContracts, gitContracts, githubEvents } from "./github";

@@ -1,15 +1,13 @@
 import { ipcMain, app, dialog } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
-import { apps, chats, messages, versions } from "../../db/schema";
-import { desc, eq, inArray, like } from "drizzle-orm";
+import { apps, chats, versions } from "../../db/schema";
+import { desc, eq, inArray } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { appContracts } from "../types/app";
-import type { AppFileSearchResult } from "../types/app";
 import { miscContracts } from "../types/misc";
 import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import {
   getDyadAppPath,
   getDefaultDyadAppsDirectory,
@@ -112,72 +110,14 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import type { AppSearchResult } from "@/lib/schemas";
-
 import { getAppPort } from "../../../shared/ports";
-import {
-  getRgExecutablePath,
-  MAX_FILE_SEARCH_SIZE,
-  RIPGREP_EXCLUDED_GLOBS,
-} from "../utils/ripgrep_utils";
+import { searchAppFilesWithRipgrep } from "../utils/app_file_search";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { detectFrameworkType } from "../utils/framework_utils";
+import { searchAppsWithResultLimits } from "../services/app_search_service";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
-
-function sanitizeSnippetText(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-/**
- * Converts a byte offset in UTF-8 encoded string to a character index.
- * Ripgrep provides byte offsets, but JavaScript strings use character indices.
- * This handles multi-byte UTF-8 characters (emojis, CJK, accented characters) correctly.
- */
-function byteOffsetToCharIndex(text: string, byteOffset: number): number {
-  // Cap the byte offset to the actual byte length of the string
-  const totalBytes = Buffer.from(text, "utf8").length;
-  const safeByteOffset = Math.min(byteOffset, totalBytes);
-
-  // Find the character index by checking byte counts at each position
-  // This correctly handles multi-byte characters
-  for (let i = 0; i <= text.length; i++) {
-    const bytesUpToIndex = Buffer.from(text.slice(0, i), "utf8").length;
-    if (bytesUpToIndex >= safeByteOffset) {
-      return i;
-    }
-  }
-
-  return text.length;
-}
-
-function buildSnippetFromMatch({
-  lineText,
-  start,
-  end,
-  lineNumber,
-}: {
-  lineText: string;
-  start: number;
-  end: number;
-  lineNumber: number;
-}): NonNullable<AppFileSearchResult["snippets"]>[number] {
-  const safeLine = lineText.replace(/\r?\n$/, "");
-  // Convert byte offsets to character indices for proper UTF-8 handling
-  const startChar = byteOffsetToCharIndex(safeLine, start);
-  const endChar = byteOffsetToCharIndex(safeLine, end);
-  const before = sanitizeSnippetText(safeLine.slice(0, startChar));
-  const match = sanitizeSnippetText(safeLine.slice(startChar, endChar));
-  const after = sanitizeSnippetText(safeLine.slice(endChar));
-
-  return {
-    before,
-    match,
-    after,
-    line: lineNumber,
-  };
-}
 
 async function copyDir(
   source: string,
@@ -199,123 +139,6 @@ async function copyDir(
       }
       return true;
     },
-  });
-}
-
-async function searchAppFilesWithRipgrep({
-  appPath,
-  query,
-}: {
-  appPath: string;
-  query: string;
-}): Promise<AppFileSearchResult[]> {
-  return new Promise((resolve, reject) => {
-    const results = new Map<string, AppFileSearchResult>();
-    const args = [
-      "--json",
-      "--no-config",
-      "--ignore-case",
-      "--fixed-strings",
-      "--max-filesize",
-      `${MAX_FILE_SEARCH_SIZE}`,
-      ...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]),
-      query,
-      ".",
-    ];
-
-    const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
-    let buffer = "";
-
-    rg.stdout.on("data", (data) => {
-      buffer += data.toString();
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const event = JSON.parse(line);
-          if (event.type !== "match" || !event.data) {
-            continue;
-          }
-
-          const matchPath = event.data.path?.text as string;
-          if (!matchPath) continue;
-
-          const absolutePath = path.isAbsolute(matchPath)
-            ? matchPath
-            : path.join(appPath, matchPath);
-          const relativePath = normalizePath(
-            path.relative(appPath, absolutePath),
-          );
-          if (relativePath.startsWith("..")) {
-            continue; // outside app directory
-          }
-
-          const lineText = event.data.lines?.text as string;
-          const lineNumber = event.data.line_number as number;
-          const submatch = event.data.submatches?.[0];
-          if (
-            typeof lineText !== "string" ||
-            typeof lineNumber !== "number" ||
-            !submatch
-          ) {
-            continue;
-          }
-
-          const snippet = buildSnippetFromMatch({
-            lineText,
-            start: submatch.start,
-            end: submatch.end,
-            lineNumber,
-          });
-
-          const existing = results.get(relativePath);
-          if (!existing) {
-            results.set(relativePath, {
-              path: relativePath,
-              matchesContent: true,
-              snippets: [snippet],
-            });
-          } else {
-            // Add snippet to existing result if it doesn't already exist (avoid duplicates)
-            if (!existing.snippets) {
-              existing.snippets = [];
-            }
-            // Only add if this line number isn't already in the snippets
-            const existingLine = existing.snippets.find(
-              (s) => s.line === snippet.line,
-            );
-            if (!existingLine) {
-              existing.snippets.push(snippet);
-            }
-          }
-        } catch (error) {
-          logger.warn("Failed to parse ripgrep output line:", line, error);
-        }
-      }
-    });
-
-    rg.stderr.on("data", (data) => {
-      const message = data.toString();
-      if (message.toLowerCase().includes("binary file skipped")) {
-        return;
-      }
-      logger.debug("ripgrep stderr:", message);
-    });
-
-    rg.on("close", (code) => {
-      // rg exits with code 1 when no matches are found; treat as success
-      if (code !== 0 && code !== 1) {
-        reject(new Error(`ripgrep exited with code ${code}`));
-        return;
-      }
-      resolve(Array.from(results.values()));
-    });
-
-    rg.on("error", (error) => {
-      reject(error);
-    });
   });
 }
 
@@ -1577,90 +1400,8 @@ export function registerAppHandlers() {
     return contentMatches;
   });
 
-  // search-app is not in app contracts - keep using handle
-  handle(
-    "search-app",
-    async (_, searchQuery: string): Promise<AppSearchResult[]> => {
-      // Use parameterized query to prevent SQL injection
-      const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
-
-      // 1) Apps whose name matches
-      const appNameMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-        })
-        .from(apps)
-        .where(like(apps.name, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      const appNameMatchesResult: AppSearchResult[] = appNameMatches.map(
-        (r) => ({
-          id: r.id,
-          name: r.name,
-          createdAt: r.createdAt,
-          matchedChatTitle: null,
-          matchedChatMessage: null,
-        }),
-      );
-
-      // 2) Apps whose chat title matches
-      const chatTitleMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-          matchedChatTitle: chats.title,
-        })
-        .from(apps)
-        .innerJoin(chats, eq(apps.id, chats.appId))
-        .where(like(chats.title, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map(
-        (r) => ({
-          id: r.id,
-          name: r.name,
-          createdAt: r.createdAt,
-          matchedChatTitle: r.matchedChatTitle,
-          matchedChatMessage: null,
-        }),
-      );
-
-      // 3) Apps whose chat message content matches
-      const chatMessageMatches = await db
-        .select({
-          id: apps.id,
-          name: apps.name,
-          createdAt: apps.createdAt,
-          matchedChatTitle: chats.title,
-          matchedChatMessage: messages.content,
-        })
-        .from(apps)
-        .innerJoin(chats, eq(apps.id, chats.appId))
-        .innerJoin(messages, eq(chats.id, messages.chatId))
-        .where(like(messages.content, pattern))
-        .orderBy(desc(apps.createdAt));
-
-      // Flatten and dedupe by app id
-      const allMatches: AppSearchResult[] = [
-        ...appNameMatchesResult,
-        ...chatTitleMatchesResult,
-        ...chatMessageMatches,
-      ];
-      const uniqueApps = Array.from(
-        new Map(allMatches.map((app) => [app.id, app])).values(),
-      );
-
-      // Sort newest apps first
-      uniqueApps.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
-
-      return uniqueApps;
-    },
+  handle("search-app", async (_, searchQuery: string) =>
+    searchAppsWithResultLimits(searchQuery),
   );
 
   // Handler for adding logs to central store from renderer

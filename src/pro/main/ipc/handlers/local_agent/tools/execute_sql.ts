@@ -14,6 +14,10 @@ import {
   doesSqlDeleteData,
   doesSqlMutateSchema,
 } from "@/lib/sqlSchemaMutation";
+import {
+  AGENT_SQL_RESULT_LIMITS,
+  limitAgentSqlQuery,
+} from "@/ipc/utils/sql_result_limits";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -50,11 +54,17 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
+      const limitedQuery = limitAgentSqlQuery(
+        args.query,
+        AGENT_SQL_RESULT_LIMITS.maxRows,
+      );
+
       if (ctx.neonProjectId && ctx.neonActiveBranchId) {
         const sqlResult = await executeNeonSql({
           projectId: ctx.neonProjectId,
           branchId: ctx.neonActiveBranchId,
-          query: args.query,
+          query: limitedQuery.query,
+          resultLimits: AGENT_SQL_RESULT_LIMITS,
         });
         return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
       }
@@ -69,8 +79,9 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       if (ctx.supabaseProjectId) {
         const sqlResult = await executeSupabaseSql({
           supabaseProjectId: ctx.supabaseProjectId,
-          query: args.query,
+          query: limitedQuery.query,
           organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          resultLimits: AGENT_SQL_RESULT_LIMITS,
         });
 
         const settings = readSettings();

@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { grepTool, normalizeRipgrepMatchPath } from "./grep";
+import {
+  grepTool,
+  MAX_GREP_LINE_BYTES,
+  MAX_GREP_OUTPUT_BYTES,
+  normalizeRipgrepMatchPath,
+} from "./grep";
 import type { AgentContext } from "./types";
 
 // Mock electron-log
@@ -494,11 +499,11 @@ function deepHello() {
         mockContext,
       );
 
-      expect(result).toMatchInlineSnapshot(`
-        "nested/deep.ts:2: function deepHello() {
-
-        [TRUNCATED: Showing 1 of 8 matches. Use include_pattern to narrow your search (e.g., include_pattern="*.tsx") or use a more specific query.]"
-      `);
+      const matchLines = result
+        .split("\n")
+        .filter((line) => line.match(/:\d+:/));
+      expect(matchLines).toHaveLength(1);
+      expect(result).toContain("[TRUNCATED: Showing 1 of at least 2 matches.");
     });
 
     it("includes truncation info in XML attributes", async () => {
@@ -539,6 +544,50 @@ function deepHello() {
         .filter((line) => line.match(/:\d+:/));
       expect(matchLines).toHaveLength(3);
       expect(result).toContain("[TRUNCATED: Showing 3 of at least 4 matches.");
+    });
+
+    it("stops ordinary searches at the default producer limit", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, "broad.ts"),
+        Array.from({ length: 125 }, () => "defaultLimitNeedle").join("\n"),
+      );
+
+      const result = await grepTool.execute(
+        { query: "defaultLimitNeedle" },
+        mockContext,
+      );
+      const matchLines = result
+        .split("\n")
+        .filter((line) => line.match(/:\d+:/));
+
+      expect(matchLines).toHaveLength(100);
+      expect(result).toContain(
+        "[TRUNCATED: Showing 100 of at least 101 matches.",
+      );
+    });
+
+    it("caps retained Unicode lines and the total UTF-8 output", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, "unicode.ts"),
+        `unicodeLimitNeedle ${"😀".repeat(600)}\n`,
+      );
+
+      const result = await grepTool.execute(
+        { query: "unicodeLimitNeedle" },
+        mockContext,
+      );
+      const matchLine = result
+        .split("\n")
+        .find((line) => line.includes("unicodeLimitNeedle"));
+
+      expect(matchLine).toBeDefined();
+      expect(Buffer.byteLength(matchLine!, "utf8")).toBeLessThanOrEqual(
+        MAX_GREP_LINE_BYTES + 64,
+      );
+      expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(
+        MAX_GREP_OUTPUT_BYTES,
+      );
+      expect(result).not.toContain("�");
     });
   });
 

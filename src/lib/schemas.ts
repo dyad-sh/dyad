@@ -53,6 +53,7 @@ export const AppSearchResultSchema = z.object({
   createdAt: z.date(),
   matchedChatTitle: z.string().nullable(),
   matchedChatMessage: z.string().nullable(),
+  searchTruncated: z.boolean().optional(),
 });
 
 // Type derived from AppSearchResultSchema

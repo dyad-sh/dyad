@@ -172,6 +172,9 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     }
     return map;
   }, [searchResults]);
+  const searchResultsTruncated = searchResults.some(
+    (result) => result.truncated,
+  );
 
   const visibleFiles = useMemo(() => {
     if (!isSearchMode) {
@@ -241,6 +244,11 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
                 ? t("preview.searchingFiles")
                 : t("preview.match", { count: matchesByPath.size })}
             </span>
+            {searchResultsTruncated && (
+              <span title="Search results were limited to protect memory">
+                Results limited; refine search
+              </span>
+            )}
           </div>
         )}
       </div>

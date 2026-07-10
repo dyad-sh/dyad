@@ -4,6 +4,10 @@ import { getNeonClient } from "./neon_management_client";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import {
+  serializeSqlResult,
+  type SqlResultLimits,
+} from "@/ipc/utils/sql_result_limits";
 
 const logger = log.scope("neon_context");
 
@@ -140,10 +144,12 @@ export async function executeNeonSql({
   projectId,
   branchId,
   query,
+  resultLimits,
 }: {
   projectId: string;
   branchId: string;
   query: string;
+  resultLimits?: SqlResultLimits;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return `[[TEST_NEON_SQL_RESULT: ${query.slice(0, 50)}]]`;
@@ -153,7 +159,9 @@ export async function executeNeonSql({
     const connectionUri = await getConnectionUri({ projectId, branchId });
     const sql = neon(connectionUri);
     const result = await sql.query(query, []);
-    return JSON.stringify(result, null, 2);
+    return resultLimits
+      ? serializeSqlResult(result, resultLimits).text
+      : JSON.stringify(result, null, 2);
   } catch (error) {
     logger.error("Error executing Neon SQL:", error);
     throw new DyadError(

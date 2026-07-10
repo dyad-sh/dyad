@@ -188,8 +188,10 @@ function runProblemReportWorker({
         token: child,
         stop: async () => {
           if (!killRequested) {
+            if (!child.kill()) {
+              throw new Error("Failed to terminate TSC worker");
+            }
             killRequested = true;
-            child.kill();
           }
           await exitPromise;
         },

@@ -375,8 +375,10 @@ function getHost(): CodeExplorerHost {
       host = null;
     }
     if (!killRequested) {
+      if (!child.kill()) {
+        throw new Error("Failed to terminate code explorer host");
+      }
       killRequested = true;
-      child.kill();
     }
     await exitPromise;
   };

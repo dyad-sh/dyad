@@ -1,5 +1,7 @@
 export type TypeScriptUtilityProcessKind = "code-explorer" | "tsc";
 
+const RESIDENT_PROCESS_STOP_TIMEOUT_MS = 30_000;
+
 interface QueuedOperation {
   kind: TypeScriptUtilityProcessKind;
   operation: () => Promise<unknown>;
@@ -125,13 +127,47 @@ export class TypeScriptUtilityProcessScheduler {
 
   private stopResidentProcess(entry: ResidentProcess): Promise<void> {
     if (!entry.stopPromise) {
-      entry.stopPromise = entry.stop().then(() => {
+      const stopAttempt = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(
+              `Timed out after ${RESIDENT_PROCESS_STOP_TIMEOUT_MS}ms waiting for ${entry.kind} process to exit`,
+            ),
+          );
+        }, RESIDENT_PROCESS_STOP_TIMEOUT_MS);
+
+        // Defer the callback so entry.stopPromise is installed before the raw
+        // stop path can synchronously emit `exit` in a test or future runtime.
+        void Promise.resolve()
+          .then(() => entry.stop())
+          .then(
+            () => {
+              clearTimeout(timeout);
+              resolve();
+            },
+            (error) => {
+              clearTimeout(timeout);
+              reject(error);
+            },
+          );
+      }).then(() => {
         if (this.resident === entry) {
           throw new Error(
             `${entry.kind} process reported that it stopped before emitting exit`,
           );
         }
       });
+
+      let retryableStopPromise!: Promise<void>;
+      retryableStopPromise = stopAttempt.catch((error) => {
+        if (entry.stopPromise === retryableStopPromise) {
+          // Keep the resident registered for safety, but allow a later queued
+          // operation to retry stopping it instead of caching a rejection.
+          entry.stopPromise = undefined;
+        }
+        throw error;
+      });
+      entry.stopPromise = retryableStopPromise;
     }
     return entry.stopPromise;
   }

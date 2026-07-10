@@ -97,6 +97,7 @@ import {
   getManagedNodeVersion,
   maybeUpgradeManagedNode,
 } from "./ipc/utils/managed_node";
+import { disposeMcpClientsForShutdown } from "./ipc/utils/mcp_shutdown";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -1154,6 +1155,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isAppQuitting = true;
   clearCrashSentinel();
+  void disposeMcpClientsForShutdown();
 });
 
 // IMPORTANT: This handler must be synchronous because Electron's EventEmitter

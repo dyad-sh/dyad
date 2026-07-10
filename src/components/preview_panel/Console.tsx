@@ -161,7 +161,9 @@ export const Console = () => {
     return Array.from(sources).sort();
   }, [consoleEntries]);
 
-  // Filter and sort console entries by timestamp
+  // The bounded buffer keeps this copy small. Sort at display time because
+  // browser and dev-server producers can deliver timestamped entries out of
+  // order relative to each other.
   const filteredEntries = useMemo(() => {
     return consoleEntries
       .filter((entry) => {

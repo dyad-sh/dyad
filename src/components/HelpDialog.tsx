@@ -665,6 +665,12 @@ ${formatLogsSection(debugInfo)}
             title="MCP Servers"
             data={debugBundle.mcpServers}
           />
+          {debugBundle.memoryDiagnostics && (
+            <ReviewDetailsSection
+              title="Memory Diagnostics"
+              data={debugBundle.memoryDiagnostics}
+            />
+          )}
         </div>
 
         <div className="flex justify-between mt-4 pt-2 sticky bottom-0 bg-background">

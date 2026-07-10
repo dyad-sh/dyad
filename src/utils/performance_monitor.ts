@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { app } from "electron";
 import { writeSettings } from "../main/settings";
 import os from "node:os";
 
@@ -21,6 +22,22 @@ function getMemoryUsageMB(): number {
   const memoryUsage = process.memoryUsage();
   // Use RSS (Resident Set Size) for total memory used by the process
   return Math.round(memoryUsage.rss / BYTES_PER_MB);
+}
+
+/**
+ * Get total memory (working set) across ALL Electron processes in MB
+ * (Browser + renderers + GPU + utility). Main-process RSS alone dramatically
+ * understates real usage. Cheap (no shell-outs); safe for periodic capture.
+ */
+function getAllProcessesMemoryMB(): number | null {
+  try {
+    const totalWorkingSetSizeKB = app
+      .getAppMetrics()
+      .reduce((sum, metric) => sum + metric.memory.workingSetSize, 0);
+    return Math.round(totalWorkingSetSizeKB / 1024);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -136,6 +153,7 @@ function getSystemCpuUsagePercent(): number | null {
 function capturePerformanceMetrics() {
   try {
     const memoryUsageMB = getMemoryUsageMB();
+    const allProcessesMemoryMB = getAllProcessesMemoryMB();
     const cpuUsagePercent = getCpuUsagePercent();
     const systemMemory = getSystemMemoryUsage();
     const systemCpuPercent = getSystemCpuUsagePercent();
@@ -143,13 +161,13 @@ function capturePerformanceMetrics() {
     // Skip saving if CPU is null (first call for either metric)
     if (cpuUsagePercent === null || systemCpuPercent === null) {
       logger.debug(
-        `Performance: Memory=${memoryUsageMB}MB, CPU=initializing, System Memory=${systemMemory.usagePercent}%, System CPU=initializing`,
+        `Performance: Memory=${memoryUsageMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=initializing, System Memory=${systemMemory.usagePercent}%, System CPU=initializing`,
       );
       return;
     }
 
     logger.debug(
-      `Performance: Memory=${memoryUsageMB}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
+      `Performance: Memory=${memoryUsageMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
     );
 
     writeSettings({

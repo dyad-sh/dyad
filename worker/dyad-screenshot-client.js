@@ -114,13 +114,19 @@
             dimensions.height / dimensions.viewport.height,
           );
 
-          // html-to-image always clones from the document origin. Translate
-          // the clone to the current scroll position so the bounded fallback
-          // captures what the user is actually viewing. The scale also keeps
-          // unusually large viewports within the same pixel budget.
+          // html-to-image always clones from the document origin. Offset the
+          // clone to the current scroll position so the bounded fallback
+          // captures what the user is actually viewing. Avoid a transform:
+          // transforms establish a containing block for fixed descendants and
+          // would shift fixed headers, floating buttons, and modals along with
+          // the scrolled document content. CSS zoom keeps unusually large
+          // viewports within the same pixel budget without changing that
+          // fixed-position containing block.
           options.style = {
-            transform: `matrix(${scale}, 0, 0, ${scale}, ${-scrollX * scale}, ${-scrollY * scale})`,
-            transformOrigin: "top left",
+            position: "relative",
+            left: `${-scrollX}px`,
+            top: `${-scrollY}px`,
+            zoom: `${scale}`,
             width: `${dimensions.fullPage.width}px`,
             height: `${dimensions.fullPage.height}px`,
           };

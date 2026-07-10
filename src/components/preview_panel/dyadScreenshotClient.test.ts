@@ -138,13 +138,18 @@ describe("dyad screenshot client", () => {
         height: 720,
         pixelRatio: 1,
         style: {
-          transform: "matrix(1, 0, 0, 1, -120, -450)",
-          transformOrigin: "top left",
+          position: "relative",
+          left: "-120px",
+          top: "-450px",
+          zoom: "1",
           width: "1920px",
           height: "50000px",
         },
       }),
     );
+    // A transform on the body would establish a containing block and move
+    // fixed-position UI with the scrolled document content.
+    expect(options.style).not.toHaveProperty("transform");
     expect(options.width * options.height).toBeLessThanOrEqual(4 * 1024 * 1024);
   });
 

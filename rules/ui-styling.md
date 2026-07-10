@@ -27,6 +27,13 @@ Use `MoreHorizontal` for compact preview-mode overflow and `MoreVertical` for
 the right-most preview utility/actions menu. This keeps two ellipsis controls in
 the same preview header visually distinct.
 
+## Preview screenshot viewport offsets
+
+When using `html-to-image` to capture a scrolled viewport, do not translate or
+transform the cloned document root. A transformed ancestor becomes the
+containing block for fixed descendants and shifts headers, floating buttons,
+and modals; use non-transform layout offsets so fixed UI remains viewport-bound.
+
 ## Flex containers with non-shrinkable children
 
 Don't put an explicit `min-w-*` on a flex item whose children are `flex-shrink-0` (icon buttons, etc.) if that value is smaller than the children's combined width. An explicit `min-width` overrides flexbox's content-based minimum, so the item gets squeezed below its content and the overflow paints over sibling elements — visually broken and it intercepts their pointer events (this broke the preview Restart button at narrow widths). Use `min-w-fit` to let the item refuse to shrink below its content.

@@ -30,6 +30,7 @@ import { webFetchTool } from "./tools/web_fetch";
 import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
+import { runTestsTool } from "./tools/run_tests";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import { exploreCodeTool } from "./tools/explore_code";
@@ -117,6 +118,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
+  runTestsTool,
   readGuideTool,
   executeSandboxScriptTool,
   searchMcpToolsTool,

@@ -117,6 +117,8 @@ function deepHello() {
       todos: [],
       dyadRequestId: "test-request",
       fileEditTracker: {},
+      testingEnabled: true,
+      testRunAttempts: new Map(),
       onXmlStream: vi.fn(),
       onXmlComplete: vi.fn(),
       requireConsent: vi.fn().mockResolvedValue(true),

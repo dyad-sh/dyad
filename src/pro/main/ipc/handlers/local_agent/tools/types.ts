@@ -163,6 +163,30 @@ export interface AgentContext {
    * When false, the sandbox inlines every tool declaration instead.
    */
   isMcpToolSearchAvailable?: boolean;
+  /**
+   * Whether the app has opted into E2E testing (apps.testingEnabled). Gates the
+   * `run_tests` tool, mirroring how `testingEnabled` gates the test-writing
+   * guidance in the system prompt.
+   */
+  testingEnabled: boolean;
+  /**
+   * Turn-scoped `run_tests` attempt tracking, keyed by normalized spec path (or
+   * "__suite__" for a whole-suite run). Created fresh per turn like
+   * `fileEditTracker`, so the 4-attempt fix cap resets each turn.
+   */
+  testRunAttempts: Map<string, TestRunAttemptState>;
+}
+
+/** Per-spec fix-loop state for the `run_tests` tool, tracked across one turn. */
+export interface TestRunAttemptState {
+  /** Failed runs counted toward the per-spec cap (infra/flake runs excluded). */
+  attempts: number;
+  /** Normalized failure signature of the last failing run, for no-progress detection. */
+  lastFailureSignature?: string;
+  /** Sum over `fileEditTracker` at the last run, for the require-a-change guard. */
+  fileEditCountAtLastRun?: number;
+  /** Whether the one free `flakeCheck` rerun has been used for this spec. */
+  flakeCheckUsed?: boolean;
 }
 
 // ============================================================================

@@ -34,12 +34,15 @@ import {
   type TestStatus,
 } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
+import type { RunAppTestsResult } from "@/ipc/types/tests";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useSetTestingEnabled } from "@/hooks/useSetTestingEnabled";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useChatMode } from "@/hooks/useChatMode";
+import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showInfo } from "@/lib/toast";
@@ -499,7 +502,17 @@ export function TestsPanel() {
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
   const { streamMessage, isStreaming } = useStreamChat();
+  const { effectiveMode } = useChatMode(chatId);
+  const isAgentMode = effectiveMode === "local-agent";
   const queryClient = useQueryClient();
+
+  // "Generate test" / "Fix with AI" run in Agent mode. When the current chat is
+  // in another mode, we confirm the switch first and stash the action to run on
+  // Continue.
+  const [agentModeDialog, setAgentModeDialog] = useState<{
+    action: "generate" | "fix";
+    run: () => void;
+  } | null>(null);
 
   // Per-app opt-in gate. Running tests can mutate the app's real data, so every
   // run/generate control stays hidden behind the opt-in screen until the user
@@ -542,9 +555,9 @@ export function TestsPanel() {
     setSpecs({ appId: selectedAppId, specs: specsQuery.data.specs });
   }, [selectedAppId, setSpecs, specsQuery.data]);
 
-  // Re-discover specs when a chat turn finishes - the AI may have generated a
-  // new test file (via <dyad-generate-test>), which wouldn't otherwise appear
-  // until the panel is remounted. Done quietly, without the loading spinner.
+  // Re-discover specs when a chat turn finishes - the agent may have written a
+  // new spec file (via write_file), which wouldn't otherwise appear until the
+  // panel is remounted. Done quietly, without the loading spinner.
   const prevStreamingRef = useRef(isStreaming);
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming && selectedAppId != null) {
@@ -622,13 +635,13 @@ export function TestsPanel() {
     };
   }, [setRunState, flushPendingOutput, testingEnabled]);
 
-  const runTests = useCallback(
-    async (file?: string, line?: number) => {
-      if (selectedAppId == null) return;
-      const appId = selectedAppId;
+  // Transition the panel into the "running" state for a run. Shared by
+  // panel-initiated runs (runTests) and agent-initiated runs (the tests:run-state
+  // subscription), so both show the same spinners/cleared-output chrome.
+  const applyRunStarted = useCallback(
+    (appId: number, file: string | undefined, line: number | undefined) => {
       const isSingleTest = file != null && line != null;
       const targetFiles = file ? [file] : specs.map((s) => s.file);
-
       flushPendingOutput(appId);
       clearOutput(appId);
       setRunState({
@@ -654,6 +667,62 @@ export function TestsPanel() {
         }),
       });
       setOutputOpen(true);
+    },
+    [specs, flushPendingOutput, clearOutput, setRunState],
+  );
+
+  // Merge a finished run's results back onto the panel. Shared by panel- and
+  // agent-initiated runs.
+  const applyRunFinished = useCallback(
+    (appId: number, res: RunAppTestsResult, isSingleTest: boolean) => {
+      // Playwright reports a spec's `file` relative to its own rootDir, which
+      // may not match the glob-relative paths in our spec list (e.g. missing
+      // the "tests/" prefix). Reconcile each result back onto a known spec
+      // key so rows actually pick up their status.
+      const specFiles = specs.map((s) => s.file);
+      const specsByFile = new Map(specs.map((s) => [s.file, s]));
+      setRunState({
+        appId,
+        update: (prev) => {
+          const nextResults = { ...prev.results };
+          for (const r of res.results) {
+            const key = reconcileResultFile(r.file, specFiles);
+            const mapped = { ...r, file: key };
+            if (isSingleTest) {
+              nextResults[key] = buildSingleTestFileResult({
+                file: key,
+                knownTests: specsByFile.get(key)?.tests ?? [],
+                previous: prev.results[key],
+                incoming: mapped,
+              });
+            } else {
+              nextResults[key] = mapped;
+            }
+          }
+          return {
+            ...prev,
+            phase: "idle",
+            runningFiles: [],
+            runningTests: [],
+            results: nextResults,
+            runError: res.infraError
+              ? { message: res.infraError.message, kind: "infra" }
+              : undefined,
+            isolation: res.isolation,
+          };
+        },
+      });
+    },
+    [specs, setRunState],
+  );
+
+  const runTests = useCallback(
+    async (file?: string, line?: number) => {
+      if (selectedAppId == null) return;
+      const appId = selectedAppId;
+      const isSingleTest = file != null && line != null;
+
+      applyRunStarted(appId, file, line);
 
       try {
         const res = await ipc.tests.runAppTests({
@@ -665,43 +734,7 @@ export function TestsPanel() {
           // file/all runs.
           parallel: parallel && !isSingleTest,
         });
-        // Playwright reports a spec's `file` relative to its own rootDir, which
-        // may not match the glob-relative paths in our spec list (e.g. missing
-        // the "tests/" prefix). Reconcile each result back onto a known spec
-        // key so rows actually pick up their status.
-        const specFiles = specs.map((s) => s.file);
-        const specsByFile = new Map(specs.map((s) => [s.file, s]));
-        setRunState({
-          appId,
-          update: (prev) => {
-            const nextResults = { ...prev.results };
-            for (const r of res.results) {
-              const key = reconcileResultFile(r.file, specFiles);
-              const mapped = { ...r, file: key };
-              if (isSingleTest) {
-                nextResults[key] = buildSingleTestFileResult({
-                  file: key,
-                  knownTests: specsByFile.get(key)?.tests ?? [],
-                  previous: prev.results[key],
-                  incoming: mapped,
-                });
-              } else {
-                nextResults[key] = mapped;
-              }
-            }
-            return {
-              ...prev,
-              phase: "idle",
-              runningFiles: [],
-              runningTests: [],
-              results: nextResults,
-              runError: res.infraError
-                ? { message: res.infraError.message, kind: "infra" }
-                : undefined,
-              isolation: res.isolation,
-            };
-          },
-        });
+        applyRunFinished(appId, res, isSingleTest);
       } catch (err) {
         setRunState({
           appId,
@@ -720,23 +753,55 @@ export function TestsPanel() {
     },
     [
       selectedAppId,
-      specs,
-      flushPendingOutput,
-      clearOutput,
+      applyRunStarted,
+      applyRunFinished,
       setRunState,
       headed,
       parallel,
     ],
   );
 
+  // Reflect runs the panel didn't start itself — the agent's run_tests tool
+  // streams the same lifecycle via tests:run-state. Ignore source: "panel"
+  // (runTests already writes state directly, and main serializes runs so an
+  // agent and a panel run never overlap). Gated on the opt-in like onOutput.
+  useEffect(() => {
+    if (!testingEnabled) return;
+    const unsubscribe = ipc.events.tests.onRunState((payload) => {
+      if (payload.source === "panel") return;
+      const isSingleTest = payload.testFile != null && payload.testLine != null;
+      if (payload.state === "started") {
+        applyRunStarted(payload.appId, payload.testFile, payload.testLine);
+      } else {
+        applyRunFinished(
+          payload.appId,
+          {
+            appId: payload.appId,
+            results: payload.results ?? [],
+            infraError: payload.infraError,
+            isolation: payload.isolation,
+          },
+          isSingleTest,
+        );
+      }
+    });
+    return unsubscribe;
+  }, [testingEnabled, applyRunStarted, applyRunFinished]);
+
   const stop = useCallback(() => {
     if (selectedAppId == null) return;
     ipc.tests.stopAppTests({ appId: selectedAppId }).catch(() => {});
   }, [selectedAppId]);
 
-  // User-initiated only: hand the failure back into a normal chat turn.
-  const askAiToFix = useCallback<AskAiToFix>(
-    async (file, error, testTitle, screenshotPath) => {
+  // User-initiated: hand the failure back into an Agent-mode chat turn so the
+  // agent can read the failure, fix it, and re-run it with the run_tests tool.
+  const doAskAiToFix = useCallback(
+    async (
+      file: string,
+      error: string | undefined,
+      testTitle?: string,
+      screenshotPath?: string,
+    ) => {
       if (chatId == null) {
         showInfo("Open a chat to ask the AI to fix this test.");
         return;
@@ -791,27 +856,59 @@ export function TestsPanel() {
         }
       }
 
-      streamMessage({ prompt: sections.join("\n\n"), chatId, attachments });
+      sections.push(
+        "After making your fix, run the test with your run_tests tool and iterate until it passes.",
+      );
+
+      streamMessage({
+        prompt: sections.join("\n\n"),
+        chatId,
+        attachments,
+        requestedChatMode: "local-agent",
+      });
       showInfo("Sent to chat — asking the AI to fix the test…");
     },
     [chatId, streamMessage, jotaiStore, selectedAppId],
   );
 
-  // Kick off a first test by asking the AI (in chat) to cover a critical flow.
-  // The generated <dyad-generate-test> spec surfaces back in this panel once the
-  // turn finishes (see the invalidate-on-stream-end effect above).
-  const generateTest = useCallback(() => {
+  // Public entry point: confirm the switch to Agent mode first if we aren't
+  // already in it, then run the fix.
+  const askAiToFix = useCallback<AskAiToFix>(
+    (file, error, testTitle, screenshotPath) => {
+      const run = () => doAskAiToFix(file, error, testTitle, screenshotPath);
+      if (isAgentMode) {
+        run();
+      } else {
+        setAgentModeDialog({ action: "fix", run });
+      }
+    },
+    [doAskAiToFix, isAgentMode],
+  );
+
+  // Kick off a first test by asking the agent to cover a critical flow. The
+  // written spec surfaces back in this panel once the turn finishes (see the
+  // invalidate-on-stream-end effect above).
+  const doGenerateTest = useCallback(() => {
     if (chatId == null) {
       showInfo("Open a chat to generate a test.");
       return;
     }
     streamMessage({
       prompt:
-        "Generate an end-to-end test for a critical user journey in this app. First explore the app to find its most important flow, then write a single Playwright test that covers it.",
+        "Generate an end-to-end test for a critical user journey in this app. First explore the app to find its most important flow, then write a single Playwright test that covers it, run it with your run_tests tool, and fix any failures until it passes.",
       chatId,
+      requestedChatMode: "local-agent",
     });
     showInfo("Sent to chat — generating a test…");
   }, [chatId, streamMessage]);
+
+  const generateTest = useCallback(() => {
+    if (isAgentMode) {
+      doGenerateTest();
+    } else {
+      setAgentModeDialog({ action: "generate", run: doGenerateTest });
+    }
+  }, [doGenerateTest, isAgentMode]);
 
   const enableTesting = useCallback(() => {
     if (selectedAppId == null) return;
@@ -1170,6 +1267,7 @@ export function TestsPanel() {
             <button
               onClick={generateTest}
               disabled={isStreaming}
+              data-testid="generate-test-button"
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
@@ -1203,6 +1301,18 @@ export function TestsPanel() {
       </div>
 
       <OutputDrawer open={outputOpen} onToggle={toggleOutput} />
+
+      <AgentModeRequiredDialog
+        open={agentModeDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setAgentModeDialog(null);
+        }}
+        action={agentModeDialog?.action ?? "generate"}
+        onContinue={() => {
+          agentModeDialog?.run();
+          setAgentModeDialog(null);
+        }}
+      />
     </div>
   );
 }

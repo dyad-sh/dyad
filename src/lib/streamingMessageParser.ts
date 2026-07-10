@@ -73,7 +73,6 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-script",
   "dyad-app-blueprint",
   "dyad-security-finding",
-  "dyad-generate-test",
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);
 

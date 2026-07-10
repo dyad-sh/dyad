@@ -707,6 +707,8 @@ export async function handleLocalAgentStream(
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
+      testingEnabled: Boolean(chat.app.testingEnabled),
+      testRunAttempts: new Map(),
       isDyadPro: isDyadProEnabled(settings),
       freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {

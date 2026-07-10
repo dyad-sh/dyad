@@ -14,7 +14,12 @@ import {
   TEST_SPEC_GLOB,
   testsContracts,
 } from "../types/tests";
-import type { RunAppTestsResult, TestCase, TestResult } from "../types/tests";
+import type {
+  RunAppTestsResult,
+  TestCase,
+  TestResult,
+  TestsRunStatePayload,
+} from "../types/tests";
 import { runningApps } from "../utils/process_manager";
 import { isLockHeld, withLock } from "../utils/lock_utils";
 import { safeSend } from "../utils/safe_sender";
@@ -35,6 +40,7 @@ import {
   prepareIsolatedTestDatabase,
   type PreparedIsolation,
 } from "../services/isolated_test_db";
+import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -52,7 +58,7 @@ const TEST_FILE_PATTERN = new RegExp(
   `^tests/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
 );
 
-function normalizeRunTestFile(testFile: string): string | null {
+export function normalizeRunTestFile(testFile: string): string | null {
   const normalized = path.posix.normalize(testFile.replace(/\\/g, "/"));
   return TEST_FILE_PATTERN.test(normalized) ? normalized : null;
 }
@@ -95,7 +101,7 @@ async function getApp(appId: number) {
 }
 
 /** Resolve the running dev server's proxy URL, or null if not running. */
-function getRunningBaseUrl(appId: number): string | null {
+export function getRunningTestBaseUrl(appId: number): string | null {
   return runningApps.get(appId)?.proxyUrl ?? null;
 }
 
@@ -106,6 +112,13 @@ function emitOutput(
   phase: "setup" | "running",
 ): void {
   safeSend(event.sender, "tests:output", { appId, chunk, phase });
+}
+
+function emitRunState(
+  event: IpcMainInvokeEvent,
+  payload: TestsRunStatePayload,
+): void {
+  safeSend(event.sender, "tests:run-state", payload);
 }
 
 export interface RunAppTestsCoreOptions {
@@ -130,6 +143,13 @@ export interface RunAppTestsCoreOptions {
   parallel?: boolean;
   /** Aborts an in-flight bootstrap or run. */
   signal?: AbortSignal;
+  /**
+   * Hard wall-clock cap (ms) for the Playwright process. Surfaces as a non-zero
+   * exit so it's classified as an infra failure rather than hanging. The panel
+   * leaves this unset (relies on Playwright's own per-test timeouts + Stop); the
+   * agent tool sets it so one run_tests call can't stall the whole agent turn.
+   */
+  timeoutMs?: number;
   /** Streams raw bootstrap/runner output as it arrives. */
   onOutput?: (chunk: string, phase: "setup" | "running") => void;
   /**
@@ -152,6 +172,7 @@ export async function runAppTestsCore({
   headed,
   parallel,
   signal,
+  timeoutMs,
   onOutput,
   testEnv,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
@@ -173,7 +194,7 @@ export async function runAppTestsCore({
   }
 
   // Gate: the dev server must be running so baseURL resolves.
-  const baseUrl = getRunningBaseUrl(appId);
+  const baseUrl = getRunningTestBaseUrl(appId);
   if (!baseUrl) {
     return {
       appId,
@@ -260,6 +281,7 @@ export async function runAppTestsCore({
         CI: "true",
       }),
       signal,
+      timeoutMs,
       onOutput: (chunk) => emit(chunk, "running"),
     });
   } catch (error) {
@@ -370,6 +392,229 @@ export async function runAppTestsCore({
   return { appId, results };
 }
 
+export interface RunTestsWithIsolationOptions {
+  /**
+   * The invoking IPC event. Its `sender` is where `tests:output` and
+   * `tests:run-state` stream to, and `prepareIsolatedTestDatabase` uses it for
+   * its own provider status messages. For the agent tool, pass `ctx.event`.
+   */
+  event: IpcMainInvokeEvent;
+  appId: number;
+  testFile?: string;
+  testLine?: number;
+  headed?: boolean;
+  parallel?: boolean;
+  timeoutMs?: number;
+  /** Stamped onto `tests:run-state` so the panel ignores its own runs. */
+  source: "panel" | "agent";
+  /**
+   * Aborts the run when the caller's own lifecycle ends (e.g. the agent turn is
+   * cancelled). Wired into the same AbortController the Stop button uses, so
+   * either can cancel the run.
+   */
+  externalSignal?: AbortSignal;
+}
+
+/**
+ * Run an app's tests with database isolation, per-app serialization, and Stop
+ * support. Wraps `runAppTestsCore` with everything the raw core omits:
+ * controller registration in the shared `testRunControllers` map (so the panel
+ * Stop button aborts agent-initiated runs too), the per-app lock, isolated
+ * test-DB setup + guaranteed teardown, and `tests:output`/`tests:run-state`
+ * streaming to the renderer. Backs both the `tests:run` IPC handler (panel Run)
+ * and the agent's `run_tests` tool.
+ */
+export async function runAppTestsWithIsolation({
+  event,
+  appId,
+  testFile,
+  testLine,
+  headed,
+  parallel,
+  timeoutMs,
+  source,
+  externalSignal,
+}: RunTestsWithIsolationOptions): Promise<RunAppTestsResult> {
+  const normalizedTestFile =
+    testFile === undefined ? undefined : normalizeRunTestFile(testFile);
+
+  // Reject an invalid target before the expensive isolation setup (Neon
+  // branch creation, env swap, double dev-server restart) — the same check
+  // in runAppTestsCore would otherwise only fire after all of it.
+  if (testFile !== undefined && !normalizedTestFile) {
+    return {
+      appId,
+      results: [],
+      infraError: { message: `Invalid test file: ${testFile}` },
+    };
+  }
+
+  // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
+  // run's teardown — so a concurrent invocation sees THIS run as its prior
+  // and chains behind it. If we awaited before registering, two rapid Run
+  // clicks could both capture the same old run as `prior`, both wait for it,
+  // then both start isolation setup at once and double-swap the env file.
+  const prior = testRunControllers.get(appId);
+  prior?.controller.abort();
+
+  const controller = new AbortController();
+  let resolveDone!: () => void;
+  const done = new Promise<void>((resolve) => {
+    resolveDone = resolve;
+  });
+  testRunControllers.set(appId, { controller, done });
+
+  // Cancelling the caller's lifecycle (e.g. the agent turn) aborts the run,
+  // just like the Stop button does via the same controller.
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", onExternalAbort);
+    }
+  }
+
+  const emit = (chunk: string, phase: "setup" | "running") =>
+    emitOutput(event, appId, chunk, phase);
+
+  emitRunState(event, {
+    appId,
+    source,
+    state: "started",
+    testFile: normalizedTestFile ?? undefined,
+    testLine,
+  });
+
+  let finalResult: RunAppTestsResult = { appId, results: [] };
+  try {
+    // Wait for the prior run's full lifecycle (prepare → run → teardown) to
+    // finish before swapping env. Otherwise a Stop-then-Run could race the
+    // prior run's teardown (env restore + branch delete) against this run's
+    // env snapshot/swap, causing tests to execute against the real database.
+    if (prior) {
+      await prior.done.catch(() => {});
+    }
+
+    // Hold the per-app lock across the whole isolation lifecycle (prepare →
+    // run → teardown). Startup reconciliation (reconcileOrphanTestBranches /
+    // reconcileOrphanTestUsers) takes the same lock, so a rapid Run right
+    // after launch can't interleave its env swap + dev-server restart with
+    // an in-flight reconciliation and end up running against the real DB.
+    if (isLockHeld(appId)) {
+      logger.info(
+        `Test run for app ${appId} is waiting for another app operation to finish before isolation setup`,
+      );
+      emit(
+        "Waiting for a previous test cleanup or app operation to finish…\n",
+        "setup",
+      );
+    }
+    finalResult = await withLock(appId, async () => {
+      let prepared: PreparedIsolation | undefined;
+      try {
+        const app = await getApp(appId);
+
+        if (!app.testingEnabled) {
+          return {
+            appId,
+            results: [],
+            infraError: {
+              message:
+                "Testing isn't enabled for this app. Enable it in the Tests panel before running tests.",
+            },
+          };
+        }
+
+        const runtimeMode = readSettings().runtimeMode2 ?? "host";
+
+        // Set up isolation so the run never mutates the user's real data:
+        // Neon apps get a throwaway copy-on-write branch, Supabase apps get
+        // a throwaway RLS-scoped test user, and no-DB apps run as-is.
+        prepared = await prepareIsolatedTestDatabase({
+          app,
+          event,
+          emit,
+          runtimeMode,
+          signal: controller.signal,
+        });
+
+        // Isolation was required but couldn't be set up — dead-end safely
+        // rather than run against real data. teardown still runs in `finally`.
+        if (prepared.infraError) {
+          return {
+            appId,
+            results: [],
+            infraError: prepared.infraError,
+            isolation: prepared.isolation,
+          };
+        }
+
+        const result = await runAppTestsCore({
+          appId,
+          testFile: normalizedTestFile ?? undefined,
+          testLine,
+          headed,
+          parallel,
+          signal: controller.signal,
+          timeoutMs,
+          onOutput: emit,
+          testEnv: prepared.testCredentials,
+        });
+        return { ...result, isolation: prepared.isolation };
+      } finally {
+        // Always restore the app to its real database, even on the
+        // infraError early-return, abort, or throw. `teardown` is safe to
+        // call exactly once; on the infraError path it's a NOOP (isolation
+        // already restored).
+        if (prepared) {
+          try {
+            await prepared.teardown();
+          } catch (error) {
+            logger.error(
+              `Failed to tear down isolated test environment for app ${appId}: ${error}`,
+            );
+          }
+        }
+      }
+    });
+    return finalResult;
+  } catch (error) {
+    // Surface an unexpected failure as an infra error on the run-state event so
+    // the panel leaves its spinner state, then rethrow for the caller.
+    finalResult = {
+      appId,
+      results: [],
+      infraError: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+    throw error;
+  } finally {
+    if (externalSignal) {
+      externalSignal.removeEventListener("abort", onExternalAbort);
+    }
+    emitRunState(event, {
+      appId,
+      source,
+      state: "finished",
+      testFile: normalizedTestFile ?? undefined,
+      testLine,
+      results: finalResult.results,
+      infraError: finalResult.infraError,
+      isolation: finalResult.isolation,
+    });
+    // A teardown failure must not skip the cleanup below — leaving the
+    // controller registered and `done` unresolved would make every future
+    // run for this app wait forever on `prior.done`.
+    if (testRunControllers.get(appId)?.controller === controller) {
+      testRunControllers.delete(appId);
+    }
+    // Signal the next queued run that this lifecycle (incl. teardown) is done.
+    resolveDone();
+  }
+}
+
 export function registerTestsHandlers() {
   createTypedHandler(testsContracts.listAppTests, async (_event, params) => {
     const app = await getApp(params.appId);
@@ -414,203 +659,14 @@ export function registerTestsHandlers() {
     async (_event, params) => {
       const app = await getApp(params.appId);
       const appPath = getDyadAppPath(app.path);
-
-      // Security: only read screenshots that live inside this app's directory
-      // and are PNGs, so an arbitrary path can't be slurped into the renderer.
-      // Playwright reports absolute paths, but resolve relative ones against the
-      // app dir just in case.
-      const resolved = path.isAbsolute(params.path)
-        ? path.resolve(params.path)
-        : path.resolve(appPath, params.path);
-      if (path.extname(resolved).toLowerCase() !== ".png") {
-        return { dataUrl: null };
-      }
-      // No existsSync pre-check: the realpathSync below already rejects a
-      // missing path (throws → caught → { dataUrl: null }), and adding a
-      // separate check would open a TOCTOU window where the path could be
-      // swapped for a symlink between the check and the resolve.
-      // Resolve symlinks before the containment check: a symlink inside the app
-      // dir could otherwise point outside it (e.g. test-results/x.png ->
-      // /etc/passwd) and pass a string-only check while the read escapes.
-      // Resolve the app path through realpathSync too: ancestor symlinks (e.g.
-      // /var -> /private/var on macOS, or a user-configured apps dir) would
-      // otherwise leave a `..` prefix and reject every legitimate screenshot.
-      let realAppPath: string;
-      let realPath: string;
-      try {
-        realAppPath = fs.realpathSync(appPath);
-        realPath = fs.realpathSync(resolved);
-      } catch (error) {
-        logger.warn(`Failed to resolve screenshot path ${resolved}: ${error}`);
-        return { dataUrl: null };
-      }
-      // Re-check the extension on the REAL (symlink-resolved) path: the initial
-      // `.png` check ran on the pre-resolution path, so a `foo.png` symlink
-      // pointing at a `.env.local` (or any non-PNG) would otherwise pass the
-      // extension gate and leak the target's contents into the renderer.
-      if (path.extname(realPath).toLowerCase() !== ".png") {
-        return { dataUrl: null };
-      }
-      const rel = path.relative(realAppPath, realPath);
-      const insideApp =
-        rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
-      if (!insideApp) {
-        return { dataUrl: null };
-      }
-      // Only serve screenshots Playwright writes under `test-results/`, not any
-      // arbitrary PNG in the app (design assets, etc.). Narrows the IPC surface
-      // to exactly what this feature needs. Use split rather than a string
-      // prefix so a sibling like `test-results-foo/` can't slip through.
-      const [firstSegment] = rel.split(path.sep);
-      if (firstSegment !== "test-results") {
-        return { dataUrl: null };
-      }
-      try {
-        const buf = fs.readFileSync(realPath);
-        return { dataUrl: `data:image/png;base64,${buf.toString("base64")}` };
-      } catch (error) {
-        logger.warn(`Failed to read screenshot ${realPath}: ${error}`);
-        return { dataUrl: null };
-      }
+      return { dataUrl: readTestScreenshotDataUrl(appPath, params.path) };
     },
   );
 
   createTypedHandler(
     testsContracts.runAppTests,
     async (event, params): Promise<RunAppTestsResult> => {
-      const { appId, testFile, testLine, headed, parallel } = params;
-      const normalizedTestFile =
-        testFile === undefined ? undefined : normalizeRunTestFile(testFile);
-
-      // Reject an invalid target before the expensive isolation setup (Neon
-      // branch creation, env swap, double dev-server restart) — the same check
-      // in runAppTestsCore would otherwise only fire after all of it.
-      if (testFile !== undefined && !normalizedTestFile) {
-        return {
-          appId,
-          results: [],
-          infraError: { message: `Invalid test file: ${testFile}` },
-        };
-      }
-
-      // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
-      // run's teardown — so a concurrent invocation sees THIS run as its prior
-      // and chains behind it. If we awaited before registering, two rapid Run
-      // clicks could both capture the same old run as `prior`, both wait for it,
-      // then both start isolation setup at once and double-swap the env file.
-      const prior = testRunControllers.get(appId);
-      prior?.controller.abort();
-
-      const controller = new AbortController();
-      let resolveDone!: () => void;
-      const done = new Promise<void>((resolve) => {
-        resolveDone = resolve;
-      });
-      testRunControllers.set(appId, { controller, done });
-
-      const emit = (chunk: string, phase: "setup" | "running") =>
-        emitOutput(event, appId, chunk, phase);
-
-      try {
-        // Wait for the prior run's full lifecycle (prepare → run → teardown) to
-        // finish before swapping env. Otherwise a Stop-then-Run could race the
-        // prior run's teardown (env restore + branch delete) against this run's
-        // env snapshot/swap, causing tests to execute against the real database.
-        if (prior) {
-          await prior.done.catch(() => {});
-        }
-
-        // Hold the per-app lock across the whole isolation lifecycle (prepare →
-        // run → teardown). Startup reconciliation (reconcileOrphanTestBranches /
-        // reconcileOrphanTestUsers) takes the same lock, so a rapid Run right
-        // after launch can't interleave its env swap + dev-server restart with
-        // an in-flight reconciliation and end up running against the real DB.
-        if (isLockHeld(appId)) {
-          logger.info(
-            `Test run for app ${appId} is waiting for another app operation to finish before isolation setup`,
-          );
-          emit(
-            "Waiting for a previous test cleanup or app operation to finish…\n",
-            "setup",
-          );
-        }
-        return await withLock(appId, async () => {
-          let prepared: PreparedIsolation | undefined;
-          try {
-            const app = await getApp(appId);
-
-            if (!app.testingEnabled) {
-              return {
-                appId,
-                results: [],
-                infraError: {
-                  message:
-                    "Testing isn't enabled for this app. Enable it in the Tests panel before running tests.",
-                },
-              };
-            }
-
-            const runtimeMode = readSettings().runtimeMode2 ?? "host";
-
-            // Set up isolation so the run never mutates the user's real data:
-            // Neon apps get a throwaway copy-on-write branch, Supabase apps get
-            // a throwaway RLS-scoped test user, and no-DB apps run as-is.
-            prepared = await prepareIsolatedTestDatabase({
-              app,
-              event,
-              emit,
-              runtimeMode,
-              signal: controller.signal,
-            });
-
-            // Isolation was required but couldn't be set up — dead-end safely
-            // rather than run against real data. teardown still runs in `finally`.
-            if (prepared.infraError) {
-              return {
-                appId,
-                results: [],
-                infraError: prepared.infraError,
-                isolation: prepared.isolation,
-              };
-            }
-
-            const result = await runAppTestsCore({
-              appId,
-              testFile: normalizedTestFile ?? undefined,
-              testLine,
-              headed,
-              parallel,
-              signal: controller.signal,
-              onOutput: emit,
-              testEnv: prepared.testCredentials,
-            });
-            return { ...result, isolation: prepared.isolation };
-          } finally {
-            // Always restore the app to its real database, even on the
-            // infraError early-return, abort, or throw. `teardown` is safe to
-            // call exactly once; on the infraError path it's a NOOP (isolation
-            // already restored).
-            if (prepared) {
-              try {
-                await prepared.teardown();
-              } catch (error) {
-                logger.error(
-                  `Failed to tear down isolated test environment for app ${appId}: ${error}`,
-                );
-              }
-            }
-          }
-        });
-      } finally {
-        // A teardown failure must not skip the cleanup below — leaving the
-        // controller registered and `done` unresolved would make every future
-        // run for this app wait forever on `prior.done`.
-        if (testRunControllers.get(appId)?.controller === controller) {
-          testRunControllers.delete(appId);
-        }
-        // Signal the next queued run that this lifecycle (incl. teardown) is done.
-        resolveDone();
-      }
+      return runAppTestsWithIsolation({ event, source: "panel", ...params });
     },
   );
 

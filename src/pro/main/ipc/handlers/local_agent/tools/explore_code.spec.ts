@@ -255,6 +255,8 @@ function createMockContext(appPath: string): AgentContext {
     todos: [],
     dyadRequestId: "request-id",
     fileEditTracker: {},
+    testingEnabled: true,
+    testRunAttempts: new Map(),
     isDyadPro: true,
     onXmlStream: vi.fn(),
     onXmlComplete: vi.fn(),

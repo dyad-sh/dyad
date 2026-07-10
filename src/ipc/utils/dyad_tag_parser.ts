@@ -17,9 +17,8 @@ function escapeRegexLiteral(value: string): string {
 
 /**
  * Parse `<tagName path="..." description="...">content</tagName>` occurrences
- * into file tags. Shared by the identical `<dyad-write>` and
- * `<dyad-generate-test>` extraction: both carry a `path`/`description` and a
- * body with optional surrounding markdown fences.
+ * into file tags. Used for `<dyad-write>`: a `path`/`description` plus a body
+ * with optional surrounding markdown fences.
  */
 function parseDyadFileTags(
   fullResponse: string,
@@ -71,10 +70,6 @@ function parseDyadFileTags(
 
 export function getDyadWriteTags(fullResponse: string): DyadFileTag[] {
   return parseDyadFileTags(fullResponse, "dyad-write");
-}
-
-export function getDyadGenerateTestTags(fullResponse: string): DyadFileTag[] {
-  return parseDyadFileTags(fullResponse, "dyad-generate-test");
 }
 
 export function getDyadRenameTags(fullResponse: string): {

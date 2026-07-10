@@ -11,11 +11,24 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import type { SupabaseOrganizationCredentials } from "../lib/schemas";
 import {
   fetchWithRetry,
+  parseRetryAfter,
   RateLimitError,
   retryWithRateLimit,
 } from "../ipc/utils/retryWithRateLimit";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
+import {
+  addFileToSupabaseDeployPayloadBudget,
+  createSupabaseDeployPayloadBudget,
+  SUPABASE_SHARED_FILES_CACHE_MAX_BYTES,
+  SUPABASE_SHARED_FILES_CACHE_MAX_ENTRIES,
+  SUPABASE_SHARED_FILES_CACHE_TTL_MS,
+  type SupabaseDeployPayloadBudget,
+} from "./supabase_deploy_limits";
+import {
+  SupabaseSharedFilesCache,
+  type SupabaseSharedFilesCacheValue,
+} from "./supabase_shared_files_cache";
 
 const fsPromises = fs.promises;
 
@@ -38,16 +51,28 @@ export interface FileStatEntry {
   size: number;
 }
 
-interface CachedSharedFiles {
-  signature: string;
-  files: ZipFileEntry[];
-}
+type CachedSharedFiles = SupabaseSharedFilesCacheValue<ZipFileEntry>;
 
-interface FunctionFilesResult {
-  files: ZipFileEntry[];
+interface FunctionFilesPlan {
+  statEntries: FileStatEntry[];
   signature: string;
   entrypointPath: string;
-  cacheKey: string;
+  sourceKey: string;
+}
+
+interface SharedFilesPlan {
+  statEntries: FileStatEntry[];
+  signature: string;
+  sourceKey?: string;
+  byteSize: number;
+}
+
+interface SupabaseFunctionDeployPlan {
+  functionFiles: FunctionFilesPlan;
+  sharedFiles: SharedFilesPlan;
+  importMapRelPath: string;
+  estimatedBytes: number;
+  coalesceKey: string;
 }
 
 export interface DeployedFunctionResponse {
@@ -84,8 +109,19 @@ export interface SupabaseProjectBranch {
   parent_project_ref: string;
 }
 
-// Caches for shared files to avoid re-reading unchanged files
-const sharedFilesCache = new Map<string, CachedSharedFiles>();
+// Reuse shared buffers across function deploys without retaining every app's
+// shared directory forever. Concurrent cache misses for the same source are
+// also coalesced so they do not duplicate the disk buffers.
+const sharedFilesCache = new SupabaseSharedFilesCache<ZipFileEntry>({
+  maxBytes: SUPABASE_SHARED_FILES_CACHE_MAX_BYTES,
+  maxEntries: SUPABASE_SHARED_FILES_CACHE_MAX_ENTRIES,
+  ttlMs: SUPABASE_SHARED_FILES_CACHE_TTL_MS,
+});
+const pendingSharedFileLoads = new Map<string, Promise<CachedSharedFiles>>();
+
+const IMPORT_MAP_CONTENT = Buffer.from(
+  JSON.stringify({ imports: {} }, null, 2),
+);
 
 /**
  * Checks if the Supabase access token is expired or about to expire
@@ -761,66 +797,66 @@ export async function deploySupabaseFunction({
   bundleOnly?: boolean;
   organizationSlug: string | null;
 }): Promise<DeployedFunctionResponse> {
-  return enqueueSupabaseDeploy(supabaseProjectId, bundleOnly, () =>
-    deploySupabaseFunctionUnqueued({
-      supabaseProjectId,
-      functionName,
-      appPath,
-      bundleOnly,
-      organizationSlug,
-    }),
+  // Stat and validate the complete payload before it enters the deployment
+  // queue. The queue can then make a byte-aware admission decision without
+  // retaining any file buffers in pending closures.
+  const deployPlan = await prepareSupabaseFunctionDeploy({
+    functionName,
+    appPath,
+  });
+
+  return enqueueSupabaseDeploy(
+    supabaseProjectId,
+    bundleOnly,
+    () =>
+      deploySupabaseFunctionUnqueued({
+        supabaseProjectId,
+        functionName,
+        bundleOnly,
+        organizationSlug,
+        deployPlan,
+      }),
+    {
+      estimatedBytes: deployPlan.estimatedBytes,
+      coalesceKey: deployPlan.coalesceKey,
+    },
   );
 }
 
 async function deploySupabaseFunctionUnqueued({
   supabaseProjectId,
   functionName,
-  appPath,
   bundleOnly = false,
   organizationSlug,
+  deployPlan,
 }: {
   supabaseProjectId: string;
   functionName: string;
-  appPath: string;
   bundleOnly?: boolean;
   organizationSlug: string | null;
+  deployPlan: SupabaseFunctionDeployPlan;
 }): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
 
-  const functionPath = path.join(
-    appPath,
-    "supabase",
-    "functions",
+  // Load files only after the byte-aware queue admits this request.
+  const functionFiles = await loadZipEntries(
+    deployPlan.functionFiles.statEntries,
     functionName,
   );
 
-  // 1) Collect function files
-  const functionFiles = await collectFunctionFiles({
-    functionPath,
+  const sharedFiles = await getSharedFiles(
+    deployPlan.sharedFiles,
     functionName,
-  });
+  );
 
-  // 2) Collect shared files (from supabase/functions/_shared/)
-  const sharedFiles = await getSharedFiles(appPath);
-
-  // 3) Combine all files
-  const filesToUpload = [...functionFiles.files, ...sharedFiles.files];
-
-  // 4) Create an import map next to the function entrypoint
-  const entrypointPath = functionFiles.entrypointPath;
-  const entryDir = path.posix.dirname(entrypointPath);
-  const importMapRelPath = path.posix.join(entryDir, "import_map.json");
-
-  const importMapObject = {
-    imports: {},
-  };
-
-  // Add the import map file into the upload list
+  const filesToUpload = [...functionFiles, ...sharedFiles.files];
+  const entrypointPath = deployPlan.functionFiles.entrypointPath;
+  const importMapRelPath = deployPlan.importMapRelPath;
   filesToUpload.push({
     relativePath: importMapRelPath,
-    content: Buffer.from(JSON.stringify(importMapObject, null, 2)),
+    content: IMPORT_MAP_CONTENT,
     date: new Date(),
   });
 
@@ -854,7 +890,14 @@ async function deploySupabaseFunctionUnqueued({
     for (const f of filesToUpload) {
       const buf: Buffer = f.content;
       const mime = guessMimeType(f.relativePath);
-      const blob = new Blob([new Uint8Array(buf)], { type: mime });
+      // Construct a view over the Buffer instead of copying it into another
+      // Uint8Array before Blob/FormData performs its own required snapshot.
+      const bytes = new Uint8Array(
+        buf.buffer as ArrayBuffer,
+        buf.byteOffset,
+        buf.byteLength,
+      );
+      const blob = new Blob([bytes], { type: mime });
       formData.append("file", blob, f.relativePath);
     }
 
@@ -876,7 +919,13 @@ async function deploySupabaseFunctionUnqueued({
       body: buildFormData(),
     });
     if (res.status === 429) {
-      throw new RateLimitError(`Rate limited (429): ${res.statusText}`, res);
+      const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"));
+      await res.body?.cancel().catch(() => undefined);
+      throw new RateLimitError(
+        `Rate limited (429): ${res.statusText}`,
+        res,
+        retryAfterMs,
+      );
     }
     return res;
   }, `Deploy Supabase function ${functionName}`);
@@ -960,20 +1009,62 @@ async function bulkUpdateFunctionsUnqueued({
 // File collection helpers
 // ─────────────────────────────────────────────────────────────────────
 
-async function collectFunctionFiles({
+async function prepareSupabaseFunctionDeploy({
+  functionName,
+  appPath,
+}: {
+  functionName: string;
+  appPath: string;
+}): Promise<SupabaseFunctionDeployPlan> {
+  const budget = createSupabaseDeployPayloadBudget(
+    `Supabase function ${functionName}`,
+  );
+  const functionFiles = await collectFunctionFilesPlan({
+    functionPath: path.join(appPath, "supabase", "functions", functionName),
+    functionName,
+    budget,
+  });
+
+  const entryDir = path.posix.dirname(functionFiles.entrypointPath);
+  const importMapRelPath = path.posix.join(entryDir, "import_map.json");
+  addFileToSupabaseDeployPayloadBudget(
+    budget,
+    importMapRelPath,
+    IMPORT_MAP_CONTENT.byteLength,
+  );
+
+  const sharedFiles = await collectSharedFilesPlan(appPath, budget);
+
+  return {
+    functionFiles,
+    sharedFiles,
+    importMapRelPath,
+    estimatedBytes: budget.totalBytes,
+    coalesceKey: JSON.stringify([
+      functionFiles.sourceKey,
+      functionFiles.signature,
+      sharedFiles.sourceKey ?? "",
+      sharedFiles.signature,
+    ]),
+  };
+}
+
+async function collectFunctionFilesPlan({
   functionPath,
   functionName,
+  budget,
 }: {
   functionPath: string;
   functionName: string;
-}): Promise<FunctionFilesResult> {
+  budget: SupabaseDeployPayloadBudget;
+}): Promise<FunctionFilesPlan> {
   const normalizedFunctionPath = path.resolve(functionPath);
   const stats = await fsPromises.stat(normalizedFunctionPath);
 
   let functionDirectory: string | null = null;
 
   if (stats.isDirectory()) {
-    functionDirectory = normalizedFunctionPath;
+    functionDirectory = await fsPromises.realpath(normalizedFunctionPath);
   }
 
   if (!functionDirectory) {
@@ -996,22 +1087,28 @@ async function collectFunctionFiles({
 
   // Prefix function files with functionName so the directory structure allows
   // relative imports like "../_shared/" to resolve correctly
-  const statEntries = await listFilesWithStats(functionDirectory, functionName);
+  const statEntries = await listFilesWithStats(
+    functionDirectory,
+    functionName,
+    budget,
+  );
   const signature = buildSignature(statEntries);
-  const files = await loadZipEntries(statEntries);
 
   return {
-    files,
+    statEntries,
     signature,
     entrypointPath: path.posix.join(
       functionName,
       toPosixPath(path.relative(functionDirectory, indexPath)),
     ),
-    cacheKey: functionDirectory,
+    sourceKey: functionDirectory,
   };
 }
 
-async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
+async function collectSharedFilesPlan(
+  appPath: string,
+  budget: SupabaseDeployPayloadBudget,
+): Promise<SharedFilesPlan> {
   const sharedDirectory = path.join(
     appPath,
     "supabase",
@@ -1022,32 +1119,71 @@ async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
   try {
     const sharedStats = await fsPromises.stat(sharedDirectory);
     if (!sharedStats.isDirectory()) {
-      return { signature: "", files: [] };
+      return { signature: "", statEntries: [], byteSize: 0 };
     }
   } catch (error: any) {
     if (error && error.code === "ENOENT") {
-      return { signature: "", files: [] };
+      return { signature: "", statEntries: [], byteSize: 0 };
     }
     throw error;
   }
 
-  const statEntries = await listFilesWithStats(sharedDirectory, "_shared");
+  const sourceKey = await fsPromises.realpath(sharedDirectory);
+  const statEntries = await listFilesWithStats(sourceKey, "_shared", budget);
   const signature = buildSignature(statEntries);
 
-  const cached = sharedFilesCache.get(sharedDirectory);
-  if (cached && cached.signature === signature) {
+  return {
+    statEntries,
+    signature,
+    sourceKey,
+    byteSize: statEntries.reduce((total, entry) => total + entry.size, 0),
+  };
+}
+
+async function getSharedFiles(
+  plan: SharedFilesPlan,
+  functionName: string,
+): Promise<CachedSharedFiles> {
+  if (!plan.sourceKey) {
+    return { signature: "", files: [], byteSize: 0 };
+  }
+
+  const cached = sharedFilesCache.get(plan.sourceKey, plan.signature);
+  if (cached) {
     return cached;
   }
 
-  const files = await loadZipEntries(statEntries);
-  const result = { signature, files };
-  sharedFilesCache.set(sharedDirectory, result);
-  return result;
+  const pendingKey = JSON.stringify([plan.sourceKey, plan.signature]);
+  const pending = pendingSharedFileLoads.get(pendingKey);
+  if (pending) {
+    return pending;
+  }
+
+  const loadPromise = (async () => {
+    const files = await loadZipEntries(
+      plan.statEntries,
+      `${functionName} shared modules`,
+    );
+    return sharedFilesCache.set(plan.sourceKey!, {
+      signature: plan.signature,
+      files,
+      byteSize: plan.byteSize,
+    });
+  })();
+  pendingSharedFileLoads.set(pendingKey, loadPromise);
+  try {
+    return await loadPromise;
+  } finally {
+    if (pendingSharedFileLoads.get(pendingKey) === loadPromise) {
+      pendingSharedFileLoads.delete(pendingKey);
+    }
+  }
 }
 
 export async function listFilesWithStats(
   directory: string,
   prefix: string,
+  budget?: SupabaseDeployPayloadBudget,
 ): Promise<FileStatEntry[]> {
   const dirents = await fsPromises.readdir(directory, { withFileTypes: true });
   dirents.sort((a, b) => a.name.localeCompare(b.name));
@@ -1061,10 +1197,18 @@ export async function listFilesWithStats(
       const nestedEntries = await listFilesWithStats(
         absolutePath,
         relativePath,
+        budget,
       );
       entries.push(...nestedEntries);
     } else if (dirent.isFile() || dirent.isSymbolicLink()) {
       const stat = await fsPromises.stat(absolutePath);
+      if (budget) {
+        addFileToSupabaseDeployPayloadBudget(
+          budget,
+          toPosixPath(relativePath),
+          stat.size,
+        );
+      }
       entries.push({
         absolutePath,
         relativePath,
@@ -1089,11 +1233,12 @@ export function buildSignature(entries: FileStatEntry[]): string {
 
 async function loadZipEntries(
   entries: FileStatEntry[],
+  context: string,
 ): Promise<ZipFileEntry[]> {
   const files: ZipFileEntry[] = [];
 
   for (const entry of entries) {
-    const content = await fsPromises.readFile(entry.absolutePath);
+    const content = await readStatBoundFile(entry, context);
     files.push({
       relativePath: toPosixPath(entry.relativePath),
       content,
@@ -1102,6 +1247,75 @@ async function loadZipEntries(
   }
 
   return files;
+}
+
+async function readStatBoundFile(
+  entry: FileStatEntry,
+  context: string,
+): Promise<Buffer> {
+  const file = await fsPromises.open(entry.absolutePath, "r");
+  try {
+    const currentStat = await file.stat();
+    if (
+      !currentStat.isFile() ||
+      currentStat.size !== entry.size ||
+      currentStat.mtimeMs !== entry.mtimeMs
+    ) {
+      throw new DyadError(
+        `Supabase deployment source changed while preparing ${context}: ${entry.relativePath}. Please retry the deployment.`,
+        DyadErrorKind.Conflict,
+      );
+    }
+
+    const content = Buffer.allocUnsafe(entry.size);
+    let offset = 0;
+    while (offset < content.byteLength) {
+      const { bytesRead } = await file.read(
+        content,
+        offset,
+        content.byteLength - offset,
+        offset,
+      );
+      if (bytesRead === 0) {
+        break;
+      }
+      offset += bytesRead;
+    }
+
+    const trailingByte = Buffer.allocUnsafe(1);
+    const { bytesRead: trailingBytesRead } = await file.read(
+      trailingByte,
+      0,
+      1,
+      entry.size,
+    );
+    if (offset !== entry.size || trailingBytesRead !== 0) {
+      throw new DyadError(
+        `Supabase deployment source changed while reading ${context}: ${entry.relativePath}. Please retry the deployment.`,
+        DyadErrorKind.Conflict,
+      );
+    }
+    return content;
+  } finally {
+    await file.close();
+  }
+}
+
+export function resetSupabaseSharedFilesCacheForTests(): void {
+  sharedFilesCache.clear();
+  pendingSharedFileLoads.clear();
+}
+
+export function getSupabaseSharedFilesCacheStatsForTests(): {
+  entries: number;
+  totalBytes: number;
+  keys: string[];
+  pendingLoads: number;
+} {
+  return {
+    ...sharedFilesCache.getStats(),
+    pendingLoads: pendingSharedFileLoads.size,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────

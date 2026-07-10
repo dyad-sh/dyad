@@ -170,6 +170,10 @@ export function useVoiceToText({
             throw new Error("Recording exceeded the maximum audio size");
           }
 
+          if (!isMountedRef.current) {
+            return;
+          }
+
           const result = await ipc.audio.transcribeAudio({
             audioData,
             filename: "recording.webm",

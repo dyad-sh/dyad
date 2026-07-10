@@ -122,6 +122,22 @@ describe("pro audio transcription handler", () => {
         requestId: "r".repeat(MAX_AUDIO_REQUEST_ID_LENGTH + 1),
       },
     },
+    {
+      name: "traversal filename",
+      input: {
+        audioData: new Uint8Array([1]),
+        filename: "..",
+        requestId: "request-123",
+      },
+    },
+    {
+      name: "header-unsafe request ID",
+      input: {
+        audioData: new Uint8Array([1]),
+        filename: "recording.webm",
+        requestId: "request\r\nX-Injected: true",
+      },
+    },
   ])("rejects $name before calling the engine", async ({ input }) => {
     await expect(transcribeAudio({} as never, input)).rejects.toMatchObject({
       kind: DyadErrorKind.Validation,

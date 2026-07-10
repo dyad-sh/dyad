@@ -7,6 +7,7 @@ import { UserBudgetInfo, UserBudgetInfoSchema } from "@/ipc/types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { z } from "zod";
 import {
+  AUDIO_REQUEST_ID_PATTERN,
   audioContracts,
   MAX_AUDIO_FILENAME_LENGTH,
   MAX_AUDIO_RECORDING_BYTES,
@@ -45,14 +46,17 @@ function validateAudioTranscriptionRequest(input: TranscribeAudioParams) {
     input.filename.trim().length === 0 ||
     input.filename.length > MAX_AUDIO_FILENAME_LENGTH ||
     input.filename.includes("/") ||
-    input.filename.includes("\\")
+    input.filename.includes("\\") ||
+    input.filename === "." ||
+    input.filename === ".."
   ) {
     throw new DyadError("Invalid audio filename", DyadErrorKind.Validation);
   }
 
   if (
     input.requestId.trim().length === 0 ||
-    input.requestId.length > MAX_AUDIO_REQUEST_ID_LENGTH
+    input.requestId.length > MAX_AUDIO_REQUEST_ID_LENGTH ||
+    !AUDIO_REQUEST_ID_PATTERN.test(input.requestId)
   ) {
     throw new DyadError(
       "Invalid transcription request ID",

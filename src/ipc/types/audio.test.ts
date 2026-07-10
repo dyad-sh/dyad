@@ -72,4 +72,38 @@ describe("TranscribeAudioParamsSchema", () => {
       }).success,
     ).toBe(false);
   });
+
+  it.each([".", "..", " . ", " .. "])(
+    "rejects the traversal filename %j",
+    (filename) => {
+      expect(
+        TranscribeAudioParamsSchema.safeParse({
+          ...validRequest,
+          filename,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("accepts header-safe request IDs and rejects invalid characters", () => {
+    expect(
+      TranscribeAudioParamsSchema.safeParse({
+        ...validRequest,
+        requestId: "request-123_abc.def:ghi",
+      }).success,
+    ).toBe(true);
+
+    for (const requestId of [
+      "request id",
+      "request\r\nX-Injected: true",
+      "request-id-💥",
+    ]) {
+      expect(
+        TranscribeAudioParamsSchema.safeParse({
+          ...validRequest,
+          requestId,
+        }).success,
+      ).toBe(false);
+    }
+  });
 });

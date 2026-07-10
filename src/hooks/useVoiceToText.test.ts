@@ -252,4 +252,45 @@ describe("useVoiceToText", () => {
 
     expect(onTranscription).not.toHaveBeenCalled();
   });
+
+  it("does not start transcription after unmount during audio conversion", async () => {
+    let resolveArrayBuffer: ((value: ArrayBuffer) => void) | undefined;
+    vi.spyOn(Blob.prototype, "arrayBuffer").mockReturnValue(
+      new Promise((resolve) => {
+        resolveArrayBuffer = resolve;
+      }),
+    );
+    const onTranscription = vi.fn();
+
+    const { result, unmount } = renderHook(() =>
+      useVoiceToText({
+        enabled: true,
+        onTranscription,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    const recorder = mediaRecorderInstances[0];
+    recorder.ondataavailable?.({
+      data: new Blob(["test audio"], { type: "audio/webm" }),
+    });
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+    await waitFor(() => {
+      expect(Blob.prototype.arrayBuffer).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+    await act(async () => {
+      resolveArrayBuffer?.(new Uint8Array([1, 2, 3]).buffer);
+      await recorder.stopPromise;
+    });
+
+    expect(transcribeAudioMock).not.toHaveBeenCalled();
+    expect(onTranscription).not.toHaveBeenCalled();
+  });
 });

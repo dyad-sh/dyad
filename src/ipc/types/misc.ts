@@ -48,7 +48,7 @@ export const SetAppEnvVarsParamsSchema = z.object({
  * Schema version for the session debug bundle format.
  * Bump this when making breaking changes to the schema.
  */
-export const SESSION_DEBUG_SCHEMA_VERSION = 2;
+export const SESSION_DEBUG_SCHEMA_VERSION = 3;
 
 // -- System info --
 
@@ -241,13 +241,13 @@ const DebugMcpServerSchema = z.object({
 
 // -- Process memory diagnostics --
 
-const ProcessMetricSchema = z.object({
+export const ProcessMetricSchema = z.object({
   pid: z.number(),
   rssKb: z.number(),
   command: z.string(),
 });
 
-const ElectronProcessMetricSchema = z.object({
+export const ElectronProcessMetricSchema = z.object({
   type: z.string(),
   pid: z.number(),
   workingSetSizeKb: z.number(),
@@ -256,7 +256,7 @@ const ElectronProcessMetricSchema = z.object({
   serviceName: z.string().optional(),
 });
 
-const ElectronProcessMetricsResultSchema = z.object({
+export const ElectronProcessMetricsResultSchema = z.object({
   processes: z.array(ElectronProcessMetricSchema),
   totalWorkingSetSizeMb: z.number(),
   mainProcess: z.object({
@@ -275,7 +275,7 @@ const ElectronProcessMetricsResultSchema = z.object({
   error: z.string().optional(),
 });
 
-const AppProcessTreeSchema = z.object({
+export const AppProcessTreeSchema = z.object({
   appId: z.number(),
   rootPid: z.number(),
   processes: z.array(ProcessMetricSchema),
@@ -283,13 +283,13 @@ const AppProcessTreeSchema = z.object({
   note: z.string().optional(),
 });
 
-const AppProcessTreesResultSchema = z.object({
+export const AppProcessTreesResultSchema = z.object({
   supported: z.boolean(),
   trees: z.array(AppProcessTreeSchema),
   error: z.string().optional(),
 });
 
-const VmStatSummarySchema = z.object({
+export const VmStatSummarySchema = z.object({
   pageSizeBytes: z.number(),
   freePages: z.number(),
   activePages: z.number(),
@@ -301,7 +301,7 @@ const VmStatSummarySchema = z.object({
   pageouts: z.number(),
 });
 
-const SystemMemorySignalsSchema = z.object({
+export const SystemMemorySignalsSchema = z.object({
   platform: z.string(),
   totalMemoryMb: z.number(),
   appMemoryMb: z.number().optional(),
@@ -321,14 +321,14 @@ const SystemMemorySignalsSchema = z.object({
   error: z.string().optional(),
 });
 
-const TopProcessesResultSchema = z.object({
+export const TopProcessesResultSchema = z.object({
   captured: z.boolean(),
   reason: z.string(),
   processes: z.array(ProcessMetricSchema).optional(),
   error: z.string().optional(),
 });
 
-const ProcessMemoryDiagnosticsSchema = z.object({
+export const ProcessMemoryDiagnosticsSchema = z.object({
   collectedAt: z.string(),
   platform: z.string(),
   electron: ElectronProcessMetricsResultSchema,
@@ -336,6 +336,20 @@ const ProcessMemoryDiagnosticsSchema = z.object({
   systemMemory: SystemMemorySignalsSchema,
   topProcesses: TopProcessesResultSchema,
 });
+
+export type ProcessMetric = z.infer<typeof ProcessMetricSchema>;
+export type ElectronProcessMetric = z.infer<typeof ElectronProcessMetricSchema>;
+export type ElectronProcessMetricsResult = z.infer<
+  typeof ElectronProcessMetricsResultSchema
+>;
+export type AppProcessTree = z.infer<typeof AppProcessTreeSchema>;
+export type AppProcessTreesResult = z.infer<typeof AppProcessTreesResultSchema>;
+export type VmStatSummary = z.infer<typeof VmStatSummarySchema>;
+export type SystemMemorySignals = z.infer<typeof SystemMemorySignalsSchema>;
+export type TopProcessesResult = z.infer<typeof TopProcessesResultSchema>;
+export type ProcessMemoryDiagnostics = z.infer<
+  typeof ProcessMemoryDiagnosticsSchema
+>;
 
 // -- Top-level bundle --
 

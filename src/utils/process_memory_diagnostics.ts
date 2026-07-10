@@ -2,6 +2,15 @@ import { execFile } from "node:child_process";
 import os from "node:os";
 import v8 from "node:v8";
 import log from "electron-log";
+import type {
+  AppProcessTree,
+  AppProcessTreesResult,
+  ElectronProcessMetricsResult,
+  ProcessMemoryDiagnostics,
+  SystemMemorySignals,
+  TopProcessesResult,
+  VmStatSummary,
+} from "../ipc/types/misc";
 
 const logger = log.scope("process_memory_diagnostics");
 
@@ -20,127 +29,12 @@ const PRESSURE_FREE_RATIO_THRESHOLD = 0.15;
 const PRESSURE_SWAP_USED_MB_THRESHOLD = 1024;
 const TOP_PROCESS_COUNT = 15;
 
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface ElectronProcessMetric {
-  /** Process type: Browser, Tab, GPU, Utility, etc. */
-  type: string;
-  pid: number;
-  /** Memory currently pinned to physical RAM, in KB (from app.getAppMetrics) */
-  workingSetSizeKb: number;
-  /** Process creation time (ms since epoch) */
-  creationTime: number;
-  /** Name of the process, when Electron reports one (e.g. utility processes) */
-  name?: string;
-  serviceName?: string;
-}
-
-export interface ElectronProcessMetricsResult {
-  processes: ElectronProcessMetric[];
-  /** Sum of workingSetSize across all Electron processes, in MB */
-  totalWorkingSetSizeMb: number;
-  /** Main-process memory usage from process.memoryUsage(), in MB */
-  mainProcess: {
-    rssMb: number;
-    heapTotalMb: number;
-    heapUsedMb: number;
-    externalMb: number;
-  };
-  /**
-   * Main-process V8 heap statistics, in MB. heapSizeLimitMb vs usedHeapSizeMb
-   * is the key signal for diagnosing V8 OOM aborts.
-   */
-  v8Heap: {
-    heapSizeLimitMb: number;
-    totalHeapSizeMb: number;
-    usedHeapSizeMb: number;
-    mallocedMemoryMb: number;
-    externalMemoryMb: number;
-  };
-  error?: string;
-}
-
 /** One row of `ps -axo pid,ppid,rss,comm` output. rss is in KB. */
 export interface PsProcessEntry {
   pid: number;
   ppid: number;
   rssKb: number;
   command: string;
-}
-
-export interface AppProcessTree {
-  appId: number;
-  rootPid: number;
-  /** Root process plus all descendants, sorted by RSS descending */
-  processes: { pid: number; rssKb: number; command: string }[];
-  totalRssMb: number;
-  /** Set when the root pid was not found in the ps snapshot (process exited) */
-  note?: string;
-}
-
-export interface AppProcessTreesResult {
-  supported: boolean;
-  trees: AppProcessTree[];
-  error?: string;
-}
-
-export interface VmStatSummary {
-  pageSizeBytes: number;
-  freePages: number;
-  activePages: number;
-  inactivePages: number;
-  speculativePages: number;
-  wiredPages: number;
-  purgeablePages: number;
-  /** "Pages occupied by compressor": compressed memory resident in RAM */
-  compressorPages: number;
-  /** Cumulative pageouts since boot; a growing value indicates swapping */
-  pageouts: number;
-}
-
-export interface SystemMemorySignals {
-  platform: string;
-  totalMemoryMb: number;
-  /**
-   * Honest split (darwin): memory genuinely held by apps/kernel vs memory the
-   * OS can reclaim without swapping. os.freemem() on macOS counts reclaimable
-   * file cache as "used", which makes memory look exhausted when it is not.
-   */
-  appMemoryMb?: number;
-  reclaimableMb?: number;
-  freeMb?: number;
-  swapUsedMb?: number;
-  swapTotalMb?: number;
-  /** True when the darwin signals indicate genuine memory pressure */
-  pressureDetected?: boolean;
-  vmStat?: VmStatSummary;
-  /** Fallback numbers from os.totalmem/freemem (used on non-darwin) */
-  fallback?: {
-    usedMemoryMb: number;
-    freeMemoryMb: number;
-    usagePercent: number;
-  };
-  error?: string;
-}
-
-export interface TopProcessesResult {
-  captured: boolean;
-  /** Why the snapshot was or wasn't captured */
-  reason: string;
-  /** Top processes by RSS, descending. rss is in KB. */
-  processes?: { pid: number; rssKb: number; command: string }[];
-  error?: string;
-}
-
-export interface ProcessMemoryDiagnostics {
-  collectedAt: string;
-  platform: string;
-  electron: ElectronProcessMetricsResult;
-  appProcessTrees: AppProcessTreesResult;
-  systemMemory: SystemMemorySignals;
-  topProcesses: TopProcessesResult;
 }
 
 // =============================================================================
@@ -457,32 +351,45 @@ async function collectAppProcessTrees(
  * Collects real memory-pressure signals on macOS via vm_stat and
  * sysctl vm.swapusage; falls back to os.totalmem/freemem elsewhere.
  */
-export async function collectSystemMemorySignals(): Promise<SystemMemorySignals> {
-  const totalMemoryMb = Math.round(os.totalmem() / BYTES_PER_MB);
+export async function collectSystemMemorySignals(
+  options: {
+    platform?: NodeJS.Platform;
+    totalMemoryBytes?: number;
+    freeMemoryBytes?: number;
+    runCommand?: typeof execCommand;
+  } = {},
+): Promise<SystemMemorySignals> {
+  const platform = options.platform ?? process.platform;
+  const totalMemoryBytes = options.totalMemoryBytes ?? os.totalmem();
+  const freeMemoryBytes = options.freeMemoryBytes ?? os.freemem();
+  const runCommand = options.runCommand ?? execCommand;
+  const totalMemoryMb = Math.round(totalMemoryBytes / BYTES_PER_MB);
   const result: SystemMemorySignals = {
-    platform: process.platform,
+    platform,
     totalMemoryMb,
   };
 
-  if (process.platform !== "darwin") {
-    const freeMemory = os.freemem();
-    const usedMemory = os.totalmem() - freeMemory;
+  if (platform !== "darwin") {
+    const usedMemory = totalMemoryBytes - freeMemoryBytes;
     result.fallback = {
       usedMemoryMb: Math.round(usedMemory / BYTES_PER_MB),
-      freeMemoryMb: Math.round(freeMemory / BYTES_PER_MB),
-      usagePercent: round2((usedMemory / os.totalmem()) * 100),
+      freeMemoryMb: Math.round(freeMemoryBytes / BYTES_PER_MB),
+      usagePercent: round2((usedMemory / totalMemoryBytes) * 100),
     };
     return result;
   }
 
-  try {
-    const [vmStatOutput, swapOutput] = await Promise.all([
-      execCommand("vm_stat", []),
-      execCommand("sysctl", ["vm.swapusage"]),
-    ]);
+  const [vmStatResult, swapResult] = await Promise.allSettled([
+    runCommand("vm_stat", []),
+    runCommand("sysctl", ["vm.swapusage"]),
+  ]);
 
-    const vmStat = parseVmStat(vmStatOutput);
-    const swap = parseSwapUsage(swapOutput);
+  if (vmStatResult.status === "fulfilled") {
+    const vmStat = parseVmStat(vmStatResult.value);
+    const swap =
+      swapResult.status === "fulfilled"
+        ? parseSwapUsage(swapResult.value)
+        : null;
     if (!vmStat) {
       result.error = "Failed to parse vm_stat output";
       return result;
@@ -516,15 +423,19 @@ export async function collectSystemMemorySignals(): Promise<SystemMemorySignals>
     result.pressureDetected =
       availableRatio < PRESSURE_FREE_RATIO_THRESHOLD ||
       (result.swapUsedMb ?? 0) > PRESSURE_SWAP_USED_MB_THRESHOLD;
-  } catch (err) {
-    result.error = `Failed to collect darwin memory signals: ${errorToString(err)}`;
+    if (swapResult.status === "rejected") {
+      result.error = `Failed to collect swap usage: ${errorToString(swapResult.reason)}`;
+    }
+  } else {
+    result.error = `Failed to collect vm_stat: ${errorToString(vmStatResult.reason)}`;
     // Still provide the (misleading, but better than nothing) os fallback.
-    const freeMemory = os.freemem();
     result.fallback = {
-      usedMemoryMb: Math.round((os.totalmem() - freeMemory) / BYTES_PER_MB),
-      freeMemoryMb: Math.round(freeMemory / BYTES_PER_MB),
+      usedMemoryMb: Math.round(
+        (totalMemoryBytes - freeMemoryBytes) / BYTES_PER_MB,
+      ),
+      freeMemoryMb: Math.round(freeMemoryBytes / BYTES_PER_MB),
       usagePercent: round2(
-        ((os.totalmem() - freeMemory) / os.totalmem()) * 100,
+        ((totalMemoryBytes - freeMemoryBytes) / totalMemoryBytes) * 100,
       ),
     };
   }

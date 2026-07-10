@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  collectSystemMemorySignals,
   collectProcessTree,
   parsePsProcessTable,
   parseSwapUsage,
@@ -8,6 +9,17 @@ import {
   round2,
   topProcessesByRss,
 } from "../utils/process_memory_diagnostics";
+
+const vmStatOutput = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               33882.
+Pages active:                            384270.
+Pages inactive:                          376297.
+Pages speculative:                         5474.
+Pages wired down:                        112824.
+Pages purgeable:                           1550.
+Pages occupied by compressor:            111529.
+Pageouts:                                204076.
+`;
 
 describe("parsePsProcessTable", () => {
   it("parses ps output, skipping the header and keeping spaces in comm", () => {
@@ -73,31 +85,6 @@ describe("collectProcessTree", () => {
 });
 
 describe("parseVmStat", () => {
-  const vmStatOutput = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
-Pages free:                               33882.
-Pages active:                            384270.
-Pages inactive:                          376297.
-Pages speculative:                         5474.
-Pages throttled:                              0.
-Pages wired down:                        112824.
-Pages purgeable:                           1550.
-"Translation faults":                 626523907.
-Pages copy-on-write:                   22394352.
-Pages zero filled:                    266720105.
-Pages reactivated:                     26018049.
-Pages purged:                           2967028.
-File-backed pages:                       255553.
-Anonymous pages:                         510488.
-Pages stored in compressor:              838273.
-Pages occupied by compressor:            111529.
-Decompressions:                        31009718.
-Compressions:                          42033686.
-Pageins:                               19070071.
-Pageouts:                                204076.
-Pages swapped in:                        350136.
-Pages swapped out:                      1029111.
-`;
-
   it("parses page size and the relevant counters", () => {
     const result = parseVmStat(vmStatOutput);
     expect(result).toEqual({
@@ -116,6 +103,25 @@ Pages swapped out:                      1029111.
   it("returns null for non-vm_stat output", () => {
     expect(parseVmStat("command not found")).toBeNull();
     expect(parseVmStat("")).toBeNull();
+  });
+});
+
+describe("collectSystemMemorySignals", () => {
+  it("preserves vm_stat diagnostics when swap collection fails", async () => {
+    const result = await collectSystemMemorySignals({
+      platform: "darwin",
+      totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+      freeMemoryBytes: 1024 * 1024 * 1024,
+      runCommand: async (file) => {
+        if (file === "vm_stat") return vmStatOutput;
+        throw new Error("sysctl unavailable");
+      },
+    });
+
+    expect(result.vmStat?.activePages).toBe(384270);
+    expect(result.appMemoryMb).toBeGreaterThan(0);
+    expect(result.fallback).toBeUndefined();
+    expect(result.error).toContain("Failed to collect swap usage");
   });
 });
 

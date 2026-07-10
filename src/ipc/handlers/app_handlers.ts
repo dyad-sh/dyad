@@ -122,6 +122,7 @@ import {
 } from "../utils/ripgrep_utils";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { detectFrameworkType } from "../utils/framework_utils";
+import { readAppFileForEditor } from "../utils/bounded_text_file";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -632,16 +633,18 @@ export function registerAppHandlers() {
     const appPath = getDyadAppPath(app.path);
     const fullPath = safeJoin(appPath, filePath);
 
-    if (!fs.existsSync(fullPath)) {
-      throw new DyadError("File not found", DyadErrorKind.NotFound);
-    }
-
     try {
-      const contents = fs.readFileSync(fullPath, "utf-8");
-      return contents;
+      return await readAppFileForEditor({
+        rootPath: appPath,
+        filePath: fullPath,
+        displayPath: filePath,
+      });
     } catch (error) {
+      if (isDyadError(error)) throw error;
       logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
-      throw new DyadError("Failed to read file", DyadErrorKind.External);
+      throw new DyadError("Failed to read file", DyadErrorKind.External, {
+        cause: error,
+      });
     }
   });
 

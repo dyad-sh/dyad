@@ -120,6 +120,7 @@ describe("dyad-media thumbnail protocol", () => {
     expect(second.headers.get("x-dyad-thumbnail-cache")).toBe("hit");
     expect(createThumbnailFromPath).toHaveBeenCalledTimes(1);
     expect(decodedPath).not.toBe(realSourcePath);
+    expect(path.extname(decodedPath)).toBe(".png");
     expect(createThumbnailFromPath).toHaveBeenCalledWith(decodedPath, {
       width: 240,
       height: 240,

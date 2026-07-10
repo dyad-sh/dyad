@@ -391,7 +391,8 @@ export function createMediaThumbnailService({
   ): Promise<Buffer> => {
     const directory = path.dirname(destinationPath);
     await fs.mkdir(directory, { recursive: true });
-    const snapshotPath = `${destinationPath}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.source.tmp`;
+    const sourceExtension = path.extname(sourcePath);
+    const snapshotPath = `${destinationPath}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.source${sourceExtension}`;
 
     let output: Buffer;
     try {

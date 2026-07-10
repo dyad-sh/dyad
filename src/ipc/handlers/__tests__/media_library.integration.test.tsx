@@ -17,6 +17,10 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import {
+  getMediaThumbnailCacheDirectory,
+  getMediaThumbnailCacheRoot,
+} from "@/ipc/utils/media_thumbnail";
 
 const IMAGE_FIXTURE_PATH = path.join(
   process.cwd(),
@@ -131,18 +135,32 @@ describe("media library actions (integration)", () => {
     fireEvent.change(screen.getByTestId("media-rename-input"), {
       target: { value: "renamed-image" },
     });
-    fireEvent.click(screen.getByTestId("media-rename-confirm-button"));
-
     const sourceRenamedPath = path.join(
       sourceApp.mediaDir,
       "renamed-image.png",
     );
     const sourceOldPath = path.join(sourceApp.mediaDir, "move-image.png");
+    const cacheRoot = getMediaThumbnailCacheRoot(harness.userDataDir);
+    const renamedSourceCache = getMediaThumbnailCacheDirectory(
+      cacheRoot,
+      sourceOldPath,
+    );
+    fs.mkdirSync(renamedSourceCache, { recursive: true });
+    fs.writeFileSync(path.join(renamedSourceCache, "stale.png"), "stale");
+    fireEvent.click(screen.getByTestId("media-rename-confirm-button"));
+
     await waitFor(() => {
       expect(fs.existsSync(sourceRenamedPath)).toBe(true);
       expect(fs.existsSync(sourceOldPath)).toBe(false);
+      expect(fs.existsSync(renamedSourceCache)).toBe(false);
     });
 
+    const movedSourceCache = getMediaThumbnailCacheDirectory(
+      cacheRoot,
+      sourceRenamedPath,
+    );
+    fs.mkdirSync(movedSourceCache, { recursive: true });
+    fs.writeFileSync(path.join(movedSourceCache, "stale.png"), "stale");
     await openActionsForFile("renamed-image.png");
     fireEvent.click(screen.getByTestId("media-move-to-submenu"));
     await screen.findByTestId("media-move-dialog");
@@ -156,18 +174,26 @@ describe("media library actions (integration)", () => {
     await waitFor(() => {
       expect(fs.existsSync(sourceRenamedPath)).toBe(false);
       expect(fs.existsSync(targetMovedPath)).toBe(true);
+      expect(fs.existsSync(movedSourceCache)).toBe(false);
     });
 
     fireEvent.click(screen.getByTestId("media-folder-back-button"));
     await openMediaFolder(targetApp);
 
     await openActionsForFile("renamed-image.png");
+    const deletedSourceCache = getMediaThumbnailCacheDirectory(
+      cacheRoot,
+      targetMovedPath,
+    );
+    fs.mkdirSync(deletedSourceCache, { recursive: true });
+    fs.writeFileSync(path.join(deletedSourceCache, "stale.png"), "stale");
     fireEvent.click(screen.getByTestId("media-delete-image"));
     await screen.findByTestId("media-delete-dialog");
     fireEvent.click(screen.getByTestId("media-delete-confirm-button"));
 
     await waitFor(() => {
       expect(fs.existsSync(targetMovedPath)).toBe(false);
+      expect(fs.existsSync(deletedSourceCache)).toBe(false);
     });
 
     const sourceRow = await harness.db.query.apps.findFirst({
@@ -178,5 +204,47 @@ describe("media library actions (integration)", () => {
     });
     expect(sourceRow?.name).toBe(sourceApp.name);
     expect(targetRow?.name).toBe(targetApp.name);
+  }, 60_000);
+
+  it("paginates versioned lazy thumbnails and reserves originals for preview", async () => {
+    const fileNames = Array.from(
+      { length: 50 },
+      (_, index) => `image-${String(index).padStart(2, "0")}.png`,
+    );
+    const app = await createAppWithMedia("media-many", fileNames);
+
+    mountMediaLibrary();
+    await openMediaFolder(app);
+
+    const firstPage = await screen.findAllByTestId("media-thumbnail");
+    expect(firstPage).toHaveLength(48);
+    for (const tile of firstPage) {
+      const image = tile.querySelector("img");
+      expect(image).not.toBeNull();
+      expect(image?.getAttribute("loading")).toBe("lazy");
+      expect(image?.getAttribute("decoding")).toBe("async");
+      const source = new URL(image?.getAttribute("src") ?? "");
+      expect(source.searchParams.get("thumbnail")).toBe("1");
+      expect(source.searchParams.get("v")).toMatch(/^\d+(?:\.\d+)?:\d+$/);
+    }
+
+    fireEvent.click(screen.getByLabelText("Next media page"));
+    await waitFor(() => {
+      expect(screen.getAllByTestId("media-thumbnail")).toHaveLength(2);
+      expect(screen.getByText("Page 2 of 2")).toBeTruthy();
+    });
+
+    const previewTile = screen.getAllByTestId("media-thumbnail")[0];
+    fireEvent.click(previewTile.firstElementChild as HTMLElement);
+    const preview = await screen.findByRole("dialog", {
+      name: /^Expanded image:/,
+    });
+    const previewImage = preview.querySelector("img");
+    expect(previewImage).not.toBeNull();
+    expect(
+      new URL(previewImage?.getAttribute("src") ?? "").searchParams.has(
+        "thumbnail",
+      ),
+    ).toBe(false);
   }, 60_000);
 });

@@ -6,6 +6,7 @@ import {
   Menu,
   protocol,
   net,
+  nativeImage,
   crashReporter,
 } from "electron";
 import * as path from "node:path";
@@ -67,11 +68,6 @@ import {
   pruneDumps,
 } from "./utils/crash_dumps";
 import {
-  DYAD_INTERNAL_DIR_NAME,
-  DYAD_MEDIA_SUBDIR,
-  DYAD_SCREENSHOT_SUBDIR,
-} from "./ipc/utils/media_path_utils";
-import {
   stopAllAppsSync,
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
@@ -97,6 +93,8 @@ import {
   getManagedNodeVersion,
   maybeUpgradeManagedNode,
 } from "./ipc/utils/managed_node";
+import { createDyadMediaProtocolHandler } from "./main/dyad_media_protocol";
+import { getMediaThumbnailCacheRoot } from "./ipc/utils/media_thumbnail";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -408,59 +406,18 @@ export async function onReady() {
   // Start performance monitoring
   startPerformanceMonitoring();
 
-  // Handle dyad-media:// protocol requests to serve persistent media and screenshot files.
-  protocol.handle("dyad-media", async (request) => {
-    const url = new URL(request.url);
-    // Format: dyad-media://media/{app-path}/.dyad/{subdir}/{filename}
-    //   where {subdir} is DYAD_MEDIA_SUBDIR or DYAD_SCREENSHOT_SUBDIR.
-    //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
-    //   The app-path segment is URI-encoded, so split on "/" before decoding
-    //   to correctly handle absolute paths (which contain encoded slashes).
-    const pathSegments = url.pathname.slice(1).split("/");
-    const allowedSubdirs = [DYAD_MEDIA_SUBDIR, DYAD_SCREENSHOT_SUBDIR];
-    if (
-      pathSegments.length !== 4 ||
-      pathSegments[1] !== DYAD_INTERNAL_DIR_NAME ||
-      !allowedSubdirs.includes(pathSegments[2])
-    ) {
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    const appPathRaw = decodeURIComponent(pathSegments[0]);
-    const subdir = pathSegments[2];
-    const filename = decodeURIComponent(pathSegments[3]);
-
-    // Defense-in-depth: reject filenames with path separators or traversal
-    if (
-      filename.includes("..") ||
-      filename.includes("/") ||
-      filename.includes("\\")
-    ) {
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    // Resolve the app directory, handling both relative names and absolute
-    // paths from imported apps (skipCopy).
-    const appPath = getDyadAppPath(appPathRaw);
-    const targetDir = path.resolve(
-      path.join(appPath, DYAD_INTERNAL_DIR_NAME, subdir),
-    );
-    const resolvedPath = path.resolve(path.join(targetDir, filename));
-
-    // Security: ensure the resolved path stays within the app's .dyad/{subdir} directory
-    const relativePath = path.relative(targetDir, resolvedPath);
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      return new Response("Forbidden", { status: 403 });
-    }
-
-    try {
-      return await net.fetch(
-        require("node:url").pathToFileURL(resolvedPath).href,
-      );
-    } catch {
-      return new Response("Not Found", { status: 404 });
-    }
-  });
+  // Handle dyad-media:// requests. Media-library tiles use bounded, cached
+  // derivatives while explicit previews continue to receive the source file.
+  protocol.handle(
+    "dyad-media",
+    createDyadMediaProtocolHandler({
+      cacheRoot: getMediaThumbnailCacheRoot(app.getPath("sessionData")),
+      resolveAppPath: getDyadAppPath,
+      fetchFile: (url) => net.fetch(url),
+      createThumbnailFromPath: (sourcePath, size) =>
+        nativeImage.createThumbnailFromPath(sourcePath, size),
+    }),
+  );
 
   const shouldUseManagedNode =
     settings.nodeRuntimePreference === "managed" && !settings.customNodePath;

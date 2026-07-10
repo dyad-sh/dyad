@@ -17,10 +17,12 @@ function loadScreenshotClient({
   fullPage,
   viewport,
   devicePixelRatio = 1,
+  scroll = { x: 0, y: 0 },
 }: {
   fullPage: Dimensions;
   viewport: Dimensions;
   devicePixelRatio?: number;
+  scroll?: { x: number; y: number };
 }) {
   let messageHandler:
     | ((event: { source: object; data: Record<string, unknown> }) => void)
@@ -32,6 +34,10 @@ function loadScreenshotClient({
     innerWidth: viewport.width,
     innerHeight: viewport.height,
     devicePixelRatio,
+    scrollX: scroll.x,
+    scrollY: scroll.y,
+    pageXOffset: scroll.x,
+    pageYOffset: scroll.y,
     addEventListener: vi.fn(
       (
         eventName: string,
@@ -115,6 +121,7 @@ describe("dyad screenshot client", () => {
     const client = loadScreenshotClient({
       fullPage: { width: 1920, height: 50_000 },
       viewport: { width: 1280, height: 720 },
+      scroll: { x: 120, y: 450 },
     });
 
     await client.requestScreenshot();
@@ -123,8 +130,21 @@ describe("dyad screenshot client", () => {
       width: number;
       height: number;
       pixelRatio: number;
+      style: Record<string, string>;
     };
-    expect(options).toEqual({ width: 1280, height: 720, pixelRatio: 1 });
+    expect(options).toEqual(
+      expect.objectContaining({
+        width: 1280,
+        height: 720,
+        pixelRatio: 1,
+        style: {
+          transform: "matrix(1, 0, 0, 1, -120, -450)",
+          transformOrigin: "top left",
+          width: "1920px",
+          height: "50000px",
+        },
+      }),
+    );
     expect(options.width * options.height).toBeLessThanOrEqual(4 * 1024 * 1024);
   });
 
@@ -140,6 +160,62 @@ describe("dyad screenshot client", () => {
     expect(client.toPng).toHaveBeenCalledTimes(1);
     await vi.waitFor(() =>
       expect(client.parent.postMessage).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("shares capture failures and retries with a fresh canvas", async () => {
+    const client = loadScreenshotClient({
+      fullPage: { width: 1200, height: 2000 },
+      viewport: { width: 1200, height: 800 },
+    });
+    let rejectCapture: ((reason?: unknown) => void) | undefined;
+    client.toPng.mockImplementationOnce(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectCapture = reject;
+        }),
+    );
+
+    client.dispatchScreenshot("request-1");
+    client.dispatchScreenshot("request-2");
+
+    expect(client.toPng).toHaveBeenCalledTimes(1);
+    rejectCapture?.(new Error("capture failed"));
+    await vi.waitFor(() =>
+      expect(client.parent.postMessage).toHaveBeenCalledTimes(2),
+    );
+
+    expect(
+      client.parent.postMessage.mock.calls.map(([message]) => message),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requestId: "request-1",
+          success: false,
+          error: "capture failed",
+        }),
+        expect.objectContaining({
+          requestId: "request-2",
+          success: false,
+          error: "capture failed",
+        }),
+      ]),
+    );
+
+    client.toPng.mockResolvedValueOnce("data:image/png;base64,retry");
+    client.dispatchScreenshot("request-3");
+
+    await vi.waitFor(() =>
+      expect(client.parent.postMessage).toHaveBeenCalledTimes(3),
+    );
+    expect(client.toPng).toHaveBeenCalledTimes(2);
+    expect(client.parent.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        requestId: "request-3",
+        success: true,
+        dataUrl: "data:image/png;base64,retry",
+      }),
+      "*",
     );
   });
 });

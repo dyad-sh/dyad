@@ -72,7 +72,7 @@
   function getScreenshotDimensions() {
     const fullPage = getFullPageDimensions();
     if (fitsScreenshotBudget(fullPage)) {
-      return fullPage;
+      return { ...fullPage, fullPage, isViewport: false };
     }
 
     const viewport = getViewportDimensions();
@@ -80,21 +80,53 @@
     console.warn(
       `[dyad-screenshot] Full page ${fullPage.width}x${fullPage.height} exceeds the screenshot memory budget; capturing viewport ${boundedViewport.width}x${boundedViewport.height} instead.`,
     );
-    return boundedViewport;
+    return {
+      ...boundedViewport,
+      fullPage,
+      isViewport: true,
+      viewport,
+    };
+  }
+
+  function getScrollOffset(primaryValue, fallbackValue) {
+    const value = Number.isFinite(primaryValue) ? primaryValue : fallbackValue;
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
   }
 
   async function captureScreenshotOnce() {
     try {
       // Use html-to-image if available
       if (typeof htmlToImage !== "undefined") {
-        const { width, height } = getScreenshotDimensions();
-        return await htmlToImage.toPng(document.body, {
-          width,
-          height,
+        const dimensions = getScreenshotDimensions();
+        const options = {
+          width: dimensions.width,
+          height: dimensions.height,
           // html-to-image otherwise multiplies the canvas by devicePixelRatio,
           // which can turn a bounded screenshot into a 4-9x memory spike.
           pixelRatio: 1,
-        });
+        };
+
+        if (dimensions.isViewport) {
+          const scrollX = getScrollOffset(window.scrollX, window.pageXOffset);
+          const scrollY = getScrollOffset(window.scrollY, window.pageYOffset);
+          const scale = Math.min(
+            dimensions.width / dimensions.viewport.width,
+            dimensions.height / dimensions.viewport.height,
+          );
+
+          // html-to-image always clones from the document origin. Translate
+          // the clone to the current scroll position so the bounded fallback
+          // captures what the user is actually viewing. The scale also keeps
+          // unusually large viewports within the same pixel budget.
+          options.style = {
+            transform: `matrix(${scale}, 0, 0, ${scale}, ${-scrollX * scale}, ${-scrollY * scale})`,
+            transformOrigin: "top left",
+            width: `${dimensions.fullPage.width}px`,
+            height: `${dimensions.fullPage.height}px`,
+          };
+        }
+
+        return await htmlToImage.toPng(document.body, options);
       }
       throw new Error("html-to-image library not found");
     } catch (error) {

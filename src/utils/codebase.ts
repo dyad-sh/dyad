@@ -611,25 +611,15 @@ async function prepareCodebaseFiles({
 export async function listCodebaseFileMetadata({
   appPath,
   chatContext,
-  maxFiles,
 }: {
   appPath: string;
   chatContext: AppChatContext;
-  maxFiles?: number;
 }): Promise<{ files: BaseFile[]; totalFileCount: number }> {
   const preparedFiles =
     (await prepareCodebaseFiles({ appPath, chatContext })) ?? [];
-  const prioritizedFiles = [
-    ...preparedFiles.filter((file) => file.force),
-    ...preparedFiles.filter((file) => !file.force),
-  ];
-  const selectedFiles =
-    maxFiles === undefined
-      ? preparedFiles
-      : prioritizedFiles.slice(0, Math.max(0, Math.floor(maxFiles)));
 
   return {
-    files: selectedFiles.map(({ path: filePath, force }) => ({
+    files: preparedFiles.map(({ path: filePath, force }) => ({
       path: filePath,
       force,
     })),

@@ -116,27 +116,34 @@ function getCachedIndex(
 
   // Evict BEFORE building: drop the stale index for this key first so the old
   // index and the new ts.Program never coexist, then free LRU indexes until
-  // the measured heap fits the budget.
+  // the measured heap fits the budget. Re-measure and re-plan after each
+  // round: per-entry `bytes` can overestimate what deleting the entry
+  // actually frees (shared allocations like the TypeScript module cache
+  // survive eviction), so a single round can leave the heap over budget.
+  // Terminates because every round evicts at least one entry.
   indexCache.delete(key);
   let preBuildHeapBytes = gcAndMeasureHeapBytes();
-  const evictKeys = evictionPlan({
-    entries: [...indexCache.values()].map((entry) => ({
-      key: entry.key,
-      lastUsedAt: entry.lastUsedAt,
-      bytes: entry.bytes,
-    })),
-    usedHeapBytes: preBuildHeapBytes,
-    budgetBytes: INDEX_CACHE_BUDGET_BYTES,
-    maxEntries: INDEX_CACHE_MAX_ENTRIES,
-  });
-  for (const evictKey of evictKeys) {
-    const evicted = indexCache.get(evictKey);
-    indexCache.delete(evictKey);
-    console.log(
-      `[code-explorer] evicting cached index ${evictKey.replaceAll("\0", "::")} (~${evicted?.bytes ?? 0} bytes) to fit the ${INDEX_CACHE_BUDGET_BYTES}-byte budget`,
-    );
-  }
-  if (evictKeys.length > 0) {
+  while (indexCache.size > 0) {
+    const evictKeys = evictionPlan({
+      entries: [...indexCache.values()].map((entry) => ({
+        key: entry.key,
+        lastUsedAt: entry.lastUsedAt,
+        bytes: entry.bytes,
+      })),
+      usedHeapBytes: preBuildHeapBytes,
+      budgetBytes: INDEX_CACHE_BUDGET_BYTES,
+      maxEntries: INDEX_CACHE_MAX_ENTRIES,
+    });
+    if (evictKeys.length === 0) {
+      break;
+    }
+    for (const evictKey of evictKeys) {
+      const evicted = indexCache.get(evictKey);
+      indexCache.delete(evictKey);
+      console.log(
+        `[code-explorer] evicting cached index ${evictKey.replaceAll("\0", "::")} (~${evicted?.bytes ?? 0} bytes) to fit the ${INDEX_CACHE_BUDGET_BYTES}-byte budget`,
+      );
+    }
     preBuildHeapBytes = gcAndMeasureHeapBytes();
   }
 

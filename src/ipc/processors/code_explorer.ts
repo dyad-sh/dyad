@@ -358,16 +358,21 @@ function getHost(): UtilityProcess {
         `Code explorer host (generation ${generation}) exited with code ${code}; failing ${failed.length} pending request(s)`,
       );
     }
-    const crashLoopedKeys = new Set<string>();
-    for (const key of new Set(failed.map(([, request]) => request.key))) {
-      if (recordHostDeathForKey(key)) {
-        crashLoopedKeys.add(key);
-      }
-    }
+    // The host serves requests strictly FIFO on a single thread, so the
+    // oldest pending request (requestIds ascend in Map insertion order) is
+    // the one it was processing when it died. Charge the crash to that key
+    // only — the others were merely queued behind it, and charging them too
+    // would mark unrelated projects unavailable after two crashes caused by
+    // one oversized project.
+    const activeRequest = failed[0]?.[1];
+    const crashLoopedKey =
+      activeRequest && recordHostDeathForKey(activeRequest.key)
+        ? activeRequest.key
+        : null;
     for (const [requestId, request] of failed) {
       pendingRequests.delete(requestId);
       request.reject(
-        crashLoopedKeys.has(request.key)
+        request.key === crashLoopedKey
           ? keyUnavailableError()
           : toCodeExplorerError(
               new Error(

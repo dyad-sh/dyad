@@ -32,6 +32,8 @@ function buildMinidump(opts: {
   ipOffset: number; // where the IP sits in the CPU context: 248 (x64) / 264 (arm64)
   ptype?: string;
   addressMask?: bigint; // Crashpad address_mask, written into the CrashpadInfo stream
+  crashpadVersion?: number;
+  exceptionStreamSize?: number;
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -128,6 +130,7 @@ function buildMinidump(opts: {
 
     // CrashpadInfo: module_list RVA @ +48, optional address_mask u64 @ +56.
     crashpadInfoRva = cursor;
+    dv.setUint32(crashpadInfoRva, opts.crashpadVersion ?? 1, true);
     dv.setUint32(crashpadInfoRva + 48, cpModListRva, true);
     if (opts.addressMask !== undefined) {
       dv.setBigUint64(crashpadInfoRva + 56, opts.addressMask, true);
@@ -149,7 +152,7 @@ function buildMinidump(opts: {
   dv.setUint32(36, moduleListSize, true);
   dv.setUint32(40, moduleListRva, true);
   dv.setUint32(44, 6, true);
-  dv.setUint32(48, exceptionSize, true);
+  dv.setUint32(48, opts.exceptionStreamSize ?? exceptionSize, true);
   dv.setUint32(52, exceptionRva, true);
   if (opts.ptype !== undefined) {
     dv.setUint32(56, 0x43500001, true);
@@ -244,6 +247,20 @@ describe("parseMinidumpBuffer", () => {
     expect(s!.faultingOffset).toBe("0x800");
   });
 
+  it("ignores an address mask from an unsupported CrashpadInfo version", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0xab00000000010800n,
+      ipOffset: 264,
+      ptype: "browser",
+      addressMask: 0xff00000000000000n,
+      crashpadVersion: 0,
+    });
+    const s = parseMinidumpBuffer(dump, "darwin", "arm64");
+    expect(s!.faultingModule).toBeUndefined();
+  });
+
   it("omits the module when the IP is outside every module", () => {
     const dump = buildMinidump({
       modules: oneModule,
@@ -295,6 +312,18 @@ describe("parseMinidumpBuffer", () => {
 
   it("rejects a truncated buffer", () => {
     expect(parseMinidumpBuffer(Buffer.alloc(8), "linux", "x64")).toBeNull();
+  });
+
+  it("rejects an exception stream whose declared size is truncated", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10500n,
+      ipOffset: 248,
+      exceptionStreamSize: 12,
+    });
+
+    expect(parseMinidumpBuffer(dump, "linux", "x64")).toBeNull();
   });
 });
 

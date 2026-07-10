@@ -84,6 +84,7 @@ const MODULE_NAME_RVA_OFF = 20;
 const CRASHPAD_MODULE_LIST_RVA_OFF = 48; // rva field of module_list (@44 + 4)
 const CRASHPAD_ADDRESS_MASK_OFF = 56;
 const CRASHPAD_INFO_MIN_SIZE_FOR_MASK = 64; // through the end of address_mask
+const CRASHPAD_INFO_VERSION_WITH_ADDRESS_MASK = 1;
 
 // On Linux, Crashpad stores the POSIX signal number in ExceptionCode.
 const SIGNAL_NAMES: Record<number, string> = {
@@ -270,6 +271,7 @@ function parseMinidumpSource(
     // we care about.
     let moduleListRva = 0;
     let exceptionRva = 0;
+    let exceptionSize = 0;
     let crashpadInfoRva = 0;
     let crashpadInfoSize = 0;
     for (let i = 0; i < numStreams; i++) {
@@ -278,14 +280,18 @@ function parseMinidumpSource(
       const size = directory.readUInt32LE(entry + DIR_ENTRY_SIZE_OFF);
       const rva = directory.readUInt32LE(entry + DIR_ENTRY_RVA_OFF);
       if (type === STREAM_MODULE_LIST) moduleListRva = rva;
-      else if (type === STREAM_EXCEPTION) exceptionRva = rva;
-      else if (type === STREAM_CRASHPAD_INFO) {
+      else if (type === STREAM_EXCEPTION) {
+        exceptionRva = rva;
+        exceptionSize = size;
+      } else if (type === STREAM_CRASHPAD_INFO) {
         crashpadInfoRva = rva;
         crashpadInfoSize = size;
       }
     }
 
-    if (exceptionRva === 0) return null;
+    if (exceptionRva === 0 || exceptionSize < EXC_CONTEXT_RVA_OFF + 4) {
+      return null;
+    }
     const exception = source.read(exceptionRva, EXC_CONTEXT_RVA_OFF + 4);
     if (!exception) return null;
     const exceptionCode = exception.readUInt32LE(EXC_CODE_OFF);
@@ -400,6 +406,13 @@ function readAddressMask(
   infoSize: number,
 ): bigint {
   if (infoSize < CRASHPAD_INFO_MIN_SIZE_FOR_MASK) {
+    return 0n;
+  }
+  const version = readUInt32(source, infoRva);
+  if (
+    version === undefined ||
+    version < CRASHPAD_INFO_VERSION_WITH_ADDRESS_MASK
+  ) {
     return 0n;
   }
   return readBigUInt64(source, infoRva + CRASHPAD_ADDRESS_MASK_OFF) ?? 0n;

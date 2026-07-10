@@ -33,6 +33,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/ui-styling.md](rules/ui-styling.md)                           | Adding provider/brand icons, styling scrollable popovers, or using Tailwind v4 arbitrary values                                                                                |
 | [rules/auto-update.md](rules/auto-update.md)                         | Debugging Squirrel/update-electron-app failures, update feed URLs, or updater log capture in bug reports and session debug bundles                                             |
 | [rules/safe-storage.md](rules/safe-storage.md)                       | Working with Electron `safeStorage`, macOS Keychain identities, or legacy os_crypt secret recovery                                                                             |
+| [rules/electron-workers.md](rules/electron-workers.md)               | Spawning `worker_threads`/`utilityProcess`, moving heavy computation off the main process, or diagnosing main-process memory usage and OOM crashes                             |
 
 ## Project setup and lints
 

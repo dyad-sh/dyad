@@ -161,21 +161,28 @@ export const Console = () => {
     return Array.from(sources).sort();
   }, [consoleEntries]);
 
-  // Filter and sort console entries by timestamp
+  // Producers append in chronological delivery order. Avoid sorting a copy of
+  // the complete console on every update; filtering only allocates when active.
   const filteredEntries = useMemo(() => {
-    return consoleEntries
-      .filter((entry) => {
-        if (levelFilter !== "all" && entry.level !== levelFilter) return false;
-        if (typeFilter !== "all" && entry.type !== typeFilter) return false;
-        if (
-          sourceFilter &&
-          sourceFilter !== "all" &&
-          entry.sourceName !== sourceFilter
-        )
-          return false;
-        return true;
-      })
-      .sort((a, b) => a.timestamp - b.timestamp);
+    if (
+      levelFilter === "all" &&
+      typeFilter === "all" &&
+      (!sourceFilter || sourceFilter === "all")
+    ) {
+      return consoleEntries;
+    }
+
+    return consoleEntries.filter((entry) => {
+      if (levelFilter !== "all" && entry.level !== levelFilter) return false;
+      if (typeFilter !== "all" && entry.type !== typeFilter) return false;
+      if (
+        sourceFilter &&
+        sourceFilter !== "all" &&
+        entry.sourceName !== sourceFilter
+      )
+        return false;
+      return true;
+    });
   }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 
   // Generate unique key for each entry

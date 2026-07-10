@@ -1,0 +1,257 @@
+import type { ConsoleEntry } from "@/ipc/types";
+
+// Keep the renderer's long-lived preview history small enough that a noisy dev
+// server cannot exhaust the renderer heap. The main-process log store has its
+// own policy and intentionally remains independent from this UI buffer.
+export const MAX_PREVIEW_CONSOLE_ENTRIES_PER_APP = 1_000;
+export const MAX_PREVIEW_CONSOLE_BYTES_PER_APP = 2 * 1024 * 1024;
+export const MAX_PREVIEW_CONSOLE_MESSAGE_BYTES = 64 * 1024;
+export const MAX_PREVIEW_CONSOLE_SOURCE_NAME_BYTES = 1_024;
+
+export const PREVIEW_CONSOLE_OMISSION_MESSAGE =
+  "… [older preview logs omitted to stay within the console memory limit]";
+
+const MESSAGE_TRUNCATION_SUFFIX = "\n… [log payload truncated]";
+const SOURCE_NAME_TRUNCATION_SUFFIX = "… [source truncated]";
+const OMISSION_MARKER_SOURCE = "Dyad";
+const MAX_FORMATTED_ARGUMENTS = 10;
+const MAX_FORMATTED_ARGUMENT_BYTES = 8 * 1024;
+const CONSOLE_OMISSION_MARKER_FIELD = "__dyadConsoleOmissionMarker";
+
+type BufferedConsoleEntry = ConsoleEntry & {
+  [CONSOLE_OMISSION_MARKER_FIELD]?: true;
+};
+
+interface BoundedUtf8String {
+  value: string;
+  byteLength: number;
+}
+
+function utf8CodePointByteLength(codePoint: number): number {
+  if (codePoint <= 0x7f) return 1;
+  if (codePoint <= 0x7ff) return 2;
+  if (codePoint <= 0xffff) return 3;
+  return 4;
+}
+
+/**
+ * Measures and, when necessary, truncates without first allocating a full
+ * UTF-8 copy of an attacker-controlled string.
+ */
+function boundUtf8String(
+  value: string,
+  maxBytes: number,
+  truncationSuffix: string,
+): BoundedUtf8String {
+  let byteLength = 0;
+  let prefixByteLength = 0;
+  let prefixEnd = 0;
+  const suffixByteLength = getUtf8ByteLength(truncationSuffix);
+  const prefixLimit = Math.max(0, maxBytes - suffixByteLength);
+
+  for (let index = 0; index < value.length; ) {
+    const codePoint = value.codePointAt(index) ?? 0;
+    const codeUnitLength = codePoint > 0xffff ? 2 : 1;
+    const codePointByteLength = utf8CodePointByteLength(codePoint);
+    const nextIndex = index + codeUnitLength;
+
+    byteLength += codePointByteLength;
+    if (byteLength <= prefixLimit) {
+      prefixEnd = nextIndex;
+      prefixByteLength = byteLength;
+    }
+
+    if (byteLength > maxBytes) {
+      return {
+        value: value.slice(0, prefixEnd) + truncationSuffix,
+        byteLength: prefixByteLength + suffixByteLength,
+      };
+    }
+
+    index = nextIndex;
+  }
+
+  return { value, byteLength };
+}
+
+export function getUtf8ByteLength(value: string): number {
+  let byteLength = 0;
+  for (let index = 0; index < value.length; ) {
+    const codePoint = value.codePointAt(index) ?? 0;
+    byteLength += utf8CodePointByteLength(codePoint);
+    index += codePoint > 0xffff ? 2 : 1;
+  }
+  return byteLength;
+}
+
+export function getPreviewConsoleEntryByteLength(entry: ConsoleEntry): number {
+  return (
+    getUtf8ByteLength(entry.message) +
+    (entry.sourceName ? getUtf8ByteLength(entry.sourceName) : 0)
+  );
+}
+
+export function boundPreviewConsoleEntry(
+  entry: ConsoleEntry,
+  appId = entry.appId,
+): ConsoleEntry {
+  const message = boundUtf8String(
+    entry.message,
+    MAX_PREVIEW_CONSOLE_MESSAGE_BYTES,
+    MESSAGE_TRUNCATION_SUFFIX,
+  ).value;
+  const sourceName = entry.sourceName
+    ? boundUtf8String(
+        entry.sourceName,
+        MAX_PREVIEW_CONSOLE_SOURCE_NAME_BYTES,
+        SOURCE_NAME_TRUNCATION_SUFFIX,
+      ).value
+    : undefined;
+
+  if (
+    message === entry.message &&
+    sourceName === entry.sourceName &&
+    appId === entry.appId
+  ) {
+    return entry;
+  }
+
+  return { ...entry, appId, message, sourceName };
+}
+
+export function formatPreviewConsoleMessage(
+  prefix: string,
+  values: unknown,
+): string {
+  const boundedPrefix = boundUtf8String(
+    prefix,
+    MAX_FORMATTED_ARGUMENT_BYTES,
+    MESSAGE_TRUNCATION_SUFFIX,
+  ).value;
+  const rawValues = Array.isArray(values) ? values : [values];
+  const formattedValues: string[] = [];
+  const valueCount = Math.min(rawValues.length, MAX_FORMATTED_ARGUMENTS);
+
+  for (let index = 0; index < valueCount; index++) {
+    const value = rawValues[index];
+    let stringValue: string;
+    try {
+      stringValue = typeof value === "string" ? value : String(value);
+    } catch {
+      stringValue = "[unable to format console value]";
+    }
+    formattedValues.push(
+      boundUtf8String(
+        stringValue,
+        MAX_FORMATTED_ARGUMENT_BYTES,
+        MESSAGE_TRUNCATION_SUFFIX,
+      ).value,
+    );
+  }
+
+  if (rawValues.length > valueCount) {
+    formattedValues.push(`… [${rawValues.length - valueCount} values omitted]`);
+  }
+
+  return boundUtf8String(
+    [boundedPrefix, ...formattedValues].filter(Boolean).join(" "),
+    MAX_PREVIEW_CONSOLE_MESSAGE_BYTES,
+    MESSAGE_TRUNCATION_SUFFIX,
+  ).value;
+}
+
+function isOmissionMarker(entry: ConsoleEntry): boolean {
+  return (
+    (entry as BufferedConsoleEntry)[CONSOLE_OMISSION_MARKER_FIELD] === true
+  );
+}
+
+function createOmissionMarker(
+  appId: number,
+  oldestRetainedEntry: ConsoleEntry,
+): BufferedConsoleEntry {
+  return {
+    appId,
+    level: "warn",
+    type: "server",
+    message: PREVIEW_CONSOLE_OMISSION_MESSAGE,
+    sourceName: OMISSION_MARKER_SOURCE,
+    timestamp: oldestRetainedEntry.timestamp,
+    [CONSOLE_OMISSION_MARKER_FIELD]: true,
+  };
+}
+
+/**
+ * Builds a chronological, newest-first-selected tail without materializing an
+ * unbounded concatenation. Incoming entries are inspected from newest to
+ * oldest, so an oversized batch never causes its discarded prefix to be
+ * normalized or copied.
+ */
+export function createPreviewConsoleTail(
+  appId: number,
+  existingEntries: readonly ConsoleEntry[],
+  incomingEntries: readonly ConsoleEntry[],
+): ConsoleEntry[] {
+  const retainedNewestFirst: ConsoleEntry[] = [];
+  let retainedBytes = 0;
+  let omittedEntries = false;
+  let reachedLimit = false;
+
+  const retain = (rawEntry: ConsoleEntry): boolean => {
+    if (isOmissionMarker(rawEntry)) {
+      omittedEntries = true;
+      return true;
+    }
+
+    const entry = boundPreviewConsoleEntry(rawEntry, appId);
+    const entryBytes = getPreviewConsoleEntryByteLength(entry);
+    if (
+      retainedNewestFirst.length >= MAX_PREVIEW_CONSOLE_ENTRIES_PER_APP ||
+      retainedBytes + entryBytes > MAX_PREVIEW_CONSOLE_BYTES_PER_APP
+    ) {
+      omittedEntries = true;
+      reachedLimit = true;
+      return false;
+    }
+
+    retainedNewestFirst.push(entry);
+    retainedBytes += entryBytes;
+    return true;
+  };
+
+  for (let index = incomingEntries.length - 1; index >= 0; index--) {
+    if (!retain(incomingEntries[index])) break;
+  }
+
+  if (!reachedLimit) {
+    for (let index = existingEntries.length - 1; index >= 0; index--) {
+      if (!retain(existingEntries[index])) break;
+    }
+  }
+
+  if (omittedEntries && retainedNewestFirst.length > 0) {
+    const marker = createOmissionMarker(
+      appId,
+      retainedNewestFirst[retainedNewestFirst.length - 1],
+    );
+    const markerBytes = getPreviewConsoleEntryByteLength(marker);
+
+    // The marker is part of both budgets. Remove the oldest retained entries
+    // until it fits, while always preserving the newest useful log.
+    while (
+      retainedNewestFirst.length > 1 &&
+      (retainedNewestFirst.length + 1 > MAX_PREVIEW_CONSOLE_ENTRIES_PER_APP ||
+        retainedBytes + markerBytes > MAX_PREVIEW_CONSOLE_BYTES_PER_APP)
+    ) {
+      const removed = retainedNewestFirst.pop();
+      if (removed) {
+        retainedBytes -= getPreviewConsoleEntryByteLength(removed);
+      }
+    }
+
+    retainedNewestFirst.push(marker);
+  }
+
+  retainedNewestFirst.reverse();
+  return retainedNewestFirst;
+}

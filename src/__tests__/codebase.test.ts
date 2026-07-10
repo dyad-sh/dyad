@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  extractCodebase,
-  listCodebaseFileMetadata,
-} from "@/utils/codebase";
+import { extractCodebase, listCodebaseFileMetadata } from "@/utils/codebase";
 
 vi.mock("electron-log", () => ({
   default: {

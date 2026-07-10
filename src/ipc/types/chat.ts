@@ -11,6 +11,11 @@ import {
   migrateStoredChatMode,
   type ChatMode,
 } from "../../lib/schemas";
+import {
+  CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
+  MAX_CHAT_ATTACHMENTS,
+  validateSerializedChatAttachments,
+} from "../../shared/chatAttachmentLimits";
 
 // =============================================================================
 // Chat Schemas
@@ -71,12 +76,23 @@ export type ComponentSelection = z.infer<typeof ComponentSelectionSchema>;
 /**
  * Schema for file attachment in chat (base64 encoded for IPC transfer).
  */
-export const ChatAttachmentSchema = z.object({
-  name: z.string(),
-  type: z.string(),
-  data: z.string(), // Base64 encoded
-  attachmentType: z.enum(["upload-to-codebase", "chat-context"]),
-});
+export const ChatAttachmentSchema = z
+  .object({
+    name: z.string(),
+    type: z.string(),
+    data: z.string(), // Base64 encoded
+    attachmentType: z.enum(["upload-to-codebase", "chat-context"]),
+  })
+  .superRefine((attachment, context) => {
+    const validation = validateSerializedChatAttachments([attachment]);
+    if (!validation.ok) {
+      context.addIssue({
+        code: "custom",
+        path: ["data"],
+        message: validation.message,
+      });
+    }
+  });
 
 export type ChatAttachment = z.infer<typeof ChatAttachmentSchema>;
 
@@ -90,16 +106,46 @@ export interface FileAttachment {
 }
 
 /**
+ * Reject excessive counts before Zod parses any attachment payloads. Keeping
+ * this as an outer pipeline avoids walking arbitrarily many large base64
+ * strings before reporting the count violation.
+ */
+const ChatAttachmentsSchema = z
+  .unknown()
+  .superRefine((value, context) => {
+    if (Array.isArray(value) && value.length > MAX_CHAT_ATTACHMENTS) {
+      context.addIssue({
+        code: "custom",
+        message: CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
+      });
+    }
+  })
+  .pipe(z.array(ChatAttachmentSchema));
+
+/**
  * Schema for chat stream parameters.
  */
-export const ChatStreamParamsSchema = z.object({
-  chatId: z.number(),
-  prompt: z.string(),
-  redo: z.boolean().optional(),
-  attachments: z.array(ChatAttachmentSchema).optional(),
-  selectedComponents: z.array(ComponentSelectionSchema).optional(),
-  requestedChatMode: ChatModeSchema.optional(),
-});
+export const ChatStreamParamsSchema = z
+  .object({
+    chatId: z.number(),
+    prompt: z.string(),
+    redo: z.boolean().optional(),
+    attachments: ChatAttachmentsSchema.optional(),
+    selectedComponents: z.array(ComponentSelectionSchema).optional(),
+    requestedChatMode: ChatModeSchema.optional(),
+  })
+  .superRefine((params, context) => {
+    const validation = validateSerializedChatAttachments(
+      params.attachments ?? [],
+    );
+    if (!validation.ok) {
+      context.addIssue({
+        code: "custom",
+        path: ["attachments"],
+        message: validation.message,
+      });
+    }
+  });
 
 export type ChatStreamParams = z.infer<typeof ChatStreamParamsSchema>;
 

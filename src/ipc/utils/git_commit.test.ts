@@ -23,7 +23,11 @@ describe("gitCommit", () => {
   ])("adds --no-verify only when requested", async ({ noVerify, expected }) => {
     exec
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "commit-hash\n", stderr: "" });
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "commit-hash\n",
+        stderr: "",
+      });
 
     await expect(
       gitCommit({ path: "/test/app", message: "message", noVerify }),

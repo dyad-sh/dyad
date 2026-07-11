@@ -7,7 +7,6 @@ vi.mock("node:fs", async () => {
   return {
     ...actual,
     default: {
-      ...actual.default,
       mkdirSync: vi.fn(),
       writeFileSync: vi.fn(),
     },

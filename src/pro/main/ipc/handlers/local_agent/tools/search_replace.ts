@@ -7,10 +7,7 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import {
-  assertPathNotGitMetadata,
-  safeJoin,
-} from "@/ipc/utils/path_utils";
+import { assertPathNotGitMetadata, safeJoin } from "@/ipc/utils/path_utils";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
 import { deploySupabaseFunction } from "@/supabase_admin/supabase_management_client";

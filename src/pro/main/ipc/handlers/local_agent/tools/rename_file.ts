@@ -3,10 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import {
-  assertPathNotGitMetadata,
-  safeJoin,
-} from "@/ipc/utils/path_utils";
+import { assertPathNotGitMetadata, safeJoin } from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
   deploySupabaseFunction,

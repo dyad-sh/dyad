@@ -24,10 +24,7 @@ import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
 } from "./file_operations";
-import {
-  gitCommit,
-  getGitUncommittedFiles,
-} from "@/ipc/utils/git_utils";
+import { gitCommit, getGitUncommittedFiles } from "@/ipc/utils/git_utils";
 
 vi.mock("@/ipc/utils/git_utils", () => ({
   gitAddAll: vi.fn(),

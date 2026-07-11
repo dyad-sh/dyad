@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { exec } = vi.hoisted(() => ({ exec: vi.fn() }));
 
@@ -16,6 +16,10 @@ vi.mock("../handlers/github_handlers", () => ({
 import { gitCommit } from "./git_utils";
 
 describe("gitCommit", () => {
+  beforeEach(() => {
+    exec.mockReset();
+  });
+
   it.each([
     { disableHooks: undefined, expected: ["commit", "-m", "message"] },
     { disableHooks: false, expected: ["commit", "-m", "message"] },
@@ -38,13 +42,15 @@ describe("gitCommit", () => {
         gitCommit({ path: "/test/app", message: "message", disableHooks }),
       ).resolves.toBe("commit-hash");
 
-      expect(exec).toHaveBeenNthCalledWith(
-        1,
-        ["-c", "user.name=[dyad]", "-c", "user.email=git@dyad.sh", ...expected],
-        "/test/app",
-        undefined,
-      );
-      exec.mockReset();
+      const [args, cwd] = exec.mock.calls[0];
+      expect(args).toEqual([
+        "-c",
+        "user.name=[dyad]",
+        "-c",
+        "user.email=git@dyad.sh",
+        ...expected,
+      ]);
+      expect(cwd).toBe("/test/app");
     },
   );
 });

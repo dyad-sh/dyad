@@ -43,7 +43,10 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    assertPathNotGitMetadata(args.path);
+    await assertPathNotGitMetadata({
+      appPath: ctx.appPath,
+      relativePath: args.path,
+    });
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
     // Track if this is a shared module

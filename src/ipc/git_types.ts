@@ -11,15 +11,19 @@ export type GitCommit = {
 export interface GitBaseParams {
   path: string;
 }
-export interface GitCommitParams extends GitBaseParams {
+export interface GitHookOptions {
+  /** Disable repository hooks for this trusted automated Git operation only. */
+  disableHooks?: boolean;
+}
+export interface GitAddAllParams extends GitBaseParams, GitHookOptions {}
+export interface GitCommitParams extends GitBaseParams, GitHookOptions {
   message: string;
   amend?: boolean;
-  /** Disable all repository hooks for trusted automated commits only. */
-  disableHooks?: boolean;
 }
 export interface GitFileParams extends GitBaseParams {
   filepath: string;
 }
+export interface GitHookableFileParams extends GitFileParams, GitHookOptions {}
 export interface GitListFilesParams extends GitBaseParams {
   excludedFiles: string[];
   excludedDirs: string[];

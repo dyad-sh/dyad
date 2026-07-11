@@ -38,14 +38,17 @@ export async function recordAndReportDeniedPnpmBuilds({
   appPath,
   ignoredBuilds,
   source,
+  disableHooks,
 }: {
   appPath: string;
   ignoredBuilds: PnpmIgnoredBuild[];
   source: PnpmDeniedBuildsTelemetrySource;
+  disableHooks?: boolean;
 }): Promise<{ deniedBuilds: PnpmIgnoredBuild[] }> {
   const { deniedBuilds } = await recordDeniedPnpmBuilds({
     appPath,
     ignoredBuilds,
+    ...(disableHooks === undefined ? {} : { disableHooks }),
   });
   if (deniedBuilds.length > 0) {
     sendTelemetryEvent("pnpm:build-auto-denied", {

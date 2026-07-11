@@ -205,10 +205,13 @@ export async function installPackages({
   packages,
   appPath,
   dev = false,
+  disableGitHooks = false,
 }: {
   packages: string[];
   appPath: string;
   dev?: boolean;
+  /** Only trusted automation should suppress repository hooks. */
+  disableGitHooks?: boolean;
 }): Promise<ExecuteAddDependencyResult> {
   const invalidPackage = packages.find(
     (pkg) => !NPM_PACKAGE_NAME_PATTERN.test(pkg),
@@ -255,10 +258,15 @@ export async function installPackages({
   ) {
     warningMessages.push(pnpmSupport.warningMessage);
   }
-  const promotedPackages =
-    packageManager === "pnpm"
-      ? (await commitPnpmAllowBuildsConfigIfChanged(appPath)).promotedPackages
-      : [];
+  let promotedPackages: string[] = [];
+  if (packageManager === "pnpm") {
+    const allowBuildsResult = disableGitHooks
+      ? await commitPnpmAllowBuildsConfigIfChanged(appPath, {
+          disableHooks: true,
+        })
+      : await commitPnpmAllowBuildsConfigIfChanged(appPath);
+    promotedPackages = allowBuildsResult.promotedPackages;
+  }
   const { succeeded, installResults, lastError } =
     await runAddDependencyCommand(
       buildAddDependencyCommand(packages, packageManager, useSocketFirewall, {
@@ -286,6 +294,7 @@ export async function installPackages({
       appPath,
       ignoredBuilds,
       source: "add-dependency",
+      ...(disableGitHooks ? { disableHooks: true } : {}),
     });
     if (deniedBuilds.length > 0) {
       installResultsWithPolicyNotes += formatDeniedBuildsNote(
@@ -306,14 +315,18 @@ export async function executeAddDependency({
   packages,
   message,
   appPath,
+  disableGitHooks = false,
 }: {
   packages: string[];
   message: Message;
   appPath: string;
+  /** Only trusted automation should suppress repository hooks. */
+  disableGitHooks?: boolean;
 }): Promise<ExecuteAddDependencyResult> {
   const { installResults, warningMessages } = await installPackages({
     packages,
     appPath,
+    disableGitHooks,
   });
 
   // Update the message content with the installation results

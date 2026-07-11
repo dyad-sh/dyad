@@ -39,8 +39,14 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      assertPathNotGitMetadata(args.from);
-      assertPathNotGitMetadata(args.to);
+      await assertPathNotGitMetadata({
+        appPath: ctx.appPath,
+        relativePath: args.from,
+      });
+      await assertPathNotGitMetadata({
+        appPath: ctx.appPath,
+        relativePath: args.to,
+      });
       const fromFullPath = safeJoin(ctx.appPath, args.from);
       const toFullPath = safeJoin(ctx.appPath, args.to);
 
@@ -66,9 +72,17 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         );
 
         // Update git
-        await gitAdd({ path: ctx.appPath, filepath: args.to });
+        await gitAdd({
+          path: ctx.appPath,
+          filepath: args.to,
+          disableHooks: true,
+        });
         try {
-          await gitRemove({ path: ctx.appPath, filepath: args.from });
+          await gitRemove({
+            path: ctx.appPath,
+            filepath: args.from,
+            disableHooks: true,
+          });
         } catch (error) {
           logger.warn(`Failed to git remove old file ${args.from}:`, error);
         }

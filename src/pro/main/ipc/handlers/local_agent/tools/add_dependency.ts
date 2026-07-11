@@ -48,6 +48,7 @@ export const addDependencyTool: ToolDefinition<
         packages: args.packages,
         message,
         appPath: ctx.appPath,
+        disableGitHooks: true,
       });
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);

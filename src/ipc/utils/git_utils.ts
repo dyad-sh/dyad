@@ -128,7 +128,9 @@ async function execGit(
 }
 import type {
   GitBaseParams,
+  GitAddAllParams,
   GitFileParams,
+  GitHookableFileParams,
   GitListFilesParams,
   GitCheckoutParams,
   GitBranchRenameParams,
@@ -466,12 +468,11 @@ export async function gitCommit({
     if (amend) {
       commitArgs.push("--amend");
     }
-    if (disableHooks) {
-      // Unlike --no-verify, a scoped hooksPath override disables every hook,
-      // including prepare-commit-msg and post-commit.
-      commitArgs.unshift("-c", "core.hooksPath=/dev/null");
-    }
-    const args = await withGitAuthor(commitArgs);
+    // Unlike --no-verify, a scoped hooksPath override disables every hook,
+    // including prepare-commit-msg and post-commit.
+    const args = await withGitAuthor(
+      withDisabledHooks(commitArgs, disableHooks),
+    );
     await execOrThrow(args, path, "Failed to create commit");
     // Get the new commit hash
     const result = await execGit(["rev-parse", "HEAD"], path);
@@ -612,18 +613,33 @@ export async function gitStageToRevert({
   }
 }
 
-export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
+function withDisabledHooks(args: string[], disableHooks?: boolean): string[] {
+  return disableHooks ? ["-c", "core.hooksPath=/dev/null", ...args] : args;
+}
+
+export async function gitAddAll({
+  path,
+  disableHooks,
+}: GitAddAllParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await ensureGitLineEndingPolicy({ path });
-    await execOrThrow(["add", "."], path, "Failed to stage all files");
+    await execOrThrow(
+      withDisabledHooks(["add", "."], disableHooks),
+      path,
+      "Failed to stage all files",
+    );
     return;
   } else {
     return git.add({ fs, dir: path, filepath: "." });
   }
 }
 
-export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
+export async function gitAdd({
+  path,
+  filepath,
+  disableHooks,
+}: GitHookableFileParams): Promise<void> {
   const normalizedFilepath = normalizePath(filepath);
   const settings = readSettings();
 
@@ -652,7 +668,7 @@ export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   if (settings.enableNativeGit) {
     await ensureGitLineEndingPolicy({ path });
     await execOrThrow(
-      ["add", "--", normalizedFilepath],
+      withDisabledHooks(["add", "--", normalizedFilepath], disableHooks),
       path,
       `Failed to stage file '${normalizedFilepath}'`,
     );
@@ -805,11 +821,12 @@ export async function gitInit({
 export async function gitRemove({
   path,
   filepath,
-}: GitFileParams): Promise<void> {
+  disableHooks,
+}: GitHookableFileParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await execOrThrow(
-      ["rm", "-f", "--", filepath],
+      withDisabledHooks(["rm", "-f", "--", filepath], disableHooks),
       path,
       `Failed to remove file '${filepath}'`,
     );

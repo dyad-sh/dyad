@@ -56,4 +56,14 @@ export default defineConfig({
       appPath,
     });
   });
+
+  it("can suppress hooks for a trusted automated Nitro install", async () => {
+    await ensureNitroOnViteApp(appPath, { disableGitHooks: true });
+
+    expect(installPackagesMock).toHaveBeenCalledWith({
+      packages: ["nitro", "jiti"],
+      appPath,
+      disableGitHooks: true,
+    });
+  });
 });

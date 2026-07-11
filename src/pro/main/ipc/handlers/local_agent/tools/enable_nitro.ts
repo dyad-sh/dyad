@@ -58,7 +58,9 @@ export const enableNitroTool: ToolDefinition<
     }
 
     try {
-      const result = await ensureNitroOnViteApp(ctx.appPath);
+      const result = await ensureNitroOnViteApp(ctx.appPath, {
+        disableGitHooks: true,
+      });
       for (const warningMessage of result.warningMessages) {
         ctx.onWarningMessage?.(warningMessage);
       }

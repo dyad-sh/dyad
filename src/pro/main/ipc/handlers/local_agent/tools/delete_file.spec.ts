@@ -33,6 +33,12 @@ vi.mock("@/ipc/utils/git_utils", () => ({
   gitRemove: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/ipc/utils/path_utils", () => ({
+  assertPathNotGitMetadata: vi.fn().mockResolvedValue(undefined),
+  safeJoin: (basePath: string, relativePath: string) =>
+    path.join(basePath, relativePath),
+}));
+
 vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
   deleteSupabaseFunction: vi.fn().mockResolvedValue(undefined),
 }));
@@ -117,6 +123,7 @@ describe("deleteFileTool", () => {
       expect(gitRemove).toHaveBeenCalledWith({
         path: "/test/app",
         filepath: "src/file.ts",
+        disableHooks: true,
       });
       expect(result).toBe("Successfully deleted src/file.ts");
     });

@@ -135,7 +135,7 @@ export async function commitAllChanges(
     let commitHash: string | undefined;
 
     if (uncommittedFiles.length > 0) {
-      await gitAddAll({ path: ctx.appPath });
+      await gitAddAll({ path: ctx.appPath, disableHooks: true });
       try {
         commitHash = await gitCommit({
           path: ctx.appPath,

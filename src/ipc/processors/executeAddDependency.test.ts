@@ -422,6 +422,35 @@ describe("executeAddDependency", () => {
     });
   });
 
+  it("threads trusted hook suppression through both pnpm policy commits", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({ available: false });
+    runCommandMock.mockResolvedValueOnce({
+      stdout: "installed via pnpm",
+      stderr: "",
+    });
+
+    await executeAddDependency({
+      packages: ["react"],
+      message: {
+        id: 1,
+        content: '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+      } as any,
+      appPath: "/tmp/app",
+      disableGitHooks: true,
+    });
+
+    expect(commitPnpmAllowBuildsConfigIfChangedMock).toHaveBeenCalledWith(
+      "/tmp/app",
+      { disableHooks: true },
+    );
+    expect(recordAndReportDeniedPnpmBuildsMock).toHaveBeenCalledWith({
+      appPath: "/tmp/app",
+      ignoredBuilds: [],
+      source: "add-dependency",
+      disableHooks: true,
+    });
+  });
+
   it("falls back to npm when pnpm is unavailable", async () => {
     getPnpmMinimumReleaseAgeSupportMock.mockResolvedValue({
       available: false,

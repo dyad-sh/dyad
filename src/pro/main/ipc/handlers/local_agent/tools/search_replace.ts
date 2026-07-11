@@ -93,7 +93,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
   },
 
   execute: async (args, ctx: AgentContext) => {
-    assertPathNotGitMetadata(args.file_path);
+    await assertPathNotGitMetadata({
+      appPath: ctx.appPath,
+      relativePath: args.file_path,
+    });
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
       throw new DyadError(

@@ -73,11 +73,17 @@ export async function executeCopyFile({
       }
       fromFullPath = path.resolve(from);
     } else {
-      assertPathNotGitMetadata(from);
+      await assertPathNotGitMetadata({
+        appPath,
+        relativePath: from,
+      });
       fromFullPath = safeJoin(appPath, from);
     }
 
-    assertPathNotGitMetadata(to);
+    await assertPathNotGitMetadata({
+      appPath,
+      relativePath: to,
+    });
     const toFullPath = safeJoin(appPath, to);
 
     if (!fs.existsSync(fromFullPath)) {
@@ -122,7 +128,7 @@ export async function executeCopyFile({
     logger.log(`Successfully copied file: ${fromFullPath} -> ${toFullPath}`);
 
     // Add to git
-    await gitAdd({ path: appPath, filepath: to });
+    await gitAdd({ path: appPath, filepath: to, disableHooks: true });
 
     // Deploy Supabase function if applicable
     const effectiveSharedModulesChanged =

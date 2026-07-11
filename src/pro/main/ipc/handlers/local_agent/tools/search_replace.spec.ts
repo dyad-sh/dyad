@@ -3,6 +3,10 @@ import fs from "node:fs";
 import { searchReplaceTool } from "./search_replace";
 import type { AgentContext } from "./types";
 
+const { assertPathNotGitMetadataMock } = vi.hoisted(() => ({
+  assertPathNotGitMetadataMock: vi.fn(),
+}));
+
 // Mock fs module
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -33,11 +37,7 @@ vi.mock("electron-log", () => ({
 // Mock path utils
 vi.mock("@/ipc/utils/path_utils", () => ({
   safeJoin: (base: string, path: string) => `${base}/${path}`,
-  assertPathNotGitMetadata: (filePath: string) => {
-    if (/(^|\/)\.git(\/|$)/i.test(filePath)) {
-      throw new Error("cannot modify Git metadata");
-    }
-  },
+  assertPathNotGitMetadata: assertPathNotGitMetadataMock,
 }));
 
 describe("searchReplaceTool", () => {
@@ -69,6 +69,7 @@ describe("searchReplaceTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    assertPathNotGitMetadataMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -118,13 +119,22 @@ describe("searchReplaceTool", () => {
   });
 
   describe("execute validation", () => {
-    it("rejects Git metadata paths", async () => {
+    it("validates the target path before editing", async () => {
       await expect(
         searchReplaceTool.execute(
-          { file_path: ".git/config", old_string: "old", new_string: "new" },
+          {
+            file_path: "src/app.ts",
+            old_string: "same",
+            new_string: "same",
+          },
           mockContext,
         ),
-      ).rejects.toThrow("cannot modify Git metadata");
+      ).rejects.toThrow("old_string and new_string must be different");
+
+      expect(assertPathNotGitMetadataMock).toHaveBeenCalledWith({
+        appPath: "/test/app",
+        relativePath: "src/app.ts",
+      });
     });
 
     it("errors when old_string equals new_string", async () => {

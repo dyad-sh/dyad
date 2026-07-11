@@ -801,6 +801,7 @@ export async function ensurePnpmAllowBuildsConfigured({
 
 export async function commitPnpmAllowBuildsConfigIfChanged(
   appPath: string,
+  { disableHooks }: { disableHooks?: boolean } = {},
 ): Promise<{ promotedPackages: string[] }> {
   const result = await ensurePnpmAllowBuildsConfigured({ appPath });
   if (!result.changed) {
@@ -808,10 +809,15 @@ export async function commitPnpmAllowBuildsConfigIfChanged(
   }
 
   try {
-    await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
+    await gitAdd({
+      path: appPath,
+      filepath: "pnpm-workspace.yaml",
+      ...(disableHooks === undefined ? {} : { disableHooks }),
+    });
     await gitCommit({
       path: appPath,
       message: "[dyad] approve pnpm dependency builds",
+      ...(disableHooks === undefined ? {} : { disableHooks }),
     });
   } catch (error) {
     logger.warn("Failed to commit pnpm allowBuilds config:", error);
@@ -1027,11 +1033,13 @@ export async function recordDeniedPnpmBuilds({
   ignoredBuilds,
   allowBuildsText,
   remoteAllowBuildsTextFetcher,
+  disableHooks,
 }: {
   appPath: string;
   ignoredBuilds: PnpmIgnoredBuild[];
   allowBuildsText?: string;
   remoteAllowBuildsTextFetcher?: AllowBuildsTextFetcher;
+  disableHooks?: boolean;
 }): Promise<{ deniedBuilds: PnpmIgnoredBuild[] }> {
   const packageNames = ignoredBuilds.map(
     (ignoredBuild) => ignoredBuild.packageName,
@@ -1085,10 +1093,15 @@ export async function recordDeniedPnpmBuilds({
     }
 
     try {
-      await gitAdd({ path: appPath, filepath: "pnpm-workspace.yaml" });
+      await gitAdd({
+        path: appPath,
+        filepath: "pnpm-workspace.yaml",
+        ...(disableHooks === undefined ? {} : { disableHooks }),
+      });
       await gitCommit({
         path: appPath,
         message: "[dyad] record denied pnpm dependency builds",
+        ...(disableHooks === undefined ? {} : { disableHooks }),
       });
     } catch (error) {
       logger.warn("Failed to commit denied pnpm builds config:", error);

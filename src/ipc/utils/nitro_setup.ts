@@ -67,6 +67,7 @@ export interface EnsureNitroResult {
  */
 export async function ensureNitroOnViteApp(
   appPath: string,
+  { disableGitHooks = false }: { disableGitHooks?: boolean } = {},
 ): Promise<EnsureNitroResult> {
   const rulesBackup = await appendNitroRules(appPath);
   let nitroConfigResult: { filePath: string; wasCreated: boolean } | null =
@@ -120,6 +121,7 @@ export async function ensureNitroOnViteApp(
     const result = await installPackages({
       packages: NITRO_DEPENDENCIES,
       appPath,
+      ...(disableGitHooks ? { disableGitHooks: true } : {}),
     });
 
     return {

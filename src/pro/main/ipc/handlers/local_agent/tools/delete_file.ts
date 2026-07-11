@@ -44,7 +44,10 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      assertPathNotGitMetadata(args.path);
+      await assertPathNotGitMetadata({
+        appPath: ctx.appPath,
+        relativePath: args.path,
+      });
       const normalizedPath = path.posix.normalize(
         args.path.replace(/\\/g, "/"),
       );
@@ -77,7 +80,11 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
 
         // Remove from git
         try {
-          await gitRemove({ path: ctx.appPath, filepath: args.path });
+          await gitRemove({
+            path: ctx.appPath,
+            filepath: args.path,
+            disableHooks: true,
+          });
         } catch (error) {
           logger.warn(`Failed to git remove deleted file ${args.path}:`, error);
         }

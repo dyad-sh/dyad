@@ -24,7 +24,11 @@ import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
 } from "./file_operations";
-import { gitCommit, getGitUncommittedFiles } from "@/ipc/utils/git_utils";
+import {
+  gitAddAll,
+  gitCommit,
+  getGitUncommittedFiles,
+} from "@/ipc/utils/git_utils";
 
 vi.mock("@/ipc/utils/git_utils", () => ({
   gitAddAll: vi.fn(),
@@ -100,6 +104,10 @@ describe("commitAllChanges", () => {
       commitAllChanges({ appPath: "/test/app", supabaseProjectId: null }),
     ).resolves.toEqual({ commitHash: "commit-hash" });
 
+    expect(gitAddAll).toHaveBeenCalledWith({
+      path: "/test/app",
+      disableHooks: true,
+    });
     expect(gitCommit).toHaveBeenCalledWith({
       path: "/test/app",
       message: "[dyad] (1 files changed)",

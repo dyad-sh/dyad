@@ -3,7 +3,10 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import {
+  assertPathNotGitMetadata,
+  safeJoin,
+} from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -44,6 +47,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
+      assertPathNotGitMetadata(args.path);
       const normalizedPath = path.posix.normalize(
         args.path.replace(/\\/g, "/"),
       );

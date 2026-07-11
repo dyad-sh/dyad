@@ -20,7 +20,14 @@ vi.mock("../../../../../../main/settings", () => ({
   readSettings: mocks.readSettings,
 }));
 
-import { deployAllFunctionsIfNeeded } from "./file_operations";
+import { commitAllChanges, deployAllFunctionsIfNeeded } from "./file_operations";
+import { gitAddAll, gitCommit, getGitUncommittedFiles } from "@/ipc/utils/git_utils";
+
+vi.mock("@/ipc/utils/git_utils", () => ({
+  gitAddAll: vi.fn(),
+  gitCommit: vi.fn(),
+  getGitUncommittedFiles: vi.fn(),
+}));
 
 describe("deployAllFunctionsIfNeeded", () => {
   beforeEach(() => {
@@ -75,6 +82,25 @@ describe("deployAllFunctionsIfNeeded", () => {
       success: true,
       warning:
         "Some Supabase functions failed to deploy: Failed to bundle alpha",
+    });
+  });
+});
+
+describe("commitAllChanges", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("skips repository hooks for automatic Agent commits", async () => {
+    vi.mocked(getGitUncommittedFiles).mockResolvedValue(["src/app.ts"]);
+    vi.mocked(gitCommit).mockResolvedValue("commit-hash");
+
+    await expect(
+      commitAllChanges({ appPath: "/test/app", supabaseProjectId: null }),
+    ).resolves.toEqual({ commitHash: "commit-hash" });
+
+    expect(gitCommit).toHaveBeenCalledWith({
+      path: "/test/app",
+      message: "[dyad] (1 files changed)",
+      noVerify: true,
     });
   });
 });

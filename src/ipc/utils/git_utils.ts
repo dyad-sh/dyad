@@ -457,6 +457,7 @@ export async function gitCommit({
   path,
   message,
   amend,
+  noVerify,
 }: GitCommitParams): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
@@ -464,6 +465,9 @@ export async function gitCommit({
     const commitArgs = ["commit", "-m", message];
     if (amend) {
       commitArgs.push("--amend");
+    }
+    if (noVerify) {
+      commitArgs.push("--no-verify");
     }
     const args = await withGitAuthor(commitArgs);
     await execOrThrow(args, path, "Failed to create commit");

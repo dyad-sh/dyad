@@ -3,7 +3,10 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import {
+  assertPathNotGitMetadata,
+  safeJoin,
+} from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
   extractFunctionNameFromPath,
@@ -43,6 +46,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    assertPathNotGitMetadata(args.path);
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
     // Track if this is a shared module

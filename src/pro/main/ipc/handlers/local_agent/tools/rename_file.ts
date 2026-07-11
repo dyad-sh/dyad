@@ -3,7 +3,10 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import {
+  assertPathNotGitMetadata,
+  safeJoin,
+} from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
   deploySupabaseFunction,
@@ -39,6 +42,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
+      assertPathNotGitMetadata(args.from);
+      assertPathNotGitMetadata(args.to);
       const fromFullPath = safeJoin(ctx.appPath, args.from);
       const toFullPath = safeJoin(ctx.appPath, args.to);
 

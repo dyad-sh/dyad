@@ -33,6 +33,11 @@ vi.mock("electron-log", () => ({
 // Mock path utils
 vi.mock("@/ipc/utils/path_utils", () => ({
   safeJoin: (base: string, path: string) => `${base}/${path}`,
+  assertPathNotGitMetadata: (filePath: string) => {
+    if (/(^|\/)\.git(\/|$)/i.test(filePath)) {
+      throw new Error("cannot modify Git metadata");
+    }
+  },
 }));
 
 describe("searchReplaceTool", () => {
@@ -113,6 +118,15 @@ describe("searchReplaceTool", () => {
   });
 
   describe("execute validation", () => {
+    it("rejects Git metadata paths", async () => {
+      await expect(
+        searchReplaceTool.execute(
+          { file_path: ".git/config", old_string: "old", new_string: "new" },
+          mockContext,
+        ),
+      ).rejects.toThrow("cannot modify Git metadata");
+    });
+
     it("errors when old_string equals new_string", async () => {
       await expect(
         searchReplaceTool.execute(

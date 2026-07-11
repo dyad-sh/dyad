@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { safeJoin } from "./path_utils";
+import { assertPathNotGitMetadata, safeJoin } from "./path_utils";
 import { gitAdd } from "./git_utils";
 import {
   isWithinDyadMediaDir,
@@ -73,9 +73,11 @@ export async function executeCopyFile({
       }
       fromFullPath = path.resolve(from);
     } else {
+      assertPathNotGitMetadata(from);
       fromFullPath = safeJoin(appPath, from);
     }
 
+    assertPathNotGitMetadata(to);
     const toFullPath = safeJoin(appPath, to);
 
     if (!fs.existsSync(fromFullPath)) {

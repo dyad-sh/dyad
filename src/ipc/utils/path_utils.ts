@@ -68,3 +68,14 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
 
   return joinedPath;
 }
+
+/** Prevent automated file tools from modifying Git's repository metadata. */
+export function assertPathNotGitMetadata(filePath: string): void {
+  const normalizedPath = normalizePath(filePath);
+  if (/(^|\/)\.git(\/|$)/i.test(normalizedPath)) {
+    throw new DyadError(
+      `Agent tools cannot modify Git metadata: ${filePath}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+}

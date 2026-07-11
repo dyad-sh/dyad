@@ -4,20 +4,23 @@ import {
   Panel,
   PanelResizeHandle,
   type ImperativePanelHandle,
+  type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
 import { ChatPanel } from "../components/ChatPanel";
 import { PreviewPanel } from "../components/preview_panel/PreviewPanel";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { isPreviewOpenAtom, isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
+import {
+  isPreviewOpenAtom,
+  isChatPanelHiddenAtom,
+  workspacePanelSizesAtom,
+} from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { usePlanImplementation } from "@/hooks/usePlanImplementation";
 import { ipc } from "@/ipc/types";
-
-const DEFAULT_CHAT_PANEL_SIZE = 50;
 
 export default function ChatPage() {
   const { id: chatId, appId: routeAppId } = useSearch({ from: "/chat" });
@@ -26,14 +29,21 @@ export default function ChatPage() {
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
     isChatPanelHiddenAtom,
   );
+  const [workspacePanelSizes, setWorkspacePanelSizes] = useAtom(
+    workspacePanelSizesAtom,
+  );
+  const previewMode = useAtomValue(previewModeAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const [isResizing, setIsResizing] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
-  const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
-  const isInitialMountRef = useRef(true);
   const selectedAppIdRef = useRef(selectedAppId);
+  const latestLayoutRef = useRef<number[]>([
+    workspacePanelSizes.default,
+    100 - workspacePanelSizes.default,
+  ]);
+  const layoutProfile = previewMode === "code" ? "code" : "default";
 
   useEffect(() => {
     selectedAppIdRef.current = selectedAppId;
@@ -121,36 +131,34 @@ export default function ChatPage() {
   }, [isPreviewOpen]);
   const ref = useRef<ImperativePanelHandle>(null);
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
+  const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
-  // Keep chat panel size in sync with hidden state (from toolbar button / other views)
+  // Code mode has its own wider preview layout. Keep both profiles so switching
+  // modes does not destroy a layout the user tuned for chat or preview work.
   useEffect(() => {
-    if (!chatPanelRef.current) return;
-    // Skip the initial mount to preserve persisted panel size from autoSaveId
-    if (isInitialMountRef.current) {
-      isInitialMountRef.current = false;
-      return;
-    }
+    if (!panelGroupRef.current || !isPreviewOpen) return;
     if (isChatPanelHidden) {
-      // Save current size before collapsing
-      const currentSize = chatPanelRef.current.getSize();
-      if (currentSize > 5) {
-        previousSizeRef.current = currentSize;
-      }
-      // Visually collapsed but keep a sliver so the handle is usable
-      chatPanelRef.current.resize(1);
+      panelGroupRef.current.setLayout([1, 99]);
     } else {
-      // Restore to previous size when re-opened via button
-      chatPanelRef.current.resize(previousSizeRef.current);
+      const chatSize = workspacePanelSizes[layoutProfile];
+      panelGroupRef.current.setLayout([chatSize, 100 - chatSize]);
     }
-  }, [isChatPanelHidden]);
+  }, [isChatPanelHidden, isPreviewOpen, layoutProfile, workspacePanelSizes]);
 
   return (
-    <PanelGroup autoSaveId="persistence" direction="horizontal">
+    <PanelGroup
+      ref={panelGroupRef}
+      direction="horizontal"
+      onLayout={(sizes) => {
+        latestLayoutRef.current = sizes;
+      }}
+    >
       <Panel
         id="chat-panel"
         ref={chatPanelRef}
         collapsible
         minSize={1}
+        defaultSize={workspacePanelSizes[layoutProfile]}
         className={cn(!isResizing && "transition-all duration-100 ease-in-out")}
       >
         <div className="h-full w-full">
@@ -175,6 +183,7 @@ export default function ChatPage() {
           setIsResizing(isDragging);
           // When dragging ends, sync the hidden state based on final width
           if (!isDragging) {
+            const [chatSize = 0] = latestLayoutRef.current;
             // Small delay to let the panel settle
             requestAnimationFrame(() => {
               const panel = document.getElementById("chat-panel");
@@ -184,7 +193,14 @@ export default function ChatPage() {
                   panel.parentElement?.getBoundingClientRect().width || 1;
                 const percentage = (panelWidth / containerWidth) * 100;
                 // Consider hidden if panel is less than 5% width
-                setIsChatPanelHidden(percentage < 5);
+                const isHidden = percentage < 5;
+                setIsChatPanelHidden(isHidden);
+                if (!isHidden && chatSize >= 5) {
+                  setWorkspacePanelSizes((current) => ({
+                    ...current,
+                    [layoutProfile]: chatSize,
+                  }));
+                }
               }
             });
           }
@@ -200,6 +216,7 @@ export default function ChatPage() {
         ref={ref}
         id="preview-panel"
         minSize={20}
+        defaultSize={100 - workspacePanelSizes[layoutProfile]}
         className={cn(!isResizing && "transition-all duration-100 ease-in-out")}
       >
         <PreviewPanel />

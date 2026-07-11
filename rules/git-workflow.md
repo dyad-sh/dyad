@@ -89,6 +89,10 @@ When a worktree symlinks `node_modules` from another checkout (common in agent w
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+## Shared worktree concurrency
+
+Immediately before staging or running a push helper, re-check `git branch --show-current`, `git rev-parse HEAD`, and `git status --short`. Another desktop task can switch or commit the shared checkout during long-running tests; if the branch or scope changed, isolate the intended diff in a clean worktree instead of committing onto the new branch.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

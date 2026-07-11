@@ -23,7 +23,10 @@ test("file tree search finds content matches and surfaces line numbers", async (
 
   // Content search should find files whose contents match the query and show line info
   await searchInput.fill("import");
-  const resultItem = fileTree.getByText("src/main.tsx").first();
+  await expect(fileTree.getByText(/\d+ matches?/)).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  const resultItem = fileTree.locator('[title="src/main.tsx"]').first();
   await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Click on the file path text to expand the accordion and show snippets.

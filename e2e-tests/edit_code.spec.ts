@@ -47,7 +47,7 @@ async function getActiveEditorModelContent(page: Page): Promise<string | null> {
 }
 
 async function selectFileAndWaitForEditor(page: Page, fileName: string) {
-  await page.getByText(fileName, { exact: true }).click();
+  await page.locator(".file-tree").getByText(fileName, { exact: true }).click();
   await expect(async () => {
     const modelPath = await getActiveEditorModelPath(page);
     expect(modelPath).toContain(fileName);

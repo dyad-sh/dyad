@@ -17,6 +17,7 @@ import {
 } from "./resolve_app_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import log from "electron-log";
+import { PROTECTED_RIPGREP_EXCLUDED_GLOBS } from "@/utils/protected_path_policy";
 
 const logger = log.scope("grep");
 
@@ -196,7 +197,10 @@ async function runRipgrep({
     const exclusionGlobs = includeIgnored
       ? RIPGREP_EXCLUDED_GLOBS.filter((glob) => glob === "!.git/**")
       : RIPGREP_EXCLUDED_GLOBS;
-    args.push(...exclusionGlobs.flatMap((glob) => ["--glob", glob]));
+    args.push(
+      ...exclusionGlobs.flatMap((glob) => ["--glob", glob]),
+      ...PROTECTED_RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]),
+    );
 
     if (excludeDyadFolder) {
       args.push("--glob", DYAD_INTERNAL_RIPGREP_EXCLUDE);

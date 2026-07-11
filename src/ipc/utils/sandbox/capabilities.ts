@@ -9,6 +9,10 @@ import {
 } from "@/ipc/utils/media_path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { SANDBOX_READ_FILE_LIMIT_BYTES } from "./limits";
+import {
+  PROTECTED_PATH_PATTERNS,
+  SANDBOX_ONLY_DENIED_PATH_PATTERNS,
+} from "@/utils/protected_path_policy";
 
 type StructuredObject = { [key: string]: unknown };
 
@@ -43,19 +47,8 @@ export type SandboxHostCallObserver = (params: {
 }) => void;
 
 const DENIED_PATH_PATTERNS = [
-  /(^|[/\\])(?:\.env(?:\.[^/\\]+)*|\.envrc)(?:[/\\]|$)/i,
-  /(^|[/\\])\.git([/\\]|$)/i,
-  /(^|[/\\])\.npmrc$/i,
-  /(^|[/\\])\.yarnrc(?:\.yml)?$/i,
-  /(^|[/\\])\.pypirc$/i,
-  /(^|[/\\])\.(?:bash|zsh|fish|python|mysql|psql|sqlite)_history$/i,
-  /(^|[/\\])node_modules([/\\]|$)/i,
-  /(^|[/\\])\.ssh([/\\]|$)/i,
-  /(^|[/\\])\.aws([/\\]|$)/i,
-  /(^|[/\\])\.config([/\\]|$)/i,
-  /(^|[/\\])\.netrc$/i,
-  /\.key$/i,
-  /\.pem$/i,
+  ...PROTECTED_PATH_PATTERNS,
+  ...SANDBOX_ONLY_DENIED_PATH_PATTERNS,
 ];
 
 const TEXT_EXTENSIONS = new Set([

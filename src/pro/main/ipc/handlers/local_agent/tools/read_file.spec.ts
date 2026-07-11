@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { readFileTool } from "./read_file";
 import type { AgentContext } from "./types";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   appendAttachmentManifestEntries,
   getDyadMediaDir,
@@ -217,6 +218,23 @@ line 5`;
       expect(result).toBe("attachment line 2\n");
     });
 
+    it("reads ordinary ignored dependency files", async () => {
+      await fs.promises.mkdir(path.join(testDir, "node_modules", "pkg"), {
+        recursive: true,
+      });
+      await fs.promises.writeFile(
+        path.join(testDir, "node_modules", "pkg", "index.js"),
+        "export const dependencyValue = 42;",
+      );
+
+      await expect(
+        readFileTool.execute(
+          { path: "node_modules/pkg/index.js" },
+          mockContext,
+        ),
+      ).resolves.toContain("dependencyValue");
+    });
+
     it("returns a bounded result with an explicit truncation notice", async () => {
       await fs.promises.writeFile(
         path.join(testDir, "large.txt"),
@@ -262,6 +280,31 @@ line 5`;
       await expect(
         readFileTool.execute({ path: "binary.dat" }, mockContext),
       ).rejects.toThrow("Cannot read binary file as UTF-8 text: binary.dat");
+    });
+
+    it.each([
+      ".env",
+      ".env.local",
+      "nested/.env.production",
+      ".npmrc",
+      "nested/credentials.pem",
+      "nested/signing.key",
+      ".ssh/id_rsa",
+    ])("rejects protected path %s", async (protectedPath) => {
+      await fs.promises.mkdir(path.dirname(path.join(testDir, protectedPath)), {
+        recursive: true,
+      });
+      await fs.promises.writeFile(
+        path.join(testDir, protectedPath),
+        "SECRET_PROTECTED_READ_FILE",
+      );
+
+      await expect(
+        readFileTool.execute({ path: protectedPath }, mockContext),
+      ).rejects.toMatchObject({
+        kind: DyadErrorKind.Precondition,
+        message: expect.stringContaining("Cannot read protected path"),
+      });
     });
   });
 

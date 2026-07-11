@@ -377,6 +377,42 @@ function deepHello() {
       expect(result).toContain(".dyad/backup.txt");
     });
 
+    it.each(["**/*", ".env*", "**/.env.local"])(
+      "never returns protected secrets with crafted include pattern %s",
+      async (include_pattern) => {
+        const protectedFiles = [
+          ".env",
+          ".env.local",
+          "nested/.env.production",
+          ".npmrc",
+          "nested/credentials.pem",
+          "nested/signing.key",
+          ".ssh/id_rsa",
+          ".config/credentials",
+        ];
+        await Promise.all(
+          protectedFiles.map(async (protectedFile) => {
+            const filePath = path.join(testDir, protectedFile);
+            await fs.promises.mkdir(path.dirname(filePath), {
+              recursive: true,
+            });
+            await fs.promises.writeFile(filePath, "PROTECTED_GREPPED_SECRET");
+          }),
+        );
+
+        const result = await grepTool.execute(
+          {
+            query: "PROTECTED_GREPPED_SECRET",
+            include_ignored: true,
+            include_pattern,
+          },
+          mockContext,
+        );
+
+        expect(result).toBe("No matches found.");
+      },
+    );
+
     it("keeps .git excluded when include_ignored is true", async () => {
       const gitDir = path.join(testDir, ".git");
       await fs.promises.mkdir(gitDir, { recursive: true });

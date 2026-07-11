@@ -7,6 +7,7 @@ import { glob } from "glob";
 import { AppChatContext } from "../lib/schemas";
 import { readSettings } from "@/main/settings";
 import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
+import { isProtectedPath } from "./protected_path_policy";
 
 const logger = log.scope("utils/codebase");
 
@@ -389,7 +390,8 @@ function shouldReadFileContents({
 
   // OMITTED_FILES takes precedence - never read if omitted
   if (
-    OMITTED_FILES.some((pattern) => normalizedRelativePath.includes(pattern))
+    OMITTED_FILES.some((pattern) => normalizedRelativePath.includes(pattern)) ||
+    isProtectedPath(normalizedRelativePath)
   ) {
     return false;
   }
@@ -414,7 +416,8 @@ function shouldReadFileContentsForSmartContext({
   if (
     ALWAYS_OMITTED_FILES.some((pattern) =>
       normalizedRelativePath.includes(pattern),
-    )
+    ) ||
+    isProtectedPath(normalizedRelativePath)
   ) {
     return false;
   }

@@ -11,6 +11,7 @@ import {
   AGENT_READ_FILE_TRUNCATION_NOTICE,
   readTextFileLines,
 } from "@/ipc/utils/bounded_text_file";
+import { isProtectedRelativePath } from "@/utils/protected_path_policy";
 
 const readFileSchema = z
   .object({
@@ -123,6 +124,13 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       appName: args.app_name,
     });
 
+    if (isProtectedRelativePath(targetAppPath, fullFilePath)) {
+      throw new DyadError(
+        `Cannot read protected path: ${args.path}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
     const displayPath = args.app_name
       ? `${args.path} (in app: ${args.app_name})`
       : args.path;
@@ -133,12 +141,19 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       displayPath,
       startLine: args.start_line_one_indexed,
       endLineInclusive: args.end_line_one_indexed_inclusive,
-      validateRealPath: (realPath, realRootPath) =>
+      validateRealPath: (realPath, realRootPath) => {
+        if (isProtectedRelativePath(realRootPath, realPath)) {
+          throw new DyadError(
+            `Cannot read protected path: ${args.path}`,
+            DyadErrorKind.Precondition,
+          );
+        }
         assertDyadInternalAccessAllowed({
           targetAppPath: realRootPath,
           fullFilePath: realPath,
           appName: args.app_name,
-        }),
+        });
+      },
     });
 
     return result.truncated

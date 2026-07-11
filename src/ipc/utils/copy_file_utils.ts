@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { safeJoin } from "./path_utils";
+import { assertMutationPathAllowed, safeJoin } from "./path_utils";
 import { gitAdd } from "./git_utils";
 import {
   isWithinDyadMediaDir,
@@ -76,7 +76,11 @@ export async function executeCopyFile({
       fromFullPath = safeJoin(appPath, from);
     }
 
-    const toFullPath = safeJoin(appPath, to);
+    const operationPath = await assertMutationPathAllowed({
+      appPath,
+      relativePath: to,
+    });
+    const toFullPath = safeJoin(appPath, operationPath);
 
     if (!fs.existsSync(fromFullPath)) {
       throw new DyadError(
@@ -109,7 +113,7 @@ export async function executeCopyFile({
     }
 
     // Track if this involves shared modules
-    const sharedModuleChanged = isSharedServerModule(to);
+    const sharedModuleChanged = isSharedServerModule(operationPath);
 
     // Ensure destination directory exists
     const dirPath = path.dirname(toFullPath);
@@ -120,15 +124,15 @@ export async function executeCopyFile({
     logger.log(`Successfully copied file: ${fromFullPath} -> ${toFullPath}`);
 
     // Add to git
-    await gitAdd({ path: appPath, filepath: to });
+    await gitAdd({ path: appPath, filepath: operationPath });
 
     // Deploy Supabase function if applicable
     const effectiveSharedModulesChanged =
       isSharedModulesChanged || sharedModuleChanged;
     let deployError: unknown;
     let skippedFunctionDeploy: string | undefined;
-    if (supabaseProjectId && isServerFunction(to)) {
-      const functionName = extractFunctionNameFromPath(to);
+    if (supabaseProjectId && isServerFunction(operationPath)) {
+      const functionName = extractFunctionNameFromPath(operationPath);
       if (!effectiveSharedModulesChanged) {
         try {
           await deploySupabaseFunction({

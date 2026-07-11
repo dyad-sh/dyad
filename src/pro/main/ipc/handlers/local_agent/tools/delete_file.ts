@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -58,16 +58,37 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
         );
       }
 
-      const fullFilePath = safeJoin(ctx.appPath, args.path);
+      const requestedOperationPath = normalizedPath.replace(/\/+$/, "");
+      // Deletion mutates the final directory entry rather than following a
+      // final symlink. Canonicalize its parent chain and operate on that
+      // physical entry so in-app aliases cannot confuse git/cloud bookkeeping.
+      const operationPath = await assertMutationPathAllowed({
+        appPath: ctx.appPath,
+        relativePath: requestedOperationPath,
+        followFinalSymlink: false,
+      });
+      const fullFilePath = safeJoin(ctx.appPath, operationPath);
 
       // Track if this is a shared module
-      if (isSharedServerModule(args.path)) {
+      if (isSharedServerModule(operationPath)) {
         ctx.isSharedModulesChanged = true;
-        ctx.sharedServerModulePaths.push(args.path);
+        ctx.sharedServerModulePaths.push(operationPath);
       }
 
-      if (fs.existsSync(fullFilePath)) {
-        if (fs.lstatSync(fullFilePath).isDirectory()) {
+      let currentStat: fs.Stats | null = null;
+      try {
+        currentStat = fs.lstatSync(fullFilePath);
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          (error as NodeJS.ErrnoException).code !== "ENOENT"
+        ) {
+          throw error;
+        }
+      }
+      if (currentStat) {
+        if (currentStat.isDirectory()) {
           fs.rmdirSync(fullFilePath, { recursive: true });
         } else {
           fs.unlinkSync(fullFilePath);
@@ -76,17 +97,17 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
 
         // Remove from git
         try {
-          await gitRemove({ path: ctx.appPath, filepath: args.path });
+          await gitRemove({ path: ctx.appPath, filepath: operationPath });
         } catch (error) {
           logger.warn(`Failed to git remove deleted file ${args.path}:`, error);
         }
 
         // Delete Supabase function if applicable
-        if (ctx.supabaseProjectId && isServerFunction(args.path)) {
+        if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
           try {
             await deleteSupabaseFunction({
               supabaseProjectId: ctx.supabaseProjectId,
-              functionName: getFunctionNameFromPath(args.path),
+              functionName: getFunctionNameFromPath(operationPath),
               organizationSlug: ctx.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
@@ -99,7 +120,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
 
       queueCloudSandboxSnapshotSync({
         appId: ctx.appId,
-        deletedPaths: [args.path],
+        deletedPaths: [operationPath],
       });
 
       return `Successfully deleted ${args.path}`;

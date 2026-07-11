@@ -1,5 +1,6 @@
-import { safeJoin } from "@/ipc/utils/path_utils";
+import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { describe, it, expect } from "vitest";
+import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
@@ -240,4 +241,103 @@ describe("safeJoin", () => {
       );
     });
   });
+});
+
+describe("assertMutationPathAllowed", () => {
+  it("canonicalizes contained aliases and rejects escaping symlinks", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-app-"));
+    const outsidePath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-outside-"),
+    );
+    try {
+      await fs.writeFile(path.join(appPath, "file.txt"), "in-app");
+      await fs.mkdir(path.join(appPath, "src"));
+      await fs.symlink(".", path.join(appPath, "self"), "dir");
+      await fs.symlink("file.txt", path.join(appPath, "in-app-file-link.txt"));
+      await fs.symlink(
+        path.join(outsidePath, "target.txt"),
+        path.join(appPath, "file-link.txt"),
+      );
+      await fs.symlink(outsidePath, path.join(appPath, "dir-link"), "dir");
+
+      await expect(
+        assertMutationPathAllowed({ appPath, relativePath: "file.txt" }),
+      ).resolves.toBe("file.txt");
+      await expect(
+        assertMutationPathAllowed({
+          appPath,
+          relativePath: "new/nested/file.txt",
+        }),
+      ).resolves.toBe("new/nested/file.txt");
+      await expect(
+        assertMutationPathAllowed({
+          appPath,
+          relativePath: "self/src/new-file.txt",
+        }),
+      ).resolves.toBe("src/new-file.txt");
+      await expect(
+        assertMutationPathAllowed({
+          appPath,
+          relativePath: "in-app-file-link.txt",
+        }),
+      ).resolves.toBe("file.txt");
+      await expect(
+        assertMutationPathAllowed({
+          appPath,
+          relativePath: "self/in-app-file-link.txt",
+          followFinalSymlink: false,
+        }),
+      ).resolves.toBe("in-app-file-link.txt");
+      await expect(
+        assertMutationPathAllowed({
+          appPath,
+          relativePath: "file-link.txt",
+        }),
+      ).rejects.toThrow("symlink");
+      await expect(
+        assertMutationPathAllowed({
+          appPath,
+          relativePath: "dir-link/new.txt",
+        }),
+      ).rejects.toThrow("outside the app");
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+      await fs.rm(outsidePath, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects slash-terminated app-root and dangling symlink aliases",
+    async () => {
+      const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-app-"));
+      const missingOutsidePath = path.join(
+        os.tmpdir(),
+        `dyad-missing-${Date.now()}`,
+      );
+      try {
+        await fs.symlink(".", path.join(appPath, "self"), "dir");
+        await fs.symlink(
+          missingOutsidePath,
+          path.join(appPath, "dangling"),
+          "dir",
+        );
+
+        await expect(
+          assertMutationPathAllowed({
+            appPath,
+            relativePath: "self/",
+          }),
+        ).rejects.toThrow("app root");
+        await expect(
+          assertMutationPathAllowed({
+            appPath,
+            relativePath: "dangling/",
+          }),
+        ).rejects.toThrow("symlink");
+      } finally {
+        await fs.rm(appPath, { recursive: true, force: true });
+        await fs.rm(missingOutsidePath, { recursive: true, force: true });
+      }
+    },
+  );
 });

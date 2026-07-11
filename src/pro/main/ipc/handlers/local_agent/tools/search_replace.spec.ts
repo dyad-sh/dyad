@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import { searchReplaceTool } from "./search_replace";
 import type { AgentContext } from "./types";
+import { assertMutationPathAllowed } from "@/ipc/utils/path_utils";
 
 // Mock fs module
 vi.mock("node:fs", async () => {
@@ -33,6 +34,7 @@ vi.mock("electron-log", () => ({
 // Mock path utils
 vi.mock("@/ipc/utils/path_utils", () => ({
   safeJoin: (base: string, path: string) => `${base}/${path}`,
+  assertMutationPathAllowed: vi.fn().mockResolvedValue("test.ts"),
 }));
 
 describe("searchReplaceTool", () => {
@@ -64,6 +66,9 @@ describe("searchReplaceTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(assertMutationPathAllowed).mockImplementation(
+      async ({ relativePath }) => relativePath.replace(/^self\//, ""),
+    );
   });
 
   afterEach(() => {
@@ -157,7 +162,7 @@ describe("searchReplaceTool", () => {
 
       const result = await searchReplaceTool.execute(
         {
-          file_path: "test.ts",
+          file_path: "self/test.ts",
           old_string: "  const x = 1;\n  const y = 2;\n  return x + y;",
           new_string: "  const a = 10;\n  const b = 20;\n  return a + b;",
         },
@@ -169,6 +174,10 @@ describe("searchReplaceTool", () => {
         "/test/app/test.ts",
         expect.stringContaining("const a = 10"),
       );
+      expect(assertMutationPathAllowed).toHaveBeenCalledWith({
+        appPath: "/test/app",
+        relativePath: "self/test.ts",
+      });
     });
 
     it("escapes marker-like lines inside content to avoid parser splitting", async () => {

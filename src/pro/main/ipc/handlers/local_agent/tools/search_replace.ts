@@ -7,7 +7,7 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
 import { deploySupabaseFunction } from "@/supabase_admin/supabase_management_client";
@@ -101,12 +101,16 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       );
     }
 
-    const fullFilePath = safeJoin(ctx.appPath, args.file_path);
+    const operationPath = await assertMutationPathAllowed({
+      appPath: ctx.appPath,
+      relativePath: args.file_path,
+    });
+    const fullFilePath = safeJoin(ctx.appPath, operationPath);
 
     // Track if this is a shared module
-    if (isSharedServerModule(args.file_path)) {
+    if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
-      ctx.sharedServerModulePaths.push(args.file_path);
+      ctx.sharedServerModulePaths.push(operationPath);
     }
 
     await withLock(getFileWriteKey(fullFilePath), async () => {
@@ -128,7 +132,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
       if (!result.success || typeof result.content !== "string") {
         sendTelemetryEvent("local_agent:search_replace:failure", {
-          filePath: args.file_path,
+          filePath: operationPath,
           error: result.error ?? "unknown",
         });
         throw new Error(
@@ -140,17 +144,17 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
       queueCloudSandboxSnapshotSync({
         appId: ctx.appId,
-        changedPaths: [args.file_path],
+        changedPaths: [operationPath],
       });
       sendTelemetryEvent("local_agent:search_replace:success", {
-        filePath: args.file_path,
+        filePath: operationPath,
       });
     });
 
     // Deploy Supabase function if applicable
-    if (ctx.supabaseProjectId && isServerFunction(args.file_path)) {
+    if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
       try {
-        const functionName = extractFunctionNameFromPath(args.file_path);
+        const functionName = extractFunctionNameFromPath(operationPath);
         if (!ctx.isSharedModulesChanged) {
           await deploySupabaseFunction({
             supabaseProjectId: ctx.supabaseProjectId,

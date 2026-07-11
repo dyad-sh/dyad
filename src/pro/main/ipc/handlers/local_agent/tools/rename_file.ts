@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
   deploySupabaseFunction,
@@ -39,17 +39,30 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      const fromFullPath = safeJoin(ctx.appPath, args.from);
-      const toFullPath = safeJoin(ctx.appPath, args.to);
+      const fromOperationPath = await assertMutationPathAllowed({
+        appPath: ctx.appPath,
+        relativePath: args.from,
+        followFinalSymlink: false,
+      });
+      const toOperationPath = await assertMutationPathAllowed({
+        appPath: ctx.appPath,
+        relativePath: args.to,
+        followFinalSymlink: false,
+      });
+      const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
+      const toFullPath = safeJoin(ctx.appPath, toOperationPath);
 
       // Track if this involves shared modules
-      if (isSharedServerModule(args.from) || isSharedServerModule(args.to)) {
+      if (
+        isSharedServerModule(fromOperationPath) ||
+        isSharedServerModule(toOperationPath)
+      ) {
         ctx.isSharedModulesChanged = true;
-        if (isSharedServerModule(args.from)) {
-          ctx.sharedServerModulePaths.push(args.from);
+        if (isSharedServerModule(fromOperationPath)) {
+          ctx.sharedServerModulePaths.push(fromOperationPath);
         }
-        if (isSharedServerModule(args.to)) {
-          ctx.sharedServerModulePaths.push(args.to);
+        if (isSharedServerModule(toOperationPath)) {
+          ctx.sharedServerModulePaths.push(toOperationPath);
         }
       }
 
@@ -64,20 +77,20 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         );
 
         // Update git
-        await gitAdd({ path: ctx.appPath, filepath: args.to });
+        await gitAdd({ path: ctx.appPath, filepath: toOperationPath });
         try {
-          await gitRemove({ path: ctx.appPath, filepath: args.from });
+          await gitRemove({ path: ctx.appPath, filepath: fromOperationPath });
         } catch (error) {
           logger.warn(`Failed to git remove old file ${args.from}:`, error);
         }
 
         // Handle Supabase functions
         if (ctx.supabaseProjectId) {
-          if (isServerFunction(args.from)) {
+          if (isServerFunction(fromOperationPath)) {
             try {
               await deleteSupabaseFunction({
                 supabaseProjectId: ctx.supabaseProjectId,
-                functionName: extractFunctionNameFromPath(args.from),
+                functionName: extractFunctionNameFromPath(fromOperationPath),
                 organizationSlug: ctx.supabaseOrganizationSlug ?? null,
               });
             } catch (error) {
@@ -87,10 +100,11 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
               );
             }
           }
-          if (isServerFunction(args.to)) {
+          if (isServerFunction(toOperationPath)) {
             if (!ctx.isSharedModulesChanged) {
               try {
-                const functionName = extractFunctionNameFromPath(args.to);
+                const functionName =
+                  extractFunctionNameFromPath(toOperationPath);
                 await deploySupabaseFunction({
                   supabaseProjectId: ctx.supabaseProjectId,
                   functionName,
@@ -103,7 +117,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
             } else {
               try {
                 ctx.pendingFunctionDeploys.push(
-                  extractFunctionNameFromPath(args.to),
+                  extractFunctionNameFromPath(toOperationPath),
                 );
               } catch (error) {
                 logger.warn(
@@ -120,8 +134,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
 
       queueCloudSandboxSnapshotSync({
         appId: ctx.appId,
-        changedPaths: [args.to],
-        deletedPaths: [args.from],
+        changedPaths: [toOperationPath],
+        deletedPaths: [fromOperationPath],
       });
 
       return `Successfully renamed ${args.from} to ${args.to}`;

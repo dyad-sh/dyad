@@ -14,6 +14,10 @@ vi.mock("node:fs", async () => {
       lstatSync: vi.fn(),
       rmdirSync: vi.fn(),
       unlinkSync: vi.fn(),
+      promises: {
+        realpath: vi.fn(async (filePath: string) => filePath),
+        lstat: vi.fn(),
+      },
     },
   };
 });
@@ -103,6 +107,7 @@ describe("deleteFileTool", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.lstatSync).mockReturnValue({
         isDirectory: () => false,
+        isSymbolicLink: () => false,
       } as any);
 
       const result = await deleteFileTool.execute(
@@ -125,6 +130,7 @@ describe("deleteFileTool", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.lstatSync).mockReturnValue({
         isDirectory: () => true,
+        isSymbolicLink: () => false,
       } as any);
 
       const result = await deleteFileTool.execute(

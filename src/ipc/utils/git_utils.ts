@@ -457,7 +457,7 @@ export async function gitCommit({
   path,
   message,
   amend,
-  noVerify,
+  disableHooks,
 }: GitCommitParams): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
@@ -466,8 +466,10 @@ export async function gitCommit({
     if (amend) {
       commitArgs.push("--amend");
     }
-    if (noVerify) {
-      commitArgs.push("--no-verify");
+    if (disableHooks) {
+      // Unlike --no-verify, a scoped hooksPath override disables every hook,
+      // including prepare-commit-msg and post-commit.
+      commitArgs.unshift("-c", "core.hooksPath=/dev/null");
     }
     const args = await withGitAuthor(commitArgs);
     await execOrThrow(args, path, "Failed to create commit");

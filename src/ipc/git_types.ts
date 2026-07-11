@@ -14,8 +14,8 @@ export interface GitBaseParams {
 export interface GitCommitParams extends GitBaseParams {
   message: string;
   amend?: boolean;
-  /** Skip repository hooks for trusted automated commits only. */
-  noVerify?: boolean;
+  /** Disable all repository hooks for trusted automated commits only. */
+  disableHooks?: boolean;
 }
 export interface GitFileParams extends GitBaseParams {
   filepath: string;

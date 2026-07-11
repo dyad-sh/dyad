@@ -140,7 +140,7 @@ export async function commitAllChanges(
         commitHash = await gitCommit({
           path: ctx.appPath,
           message: message,
-          noVerify: true,
+          disableHooks: true,
         });
       } catch (error) {
         logger.error(

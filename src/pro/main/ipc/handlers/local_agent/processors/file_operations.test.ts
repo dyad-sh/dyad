@@ -103,7 +103,7 @@ describe("commitAllChanges", () => {
     expect(gitCommit).toHaveBeenCalledWith({
       path: "/test/app",
       message: "[dyad] (1 files changed)",
-      noVerify: true,
+      disableHooks: true,
     });
   });
 });

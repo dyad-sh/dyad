@@ -17,28 +17,34 @@ import { gitCommit } from "./git_utils";
 
 describe("gitCommit", () => {
   it.each([
-    { noVerify: undefined, expected: ["commit", "-m", "message"] },
-    { noVerify: false, expected: ["commit", "-m", "message"] },
-    { noVerify: true, expected: ["commit", "-m", "message", "--no-verify"] },
-  ])("adds --no-verify only when requested", async ({ noVerify, expected }) => {
-    exec
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
-      .mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: "commit-hash\n",
-        stderr: "",
-      });
+    { disableHooks: undefined, expected: ["commit", "-m", "message"] },
+    { disableHooks: false, expected: ["commit", "-m", "message"] },
+    {
+      disableHooks: true,
+      expected: ["-c", "core.hooksPath=/dev/null", "commit", "-m", "message"],
+    },
+  ])(
+    "disables all hooks only when requested",
+    async ({ disableHooks, expected }) => {
+      exec
+        .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: "commit-hash\n",
+          stderr: "",
+        });
 
-    await expect(
-      gitCommit({ path: "/test/app", message: "message", noVerify }),
-    ).resolves.toBe("commit-hash");
+      await expect(
+        gitCommit({ path: "/test/app", message: "message", disableHooks }),
+      ).resolves.toBe("commit-hash");
 
-    expect(exec).toHaveBeenNthCalledWith(
-      1,
-      ["-c", "user.name=[dyad]", "-c", "user.email=git@dyad.sh", ...expected],
-      "/test/app",
-      undefined,
-    );
-    exec.mockReset();
-  });
+      expect(exec).toHaveBeenNthCalledWith(
+        1,
+        ["-c", "user.name=[dyad]", "-c", "user.email=git@dyad.sh", ...expected],
+        "/test/app",
+        undefined,
+      );
+      exec.mockReset();
+    },
+  );
 });

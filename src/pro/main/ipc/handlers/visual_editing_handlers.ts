@@ -30,6 +30,7 @@ import {
 import { normalizePath } from "../../../../../shared/normalizePath";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
+import { assertTrustedRenderer } from "@/ipc/utils/renderer_security";
 
 // Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
 const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
@@ -37,7 +38,8 @@ const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
     "apply-visual-editing-changes",
-    async (_event, params: ApplyVisualEditingChangesParams) => {
+    async (event, params: ApplyVisualEditingChangesParams) => {
+      assertTrustedRenderer(event);
       const { appId, changes } = params;
       // Track written image files and staged git paths for cleanup on failure
       const writtenImagePaths: string[] = [];
@@ -227,7 +229,8 @@ export function registerVisualEditingHandlers() {
 
   ipcMain.handle(
     "analyze-component",
-    async (_event, analyseComponentParams: AnalyseComponentParams) => {
+    async (event, analyseComponentParams: AnalyseComponentParams) => {
+      assertTrustedRenderer(event);
       const { appId, componentId } = analyseComponentParams;
       try {
         const [filePath, lineStr] = componentId.split(":");

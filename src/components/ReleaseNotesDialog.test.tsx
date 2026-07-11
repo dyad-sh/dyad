@@ -27,6 +27,9 @@ describe("ReleaseNotesDialog", () => {
 
     expect(await screen.findByText("What's new in v1.3.0?")).toBeTruthy();
     expect(doesReleaseNoteExist).toHaveBeenCalledWith({ version: "1.3.0" });
+    expect(
+      screen.getByTitle("Release notes for v1.3.0").getAttribute("sandbox"),
+    ).toBe("allow-same-origin allow-scripts");
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith({
         lastShownReleaseNotesVersion: "1.3.0",

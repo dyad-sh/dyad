@@ -2,6 +2,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { unwrapIpcEnvelope } from "@/ipc/contracts/core";
+import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 import {
   audioContracts,
   MAX_AUDIO_FILENAME_LENGTH,
@@ -10,6 +12,7 @@ import {
 } from "../types/audio";
 
 const mocks = vi.hoisted(() => ({
+  ipcHandlers: new Map<string, (event: unknown, input: unknown) => unknown>(),
   readSettings: vi.fn(),
   transcribeWithDyadEngine: vi.fn(),
   logger: {
@@ -20,7 +23,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({
-  ipcMain: { handle: vi.fn() },
+  ipcMain: {
+    handle: vi.fn(
+      (
+        channel: string,
+        handler: (event: unknown, input: unknown) => unknown,
+      ) => {
+        mocks.ipcHandlers.set(channel, handler);
+      },
+    ),
+  },
 }));
 
 vi.mock("electron-log", () => ({
@@ -50,6 +62,10 @@ vi.mock("../utils/test_utils", () => ({
 const { getRegisteredHandlerForTesting } = await import("./base");
 const { registerProHandlers } = await import("./pro_handlers");
 
+configureTrustedRenderer({
+  devServerUrl: "http://localhost:5173",
+  packagedRendererUrl: "file:///app/renderer/main_window/index.html",
+});
 registerProHandlers();
 
 const transcribeAudio = getRegisteredHandlerForTesting(
@@ -166,6 +182,28 @@ describe("pro audio transcription handler", () => {
         requestId: "request-123",
       }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
+    expect(mocks.transcribeWithDyadEngine).not.toHaveBeenCalled();
+  });
+
+  it("rejects transcription IPC from an untrusted renderer", async () => {
+    const ipcHandler = mocks.ipcHandlers.get(
+      audioContracts.transcribeAudio.channel,
+    );
+    expect(ipcHandler).toBeDefined();
+    const frame = { url: "https://attacker.example/" };
+    const envelope = await ipcHandler!(
+      { sender: { mainFrame: frame }, senderFrame: frame },
+      {
+        audioData: new Uint8Array([1]),
+        filename: "recording.webm",
+        requestId: "request-123",
+      },
+    );
+
+    expect(() => unwrapIpcEnvelope(envelope as never)).toThrow(
+      "trusted Dyad renderer",
+    );
+    expect(mocks.readSettings).not.toHaveBeenCalled();
     expect(mocks.transcribeWithDyadEngine).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import {
   type IpcContract,
 } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 
 type RegisteredHandler = (
   event: IpcMainInvokeEvent,
@@ -74,6 +75,7 @@ export function createTypedHandler<
 
       let result: z.infer<TOutput>;
       try {
+        assertTrustedRenderer(event);
         result = await handler(event, parsed.data);
       } catch (err) {
         sendTelemetryException(err, { ipc_channel: contract.channel });
@@ -143,6 +145,7 @@ export function createLoggedTypedHandler(logger: {
         }
 
         try {
+          assertTrustedRenderer(event);
           logger.info(`[${contract.channel}] Handling request`);
           const result = await handler(event, parsed.data);
 

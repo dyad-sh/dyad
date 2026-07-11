@@ -9,6 +9,7 @@ import fs from "fs/promises";
 import { delimiter, join } from "path";
 import { readSettings, writeSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -452,7 +453,8 @@ export function registerNodeHandlers() {
   if (IS_TEST_BUILD) {
     ipcMain.handle(
       "test:set-node-mock",
-      async (_, { installed }: { installed: boolean | null }) => {
+      async (event, { installed }: { installed: boolean | null }) => {
+        assertTrustedRenderer(event);
         logger.log("test:set-node-mock called with installed:", installed);
         mockNodeInstalled = installed;
       },

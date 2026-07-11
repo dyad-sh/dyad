@@ -25,13 +25,16 @@ interface SentEvent {
 }
 
 function makeEvent(sink: SentEvent[] = []) {
+  const frame = { url: "http://localhost:5173/" };
   return {
     sender: {
+      mainFrame: frame,
       isDestroyed: () => false,
       isCrashed: () => false,
       send: (channel: string, payload: unknown) =>
         sink.push({ channel, payload }),
     },
+    senderFrame: frame,
   };
 }
 

@@ -17,12 +17,15 @@ import {
 import { h } from "@/testing/hybrid.setup";
 
 function makeEvent() {
+  const frame = { url: "http://localhost:5173/" };
   return {
     sender: {
+      mainFrame: frame,
       isDestroyed: () => false,
       isCrashed: () => false,
       send: () => {},
     },
+    senderFrame: frame,
   };
 }
 

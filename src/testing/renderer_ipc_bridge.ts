@@ -35,6 +35,7 @@ import {
   VALID_SEND_CHANNELS,
 } from "@/ipc/preload/channels";
 import type { ElectronMockShared } from "./electron_mock";
+import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 
 type Listener = (...args: unknown[]) => void;
 
@@ -136,6 +137,11 @@ export function installRendererIpcBridge(
     );
   }
 
+  configureTrustedRenderer({
+    devServerUrl: "http://localhost:5173",
+    packagedRendererUrl: "file:///app/renderer/main_window/index.html",
+  });
+
   const listeners = new Map<string, Set<Listener>>();
   const onceWaiters = new Map<string, Set<OnceWaiter>>();
   const missingChannels = new Set<string>();
@@ -234,12 +240,15 @@ export function installRendererIpcBridge(
   // The fake IpcMainInvokeEvent. Its sender.send IS the renderer event bus:
   // main-process code calling `event.sender.send(...)` (e.g. safeSend in
   // chat_stream_handlers) lands directly in window.electron listeners.
+  const frame = { url: "http://localhost:5173/" };
   const fakeEvent = {
     sender: {
+      mainFrame: frame,
       isDestroyed: () => false,
       isCrashed: () => false,
       send,
     },
+    senderFrame: frame,
   };
 
   // The renderer's one-way `ipcRenderer.send`: fans out to the ipcMain.on

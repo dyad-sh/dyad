@@ -1,4 +1,4 @@
-import { ipcMain, app, dialog } from "electron";
+import { app, dialog, ipcMain } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
 import { apps, chats, messages, versions } from "../../db/schema";
 import { desc, eq, inArray, like } from "drizzle-orm";
@@ -94,6 +94,7 @@ import {
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import {
   createCloudSandboxShareLink,
@@ -694,7 +695,8 @@ export function registerAppHandlers() {
   });
 
   // Do NOT use typed handler for this, it contains sensitive information.
-  ipcMain.handle("get-env-vars", async () => {
+  ipcMain.handle("get-env-vars", async (event) => {
+    assertTrustedRenderer(event);
     const envVars: Record<string, string | undefined> = {};
     const providers = await getLanguageModelProviders();
     for (const provider of providers) {
@@ -2148,7 +2150,11 @@ export function registerAppHandlers() {
   if (IS_TEST_BUILD) {
     ipcMain.handle(
       "test:set-needs-app-blueprint",
-      async (_, { appName, value }: { appName: string; value: boolean }) => {
+      async (
+        event,
+        { appName, value }: { appName: string; value: boolean },
+      ) => {
+        assertTrustedRenderer(event);
         const result = await db
           .update(apps)
           .set({ needsAppBlueprint: value })

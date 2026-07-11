@@ -54,19 +54,24 @@ export interface RendererEvent {
  */
 export function createFakeIpcEvent(sink: RendererEvent[]): {
   sender: {
+    mainFrame: { url: string };
     isDestroyed: () => boolean;
     isCrashed: () => boolean;
     send: (channel: string, payload: unknown) => void;
   };
+  senderFrame: { url: string };
 } {
+  const frame = { url: "http://localhost:5173/" };
   return {
     sender: {
+      mainFrame: frame,
       isDestroyed: () => false,
       isCrashed: () => false,
       send: (channel: string, payload: unknown) => {
         sink.push({ channel, payload });
       },
     },
+    senderFrame: frame,
   };
 }
 

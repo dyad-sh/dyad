@@ -39,6 +39,7 @@ import {
   stopAppByInfo,
   stopAppGarbageCollection,
 } from "@/ipc/utils/process_manager";
+import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 import { writeSettings } from "@/main/settings";
 import type { UserSettings } from "@/lib/schemas";
 import { asc, eq } from "drizzle-orm";
@@ -245,6 +246,10 @@ export async function setupChatFlowHarness(
     if (process.env.NODE_ENV !== "development") {
       process.env.NODE_ENV = "development";
     }
+    configureTrustedRenderer({
+      devServerUrl: "http://localhost:5173",
+      packagedRendererUrl: "file:///app/renderer/main_window/index.html",
+    });
 
     const fixtureApp = options.fixtureApp ?? "minimal";
     const fixtureAppDir = path.join(IMPORT_APP_FIXTURES, fixtureApp);

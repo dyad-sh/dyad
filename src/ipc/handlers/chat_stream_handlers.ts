@@ -27,6 +27,7 @@ import {
 } from "../../prompts/system_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
@@ -321,6 +322,7 @@ export function registerChatStreamHandlers() {
   );
 
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
+    assertTrustedRenderer(event);
     let attachmentPaths: string[] = [];
     try {
       // This legacy stream handler predates createTypedHandler, so enforce the

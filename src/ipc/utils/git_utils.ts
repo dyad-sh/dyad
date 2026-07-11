@@ -1169,7 +1169,6 @@ export async function gitPull({
   remote = "origin",
   branch = "main",
   accessToken,
-  author,
 }: GitPullParams): Promise<void> {
   // Use withGitAuthor since pull may need to create merge commits
   // and requires user.name and user.email
@@ -1198,7 +1197,6 @@ export async function gitPull({
 export async function gitMerge({
   path,
   branch,
-  author,
 }: GitMergeParams): Promise<void> {
   // Use withGitAuthor since merge may need to create merge commits
   // and requires user.name and user.email

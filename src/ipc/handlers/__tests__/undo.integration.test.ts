@@ -26,7 +26,6 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
-import { writeSettings } from "@/main/settings";
 import { messages as messagesTable } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 

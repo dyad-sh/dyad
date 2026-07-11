@@ -1,6 +1,6 @@
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import { gitIsIgnoredIso, gitListFilesNative } from "../ipc/utils/git_utils";
+import { gitIsIgnored, gitListFilesNative } from "../ipc/utils/git_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -133,7 +133,7 @@ const gitIgnoreCache = new Map<string, boolean>();
 const gitIgnoreMtimes = new Map<string, number>();
 
 /**
- * Check if a path should be ignored based on git ignore rules. Uses isomorphic-git
+ * Check if a path should be ignored based on git ignore rules.
  */
 async function isGitIgnoredIso(
   filePath: string,
@@ -188,7 +188,7 @@ async function isGitIgnoredIso(
     }
 
     const relativePath = path.relative(baseDir, filePath);
-    const result = await gitIsIgnoredIso({
+    const result = await gitIsIgnored({
       path: baseDir,
       filepath: relativePath,
     });
@@ -275,7 +275,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     ).map((file) => path.join(dir, file));
   } catch (error) {
     logger.error(
-      `Git failed to read directory ${dir} and is falling back to isomorphic-git:`,
+      `Git failed to read directory ${dir} and is falling back to filesystem traversal:`,
       error,
     );
     // Since collectFilesIsoGit traverses the directory tree manually,
@@ -303,8 +303,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
 }
 
 /**
- * Recursively walk a directory and collect all relevant files. Uses
- * isomorphic-git to check whether files and directories are gitignored.
+ * Recursively walk a directory and collect all relevant files.
  */
 async function collectFilesIsoGit(
   dir: string,
@@ -509,9 +508,7 @@ async function prepareCodebaseFiles({
     return undefined;
   }
 
-  let files = settings.enableNativeGit
-    ? await collectFilesNativeGit(appPath)
-    : await collectFilesIsoGit(appPath, appPath);
+  let files = await collectFilesNativeGit(appPath);
 
   if (virtualFileSystem) {
     const deletedFiles = new Set(

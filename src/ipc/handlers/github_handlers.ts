@@ -13,11 +13,9 @@ import {
   gitCreateBranch,
   gitCheckout,
   gitGetMergeConflicts,
-  gitCurrentBranch,
   gitListBranches,
   gitListRemoteBranches,
   isGitStatusClean,
-  getCurrentCommitHash,
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
@@ -246,70 +244,12 @@ export async function prepareLocalBranch({
         // If branch exists remotely, create local tracking branch
         // Otherwise, create a new local branch
         if (remoteBranches.includes(targetBranch)) {
-          // For native git: create branch with tracking
-          // For isomorphic-git: checkout remote branch directly (creates tracking branch automatically)
-          const settings = readSettings();
-          if (settings.enableNativeGit) {
-            // Native git: create branch from remote with tracking
-            await gitCreateBranch({
-              path: appPath,
-              branch: targetBranch,
-              from: `origin/${targetBranch}`,
-            });
-            await gitCheckout({ path: appPath, ref: targetBranch });
-          } else {
-            // isomorphic-git: create local branch from the remote commit and checkout so branch name matches native git
-            // gitCreateBranch does not support 'from' when native git is disabled, so resolve the remote ref's commit
-            // and create the local branch at that commit.
-            const remoteRef = `refs/remotes/origin/${targetBranch}`;
-            let commitSha: string;
-            try {
-              commitSha = await getCurrentCommitHash({
-                path: appPath,
-                ref: remoteRef,
-              });
-            } catch {
-              // Fallback to short remote ref name if the full refs path isn't present
-              try {
-                commitSha = await getCurrentCommitHash({
-                  path: appPath,
-                  ref: `origin/${targetBranch}`,
-                });
-              } catch (innerErr: any) {
-                throw new Error(
-                  `Failed to resolve remote branch 'origin/${targetBranch}' to a commit. ` +
-                    "Ensure 'git fetch' succeeded and the remote branch exists. " +
-                    `${innerErr?.message || String(innerErr)}`,
-                );
-              }
-            }
-
-            // Checkout the remote commit (detached HEAD), create branch at that commit, then checkout the branch
-            // Store current branch to restore on error
-            const previousBranch = await gitCurrentBranch({ path: appPath });
-            try {
-              await gitCheckout({ path: appPath, ref: commitSha });
-              await gitCreateBranch({ path: appPath, branch: targetBranch });
-              await gitCheckout({ path: appPath, ref: targetBranch });
-            } catch (error: any) {
-              // If anything fails, restore the previous branch to avoid leaving repo in detached HEAD
-              if (previousBranch) {
-                try {
-                  await gitCheckout({ path: appPath, ref: previousBranch });
-                } catch (restoreError) {
-                  logger.error(
-                    `Failed to restore branch '${previousBranch}' after error: ${restoreError}`,
-                  );
-                }
-              } else {
-                logger.warn(
-                  "[GitHub Handler] Previous branch unknown; repository may remain in detached HEAD at " +
-                    `${commitSha}.`,
-                );
-              }
-              throw error;
-            }
-          }
+          await gitCreateBranch({
+            path: appPath,
+            branch: targetBranch,
+            from: `origin/${targetBranch}`,
+          });
+          await gitCheckout({ path: appPath, ref: targetBranch });
         } else {
           // Create new local branch
           await gitCreateBranch({
@@ -936,7 +876,7 @@ async function handlePushToGithub(
           (errorMessage.includes("remote ref") ||
             errorMessage.includes("remote branch"))) ||
         errorMessage.includes("couldn't find remote ref") ||
-        // isomorphic-git throws a TypeError when the remote repo is empty
+        // Git operations fail when the remote repository is empty.
         errorMessage.includes("Cannot read properties of null");
 
       // If it's just that remote doesn't have the branch yet, we can ignore and push
@@ -1319,12 +1259,6 @@ async function handleCloneRepoFromUrl(
       );
     }
 
-    // Ensure the app directory exists if native git is disabled
-    if (!settings.enableNativeGit) {
-      if (!fs.existsSync(appPath)) {
-        fs.mkdirSync(appPath, { recursive: true });
-      }
-    }
     // Always clone with a credential-free URL; if a token exists it is
     // injected per-invocation in git_utils.
     const cloneUrl = `${getGitHubGitBase()}/${owner}/${repoName}.git`;

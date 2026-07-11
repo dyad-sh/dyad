@@ -25,6 +25,7 @@ interface FileEditorProps {
   appId: number | null;
   filePath: string;
   initialLine?: number | null;
+  saveRequestEvent?: string;
 }
 
 interface BreadcrumbProps {
@@ -138,6 +139,7 @@ export const FileEditor = ({
   appId,
   filePath,
   initialLine = null,
+  saveRequestEvent,
 }: FileEditorProps) => {
   const { t } = useTranslation("home");
   const { content, loading, error } = useLoadAppFile(appId, filePath);
@@ -155,6 +157,7 @@ export const FileEditor = ({
   const hasInitializedContentRef = useRef(false);
   const isMountedRef = useRef(false);
   const releaseModelRef = useRef<(() => void) | null>(null);
+  const saveFileRef = useRef<() => void>(() => {});
 
   const queryClient = useQueryClient();
   const { checkProblems } = useCheckProblems(appId);
@@ -213,7 +216,7 @@ export const FileEditor = ({
   }, []);
 
   // Handle editor mount
-  const handleEditorDidMount: OnMount = (editor) => {
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     const model = editor.getModel();
     if (model) {
@@ -230,6 +233,10 @@ export const FileEditor = ({
       if (needsSaveRef.current) {
         saveFile();
       }
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      saveFileRef.current();
     });
   };
 
@@ -305,6 +312,16 @@ export const FileEditor = ({
       }
     }
   };
+  saveFileRef.current = saveFile;
+
+  useEffect(() => {
+    if (!saveRequestEvent) return;
+
+    const handleSaveRequest = () => saveFileRef.current();
+    window.addEventListener(saveRequestEvent, handleSaveRequest);
+    return () =>
+      window.removeEventListener(saveRequestEvent, handleSaveRequest);
+  }, [saveRequestEvent]);
 
   // Jump to target line if provided (e.g., from search results)
   // This effect handles when initialLine changes after the editor is mounted

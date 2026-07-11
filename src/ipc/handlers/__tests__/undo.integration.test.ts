@@ -150,7 +150,6 @@ describe("undo (integration)", () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
       autoApprove: true,
-      enableNativeGit: true,
       settings: { isTestMode: true },
     });
     execFileSync("git", ["branch", "-M", "master"], {
@@ -163,19 +162,11 @@ describe("undo (integration)", () => {
     await harness?.dispose();
   });
 
-  it("undo with native git", async () => {
-    writeSettings({ enableNativeGit: true });
-    await runUndoCycle();
-  }, 60_000);
-
-  it("undo with isomorphic git", async () => {
-    writeSettings({ enableNativeGit: false });
+  it("undo with git", async () => {
     await runUndoCycle();
   }, 60_000);
 
   it("undo after assistant with no code", async () => {
-    writeSettings({ enableNativeGit: true });
-
     harness.mount();
     await waitFor(
       () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),

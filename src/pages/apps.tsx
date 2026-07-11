@@ -29,6 +29,7 @@ import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { clearTestRuntimeForAppAtom } from "@/atoms/testRuntimeAtoms";
+import { clearCodeEditorStateForAppAtom } from "@/atoms/codeEditorAtoms";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -78,6 +79,7 @@ export default function AppsPage() {
   }, [collections, searchQuery]);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
   const clearTestRuntimeForApp = useSetAtom(clearTestRuntimeForAppAtom);
+  const clearCodeEditorStateForApp = useSetAtom(clearCodeEditorStateForAppAtom);
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -158,6 +160,7 @@ export default function AppsPage() {
       for (const appId of succeededIds) {
         clearPreviewRuntimeForApp(appId);
         clearTestRuntimeForApp(appId);
+        clearCodeEditorStateForApp(appId);
       }
       if (failed.length > 0) {
         const failedNames = failed

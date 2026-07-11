@@ -15,7 +15,7 @@ import {
   isDirectoryAccessible,
 } from "@/paths/paths";
 import { gitAddSafeDirectory } from "../utils/git_utils";
-import { readSettings, writeSettings } from "@/main/settings";
+import { writeSettings } from "@/main/settings";
 
 const logger = log.scope("custom_apps_folder_handlers");
 
@@ -106,10 +106,8 @@ export function registerCustomAppsFolderHandlers() {
       // Add custom apps folder to git safe.directory (required for Windows).
       // The trailing /* allows access to all repositories under the named directory.
       // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
-      if (readSettings().enableNativeGit) {
-        const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
-        await gitAddSafeDirectory(`${directory}/*`);
-      }
+      const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
+      await gitAddSafeDirectory(`${directory}/*`);
     }
 
     writeSettings({

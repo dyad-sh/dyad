@@ -187,9 +187,7 @@
     "deny": "Deny"
   },
   "experiments": {
-    "title": "Experiments",
-    "enableNativeGit": "Enable Native Git",
-    "enableNativeGitDescription": "This doesn't require any external Git installation and offers a faster, native-Git performance experience."
+    "title": "Experiments"
   },
   "dangerZone": {
     "title": "Danger Zone",

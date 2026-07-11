@@ -359,7 +359,6 @@ const BaseUserSettingsFields = {
   blockUnsafeNpmPackages: z.boolean().optional(),
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
-  enableNativeGit: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),
   enableMcpToolSearch: z.boolean().optional(),

@@ -4,6 +4,7 @@ import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
+import { clearCodeEditorStateForAppAtom } from "@/atoms/codeEditorAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
@@ -119,6 +120,7 @@ export default function AppDetailsPage() {
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
+  const clearCodeEditorStateForApp = useSetAtom(clearCodeEditorStateForAppAtom);
 
   const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
   const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
@@ -173,6 +175,7 @@ export default function AppDetailsPage() {
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
       clearPreviewRuntimeForApp(appId);
+      clearCodeEditorStateForApp(appId);
       setSelectedAppId(null);
       setSelectedChatId(null);
       await refreshApps();

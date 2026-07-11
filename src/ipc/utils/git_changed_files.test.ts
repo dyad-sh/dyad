@@ -17,16 +17,11 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("@/main/settings", () => ({
-  readSettings: vi.fn(),
-}));
-
 import {
   getChangedFilesForCommit,
   getOldFileContent,
   getFileAtCommit,
 } from "@/ipc/utils/git_utils";
-import { readSettings } from "@/main/settings";
 
 const execFileAsync = promisify(execFile);
 const MERGE_COMMIT_TEST_TIMEOUT_MS = 15_000;
@@ -48,13 +43,7 @@ async function commitAll(repoDir: string, message: string): Promise<string> {
   return runGit(repoDir, ["rev-parse", "HEAD"]);
 }
 
-// Native git relies on dugite's bundled binary which may be absent in some
-// local dev environments; it is always present in CI. Run both modes so we
-// guarantee native/isomorphic parity.
-describe.each([
-  { name: "isomorphic git", enableNativeGit: false },
-  { name: "native git", enableNativeGit: true },
-])("getChangedFilesForCommit ($name)", ({ enableNativeGit }) => {
+describe("getChangedFilesForCommit", () => {
   let repoDir: string | undefined;
 
   afterEach(async () => {
@@ -65,7 +54,6 @@ describe.each([
   });
 
   async function setupRepo() {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-changed-"));
     await runGit(repoDir, ["init"]);
     await runGit(repoDir, ["config", "user.email", "test@example.com"]);

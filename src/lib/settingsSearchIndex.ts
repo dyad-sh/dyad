@@ -36,7 +36,6 @@ export const SETTING_IDS = {
   vercel: "setting-vercel",
   supabase: "setting-supabase",
   neon: "setting-neon",
-  nativeGit: "setting-native-git",
   enableCloudSandbox: "setting-enable-cloud-sandbox",
   autoApproveNonSchemaSql: "setting-auto-approve-non-schema-sql",
   autoApproveSafeMcpTools: "setting-auto-approve-safe-mcp-tools",
@@ -384,15 +383,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "security",
       "native",
     ],
-    sectionId: SECTION_IDS.advanced,
-    sectionLabel: "Advanced",
-  },
-  {
-    id: SETTING_IDS.nativeGit,
-    label: "Enable Native Git",
-    description:
-      "Use native Git for faster performance without external installation",
-    keywords: ["git", "native", "performance"],
     sectionId: SECTION_IDS.advanced,
     sectionLabel: "Advanced",
   },

@@ -26,17 +26,14 @@ function makeEvent() {
   };
 }
 
-// The migration file must also be committed on the isomorphic-git path
-// (enableNativeGit: false), which has its own commit implementation — see
-// issue #608. Own file per the one-harness-per-file convention.
-describe("supabase migrations with isomorphic git (integration)", () => {
+// Own file per the one-harness-per-file convention.
+describe("supabase migrations (integration)", () => {
   let harness: HybridChatHarness;
 
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
       testBuild: true,
-      enableNativeGit: false,
       settings: {
         isTestMode: true,
         autoApproveChanges: true,

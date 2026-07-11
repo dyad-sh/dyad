@@ -89,6 +89,8 @@ When a worktree symlinks `node_modules` from another checkout (common in agent w
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+Before renaming a tracked file, check whether the destination already exists (for example with `test -e <destination>`). A plain `mv` silently overwrites an existing file on macOS; choose a distinct name or preserve and restore the destination first.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

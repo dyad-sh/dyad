@@ -22,10 +22,6 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
   }
 
-  async toggleNativeGit() {
-    await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
-  }
-
   async toggleAutoFixProblems() {
     await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
   }

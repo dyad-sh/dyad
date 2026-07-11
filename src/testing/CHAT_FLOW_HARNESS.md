@@ -92,20 +92,19 @@ describe("my feature (integration)", () => {
 
 `electronMock` (the hoisted `h`) is the only required option.
 
-| Option            | Default                                                                            | Purpose                                                            |
-| ----------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `electronMock`    | — (required)                                                                       | The hoisted `{ ipcHandlers }` you passed to `vi.mock("electron")`. |
-| `fixtureApp`      | `"minimal"`                                                                        | Which `e2e-tests/fixtures/import-app/<name>` app to check out.     |
-| `autoApprove`     | `true`                                                                             | Auto-approve proposed changes (writes+commits happen inline).      |
-| `chatMode`        | `"build"`                                                                          | `selectedChatMode`.                                                |
-| `enableNativeGit` | `true`                                                                             | Use native git for commits.                                        |
-| `selectedModel`   | `{ provider:"testing", name:"test-model" }`                                        | Settings model selection.                                          |
-| `provider`        | `{ id:"testing", name:"test-provider", apiBaseUrl:"<fake>/v1" }`                   | Custom provider row.                                               |
-| `model`           | `{ displayName/apiName:"test-model", maxOutputTokens:8192, contextWindow:128000 }` | Custom model row.                                                  |
-| `settings`        | `{}`                                                                               | Arbitrary `Partial<UserSettings>` overrides (highest precedence).  |
-| `useFakeCatalog`  | `true`                                                                             | Point `DYAD_LANGUAGE_MODEL_CATALOG_URL` at the fake server.        |
-| `engine`          | `false`                                                                            | Point `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` at the fake server.   |
-| `verboseFakeLlm`  | `false`                                                                            | Show the fake server's per-request logs (else quiet).              |
+| Option           | Default                                                                            | Purpose                                                            |
+| ---------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `electronMock`   | — (required)                                                                       | The hoisted `{ ipcHandlers }` you passed to `vi.mock("electron")`. |
+| `fixtureApp`     | `"minimal"`                                                                        | Which `e2e-tests/fixtures/import-app/<name>` app to check out.     |
+| `autoApprove`    | `true`                                                                             | Auto-approve proposed changes (writes+commits happen inline).      |
+| `chatMode`       | `"build"`                                                                          | `selectedChatMode`.                                                |
+| `selectedModel`  | `{ provider:"testing", name:"test-model" }`                                        | Settings model selection.                                          |
+| `provider`       | `{ id:"testing", name:"test-provider", apiBaseUrl:"<fake>/v1" }`                   | Custom provider row.                                               |
+| `model`          | `{ displayName/apiName:"test-model", maxOutputTokens:8192, contextWindow:128000 }` | Custom model row.                                                  |
+| `settings`       | `{}`                                                                               | Arbitrary `Partial<UserSettings>` overrides (highest precedence).  |
+| `useFakeCatalog` | `true`                                                                             | Point `DYAD_LANGUAGE_MODEL_CATALOG_URL` at the fake server.        |
+| `engine`         | `false`                                                                            | Point `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` at the fake server.   |
+| `verboseFakeLlm` | `false`                                                                            | Show the fake server's per-request logs (else quiet).              |
 
 ### Harness object
 

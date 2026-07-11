@@ -182,9 +182,7 @@
     "deny": "拒绝"
   },
   "experiments": {
-    "title": "实验性功能",
-    "enableNativeGit": "启用原生 Git",
-    "enableNativeGitDescription": "无需任何外部 Git 安装，提供更快的原生 Git 性能体验。"
+    "title": "实验性功能"
   },
   "dangerZone": {
     "title": "危险区域",

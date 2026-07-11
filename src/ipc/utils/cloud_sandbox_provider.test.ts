@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const { commitPnpmAllowBuildsConfigIfChangedMock, gitIsIgnoredIsoMock } =
+const { commitPnpmAllowBuildsConfigIfChangedMock, gitIsIgnoredMock } =
   vi.hoisted(() => ({
     commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
-    gitIsIgnoredIsoMock: vi.fn(),
+    gitIsIgnoredMock: vi.fn(),
   }));
 
 vi.mock("@/main/settings", () => ({
@@ -26,7 +26,7 @@ vi.mock("./test_utils", () => ({
 }));
 
 vi.mock("./git_utils", () => ({
-  gitIsIgnoredIso: gitIsIgnoredIsoMock,
+  gitIsIgnored: gitIsIgnoredMock,
 }));
 
 vi.mock("@/ipc/utils/socket_firewall", async () => {
@@ -112,8 +112,8 @@ describe("cloud_sandbox_provider incremental sync", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    gitIsIgnoredIsoMock.mockReset();
-    gitIsIgnoredIsoMock.mockResolvedValue(false);
+    gitIsIgnoredMock.mockReset();
+    gitIsIgnoredMock.mockResolvedValue(false);
     appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-cloud-sync-"));
     fetchMock = vi.fn(async () => {
       return new Response(
@@ -276,7 +276,7 @@ describe("cloud_sandbox_provider incremental sync", () => {
       path.join(appPath, "linked.ts"),
     );
 
-    gitIsIgnoredIsoMock.mockImplementation(async ({ filepath }) => {
+    gitIsIgnoredMock.mockImplementation(async ({ filepath }) => {
       return (
         filepath === ".env" ||
         filepath === ".env.local" ||
@@ -304,7 +304,7 @@ describe("cloud_sandbox_provider incremental sync", () => {
       path.join(appPath, "linked.ts"),
     );
 
-    gitIsIgnoredIsoMock.mockImplementation(async ({ filepath }) => {
+    gitIsIgnoredMock.mockImplementation(async ({ filepath }) => {
       return filepath === ".env.local" || filepath === "ignored.ts";
     });
 

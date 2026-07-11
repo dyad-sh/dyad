@@ -86,7 +86,6 @@ function formatSettingsLines(settings: UserSettings | null): string {
     `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
     `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
     `- Auto Fix Problems: ${settings.enableAutoFixProblems ?? "n/a"}`,
-    `- Native Git: ${settings.enableNativeGit ?? "n/a"}`,
   ].join("\n");
 }
 

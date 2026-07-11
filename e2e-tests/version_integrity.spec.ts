@@ -16,8 +16,8 @@ const VERSION_INTEGRITY_FILES = [
   "to-be-edited.txt",
 ];
 
-const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
-  await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
+const runVersionIntegrityTest = async (po: PageObject) => {
+  await po.setUp({ autoApprove: true });
 
   // Importing a simple app with a few files.
   await po.page.getByRole("button", { name: "Import App" }).click();
@@ -59,10 +59,6 @@ const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
   await po.snapshotAppFiles({ name: "v1", files: VERSION_INTEGRITY_FILES });
 };
 
-testSkipIfWindows("version integrity (git isomorphic)", async ({ po }) => {
-  await runVersionIntegrityTest(po, false);
-});
-
-testSkipIfWindows("version integrity (git native)", async ({ po }) => {
-  await runVersionIntegrityTest(po, true);
+testSkipIfWindows("version integrity", async ({ po }) => {
+  await runVersionIntegrityTest(po);
 });

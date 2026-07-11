@@ -18,15 +18,16 @@ vi.mock("electron-log", () => ({
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({
-    enableNativeGit: false,
     enableDyadPro: false,
     enableProSmartFilesContextMode: false,
   })),
 }));
 
 vi.mock("@/ipc/utils/git_utils", () => ({
-  gitIsIgnoredIso: vi.fn(async () => false),
-  gitListFilesNative: vi.fn(async () => []),
+  gitIsIgnored: vi.fn(async () => false),
+  gitListFilesNative: vi.fn(async () => {
+    throw new Error("Git unavailable in filesystem traversal tests");
+  }),
 }));
 
 describe("extractCodebase", () => {

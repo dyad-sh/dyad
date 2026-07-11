@@ -208,6 +208,20 @@ describe("parseMinidumpBuffer", () => {
     expect(s!.faultingModule).toBe("app.exe");
   });
 
+  it("decodes Chromium's Windows OOM exception code", () => {
+    // 0xE0000008 is kOomExceptionCode, raised only when a process is
+    // terminated because an allocation failed.
+    const dump = buildMinidump({
+      modules: [{ base: 0x400000n, size: 0x1000, name: "C:\\app\\app.exe" }],
+      exceptionCode: 0xe0000008,
+      ip: 0x400100n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.crashReason).toBe("OUT_OF_MEMORY");
+    expect(s!.exceptionCode).toBe(0xe0000008);
+  });
+
   it("reads the arm64 IP at the documented offset (264)", () => {
     const dump = buildMinidump({
       modules: oneModule,

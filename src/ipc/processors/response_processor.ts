@@ -4,7 +4,12 @@ import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
-import { safeJoin } from "../utils/path_utils";
+import {
+  assertNotProjectRootPath,
+  prepareDeletePath,
+  PreparedDeletePath,
+  safeJoin,
+} from "../utils/path_utils";
 import { normalizeTestPath } from "../utils/normalize_test_path";
 import { SPEC_FILE_RE } from "../types/tests";
 
@@ -55,6 +60,21 @@ import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
+
+function lstatIfExists(filePath: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(filePath);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 interface Output {
   message: string;
@@ -143,6 +163,23 @@ export async function processFullResponseActions(
     return {};
   }
 
+  const appPath = getDyadAppPath(chatWithApp.app.path);
+  const dyadDeletePaths = getDyadDeleteTags(fullResponse);
+  let preparedDeletePaths: PreparedDeletePath[];
+  try {
+    // Perform the lexical pass across the entire batch first so a later root
+    // alias cannot cause even read-only filesystem work for an earlier path.
+    for (const filePath of dyadDeletePaths) {
+      assertNotProjectRootPath(appPath, filePath);
+    }
+    preparedDeletePaths = await Promise.all(
+      dyadDeletePaths.map((filePath) => prepareDeletePath(appPath, filePath)),
+    );
+  } catch (error) {
+    logger.error("Refusing unsafe delete response:", error);
+    return { error: String(error) };
+  }
+
   if (
     chatWithApp.app.neonProjectId &&
     (chatWithApp.app.neonActiveBranchId ||
@@ -163,10 +200,10 @@ export async function processFullResponseActions(
   }
 
   const settings: UserSettings = readSettings();
-  const appPath = getDyadAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
   const deletedFiles: string[] = [];
+  const processedDeletePaths: string[] = [];
   let hasChanges = false;
   // Track if any shared modules were modified
   let sharedModulesChanged = false;
@@ -181,7 +218,6 @@ export async function processFullResponseActions(
     // Extract all tags
     const dyadWriteTags = getDyadWriteTags(fullResponse);
     const dyadRenameTags = getDyadRenameTags(fullResponse);
-    const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
     const hasDbProvider =
       chatWithApp.app.supabaseProjectId || chatWithApp.app.neonProjectId;
@@ -332,8 +368,12 @@ export async function processFullResponseActions(
     //////////////////////
 
     // Process all file deletions
-    for (const filePath of dyadDeletePaths) {
-      const fullFilePath = safeJoin(appPath, filePath);
+    for (const preparedDeletePath of preparedDeletePaths) {
+      // Revalidate immediately before deletion in case the filesystem changed
+      // after the batch preflight.
+      const { relativePath: filePath, fullPath: fullFilePath } =
+        await prepareDeletePath(appPath, preparedDeletePath.relativePath);
+      processedDeletePaths.push(filePath);
 
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
@@ -342,8 +382,9 @@ export async function processFullResponseActions(
       }
 
       // Delete the file if it exists
-      if (fs.existsSync(fullFilePath)) {
-        if (fs.lstatSync(fullFilePath).isDirectory()) {
+      const targetStat = lstatIfExists(fullFilePath);
+      if (targetStat) {
+        if (targetStat.isDirectory()) {
           fs.rmdirSync(fullFilePath, { recursive: true });
         } else {
           fs.unlinkSync(fullFilePath);
@@ -772,7 +813,7 @@ export async function processFullResponseActions(
         appId: chatWithApp.app.id,
         changedPaths: [...writtenFiles, ...renamedFiles],
         deletedPaths: [
-          ...dyadDeletePaths,
+          ...processedDeletePaths,
           ...dyadRenameTags.map((renameTag) => renameTag.from),
         ],
       });

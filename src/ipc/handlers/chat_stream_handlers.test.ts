@@ -31,20 +31,34 @@ vi.mock("node:fs", async () => {
       writeFileSync: vi.fn(),
       existsSync: vi.fn().mockReturnValue(false), // Default to false to avoid creating temp directory
       renameSync: vi.fn(),
+      realpathSync: vi.fn((filePath: string) => filePath),
+      rmdirSync: vi.fn(),
       unlinkSync: vi.fn(),
-      lstatSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
+      lstatSync: vi.fn().mockReturnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => false,
+      }),
       promises: {
         readFile: vi.fn().mockResolvedValue(""),
+        realpath: vi.fn(async (filePath: string) => filePath),
+        lstat: vi.fn(),
       },
     },
     existsSync: vi.fn().mockReturnValue(false), // Also mock the named export
     mkdirSync: vi.fn(),
     writeFileSync: vi.fn(),
     renameSync: vi.fn(),
+    realpathSync: vi.fn((filePath: string) => filePath),
+    rmdirSync: vi.fn(),
     unlinkSync: vi.fn(),
-    lstatSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
+    lstatSync: vi.fn().mockReturnValue({
+      isDirectory: () => false,
+      isSymbolicLink: () => false,
+    }),
     promises: {
       readFile: vi.fn().mockResolvedValue(""),
+      realpath: vi.fn(async (filePath: string) => filePath),
+      lstat: vi.fn(),
     },
   };
 });
@@ -675,6 +689,16 @@ describe("processFullResponse", () => {
 
     // Default mock for existsSync to return true
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.realpathSync).mockImplementation((filePath) =>
+      String(filePath),
+    );
+    vi.mocked(fs.promises.realpath).mockImplementation(async (filePath) =>
+      String(filePath),
+    );
+    vi.mocked(fs.lstatSync).mockReturnValue({
+      isDirectory: () => false,
+      isSymbolicLink: () => false,
+    } as any);
   });
 
   it("should return empty object when no dyad-write tags are found", async () => {
@@ -891,9 +915,100 @@ describe("processFullResponse", () => {
     expect(result).toEqual({ updatedFiles: true });
   });
 
+  it.each([
+    ".",
+    "./",
+    ".\\",
+    "foo/..",
+    "foo\\..",
+    "../mock-app-path",
+    "..\\mock-app-path",
+    "../../path/mock-app-path",
+    "../../path/MOCK-APP-PATH",
+  ])(
+    "should reject project-root-equivalent delete path %s before deleting",
+    async (deletePath) => {
+      const response = `<dyad-delete path="${deletePath}"></dyad-delete>`;
+
+      const result = await processFullResponseActions(response, 1, {
+        chatSummary: undefined,
+        messageId: 1,
+      });
+
+      expect(result.error).toContain("Refusing to delete project root");
+      expect(fs.existsSync).not.toHaveBeenCalledWith(MOCK_APP_PATH);
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fs.rmdirSync).not.toHaveBeenCalled();
+      expect(gitRemove).not.toHaveBeenCalled();
+      expect(gitCommit).not.toHaveBeenCalled();
+    },
+  );
+
+  it("should preflight all deletes before applying any of them", async () => {
+    vi.mocked(fs.existsSync).mockImplementation(
+      (filePath) => filePath === appPath("src/keep.jsx"),
+    );
+
+    const response = `
+      <dyad-delete path="src/keep.jsx"></dyad-delete>
+      <dyad-delete path="foo/.."></dyad-delete>
+    `;
+
+    const result = await processFullResponseActions(response, 1, {
+      chatSummary: undefined,
+      messageId: 1,
+    });
+
+    expect(result.error).toContain("Refusing to delete project root");
+    expect(fs.lstatSync).not.toHaveBeenCalled();
+    expect(fs.unlinkSync).not.toHaveBeenCalled();
+    expect(fs.rmdirSync).not.toHaveBeenCalled();
+    expect(fs.existsSync).not.toHaveBeenCalled();
+    expect(gitRemove).not.toHaveBeenCalled();
+  });
+
+  it.each(["../sibling", "..\\sibling"])(
+    "should reject sibling escape path %s without deleting",
+    async (deletePath) => {
+      const result = await processFullResponseActions(
+        `<dyad-delete path="${deletePath}"></dyad-delete>`,
+        1,
+        { chatSummary: undefined, messageId: 1 },
+      );
+
+      expect(result.error).toContain("Unsafe path");
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fs.rmdirSync).not.toHaveBeenCalled();
+      expect(gitRemove).not.toHaveBeenCalled();
+    },
+  );
+
+  it("unlinks a slash-terminated final symlink instead of following it", async () => {
+    vi.mocked(fs.lstatSync).mockReturnValue({
+      isDirectory: () => false,
+      isSymbolicLink: () => true,
+    } as any);
+
+    const result = await processFullResponseActions(
+      `<dyad-delete path="self/"></dyad-delete>`,
+      1,
+      { chatSummary: undefined, messageId: 1 },
+    );
+
+    expect(result).toEqual({ updatedFiles: true });
+    expect(fs.unlinkSync).toHaveBeenCalledWith(appPath("self"));
+    expect(fs.rmdirSync).not.toHaveBeenCalled();
+    expect(gitRemove).toHaveBeenCalledWith({
+      path: MOCK_APP_PATH,
+      filepath: "self",
+    });
+  });
+
   it("should handle non-existent files during delete gracefully", async () => {
-    // Set up the mock to return false for existsSync
     vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(fs.lstatSync).mockImplementation(() => {
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    });
 
     const response = `<dyad-delete path="src/components/NonExistent.jsx"></dyad-delete>`;
 

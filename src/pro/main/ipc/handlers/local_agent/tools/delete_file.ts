@@ -3,14 +3,13 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
+import { prepareDeletePath } from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("delete_file");
@@ -44,30 +43,8 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     },
 
     execute: async (args, ctx: AgentContext) => {
-      const normalizedPath = path.posix.normalize(
-        args.path.replace(/\\/g, "/"),
-      );
-      if (
-        normalizedPath === "." ||
-        normalizedPath === "./" ||
-        normalizedPath === ""
-      ) {
-        throw new DyadError(
-          `Refusing to delete project root for path: "${args.path}"`,
-          DyadErrorKind.Validation,
-        );
-      }
-
-      const requestedOperationPath = normalizedPath.replace(/\/+$/, "");
-      // Deletion mutates the final directory entry rather than following a
-      // final symlink. Canonicalize its parent chain and operate on that
-      // physical entry so in-app aliases cannot confuse git/cloud bookkeeping.
-      const operationPath = await assertMutationPathAllowed({
-        appPath: ctx.appPath,
-        relativePath: requestedOperationPath,
-        followFinalSymlink: false,
-      });
-      const fullFilePath = safeJoin(ctx.appPath, operationPath);
+      const { relativePath: operationPath, fullPath: fullFilePath } =
+        await prepareDeletePath(ctx.appPath, args.path);
 
       // Track if this is a shared module
       if (isSharedServerModule(operationPath)) {

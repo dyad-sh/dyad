@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   CommandExecutionError,
   SOCKET_FIREWALL_WARNING_MESSAGE,
@@ -28,10 +30,16 @@ const dbUpdates: Array<Record<string, unknown>> = [];
 vi.mock("node:fs", async () => ({
   default: {
     existsSync: vi.fn().mockReturnValue(false),
+    realpathSync: vi.fn((filePath: string) => filePath),
+    lstatSync: vi.fn(() => {
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    }),
     mkdirSync: vi.fn(),
     writeFileSync: vi.fn(),
     promises: {
       readFile: vi.fn().mockResolvedValue(""),
+      realpath: vi.fn(async (filePath: string) => filePath),
+      lstat: vi.fn(),
     },
   },
 }));
@@ -114,10 +122,31 @@ import { db } from "../../db";
 import { gitAdd, hasStagedChanges } from "../utils/git_utils";
 import { processFullResponseActions } from "./response_processor";
 
+function resolveSelfAlias(appPath: string, filePath: unknown): string {
+  const targetPath = String(filePath);
+  const aliasPath = path.join(appPath, "self");
+  const relativePath = path.relative(aliasPath, targetPath);
+  if (
+    relativePath === "" ||
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath))
+  ) {
+    return path.join(appPath, relativePath);
+  }
+  return targetPath;
+}
+
 describe("processFullResponseActions add dependency errors", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dbUpdates.length = 0;
+    vi.mocked(fs.realpathSync).mockImplementation((filePath) =>
+      String(filePath),
+    );
+    vi.mocked(fs.promises.realpath).mockImplementation(async (filePath) =>
+      String(filePath),
+    );
 
     readSettingsMock.mockReturnValue({
       enableSupabaseWriteSqlMigration: false,
@@ -288,6 +317,35 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(result).toMatchObject({
       updatedFiles: true,
     });
+    expect(queueCloudSandboxSnapshotSyncMock).toHaveBeenCalledWith({
+      appId: 1,
+      changedPaths: ["src/file1.js"],
+      deletedPaths: ["src/missing.js"],
+    });
+  });
+
+  it("queues the canonical physical delete path through an in-project alias", async () => {
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+    vi.mocked(fs.realpathSync).mockImplementation((filePath) =>
+      resolveSelfAlias("/mock/apps/test-app", filePath),
+    );
+    vi.mocked(fs.promises.realpath).mockImplementation(async (filePath) =>
+      resolveSelfAlias("/mock/apps/test-app", filePath),
+    );
+
+    const result = await processFullResponseActions(
+      `
+      <dyad-write path="src/file1.js">console.log("Hello");</dyad-write>
+      <dyad-delete path="self/src/missing.js"></dyad-delete>
+      `,
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(result).toMatchObject({ updatedFiles: true });
     expect(queueCloudSandboxSnapshotSyncMock).toHaveBeenCalledWith({
       appId: 1,
       changedPaths: ["src/file1.js"],

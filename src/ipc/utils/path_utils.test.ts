@@ -1,4 +1,8 @@
-import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
+import {
+  assertMutationPathAllowed,
+  prepareDeletePath,
+  safeJoin,
+} from "@/ipc/utils/path_utils";
 import { describe, it, expect } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -340,4 +344,62 @@ describe("assertMutationPathAllowed", () => {
       }
     },
   );
+});
+
+describe.runIf(process.platform !== "win32")("prepareDeletePath", () => {
+  it("preserves final symlinks but canonicalizes their ancestors", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-delete-"));
+    try {
+      const functionPath = path.join(
+        appPath,
+        "supabase/functions/hello/index.ts",
+      );
+      await fs.mkdir(path.dirname(functionPath), { recursive: true });
+      await fs.writeFile(functionPath, "export default {};\n");
+      await fs.symlink(".", path.join(appPath, "self"), "dir");
+      await fs.symlink(
+        "supabase/functions/hello/index.ts",
+        path.join(appPath, "function-link"),
+      );
+      const realAppPath = await fs.realpath(appPath);
+
+      await expect(
+        prepareDeletePath(appPath, "self/supabase/functions/hello/index.ts"),
+      ).resolves.toEqual({
+        relativePath: "supabase/functions/hello/index.ts",
+        fullPath: path.join(realAppPath, "supabase/functions/hello/index.ts"),
+      });
+      await expect(
+        prepareDeletePath(appPath, "self/function-link/"),
+      ).resolves.toEqual({
+        relativePath: "function-link",
+        fullPath: path.join(realAppPath, "function-link"),
+      });
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("allows final symlinks but rejects symlinked ancestors that escape", async () => {
+    const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-delete-"));
+    const outsidePath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-outside-"),
+    );
+    try {
+      await fs.symlink(".", path.join(appPath, "self"), "dir");
+      await fs.symlink(outsidePath, path.join(appPath, "outside"), "dir");
+
+      const realAppPath = await fs.realpath(appPath);
+      await expect(prepareDeletePath(appPath, "self/")).resolves.toEqual({
+        relativePath: "self",
+        fullPath: path.join(realAppPath, "self"),
+      });
+      await expect(
+        prepareDeletePath(appPath, "outside/victim.txt"),
+      ).rejects.toThrow("outside the app");
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+      await fs.rm(outsidePath, { recursive: true, force: true });
+    }
+  });
 });

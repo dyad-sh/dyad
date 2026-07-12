@@ -39,6 +39,12 @@ export class TypeScriptUtilityProcessScheduler {
   private activeKind: TypeScriptUtilityProcessKind | null = null;
   private resident: ResidentProcess | null = null;
 
+  // The kind of operation currently running, or null when idle. Used by the
+  // performance monitor to record activity alongside memory snapshots.
+  activeOperationKind(): TypeScriptUtilityProcessKind | null {
+    return this.activeKind;
+  }
+
   runExclusive<T>(
     kind: TypeScriptUtilityProcessKind,
     operation: () => Promise<T>,

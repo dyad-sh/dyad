@@ -686,6 +686,18 @@ const createWindow = () => {
           last_known_snapshot_timestamp: pendingForceCloseData.timestamp,
           time_since_last_heartbeat_ms:
             Date.now() - pendingForceCloseData.timestamp,
+          last_known_heap_used_mb: pendingForceCloseData.heapUsedMB,
+          last_known_heap_limit_mb: pendingForceCloseData.heapLimitMB,
+          last_known_process_working_sets_mb:
+            pendingForceCloseData.processWorkingSetsMB,
+          last_known_activity: pendingForceCloseData.activity,
+          peak_heap_used_mb: pendingForceCloseData.peakHeapUsedMB,
+          peak_heap_pct: pendingForceCloseData.peakHeapPct,
+          peak_rss_mb: pendingForceCloseData.peakRssMB,
+          peak_process_working_sets_mb:
+            pendingForceCloseData.peakProcessWorkingSetsMB,
+          peak_activity: pendingForceCloseData.peakActivity,
+          peak_timestamp: pendingForceCloseData.peakTimestamp,
         }),
         // "native" when a main-process minidump was captured for this crash,
         // else "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
@@ -731,6 +743,16 @@ const createWindow = () => {
           // Match `app:crash_detected` semantics: measured at send time, not
           // crash time. `ms_since_crash` already covers the crash → send gap.
           time_since_last_heartbeat_ms: Date.now() - perf.timestamp,
+          last_known_heap_used_mb: perf.heapUsedMB,
+          last_known_heap_limit_mb: perf.heapLimitMB,
+          last_known_process_working_sets_mb: perf.processWorkingSetsMB,
+          last_known_activity: perf.activity,
+          peak_heap_used_mb: perf.peakHeapUsedMB,
+          peak_heap_pct: perf.peakHeapPct,
+          peak_rss_mb: perf.peakRssMB,
+          peak_process_working_sets_mb: perf.peakProcessWorkingSetsMB,
+          peak_activity: perf.peakActivity,
+          peak_timestamp: perf.peakTimestamp,
         }),
       });
       clearRendererCrashRecord();

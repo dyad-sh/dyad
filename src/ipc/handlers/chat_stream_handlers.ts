@@ -167,6 +167,12 @@ const logger = log.scope("chat_stream_handlers");
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
 
+// How many chats are currently streaming a response. Used by the
+// performance monitor to record activity alongside memory snapshots.
+export function getActiveStreamCount(): number {
+  return activeStreams.size;
+}
+
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
 

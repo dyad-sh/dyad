@@ -633,8 +633,9 @@ export async function listCodebaseFileMetadata({
 
 /**
  * Extract and format codebase files as a string to be included in prompts
- * @param appPath - Path to the codebase to extract
- * @param virtualFileSystem - Optional virtual filesystem to apply modifications
+ * @param params.appPath - Path to the codebase to extract
+ * @param params.chatContext - Chat context selecting which paths to include
+ * @param params.virtualFileSystem - Optional virtual filesystem to apply modifications
  * @returns Object containing formatted output and individual files
  */
 export async function extractCodebase(params: {

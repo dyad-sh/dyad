@@ -21,6 +21,7 @@ function buildMinidump(opts: {
   modules: { base: bigint; size: number; name: string }[];
   exceptionCode: number;
   exceptionAddress?: bigint;
+  exceptionParams?: bigint[]; // info[] values, with numberParameters set to length
   ip: bigint;
   ipOffset: number; // where the IP sits in the CPU context: 248 (x64) / 264 (arm64)
   ptype?: string;
@@ -80,11 +81,18 @@ function buildMinidump(opts: {
   cursor = (contextRva + contextSize + 7) & ~7;
 
   // --- Exception stream ---
-  // exceptionCode @ +8; exceptionAddress @ +24; then a location descriptor for
-  // the CPU context above (its size @ +160, its RVA @ +164).
+  // exceptionCode @ +8; exceptionAddress @ +24; numberParameters @ +32 with
+  // info[] @ +40; then a location descriptor for the CPU context above
+  // (its size @ +160, its RVA @ +164).
   const exceptionRva = cursor;
   dv.setUint32(exceptionRva + 8, opts.exceptionCode, true);
   dv.setBigUint64(exceptionRva + 24, opts.exceptionAddress ?? 0n, true);
+  if (opts.exceptionParams) {
+    dv.setUint32(exceptionRva + 32, opts.exceptionParams.length, true);
+    opts.exceptionParams.forEach((param, i) => {
+      dv.setBigUint64(exceptionRva + 40 + i * 8, param, true);
+    });
+  }
   dv.setUint32(exceptionRva + 160, contextSize, true);
   dv.setUint32(exceptionRva + 164, contextRva, true);
   const exceptionSize = 168;
@@ -180,6 +188,99 @@ describe("parseMinidumpBuffer", () => {
     expect(parseMinidumpBuffer(dump, "linux", "x64")!.crashReason).toBe(
       "SIGABRT",
     );
+  });
+
+  it("reads the fault address for a POSIX memory fault", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11, // SIGSEGV
+      exceptionAddress: 0x18n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(parseMinidumpBuffer(dump, "linux", "x64")!.faultAddress).toBe(
+      "0x18",
+    );
+  });
+
+  it("leaves the fault address undefined for non-memory signals", () => {
+    // For SIGABRT the address field carries no meaningful fault address.
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 6,
+      exceptionAddress: 0x18n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(
+      parseMinidumpBuffer(dump, "linux", "x64")!.faultAddress,
+    ).toBeUndefined();
+  });
+
+  it("decodes Windows access violation parameters", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000005,
+      exceptionParams: [1n, 0x18n], // write to address 0x18
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.accessType).toBe("write");
+    expect(s!.faultAddress).toBe("0x18");
+  });
+
+  it("decodes Windows in-page error parameters", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000006,
+      // read of address 0x18, paging failed with STATUS_DEVICE_DATA_ERROR
+      exceptionParams: [0n, 0x18n, 0xc000009cn],
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.crashReason).toBe("IN_PAGE_ERROR");
+    expect(s!.accessType).toBe("read");
+    expect(s!.faultAddress).toBe("0x18");
+    expect(s!.inPageErrorStatus).toBe(0xc000009c);
+  });
+
+  it("reads the failed allocation size for a Chromium OOM crash", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xe0000008,
+      // Chromium passes the allocation size and page file state.
+      exceptionParams: [2147483648n, 0n, 0n],
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(
+      parseMinidumpBuffer(dump, "win32", "x64")!.oomAllocationSizeBytes,
+    ).toBe(2147483648);
+  });
+
+  it("reads the FAST_FAIL code for Windows 0xC0000409", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000409,
+      exceptionParams: [7n], // FAST_FAIL_FATAL_APP_EXIT, i.e. abort()
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(parseMinidumpBuffer(dump, "win32", "x64")!.fastFailCode).toBe(7);
+  });
+
+  it("leaves detail fields undefined when the exception has no parameters", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000005,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.accessType).toBeUndefined();
+    expect(s!.faultAddress).toBeUndefined();
   });
 
   it("decodes a macOS Mach exception code (not a POSIX signal)", () => {

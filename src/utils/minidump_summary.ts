@@ -8,6 +8,11 @@ import fs from "node:fs";
 export interface MinidumpSummary {
   crashReason?: string; // e.g. "SIGABRT" / "SIGSEGV" (POSIX) or NTSTATUS name
   exceptionCode: number; // raw code, in case the name table misses it
+  faultAddress?: string; // hex data address the crash touched, for memory faults
+  accessType?: "read" | "write" | "execute"; // Windows access violations and in-page errors
+  inPageErrorStatus?: number; // underlying NTSTATUS for Windows in-page errors
+  oomAllocationSizeBytes?: number; // failed allocation size for Chromium OOM crashes
+  fastFailCode?: number; // FAST_FAIL reason for Windows 0xC0000409, e.g. 7 is abort()
   faultingModule?: string; // basename of the module containing the crash address
   faultingOffset?: string; // hex offset of the crash address within that module
   ptype?: string; // crashing process type: "browser" (main) / "renderer" / "gpu-process" / …
@@ -58,7 +63,24 @@ const DIR_ENTRY_RVA_OFF = 8;
 //   u32 dataSize          @160
 //   u32 rva               @164  -> file offset of the crashing thread's CPU context
 const EXC_CODE_OFF = 8;
+const EXC_ADDRESS_OFF = 24;
+const EXC_NUM_PARAMS_OFF = 32;
+const EXC_PARAMS_OFF = 40;
+const EXC_MAX_PARAMS = 15;
 const EXC_CONTEXT_RVA_OFF = 164;
+
+// Exception codes whose parameters carry extra detail on Windows.
+const EXC_CODE_ACCESS_VIOLATION = 0xc0000005;
+const EXC_CODE_IN_PAGE_ERROR = 0xc0000006;
+const EXC_CODE_CHROMIUM_OOM = 0xe0000008; // Chromium's kOomExceptionCode
+const EXC_CODE_FAST_FAIL = 0xc0000409;
+
+// ACCESS_VIOLATION parameter 0: how the faulting address was accessed.
+const ACCESS_TYPES: Record<number, "read" | "write" | "execute"> = {
+  0: "read",
+  1: "write",
+  8: "execute",
+};
 
 // MINIDUMP_MODULE record: u64 base @0, u32 size @8, ... u32 nameRva @20, with
 // the whole record being 108 bytes (so module N starts at N * 108).
@@ -105,6 +127,7 @@ const MACH_EXCEPTION_NAMES: Record<number, string> = {
 // Windows uses NTSTATUS exception codes; degrades to the raw code when unmatched.
 const NTSTATUS_NAMES: Record<number, string> = {
   0xc0000005: "ACCESS_VIOLATION",
+  0xc0000006: "IN_PAGE_ERROR",
   0xc000001d: "ILLEGAL_INSTRUCTION",
   0xc0000094: "INTEGER_DIVIDE_BY_ZERO",
   0xc00000fd: "STACK_OVERFLOW",
@@ -205,6 +228,12 @@ export function parseMinidumpBuffer(
       return null;
     }
     const exceptionCode = view.getUint32(exceptionRva + EXC_CODE_OFF, true);
+    const details = parseExceptionDetails(
+      view,
+      exceptionRva,
+      exceptionCode,
+      platform,
+    );
 
     const crashReason =
       platform === "win32"
@@ -261,6 +290,7 @@ export function parseMinidumpBuffer(
     return {
       crashReason,
       exceptionCode,
+      ...details,
       faultingModule,
       faultingOffset,
       ptype: crashpadInfoRva
@@ -270,6 +300,78 @@ export function parseMinidumpBuffer(
   } catch {
     return null;
   }
+}
+
+// Read the extra detail the exception record carries: the parameter array
+// (ExceptionInformation) and the data fault address. Parameter meaning depends
+// on the exception code; only codes where they say something useful are
+// mapped. All reads stay within the bounds already checked by the caller
+// (the exception stream spans at least EXC_CONTEXT_RVA_OFF bytes).
+function parseExceptionDetails(
+  view: DataView,
+  exceptionRva: number,
+  exceptionCode: number,
+  platform: NodeJS.Platform,
+): Pick<
+  MinidumpSummary,
+  | "faultAddress"
+  | "accessType"
+  | "inPageErrorStatus"
+  | "oomAllocationSizeBytes"
+  | "fastFailCode"
+> {
+  const numParams = Math.min(
+    view.getUint32(exceptionRva + EXC_NUM_PARAMS_OFF, true),
+    EXC_MAX_PARAMS,
+  );
+  const params: bigint[] = [];
+  for (let i = 0; i < numParams; i++) {
+    params.push(view.getBigUint64(exceptionRva + EXC_PARAMS_OFF + i * 8, true));
+  }
+
+  if (platform === "win32") {
+    if (exceptionCode === EXC_CODE_ACCESS_VIOLATION && params.length >= 2) {
+      return {
+        accessType: ACCESS_TYPES[Number(params[0])],
+        faultAddress: toHex(params[1]),
+      };
+    }
+    if (exceptionCode === EXC_CODE_IN_PAGE_ERROR && params.length >= 2) {
+      // Same first two parameters as an access violation, plus the NTSTATUS
+      // of the paging failure (e.g. a failing disk or dropped network share).
+      return {
+        accessType: ACCESS_TYPES[Number(params[0])],
+        faultAddress: toHex(params[1]),
+        ...(params.length >= 3 && { inPageErrorStatus: Number(params[2]) }),
+      };
+    }
+    if (exceptionCode === EXC_CODE_CHROMIUM_OOM && params.length >= 1) {
+      return { oomAllocationSizeBytes: Number(params[0]) };
+    }
+    if (exceptionCode === EXC_CODE_FAST_FAIL && params.length >= 1) {
+      return { fastFailCode: Number(params[0]) };
+    }
+    return {};
+  }
+
+  // On POSIX, Crashpad stores the data fault address in ExceptionAddress.
+  // Only memory faults have one; for other signals the field is meaningless.
+  const isMemoryFault =
+    platform === "darwin"
+      ? exceptionCode === 1 // EXC_BAD_ACCESS
+      : exceptionCode === 11 || exceptionCode === 7; // SIGSEGV, SIGBUS
+  if (isMemoryFault) {
+    return {
+      faultAddress: toHex(
+        view.getBigUint64(exceptionRva + EXC_ADDRESS_OFF, true),
+      ),
+    };
+  }
+  return {};
+}
+
+function toHex(value: bigint): string {
+  return "0x" + value.toString(16);
 }
 
 // Read the "ptype" Crashpad annotation (the crashing process type) from the

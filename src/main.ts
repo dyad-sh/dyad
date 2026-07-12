@@ -693,6 +693,11 @@ const createWindow = () => {
         ...(nativeCrash && {
           crash_reason: nativeCrash.crashReason,
           exception_code: nativeCrash.exceptionCode,
+          fault_address: nativeCrash.faultAddress,
+          access_type: nativeCrash.accessType,
+          in_page_error_status: nativeCrash.inPageErrorStatus,
+          oom_allocation_size_bytes: nativeCrash.oomAllocationSizeBytes,
+          fast_fail_code: nativeCrash.fastFailCode,
           faulting_module: nativeCrash.faultingModule,
           faulting_offset: nativeCrash.faultingOffset,
         }),

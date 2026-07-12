@@ -66,6 +66,7 @@ import {
   moveDump,
   pruneDumps,
 } from "./utils/crash_dumps";
+import { crashPerformanceEventFields } from "./utils/crash_telemetry_fields";
 import {
   DYAD_INTERNAL_DIR_NAME,
   DYAD_MEDIA_SUBDIR,
@@ -675,30 +676,8 @@ const createWindow = () => {
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
         error: true,
         has_performance_data: !!pendingForceCloseData,
-        ...(pendingForceCloseData && {
-          last_known_memory_mb: pendingForceCloseData.memoryUsageMB,
-          last_known_cpu_pct: pendingForceCloseData.cpuUsagePercent,
-          last_known_system_memory_mb:
-            pendingForceCloseData.systemMemoryUsageMB,
-          last_known_system_memory_total_mb:
-            pendingForceCloseData.systemMemoryTotalMB,
-          last_known_system_cpu_pct: pendingForceCloseData.systemCpuPercent,
-          last_known_snapshot_timestamp: pendingForceCloseData.timestamp,
-          time_since_last_heartbeat_ms:
-            Date.now() - pendingForceCloseData.timestamp,
-          last_known_heap_used_mb: pendingForceCloseData.heapUsedMB,
-          last_known_heap_limit_mb: pendingForceCloseData.heapLimitMB,
-          last_known_process_working_sets_mb:
-            pendingForceCloseData.processWorkingSetsMB,
-          last_known_activity: pendingForceCloseData.activity,
-          peak_heap_used_mb: pendingForceCloseData.peakHeapUsedMB,
-          peak_heap_pct: pendingForceCloseData.peakHeapPct,
-          peak_rss_mb: pendingForceCloseData.peakRssMB,
-          peak_process_working_sets_mb:
-            pendingForceCloseData.peakProcessWorkingSetsMB,
-          peak_activity: pendingForceCloseData.peakActivity,
-          peak_timestamp: pendingForceCloseData.peakTimestamp,
-        }),
+        ...(pendingForceCloseData &&
+          crashPerformanceEventFields(pendingForceCloseData)),
         // "native" when a main-process minidump was captured for this crash,
         // else "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
         crash_cause: nativeCrash ? "native" : "unknown",
@@ -733,27 +712,7 @@ const createWindow = () => {
         // Mirror the `app:crash_detected` performance fields so the two
         // events can be unioned in PostHog without per-event field mapping.
         has_performance_data: !!perf,
-        ...(perf && {
-          last_known_memory_mb: perf.memoryUsageMB,
-          last_known_cpu_pct: perf.cpuUsagePercent,
-          last_known_system_memory_mb: perf.systemMemoryUsageMB,
-          last_known_system_memory_total_mb: perf.systemMemoryTotalMB,
-          last_known_system_cpu_pct: perf.systemCpuPercent,
-          last_known_snapshot_timestamp: perf.timestamp,
-          // Match `app:crash_detected` semantics: measured at send time, not
-          // crash time. `ms_since_crash` already covers the crash → send gap.
-          time_since_last_heartbeat_ms: Date.now() - perf.timestamp,
-          last_known_heap_used_mb: perf.heapUsedMB,
-          last_known_heap_limit_mb: perf.heapLimitMB,
-          last_known_process_working_sets_mb: perf.processWorkingSetsMB,
-          last_known_activity: perf.activity,
-          peak_heap_used_mb: perf.peakHeapUsedMB,
-          peak_heap_pct: perf.peakHeapPct,
-          peak_rss_mb: perf.peakRssMB,
-          peak_process_working_sets_mb: perf.peakProcessWorkingSetsMB,
-          peak_activity: perf.peakActivity,
-          peak_timestamp: perf.peakTimestamp,
-        }),
+        ...(perf && crashPerformanceEventFields(perf)),
       });
       clearRendererCrashRecord();
     }

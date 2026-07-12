@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getUserDataPath } from "../paths/paths";
 import {
+  LastKnownPerformanceSchema,
   SecretSchema,
   StoredUserSettingsSchema,
   UserSettingsSchema,
@@ -272,33 +273,15 @@ export function clearRendererCrashRecord(): void {
   }
 }
 
-// Lenient parser for the performance block on a renderer-crash record.
-// We deliberately accept partial data rather than throwing: the record may
-// have been written by an older build, and the fields are best-effort
-// telemetry — losing one of them shouldn't drop the whole crash report.
+// Parse the performance block on a renderer-crash record with the same
+// schema the performance monitor writes, so the two cannot drift. Best
+// effort: a record from a different build may not match the current
+// schema; drop the performance block rather than the whole crash record.
 function parseRendererCrashPerformance(
   raw: unknown,
 ): RendererCrashPerformanceSnapshot | undefined {
-  if (typeof raw !== "object" || raw === null) {
-    return undefined;
-  }
-  const candidate = raw as Record<string, unknown>;
-  if (typeof candidate.timestamp !== "number") {
-    return undefined;
-  }
-  if (typeof candidate.memoryUsageMB !== "number") {
-    return undefined;
-  }
-  const optionalNumber = (key: string): number | undefined =>
-    typeof candidate[key] === "number" ? (candidate[key] as number) : undefined;
-  return {
-    timestamp: candidate.timestamp,
-    memoryUsageMB: candidate.memoryUsageMB,
-    cpuUsagePercent: optionalNumber("cpuUsagePercent"),
-    systemMemoryUsageMB: optionalNumber("systemMemoryUsageMB"),
-    systemMemoryTotalMB: optionalNumber("systemMemoryTotalMB"),
-    systemCpuPercent: optionalNumber("systemCpuPercent"),
-  };
+  const parsed = LastKnownPerformanceSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function readSettings(): UserSettings {

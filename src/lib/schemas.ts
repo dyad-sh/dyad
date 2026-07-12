@@ -307,6 +307,33 @@ export const PerformanceActivitySchema = z.object({
   tsUtilityProcess: z.enum(["tsc", "code-explorer"]).nullable(),
 });
 
+// Performance snapshot written by the performance monitor every 30s. Also
+// used to parse the snapshot embedded in renderer crash records.
+export const LastKnownPerformanceSchema = z.object({
+  timestamp: z.number(),
+  memoryUsageMB: z.number(),
+  cpuUsagePercent: z.number().optional(),
+  systemMemoryUsageMB: z.number().optional(),
+  systemMemoryTotalMB: z.number().optional(),
+  systemCpuPercent: z.number().optional(),
+  // Main process V8 heap, from v8.getHeapStatistics().
+  heapUsedMB: z.number().optional(),
+  heapLimitMB: z.number().optional(),
+  // Working set per Electron process type (browser, tab, gpu, utility).
+  processWorkingSetsMB: z.record(z.string(), z.number()).optional(),
+  // What was running at this snapshot.
+  activity: PerformanceActivitySchema.optional(),
+  // Session highs. peakRssMB is exact (kernel tracked); the rest are
+  // maxima over 30s samples and can miss short spikes.
+  peakHeapUsedMB: z.number().optional(),
+  peakHeapPct: z.number().optional(),
+  peakRssMB: z.number().optional(),
+  peakProcessWorkingSetsMB: z.record(z.string(), z.number()).optional(),
+  // What was running when a peak was last set, and when.
+  peakActivity: PerformanceActivitySchema.optional(),
+  peakTimestamp: z.number().optional(),
+});
+
 /**
  * Base fields shared between StoredUserSettings and UserSettings
  */
@@ -380,32 +407,7 @@ const BaseUserSettingsFields = {
   disablePreviewNodeAutoInstall: z.boolean().optional(),
   customAppsFolder: z.string().optional().nullable(),
   isRunning: z.boolean().optional(),
-  lastKnownPerformance: z
-    .object({
-      timestamp: z.number(),
-      memoryUsageMB: z.number(),
-      cpuUsagePercent: z.number().optional(),
-      systemMemoryUsageMB: z.number().optional(),
-      systemMemoryTotalMB: z.number().optional(),
-      systemCpuPercent: z.number().optional(),
-      // Main process V8 heap, from v8.getHeapStatistics().
-      heapUsedMB: z.number().optional(),
-      heapLimitMB: z.number().optional(),
-      // Working set per Electron process type (browser, tab, gpu, utility).
-      processWorkingSetsMB: z.record(z.string(), z.number()).optional(),
-      // What was running at this snapshot.
-      activity: PerformanceActivitySchema.optional(),
-      // Session highs. peakRssMB is exact (kernel tracked); the rest are
-      // maxima over 30s samples and can miss short spikes.
-      peakHeapUsedMB: z.number().optional(),
-      peakHeapPct: z.number().optional(),
-      peakRssMB: z.number().optional(),
-      peakProcessWorkingSetsMB: z.record(z.string(), z.number()).optional(),
-      // What was running when a peak was last set, and when.
-      peakActivity: PerformanceActivitySchema.optional(),
-      peakTimestamp: z.number().optional(),
-    })
-    .optional(),
+  lastKnownPerformance: LastKnownPerformanceSchema.optional(),
   hideLocalAgentNewChatToast: z.boolean().optional(),
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),

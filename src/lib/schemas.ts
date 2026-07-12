@@ -299,8 +299,7 @@ export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
-// The kinds of TypeScript utility process the scheduler can run. Source of
-// truth for the TypeScriptUtilityProcessKind type.
+// The kinds of TypeScript utility process the scheduler can run.
 export const TypeScriptUtilityProcessKindSchema = z.enum([
   "code-explorer",
   "tsc",

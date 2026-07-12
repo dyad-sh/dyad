@@ -3,7 +3,7 @@
 // This module must stay free of runtime imports to avoid dependency
 // cycles: it is imported both by the tracked operations and the monitor.
 
-import type { TypeScriptUtilityProcessKind } from "../ipc/processors/typescript_utility_process_scheduler";
+import type { TypeScriptUtilityProcessKind } from "../lib/schemas";
 
 export interface ActivitySnapshot {
   activeStreams: number;

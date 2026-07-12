@@ -247,29 +247,29 @@ function capturePerformanceMetrics() {
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
     );
 
-    // Update session peaks, and record what was running whenever one advances.
-    let peakAdvanced = false;
+    // Child process working sets drift constantly, so only main process
+    // peaks (heap, RSS) stamp peakActivity and peakTimestamp.
+    let mainPeakAdvanced = false;
     if (heapUsedMB > peakHeapUsedMB) {
       peakHeapUsedMB = heapUsedMB;
-      peakAdvanced = true;
+      mainPeakAdvanced = true;
     }
     if (heapPct > peakHeapPct) {
       peakHeapPct = heapPct;
-      peakAdvanced = true;
+      mainPeakAdvanced = true;
     }
     if (kernelPeakRssMB > peakRssMB) {
       peakRssMB = kernelPeakRssMB;
-      peakAdvanced = true;
+      mainPeakAdvanced = true;
     }
     if (processWorkingSetsMB) {
       for (const [key, value] of Object.entries(processWorkingSetsMB)) {
         if (value > (peakProcessWorkingSetsMB[key] ?? 0)) {
           peakProcessWorkingSetsMB[key] = value;
-          peakAdvanced = true;
         }
       }
     }
-    if (peakAdvanced) {
+    if (mainPeakAdvanced) {
       peakActivity = snapshotActivity();
       peakTimestamp = Date.now();
     }

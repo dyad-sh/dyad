@@ -170,9 +170,9 @@ export interface AgentContext {
    */
   testingEnabled: boolean;
   /**
-   * Turn-scoped `run_tests` attempt tracking, keyed by normalized spec path (or
-   * "__suite__" for a whole-suite run). Created fresh per turn like
-   * `fileEditTracker`, so the 4-attempt fix cap resets each turn.
+   * Turn-scoped `run_tests` attempt tracking, keyed by normalized spec path.
+   * Created fresh per turn like `fileEditTracker`, so the 4-attempt fix cap
+   * resets each turn.
    */
   testRunAttempts: Map<string, TestRunAttemptState>;
 }
@@ -185,8 +185,21 @@ export interface TestRunAttemptState {
   lastFailureSignature?: string;
   /** Sum over `fileEditTracker` at the last run, for the require-a-change guard. */
   fileEditCountAtLastRun?: number;
+  /**
+   * The `testName` of the last run (undefined = whole file). Changing what's
+   * targeted is itself a meaningful change, so the require-a-change guard
+   * doesn't block e.g. widening from one test to the whole file after a fix.
+   */
+  lastRunTestName?: string;
   /** Whether the one free `flakeCheck` rerun has been used for this spec. */
   flakeCheckUsed?: boolean;
+  /**
+   * Edit-tracker total at the time each target last PASSED, keyed by testName
+   * ("" = whole file). Rerunning a target that already passed with no file
+   * changes since is refused — some models otherwise loop re-running
+   * already-green tests.
+   */
+  passedAtEditCount?: Record<string, number>;
 }
 
 // ============================================================================

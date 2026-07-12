@@ -68,6 +68,47 @@ function isNoTestsFoundOutput(output: string): boolean {
 }
 
 /**
+ * The relative paths of every spec under the app's `tests/` folder, sorted.
+ * Shared by the Tests panel listing and the agent's run_tests tool (so a
+ * mistyped target can be answered with the paths that actually exist).
+ */
+export async function listSpecFiles(appPath: string): Promise<string[]> {
+  const testsDir = path.join(appPath, "tests");
+  if (!fs.existsSync(testsDir)) {
+    return [];
+  }
+  const matches = await glob(TEST_SPEC_GLOB, {
+    cwd: appPath,
+    nodir: true,
+    posix: true,
+  });
+  return matches.sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The individual `test()` cases of one spec, parsed from its current content.
+ * Shared by the Tests panel listing and the agent's run_tests tool (so a test
+ * name can be resolved to its `file:line` target, or answered with the titles
+ * that actually exist). A file that can't be read/parsed yields no cases and
+ * is still runnable as a whole.
+ */
+export async function readSpecTestCases(
+  appPath: string,
+  testFile: string,
+): Promise<TestCase[]> {
+  try {
+    const content = await fs.promises.readFile(
+      path.join(appPath, testFile),
+      "utf8",
+    );
+    return parseTestCases(content);
+  } catch (error) {
+    logger.warn(`Failed to parse test cases in ${testFile}: ${error}`);
+    return [];
+  }
+}
+
+/**
  * Worker count for a parallel run. Derived from the host's cores (leaving one
  * free), capped so we don't overwhelm the single dev server the tests share.
  */
@@ -619,32 +660,12 @@ export function registerTestsHandlers() {
   createTypedHandler(testsContracts.listAppTests, async (_event, params) => {
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
-    const testsDir = path.join(appPath, "tests");
-    if (!fs.existsSync(testsDir)) {
-      return { specs: [] };
-    }
-    const matches = await glob(TEST_SPEC_GLOB, {
-      cwd: appPath,
-      nodir: true,
-      posix: true,
-    });
+    const matches = await listSpecFiles(appPath);
     const specs = await Promise.all(
-      matches
-        .sort((a, b) => a.localeCompare(b))
-        .map(async (file) => {
-          let tests: TestCase[] = [];
-          try {
-            const content = await fs.promises.readFile(
-              path.join(appPath, file),
-              "utf8",
-            );
-            tests = parseTestCases(content);
-          } catch (error) {
-            // A file we can't read/parse still lists as a runnable whole.
-            logger.warn(`Failed to parse test cases in ${file}: ${error}`);
-          }
-          return { file, tests };
-        }),
+      matches.map(async (file) => ({
+        file,
+        tests: await readSpecTestCases(appPath, file),
+      })),
     );
     return { specs };
   });

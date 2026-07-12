@@ -333,6 +333,18 @@ function isDyadGeneratedConfig(appPath: string): boolean {
   return text != null && text.includes(DYAD_CONFIG_SENTINEL);
 }
 
+/**
+ * True when the existing config reads `DYAD_TEST_BASE_URL`, i.e. it honors the
+ * proxy URL Dyad injects into the runner env on every run. A config that
+ * hardcodes `baseURL` (common when the app-building model writes its own
+ * config instead of letting Dyad generate one) returns false — its tests would
+ * ignore the running dev server and hit a guessed port instead.
+ */
+function configRespectsBaseUrlEnv(appPath: string): boolean {
+  const text = readConfigText(appPath);
+  return text != null && text.includes(TEST_BASE_URL_ENV);
+}
+
 function writePlaywrightConfig(
   appPath: string,
   channel: BrowserChannel | null,
@@ -444,6 +456,24 @@ export async function ensurePlaywrightBootstrap({
   if (!hasPlaywrightConfig(appPath)) {
     usesChannel = detectedChannel !== null;
     writePlaywrightConfig(appPath, usesChannel ? detectedChannel : null);
+  } else if (!configRespectsBaseUrlEnv(appPath)) {
+    // An existing config that never reads DYAD_TEST_BASE_URL silently ignores
+    // the proxy URL Dyad passes on every run, so tests hit a hardcoded/guessed
+    // port instead of the running dev server. This happens when the app-
+    // building model writes its own playwright.config.ts. The test baseURL is
+    // Dyad-owned infra (not user product code), so regenerate the config to
+    // restore the env-var contract. Drop a stale .js so the two configs don't
+    // both resolve after we write the canonical .ts.
+    try {
+      fs.rmSync(path.join(appPath, "playwright.config.js"), { force: true });
+    } catch {
+      // ignore — a leftover .js is harmless next to the .ts we write below.
+    }
+    usesChannel = detectedChannel !== null;
+    writePlaywrightConfig(appPath, usesChannel ? detectedChannel : null);
+    onOutput?.(
+      "Regenerated playwright.config.ts so tests run against Dyad's dev server.\n",
+    );
   } else {
     usesChannel = configUsesChannel(appPath);
     // Upgrade a Dyad-generated bundled config to the system browser when one is

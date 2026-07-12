@@ -299,12 +299,22 @@ export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
+// The kinds of TypeScript utility process the scheduler can run. Source of
+// truth for the TypeScriptUtilityProcessKind type.
+export const TypeScriptUtilityProcessKindSchema = z.enum([
+  "code-explorer",
+  "tsc",
+]);
+export type TypeScriptUtilityProcessKind = z.infer<
+  typeof TypeScriptUtilityProcessKindSchema
+>;
+
 // What the main process was doing when a performance snapshot was taken.
 export const PerformanceActivitySchema = z.object({
   activeStreams: z.number(),
   runningApps: z.number(),
   extractCodebase: z.boolean(),
-  tsUtilityProcess: z.enum(["tsc", "code-explorer"]).nullable(),
+  tsUtilityProcess: TypeScriptUtilityProcessKindSchema.nullable(),
 });
 
 // Performance snapshot written by the performance monitor every 30s. Also

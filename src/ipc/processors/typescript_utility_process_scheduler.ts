@@ -1,4 +1,6 @@
-export type TypeScriptUtilityProcessKind = "code-explorer" | "tsc";
+import type { TypeScriptUtilityProcessKind } from "@/lib/schemas";
+
+export type { TypeScriptUtilityProcessKind } from "@/lib/schemas";
 
 const RESIDENT_PROCESS_STOP_TIMEOUT_MS = 30_000;
 

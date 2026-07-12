@@ -42,22 +42,6 @@ function getMemoryUsageMB(): number {
 }
 
 /**
- * Get total memory (working set) across ALL Electron processes in MB
- * (Browser + renderers + GPU + utility). Main-process RSS alone dramatically
- * understates real usage. Cheap (no shell-outs); safe for periodic capture.
- */
-function getAllProcessesMemoryMB(): number | null {
-  try {
-    const totalWorkingSetSizeKB = app
-      .getAppMetrics()
-      .reduce((sum, metric) => sum + metric.memory.workingSetSize, 0);
-    return Math.round(totalWorkingSetSizeKB / 1024);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Get main process V8 heap usage and limit in MB
  */
 function getHeapStatsMB(): { heapUsedMB: number; heapLimitMB: number } {
@@ -70,7 +54,9 @@ function getHeapStatsMB(): { heapUsedMB: number; heapLimitMB: number } {
 
 /**
  * Get working set per Electron process type in MB, e.g.
- * { browser: 400, tab: 900, gpu: 120, utility: 300 }
+ * { browser: 400, tab: 900, gpu: 120, utility: 300 }.
+ * Main process RSS alone dramatically understates real usage.
+ * Cheap (no shell-outs); safe for periodic capture.
  */
 function getProcessWorkingSetsMB(): Record<string, number> | null {
   try {
@@ -222,7 +208,10 @@ function getSystemCpuUsagePercent(): number | null {
 function capturePerformanceMetrics() {
   try {
     const memoryUsageMB = getMemoryUsageMB();
-    const allProcessesMemoryMB = getAllProcessesMemoryMB();
+    const processWorkingSetsMB = getProcessWorkingSetsMB();
+    const allProcessesMemoryMB = processWorkingSetsMB
+      ? Object.values(processWorkingSetsMB).reduce((sum, mb) => sum + mb, 0)
+      : null;
     const cpuUsagePercent = getCpuUsagePercent();
     const systemMemory = getSystemMemoryUsage();
     const systemCpuPercent = getSystemCpuUsagePercent();
@@ -240,8 +229,8 @@ function capturePerformanceMetrics() {
       heapLimitMB > 0
         ? Math.round((heapUsedMB / heapLimitMB) * 10000) / 100
         : 0;
-    const processWorkingSetsMB = getProcessWorkingSetsMB();
     const kernelPeakRssMB = getKernelPeakRssMB();
+    const activity = snapshotActivity();
 
     logger.debug(
       `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
@@ -270,7 +259,7 @@ function capturePerformanceMetrics() {
       }
     }
     if (mainPeakAdvanced) {
-      peakActivity = snapshotActivity();
+      peakActivity = activity;
       peakTimestamp = Date.now();
     }
 
@@ -285,7 +274,7 @@ function capturePerformanceMetrics() {
         heapUsedMB,
         heapLimitMB,
         ...(processWorkingSetsMB && { processWorkingSetsMB }),
-        activity: snapshotActivity(),
+        activity,
         peakHeapUsedMB,
         peakHeapPct,
         peakRssMB,

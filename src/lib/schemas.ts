@@ -329,7 +329,9 @@ export const LastKnownPerformanceSchema = z.object({
   peakHeapPct: z.number().optional(),
   peakRssMB: z.number().optional(),
   peakProcessWorkingSetsMB: z.record(z.string(), z.number()).optional(),
-  // What was running when a peak was last set, and when.
+  // What was running when a main process peak (heap, RSS) was last set,
+  // and when. The per-type working set peaks above are not stamped; they
+  // can come from different moments than this pair.
   peakActivity: PerformanceActivitySchema.optional(),
   peakTimestamp: z.number().optional(),
 });

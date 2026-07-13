@@ -7,6 +7,7 @@ import { getDyadAppPath } from "../paths/paths";
 import { getDb } from "../db";
 import { apps, chats } from "../db/schema";
 import { ensureDyadGitignored } from "../ipc/handlers/gitignoreUtils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   PersistedQueuedMessageSchema,
   type PersistedQueue,
@@ -47,13 +48,13 @@ function listAppPaths(): string[] {
 }
 
 /** Enumerate every existing per-chat queue file across all apps. */
-function listQueueFiles(): QueueFileRef[] {
+async function listQueueFiles(): Promise<QueueFileRef[]> {
   const refs: QueueFileRef[] = [];
   for (const appPath of listAppPaths()) {
     const dir = getChatQueueDir(appPath);
     let entries: string[];
     try {
-      entries = fs.readdirSync(dir);
+      entries = await fs.promises.readdir(dir);
     } catch {
       // Directory doesn't exist for this app (no queued prompts) — skip.
       continue;
@@ -73,7 +74,7 @@ function listQueueFiles(): QueueFileRef[] {
  * Files belonging to chats that no longer exist are cleaned up. Never throws —
  * a corrupt or unreadable file is skipped so it can't crash startup.
  */
-export function readPersistedQueue(): PersistedQueue {
+export async function readPersistedQueue(): Promise<PersistedQueue> {
   const result: PersistedQueue = {};
   const existingChatIds = new Set(
     getDb()
@@ -83,14 +84,14 @@ export function readPersistedQueue(): PersistedQueue {
       .map((row) => row.id),
   );
 
-  for (const ref of listQueueFiles()) {
+  for (const ref of await listQueueFiles()) {
     if (!existingChatIds.has(ref.chatId)) {
       // The chat was deleted while its app remained — drop the orphan file.
-      tryUnlink(ref.filePath);
+      await tryUnlink(ref.filePath);
       continue;
     }
     try {
-      const raw = fs.readFileSync(ref.filePath, "utf-8");
+      const raw = await fs.promises.readFile(ref.filePath, "utf-8");
       const parsed = ChatQueueSchema.safeParse(JSON.parse(raw));
       if (!parsed.success) {
         logger.error(
@@ -122,9 +123,9 @@ export async function writePersistedQueue(data: PersistedQueue): Promise<void> {
   );
 
   // Remove files for chats that are no longer queued.
-  for (const ref of listQueueFiles()) {
+  for (const ref of await listQueueFiles()) {
     if (!incomingChatIds.has(ref.chatId)) {
-      tryUnlink(ref.filePath);
+      await tryUnlink(ref.filePath);
     }
   }
 
@@ -151,7 +152,7 @@ export async function writePersistedQueue(data: PersistedQueue): Promise<void> {
       logger.warn(`Skipping queue persist for unknown chat ${chatId}`);
       continue;
     }
-    writeChatQueueFile(appPath, chatId, items);
+    await writeChatQueueFile(appPath, chatId, items);
     writtenAppPaths.add(appPath);
   }
 
@@ -166,28 +167,38 @@ export async function writePersistedQueue(data: PersistedQueue): Promise<void> {
   );
 }
 
-function writeChatQueueFile(
+async function writeChatQueueFile(
   appPath: string,
   chatId: number,
   items: PersistedQueue[string],
-): void {
+): Promise<void> {
   const dir = getChatQueueDir(appPath);
-  fs.mkdirSync(dir, { recursive: true });
   const filePath = getChatQueueFilePath(appPath, chatId);
   // Atomic write (temp-file + rename) so a crash mid-write can't corrupt the file.
+  // Async I/O keeps the Electron main thread responsive while writing large
+  // base64 attachment payloads.
   const tempFilePath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   try {
-    fs.writeFileSync(tempFilePath, JSON.stringify(items, null, 2));
-    fs.renameSync(tempFilePath, filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(tempFilePath, JSON.stringify(items, null, 2));
+    await fs.promises.rename(tempFilePath, filePath);
   } catch (error) {
-    tryUnlink(tempFilePath);
-    throw error;
+    await tryUnlink(tempFilePath);
+    // Surface disk-full / permission failures as a classified DyadError so
+    // telemetry treats them as environmental rather than a product bug.
+    throw new DyadError(
+      `Failed to write queued prompts for chat ${chatId}: ${
+        (error as Error).message
+      }`,
+      DyadErrorKind.External,
+      { cause: error },
+    );
   }
 }
 
-function tryUnlink(filePath: string): void {
+async function tryUnlink(filePath: string): Promise<void> {
   try {
-    fs.unlinkSync(filePath);
+    await fs.promises.unlink(filePath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       logger.warn(`Failed to remove queue file ${filePath}:`, error);

@@ -66,8 +66,8 @@ const sampleItem: PersistedQueuedMessage = {
 };
 
 describe("queue_store", () => {
-  it("returns an empty queue when nothing is persisted", () => {
-    expect(readPersistedQueue()).toEqual({});
+  it("returns an empty queue when nothing is persisted", async () => {
+    expect(await readPersistedQueue()).toEqual({});
   });
 
   it("round-trips a chat's queue through write + read", async () => {
@@ -78,7 +78,7 @@ describe("queue_store", () => {
     await writePersistedQueue(queue);
 
     expect(fs.existsSync(queueFilePath("app1", chatId))).toBe(true);
-    expect(readPersistedQueue()).toEqual(queue);
+    expect(await readPersistedQueue()).toEqual(queue);
     // The app's `.dyad/` folder is kept out of git.
     const gitignore = fs.readFileSync(
       path.join(tempDir, "app1", ".gitignore"),
@@ -111,17 +111,17 @@ describe("queue_store", () => {
     // Chat's queue is now empty (completed / cleared).
     await writePersistedQueue({});
     expect(fs.existsSync(queueFilePath("app1", chatId))).toBe(false);
-    expect(readPersistedQueue()).toEqual({});
+    expect(await readPersistedQueue()).toEqual({});
   });
 
-  it("skips and cleans up a corrupt queue file instead of throwing", () => {
+  it("skips and cleans up a corrupt queue file instead of throwing", async () => {
     const appId = createApp("app1");
     const chatId = createChat(appId);
     const filePath = queueFilePath("app1", chatId);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, "{ not valid json");
 
-    expect(readPersistedQueue()).toEqual({});
+    expect(await readPersistedQueue()).toEqual({});
   });
 
   it("cleans up an orphan file whose chat no longer exists", async () => {
@@ -134,13 +134,13 @@ describe("queue_store", () => {
     // Delete the chat, leaving the queue file orphaned.
     db.delete(chats).run();
 
-    expect(readPersistedQueue()).toEqual({});
+    expect(await readPersistedQueue()).toEqual({});
     expect(fs.existsSync(filePath)).toBe(false);
   });
 
   it("does not persist queues for unknown chats", async () => {
     createApp("app1");
     await writePersistedQueue({ "99999": [sampleItem] });
-    expect(readPersistedQueue()).toEqual({});
+    expect(await readPersistedQueue()).toEqual({});
   });
 });

@@ -33,6 +33,20 @@ export function useQueuePersistence() {
   // clobber the on-disk queue with the empty initial atom state.
   const hydratedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Serializes persist writes: each write is chained onto the previous one so
+  // concurrent debounced writes can't resolve out of order and let an older
+  // queue snapshot overwrite a newer one on disk.
+  const lastWritePromiseRef = useRef<Promise<void>>(Promise.resolve());
+  // Latest queue snapshot, so the on-close flush can persist the newest state
+  // even while a debounce is still pending.
+  const latestQueueRef = useRef(queuedMessagesById);
+  latestQueueRef.current = queuedMessagesById;
+
+  const enqueuePersist = (queue: Map<number, QueuedMessageItem[]>) => {
+    lastWritePromiseRef.current = lastWritePromiseRef.current
+      .catch(() => {})
+      .then(() => persistQueue(queue));
+  };
 
   // Hydrate once on mount.
   useEffect(() => {
@@ -60,7 +74,19 @@ export function useQueuePersistence() {
         }
 
         if (map.size > 0) {
-          setQueuedMessagesById(map);
+          // Merge rather than replace: if a prompt was enqueued between mount
+          // and when this async hydration resolves, replacing would silently
+          // discard it. Existing in-memory entries win over persisted ones.
+          setQueuedMessagesById((prev) => {
+            if (prev.size === 0) return map;
+            const merged = new Map(prev);
+            for (const [chatId, items] of map) {
+              if (!merged.has(chatId)) {
+                merged.set(chatId, items);
+              }
+            }
+            return merged;
+          });
           // Seed the completion flag so the queue processor auto-resumes
           // draining restored prompts (mirrors resumeQueue() when idle).
           setStreamCompletedSuccessfullyById((prev) => {
@@ -94,7 +120,7 @@ export function useQueuePersistence() {
       clearTimeout(debounceRef.current);
     }
     debounceRef.current = setTimeout(() => {
-      void persistQueue(queuedMessagesById);
+      enqueuePersist(queuedMessagesById);
     }, PERSIST_DEBOUNCE_MS);
 
     return () => {
@@ -102,7 +128,28 @@ export function useQueuePersistence() {
         clearTimeout(debounceRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queuedMessagesById]);
+
+  // Best-effort flush on graceful window close: if the app is closed within the
+  // debounce window, persist the latest snapshot immediately so the final queue
+  // change isn't lost. Cannot help hard crashes/kills (the async attachment
+  // encoding may not finish during teardown), but covers the common quit path.
+  useEffect(() => {
+    const flush = () => {
+      if (!hydratedRef.current) return;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      enqueuePersist(latestQueueRef.current);
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 async function persistQueue(

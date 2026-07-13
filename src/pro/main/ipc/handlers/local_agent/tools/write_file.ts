@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeJoin } from "@/ipc/utils/path_utils";
+import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
   extractFunctionNameFromPath,
@@ -43,12 +43,16 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const fullFilePath = safeJoin(ctx.appPath, args.path);
+    const operationPath = await assertMutationPathAllowed({
+      appPath: ctx.appPath,
+      relativePath: args.path,
+    });
+    const fullFilePath = safeJoin(ctx.appPath, operationPath);
 
     // Track if this is a shared module
-    if (isSharedServerModule(args.path)) {
+    if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
-      ctx.sharedServerModulePaths.push(args.path);
+      ctx.sharedServerModulePaths.push(operationPath);
     }
 
     await withLock(getFileWriteKey(fullFilePath), async () => {
@@ -61,15 +65,15 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       queueCloudSandboxSnapshotSync({
         appId: ctx.appId,
-        changedPaths: [args.path],
+        changedPaths: [operationPath],
       });
     });
 
     // Deploy Supabase function if applicable
-    if (ctx.supabaseProjectId && isServerFunction(args.path)) {
+    if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
       let functionName: string;
       try {
-        functionName = extractFunctionNameFromPath(args.path);
+        functionName = extractFunctionNameFromPath(operationPath);
       } catch {
         return `Successfully wrote ${args.path}`;
       }

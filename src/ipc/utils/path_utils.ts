@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { normalizePath } from "../../../shared/normalizePath";
@@ -67,4 +68,101 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
   }
 
   return joinedPath;
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === code
+  );
+}
+
+function stripTrailingPathSeparators(filePath: string): string {
+  const root = path.parse(filePath).root;
+  let strippedPath = filePath;
+  while (
+    strippedPath.length > root.length &&
+    (strippedPath.endsWith(path.sep) || strippedPath.endsWith("/"))
+  ) {
+    strippedPath = strippedPath.slice(0, -1);
+  }
+  return strippedPath;
+}
+
+/**
+ * Validate that a mutation path remains inside the app after resolving
+ * symlinks, and return the canonical app-relative path to operate on.
+ *
+ * Most writes follow the final symlink, so that is the default. Operations
+ * such as rename and unlink mutate the final directory entry itself; those
+ * callers can preserve that entry while still canonicalizing every ancestor.
+ */
+export async function assertMutationPathAllowed(params: {
+  appPath: string;
+  relativePath: string;
+  followFinalSymlink?: boolean;
+}): Promise<string> {
+  const realAppPath = await fs.promises.realpath(params.appPath);
+  const joinedPath = stripTrailingPathSeparators(
+    safeJoin(params.appPath, params.relativePath),
+  );
+  const followFinalSymlink = params.followFinalSymlink !== false;
+  const finalEntryName = followFinalSymlink
+    ? undefined
+    : path.basename(joinedPath);
+  let existing = followFinalSymlink ? joinedPath : path.dirname(joinedPath);
+  const missingSegments: string[] = [];
+  let realExisting: string;
+
+  for (;;) {
+    try {
+      realExisting = await fs.promises.realpath(existing);
+      break;
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        throw error;
+      }
+      try {
+        const stat = await fs.promises.lstat(existing);
+        if (stat.isSymbolicLink()) {
+          throw new DyadError(
+            `Cannot modify through symlink: ${params.relativePath}`,
+            DyadErrorKind.Precondition,
+          );
+        }
+      } catch (lstatError) {
+        if (!isNodeErrorWithCode(lstatError, "ENOENT")) {
+          throw lstatError;
+        }
+      }
+      const parent = path.dirname(existing);
+      if (parent === existing) {
+        throw error;
+      }
+      missingSegments.unshift(path.basename(existing));
+      existing = parent;
+    }
+  }
+
+  const resolvedTarget = path.join(
+    realExisting,
+    ...missingSegments,
+    ...(finalEntryName ? [finalEntryName] : []),
+  );
+  const relative = path.relative(realAppPath, resolvedTarget);
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new DyadError(
+      relative === ""
+        ? `Cannot modify the app root: ${params.relativePath}`
+        : `Cannot modify files outside the app: ${params.relativePath}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  return relative.split(path.sep).join("/");
 }

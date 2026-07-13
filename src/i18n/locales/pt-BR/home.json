@@ -218,6 +218,23 @@
     "selectFileToView": "Selecione um arquivo para visualizar",
     "noFilesFound": "Nenhum arquivo encontrado",
     "searchFileContents": "Pesquisar conteúdo dos arquivos",
+<<<<<<< Updated upstream
+||||||| Stash base
+    "quickOpen": "Abertura rápida",
+    "hideExplorer": "Ocultar explorador de arquivos",
+    "showExplorer": "Mostrar explorador de arquivos",
+    "focusCode": "Focar no código",
+    "showChat": "Mostrar chat",
+    "resizeFileTree": "Redimensionar explorador de arquivos",
+=======
+    "search": "Pesquisar",
+    "quickOpen": "Abertura rápida",
+    "hideExplorer": "Ocultar explorador de arquivos",
+    "showExplorer": "Mostrar explorador de arquivos",
+    "focusCode": "Focar no código",
+    "showChat": "Mostrar chat",
+    "resizeFileTree": "Redimensionar explorador de arquivos",
+>>>>>>> Stashed changes
     "clearSearch": "Limpar pesquisa",
     "searchingFiles": "Pesquisando arquivos...",
     "match_one": "{{count}} resultado",

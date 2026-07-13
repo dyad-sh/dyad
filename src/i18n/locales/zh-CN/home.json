@@ -218,6 +218,23 @@
     "selectFileToView": "选择要查看的文件",
     "noFilesFound": "未找到文件",
     "searchFileContents": "搜索文件内容",
+<<<<<<< Updated upstream
+||||||| Stash base
+    "quickOpen": "快速打开",
+    "hideExplorer": "隐藏文件资源管理器",
+    "showExplorer": "显示文件资源管理器",
+    "focusCode": "聚焦代码",
+    "showChat": "显示聊天",
+    "resizeFileTree": "调整文件资源管理器大小",
+=======
+    "search": "搜索",
+    "quickOpen": "快速打开",
+    "hideExplorer": "隐藏文件资源管理器",
+    "showExplorer": "显示文件资源管理器",
+    "focusCode": "聚焦代码",
+    "showChat": "显示聊天",
+    "resizeFileTree": "调整文件资源管理器大小",
+>>>>>>> Stashed changes
     "clearSearch": "清除搜索",
     "searchingFiles": "正在搜索文件...",
     "match_one": "{{count}} 个匹配",

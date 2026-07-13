@@ -213,7 +213,8 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder={t("preview.searchFileContents")}
+            placeholder={t("preview.search")}
+            aria-label={t("preview.searchFileContents")}
             className="h-8 pl-7 pr-16 text-sm"
             data-testid="file-tree-search"
             disabled={!appId}

@@ -221,6 +221,23 @@
     "selectFileToView": "Select a file to view",
     "noFilesFound": "No files found",
     "searchFileContents": "Search file contents",
+<<<<<<< Updated upstream
+||||||| Stash base
+    "quickOpen": "Quick open",
+    "hideExplorer": "Hide file explorer",
+    "showExplorer": "Show file explorer",
+    "focusCode": "Focus code",
+    "showChat": "Show chat",
+    "resizeFileTree": "Resize file explorer",
+=======
+    "search": "Search",
+    "quickOpen": "Quick open",
+    "hideExplorer": "Hide file explorer",
+    "showExplorer": "Show file explorer",
+    "focusCode": "Focus code",
+    "showChat": "Show chat",
+    "resizeFileTree": "Resize file explorer",
+>>>>>>> Stashed changes
     "clearSearch": "Clear search",
     "searchingFiles": "Searching files...",
     "match_one": "{{count}} match",

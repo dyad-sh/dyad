@@ -100,6 +100,12 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 
 ## Cross-repo PR workflows (forks)
 
+- `git fetch --all` can return nonzero after successfully refreshing
+  `upstream/main` when unrelated collaborator remotes have clashing historical
+  tags (`would clobber existing tag`). Verify the base ref was updated, then
+  rebase onto it; do not treat an unrelated remote's tag rejection as a stale
+  upstream fetch.
+
 When running GitHub Actions with `pull_request_target` on cross-repo PRs (from forks):
 
 - The checkout action sets `origin` to the **fork** (head repo), not the base repo

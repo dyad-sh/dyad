@@ -75,6 +75,7 @@ import {
   requireMcpToolConsent,
   clearPendingMcpConsentsForChat,
 } from "../utils/mcp_consent";
+import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
@@ -234,7 +235,7 @@ async function processStreamChunks({
       chunk = `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(part.output);
+      const content = escapeXmlContent(part.output);
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-result>\n`;
     } else if (part.type === "tool-error") {
       // Emit an errored result so the merged card terminates in an error
@@ -242,7 +243,9 @@ async function processStreamChunks({
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
       const message =
         part.error instanceof Error ? part.error.message : String(part.error);
-      const content = escapeDyadTags(message);
+      const content = escapeXmlContent(
+        sanitizeMcpToolResult(message).serialized,
+      );
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}" is-error="true">\n${content}\n</dyad-mcp-tool-result>\n`;
     }
 
@@ -2312,8 +2315,7 @@ async function getMcpTools(
                 DyadErrorKind.UserCancelled,
               );
             const res = await mcpTool.execute(args, execCtx);
-
-            return typeof res === "string" ? res : JSON.stringify(res);
+            return sanitizeMcpToolResult(res).serialized;
           },
         };
       }

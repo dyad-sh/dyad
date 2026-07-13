@@ -14,6 +14,11 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { app as electronApp } from "electron";
+import {
+  getMediaThumbnailCacheRoot,
+  invalidateMediaThumbnailCache,
+} from "../utils/media_thumbnail";
 
 const logger = log.scope("media_handlers");
 
@@ -49,6 +54,7 @@ async function getMediaFilesForApp(
           appId,
           appName,
           sizeBytes: stat.size,
+          modifiedAtMs: stat.mtimeMs,
           mimeType: getMimeType(path.extname(entry.name).toLowerCase()),
         };
       } catch {
@@ -143,6 +149,19 @@ function getMediaDirectoryPath(appPath: string): string {
   return path.join(appPath, DYAD_MEDIA_DIR_NAME);
 }
 
+async function invalidateThumbnail(filePath: string): Promise<void> {
+  try {
+    await invalidateMediaThumbnailCache(
+      getMediaThumbnailCacheRoot(electronApp.getPath("sessionData")),
+      filePath,
+    );
+  } catch (error) {
+    // Cache cleanup must not turn a successful user file operation into an
+    // error. The stale derivative is path-keyed and can no longer be served.
+    logger.warn(`Could not invalidate media thumbnail cache`, error);
+  }
+}
+
 async function getAppOrThrow(appId: number) {
   const app = await db.query.apps.findFirst({
     where: eq(apps.id, appId),
@@ -222,6 +241,7 @@ export function registerMediaHandlers() {
         }
         throw e;
       }
+      await invalidateThumbnail(sourcePath);
       logger.log(`Renamed media file: ${sourcePath} -> ${destinationPath}`);
     });
   });
@@ -242,6 +262,7 @@ export function registerMediaHandlers() {
         }
         throw e;
       }
+      await invalidateThumbnail(filePath);
       logger.log(`Deleted media file: ${filePath}`);
     });
   });
@@ -309,6 +330,7 @@ export function registerMediaHandlers() {
         }
       }
 
+      await invalidateThumbnail(sourcePath);
       logger.log(`Moved media file: ${sourcePath} -> ${destinationPath}`);
     });
   });

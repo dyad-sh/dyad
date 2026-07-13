@@ -14,6 +14,7 @@ const MediaFileSchema = z.object({
   appId: z.number(),
   appName: z.string(),
   sizeBytes: z.number(),
+  modifiedAtMs: z.number(),
   mimeType: z.string(),
 });
 

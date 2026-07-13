@@ -1,6 +1,10 @@
-import { ArrowLeft, FolderOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ChevronLeft, ChevronRight, FolderOpen } from "lucide-react";
 import type { MediaFile } from "@/ipc/types";
+import { Button } from "@/components/ui/button";
 import { MediaFileThumbnail } from "./MediaFileThumbnail";
+
+export const MEDIA_LIBRARY_PAGE_SIZE = 48;
 
 export function MediaFolderOpen({
   appName,
@@ -29,11 +33,30 @@ export function MediaFolderOpen({
   isBusy: boolean;
   searchQuery?: string;
 }) {
+  const [currentPage, setCurrentPage] = useState(1);
   const filteredFiles = searchQuery
     ? files.filter((f) =>
         f.fileName.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : files;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredFiles.length / MEDIA_LIBRARY_PAGE_SIZE),
+  );
+  const visiblePage = Math.min(currentPage, totalPages);
+  const pageStart = (visiblePage - 1) * MEDIA_LIBRARY_PAGE_SIZE;
+  const visibleFiles = filteredFiles.slice(
+    pageStart,
+    pageStart + MEDIA_LIBRARY_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   return (
     <div
@@ -62,21 +85,67 @@ export function MediaFolderOpen({
             : "No media files found."}
         </p>
       ) : (
-        <div className="flex flex-wrap gap-3">
-          {filteredFiles.map((file) => (
-            <MediaFileThumbnail
-              key={file.fileName}
-              file={file}
-              appPath={appPath}
-              onStartNewChatWithImage={onStartNewChatWithImage}
-              onRenameImage={onRenameImage}
-              onMoveImage={onMoveImage}
-              onDeleteImage={onDeleteImage}
-              onPreviewImage={onPreviewImage}
-              isBusy={isBusy}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-wrap gap-3">
+            {visibleFiles.map((file) => (
+              <MediaFileThumbnail
+                key={`${file.fileName}:${file.modifiedAtMs}:${file.sizeBytes}`}
+                file={file}
+                appPath={appPath}
+                onStartNewChatWithImage={onStartNewChatWithImage}
+                onRenameImage={onRenameImage}
+                onMoveImage={onMoveImage}
+                onDeleteImage={onDeleteImage}
+                onPreviewImage={onPreviewImage}
+                isBusy={isBusy}
+              />
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <div
+              className="mt-4 flex items-center justify-between gap-3 border-t pt-3"
+              data-testid="media-pagination"
+            >
+              <span className="text-sm text-muted-foreground">
+                Showing {pageStart + 1}–
+                {Math.min(
+                  pageStart + MEDIA_LIBRARY_PAGE_SIZE,
+                  filteredFiles.length,
+                )}{" "}
+                of {filteredFiles.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Previous media page"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                  disabled={visiblePage === 1}
+                >
+                  <ChevronLeft className="size-4" />
+                  Previous
+                </Button>
+                <span className="min-w-20 text-center text-sm text-muted-foreground">
+                  Page {visiblePage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Next media page"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  disabled={visiblePage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

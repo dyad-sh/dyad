@@ -203,6 +203,17 @@ describe("parseMinidumpBuffer", () => {
     );
   });
 
+  it("reports a zero fault address for null pointer dereferences", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11, // SIGSEGV
+      exceptionAddress: 0n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(parseMinidumpBuffer(dump, "linux", "x64")!.faultAddress).toBe("0x0");
+  });
+
   it("strips arm64 tag bits from the fault address using the address mask", () => {
     const dump = buildMinidump({
       modules: oneModule,

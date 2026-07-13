@@ -750,7 +750,7 @@ const createWindow = () => {
     if (details.reason === "clean-exit") {
       return;
     }
-    logger.warn(
+    logger.error(
       "Renderer process gone:",
       details.reason,
       "exitCode=",
@@ -1139,6 +1139,35 @@ async function handleDeepLinkReturn(url: string) {
   }
   dialog.showErrorBox("Invalid deep link URL", url);
 }
+
+// Report unexpected utility process deaths (tsc worker, code explorer).
+// These do not take down the app, so we can report them right away.
+// Skip clean-exit and killed: routine teardown stops these workers with
+// kill(), and reporting that would flood telemetry with non-crashes.
+app.on("child-process-gone", (_event, details) => {
+  if (details.type !== "Utility" || isAppQuitting) {
+    return;
+  }
+  if (details.reason === "clean-exit" || details.reason === "killed") {
+    return;
+  }
+  logger.error(
+    "Utility process gone:",
+    details.serviceName,
+    details.reason,
+    "exitCode=",
+    details.exitCode,
+  );
+  sendTelemetryEvent("utility_process:crash_detected", {
+    // Mark as error so renderer PostHog before_send sampling does not
+    // drop 90% of events for non-Pro users (see src/renderer.tsx).
+    error: true,
+    reason: details.reason,
+    exit_code: details.exitCode,
+    service_name: details.serviceName,
+    process_name: details.name,
+  });
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

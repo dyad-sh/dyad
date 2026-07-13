@@ -66,6 +66,7 @@ import {
   moveDump,
   pruneDumps,
 } from "./utils/crash_dumps";
+import { crashPerformanceEventFields } from "./utils/crash_telemetry_fields";
 import {
   DYAD_INTERNAL_DIR_NAME,
   DYAD_MEDIA_SUBDIR,
@@ -675,18 +676,8 @@ const createWindow = () => {
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
         error: true,
         has_performance_data: !!pendingForceCloseData,
-        ...(pendingForceCloseData && {
-          last_known_memory_mb: pendingForceCloseData.memoryUsageMB,
-          last_known_cpu_pct: pendingForceCloseData.cpuUsagePercent,
-          last_known_system_memory_mb:
-            pendingForceCloseData.systemMemoryUsageMB,
-          last_known_system_memory_total_mb:
-            pendingForceCloseData.systemMemoryTotalMB,
-          last_known_system_cpu_pct: pendingForceCloseData.systemCpuPercent,
-          last_known_snapshot_timestamp: pendingForceCloseData.timestamp,
-          time_since_last_heartbeat_ms:
-            Date.now() - pendingForceCloseData.timestamp,
-        }),
+        ...(pendingForceCloseData &&
+          crashPerformanceEventFields(pendingForceCloseData)),
         // "native" when a main-process minidump was captured for this crash,
         // else "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
         crash_cause: nativeCrash ? "native" : "unknown",
@@ -721,17 +712,7 @@ const createWindow = () => {
         // Mirror the `app:crash_detected` performance fields so the two
         // events can be unioned in PostHog without per-event field mapping.
         has_performance_data: !!perf,
-        ...(perf && {
-          last_known_memory_mb: perf.memoryUsageMB,
-          last_known_cpu_pct: perf.cpuUsagePercent,
-          last_known_system_memory_mb: perf.systemMemoryUsageMB,
-          last_known_system_memory_total_mb: perf.systemMemoryTotalMB,
-          last_known_system_cpu_pct: perf.systemCpuPercent,
-          last_known_snapshot_timestamp: perf.timestamp,
-          // Match `app:crash_detected` semantics: measured at send time, not
-          // crash time. `ms_since_crash` already covers the crash → send gap.
-          time_since_last_heartbeat_ms: Date.now() - perf.timestamp,
-        }),
+        ...(perf && crashPerformanceEventFields(perf)),
       });
       clearRendererCrashRecord();
     }

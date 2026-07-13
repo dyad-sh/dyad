@@ -7,6 +7,8 @@ import {
   resolveEffectiveSettings,
   readEffectiveSettings,
   getSettingsFilePath,
+  recordRendererCrash,
+  readRendererCrashRecord,
   writeSettings,
   tryWriteSettings,
   encrypt,
@@ -1542,5 +1544,85 @@ describe("legacy keychain recovery integration", () => {
       encryptionType: "electron-safe-storage",
     });
     expect(mockRecover).toHaveBeenCalledWith(locked.value);
+  });
+});
+
+describe("renderer crash record", () => {
+  const mockUserDataPath = "/mock/user/data";
+  const crashPath = `${mockUserDataPath}/renderer-crash.json`;
+  let store: Record<string, string>;
+
+  const performance = {
+    timestamp: 1751500000000,
+    memoryUsageMB: 400,
+    cpuUsagePercent: 12.5,
+    systemMemoryUsageMB: 8000,
+    systemMemoryTotalMB: 16000,
+    systemCpuPercent: 33,
+    heapUsedMB: 512,
+    heapLimitMB: 4144,
+    processWorkingSetsMB: { browser: 400, tab: 900 },
+    activity: {
+      activeStreams: 1,
+      runningApps: 2,
+      extractCodebase: true,
+      tsUtilityProcess: "tsc" as const,
+    },
+    peakHeapUsedMB: 1024,
+    peakHeapPct: 24.7,
+    peakRssMB: 2048,
+    peakProcessWorkingSetsMB: { browser: 900, tab: 2000 },
+    peakActivity: {
+      activeStreams: 2,
+      runningApps: 3,
+      extractCodebase: false,
+      tsUtilityProcess: null,
+    },
+    peakTimestamp: 1751499970000,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetUserDataPath.mockReturnValue(mockUserDataPath);
+    mockPath.join.mockImplementation((...args: string[]) => args.join("/"));
+    store = {};
+    mockFs.writeFileSync.mockImplementation((p, data) => {
+      store[p as string] = data as string;
+    });
+    mockFs.renameSync.mockImplementation((from, to) => {
+      store[to as string] = store[from as string];
+      delete store[from as string];
+    });
+    mockFs.existsSync.mockImplementation(
+      (p) => store[p as string] !== undefined,
+    );
+    mockFs.readFileSync.mockImplementation((p) => {
+      const value = store[p as string];
+      if (value === undefined) {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      return value;
+    });
+  });
+
+  it("round-trips the full performance block, including memory and peak fields", () => {
+    recordRendererCrash({ reason: "oom", exitCode: 1, performance });
+    const record = readRendererCrashRecord();
+    expect(record?.reason).toBe("oom");
+    expect(record?.performance).toEqual(performance);
+  });
+
+  it("drops a malformed performance block but keeps the crash record", () => {
+    store[crashPath] = JSON.stringify({
+      reason: "crashed",
+      timestamp: 1751500000000,
+      count: 1,
+      performance: { timestamp: "not-a-number" },
+    });
+    const record = readRendererCrashRecord();
+    expect(record?.reason).toBe("crashed");
+    expect(record?.performance).toBeUndefined();
   });
 });

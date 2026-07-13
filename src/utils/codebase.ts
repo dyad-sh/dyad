@@ -7,6 +7,10 @@ import { glob } from "glob";
 import { AppChatContext } from "../lib/schemas";
 import { readSettings } from "@/main/settings";
 import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
+import {
+  extractCodebaseStarted,
+  extractCodebaseFinished,
+} from "./memory_activity";
 
 const logger = log.scope("utils/codebase");
 
@@ -629,11 +633,29 @@ export async function listCodebaseFileMetadata({
 
 /**
  * Extract and format codebase files as a string to be included in prompts
- * @param appPath - Path to the codebase to extract
- * @param virtualFileSystem - Optional virtual filesystem to apply modifications
+ * @param params.appPath - Path to the codebase to extract
+ * @param params.chatContext - Chat context selecting which paths to include
+ * @param params.virtualFileSystem - Optional virtual filesystem to apply modifications
  * @returns Object containing formatted output and individual files
  */
-export async function extractCodebase({
+export async function extractCodebase(params: {
+  appPath: string;
+  chatContext: AppChatContext;
+  virtualFileSystem?: AsyncVirtualFileSystem;
+}): Promise<{
+  formattedOutput: string;
+  files: CodebaseFile[];
+}> {
+  // Tracked so memory snapshots can tell when an extraction was running.
+  extractCodebaseStarted();
+  try {
+    return await extractCodebaseInner(params);
+  } finally {
+    extractCodebaseFinished();
+  }
+}
+
+async function extractCodebaseInner({
   appPath,
   chatContext,
   virtualFileSystem,

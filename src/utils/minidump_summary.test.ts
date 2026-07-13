@@ -383,6 +383,19 @@ describe("parseMinidumpBuffer", () => {
     expect(parseMinidumpBuffer(dump, "linux", "x64")!.ptype).toBeUndefined();
   });
 
+  it("rejects an exception stream whose declared size is too small", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10500n,
+      ipOffset: 248,
+    });
+    // Corrupt the directory: entry [1] is the exception stream, dataSize @48.
+    const dv = new DataView(dump.buffer, dump.byteOffset, dump.byteLength);
+    dv.setUint32(48, 40, true);
+    expect(parseMinidumpBuffer(dump, "linux", "x64")).toBeNull();
+  });
+
   it("rejects a buffer without the MDMP signature", () => {
     expect(parseMinidumpBuffer(Buffer.alloc(64), "linux", "x64")).toBeNull();
   });

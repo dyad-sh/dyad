@@ -68,6 +68,9 @@ const EXC_NUM_PARAMS_OFF = 32;
 const EXC_PARAMS_OFF = 40;
 const EXC_MAX_PARAMS = 15;
 const EXC_CONTEXT_RVA_OFF = 164;
+// The stream is a fixed-size struct. A smaller declared size means the dump
+// is corrupt, and reads past it would land in a neighboring stream's bytes.
+const EXC_STREAM_SIZE = 168;
 
 // Exception codes whose parameters carry extra detail on Windows.
 const EXC_CODE_ACCESS_VIOLATION = 0xc0000005;
@@ -208,6 +211,7 @@ export function parseMinidumpBuffer(
     // we care about.
     let moduleListRva = 0;
     let exceptionRva = 0;
+    let exceptionSize = 0;
     let crashpadInfoRva = 0;
     let crashpadInfoSize = 0;
     for (let i = 0; i < numStreams; i++) {
@@ -217,14 +221,20 @@ export function parseMinidumpBuffer(
       const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
       const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
       if (type === STREAM_MODULE_LIST) moduleListRva = rva;
-      else if (type === STREAM_EXCEPTION) exceptionRva = rva;
-      else if (type === STREAM_CRASHPAD_INFO) {
+      else if (type === STREAM_EXCEPTION) {
+        exceptionRva = rva;
+        exceptionSize = size;
+      } else if (type === STREAM_CRASHPAD_INFO) {
         crashpadInfoRva = rva;
         crashpadInfoSize = size;
       }
     }
 
-    if (exceptionRva === 0 || exceptionRva + EXC_CONTEXT_RVA_OFF > buf.length) {
+    if (
+      exceptionRva === 0 ||
+      exceptionSize < EXC_STREAM_SIZE ||
+      exceptionRva + EXC_STREAM_SIZE > buf.length
+    ) {
       return null;
     }
     const exceptionCode = view.getUint32(exceptionRva + EXC_CODE_OFF, true);

@@ -110,6 +110,8 @@ const NTSTATUS_NAMES: Record<number, string> = {
   0xc00000fd: "STACK_OVERFLOW",
   0xc0000409: "STACK_BUFFER_OVERRUN",
   0x80000003: "BREAKPOINT",
+  // Not a real NTSTATUS value. This is Chromium's kOomExceptionCode.
+  0xe0000008: "OUT_OF_MEMORY",
 };
 
 interface MinidumpModule {

@@ -241,6 +241,19 @@ function processNativeCrashDumps(): void {
   pruneDumps(retainDir, MAX_RETAINED_DUMPS);
 }
 
+// Crash annotations as flat telemetry fields, one property per key, because
+// PostHog cannot easily filter nested JSON. Keys are sanitized to snake case.
+function crashAnnotationEventFields(
+  annotations: Record<string, string>,
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(annotations)) {
+    const name = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    fields[`crash_annotation_${name}`] = value;
+  }
+  return fields;
+}
+
 // A readable, sortable dump name from the crash time (the dump's mtime), with a
 // short id suffix to avoid collisions: crash-2026-06-07T20-41-55-123Z-9ac4d4e8.dmp
 function crashReportName(dumpPath: string): string {
@@ -652,6 +665,8 @@ const createWindow = () => {
           faulting_debug_file: nativeCrash.faultingDebugFile,
           faulting_debug_id: nativeCrash.faultingDebugId,
         }),
+        ...(nativeCrash?.annotations &&
+          crashAnnotationEventFields(nativeCrash.annotations)),
       });
 
       pendingForceCloseData = null;

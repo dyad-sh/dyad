@@ -1151,7 +1151,7 @@ app.on("child-process-gone", (_event, details) => {
   if (details.reason === "clean-exit" || details.reason === "killed") {
     return;
   }
-  logger.warn(
+  logger.error(
     "Utility process gone:",
     details.serviceName,
     details.reason,

@@ -8,7 +8,7 @@ import {
 } from "./helpers/monaco_editor";
 
 function normalizeLineEndings(value: string) {
-  return value.replace(/\r\n/g, "\n");
+  return value.replace(/\r\n?/g, "\n");
 }
 
 async function expectFileContent(
@@ -24,7 +24,7 @@ async function expectFileContent(
         ),
       { timeout: Timeout.MEDIUM },
     )
-    .toEqual(expectedContent);
+    .toEqual(normalizeLineEndings(expectedContent));
 }
 
 test("edit code", async ({ po }) => {

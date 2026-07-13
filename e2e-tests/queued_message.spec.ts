@@ -6,11 +6,12 @@ async function queueMessage(page: Page, chatInput: Locator, message: string) {
     await chatInput.click();
     await chatInput.fill(message);
     expect(await chatInput.textContent()).toContain(message);
-    await chatInput.press("Enter");
-    await expect(page.locator("li", { hasText: message })).toBeVisible({
-      timeout: 2_000,
-    });
   }).toPass({ timeout: Timeout.MEDIUM });
+
+  await chatInput.press("Enter");
+  await expect(page.locator("li", { hasText: message })).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 }
 
 test.describe("queued messages", () => {

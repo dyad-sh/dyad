@@ -64,7 +64,7 @@ function PackageManagerWarningBannerContent({
   const clearWarning = useSetAtom(clearPackageManagerWarningForAppAtom);
   const dismissWarnings = useSetAtom(dismissPackageManagerWarningsAtom);
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
-  const { restartApp } = useRunApp();
+  const { restartApp, stopApp } = useRunApp();
   const { updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
@@ -125,6 +125,7 @@ function PackageManagerWarningBannerContent({
     setInstallErrorMessage(undefined);
 
     try {
+      await stopApp(warning.appId);
       await ipc.upgrade.executeAppUpgrade({
         appId: warning.appId,
         upgradeId: "pnpm-version-migration",

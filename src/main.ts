@@ -94,7 +94,10 @@ import {
   maybeUpgradeManagedNode,
 } from "./ipc/utils/managed_node";
 import { createDyadMediaProtocolHandler } from "./main/dyad_media_protocol";
-import { getMediaThumbnailCacheRoot } from "./ipc/utils/media_thumbnail";
+import {
+  createPlatformThumbnailFromPath,
+  getMediaThumbnailCacheRoot,
+} from "./ipc/utils/media_thumbnail";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -415,7 +418,7 @@ export async function onReady() {
       resolveAppPath: getDyadAppPath,
       fetchFile: (url) => net.fetch(url),
       createThumbnailFromPath: (sourcePath, size) =>
-        nativeImage.createThumbnailFromPath(sourcePath, size),
+        createPlatformThumbnailFromPath(nativeImage, sourcePath, size),
     }),
   );
 

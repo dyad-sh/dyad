@@ -12,6 +12,7 @@ import {
   buildDyadMediaUrl,
 } from "../lib/dyadMediaUrl";
 import {
+  createPlatformThumbnailFromPath,
   getMediaThumbnailCacheDirectory,
   MAX_MEDIA_THUMBNAIL_OUTPUT_BYTES,
   MAX_MEDIA_THUMBNAIL_SOURCE_BYTES,
@@ -25,6 +26,25 @@ const IMAGE_FIXTURE_PATH = path.join(
   "images",
   "logo.png",
 );
+
+function createMetadataHeavyJpeg(): Buffer {
+  const metadataSegment = Buffer.alloc(65_537);
+  metadataSegment[0] = 0xff;
+  metadataSegment[1] = 0xe1;
+  metadataSegment.writeUInt16BE(65_535, 2);
+
+  const startOfFrame = Buffer.from([
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x02, 0x00, 0x03, 0x03, 0x01, 0x11,
+    0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+  ]);
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8]),
+    metadataSegment,
+    metadataSegment,
+    metadataSegment,
+    startOfFrame,
+  ]);
+}
 
 describe("dyad-media thumbnail protocol", () => {
   let root: string;
@@ -224,6 +244,21 @@ describe("dyad-media thumbnail protocol", () => {
     expect(createThumbnailFromPath).not.toHaveBeenCalled();
   });
 
+  it("accepts JPEGs whose metadata places dimensions after 128 KiB", async () => {
+    const jpegData = createMetadataHeavyJpeg();
+    await fs.writeFile(path.join(mediaPath, "metadata-heavy.jpg"), jpegData);
+    const { handler, createThumbnailFromPath } = makeHandler();
+
+    const result = await handler(
+      new Request(
+        `${buildDyadMediaUrl(appPath, "metadata-heavy.jpg")}?thumbnail=1`,
+      ),
+    );
+
+    expect(result.status).toBe(200);
+    expect(createThumbnailFromPath).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects oversized source files before reading or decoding them", async () => {
     const sourcePath = path.join(mediaPath, "too-large.png");
     const file = await fs.open(sourcePath, "w");
@@ -338,5 +373,78 @@ describe("dyad-media thumbnail protocol", () => {
     expect(result.status).toBe(403);
     expect(fetchFile).not.toHaveBeenCalled();
     expect(createThumbnailFromPath).not.toHaveBeenCalled();
+  });
+});
+
+describe("platform thumbnail creation", () => {
+  function makeNativeImageApi(sourceSize: { width: number; height: number }) {
+    const resizedImage = {
+      isEmpty: () => false,
+      getSize: () => ({ width: 240, height: 120 }),
+      toPNG: () => Buffer.alloc(0),
+    };
+    const sourceImage = {
+      isEmpty: () => false,
+      getSize: () => sourceSize,
+      toPNG: () => Buffer.alloc(0),
+      resize: vi.fn(() => resizedImage),
+    };
+    const thumbnailImage = {
+      isEmpty: () => false,
+      getSize: () => ({ width: 240, height: 120 }),
+      toPNG: () => Buffer.alloc(0),
+    };
+    return {
+      api: {
+        createFromPath: vi.fn(() => sourceImage),
+        createThumbnailFromPath: vi.fn(async () => thumbnailImage),
+      },
+      sourceImage,
+      thumbnailImage,
+      resizedImage,
+    };
+  }
+
+  it("uses Electron's native thumbnail API on macOS and Windows", async () => {
+    const { api, thumbnailImage } = makeNativeImageApi({
+      width: 1_000,
+      height: 500,
+    });
+
+    const result = await createPlatformThumbnailFromPath(
+      api,
+      "/image.jpg",
+      { width: 240, height: 240 },
+      "darwin",
+    );
+
+    expect(result).toBe(thumbnailImage);
+    expect(api.createThumbnailFromPath).toHaveBeenCalledWith("/image.jpg", {
+      width: 240,
+      height: 240,
+    });
+    expect(api.createFromPath).not.toHaveBeenCalled();
+  });
+
+  it("decodes and aspect-ratio resizes thumbnails on Linux", async () => {
+    const { api, sourceImage, resizedImage } = makeNativeImageApi({
+      width: 500,
+      height: 1_000,
+    });
+
+    const result = await createPlatformThumbnailFromPath(
+      api,
+      "/image.jpg",
+      { width: 240, height: 240 },
+      "linux",
+    );
+
+    expect(result).toBe(resizedImage);
+    expect(api.createThumbnailFromPath).not.toHaveBeenCalled();
+    expect(api.createFromPath).toHaveBeenCalledWith("/image.jpg");
+    expect(sourceImage.resize).toHaveBeenCalledWith({
+      height: 240,
+      quality: "good",
+    });
   });
 });

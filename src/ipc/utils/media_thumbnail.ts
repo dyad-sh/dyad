@@ -8,7 +8,9 @@ export const MAX_MEDIA_THUMBNAIL_SOURCE_PIXELS = 20_000_000;
 export const MAX_MEDIA_THUMBNAIL_SOURCE_DIMENSION = 10_000;
 export const MAX_MEDIA_THUMBNAIL_OUTPUT_BYTES = 1024 * 1024;
 
-const MAX_IMAGE_HEADER_BYTES = 128 * 1024;
+// JPEG metadata (EXIF, ICC, XMP, and embedded previews) can place the first
+// start-of-frame marker well beyond a small header window.
+const MAX_IMAGE_HEADER_BYTES = 4 * 1024 * 1024;
 const SNAPSHOT_COPY_BUFFER_BYTES = 64 * 1024;
 const MEDIA_THUMBNAIL_CACHE_VERSION = "v1";
 const MAX_QUEUED_THUMBNAILS = 64;
@@ -20,10 +22,51 @@ export interface ThumbnailImage {
   toPNG(): Buffer;
 }
 
+interface ResizableThumbnailImage extends ThumbnailImage {
+  resize(options: {
+    width?: number;
+    height?: number;
+    quality?: "good" | "better" | "best";
+  }): ThumbnailImage;
+}
+
+interface NativeImageThumbnailApi {
+  createThumbnailFromPath: CreateThumbnailFromPath;
+  createFromPath(sourcePath: string): ResizableThumbnailImage;
+}
+
 export type CreateThumbnailFromPath = (
   sourcePath: string,
   size: { width: number; height: number },
 ) => Promise<ThumbnailImage>;
+
+export async function createPlatformThumbnailFromPath(
+  nativeImageApi: NativeImageThumbnailApi,
+  sourcePath: string,
+  size: { width: number; height: number },
+  platform: NodeJS.Platform = process.platform,
+): Promise<ThumbnailImage> {
+  if (platform !== "linux") {
+    return nativeImageApi.createThumbnailFromPath(sourcePath, size);
+  }
+
+  // Electron does not implement createThumbnailFromPath on Linux. The source
+  // dimensions are validated before this callback runs, so the fallback decode
+  // remains bounded by MAX_MEDIA_THUMBNAIL_SOURCE_PIXELS.
+  const image = nativeImageApi.createFromPath(sourcePath);
+  if (image.isEmpty()) return image;
+
+  const sourceSize = image.getSize();
+  if (sourceSize.width <= size.width && sourceSize.height <= size.height) {
+    return image;
+  }
+
+  return image.resize(
+    sourceSize.width >= sourceSize.height
+      ? { width: size.width, quality: "good" }
+      : { height: size.height, quality: "good" },
+  );
+}
 
 export class MediaThumbnailError extends Error {
   constructor(

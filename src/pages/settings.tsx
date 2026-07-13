@@ -19,6 +19,7 @@ import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector"
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
+import { TestingForNewAppsSwitch } from "@/components/TestingForNewAppsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
 import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
@@ -492,6 +493,15 @@ export function WorkflowSettings() {
         <div className="text-sm text-gray-500 dark:text-gray-400">
           When creating a new app, generate a lightweight app blueprint (name,
           design, color, template) before building.
+        </div>
+      </div>
+
+      <div id={SETTING_IDS.testingForNewApps} className="space-y-1 mt-4">
+        <TestingForNewAppsSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          When creating a new app, opt it into AI E2E testing by default. This
+          only affects apps created while this setting is on; existing apps are
+          unchanged.
         </div>
       </div>
 

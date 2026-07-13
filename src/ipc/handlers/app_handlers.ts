@@ -449,6 +449,10 @@ export function registerAppHandlers() {
         name: appName,
         path: appPath,
         needsAppBlueprint: settings.enableAppBlueprint,
+        // Opt newly created apps into E2E testing when the user has enabled the
+        // "testing for new apps" setting. Otherwise fall back to the column
+        // default (off).
+        testingEnabled: settings.enableTestingForNewApps ?? false,
       })
       .returning();
 

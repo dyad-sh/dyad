@@ -401,6 +401,9 @@ const BaseUserSettingsFields = {
   previewDeviceMode: DeviceModeSchema.optional(),
 
   enableAppBlueprint: z.boolean().optional(),
+  // When enabled, newly created apps opt into the AI E2E testing feature by
+  // default (their `testing_enabled` column is seeded to true at creation).
+  enableTestingForNewApps: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),

@@ -85,13 +85,14 @@ function newestDump(dir) {
     .map((f) => path.join(dir, f))
     .map((p) => {
       // A dump can vanish between readdir and stat; Crashpad manages these
-      // files actively.
+      // files actively. Drop entries that cannot be statted.
       try {
         return { p, mtime: fs.statSync(p).mtimeMs };
       } catch {
-        return { p, mtime: 0 };
+        return null;
       }
     })
+    .filter(Boolean)
     .sort((a, b) => b.mtime - a.mtime);
   return byMtime[0]?.p ?? null;
 }
@@ -100,6 +101,12 @@ const args = process.argv.slice(2);
 const prod = args.includes("--prod");
 const dumps = args.filter((a) => a.endsWith(".dmp"));
 const flags = args.filter((a) => !a.endsWith(".dmp") && a !== "--prod");
+
+const missing = dumps.filter((d) => !fs.existsSync(d));
+if (missing.length > 0) {
+  console.error(`No such dump file: ${missing.join(", ")}`);
+  process.exit(1);
+}
 
 if (dumps.length === 0) {
   const dir = dumpDir(prod);
@@ -158,22 +165,17 @@ function listModules(dump) {
   }
 }
 
-// Installed builds rename Electron's binaries after the product, which
-// breaks the by-name symbol lookup. Renaming does not change a binary's
-// debug id, and debug ids are unique per build, so fetching the original
-// Electron name with the module's own id either finds the right symbol
-// file or misses entirely. Hits are staged under the renamed name where
-// the walker can find them.
 // Both values come from the dump, which may be untrusted, and both are
 // used as path segments. Only allow plain file names.
 function safePathSegment(segment) {
   return (
-    /^[A-Za-z0-9()., _-]+$/.test(segment) &&
-    segment !== "." &&
-    segment !== ".."
+    /^[A-Za-z0-9()., _-]+$/.test(segment) && segment !== "." && segment !== ".."
   );
 }
 
+// Installed builds rename Electron's binaries, which breaks by-name
+// symbol lookup. Debug ids survive renaming and are unique per build,
+// so fetching the Electron name by id is either right or a miss.
 async function stageAliasedSymbols(dump) {
   for (const { debug_file, debug_id } of listModules(dump)) {
     if (!/dyad/i.test(debug_file)) {
@@ -199,7 +201,9 @@ async function stageAliasedSymbols(dump) {
     ];
     // Symbolication is optional: on any failure, warn and move on, and the
     // module's frames stay as module+offset.
-    const partial = `${staged}.part`;
+    // Suffixed with the pid so concurrent runs cannot interleave writes
+    // into the same partial file.
+    const partial = `${staged}.${process.pid}.part`;
     try {
       for (const original of candidates) {
         const url = `${SYMBOL_URL}/${encodeURIComponent(original)}/${debug_id}/${encodeURIComponent(original)}.sym`;
@@ -230,6 +234,7 @@ async function stageAliasedSymbols(dump) {
 }
 
 fs.mkdirSync(aliasedDir, { recursive: true });
+let exitCode = 0;
 for (const dump of dumps) {
   if (dumps.length > 1) {
     console.log(`\n===== ${dump} =====`);
@@ -249,7 +254,12 @@ for (const dump of dumps) {
     ],
     { stdio: "inherit" },
   );
+  // A failed dump should not prevent the remaining dumps from processing.
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    exitCode = result.status ?? 1;
+    if (dumps.length > 1) {
+      console.error(`minidump-stackwalk failed for ${dump}; continuing.`);
+    }
   }
 }
+process.exit(exitCode);

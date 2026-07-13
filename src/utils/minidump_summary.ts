@@ -266,10 +266,7 @@ export function parseMinidumpBuffer(
     // context; the IP sits at an arch-specific offset within it.
     let instructionPointer = 0n;
     const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
-    if (
-      ipOffset !== undefined &&
-      exceptionRva + EXC_CONTEXT_RVA_OFF + 4 <= buf.length
-    ) {
+    if (ipOffset !== undefined) {
       const contextRva = view.getUint32(
         exceptionRva + EXC_CONTEXT_RVA_OFF,
         true,
@@ -315,7 +312,7 @@ export function parseMinidumpBuffer(
 // (ExceptionInformation) and the data fault address. Parameter meaning depends
 // on the exception code; only codes where they say something useful are
 // mapped. All reads stay within the bounds already checked by the caller
-// (the exception stream spans at least EXC_CONTEXT_RVA_OFF bytes).
+// (the exception stream spans at least EXC_STREAM_SIZE bytes).
 function parseExceptionDetails(
   view: DataView,
   exceptionRva: number,
@@ -356,6 +353,7 @@ function parseExceptionDetails(
       };
     }
     if (exceptionCode === EXC_CODE_CHROMIUM_OOM && params.length >= 1) {
+      // Number is exact below 2^53 bytes (9 PB), far beyond any real allocation.
       return { oomAllocationSizeBytes: Number(params[0]) };
     }
     if (exceptionCode === EXC_CODE_FAST_FAIL && params.length >= 1) {

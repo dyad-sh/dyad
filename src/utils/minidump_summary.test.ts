@@ -245,6 +245,19 @@ describe("parseMinidumpBuffer", () => {
     expect(s!.faultAddress).toBe("0x18");
   });
 
+  it("leaves accessType undefined for unknown access type values", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000005,
+      exceptionParams: [5n, 0x18n], // 5 is not a documented access type
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.accessType).toBeUndefined();
+    expect(s!.faultAddress).toBe("0x18");
+  });
+
   it("decodes Windows in-page error parameters", () => {
     const dump = buildMinidump({
       modules: oneModule,

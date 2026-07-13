@@ -67,7 +67,7 @@ function dumpDir(prod) {
   }
   const configDir =
     process.platform === "win32"
-      ? process.env.APPDATA
+      ? (process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"))
       : process.platform === "darwin"
         ? path.join(os.homedir(), "Library", "Application Support")
         : (process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"));
@@ -206,7 +206,7 @@ async function stageAliasedSymbols(dump) {
     const partial = `${staged}.${process.pid}.part`;
     try {
       for (const original of candidates) {
-        const url = `${SYMBOL_URL}/${encodeURIComponent(original)}/${debug_id}/${encodeURIComponent(original)}.sym`;
+        const url = `${SYMBOL_URL}/${encodeURIComponent(original)}/${encodeURIComponent(debug_id)}/${encodeURIComponent(original)}.sym`;
         const response = await fetch(url);
         if (!response.ok) {
           continue;

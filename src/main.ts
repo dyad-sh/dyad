@@ -750,7 +750,7 @@ const createWindow = () => {
     if (details.reason === "clean-exit") {
       return;
     }
-    logger.warn(
+    logger.error(
       "Renderer process gone:",
       details.reason,
       "exitCode=",

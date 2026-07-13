@@ -83,7 +83,15 @@ function newestDump(dir) {
   }
   const byMtime = entries
     .map((f) => path.join(dir, f))
-    .map((p) => ({ p, mtime: fs.statSync(p).mtimeMs }))
+    .map((p) => {
+      // A dump can vanish between readdir and stat; Crashpad manages these
+      // files actively.
+      try {
+        return { p, mtime: fs.statSync(p).mtimeMs };
+      } catch {
+        return { p, mtime: 0 };
+      }
+    })
     .sort((a, b) => b.mtime - a.mtime);
   return byMtime[0]?.p ?? null;
 }
@@ -156,9 +164,22 @@ function listModules(dump) {
 // Electron name with the module's own id either finds the right symbol
 // file or misses entirely. Hits are staged under the renamed name where
 // the walker can find them.
+// Both values come from the dump, which may be untrusted, and both are
+// used as path segments. Only allow plain file names.
+function safePathSegment(segment) {
+  return (
+    /^[A-Za-z0-9()., _-]+$/.test(segment) &&
+    segment !== "." &&
+    segment !== ".."
+  );
+}
+
 async function stageAliasedSymbols(dump) {
   for (const { debug_file, debug_id } of listModules(dump)) {
     if (!/dyad/i.test(debug_file)) {
+      continue;
+    }
+    if (!safePathSegment(debug_file) || !safePathSegment(debug_id)) {
       continue;
     }
     const staged = path.join(
@@ -176,21 +197,34 @@ async function stageAliasedSymbols(dump) {
         debug_file.replace(/dyad/i, "Electron"),
       ]),
     ];
-    for (const original of candidates) {
-      const url = `${SYMBOL_URL}/${encodeURIComponent(original)}/${debug_id}/${encodeURIComponent(original)}.sym`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        continue;
+    // Symbolication is optional: on any failure, warn and move on, and the
+    // module's frames stay as module+offset.
+    const partial = `${staged}.part`;
+    try {
+      for (const original of candidates) {
+        const url = `${SYMBOL_URL}/${encodeURIComponent(original)}/${debug_id}/${encodeURIComponent(original)}.sym`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          continue;
+        }
+        console.error(
+          `Fetching symbols for renamed binary "${debug_file}" (large; cached after the first run)...`,
+        );
+        fs.mkdirSync(path.dirname(staged), { recursive: true });
+        // Download to a partial file and rename after success, so an
+        // interrupted download is never cached as complete.
+        await pipeline(
+          Readable.fromWeb(response.body),
+          fs.createWriteStream(partial),
+        );
+        fs.renameSync(partial, staged);
+        break;
       }
+    } catch (error) {
+      fs.rmSync(partial, { force: true });
       console.error(
-        `Fetching symbols for renamed binary "${debug_file}" (large; cached after the first run)...`,
+        `Symbol fetch for "${debug_file}" failed (${error?.message ?? error}); its frames will stay as module+offset.`,
       );
-      fs.mkdirSync(path.dirname(staged), { recursive: true });
-      await pipeline(
-        Readable.fromWeb(response.body),
-        fs.createWriteStream(staged),
-      );
-      break;
     }
   }
 }

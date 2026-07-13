@@ -338,6 +338,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // guard from a replaced iframe doesn't block future captures.
   useEffect(() => {
     pendingCommitScreenshotRequestRef.current = null;
+    pendingAnnotatorScreenshotRequestIdRef.current = null;
+    setAnnotatorMode(false);
+    setScreenshotDataUrl(null);
     if (captureTimeoutRef.current !== null) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
@@ -347,6 +350,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Clean up pending screenshot timeout on unmount
   useEffect(() => {
     return () => {
+      pendingAnnotatorScreenshotRequestIdRef.current = null;
+      setAnnotatorMode(false);
+      setScreenshotDataUrl(null);
       if (captureTimeoutRef.current !== null) {
         clearTimeout(captureTimeoutRef.current);
         captureTimeoutRef.current = null;
@@ -657,9 +663,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       console.error("Failed to get element styles:", error);
     }
   };
-  useEffect(() => {
-    setAnnotatorMode(false);
-  }, []);
   // Reset visual editing state when app changes or component unmounts
   useEffect(() => {
     return () => {
@@ -1306,7 +1309,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to handle annotator button click
   const handleAnnotatorClick = () => {
     if (annotatorMode) {
+      pendingAnnotatorScreenshotRequestIdRef.current = null;
       setAnnotatorMode(false);
+      setScreenshotDataUrl(null);
       return;
     }
     if (iframeRef.current?.contentWindow) {
@@ -2060,9 +2065,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     handleAnnotatorClick={handleAnnotatorClick}
                   />
                 ) : (
-                  <AnnotatorOnlyForPro
-                    onGoBack={() => setAnnotatorMode(false)}
-                  />
+                  <AnnotatorOnlyForPro onGoBack={handleAnnotatorClick} />
                 )}
               </div>
             ) : (

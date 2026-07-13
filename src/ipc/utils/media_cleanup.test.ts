@@ -4,6 +4,8 @@ import path from "node:path";
 const fsMocks = vi.hoisted(() => {
   return {
     readdir: vi.fn(),
+    realpath: vi.fn(),
+    lstat: vi.fn(),
     stat: vi.fn(),
     unlink: vi.fn(),
   };
@@ -67,6 +69,8 @@ import {
 describe("cleanupOldMediaFiles", () => {
   beforeEach(() => {
     fsMocks.readdir.mockReset();
+    fsMocks.realpath.mockReset();
+    fsMocks.lstat.mockReset();
     fsMocks.stat.mockReset();
     fsMocks.unlink.mockReset();
     logMocks.log.mockClear();
@@ -75,6 +79,28 @@ describe("cleanupOldMediaFiles", () => {
     dbMocks.from.mockReset();
     mediaPathMocks.pruneAttachmentManifest.mockReset();
     mediaPathMocks.pruneAttachmentManifest.mockResolvedValue(0);
+    fsMocks.realpath.mockImplementation((filePath: string) =>
+      Promise.resolve(filePath),
+    );
+    fsMocks.lstat.mockImplementation((filePath: string) => {
+      if (filePath.endsWith(path.join(".dyad", "media"))) {
+        return Promise.resolve({
+          isDirectory: () => true,
+          isSymbolicLink: () => false,
+        });
+      }
+      if (filePath.includes("some-subdir")) {
+        return Promise.resolve({
+          isDirectory: () => true,
+          isSymbolicLink: () => false,
+          isFile: () => false,
+        });
+      }
+      return Promise.resolve({
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      });
+    });
   });
 
   afterEach(() => {

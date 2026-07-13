@@ -115,6 +115,32 @@ export class PreviewPanel {
     }).toPass({ timeout: Timeout.MEDIUM });
   }
 
+  // --- Tests panel (behind the per-app opt-in gate) ---
+
+  locateEnableTestingButton() {
+    return this.page.getByRole("button", {
+      name: "Enable testing for this app",
+    });
+  }
+
+  locateDisableTestingButton() {
+    return this.page.getByRole("button", {
+      name: "Disable testing for this app",
+    });
+  }
+
+  locateRunAllTestsButton() {
+    return this.page.getByRole("button", { name: "Run all tests" });
+  }
+
+  async clickEnableTesting() {
+    await this.locateEnableTestingButton().click();
+  }
+
+  async clickDisableTesting() {
+    await this.locateDisableTestingButton().click();
+  }
+
   async clickRecheckProblems() {
     await this.page.getByTestId("recheck-button").click();
   }

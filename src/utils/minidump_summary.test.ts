@@ -88,6 +88,11 @@ function buildMinidump(opts: {
   dv.setUint32(exceptionRva + 8, opts.exceptionCode, true);
   dv.setBigUint64(exceptionRva + 24, opts.exceptionAddress ?? 0n, true);
   if (opts.exceptionParams) {
+    if (opts.exceptionParams.length > 15) {
+      throw new Error(
+        "info[] holds at most 15 params; more would overwrite the context descriptor",
+      );
+    }
     dv.setUint32(exceptionRva + 32, opts.exceptionParams.length, true);
     opts.exceptionParams.forEach((param, i) => {
       dv.setBigUint64(exceptionRva + 40 + i * 8, param, true);
@@ -203,6 +208,21 @@ describe("parseMinidumpBuffer", () => {
     );
   });
 
+  it("omits the fault address for macOS general protection faults", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 1, // EXC_BAD_ACCESS
+      exceptionParams: [1n, 13n, 0n], // code0 13 is EXC_I386_GPFLT
+      // Crashpad stores the instruction pointer here, not a data address.
+      exceptionAddress: 0x10010n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(
+      parseMinidumpBuffer(dump, "darwin", "x64")!.faultAddress,
+    ).toBeUndefined();
+  });
+
   it("reports a zero fault address for null pointer dereferences", () => {
     const dump = buildMinidump({
       modules: oneModule,
@@ -282,7 +302,7 @@ describe("parseMinidumpBuffer", () => {
     expect(s!.crashReason).toBe("IN_PAGE_ERROR");
     expect(s!.accessType).toBe("read");
     expect(s!.faultAddress).toBe("0x18");
-    expect(s!.inPageErrorStatus).toBe(0xc000009c);
+    expect(s!.inPageErrorStatus).toBe("0xc000009c");
   });
 
   it("reads the failed allocation size for a Chromium OOM crash", () => {

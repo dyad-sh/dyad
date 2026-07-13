@@ -10,7 +10,7 @@ export interface MinidumpSummary {
   exceptionCode: number; // raw code, in case the name table misses it
   faultAddress?: string; // hex data address the crash touched, for memory faults
   accessType?: "read" | "write" | "execute"; // Windows access violations and in-page errors
-  inPageErrorStatus?: number; // underlying NTSTATUS for Windows in-page errors
+  inPageErrorStatus?: string; // NTSTATUS of the paging failure, hex (e.g. "0xc000009c")
   oomAllocationSizeBytes?: number; // failed allocation size for Chromium OOM crashes
   fastFailCode?: number; // FAST_FAIL reason for Windows 0xC0000409, e.g. 7 is abort()
   faultingModule?: string; // basename of the module containing the crash address
@@ -84,6 +84,11 @@ const ACCESS_TYPES: Record<number, "read" | "write" | "execute"> = {
   1: "write",
   8: "execute",
 };
+
+// macOS EXC_BAD_ACCESS code values whose subcode carries no data fault
+// address; Crashpad stores the instruction pointer instead.
+const MACH_BAD_ACCESS_GPFLT = 13n; // EXC_I386_GPFLT
+const MACH_BAD_ACCESS_PROT_COLLISION = 5n; // VM_PROT_READ | VM_PROT_EXECUTE
 
 // MINIDUMP_MODULE record: u64 base @0, u32 size @8, ... u32 nameRva @20, with
 // the whole record being 108 bytes (so module N starts at N * 108).
@@ -349,7 +354,7 @@ function parseExceptionDetails(
       return {
         accessType: ACCESS_TYPES[Number(params[0])],
         faultAddress: toHex(applyAddressMask(params[1], addressMask)),
-        ...(params.length >= 3 && { inPageErrorStatus: Number(params[2]) }),
+        ...(params.length >= 3 && { inPageErrorStatus: toHex(params[2]) }),
       };
     }
     if (exceptionCode === EXC_CODE_CHROMIUM_OOM && params.length >= 1) {
@@ -364,9 +369,16 @@ function parseExceptionDetails(
 
   // On POSIX, Crashpad stores the data fault address in ExceptionAddress.
   // Only memory faults have one; for other signals the field is meaningless.
+  // On macOS the parameters are [exception, code0, code1]. For general
+  // protection faults and the read|execute protection collision, there is
+  // no data fault address and Crashpad stores the instruction pointer
+  // instead, so skip the field for those code0 values.
+  const machCode0 = params.length >= 2 ? params[1] : undefined;
   const isMemoryFault =
     platform === "darwin"
-      ? exceptionCode === 1 // EXC_BAD_ACCESS
+      ? exceptionCode === 1 && // EXC_BAD_ACCESS
+        machCode0 !== MACH_BAD_ACCESS_GPFLT &&
+        machCode0 !== MACH_BAD_ACCESS_PROT_COLLISION
       : exceptionCode === 11 || exceptionCode === 7; // SIGSEGV, SIGBUS
   if (isMemoryFault) {
     return {

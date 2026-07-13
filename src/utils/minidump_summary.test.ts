@@ -19,6 +19,10 @@ import { parseMinidumpBuffer } from "@/utils/minidump_summary";
 // parser reads — see the struct layouts documented in minidump_summary.ts.
 function buildMinidump(opts: {
   modules: { base: bigint; size: number; name: string }[];
+  // CodeView record attached to the first module.
+  cvRecord?:
+    | { kind: "pdb70"; guid: number[]; age: number; name: string }
+    | { kind: "build-id"; bytes: number[] };
   exceptionCode: number;
   exceptionAddress?: bigint;
   ip: bigint;
@@ -57,8 +61,32 @@ function buildMinidump(opts: {
     nameRvas.push(rva);
   }
 
+  // --- Optional CodeView record for the first module ---
+  // pdb70: "RSDS" + GUID (16) + u32 age + NUL-terminated name.
+  // build-id: "BpEL" + raw build id bytes.
+  let cvRva = 0;
+  let cvSize = 0;
+  if (opts.cvRecord) {
+    cvRva = cursor;
+    if (opts.cvRecord.kind === "pdb70") {
+      // 0x53445352 is "RSDS" as a little endian u32.
+      dv.setUint32(cvRva, 0x53445352, true);
+      opts.cvRecord.guid.forEach((b, i) => buf.writeUInt8(b, cvRva + 4 + i));
+      dv.setUint32(cvRva + 20, opts.cvRecord.age, true);
+      const nameBytes = Buffer.from(opts.cvRecord.name, "utf8");
+      nameBytes.copy(buf, cvRva + 24);
+      cvSize = 24 + nameBytes.length + 1;
+    } else {
+      // 0x4270454c is Crashpad's ELF build id signature.
+      dv.setUint32(cvRva, 0x4270454c, true);
+      opts.cvRecord.bytes.forEach((b, i) => buf.writeUInt8(b, cvRva + 4 + i));
+      cvSize = 4 + opts.cvRecord.bytes.length;
+    }
+    cursor = (cvRva + cvSize + 3) & ~3;
+  }
+
   // --- Module list stream (u32 count, then one 108-byte record per module) ---
-  // Each record: base @ +0, size @ +8, name RVA @ +20.
+  // Each record: base @ +0, size @ +8, name RVA @ +20, CvRecord @ +76/+80.
   const moduleListRva = cursor;
   dv.setUint32(moduleListRva, opts.modules.length, true);
   let mc = moduleListRva + 4;
@@ -66,6 +94,10 @@ function buildMinidump(opts: {
     dv.setBigUint64(mc, m.base, true);
     dv.setUint32(mc + 8, m.size, true);
     dv.setUint32(mc + 20, nameRvas[i], true);
+    if (i === 0 && cvRva !== 0) {
+      dv.setUint32(mc + 76, cvSize, true);
+      dv.setUint32(mc + 80, cvRva, true);
+    }
     mc += 108;
   });
   const moduleListSize = mc - moduleListRva;
@@ -247,6 +279,77 @@ describe("parseMinidumpBuffer", () => {
     const s = parseMinidumpBuffer(dump, "linux", "x64");
     expect(s!.crashReason).toBe("SIGSEGV");
     expect(s!.faultingModule).toBeUndefined();
+  });
+
+  it("extracts the debug identity from a pdb70 CodeView record", () => {
+    const dump = buildMinidump({
+      modules: [{ base: 0x400000n, size: 0x1000, name: "C:\\app\\dyad.exe" }],
+      cvRecord: {
+        kind: "pdb70",
+        // Little endian GUID fields print big endian, so bytes
+        // 01 23 45 67 come out as 67452301 in the expected id.
+        guid: [
+          0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45,
+          0x67, 0x89, 0xab, 0xcd, 0xef,
+        ],
+        age: 1,
+        name: "C:\\out\\electron.exe.pdb",
+      },
+      exceptionCode: 0xc0000005,
+      ip: 0x400100n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.faultingModule).toBe("dyad.exe");
+    expect(s!.faultingDebugFile).toBe("electron.exe.pdb");
+    expect(s!.faultingDebugId).toBe("67452301AB89EFCD0123456789ABCDEF1");
+  });
+
+  it("extracts the debug identity from an ELF build id record", () => {
+    // Real values from a retained production dump: the id is the build id's
+    // first 16 bytes GUID-swapped with age 0, and the file name falls back
+    // to the module name.
+    const dump = buildMinidump({
+      modules: oneModule,
+      cvRecord: {
+        kind: "build-id",
+        bytes: [
+          0x90, 0xc4, 0x23, 0xdf, 0x7c, 0x7a, 0x1b, 0x23, 0xea, 0x2d, 0x19,
+          0x62, 0xbe, 0xd7, 0x25, 0x29,
+        ],
+      },
+      exceptionCode: 11,
+      ip: 0x10500n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "linux", "x64");
+    expect(s!.faultingDebugId).toBe("DF23C4907A7C231BEA2D1962BED725290");
+    expect(s!.faultingDebugFile).toBe("libc.so.6");
+  });
+
+  it("zero pads short ELF build ids", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      cvRecord: { kind: "build-id", bytes: [0x90, 0xc4, 0x23, 0xdf] },
+      exceptionCode: 11,
+      ip: 0x10500n,
+      ipOffset: 248,
+    });
+    expect(parseMinidumpBuffer(dump, "linux", "x64")!.faultingDebugId).toBe(
+      "DF23C4900000000000000000000000000",
+    );
+  });
+
+  it("leaves the debug identity undefined without a CodeView record", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10500n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "linux", "x64");
+    expect(s!.faultingDebugId).toBeUndefined();
+    expect(s!.faultingDebugFile).toBeUndefined();
   });
 
   it("returns the raw code when the signal is unmapped", () => {

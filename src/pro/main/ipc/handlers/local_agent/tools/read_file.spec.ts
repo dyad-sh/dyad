@@ -8,6 +8,10 @@ import {
   appendAttachmentManifestEntries,
   getDyadMediaDir,
 } from "@/ipc/utils/media_path_utils";
+import {
+  AGENT_READ_FILE_RESULT_LIMIT_BYTES,
+  AGENT_READ_FILE_TRUNCATION_NOTICE,
+} from "@/ipc/utils/bounded_text_file";
 
 // Mock electron-log
 vi.mock("electron-log", () => ({
@@ -211,6 +215,53 @@ line 5`;
       );
 
       expect(result).toBe("attachment line 2\n");
+    });
+
+    it("returns a bounded result with an explicit truncation notice", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, "large.txt"),
+        "a".repeat(AGENT_READ_FILE_RESULT_LIMIT_BYTES * 2),
+      );
+
+      const result = await readFileTool.execute(
+        { path: "large.txt" },
+        mockContext,
+      );
+
+      expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(
+        AGENT_READ_FILE_RESULT_LIMIT_BYTES,
+      );
+      expect(result.endsWith(AGENT_READ_FILE_TRUNCATION_NOTICE)).toBe(true);
+    });
+
+    it("streams a narrow range from an oversized file without truncating it", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, "large-ranged.txt"),
+        `${"skip\n".repeat(100_000)}target line\n`,
+      );
+
+      const result = await readFileTool.execute(
+        {
+          path: "large-ranged.txt",
+          start_line_one_indexed: 100_001,
+          end_line_one_indexed_inclusive: 100_001,
+        },
+        mockContext,
+      );
+
+      expect(result).toBe("target line\n");
+      expect(result).not.toContain("Output truncated");
+    });
+
+    it("rejects binary files", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, "binary.dat"),
+        Buffer.from([0x61, 0x00, 0x62]),
+      );
+
+      await expect(
+        readFileTool.execute({ path: "binary.dat" }, mockContext),
+      ).rejects.toThrow("Cannot read binary file as UTF-8 text: binary.dat");
     });
   });
 
@@ -588,6 +639,28 @@ line 5`;
         ),
       ).rejects.toThrow(/Cannot read \.dyad\/ paths from referenced apps/);
     });
+
+    it.runIf(process.platform !== "win32")(
+      "blocks symlinks into a referenced app's protected .dyad directory",
+      async () => {
+        mockContext.referencedApps.set("other-app", otherAppDir);
+        const dyadDir = path.join(otherAppDir, ".dyad");
+        await fs.promises.mkdir(dyadDir, { recursive: true });
+        const privateFile = path.join(dyadDir, "private.txt");
+        await fs.promises.writeFile(privateFile, "private");
+        await fs.promises.symlink(
+          privateFile,
+          path.join(otherAppDir, "public-link.txt"),
+        );
+
+        await expect(
+          readFileTool.execute(
+            { path: "public-link.txt", app_name: "other-app" },
+            mockContext,
+          ),
+        ).rejects.toThrow(/Cannot read \.dyad\/ paths from referenced apps/);
+      },
+    );
 
     it("allows .dyad/ paths on the current app (no app_name)", async () => {
       const dyadDir = path.join(testDir, ".dyad");

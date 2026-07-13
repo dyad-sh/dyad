@@ -16,6 +16,7 @@ const {
   openExternalUrlMock,
   rebuildAppAfterPnpmInstallMock,
   restartAppMock,
+  stopAppMock,
   executeAppUpgradeMock,
   updateSettingsMock,
 } = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const {
   openExternalUrlMock: vi.fn(),
   rebuildAppAfterPnpmInstallMock: vi.fn(),
   restartAppMock: vi.fn(),
+  stopAppMock: vi.fn(),
   executeAppUpgradeMock: vi.fn(),
   updateSettingsMock: vi.fn(),
 }));
@@ -51,6 +53,7 @@ vi.mock("@/hooks/useRunApp", () => ({
   useRebuildAppAfterPnpmInstall: () => rebuildAppAfterPnpmInstallMock,
   useRunApp: () => ({
     restartApp: restartAppMock,
+    stopApp: stopAppMock,
   }),
 }));
 
@@ -62,10 +65,12 @@ describe("PackageManagerWarningBanner", () => {
     openExternalUrlMock.mockReset();
     rebuildAppAfterPnpmInstallMock.mockReset();
     restartAppMock.mockReset();
+    stopAppMock.mockReset();
     executeAppUpgradeMock.mockReset();
     updateSettingsMock.mockReset();
     executeAppUpgradeMock.mockResolvedValue(undefined);
     restartAppMock.mockResolvedValue(undefined);
+    stopAppMock.mockResolvedValue(undefined);
     getNodejsStatusMock.mockResolvedValue({
       nodeVersion: "v22.14.0",
       pnpmVersion: "10.15.0",
@@ -245,7 +250,7 @@ describe("PackageManagerWarningBanner", () => {
     expect(installPnpmMock).not.toHaveBeenCalled();
   });
 
-  it("runs the pnpm migration upgrade and restarts the app", async () => {
+  it("stops the app before running the pnpm migration upgrade", async () => {
     renderBanner({
       kind: "pnpm-migration",
       message:
@@ -261,11 +266,19 @@ describe("PackageManagerWarningBanner", () => {
       await Promise.resolve();
     });
 
+    expect(stopAppMock).toHaveBeenCalledWith(1);
     expect(executeAppUpgradeMock).toHaveBeenCalledWith({
       appId: 1,
       upgradeId: "pnpm-version-migration",
     });
     expect(restartAppMock).toHaveBeenCalledTimes(1);
     expect(installPnpmMock).not.toHaveBeenCalled();
+
+    expect(stopAppMock.mock.invocationCallOrder[0]).toBeLessThan(
+      executeAppUpgradeMock.mock.invocationCallOrder[0],
+    );
+    expect(executeAppUpgradeMock.mock.invocationCallOrder[0]).toBeLessThan(
+      restartAppMock.mock.invocationCallOrder[0],
+    );
   });
 });

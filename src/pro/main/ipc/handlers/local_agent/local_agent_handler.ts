@@ -24,6 +24,7 @@ import {
 } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
+import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
 import {
   isDyadProEnabled,
@@ -125,6 +126,10 @@ import {
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
+import {
+  toRendererMessage,
+  type RendererMessageRow,
+} from "@/ipc/utils/renderer_chat_message";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -1917,9 +1922,9 @@ function sendResponseChunk(
   lastSentRef: { value: string },
 ) {
   if (sendFullMessages) {
-    const currentMessages = [...chat.messages].filter(
-      (message) => !hiddenMessageIds?.has(message.id),
-    );
+    const currentMessages = (chat.messages as RendererMessageRow[])
+      .filter((message) => !hiddenMessageIds?.has(message.id))
+      .map(toRendererMessage);
     const placeholderMsg = currentMessages.find(
       (m) => m.id === placeholderMessageId,
     );
@@ -2147,28 +2152,32 @@ async function getMcpTools(
               callEmitted = true;
 
               const res = await mcpTool.execute(args, execCtx);
-              const resultStr =
-                typeof res === "string" ? res : JSON.stringify(res);
+              const safeResult = sanitizeMcpToolResult(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
+                `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
               );
 
-              return resultStr;
+              return safeResult.serialized;
             } catch (error) {
               const errorMessage =
                 error instanceof Error ? error.message : String(error);
               const errorStack =
                 error instanceof Error && error.stack ? error.stack : "";
+              const safeErrorMessage =
+                sanitizeMcpToolResult(errorMessage).serialized;
+              const safeErrorDetails = sanitizeMcpToolResult(
+                errorStack || errorMessage,
+              ).serialized;
               // Terminate the merged card in an error state instead of leaving
               // it stuck on "Running" (only when its call card was emitted).
               if (callEmitted) {
                 ctx.onXmlComplete(
-                  `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(errorMessage)}\n</dyad-mcp-tool-result>`,
+                  `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(safeErrorMessage)}\n</dyad-mcp-tool-result>`,
                 );
               }
               ctx.onXmlComplete(
-                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(safeErrorMessage)}">${escapeXmlContent(safeErrorDetails)}</dyad-output>`,
               );
               throw error;
             }

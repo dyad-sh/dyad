@@ -115,15 +115,25 @@ export function isPnpmVersionMigrationNeeded(appPath: string): boolean {
 async function updatePackageManagerPin(
   appPath: string,
   pnpmVersion: string,
-): Promise<void> {
+): Promise<string> {
   const packageJsonPath = path.join(appPath, "package.json");
-  const packageJson = JSON.parse(
-    await fs.promises.readFile(packageJsonPath, "utf8"),
-  );
+  const originalContent = await fs.promises.readFile(packageJsonPath, "utf8");
+  const packageJson = JSON.parse(originalContent);
   packageJson.packageManager = `pnpm@${pnpmVersion}`;
   await fs.promises.writeFile(
     packageJsonPath,
     `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
+  return originalContent;
+}
+
+async function restorePackageJson(
+  appPath: string,
+  packageJsonContent: string,
+): Promise<void> {
+  await fs.promises.writeFile(
+    path.join(appPath, "package.json"),
+    packageJsonContent,
   );
 }
 
@@ -163,26 +173,40 @@ export async function applyPnpmVersionMigration({
   const previousLockfileVersion = readPnpmLockfileVersion(appPath);
   const allowBuildsResult = await ensurePnpmAllowBuildsConfigured({ appPath });
 
-  await simpleSpawnWithDeniedPnpmBuildSelfHeal({
-    command: `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`,
-    cwd: appPath,
-    successMessage: "Reinstalled dependencies with the Dyad-managed pnpm",
-    errorPrefix: "Failed to reinstall dependencies with pnpm",
-  });
-
-  // Update the pin only after the install succeeds: a failed install must not
-  // leave a stray pin edit that hides the upgrade (the pin-only trigger would
-  // read as resolved) and gets swept into the user's next commit. The install
-  // itself never reads the pin — corepack project specs are disabled and
-  // package-manager-strict is off in getPackageManagerCommandEnv().
+  // Update the pin before reinstalling so pnpm writes a lockfile that matches
+  // the package metadata Dyad will commit. If the install fails, restore the
+  // original package.json so the failed migration does not hide future prompts.
+  let originalPackageJsonContent: string;
   try {
-    await updatePackageManagerPin(appPath, pnpmSupport.version);
+    originalPackageJsonContent = await updatePackageManagerPin(
+      appPath,
+      pnpmSupport.version,
+    );
   } catch (error) {
     logger.warn("Failed to update packageManager pin:", error);
     throw new DyadError(
-      "Dependencies were reinstalled but the packageManager pin could not be updated. Please update package.json manually.",
+      "The packageManager pin could not be updated. Please update package.json manually.",
       DyadErrorKind.External,
     );
+  }
+
+  try {
+    await simpleSpawnWithDeniedPnpmBuildSelfHeal({
+      command: `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`,
+      cwd: appPath,
+      successMessage: "Reinstalled dependencies with the Dyad-managed pnpm",
+      errorPrefix: "Failed to reinstall dependencies with pnpm",
+    });
+  } catch (error) {
+    try {
+      await restorePackageJson(appPath, originalPackageJsonContent);
+    } catch (restoreError) {
+      logger.warn(
+        "Failed to restore package.json after pnpm migration install failed:",
+        restoreError,
+      );
+    }
+    throw error;
   }
 
   // Old-lockfile apps commonly carry unlisted build-script deps; record any

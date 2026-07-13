@@ -78,6 +78,11 @@ import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError, showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
+import {
+  boundPreviewConsoleEntry,
+  formatPreviewConsoleMessage,
+  formatPreviewNetworkStatus,
+} from "@/lib/preview_console_buffer";
 import { queryKeys } from "@/lib/queryKeys";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -333,6 +338,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // guard from a replaced iframe doesn't block future captures.
   useEffect(() => {
     pendingCommitScreenshotRequestRef.current = null;
+    pendingAnnotatorScreenshotRequestIdRef.current = null;
+    setAnnotatorMode(false);
+    setScreenshotDataUrl(null);
     if (captureTimeoutRef.current !== null) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
@@ -342,6 +350,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Clean up pending screenshot timeout on unmount
   useEffect(() => {
     return () => {
+      pendingAnnotatorScreenshotRequestIdRef.current = null;
+      setAnnotatorMode(false);
+      setScreenshotDataUrl(null);
       if (captureTimeoutRef.current !== null) {
         clearTimeout(captureTimeoutRef.current);
         captureTimeoutRef.current = null;
@@ -652,9 +663,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       console.error("Failed to get element styles:", error);
     }
   };
-  useEffect(() => {
-    setAnnotatorMode(false);
-  }, []);
   // Reset visual editing state when app changes or component unmounts
   useEffect(() => {
     return () => {
@@ -721,17 +729,30 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       // Handle console logs from the iframe
       if (event.data?.type === "console-log") {
-        const { level, args } = event.data;
-        const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
+        const { level } = event.data;
+        const rawArgs: unknown = event.data.args;
+        const args: unknown[] = Array.isArray(rawArgs) ? rawArgs : [rawArgs];
+        const levelLabel =
+          level === "log" ||
+          level === "warn" ||
+          level === "error" ||
+          level === "info" ||
+          level === "debug"
+            ? level.toUpperCase()
+            : "LOG";
+        const formattedMessage = formatPreviewConsoleMessage(
+          `[${levelLabel}]`,
+          args,
+        );
         const logLevel: "info" | "warn" | "error" =
           level === "error" ? "error" : level === "warn" ? "warn" : "info";
-        const logEntry = {
+        const logEntry = boundPreviewConsoleEntry({
           level: logLevel,
           type: "client" as const,
           message: formattedMessage,
           appId: selectedAppId!,
           timestamp: Date.now(),
-        };
+        });
 
         // Send to central log store
         ipc.misc.addLog(logEntry);
@@ -744,14 +765,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // Handle network requests from the iframe
       if (event.data?.type === "network-request") {
         const { method, url } = event.data;
-        const formattedMessage = `→ ${method} ${url}`;
-        const logEntry = {
+        const formattedMessage = formatPreviewConsoleMessage("→", [
+          method,
+          url,
+        ]);
+        const logEntry = boundPreviewConsoleEntry({
           level: "info" as const,
           type: "network-requests" as const,
           message: formattedMessage,
           appId: selectedAppId!,
           timestamp: Date.now(),
-        };
+        });
 
         // Send to central log store
         ipc.misc.addLog(logEntry);
@@ -764,16 +788,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // Handle network responses from the iframe
       if (event.data?.type === "network-response") {
         const { method, url, status, duration } = event.data;
-        const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
+        const numericStatus = typeof status === "number" ? status : 0;
+        const durationLabel =
+          typeof duration === "number"
+            ? `(${duration}ms)`
+            : "(unknown duration)";
+        const formattedMessage = formatPreviewConsoleMessage(
+          formatPreviewNetworkStatus(status),
+          [method, url, durationLabel],
+        );
         const level: "info" | "warn" | "error" =
-          status >= 400 ? "error" : status >= 300 ? "warn" : "info";
-        const logEntry = {
+          numericStatus >= 400
+            ? "error"
+            : numericStatus >= 300
+              ? "warn"
+              : "info";
+        const logEntry = boundPreviewConsoleEntry({
           level,
           type: "network-requests" as const,
           message: formattedMessage,
           appId: selectedAppId!,
           timestamp: Date.now(),
-        };
+        });
 
         // Send to central log store
         ipc.misc.addLog(logEntry);
@@ -786,15 +822,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // Handle network errors from the iframe
       if (event.data?.type === "network-error") {
         const { method, url, status, error, duration } = event.data;
-        const statusCode = status && status !== 0 ? `[${status}] ` : "";
-        const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
-        const logEntry = {
+        const statusCode =
+          typeof status === "number" && status !== 0 ? `[${status}]` : "";
+        const durationLabel =
+          typeof duration === "number"
+            ? `(${duration}ms)`
+            : "(unknown duration)";
+        const formattedMessage = formatPreviewConsoleMessage(statusCode, [
+          method,
+          url,
+          "-",
+          error,
+          durationLabel,
+        ]);
+        const logEntry = boundPreviewConsoleEntry({
           level: "error" as const,
           type: "network-requests" as const,
           message: formattedMessage,
           appId: selectedAppId!,
           timestamp: Date.now(),
-        };
+        });
 
         // Send to central log store
         ipc.misc.addLog(logEntry);
@@ -1064,13 +1111,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const errorMessage = `Error ${payload?.message || payload?.reason}\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        const logEntry = {
+        const logEntry = boundPreviewConsoleEntry({
           level: "error" as const,
           type: "client" as const,
           message: `Iframe error: ${errorMessage}`,
           appId: selectedAppId!,
           timestamp: Date.now(),
-        };
+        });
 
         // Send to central log store
         ipc.misc.addLog(logEntry);
@@ -1081,13 +1128,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        const logEntry = {
+        const logEntry = boundPreviewConsoleEntry({
           level: "error" as const,
           type: "client" as const,
-          message: `Build error report: ${JSON.stringify(payload)}`,
+          message: formatPreviewConsoleMessage("Build error report:", [
+            payload?.message,
+            "from file",
+            payload?.file,
+            "Source code:",
+            payload?.frame,
+          ]),
           appId: selectedAppId!,
           timestamp: Date.now(),
-        };
+        });
 
         // Send to central log store
         ipc.misc.addLog(logEntry);
@@ -1256,7 +1309,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to handle annotator button click
   const handleAnnotatorClick = () => {
     if (annotatorMode) {
+      pendingAnnotatorScreenshotRequestIdRef.current = null;
       setAnnotatorMode(false);
+      setScreenshotDataUrl(null);
       return;
     }
     if (iframeRef.current?.contentWindow) {
@@ -2010,9 +2065,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     handleAnnotatorClick={handleAnnotatorClick}
                   />
                 ) : (
-                  <AnnotatorOnlyForPro
-                    onGoBack={() => setAnnotatorMode(false)}
-                  />
+                  <AnnotatorOnlyForPro onGoBack={handleAnnotatorClick} />
                 )}
               </div>
             ) : (

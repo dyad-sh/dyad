@@ -21,6 +21,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## MCP consent results
 
 - `requireMcpToolConsent` resolves to a structured result, not a bare boolean. If `npm run ts` reports `Argument of type 'boolean' is not assignable to parameter of type 'McpConsentResult'`, update mocks to return `{ approved: true/false }`.
+- Treat MCP tool results as untrusted-size input. Every execution path (direct Agent tools, sandbox host functions, and Build-mode tools) must pass the raw result through `sanitizeMcpToolResult` before JSON serialization, XML emission, SDK return, or persistence; directly stringifying a result can multiply large text or base64 media across main-process memory.
 
 ## SQL consent and auto-approval
 
@@ -48,6 +49,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - When adding a built-in sandbox host function, add its name to `SANDBOX_HOST_CALL_NAMES` in `src/ipc/utils/sandbox/capabilities.ts`. MCP tool collection seeds collision detection from that list so MCP capabilities do not silently shadow built-ins when capability maps are merged.
 - A state-changing host function must enforce cross-cutting preconditions at the capability layer, not via the parent tool's wrapper. `execute_sandbox_script` is exempted from the wrapper-level app-blueprint gate (`CAPABILITY_GATED_BLUEPRINT_TOOLS` in `tool_definitions.ts`) because gating the whole tool would also block read-only scripts and MCP host calls; instead `buildWriteFileCapability` calls `assertAppBlueprintApproved` per write, reading `ctx.enableAppBlueprint`.
 - Host functions that WRITE must run `assertSandboxWritePathAllowed` (realpath containment), not just the lexical `assertAllowedGuestPath`. Reads already resolve symlinks via `assertResolvedPathAllowed`; a write path that skips realpath resolution can follow a symlinked directory or file out of the app.
+- When enforcing realpath containment or protected-path rules, canonicalize **both** the root and target before calling `path.relative`. Mixing a lexical root with a realpath target can misclassify paths on macOS (`/var/...` canonicalizes to `/private/var/...`) and bypass checks such as referenced-app `.dyad/` protection.
 - Consent, file-edit tracking, and blueprint gating shared between `buildAgentToolSet` and sandbox capability bridges live in `tools/tool_invocation.ts` — a cycle-free module (`tool_definitions.ts` imports every tool, so tools cannot import back from it). Use those helpers instead of copying the wrapper's blocks.
 - Derive "is this host function enabled" from one predicate: the handler sets `ctx.sandboxWriteFileHostEnabled` via `shouldIncludeTool(writeFileTool, ...)`, and per-call re-checks use `getToolConsent(writeFileTool)` (which honors the tool's `defaultConsent` fallback). Do not read `settings.agentToolConsents` directly — a raw read silently diverges if the default consent changes. `buildExecuteSandboxScriptDescription` requires an explicit `includeWriteFile` for the same reason: only the caller knows the turn context.
 

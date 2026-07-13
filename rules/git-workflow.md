@@ -81,6 +81,10 @@ When editing skill files through `.agents/skills/...`, remember that
 `fatal: pathspec '.agents/skills/...' is beyond a symbolic link`, inspect and
 commit the corresponding tracked `.claude/skills/...` path instead.
 
+## node_modules symlinks and `.gitignore`
+
+When a worktree symlinks `node_modules` from another checkout (common in agent worktrees to avoid reinstalling), `.gitignore`'s `node_modules/` pattern does NOT match it — the trailing slash makes the pattern directory-only, and a symlink is not a directory. `git add -A` will therefore stage the symlink. Check `git status` for symlink entries before committing, and remove any staged one with `git rm --cached node_modules` (same for `testing/fake-llm-server/node_modules`).
+
 ## Commit hooks and untracked artifacts
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
@@ -95,6 +99,12 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 - CI/build configuration updates
 
 ## Cross-repo PR workflows (forks)
+
+- `git fetch --all` can return nonzero after successfully refreshing
+  `upstream/main` when unrelated collaborator remotes have clashing historical
+  tags (`would clobber existing tag`). Verify the base ref was updated, then
+  rebase onto it; do not treat an unrelated remote's tag rejection as a stale
+  upstream fetch.
 
 When running GitHub Actions with `pull_request_target` on cross-repo PRs (from forks):
 

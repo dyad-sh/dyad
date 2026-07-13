@@ -29,6 +29,13 @@ import esChat from "./locales/es/chat.json";
 import esHome from "./locales/es/home.json";
 import esErrors from "./locales/es/errors.json";
 
+// Korean
+import koCommon from "./locales/ko/common.json";
+import koSettings from "./locales/ko/settings.json";
+import koChat from "./locales/ko/chat.json";
+import koHome from "./locales/ko/home.json";
+import koErrors from "./locales/ko/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -57,6 +64,13 @@ const resources = {
     chat: esChat,
     home: esHome,
     errors: esErrors,
+  },
+  ko: {
+    common: koCommon,
+    settings: koSettings,
+    chat: koChat,
+    home: koHome,
+    errors: koErrors,
   },
 };
 

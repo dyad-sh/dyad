@@ -4,6 +4,17 @@
  */
 
 (function () {
+  const MAX_ARGUMENTS = 20;
+  const MAX_ARGUMENT_BYTES = 8 * 1024;
+  const MAX_CONSOLE_CALL_BYTES = 64 * 1024;
+  const ARGUMENT_OMISSION_MARKER_RESERVE_BYTES = 64;
+  const MAX_STRING_VALUE_BYTES = 4 * 1024;
+  const MAX_OBJECT_DEPTH = 6;
+  const MAX_OBJECT_KEYS = 50;
+  const MAX_OBJECT_KEY_BYTES = 256;
+  const MAX_SERIALIZED_NODES = 250;
+  const VALUE_TRUNCATION_SUFFIX = "… [console value truncated]";
+
   // Store original console methods
   const originalLog = console.log;
   const originalWarn = console.warn;
@@ -11,20 +22,308 @@
   const originalInfo = console.info;
   const originalDebug = console.debug;
 
-  // Helper function to safely stringify arguments
-  function stringifyArgs(args) {
-    return args.map((arg) => {
-      if (arg === null) return "null";
-      if (arg === undefined) return "undefined";
-      if (typeof arg === "object") {
-        try {
-          return JSON.stringify(arg, null, 2);
-        } catch {
-          return "[Object: unable to stringify]";
+  function utf8CodePointByteLength(codePoint) {
+    if (codePoint <= 0x7f) return 1;
+    if (codePoint <= 0x7ff) return 2;
+    if (codePoint <= 0xffff) return 3;
+    return 4;
+  }
+
+  function utf8ByteLength(value) {
+    let byteLength = 0;
+    for (let index = 0; index < value.length; ) {
+      const codePoint = value.codePointAt(index) ?? 0;
+      byteLength += utf8CodePointByteLength(codePoint);
+      index += codePoint > 0xffff ? 2 : 1;
+    }
+    return byteLength;
+  }
+
+  function truncateUtf8(value, maxBytes) {
+    if (maxBytes <= 0) return "";
+
+    let byteLength = 0;
+    let prefixEnd = 0;
+    const suffixByteLength = utf8ByteLength(VALUE_TRUNCATION_SUFFIX);
+    const prefixLimit = Math.max(0, maxBytes - suffixByteLength);
+
+    for (let index = 0; index < value.length; ) {
+      const codePoint = value.codePointAt(index) ?? 0;
+      const nextIndex = index + (codePoint > 0xffff ? 2 : 1);
+      byteLength += utf8CodePointByteLength(codePoint);
+      if (byteLength <= prefixLimit) prefixEnd = nextIndex;
+      if (byteLength > maxBytes) {
+        if (suffixByteLength > maxBytes) {
+          let suffixEnd = 0;
+          let usedBytes = 0;
+          for (
+            let suffixIndex = 0;
+            suffixIndex < VALUE_TRUNCATION_SUFFIX.length;
+          ) {
+            const suffixCodePoint =
+              VALUE_TRUNCATION_SUFFIX.codePointAt(suffixIndex) ?? 0;
+            const nextSuffixIndex =
+              suffixIndex + (suffixCodePoint > 0xffff ? 2 : 1);
+            const nextBytes =
+              usedBytes + utf8CodePointByteLength(suffixCodePoint);
+            if (nextBytes > maxBytes) break;
+            usedBytes = nextBytes;
+            suffixEnd = nextSuffixIndex;
+            suffixIndex = nextSuffixIndex;
+          }
+          return VALUE_TRUNCATION_SUFFIX.slice(0, suffixEnd);
+        }
+        return value.slice(0, prefixEnd) + VALUE_TRUNCATION_SUFFIX;
+      }
+      index = nextIndex;
+    }
+
+    return value;
+  }
+
+  function takeStringWithinBudget(value, state, maxBytes) {
+    const availableBytes = Math.min(maxBytes, state.remainingBytes);
+    const boundedValue = truncateUtf8(value, availableBytes);
+    state.remainingBytes = Math.max(
+      0,
+      state.remainingBytes - utf8ByteLength(boundedValue),
+    );
+    return boundedValue;
+  }
+
+  function sanitizeValue(value, state, depth) {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "string") {
+      return takeStringWithinBudget(value, state, MAX_STRING_VALUE_BYTES);
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "bigint") {
+      return takeStringWithinBudget(`${value}n`, state, MAX_STRING_VALUE_BYTES);
+    }
+    if (typeof value === "function") {
+      return takeStringWithinBudget(
+        `[Function ${value.name || "anonymous"}]`,
+        state,
+        MAX_OBJECT_KEY_BYTES,
+      );
+    }
+    if (typeof value === "symbol") {
+      return takeStringWithinBudget(
+        String(value),
+        state,
+        MAX_STRING_VALUE_BYTES,
+      );
+    }
+    if (state.remainingBytes <= 0) return "";
+    if (depth >= MAX_OBJECT_DEPTH) {
+      return takeStringWithinBudget(
+        "[Maximum log depth reached]",
+        state,
+        MAX_STRING_VALUE_BYTES,
+      );
+    }
+    if (state.remainingNodes <= 0) {
+      return takeStringWithinBudget(
+        "[Log value node limit reached]",
+        state,
+        MAX_STRING_VALUE_BYTES,
+      );
+    }
+    if (state.seen.has(value)) {
+      return takeStringWithinBudget(
+        "[Circular]",
+        state,
+        MAX_STRING_VALUE_BYTES,
+      );
+    }
+
+    state.remainingNodes--;
+    state.seen.add(value);
+
+    // Match JSON.stringify semantics for built-ins such as Date and URL while
+    // retaining the traversal and byte limits for the value returned by
+    // user-defined toJSON implementations.
+    try {
+      if (typeof value.toJSON === "function") {
+        const jsonValue = value.toJSON();
+        if (jsonValue !== value) {
+          return sanitizeValue(jsonValue, state, depth + 1);
         }
       }
-      return String(arg);
-    });
+    } catch {
+      // Fall back to bounded property serialization when toJSON throws.
+    }
+
+    if (value instanceof Error) {
+      return {
+        name: takeStringWithinBudget(
+          String(value.name),
+          state,
+          MAX_STRING_VALUE_BYTES,
+        ),
+        message: takeStringWithinBudget(
+          String(value.message),
+          state,
+          MAX_STRING_VALUE_BYTES,
+        ),
+        stack: takeStringWithinBudget(
+          String(value.stack ?? ""),
+          state,
+          MAX_STRING_VALUE_BYTES,
+        ),
+      };
+    }
+
+    if (Array.isArray(value)) {
+      const itemCount = Math.min(
+        value.length,
+        MAX_OBJECT_KEYS,
+        state.remainingNodes,
+      );
+      const result = [];
+      let index = 0;
+      for (; index < itemCount && state.remainingBytes > 0; index++) {
+        result.push(sanitizeValue(value[index], state, depth + 1));
+      }
+      if (index < value.length && state.remainingBytes > 0) {
+        result.push(
+          takeStringWithinBudget(
+            `… [${value.length - index} array items omitted]`,
+            state,
+            MAX_STRING_VALUE_BYTES,
+          ),
+        );
+      }
+      return result;
+    }
+
+    const result = {};
+    let includedKeys = 0;
+    let hasMoreKeys = false;
+    try {
+      for (const key in value) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        if (
+          includedKeys >= MAX_OBJECT_KEYS ||
+          state.remainingNodes <= 0 ||
+          state.remainingBytes <= 0
+        ) {
+          hasMoreKeys = true;
+          break;
+        }
+        includedKeys++;
+        const safeKey = takeStringWithinBudget(
+          key,
+          state,
+          MAX_OBJECT_KEY_BYTES,
+        );
+        if (!safeKey && key !== "") {
+          hasMoreKeys = true;
+          break;
+        }
+        try {
+          result[safeKey] = sanitizeValue(value[key], state, depth + 1);
+        } catch {
+          result[safeKey] = takeStringWithinBudget(
+            "[Unable to read property]",
+            state,
+            MAX_STRING_VALUE_BYTES,
+          );
+        }
+      }
+    } catch {
+      return takeStringWithinBudget(
+        "[Object: unable to enumerate]",
+        state,
+        MAX_STRING_VALUE_BYTES,
+      );
+    }
+    if (hasMoreKeys && state.remainingBytes > 0) {
+      result.__dyad_truncated__ = takeStringWithinBudget(
+        "Additional keys omitted",
+        state,
+        MAX_STRING_VALUE_BYTES,
+      );
+    }
+    return result;
+  }
+
+  function stringifyArg(arg, maxBytes = MAX_ARGUMENT_BYTES) {
+    const argumentByteBudget = Math.min(
+      MAX_ARGUMENT_BYTES,
+      Math.max(0, maxBytes),
+    );
+    if (argumentByteBudget === 0) return "";
+    if (arg === null) return truncateUtf8("null", argumentByteBudget);
+    if (arg === undefined) return truncateUtf8("undefined", argumentByteBudget);
+    if (typeof arg === "string") {
+      return truncateUtf8(arg, argumentByteBudget);
+    }
+    if (typeof arg !== "object") {
+      if (typeof arg === "function") {
+        return truncateUtf8(
+          `[Function ${truncateUtf8(arg.name || "anonymous", MAX_OBJECT_KEY_BYTES)}]`,
+          argumentByteBudget,
+        );
+      }
+      return truncateUtf8(String(arg), argumentByteBudget);
+    }
+
+    try {
+      const sanitized = sanitizeValue(
+        arg,
+        {
+          seen: new WeakSet(),
+          remainingNodes: MAX_SERIALIZED_NODES,
+          remainingBytes: argumentByteBudget,
+        },
+        0,
+      );
+      return truncateUtf8(
+        JSON.stringify(sanitized, null, 2),
+        argumentByteBudget,
+      );
+    } catch {
+      return "[Object: unable to stringify]";
+    }
+  }
+
+  // Bound argument count, object traversal, depth, and string size before the
+  // structured-clone boundary so a single console call cannot balloon either
+  // the preview iframe or the parent renderer.
+  function stringifyArgs(args) {
+    const includedArgs = [];
+    const valueCount = Math.min(args.length, MAX_ARGUMENTS);
+    const valueByteBudget = Math.max(
+      0,
+      MAX_CONSOLE_CALL_BYTES - ARGUMENT_OMISSION_MARKER_RESERVE_BYTES,
+    );
+    let usedBytes = 0;
+
+    for (let index = 0; index < valueCount; index++) {
+      const remainingBytes = valueByteBudget - usedBytes;
+      if (remainingBytes <= 0) break;
+
+      const stringified = stringifyArg(
+        args[index],
+        Math.min(MAX_ARGUMENT_BYTES, remainingBytes),
+      );
+      includedArgs.push(stringified);
+      usedBytes += utf8ByteLength(stringified);
+    }
+
+    const omittedArgumentCount = args.length - includedArgs.length;
+    if (omittedArgumentCount > 0) {
+      const marker = truncateUtf8(
+        `… [${omittedArgumentCount} arguments omitted]`,
+        MAX_CONSOLE_CALL_BYTES - usedBytes,
+      );
+      if (marker) includedArgs.push(marker);
+    }
+
+    return includedArgs;
   }
 
   // Intercept console.log

@@ -2,6 +2,8 @@ import React, { useCallback, useRef, useState } from "react";
 import type { FileAttachment } from "@/ipc/types";
 import { useAtom } from "jotai";
 import { attachmentsAtom } from "@/atoms/chatAtoms";
+import { showError } from "@/lib/toast";
+import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
 
 export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
@@ -13,17 +15,53 @@ export function useAttachments() {
     fileInputRef.current?.click();
   };
 
+  const validateFiles = useCallback(
+    (
+      files: readonly File[],
+      existingAttachments: readonly FileAttachment[],
+    ): boolean => {
+      const validation = validateChatAttachmentFiles([
+        ...existingAttachments.map(({ file }) => file),
+        ...files,
+      ]);
+      if (!validation.ok) {
+        showError(validation.message);
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
+
+  const addAttachments = useCallback(
+    (
+      files: File[],
+      type: "chat-context" | "upload-to-codebase" = "chat-context",
+    ): boolean => {
+      const fileAttachments: FileAttachment[] = files.map((file) => ({
+        file,
+        type,
+      }));
+      let didAdd = false;
+      setAttachments((current) => {
+        if (!validateFiles(files, current)) {
+          return current;
+        }
+        didAdd = true;
+        return [...current, ...fileAttachments];
+      });
+      return didAdd;
+    },
+    [setAttachments, validateFiles],
+  );
+
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "chat-context" | "upload-to-codebase" = "chat-context",
   ) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
-      const fileAttachments: FileAttachment[] = files.map((file) => ({
-        file,
-        type,
-      }));
-      setAttachments((attachments) => [...attachments, ...fileAttachments]);
+      addAttachments(files, type);
       // Clear the input value so the same file can be selected again
       e.target.value = "";
     }
@@ -34,11 +72,7 @@ export function useAttachments() {
     type: "chat-context" | "upload-to-codebase",
   ) => {
     const files = Array.from(fileList);
-    const fileAttachments: FileAttachment[] = files.map((file) => ({
-      file,
-      type,
-    }));
-    setAttachments((attachments) => [...attachments, ...fileAttachments]);
+    addAttachments(files, type);
   };
 
   const removeAttachment = (index: number) => {
@@ -64,25 +98,15 @@ export function useAttachments() {
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      setPendingFiles(files);
+      if (validateFiles(files, attachments)) {
+        setPendingFiles(files);
+      }
     }
-  };
-
-  const addAttachments = (
-    files: File[],
-    type: "chat-context" | "upload-to-codebase" = "chat-context",
-  ) => {
-    const fileAttachments: FileAttachment[] = files.map((file) => ({
-      file,
-      type,
-    }));
-    setAttachments((attachments) => [...attachments, ...fileAttachments]);
   };
 
   const confirmPendingFiles = useCallback(
     (type: "chat-context" | "upload-to-codebase") => {
-      if (pendingFiles) {
-        addAttachments(pendingFiles, type);
+      if (pendingFiles && addAttachments(pendingFiles, type)) {
         setPendingFiles(null);
       }
     },
@@ -99,8 +123,18 @@ export function useAttachments() {
   };
 
   const replaceAttachments = (newAttachments: FileAttachment[]) => {
+    const validation = validateChatAttachmentFiles(
+      newAttachments.map(({ file }) => file),
+    );
+    if (!validation.ok) {
+      showError(validation.message);
+      setAttachments([]);
+      setPendingFiles(null);
+      return false;
+    }
     setAttachments(newAttachments);
     setPendingFiles(null);
+    return true;
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
@@ -137,7 +171,7 @@ export function useAttachments() {
         }
       }
 
-      if (imageFiles.length > 0) {
+      if (imageFiles.length > 0 && validateFiles(imageFiles, attachments)) {
         setPendingFiles(imageFiles);
       }
     }

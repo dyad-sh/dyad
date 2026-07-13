@@ -23,9 +23,9 @@ const LANGUAGE_OPTIONS: { value: Language; nativeLabel: string }[] = [
   { value: "zh-CN", nativeLabel: "简体中文" },
   { value: "pt-BR", nativeLabel: "Português (Brasil)" },
   { value: "es", nativeLabel: "Español" },
+  { value: "ko", nativeLabel: "한국어" },
   // Additional languages will be added as translations are completed:
   // { value: "ja", nativeLabel: "日本語" },
-  // { value: "ko", nativeLabel: "한국어" },
   // { value: "fr", nativeLabel: "Français" },
   // { value: "de", nativeLabel: "Deutsch" },
 ];

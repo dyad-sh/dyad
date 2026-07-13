@@ -1,10 +1,10 @@
 import * as path from "path";
 import * as fs from "fs/promises";
 import { app } from "electron";
-import * as crypto from "crypto";
 import log from "electron-log";
 import Database from "better-sqlite3";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { calculateFileChecksum } from "@/utils/file_checksum";
 
 const logger = log.scope("backup_manager");
 
@@ -332,10 +332,7 @@ export class BackupManager {
    */
   private async getFileChecksum(filePath: string): Promise<string | null> {
     try {
-      const fileBuffer = await fs.readFile(filePath);
-      const hash = crypto.createHash("sha256");
-      hash.update(fileBuffer);
-      const checksum = hash.digest("hex");
+      const checksum = await calculateFileChecksum(filePath);
       logger.debug(
         `Checksum calculated for ${filePath}: ${checksum.substring(0, 8)}...`,
       );

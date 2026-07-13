@@ -1,12 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import {
-  FileWarning,
-  Plus,
-  Pencil,
-  Trash2,
-  ArrowRightLeft,
-  TriangleAlert,
-} from "lucide-react";
+import { FileWarning, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,70 +16,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  useUncommittedFiles,
-  type UncommittedFile,
-} from "@/hooks/useUncommittedFiles";
+import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { useDiscardChanges } from "@/hooks/useDiscardChanges";
 import { cn } from "@/lib/utils";
+import {
+  getStatusIcon,
+  getStatusLabel,
+  getStatusBadgeClassName,
+  generateDefaultCommitMessage,
+} from "@/components/chat/uncommittedFileStatus";
 
 interface UncommittedFilesBannerProps {
   appId: number | null;
-}
-
-function getStatusIcon(status: UncommittedFile["status"]) {
-  switch (status) {
-    case "added":
-      return <Plus className="h-4 w-4 text-green-500" />;
-    case "modified":
-      return <Pencil className="h-4 w-4 text-yellow-500" />;
-    case "deleted":
-      return <Trash2 className="h-4 w-4 text-red-500" />;
-    case "renamed":
-      return <ArrowRightLeft className="h-4 w-4 text-blue-500" />;
-    default:
-      return null;
-  }
-}
-
-function getStatusLabel(status: UncommittedFile["status"]) {
-  switch (status) {
-    case "added":
-      return "Added";
-    case "modified":
-      return "Modified";
-    case "deleted":
-      return "Deleted";
-    case "renamed":
-      return "Renamed";
-    default:
-      return status;
-  }
-}
-
-function generateDefaultCommitMessage(files: UncommittedFile[]): string {
-  if (files.length === 0) return "";
-
-  const added = files.filter((f) => f.status === "added").length;
-  const modified = files.filter((f) => f.status === "modified").length;
-  const deleted = files.filter((f) => f.status === "deleted").length;
-  const renamed = files.filter((f) => f.status === "renamed").length;
-
-  const parts: string[] = [];
-  if (added > 0) parts.push(`add ${added} file${added > 1 ? "s" : ""}`);
-  if (modified > 0)
-    parts.push(`update ${modified} file${modified > 1 ? "s" : ""}`);
-  if (deleted > 0)
-    parts.push(`remove ${deleted} file${deleted > 1 ? "s" : ""}`);
-  if (renamed > 0)
-    parts.push(`rename ${renamed} file${renamed > 1 ? "s" : ""}`);
-
-  if (parts.length === 0) return "Update files";
-
-  // Capitalize first letter
-  const message = parts.join(", ");
-  return message.charAt(0).toUpperCase() + message.slice(1);
 }
 
 export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
@@ -230,19 +172,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                           <p className="max-w-[400px] break-all">{file.path}</p>
                         </TooltipContent>
                       </Tooltip>
-                      <span
-                        className={cn(
-                          "text-xs px-1.5 py-0.5 rounded",
-                          file.status === "added" &&
-                            "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-                          file.status === "modified" &&
-                            "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-                          file.status === "deleted" &&
-                            "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-                          file.status === "renamed" &&
-                            "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-                        )}
-                      >
+                      <span className={getStatusBadgeClassName(file.status)}>
                         {getStatusLabel(file.status)}
                       </span>
                     </div>

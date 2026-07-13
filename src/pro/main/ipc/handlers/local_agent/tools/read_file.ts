@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
@@ -8,8 +7,10 @@ import {
   resolveTargetAppPath,
 } from "./resolve_app_context";
 import { resolveAttachmentLogicalPath } from "@/ipc/utils/media_path_utils";
-
-const readFile = fs.promises.readFile;
+import {
+  AGENT_READ_FILE_TRUNCATION_NOTICE,
+  readTextFileLines,
+} from "@/ipc/utils/bounded_text_file";
 
 const readFileSchema = z
   .object({
@@ -122,33 +123,26 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       appName: args.app_name,
     });
 
-    if (!fs.existsSync(fullFilePath)) {
-      const appContext = args.app_name ? ` (in app: ${args.app_name})` : "";
-      throw new DyadError(
-        `File does not exist: ${args.path}${appContext}`,
-        DyadErrorKind.NotFound,
-      );
-    }
+    const displayPath = args.app_name
+      ? `${args.path} (in app: ${args.app_name})`
+      : args.path;
 
-    const content = await readFile(fullFilePath, "utf8");
-    if (!content) return "";
+    const result = await readTextFileLines({
+      rootPath: targetAppPath,
+      filePath: fullFilePath,
+      displayPath,
+      startLine: args.start_line_one_indexed,
+      endLineInclusive: args.end_line_one_indexed_inclusive,
+      validateRealPath: (realPath, realRootPath) =>
+        assertDyadInternalAccessAllowed({
+          targetAppPath: realRootPath,
+          fullFilePath: realPath,
+          appName: args.app_name,
+        }),
+    });
 
-    const start = args.start_line_one_indexed;
-    const end = args.end_line_one_indexed_inclusive;
-
-    if (start == null && end == null) {
-      return content;
-    }
-
-    const hasTrailingNewline = content.endsWith("\n");
-    const lines = (hasTrailingNewline ? content.slice(0, -1) : content).split(
-      "\n",
-    );
-    const startIdx = Math.max(0, (start ?? 1) - 1);
-    const endIdx = Math.min(lines.length, end ?? lines.length);
-    const result = lines.slice(startIdx, endIdx).join("\n");
-    return endIdx >= lines.length && hasTrailingNewline
-      ? result + "\n"
-      : result;
+    return result.truncated
+      ? result.content + AGENT_READ_FILE_TRUNCATION_NOTICE
+      : result.content;
   },
 };

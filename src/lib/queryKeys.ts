@@ -119,6 +119,13 @@ export const queryKeys = {
     all: ["uncommittedFiles"] as const,
     byApp: ({ appId }: { appId: number | null }) =>
       ["uncommittedFiles", appId] as const,
+    diff: ({
+      appId,
+      filePath,
+    }: {
+      appId: number | null;
+      filePath: string | null;
+    }) => ["uncommittedFiles", appId, "diff", filePath] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

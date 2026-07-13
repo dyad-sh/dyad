@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parentPort } from "node:worker_threads";
 
 import {
   Problem,
@@ -320,11 +319,30 @@ async function processTypeScriptCheck(
   }
 }
 
-// Handle messages from main thread
-parentPort?.on("message", async (input: WorkerInput) => {
-  const output = await processTypeScriptCheck(input);
-  parentPort?.postMessage(output);
-});
+// This file runs as an Electron utility process (see
+// src/ipc/processors/tsc.ts), which exposes IPC via `process.parentPort`
+// instead of worker_threads' parentPort. Electron's typings for it live in
+// the `electron` module, which isn't part of this worker's tsconfig, so
+// declare the minimal surface we use.
+interface UtilityProcessParentPort {
+  on(
+    event: "message",
+    listener: (messageEvent: { data: WorkerInput }) => void,
+  ): void;
+  postMessage(message: WorkerOutput): void;
+}
+
+const parentPort = (
+  process as unknown as { parentPort?: UtilityProcessParentPort }
+).parentPort;
+
+// Handle messages from the main process
+if (parentPort) {
+  parentPort.on("message", async (messageEvent) => {
+    const output = await processTypeScriptCheck(messageEvent.data);
+    parentPort.postMessage(output);
+  });
+}
 
 /**
  * Normalize the path to use forward slashes instead of backslashes.

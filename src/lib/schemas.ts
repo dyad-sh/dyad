@@ -299,6 +299,52 @@ export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
+// The kinds of TypeScript utility process the scheduler can run.
+export const TypeScriptUtilityProcessKindSchema = z.enum([
+  "code-explorer",
+  "tsc",
+]);
+export type TypeScriptUtilityProcessKind = z.infer<
+  typeof TypeScriptUtilityProcessKindSchema
+>;
+
+// What the main process was doing when a performance snapshot was taken.
+export const PerformanceActivitySchema = z.object({
+  activeStreams: z.number(),
+  runningApps: z.number(),
+  extractCodebase: z.boolean(),
+  tsUtilityProcess: TypeScriptUtilityProcessKindSchema.nullable(),
+});
+
+// Performance snapshot written by the performance monitor every 30s. Also
+// used to parse the snapshot embedded in renderer crash records.
+export const LastKnownPerformanceSchema = z.object({
+  timestamp: z.number(),
+  memoryUsageMB: z.number(),
+  cpuUsagePercent: z.number().optional(),
+  systemMemoryUsageMB: z.number().optional(),
+  systemMemoryTotalMB: z.number().optional(),
+  systemCpuPercent: z.number().optional(),
+  // Main process V8 heap, from v8.getHeapStatistics().
+  heapUsedMB: z.number().optional(),
+  heapLimitMB: z.number().optional(),
+  // Working set per Electron process type (browser, tab, gpu, utility).
+  processWorkingSetsMB: z.record(z.string(), z.number()).optional(),
+  // What was running at this snapshot.
+  activity: PerformanceActivitySchema.optional(),
+  // Session highs. peakRssMB is exact (kernel tracked); the rest are
+  // maxima over 30s samples and can miss short spikes.
+  peakHeapUsedMB: z.number().optional(),
+  peakHeapPct: z.number().optional(),
+  peakRssMB: z.number().optional(),
+  peakProcessWorkingSetsMB: z.record(z.string(), z.number()).optional(),
+  // What was running when a main process peak (heap, RSS) was last set,
+  // and when. The per-type working set peaks above are not stamped; they
+  // can come from different moments than this pair.
+  peakActivity: PerformanceActivitySchema.optional(),
+  peakTimestamp: z.number().optional(),
+});
+
 /**
  * Base fields shared between StoredUserSettings and UserSettings
  */
@@ -372,16 +418,7 @@ const BaseUserSettingsFields = {
   disablePreviewNodeAutoInstall: z.boolean().optional(),
   customAppsFolder: z.string().optional().nullable(),
   isRunning: z.boolean().optional(),
-  lastKnownPerformance: z
-    .object({
-      timestamp: z.number(),
-      memoryUsageMB: z.number(),
-      cpuUsagePercent: z.number().optional(),
-      systemMemoryUsageMB: z.number().optional(),
-      systemMemoryTotalMB: z.number().optional(),
-      systemCpuPercent: z.number().optional(),
-    })
-    .optional(),
+  lastKnownPerformance: LastKnownPerformanceSchema.optional(),
   hideLocalAgentNewChatToast: z.boolean().optional(),
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),

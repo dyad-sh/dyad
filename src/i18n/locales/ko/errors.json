@@ -1,0 +1,10 @@
+{
+  "unknown": "알 수 없는 오류가 발생했습니다",
+  "failedToCreate": "생성 실패: {{error}}",
+  "failedToUpdate": "업데이트 실패: {{error}}",
+  "failedToDelete": "삭제 실패: {{error}}",
+  "failedToLoad": "불러오기 실패: {{error}}",
+  "networkError": "네트워크 오류가 발생했습니다. 연결 상태를 확인해 주세요.",
+  "copyError": "오류 메시지 복사",
+  "errorOccurred": "오류가 발생했습니다"
+}

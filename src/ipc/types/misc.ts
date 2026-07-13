@@ -48,7 +48,7 @@ export const SetAppEnvVarsParamsSchema = z.object({
  * Schema version for the session debug bundle format.
  * Bump this when making breaking changes to the schema.
  */
-export const SESSION_DEBUG_SCHEMA_VERSION = 2;
+export const SESSION_DEBUG_SCHEMA_VERSION = 3;
 
 // -- System info --
 
@@ -239,6 +239,118 @@ const DebugMcpServerSchema = z.object({
   // NOTE: envJson and headersJson are intentionally EXCLUDED (may contain secrets)
 });
 
+// -- Process memory diagnostics --
+
+export const ProcessMetricSchema = z.object({
+  pid: z.number(),
+  rssKb: z.number(),
+  command: z.string(),
+});
+
+export const ElectronProcessMetricSchema = z.object({
+  type: z.string(),
+  pid: z.number(),
+  workingSetSizeKb: z.number(),
+  creationTime: z.number(),
+  name: z.string().optional(),
+  serviceName: z.string().optional(),
+});
+
+export const ElectronProcessMetricsResultSchema = z.object({
+  processes: z.array(ElectronProcessMetricSchema),
+  totalWorkingSetSizeMb: z.number(),
+  mainProcess: z.object({
+    rssMb: z.number(),
+    heapTotalMb: z.number(),
+    heapUsedMb: z.number(),
+    externalMb: z.number(),
+  }),
+  v8Heap: z.object({
+    heapSizeLimitMb: z.number(),
+    totalHeapSizeMb: z.number(),
+    usedHeapSizeMb: z.number(),
+    mallocedMemoryMb: z.number(),
+    externalMemoryMb: z.number(),
+  }),
+  error: z.string().optional(),
+});
+
+export const AppProcessTreeSchema = z.object({
+  appId: z.number(),
+  rootPid: z.number(),
+  processes: z.array(ProcessMetricSchema),
+  totalRssMb: z.number(),
+  note: z.string().optional(),
+});
+
+export const AppProcessTreesResultSchema = z.object({
+  supported: z.boolean(),
+  trees: z.array(AppProcessTreeSchema),
+  error: z.string().optional(),
+});
+
+export const VmStatSummarySchema = z.object({
+  pageSizeBytes: z.number(),
+  freePages: z.number(),
+  activePages: z.number(),
+  inactivePages: z.number(),
+  speculativePages: z.number(),
+  wiredPages: z.number(),
+  purgeablePages: z.number(),
+  compressorPages: z.number(),
+  pageouts: z.number(),
+});
+
+export const SystemMemorySignalsSchema = z.object({
+  platform: z.string(),
+  totalMemoryMb: z.number(),
+  appMemoryMb: z.number().optional(),
+  reclaimableMb: z.number().optional(),
+  freeMb: z.number().optional(),
+  swapUsedMb: z.number().optional(),
+  swapTotalMb: z.number().optional(),
+  pressureDetected: z.boolean().optional(),
+  vmStat: VmStatSummarySchema.optional(),
+  fallback: z
+    .object({
+      usedMemoryMb: z.number(),
+      freeMemoryMb: z.number(),
+      usagePercent: z.number(),
+    })
+    .optional(),
+  error: z.string().optional(),
+});
+
+export const TopProcessesResultSchema = z.object({
+  captured: z.boolean(),
+  reason: z.string(),
+  processes: z.array(ProcessMetricSchema).optional(),
+  error: z.string().optional(),
+});
+
+export const ProcessMemoryDiagnosticsSchema = z.object({
+  collectedAt: z.string(),
+  platform: z.string(),
+  electron: ElectronProcessMetricsResultSchema,
+  appProcessTrees: AppProcessTreesResultSchema,
+  systemMemory: SystemMemorySignalsSchema,
+  topProcesses: TopProcessesResultSchema,
+});
+
+export type ProcessMetric = z.infer<typeof ProcessMetricSchema>;
+export type ElectronProcessMetric = z.infer<typeof ElectronProcessMetricSchema>;
+export type ElectronProcessMetricsResult = z.infer<
+  typeof ElectronProcessMetricsResultSchema
+>;
+export type AppProcessTree = z.infer<typeof AppProcessTreeSchema>;
+export type AppProcessTreesResult = z.infer<typeof AppProcessTreesResultSchema>;
+export type VmStatSummary = z.infer<typeof VmStatSummarySchema>;
+export type SystemMemorySignals = z.infer<typeof SystemMemorySignalsSchema>;
+export type TopProcessesResult = z.infer<typeof TopProcessesResultSchema>;
+export type ProcessMemoryDiagnostics = z.infer<
+  typeof ProcessMemoryDiagnosticsSchema
+>;
+
 // -- Top-level bundle --
 
 /**
@@ -275,6 +387,14 @@ export const SessionDebugBundleSchema = z.object({
   logs: z.string(),
   /** Auto-updater failure details (last in-process error + Squirrel log tail on Windows). Null if none. */
   updaterLogs: z.string().nullable(),
+  /**
+   * Process-level memory diagnostics: Electron process metrics, per-app child
+   * process tree RSS, and real system memory-pressure signals (darwin).
+   * Best-effort — sections may carry an `error` field instead of data. The
+   * shape is owned by src/utils/process_memory_diagnostics.ts. Each section
+   * can carry an error field so diagnostics failures never break the export.
+   */
+  memoryDiagnostics: ProcessMemoryDiagnosticsSchema.nullable(),
 });
 
 export type SessionDebugBundle = z.infer<typeof SessionDebugBundleSchema>;

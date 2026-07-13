@@ -82,7 +82,7 @@
     "autoApprove": "Aprobar cambios automáticamente",
     "autoApproveDescription": "Esto aprobará y ejecutará automáticamente los cambios de código.",
     "autoFixProblems": "Arreglar problemas automáticamente",
-    "autoFixProblemsDescription": "Esto solucionará automáticamente los errores de TypeScript."
+    "autoFixProblemsDescription": "Esto solucionará automáticamente los errores de TypeScript en el modo Construir. En modo Agente, el agente ejecuta sus propias comprobaciones de tipos."
   },
   "ai": {
     "title": "Configuración de IA",

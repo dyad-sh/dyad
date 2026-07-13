@@ -15,6 +15,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { jsonSchemaToTs } from "./json_schema_to_ts";
 import { buildMcpAutoApprove } from "../mcp_auto_consent";
+import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
 const MCP_RESULT_TYPE = `type McpResult = {
   content: Array<
@@ -203,23 +204,27 @@ export function buildMcpCapabilityMap(params: {
           typeof res === "string"
             ? { content: [{ type: "text", text: res }] }
             : res;
-        const resultStr = typeof res === "string" ? res : JSON.stringify(res);
+        const safeResult = sanitizeMcpToolResult(normalized);
         params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(resultStr)}\n</dyad-mcp-tool-result>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}">\n${escapeXmlContent(safeResult.serialized)}\n</dyad-mcp-tool-result>`,
         );
-        return normalized;
+        return safeResult.value;
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         const errorStack =
           error instanceof Error && error.stack ? error.stack : "";
+        const safeErrorMessage = sanitizeMcpToolResult(errorMessage).serialized;
+        const safeErrorDetails = sanitizeMcpToolResult(
+          errorStack || errorMessage,
+        ).serialized;
         // Terminate the merged card in an error state instead of leaving it
         // stuck on "Running".
         params.ctx.onXmlComplete(
-          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(errorMessage)}\n</dyad-mcp-tool-result>`,
+          `<dyad-mcp-tool-result server="${escapeXmlAttr(def.serverName)}" tool="${escapeXmlAttr(def.toolName)}" call-id="${escapeXmlAttr(callId)}" is-error="true">\n${escapeXmlContent(safeErrorMessage)}\n</dyad-mcp-tool-result>`,
         );
         params.ctx.onXmlComplete(
-          `<dyad-output type="error" message="MCP tool '${escapeXmlAttr(def.toolKey)}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+          `<dyad-output type="error" message="MCP tool '${escapeXmlAttr(def.toolKey)}' failed: ${escapeXmlAttr(safeErrorMessage)}">${escapeXmlContent(safeErrorDetails)}</dyad-output>`,
         );
         throw error;
       }

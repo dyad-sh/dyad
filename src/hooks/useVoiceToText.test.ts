@@ -1,6 +1,11 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
+import {
+  AUDIO_RECORDING_TIMESLICE_MS,
+  MAX_AUDIO_RECORDING_BYTES,
+  MAX_AUDIO_RECORDING_DURATION_MS,
+} from "@/ipc/types/audio";
 
 const { transcribeAudioMock } = vi.hoisted(() => ({
   transcribeAudioMock: vi.fn(),
@@ -19,13 +24,15 @@ class MockMediaRecorder {
   public ondataavailable: ((event: { data: Blob }) => void) | null = null;
   public onstop: (() => void | Promise<void>) | null = null;
 
-  public start = vi.fn(() => {
+  public stopPromise: Promise<void> = Promise.resolve();
+
+  public start = vi.fn((_timeslice?: number) => {
     this.state = "recording";
   });
 
   public stop = vi.fn(() => {
     this.state = "inactive";
-    void this.onstop?.();
+    this.stopPromise = Promise.resolve(this.onstop?.());
   });
 }
 
@@ -60,6 +67,11 @@ describe("useVoiceToText", () => {
       configurable: true,
       writable: true,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("stops the active microphone stream when unmounted mid-recording", async () => {
@@ -115,7 +127,171 @@ describe("useVoiceToText", () => {
       expect(transcribeAudioMock).toHaveBeenCalledTimes(1);
     });
 
+    const request = transcribeAudioMock.mock.calls[0][0];
+    expect(request.audioData).toBeInstanceOf(Uint8Array);
+    expect(request.audioData.byteLength).toBe(10);
+    expect(recorder.start).toHaveBeenCalledWith(AUDIO_RECORDING_TIMESLICE_MS);
     expect(onTranscription).toHaveBeenCalledWith("hello world");
     expect(trackStopMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("automatically stops and transcribes when the duration limit is reached", async () => {
+    vi.useFakeTimers();
+    transcribeAudioMock.mockResolvedValue({ text: "from timer" });
+    const onTranscription = vi.fn();
+    const onError = vi.fn();
+
+    const { result } = renderHook(() =>
+      useVoiceToText({
+        enabled: true,
+        onTranscription,
+        onError,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    const recorder = mediaRecorderInstances[0];
+    recorder.ondataavailable?.({
+      data: new Blob(["timer audio"], { type: "audio/webm" }),
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(MAX_AUDIO_RECORDING_DURATION_MS);
+      await recorder.stopPromise;
+    });
+
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("maximum duration"),
+    );
+    expect(transcribeAudioMock).toHaveBeenCalledTimes(1);
+    expect(onTranscription).toHaveBeenCalledWith("from timer");
+    expect(result.current.isRecording).toBe(false);
+  });
+
+  it("stops before retaining a chunk that would exceed the byte limit", async () => {
+    transcribeAudioMock.mockResolvedValue({ text: "bounded audio" });
+    const onTranscription = vi.fn();
+    const onError = vi.fn();
+
+    const { result } = renderHook(() =>
+      useVoiceToText({
+        enabled: true,
+        onTranscription,
+        onError,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    const recorder = mediaRecorderInstances[0];
+    recorder.ondataavailable?.({
+      data: new Blob([new Uint8Array(MAX_AUDIO_RECORDING_BYTES - 1)], {
+        type: "audio/webm",
+      }),
+    });
+    recorder.ondataavailable?.({
+      data: new Blob([new Uint8Array([1, 2])], { type: "audio/webm" }),
+    });
+
+    await act(async () => {
+      await recorder.stopPromise;
+    });
+
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("maximum size"),
+    );
+    expect(transcribeAudioMock).toHaveBeenCalledTimes(1);
+    expect(transcribeAudioMock.mock.calls[0][0].audioData).toHaveLength(
+      MAX_AUDIO_RECORDING_BYTES - 1,
+    );
+    expect(onTranscription).toHaveBeenCalledWith("bounded audio");
+  });
+
+  it("ignores a transcription result that resolves after unmount", async () => {
+    let resolveTranscription: ((value: { text: string }) => void) | undefined;
+    transcribeAudioMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveTranscription = resolve;
+      }),
+    );
+    const onTranscription = vi.fn();
+
+    const { result, unmount } = renderHook(() =>
+      useVoiceToText({
+        enabled: true,
+        onTranscription,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    const recorder = mediaRecorderInstances[0];
+    recorder.ondataavailable?.({
+      data: new Blob(["test audio"], { type: "audio/webm" }),
+    });
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+    await waitFor(() => {
+      expect(transcribeAudioMock).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+    await act(async () => {
+      resolveTranscription?.({ text: "too late" });
+      await recorder.stopPromise;
+    });
+
+    expect(onTranscription).not.toHaveBeenCalled();
+  });
+
+  it("does not start transcription after unmount during audio conversion", async () => {
+    let resolveArrayBuffer: ((value: ArrayBuffer) => void) | undefined;
+    vi.spyOn(Blob.prototype, "arrayBuffer").mockReturnValue(
+      new Promise((resolve) => {
+        resolveArrayBuffer = resolve;
+      }),
+    );
+    const onTranscription = vi.fn();
+
+    const { result, unmount } = renderHook(() =>
+      useVoiceToText({
+        enabled: true,
+        onTranscription,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+
+    const recorder = mediaRecorderInstances[0];
+    recorder.ondataavailable?.({
+      data: new Blob(["test audio"], { type: "audio/webm" }),
+    });
+    await act(async () => {
+      await result.current.toggleRecording();
+    });
+    await waitFor(() => {
+      expect(Blob.prototype.arrayBuffer).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+    await act(async () => {
+      resolveArrayBuffer?.(new Uint8Array([1, 2, 3]).buffer);
+      await recorder.stopPromise;
+    });
+
+    expect(transcribeAudioMock).not.toHaveBeenCalled();
+    expect(onTranscription).not.toHaveBeenCalled();
   });
 });

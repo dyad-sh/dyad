@@ -31,6 +31,7 @@ import {
   PNPM_PM_ON_FAIL_IGNORE_ARG,
 } from "@/ipc/utils/socket_firewall";
 import { getLastUpdaterError } from "../../main/updater_state";
+import { collectProcessMemoryDiagnostics } from "../../utils/process_memory_diagnostics";
 
 /**
  * Collects auto-updater failure details: the last updater error seen this
@@ -337,16 +338,23 @@ export function registerDebugHandlers() {
       }
 
       // Get runtime info in parallel
-      const [nodeVersion, pnpmVersion, nodePathResult] = await Promise.all([
-        runShellCommand("node --version").catch(() => null),
-        runShellCommand(`pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} --version`, {
-          env: getPackageManagerCommandEnv(),
-        }).catch(() => null),
-        (platform() === "win32"
-          ? runShellCommand("where.exe node")
-          : runShellCommand("which node")
-        ).catch(() => null),
-      ]);
+      const [nodeVersion, pnpmVersion, nodePathResult, memoryDiagnostics] =
+        await Promise.all([
+          runShellCommand("node --version").catch(() => null),
+          runShellCommand(`pnpm ${PNPM_PM_ON_FAIL_IGNORE_ARG} --version`, {
+            env: getPackageManagerCommandEnv(),
+          }).catch(() => null),
+          (platform() === "win32"
+            ? runShellCommand("where.exe node")
+            : runShellCommand("which node")
+          ).catch(() => null),
+          // Best-effort: never throws, but guard anyway — diagnostics must
+          // not be able to break the session export.
+          collectProcessMemoryDiagnostics().catch((err) => {
+            console.error("Failed to collect memory diagnostics:", err);
+            return null;
+          }),
+        ]);
 
       // Get chat with full messages from database
       const chatRecord = await db.query.chats.findFirst({
@@ -490,6 +498,7 @@ export function registerDebugHandlers() {
         codebase,
         logs,
         updaterLogs: readUpdaterLogs(),
+        memoryDiagnostics,
       };
 
       return bundle;

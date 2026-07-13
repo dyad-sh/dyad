@@ -2,6 +2,7 @@ import { atom } from "jotai";
 import type { ConsoleEntry } from "@/ipc/types";
 import type { RuntimeMode2 } from "@/lib/schemas";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { createPreviewConsoleTail } from "@/lib/preview_console_buffer";
 
 export type AppUrlState =
   | {
@@ -246,7 +247,7 @@ export const setConsoleEntriesForAppAtom = atom(
       if (entries.length === 0) {
         next.delete(appId);
       } else {
-        next.set(appId, entries);
+        next.set(appId, createPreviewConsoleTail(appId, [], entries));
       }
       return next;
     });
@@ -265,7 +266,10 @@ export const appendConsoleEntriesForAppAtom = atom(
     }
     set(consoleEntriesByAppIdAtom, (prev) => {
       const next = new Map(prev);
-      next.set(appId, [...(next.get(appId) ?? []), ...entries]);
+      next.set(
+        appId,
+        createPreviewConsoleTail(appId, next.get(appId) ?? [], entries),
+      );
       return next;
     });
   },

@@ -19,9 +19,12 @@ import {
   isGitRebaseInProgress,
   getGitUncommittedFilesWithStatus,
   gitDiscardAllChanges,
+  getFileAtCommit,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
 import { getDyadAppPath } from "../../paths/paths";
+import { safeJoin } from "../utils/path_utils";
+import { promises as fsPromises } from "node:fs";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -37,6 +40,8 @@ import type {
   GitBranchParams,
   RenameGitBranchParams,
   UncommittedFile,
+  GetUncommittedFileDiffParams,
+  UncommittedFileDiff,
 } from "../types/github";
 
 const logger = log.scope("git_branch_handlers");
@@ -371,6 +376,63 @@ async function handleGetUncommittedFiles(
   return getGitUncommittedFilesWithStatus({ path: appPath });
 }
 
+async function handleGetUncommittedFileDiff(
+  _event: IpcMainInvokeEvent,
+  { appId, filePath }: GetUncommittedFileDiffParams,
+): Promise<UncommittedFileDiff> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new DyadError("App not found", DyadErrorKind.NotFound);
+  const appPath = getDyadAppPath(app.path);
+
+  // `filePath` comes from the renderer, so validate up front that it stays
+  // within the app directory before using it to read files or git objects. This
+  // rejects path-traversal attempts (e.g. "../../etc/passwd") with a clear error
+  // rather than silently returning an empty diff.
+  let resolvedPath: string;
+  try {
+    resolvedPath = safeJoin(appPath, filePath);
+  } catch {
+    throw new DyadError("Invalid file path", DyadErrorKind.Validation);
+  }
+
+  // "before" side: the file at HEAD. Missing (newly added file) → empty.
+  let oldContent =
+    (await getFileAtCommit({ path: appPath, filePath, commitHash: "HEAD" })) ??
+    "";
+
+  // A renamed file has no HEAD blob under its new path, so the lookup above
+  // returns empty and the diff would show the whole file as added. Recover the
+  // original path from status and read the HEAD content there instead, so the
+  // rename renders as an actual before/after diff.
+  if (!oldContent) {
+    const uncommitted = await getGitUncommittedFilesWithStatus({
+      path: appPath,
+    });
+    const renamed = uncommitted.find(
+      (file) =>
+        file.path === filePath && file.status === "renamed" && file.oldPath,
+    );
+    if (renamed?.oldPath) {
+      oldContent =
+        (await getFileAtCommit({
+          path: appPath,
+          filePath: renamed.oldPath,
+          commitHash: "HEAD",
+        })) ?? "";
+    }
+  }
+
+  // "after" side: the current working-tree contents. Missing (deleted) → empty.
+  let newContent = "";
+  try {
+    newContent = await fsPromises.readFile(resolvedPath, "utf-8");
+  } catch {
+    newContent = "";
+  }
+
+  return { path: filePath, oldContent, newContent };
+}
+
 async function withAppGitOp<T>(
   appId: number,
   operation: string,
@@ -490,6 +552,10 @@ export function registerGithubBranchHandlers() {
   createTypedHandler(
     gitContracts.getUncommittedFiles,
     handleGetUncommittedFiles,
+  );
+  createTypedHandler(
+    gitContracts.getUncommittedFileDiff,
+    handleGetUncommittedFileDiff,
   );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
   createTypedHandler(gitContracts.discardChanges, handleDiscardChanges);

@@ -1,6 +1,15 @@
 import log from "electron-log";
+import { app } from "electron";
 import { writeSettings } from "../main/settings";
 import os from "node:os";
+import v8 from "node:v8";
+import {
+  isExtractCodebaseActive,
+  type ActivitySnapshot,
+} from "./memory_activity";
+import { getActiveStreamCount } from "../ipc/handlers/chat_stream_handlers";
+import { runningApps } from "../ipc/utils/process_manager";
+import { typescriptUtilityProcessScheduler } from "../ipc/processors/typescript_utility_process_scheduler";
 
 const logger = log.scope("performance-monitor");
 
@@ -14,6 +23,15 @@ let lastTimestamp: number | null = null;
 let lastSystemCpuInfo: os.CpuInfo[] | null = null;
 let lastSystemTimestamp: number | null = null;
 
+// Session memory highs. peakRssMB comes from the kernel and is exact; the
+// others are maxima over sampled values and can miss short spikes.
+let peakHeapUsedMB = 0;
+let peakHeapPct = 0;
+let peakRssMB = 0;
+const peakProcessWorkingSetsMB: Record<string, number> = {};
+let peakActivity: ActivitySnapshot | null = null;
+let peakTimestamp: number | null = null;
+
 /**
  * Get current memory usage in MB
  */
@@ -21,6 +39,60 @@ function getMemoryUsageMB(): number {
   const memoryUsage = process.memoryUsage();
   // Use RSS (Resident Set Size) for total memory used by the process
   return Math.round(memoryUsage.rss / BYTES_PER_MB);
+}
+
+/**
+ * Get main process V8 heap usage and limit in MB
+ */
+function getHeapStatsMB(): { heapUsedMB: number; heapLimitMB: number } {
+  const stats = v8.getHeapStatistics();
+  return {
+    heapUsedMB: Math.round(stats.used_heap_size / BYTES_PER_MB),
+    heapLimitMB: Math.round(stats.heap_size_limit / BYTES_PER_MB),
+  };
+}
+
+/**
+ * Get working set per Electron process type in MB, e.g.
+ * { browser: 400, tab: 900, gpu: 120, utility: 300 }.
+ * Main process RSS alone dramatically understates real usage.
+ * Cheap (no shell-outs); safe for periodic capture.
+ */
+function getProcessWorkingSetsMB(): Record<string, number> | null {
+  try {
+    const sets: Record<string, number> = {};
+    for (const metric of app.getAppMetrics()) {
+      const key = metric.type.toLowerCase();
+      sets[key] = (sets[key] ?? 0) + metric.memory.workingSetSize / 1024;
+    }
+    for (const key of Object.keys(sets)) {
+      sets[key] = Math.round(sets[key]);
+    }
+    return sets;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the kernel-tracked peak RSS of the main process in MB.
+ * Exact for the whole process lifetime, even between samples.
+ */
+function getKernelPeakRssMB(): number {
+  // maxRSS is reported in kilobytes
+  return Math.round(process.resourceUsage().maxRSS / 1024);
+}
+
+/**
+ * What the main process is doing right now
+ */
+function snapshotActivity(): ActivitySnapshot {
+  return {
+    activeStreams: getActiveStreamCount(),
+    runningApps: runningApps.size,
+    extractCodebase: isExtractCodebaseActive(),
+    tsUtilityProcess: typescriptUtilityProcessScheduler.activeOperationKind(),
+  };
 }
 
 /**
@@ -136,6 +208,10 @@ function getSystemCpuUsagePercent(): number | null {
 function capturePerformanceMetrics() {
   try {
     const memoryUsageMB = getMemoryUsageMB();
+    const processWorkingSetsMB = getProcessWorkingSetsMB();
+    const allProcessesMemoryMB = processWorkingSetsMB
+      ? Object.values(processWorkingSetsMB).reduce((sum, mb) => sum + mb, 0)
+      : null;
     const cpuUsagePercent = getCpuUsagePercent();
     const systemMemory = getSystemMemoryUsage();
     const systemCpuPercent = getSystemCpuUsagePercent();
@@ -143,14 +219,49 @@ function capturePerformanceMetrics() {
     // Skip saving if CPU is null (first call for either metric)
     if (cpuUsagePercent === null || systemCpuPercent === null) {
       logger.debug(
-        `Performance: Memory=${memoryUsageMB}MB, CPU=initializing, System Memory=${systemMemory.usagePercent}%, System CPU=initializing`,
+        `Performance: Memory=${memoryUsageMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=initializing, System Memory=${systemMemory.usagePercent}%, System CPU=initializing`,
       );
       return;
     }
 
+    const { heapUsedMB, heapLimitMB } = getHeapStatsMB();
+    const heapPct =
+      heapLimitMB > 0
+        ? Math.round((heapUsedMB / heapLimitMB) * 10000) / 100
+        : 0;
+    const kernelPeakRssMB = getKernelPeakRssMB();
+    const activity = snapshotActivity();
+
     logger.debug(
-      `Performance: Memory=${memoryUsageMB}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
+      `Performance: Memory=${memoryUsageMB}MB, Heap=${heapUsedMB}/${heapLimitMB}MB, All Processes=${allProcessesMemoryMB ?? "?"}MB, CPU=${cpuUsagePercent}%, System Memory=${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB}MB (${systemMemory.usagePercent}%), System CPU=${systemCpuPercent}%`,
     );
+
+    // Child process working sets drift constantly, so only main process
+    // peaks (heap, RSS) stamp peakActivity and peakTimestamp.
+    let mainPeakAdvanced = false;
+    if (heapUsedMB > peakHeapUsedMB) {
+      peakHeapUsedMB = heapUsedMB;
+      mainPeakAdvanced = true;
+    }
+    if (heapPct > peakHeapPct) {
+      peakHeapPct = heapPct;
+      mainPeakAdvanced = true;
+    }
+    if (kernelPeakRssMB > peakRssMB) {
+      peakRssMB = kernelPeakRssMB;
+      mainPeakAdvanced = true;
+    }
+    if (processWorkingSetsMB) {
+      for (const [key, value] of Object.entries(processWorkingSetsMB)) {
+        if (value > (peakProcessWorkingSetsMB[key] ?? 0)) {
+          peakProcessWorkingSetsMB[key] = value;
+        }
+      }
+    }
+    if (mainPeakAdvanced) {
+      peakActivity = activity;
+      peakTimestamp = Date.now();
+    }
 
     writeSettings({
       lastKnownPerformance: {
@@ -160,6 +271,16 @@ function capturePerformanceMetrics() {
         systemMemoryUsageMB: systemMemory.usedMemoryMB,
         systemMemoryTotalMB: systemMemory.totalMemoryMB,
         systemCpuPercent,
+        heapUsedMB,
+        heapLimitMB,
+        ...(processWorkingSetsMB && { processWorkingSetsMB }),
+        activity,
+        peakHeapUsedMB,
+        peakHeapPct,
+        peakRssMB,
+        peakProcessWorkingSetsMB: { ...peakProcessWorkingSetsMB },
+        ...(peakActivity && { peakActivity }),
+        ...(peakTimestamp !== null && { peakTimestamp }),
       },
     });
   } catch (error) {

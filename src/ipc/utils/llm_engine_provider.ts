@@ -374,7 +374,12 @@ export async function transcribeWithDyadEngine(
         : filename.endsWith(".m4a")
           ? "audio/mp4"
           : "audio/webm";
-  const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+  const audioBytes = new Uint8Array(
+    audioBuffer.buffer as ArrayBuffer,
+    audioBuffer.byteOffset,
+    audioBuffer.byteLength,
+  );
+  const blob = new Blob([audioBytes], { type: mimeType });
   formData.append("file", blob, filename);
   formData.append("model", "gpt-4o-mini-transcribe");
 

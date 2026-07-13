@@ -257,6 +257,7 @@
       "noAppSelectedDescription": "Selecciona una aplicación para ver los problemas de TypeScript y la información de diagnóstico.",
       "noProblemsReportTitle": "No Hay Informe de Problemas",
       "noProblemsReportDescription": "Ejecuta comprobaciones para analizar tu aplicación en busca de errores de TypeScript y otros problemas.",
+      "agentModeNotice": "En modo Agente, los problemas no se actualizan automáticamente después de los turnos del agente porque el agente ejecuta sus propias comprobaciones de tipos. Usa Ejecutar comprobaciones para actualizar.",
       "fixProblems_one": "Arreglar {{count}} problema",
       "fixProblems_other": "Arreglar {{count}} problemas",
       "error_one": "{{count}} error",

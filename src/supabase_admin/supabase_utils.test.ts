@@ -238,6 +238,25 @@ describe("getSupabaseFunctionsAffectedBySharedModules", () => {
     expect(impact).toEqual({ kind: "partial", functionNames: ["alpha"] });
   });
 
+  it("ignores Node built-ins when finding affected functions", async () => {
+    await writeAppFile(
+      "supabase/functions/_shared/foo.ts",
+      "export const foo = 1;",
+    );
+    await writeFunction(
+      "alpha",
+      "import { text } from 'node:stream/consumers'; import '../_shared/foo.ts';",
+    );
+    await writeFunction("beta", "export const beta = 1;");
+
+    const impact = await getSupabaseFunctionsAffectedBySharedModules({
+      appPath,
+      changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+    });
+
+    expect(impact).toEqual({ kind: "partial", functionNames: ["alpha"] });
+  });
+
   it("follows transitive imports and re-exports", async () => {
     await writeAppFile(
       "supabase/functions/_shared/foo.ts",

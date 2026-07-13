@@ -176,6 +176,8 @@ const dbOperations: {
 } = { updates: [], queries: [] };
 
 let mockChatData: ReturnType<typeof buildTestChat> | null = null;
+let mockMcpServers: Array<{ id: number; name: string }> = [];
+let mockMcpToolSet: Record<string, Record<string, unknown>> = {};
 
 vi.mock("@/db", () => ({
   db: {
@@ -198,7 +200,7 @@ vi.mock("@/db", () => ({
     })),
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        where: vi.fn(() => Promise.resolve([])),
+        where: vi.fn(() => Promise.resolve(mockMcpServers)),
       })),
     })),
   },
@@ -264,9 +266,15 @@ vi.mock("@/ipc/utils/provider_options", () => ({
 vi.mock("@/ipc/utils/mcp_manager", () => ({
   mcpManager: {
     getClient: vi.fn(async () => ({
-      tools: vi.fn(async () => ({})),
+      tools: vi.fn(async () => mockMcpToolSet),
     })),
   },
+}));
+
+const mockRequireMcpToolConsent = vi.hoisted(() => vi.fn());
+vi.mock("@/ipc/utils/mcp_consent", () => ({
+  requireMcpToolConsent: mockRequireMcpToolConsent,
+  clearPendingMcpConsentsForChat: vi.fn(),
 }));
 
 vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
@@ -325,6 +333,7 @@ import {
   commitAllChanges,
   deployAllFunctionsIfNeeded,
 } from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
+import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
 
 // ============================================================================
 // Tests
@@ -337,6 +346,8 @@ describe("handleLocalAgentStream", () => {
     dbOperations.updates = [];
     dbOperations.queries = [];
     mockChatData = null;
+    mockMcpServers = [];
+    mockMcpToolSet = {};
     mockSettings = buildTestSettings();
     mockStreamResult = null;
     mockStreamTextImpl = null;
@@ -344,6 +355,74 @@ describe("handleLocalAgentStream", () => {
     mockPerformCompaction.mockResolvedValue({ success: true });
     mockCheckAndMarkForCompaction.mockResolvedValue(false);
     vi.mocked(streamText).mockClear();
+    mockRequireMcpToolConsent.mockResolvedValue({ approved: true });
+  });
+
+  describe("MCP result limits", () => {
+    it("bounds direct MCP tool output before it reaches XML or model history", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockMcpServers = [{ id: 42, name: "srv" }];
+      const hugeText = "m".repeat(MCP_RESULT_MAX_BYTES * 3);
+      mockMcpToolSet = {
+        huge: {
+          description: "Return a large result",
+          inputSchema: { type: "object" },
+          execute: vi.fn().mockResolvedValue({
+            content: [{ type: "text", text: hugeText }],
+          }),
+        },
+      };
+
+      let returnedOutput = "";
+      mockStreamTextImpl = (options) => ({
+        fullStream: (async function* () {
+          const mcpTool = options.tools.srv__huge;
+          returnedOutput = await mcpTool.execute(
+            {},
+            { toolCallId: "call-1", messages: [] },
+          );
+          yield {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "srv__huge",
+            input: {},
+          };
+          yield {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "srv__huge",
+            output: returnedOutput,
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([{ toolCalls: [{ toolName: "srv__huge" }] }]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "use the MCP tool" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(Buffer.byteLength(returnedOutput, "utf8")).toBeLessThanOrEqual(
+        MCP_RESULT_MAX_BYTES,
+      );
+      expect(returnedOutput).toContain("_dyadMcpTruncation");
+      expect(returnedOutput).not.toContain(hugeText);
+      const persistedContent = dbOperations.updates
+        .filter((operation) => typeof operation.data.content === "string")
+        .map((operation) => operation.data.content as string)
+        .join("\n");
+      expect(persistedContent).toContain("_dyadMcpTruncation");
+      expect(persistedContent).not.toContain(hugeText);
+    });
   });
 
   describe("Pro status validation", () => {
@@ -1179,6 +1258,52 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Stream processing - text content", () => {
+    it("does not send AI SDK history in full renderer message chunks", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          {
+            id: 1,
+            role: "user",
+            content: "Visible prompt",
+            aiMessagesJson: {
+              version: 6,
+              messages: [
+                {
+                  role: "user",
+                  content: "MAIN_PROCESS_ONLY_SECRET_PAYLOAD",
+                },
+              ],
+            },
+          },
+        ],
+      });
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Done" },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const fullChunks = getMessagesByChannel("chat:response:chunk")
+        .map((message) => message.args[0] as { messages?: unknown[] })
+        .filter((payload) => payload.messages !== undefined);
+      expect(fullChunks.length).toBeGreaterThan(0);
+      expect(JSON.stringify(fullChunks)).not.toContain("aiMessagesJson");
+      expect(JSON.stringify(fullChunks)).not.toContain(
+        "MAIN_PROCESS_ONLY_SECRET_PAYLOAD",
+      );
+    });
+
     it("should accumulate text-delta parts and update database", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();

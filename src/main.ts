@@ -67,6 +67,7 @@ import {
   moveDump,
   pruneDumps,
 } from "./utils/crash_dumps";
+import { crashPerformanceEventFields } from "./utils/crash_telemetry_fields";
 import {
   stopAllAppsSync,
   stopAppGarbageCollection,
@@ -98,6 +99,7 @@ import {
   createPlatformThumbnailFromPath,
   getMediaThumbnailCacheRoot,
 } from "./ipc/utils/media_thumbnail";
+import { createMcpBeforeQuitHandler } from "./ipc/utils/mcp_shutdown";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -634,18 +636,8 @@ const createWindow = () => {
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
         error: true,
         has_performance_data: !!pendingForceCloseData,
-        ...(pendingForceCloseData && {
-          last_known_memory_mb: pendingForceCloseData.memoryUsageMB,
-          last_known_cpu_pct: pendingForceCloseData.cpuUsagePercent,
-          last_known_system_memory_mb:
-            pendingForceCloseData.systemMemoryUsageMB,
-          last_known_system_memory_total_mb:
-            pendingForceCloseData.systemMemoryTotalMB,
-          last_known_system_cpu_pct: pendingForceCloseData.systemCpuPercent,
-          last_known_snapshot_timestamp: pendingForceCloseData.timestamp,
-          time_since_last_heartbeat_ms:
-            Date.now() - pendingForceCloseData.timestamp,
-        }),
+        ...(pendingForceCloseData &&
+          crashPerformanceEventFields(pendingForceCloseData)),
         // "native" when a main-process minidump was captured for this crash,
         // else "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
         crash_cause: nativeCrash ? "native" : "unknown",
@@ -680,17 +672,7 @@ const createWindow = () => {
         // Mirror the `app:crash_detected` performance fields so the two
         // events can be unioned in PostHog without per-event field mapping.
         has_performance_data: !!perf,
-        ...(perf && {
-          last_known_memory_mb: perf.memoryUsageMB,
-          last_known_cpu_pct: perf.cpuUsagePercent,
-          last_known_system_memory_mb: perf.systemMemoryUsageMB,
-          last_known_system_memory_total_mb: perf.systemMemoryTotalMB,
-          last_known_system_cpu_pct: perf.systemCpuPercent,
-          last_known_snapshot_timestamp: perf.timestamp,
-          // Match `app:crash_detected` semantics: measured at send time, not
-          // crash time. `ms_since_crash` already covers the crash → send gap.
-          time_since_last_heartbeat_ms: Date.now() - perf.timestamp,
-        }),
+        ...(perf && crashPerformanceEventFields(perf)),
       });
       clearRendererCrashRecord();
     }
@@ -709,7 +691,7 @@ const createWindow = () => {
     if (details.reason === "clean-exit") {
       return;
     }
-    logger.warn(
+    logger.error(
       "Renderer process gone:",
       details.reason,
       "exitCode=",
@@ -1099,6 +1081,35 @@ async function handleDeepLinkReturn(url: string) {
   dialog.showErrorBox("Invalid deep link URL", url);
 }
 
+// Report unexpected utility process deaths (tsc worker, code explorer).
+// These do not take down the app, so we can report them right away.
+// Skip clean-exit and killed: routine teardown stops these workers with
+// kill(), and reporting that would flood telemetry with non-crashes.
+app.on("child-process-gone", (_event, details) => {
+  if (details.type !== "Utility" || isAppQuitting) {
+    return;
+  }
+  if (details.reason === "clean-exit" || details.reason === "killed") {
+    return;
+  }
+  logger.error(
+    "Utility process gone:",
+    details.serviceName,
+    details.reason,
+    "exitCode=",
+    details.exitCode,
+  );
+  sendTelemetryEvent("utility_process:crash_detected", {
+    // Mark as error so renderer PostHog before_send sampling does not
+    // drop 90% of events for non-Pro users (see src/renderer.tsx).
+    error: true,
+    reason: details.reason,
+    exit_code: details.exitCode,
+    service_name: details.serviceName,
+    process_name: details.name,
+  });
+});
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
@@ -1111,9 +1122,14 @@ app.on("window-all-closed", () => {
 // Clear the crash sentinel as early as possible on clean exit so that slow
 // cleanup in will-quit cannot race against OS-imposed termination timeouts
 // (e.g. Windows WM_ENDSESSION) and leave the sentinel behind as a false positive.
-app.on("before-quit", () => {
+const handleMcpBeforeQuit = createMcpBeforeQuitHandler({
+  quit: () => app.quit(),
+});
+
+app.on("before-quit", (event) => {
   isAppQuitting = true;
   clearCrashSentinel();
+  handleMcpBeforeQuit(event);
 });
 
 // IMPORTANT: This handler must be synchronous because Electron's EventEmitter

@@ -17,6 +17,7 @@ import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
 import { getTestFetchOption } from "@/ipc/utils/test_fetch_override";
+import { getOpenRouterAppAttributionHeaders } from "@/ipc/utils/openrouter_attribution";
 
 const logger = log.scope("provider_api_key_validation");
 
@@ -124,6 +125,7 @@ async function createValidationModel(
         name: "openrouter",
         apiKey,
         baseURL: getOpenRouterBaseUrl(),
+        headers: getOpenRouterAppAttributionHeaders(),
         ...getTestFetchOption(),
       });
       return openrouter("openrouter/free");

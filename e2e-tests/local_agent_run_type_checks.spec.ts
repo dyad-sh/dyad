@@ -40,6 +40,12 @@ testSkipIfWindows(
     const problemRows = po.page.getByTestId("problem-row");
     await expect(problemRows.first()).toBeVisible({ timeout: Timeout.MEDIUM });
 
+    // In agent mode the panel shows a notice that problems don't auto-refresh
+    // after agent turns (the agent runs its own type checks).
+    await expect(
+      po.page.getByTestId("problems-agent-mode-notice"),
+    ).toBeVisible();
+
     // Take a snapshot of the problems pane for regression testing
     await po.previewPanel.snapshotProblemsPane();
   },

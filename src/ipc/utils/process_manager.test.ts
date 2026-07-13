@@ -17,6 +17,7 @@ vi.mock("./cloud_sandbox_provider", () => ({
 }));
 
 import {
+  getRunningAppProcessPids,
   runningApps,
   stopAppByInfo,
   type RunningAppInfo,
@@ -90,5 +91,34 @@ describe("stopAppByInfo", () => {
       appId: 1,
     });
     expect(runningApps.has(1)).toBe(false);
+  });
+});
+
+describe("getRunningAppProcessPids", () => {
+  beforeEach(() => {
+    runningApps.clear();
+  });
+
+  it("returns only host-mode spawned process pids", () => {
+    runningApps.set(1, {
+      process: { pid: 111 },
+      processId: 1,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    } as RunningAppInfo);
+    runningApps.set(2, {
+      process: { pid: 222 },
+      processId: 2,
+      mode: "docker",
+      lastViewedAt: Date.now(),
+    } as RunningAppInfo);
+    runningApps.set(3, {
+      process: null,
+      processId: 3,
+      mode: "cloud",
+      lastViewedAt: Date.now(),
+    });
+
+    expect(getRunningAppProcessPids()).toEqual([{ appId: 1, pid: 111 }]);
   });
 });

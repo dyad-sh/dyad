@@ -13,6 +13,10 @@ import {
   getInitialChatModeForNewChat,
   normalizeStoredChatMode,
 } from "./chat_mode_resolution";
+import {
+  rendererMessageColumns,
+  toRendererMessage,
+} from "../utils/renderer_chat_message";
 
 const logger = log.scope("chat_handlers");
 
@@ -71,8 +75,16 @@ export function registerChatHandlers() {
   createTypedHandler(chatContracts.getChat, async (_, chatId) => {
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
+      columns: {
+        id: true,
+        appId: true,
+        title: true,
+        initialCommitHash: true,
+        chatMode: true,
+      },
       with: {
         messages: {
+          columns: rendererMessageColumns,
           orderBy: (messages, { asc }) => [asc(messages.createdAt)],
         },
       },
@@ -83,13 +95,12 @@ export function registerChatHandlers() {
     }
 
     return {
-      ...chat,
+      id: chat.id,
+      appId: chat.appId,
       title: chat.title ?? "",
+      initialCommitHash: chat.initialCommitHash,
       chatMode: normalizeStoredChatMode(chat.chatMode),
-      messages: chat.messages.map((m) => ({
-        ...m,
-        role: m.role as "user" | "assistant",
-      })),
+      messages: chat.messages.map(toRendererMessage),
     };
   });
 

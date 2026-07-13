@@ -5,7 +5,7 @@ import {
   computeStreamingPatch,
   fastTextOutput,
 } from "../utils/stream_text_utils";
-import { chatContracts } from "../types/chat";
+import { chatContracts, ChatStreamParamsSchema } from "../types/chat";
 import {
   ModelMessage,
   TextPart,
@@ -36,7 +36,7 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import {
   CodebaseFile,
   extractCodebase,
@@ -75,6 +75,7 @@ import {
   requireMcpToolConsent,
   clearPendingMcpConsentsForChat,
 } from "../utils/mcp_consent";
+import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
@@ -157,6 +158,8 @@ import {
   type PendingStoredChatAttachment,
   type StoredChatAttachment,
 } from "../utils/chat_attachment_utils";
+import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
+import { toRendererMessage } from "../utils/renderer_chat_message";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -164,6 +167,12 @@ const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
+
+// How many chats are currently streaming a response. Used by the
+// performance monitor to record activity alongside memory snapshots.
+export function getActiveStreamCount(): number {
+  return activeStreams.size;
+}
 
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
@@ -232,7 +241,7 @@ async function processStreamChunks({
       chunk = `<dyad-mcp-tool-call server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(part.output);
+      const content = escapeXmlContent(part.output);
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}">\n${content}\n</dyad-mcp-tool-result>\n`;
     } else if (part.type === "tool-error") {
       // Emit an errored result so the merged card terminates in an error
@@ -240,7 +249,9 @@ async function processStreamChunks({
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
       const message =
         part.error instanceof Error ? part.error.message : String(part.error);
-      const content = escapeDyadTags(message);
+      const content = escapeXmlContent(
+        sanitizeMcpToolResult(message).serialized,
+      );
       chunk = `<dyad-mcp-tool-result server="${escapeXmlAttr(serverName)}" tool="${escapeXmlAttr(toolName)}" call-id="${escapeXmlAttr(part.toolCallId)}" is-error="true">\n${content}\n</dyad-mcp-tool-result>\n`;
     }
 
@@ -287,6 +298,17 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     let attachmentPaths: string[] = [];
     try {
+      // This legacy stream handler predates createTypedHandler, so enforce the
+      // contract explicitly before any attachment string is decoded.
+      const parsedRequest = ChatStreamParamsSchema.safeParse(req);
+      if (!parsedRequest.success) {
+        throw new DyadError(
+          parsedRequest.error.issues[0]?.message ?? "Invalid chat request.",
+          DyadErrorKind.Validation,
+        );
+      }
+      req = parsedRequest.data;
+
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
@@ -366,7 +388,12 @@ export function registerChatStreamHandlers() {
       const usedLogicalNames = new Set<string>();
       const appPath = getDyadAppPath(chat.app.path);
 
-      if (req.attachments && req.attachments.length > 0) {
+      // Detach the serialized payloads from the long-lived stream request as
+      // soon as they are persisted. Otherwise every base64 string remains
+      // reachable for the entire LLM turn and duplicates later disk reads.
+      let incomingAttachments = req.attachments;
+      req.attachments = undefined;
+      if (incomingAttachments && incomingAttachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
         // Create persistent .dyad/media directory for this app
@@ -376,9 +403,15 @@ export function registerChatStreamHandlers() {
         }
         await ensureDyadGitignored(appPath);
 
-        for (const attachment of req.attachments) {
-          // Extract the base64 data (remove the data:mime/type;base64, prefix)
-          const base64Data = attachment.data.split(";base64,").pop() || "";
+        for (const attachment of incomingAttachments) {
+          const inspection = inspectBase64DataUrl(attachment.data);
+          if (!inspection.ok) {
+            throw new DyadError(
+              `"${attachment.name}" is not a valid base64 attachment.`,
+              DyadErrorKind.Validation,
+            );
+          }
+          const base64Data = attachment.data.slice(inspection.payloadStart);
           const fileBuffer = Buffer.from(base64Data, "base64");
           const hash = crypto
             .createHash("sha256")
@@ -443,6 +476,7 @@ export function registerChatStreamHandlers() {
           }
         }
       }
+      incomingAttachments = undefined;
 
       // Build the full AI prompt. Attachment-specific instructions are added
       // to the user message, never the system prompt.
@@ -738,7 +772,7 @@ ${componentSnippet}
       // Send the messages right away so that the loading state is shown for the message.
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
-        messages: updatedChat.messages,
+        messages: updatedChat.messages.map(toRendererMessage),
       });
 
       let fullResponse = "";
@@ -1944,7 +1978,7 @@ ${problemReport.problems
 
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
-            messages: chat!.messages,
+            messages: chat!.messages.map(toRendererMessage),
           });
 
           if (status.error) {
@@ -1977,9 +2011,10 @@ ${problemReport.problems
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
+      const errorMessage = isDyadError(error) ? error.message : String(error);
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
-        error: `Sorry, there was an error processing your request: ${error}`,
+        error: `Sorry, there was an error processing your request: ${errorMessage}`,
       });
 
       return "error";
@@ -2286,8 +2321,7 @@ async function getMcpTools(
                 DyadErrorKind.UserCancelled,
               );
             const res = await mcpTool.execute(args, execCtx);
-
-            return typeof res === "string" ? res : JSON.stringify(res);
+            return sanitizeMcpToolResult(res).serialized;
           },
         };
       }

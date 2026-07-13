@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
 }));
 
-vi.mock("jotai", () => ({
+vi.mock("jotai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("jotai")>()),
   useAtomValue: (atom: symbol) => {
     if (atom === mocks.previewModeAtom) {
       return "preview";

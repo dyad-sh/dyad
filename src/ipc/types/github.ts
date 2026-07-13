@@ -65,6 +65,27 @@ export const CommitChangesParamsSchema = z.object({
 export const UncommittedFileSchema = z.object({
   path: z.string(),
   status: z.enum(["added", "modified", "deleted", "renamed"]),
+  // For renamed files, the original path at HEAD (so the "before" side of the
+  // diff / line stats can still be located). Absent for non-renames.
+  oldPath: z.string().optional(),
+  // Number of added / deleted lines relative to HEAD (git diff --numstat
+  // semantics). Line counts are always non-negative integers. Default to 0 so
+  // older producers / mocks remain valid.
+  additions: z.number().int().nonnegative().default(0),
+  deletions: z.number().int().nonnegative().default(0),
+});
+
+export const GetUncommittedFileDiffParamsSchema = z.object({
+  appId: z.number(),
+  filePath: z.string(),
+});
+
+export const UncommittedFileDiffSchema = z.object({
+  path: z.string(),
+  // Contents of the file at HEAD ("" when the file is newly added) and in the
+  // current working tree ("" when the file is deleted).
+  oldContent: z.string(),
+  newContent: z.string(),
 });
 
 export const GithubSyncOptionsSchema = z.object({
@@ -311,6 +332,12 @@ export const gitContracts = {
     output: z.array(UncommittedFileSchema),
   }),
 
+  getUncommittedFileDiff: defineContract({
+    channel: "git:get-uncommitted-file-diff",
+    input: GetUncommittedFileDiffParamsSchema,
+    output: UncommittedFileDiffSchema,
+  }),
+
   commitChanges: defineContract({
     channel: "git:commit-changes",
     input: CommitChangesParamsSchema,
@@ -367,6 +394,10 @@ export type ListRemoteGitBranchesParams = z.infer<
 export type CommitChangesParams = z.infer<typeof CommitChangesParamsSchema>;
 export type UncommittedFile = z.infer<typeof UncommittedFileSchema>;
 export type UncommittedFileStatus = UncommittedFile["status"];
+export type GetUncommittedFileDiffParams = z.infer<
+  typeof GetUncommittedFileDiffParamsSchema
+>;
+export type UncommittedFileDiff = z.infer<typeof UncommittedFileDiffSchema>;
 export type GithubSyncOptions = z.infer<typeof GithubSyncOptionsSchema>;
 export type CloneRepoParams = z.infer<typeof CloneRepoParamsSchema>;
 export type CloneRepoResult = z.infer<typeof CloneRepoResultSchema>;

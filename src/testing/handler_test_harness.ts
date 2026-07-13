@@ -59,6 +59,10 @@ export class FakeGitService implements GitService {
   }): Promise<string> {
     return this.record("commitFile", args);
   }
+
+  async stageFile(args: { path: string; filepath: string }): Promise<void> {
+    this.calls.push({ method: "stageFile", args });
+  }
 }
 
 export interface HandlerTestHarness {

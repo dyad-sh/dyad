@@ -2,18 +2,21 @@ import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { useEffect, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import { RefreshCw, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { useAtomValue } from "jotai";
-import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
+import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { StagedDiffView } from "./StagedDiffView";
+import { CommitMenu } from "./CommitMenu";
+import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 
 interface App {
   id?: number;
@@ -30,7 +33,10 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const { t } = useTranslation("home");
   const selectedFile = useAtomValue(selectedFileAtom);
   const selectedVersionId = useAtomValue(selectedVersionIdAtom);
+  const stagedDiffFile = useAtomValue(stagedDiffFileAtom);
+  const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
+  const { hasUncommittedFiles } = useUncommittedFiles(app?.id ?? null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -66,11 +72,21 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   }
 
   const isVersionDiffMode = selectedVersionId != null && app.id != null;
+  const isStagedDiffMode =
+    stagedDiffFile != null && app.id != null && !isVersionDiffMode;
 
   // The version diff view is driven by the selected commit, not the current
   // working-tree files, so it must render even when the checkout has no files
   // (e.g. a deletion-only version or an otherwise empty working tree).
-  if (isVersionDiffMode || (app.files && app.files.length > 0)) {
+  // Likewise, render the toolbar (and its Commit menu) whenever there are
+  // uncommitted changes, so deletion-only staged changes remain committable
+  // even if no files are left to list.
+  if (
+    isVersionDiffMode ||
+    isStagedDiffMode ||
+    (app.files && app.files.length > 0) ||
+    (app.id != null && hasUncommittedFiles)
+  ) {
     return (
       <div
         className={`flex flex-col bg-background ${isFullscreen ? "fixed inset-0 z-50 h-screen w-screen shadow-2xl" : "h-full"}`}
@@ -91,12 +107,32 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
             </TooltipTrigger>
             <TooltipContent>{t("preview.refreshFiles")}</TooltipContent>
           </Tooltip>
+          {isStagedDiffMode && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setStagedDiffFile(null)}
+                    aria-label={t("preview.backToEditor")}
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                    data-testid="staged-diff-back-button"
+                  />
+                }
+              >
+                <ArrowLeft size={16} />
+              </TooltipTrigger>
+              <TooltipContent>{t("preview.backToEditor")}</TooltipContent>
+            </Tooltip>
+          )}
           <div className="text-sm text-gray-500">
             {isVersionDiffMode
               ? t("preview.viewingVersionChanges")
-              : `${app.files?.length ?? 0} ${t("preview.files")}`}
+              : isStagedDiffMode
+                ? t("preview.viewingStagedChanges")
+                : `${app.files?.length ?? 0} ${t("preview.files")}`}
           </div>
           <div className="flex-1" />
+          {app.id != null && <CommitMenu appId={app.id} />}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -119,6 +155,8 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         {/* Content */}
         {isVersionDiffMode ? (
           <VersionDiffView appId={app.id!} versionId={selectedVersionId} />
+        ) : isStagedDiffMode ? (
+          <StagedDiffView appId={app.id!} />
         ) : (
           <PanelGroup
             direction="horizontal"

@@ -1020,12 +1020,13 @@ export function registerAppHandlers() {
     try {
       await fsPromises.writeFile(fullPath, content, "utf-8");
 
-      // Check if git repository exists and commit the change
+      // Check if git repository exists and stage the change. Saves are staged
+      // (not committed) so edits spanning multiple files can be reviewed and
+      // committed together from the code editor's Commit menu.
       if (fs.existsSync(path.join(appPath, ".git"))) {
-        await gitService.commitFile({
+        await gitService.stageFile({
           path: appPath,
           filepath: filePath,
-          message: `Updated ${filePath}`,
         });
       }
     } catch (error: any) {

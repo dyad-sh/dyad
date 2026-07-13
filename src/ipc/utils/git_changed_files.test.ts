@@ -37,7 +37,10 @@ const execFileAsync = promisify(execFile);
 const MERGE_COMMIT_TEST_TIMEOUT_MS = 15_000;
 
 async function runGit(repoDir: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, { cwd: repoDir });
+  const { stdout } = await execFileAsync("git", args, {
+    cwd: repoDir,
+    maxBuffer: 4 * 1_024 * 1_024,
+  });
   return stdout.trim();
 }
 
@@ -310,6 +313,24 @@ describe.each([
     ).resolves.toBeNull();
   });
 
+  it("treats an exact changed path as a literal Git pathspec", async () => {
+    const dir = await setupRepo();
+    await write(dir, "a!.txt", "before\n");
+    await write(dir, "a?.txt", "before\n");
+    await commitAll(dir, "init");
+    await write(dir, "a!.txt", "after\n");
+    await write(dir, "a?.txt", "after\n");
+    const commit = await commitAll(dir, "edit pathspec filenames");
+
+    await expect(
+      getChangedFileForCommit({
+        path: dir,
+        commitHash: commit,
+        filePath: "a?.txt",
+      }),
+    ).resolves.toEqual({ path: "a?.txt", type: "modified" });
+  });
+
   it("reads blob size metadata without reading file content", async () => {
     const dir = await setupRepo();
     await write(dir, "large.txt", "x".repeat(20_000));
@@ -399,6 +420,7 @@ describe("bounded version history", () => {
     );
     await runGit(repoDir, [
       "commit",
+      "--quiet",
       "--allow-empty",
       "--cleanup=verbatim",
       "--no-gpg-sign",
@@ -411,5 +433,29 @@ describe("bounded version history", () => {
     expect(commit.commit.message).toBe(
       "  intentionally indented subject\n\nbody",
     );
+  });
+
+  it("bounds an oversized commit message while streaming git output", async () => {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-message-"));
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@example.com"]);
+    await runGit(repoDir, ["config", "user.name", "Test"]);
+    const messagePath = path.join(repoDir, "message.txt");
+    await fs.promises.writeFile(messagePath, "x".repeat(2 * 1_024 * 1_024));
+    await runGit(repoDir, [
+      "commit",
+      "--allow-empty",
+      "--cleanup=verbatim",
+      "--no-gpg-sign",
+      "-F",
+      messagePath,
+    ]);
+
+    const [commit] = await gitLogNative(repoDir, 1);
+
+    expect(
+      Buffer.byteLength(commit.commit.message, "utf8"),
+    ).toBeLessThanOrEqual(4_100);
+    expect(commit.commit.message).toMatch(/^x+$/);
   });
 });

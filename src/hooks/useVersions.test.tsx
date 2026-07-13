@@ -240,4 +240,22 @@ describe("useVersions", () => {
     expect(result.current.versionHistoryLimitReached).toBe(true);
     expect(listVersionsMock).toHaveBeenCalledTimes(20);
   });
+
+  it("does not report the retention limit from a stale total count", async () => {
+    listVersionsMock.mockResolvedValue({
+      versions: [],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useVersions(42), {
+      wrapper: makeWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.versionHistoryLimitReached).toBe(false);
+  });
 });

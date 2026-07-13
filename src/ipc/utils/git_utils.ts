@@ -4,6 +4,7 @@ import http from "isomorphic-git/http/node";
 import {
   exec,
   ExecError,
+  spawn as spawnGit,
   type IGitStringExecutionOptions,
   type IGitStringResult,
 } from "dugite";
@@ -126,6 +127,121 @@ async function execGit(
 
   // On non-Windows without a shim, pass options through unchanged
   return exec(args, path, options);
+}
+
+const MAX_GIT_LOG_MESSAGE_CAPTURE_BYTES = 4_096 + 4;
+
+async function execStreamingGitLog(
+  args: string[],
+  path: string,
+  maxCapturedBytes: number,
+): Promise<GitCommit[]> {
+  const sanitizedEnv = getWindowsSanitizedEnv();
+  const shimDir = sanitizedEnv ? undefined : ensureLibcurlShimOnLinux();
+  const existingLdPath = process.env.LD_LIBRARY_PATH;
+  const env = sanitizedEnv
+    ? sanitizedEnv
+    : shimDir
+      ? {
+          ...process.env,
+          LD_LIBRARY_PATH: [shimDir, existingLdPath].filter(Boolean).join(":"),
+        }
+      : undefined;
+  const child = spawnGit(args, path, { env });
+  const delimiter = Buffer.from("\0---END-COMMIT---");
+  const entries: GitCommit[] = [];
+  let pending = Buffer.alloc(0);
+  let oid = "";
+  let timestamp = 0;
+  let phase: "oid" | "timestamp" | "message" = "oid";
+  let messageParts: Buffer[] = [];
+  let messageBytes = 0;
+  let capturedBytes = 0;
+  let stderr = "";
+  let limitExceeded = false;
+
+  const appendMessage = (chunk: Buffer) => {
+    const remaining = MAX_GIT_LOG_MESSAGE_CAPTURE_BYTES - messageBytes;
+    if (remaining <= 0) return;
+    const captured = chunk.subarray(0, remaining);
+    messageParts.push(captured);
+    messageBytes += captured.length;
+    capturedBytes += captured.length;
+  };
+
+  const finishCommit = () => {
+    const message = Buffer.concat(messageParts).toString("utf8").trimEnd();
+    entries.push({
+      oid: oid.trim(),
+      commit: { message, author: { timestamp } },
+    });
+    capturedBytes += Buffer.byteLength(oid) + 8;
+    oid = "";
+    timestamp = 0;
+    messageParts = [];
+    messageBytes = 0;
+    phase = "oid";
+  };
+
+  const consume = (chunk: Buffer) => {
+    pending = Buffer.concat([pending, chunk]);
+    while (pending.length > 0) {
+      if (phase === "message") {
+        const delimiterIndex = pending.indexOf(delimiter);
+        if (delimiterIndex !== -1) {
+          appendMessage(pending.subarray(0, delimiterIndex));
+          pending = pending.subarray(delimiterIndex + delimiter.length);
+          finishCommit();
+          continue;
+        }
+        const safeLength = Math.max(0, pending.length - delimiter.length + 1);
+        if (safeLength === 0) return;
+        appendMessage(pending.subarray(0, safeLength));
+        pending = pending.subarray(safeLength);
+        continue;
+      }
+
+      const separatorIndex = pending.indexOf(0);
+      if (separatorIndex === -1) return;
+      const value = pending.subarray(0, separatorIndex).toString("utf8");
+      pending = pending.subarray(separatorIndex + 1);
+      if (phase === "oid") {
+        oid = value;
+        phase = "timestamp";
+      } else {
+        timestamp = Number(value);
+        phase = "message";
+      }
+    }
+  };
+
+  return await new Promise<GitCommit[]>((resolve, reject) => {
+    child.stdout.on("data", (chunk: Buffer) => {
+      consume(chunk);
+      if (capturedBytes > maxCapturedBytes) {
+        limitExceeded = true;
+        child.kill();
+      }
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderr.length < 64 * 1_024) stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (limitExceeded) {
+        reject(
+          new DyadError(
+            "Git log output exceeded the memory limit",
+            DyadErrorKind.Conflict,
+          ),
+        );
+      } else if (code !== 0) {
+        reject(new DyadError(stderr, DyadErrorKind.Conflict));
+      } else {
+        resolve(entries);
+      }
+    });
+  });
 }
 import type {
   GitBaseParams,
@@ -1208,7 +1324,7 @@ export async function getChangedFileForCommit({
       "-z",
       ...(parentOid ? [parentOid, commitHash] : ["--root", commitHash]),
       "--",
-      filePath,
+      `:(literal)${filePath}`,
     ],
     path,
     { maxBuffer: 64 * 1_024 },
@@ -1863,52 +1979,13 @@ export async function gitLogNative(
     ref,
   ];
 
-  const logResult = await execGit(logArgs, path, {
-    // A page uses at most a few MiB even when every message hits the cap. Keep
-    // a hard ceiling so accidental large-depth callers cannot exhaust memory.
-    maxBuffer: Math.min(
-      32 * 1_024 * 1_024,
-      Math.max(1_024 * 1_024, depth * 40_000),
-    ),
-  });
-
-  if (logResult.exitCode !== 0) {
-    throw new DyadError(logResult.stderr.toString(), DyadErrorKind.Conflict);
-  }
-
-  const output = logResult.stdout.toString().trim();
-  if (!output) {
-    return [];
-  }
-
-  // Split by commit delimiter (without newline since trim() removes trailing newline)
-  const commitChunks = output.split("\x00---END-COMMIT---").filter(Boolean);
-  const entries: GitCommit[] = [];
-
-  for (const chunk of commitChunks) {
-    // Split by null byte: [oid, timestamp, message]
-    const parts = chunk.split("\x00");
-    if (parts.length >= 3) {
-      const oid = parts[0].trim();
-      const timestamp = Number(parts[1]);
-      // Message is everything after the second null byte, may contain null bytes itself
-      // Preserve intentional leading whitespace in the commit message while
-      // removing the separator/newlines Git appends after each record.
-      const message = parts.slice(2).join("\x00").trimEnd();
-
-      entries.push({
-        oid,
-        commit: {
-          message: message,
-          author: {
-            timestamp: timestamp,
-          },
-        },
-      });
-    }
-  }
-
-  return entries;
+  // Parse stdout incrementally so one pathological commit body cannot exhaust
+  // execFile's aggregate buffer before the version handler truncates it.
+  return execStreamingGitLog(
+    logArgs,
+    path,
+    Math.min(32 * 1_024 * 1_024, Math.max(1_024 * 1_024, depth * 40_000)),
+  );
 }
 
 export async function gitFetch({

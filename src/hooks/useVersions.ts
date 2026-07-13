@@ -91,9 +91,7 @@ export function useVersions(appId: number | null) {
   const firstPageTotal = data?.pages[0]?.totalCount;
   const totalVersionCount = firstPageTotal ?? loadedVersions.length;
   const versionHistoryLimitReached =
-    !hasNextPage &&
-    ((data?.pages.at(-1)?.nextCursor ?? null) !== null ||
-      loadedVersions.length < totalVersionCount);
+    !hasNextPage && (data?.pages.at(-1)?.nextCursor ?? null) !== null;
 
   const refreshVersionList = async () => {
     const result = await refreshVersions();

@@ -143,7 +143,10 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
         ) : fileError || !selectedChange ? (
           <div className="text-red-500">{t("preview.errorLoadingChanges")}</div>
         ) : contentUnavailableReason ? (
-          <div className="px-4 text-center text-sm text-muted-foreground">
+          <div
+            className="px-4 text-center text-sm text-muted-foreground"
+            role="status"
+          >
             {contentUnavailableReason === "too-large"
               ? t("preview.fileTooLarge")
               : t("preview.binaryNotSupported")}

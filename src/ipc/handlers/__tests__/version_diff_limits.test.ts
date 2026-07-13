@@ -1,17 +1,30 @@
+// @vitest-environment node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ipc } from "@/ipc/types";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => {
+  process.env.NODE_ENV = "development";
+  return { ipcHandlers: new Map() };
+});
+
+vi.mock("electron", async () => {
+  const { createElectronMock } = await import("@/testing/electron_mock");
+  return createElectronMock(h);
+});
+
+import { getRegisteredHandlerForTesting } from "@/ipc/handlers/base";
+import { registerVersionHandlers } from "@/ipc/handlers/version_handlers";
 import {
   MAX_VERSION_CHANGED_FILES,
   MAX_VERSION_DIFF_CONTENT_BYTES,
+  versionContracts,
 } from "@/ipc/types/version";
 import {
-  setupHybridChatHarness,
-  type HybridChatHarness,
-} from "@/testing/hybrid_chat_harness";
-import { h } from "@/testing/hybrid.setup";
+  setupChatFlowHarness,
+  type ChatFlowHarness,
+} from "@/testing/chat_flow_harness";
 
 function git(appDir: string, args: string[]): string {
   return execFileSync(
@@ -24,15 +37,17 @@ function git(appDir: string, args: string[]): string {
 }
 
 describe("version diff memory limits (integration)", () => {
-  let harness: HybridChatHarness;
+  let harness: ChatFlowHarness;
   let commitHash: string;
 
   beforeAll(async () => {
-    harness = await setupHybridChatHarness({
+    harness = await setupChatFlowHarness({
       electronMock: h,
-      autoApprove: true,
-      settings: { isTestMode: true, enableNativeGit: false },
+      enableNativeGit: false,
+      registerChatStreamHandlers: false,
+      useFakeCatalog: false,
     });
+    registerVersionHandlers();
 
     await fs.promises.writeFile(
       path.join(harness.appDir, "001-normal.txt"),
@@ -69,10 +84,16 @@ describe("version diff memory limits (integration)", () => {
   });
 
   it("returns bounded metadata and preflights selected blob content", async () => {
-    const metadata = await ipc.version.getVersionChanges({
+    const getVersionChanges = getRegisteredHandlerForTesting(
+      versionContracts.getVersionChanges.channel,
+    );
+    const getVersionFileChange = getRegisteredHandlerForTesting(
+      versionContracts.getVersionFileChange.channel,
+    );
+    const metadata = (await getVersionChanges({} as never, {
       appId: harness.appId,
       versionId: commitHash,
-    });
+    })) as { files: Array<{ path: string; type: string }>; truncated: boolean };
 
     expect(metadata.files).toHaveLength(MAX_VERSION_CHANGED_FILES);
     expect(metadata.truncated).toBe(true);
@@ -81,19 +102,27 @@ describe("version diff memory limits (integration)", () => {
       type: "added",
     });
 
-    const large = await ipc.version.getVersionFileChange({
+    const large = (await getVersionFileChange({} as never, {
       appId: harness.appId,
       versionId: commitHash,
       filePath: "000-large.txt",
-    });
+    })) as {
+      newContentStatus: string;
+      newContent: string;
+    };
     expect(large.newContentStatus).toBe("too-large");
     expect(large.newContent).toBe("<file too large to display>");
 
-    const normal = await ipc.version.getVersionFileChange({
+    const normal = (await getVersionFileChange({} as never, {
       appId: harness.appId,
       versionId: commitHash,
       filePath: "001-normal.txt",
-    });
+    })) as {
+      oldContentStatus: string;
+      oldContent: string;
+      newContentStatus: string;
+      newContent: string;
+    };
     expect(normal.newContentStatus).toBe("available");
     expect(normal.newContent).toBe("normal diff content\n");
     expect(normal.oldContentStatus).toBe("available");

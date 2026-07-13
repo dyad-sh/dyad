@@ -134,7 +134,7 @@ describe("VersionDiffView", () => {
 
       render(<VersionDiffView appId={1} versionId={"c".repeat(40)} />);
 
-      expect(screen.getByText(message)).not.toBeNull();
+      expect(screen.getByRole("status").textContent).toBe(message);
       expect(screen.queryByTestId("mock-diff-editor")).toBeNull();
     },
   );

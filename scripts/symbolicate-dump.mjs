@@ -7,7 +7,9 @@
 //   node scripts/symbolicate-dump.mjs --prod            # newest dump of the installed Dyad
 //   node scripts/symbolicate-dump.mjs path/to/crash.dmp [more.dmp ...]
 //   node scripts/symbolicate-dump.mjs --json crash.dmp  # machine readable
+//   node scripts/symbolicate-dump.mjs --help
 //
+// --prod only affects which dump is auto-picked; explicit paths ignore it.
 // Other flags are passed through to minidump-stackwalk.
 //
 // Requires the minidump-stackwalk binary (from rust-minidump). Two ways to
@@ -15,12 +17,12 @@
 // building from source with cargo. Prebuilt is recommended: it is instant
 // and needs no Rust toolchain.
 //
-// Option 1: prebuilt, macOS / Linux (installs to ~/.cargo/bin and adds it
+// Option 1a: prebuilt, macOS / Linux (installs to ~/.cargo/bin and adds it
 // to PATH by updating your shell profile; open a new terminal afterwards):
 //
 //   curl -LsSf https://github.com/rust-minidump/rust-minidump/releases/latest/download/minidump-stackwalk-installer.sh | sh
 //
-// Option 1: prebuilt, Windows (PowerShell; open a new terminal afterwards):
+// Option 1b: prebuilt, Windows (PowerShell; open a new terminal afterwards):
 //
 //   $dir = "$env:LOCALAPPDATA\Programs\minidump-stackwalk"
 //   Invoke-WebRequest https://github.com/rust-minidump/rust-minidump/releases/latest/download/minidump-stackwalk-x86_64-pc-windows-msvc.zip -OutFile "$env:TEMP\mdsw.zip"
@@ -98,6 +100,21 @@ function newestDump(dir) {
 }
 
 const args = process.argv.slice(2);
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(`Symbolicate Dyad crash dumps.
+
+Usage:
+  node scripts/symbolicate-dump.mjs                   # newest dev dump
+  node scripts/symbolicate-dump.mjs --prod            # newest dump of the installed Dyad
+  node scripts/symbolicate-dump.mjs <dump.dmp> [more.dmp ...]
+
+--prod only affects which dump is auto-picked; explicit paths ignore it.
+Other flags pass through to minidump-stackwalk. Setup instructions are in
+this script's doc comment.`);
+  process.exit(0);
+}
+
 const prod = args.includes("--prod");
 const dumps = args.filter((a) => a.endsWith(".dmp"));
 const flags = args.filter((a) => !a.endsWith(".dmp") && a !== "--prod");
@@ -123,9 +140,11 @@ if (dumps.length === 0) {
 }
 
 const binary = process.env.MINIDUMP_STACKWALK ?? "minidump-stackwalk";
-if (spawnSync(binary, ["--version"]).error?.code === "ENOENT") {
+const probe = spawnSync(binary, ["--version"]);
+if (probe.error) {
   console.error(
-    "minidump-stackwalk not found. Install a prebuilt binary from\n" +
+    `Cannot run minidump-stackwalk (${probe.error.code ?? probe.error.message}).\n` +
+      "Install a prebuilt binary from\n" +
       "https://github.com/rust-minidump/rust-minidump/releases\n" +
       "(or: cargo install minidump-stackwalk), then put it on PATH or\n" +
       "set MINIDUMP_STACKWALK to its location. Full instructions are in\n" +
@@ -194,10 +213,8 @@ async function stageAliasedSymbols(dump) {
       continue;
     }
     const candidates = [
-      ...new Set([
-        debug_file.replace(/dyad/i, "electron"),
-        debug_file.replace(/dyad/i, "Electron"),
-      ]),
+      debug_file.replace(/dyad/i, "electron"),
+      debug_file.replace(/dyad/i, "Electron"),
     ];
     // Symbolication is optional: on any failure, warn and move on, and the
     // module's frames stay as module+offset.
@@ -207,7 +224,11 @@ async function stageAliasedSymbols(dump) {
     try {
       for (const original of candidates) {
         const url = `${SYMBOL_URL}/${encodeURIComponent(original)}/${encodeURIComponent(debug_id)}/${encodeURIComponent(original)}.sym`;
-        const response = await fetch(url);
+        // Generous bound: symbol files are large and slow links are fine,
+        // but a stalled connection must not hang the script forever.
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(10 * 60 * 1000),
+        });
         if (!response.ok) {
           continue;
         }

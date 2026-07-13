@@ -238,11 +238,19 @@ export function parseMinidumpBuffer(
       return null;
     }
     const exceptionCode = view.getUint32(exceptionRva + EXC_CODE_OFF, true);
+
+    // On arm64, saved addresses can carry pointer-auth / top-byte tag bits.
+    // Crashpad records an address_mask to recover the real address.
+    const addressMask = crashpadInfoRva
+      ? readAddressMask(view, buf, crashpadInfoRva, crashpadInfoSize)
+      : 0n;
+
     const details = parseExceptionDetails(
       view,
       exceptionRva,
       exceptionCode,
       platform,
+      addressMask,
     );
 
     const crashReason =
@@ -271,17 +279,8 @@ export function parseMinidumpBuffer(
       }
     }
 
-    // On arm64 the saved pointer can carry pointer-auth / top-byte tag bits.
-    // Crashpad records an address_mask to recover the real address before module
-    // lookup.
-    if (instructionPointer !== 0n && crashpadInfoRva) {
-      const mask = readAddressMask(
-        view,
-        buf,
-        crashpadInfoRva,
-        crashpadInfoSize,
-      );
-      instructionPointer = applyAddressMask(instructionPointer, mask);
+    if (instructionPointer !== 0n) {
+      instructionPointer = applyAddressMask(instructionPointer, addressMask);
     }
 
     let faultingModule: string | undefined;
@@ -322,6 +321,7 @@ function parseExceptionDetails(
   exceptionRva: number,
   exceptionCode: number,
   platform: NodeJS.Platform,
+  addressMask: bigint,
 ): Pick<
   MinidumpSummary,
   | "faultAddress"
@@ -343,7 +343,7 @@ function parseExceptionDetails(
     if (exceptionCode === EXC_CODE_ACCESS_VIOLATION && params.length >= 2) {
       return {
         accessType: ACCESS_TYPES[Number(params[0])],
-        faultAddress: toHex(params[1]),
+        faultAddress: toHex(applyAddressMask(params[1], addressMask)),
       };
     }
     if (exceptionCode === EXC_CODE_IN_PAGE_ERROR && params.length >= 2) {
@@ -351,7 +351,7 @@ function parseExceptionDetails(
       // of the paging failure (e.g. a failing disk or dropped network share).
       return {
         accessType: ACCESS_TYPES[Number(params[0])],
-        faultAddress: toHex(params[1]),
+        faultAddress: toHex(applyAddressMask(params[1], addressMask)),
         ...(params.length >= 3 && { inPageErrorStatus: Number(params[2]) }),
       };
     }
@@ -373,7 +373,10 @@ function parseExceptionDetails(
   if (isMemoryFault) {
     return {
       faultAddress: toHex(
-        view.getBigUint64(exceptionRva + EXC_ADDRESS_OFF, true),
+        applyAddressMask(
+          view.getBigUint64(exceptionRva + EXC_ADDRESS_OFF, true),
+          addressMask,
+        ),
       ),
     };
   }

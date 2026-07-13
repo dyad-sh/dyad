@@ -203,6 +203,21 @@ describe("parseMinidumpBuffer", () => {
     );
   });
 
+  it("strips arm64 tag bits from the fault address using the address mask", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 1, // EXC_BAD_ACCESS
+      exceptionAddress: 0xb400000000000018n, // tagged pointer to 0x18
+      ip: 0x10010n,
+      ipOffset: 264,
+      ptype: "browser",
+      addressMask: 0xff00000000000000n,
+    });
+    expect(parseMinidumpBuffer(dump, "darwin", "arm64")!.faultAddress).toBe(
+      "0x18",
+    );
+  });
+
   it("leaves the fault address undefined for non-memory signals", () => {
     // For SIGABRT the address field carries no meaningful fault address.
     const dump = buildMinidump({

@@ -1740,13 +1740,17 @@ export async function handleLocalAgentStream(
       deleteAppBlueprintForChat(req.chatId);
     }
 
+    // A terminal root failure must not leave child work running after the UI
+    // reports that the owning turn has ended. This is especially important for
+    // Implementers, which may still hold the mutation lease and edit files.
+    await Promise.allSettled(
+      spawnedSubagentThreadIds.map((threadId) =>
+        cancelSubagent(req.chatId, threadId),
+      ),
+    );
+
     if (abortController.signal.aborted) {
       // Handle cancellation
-      await Promise.allSettled(
-        spawnedSubagentThreadIds.map((threadId) =>
-          cancelSubagent(req.chatId, threadId),
-        ),
-      );
       await db
         .update(messages)
         .set({

@@ -58,6 +58,7 @@ import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentCon
 import {
   hasPendingReviewContinuation,
   resumePendingReviewContinuation,
+  setPendingReviewContinuation,
 } from "./subagentReviewContinuation";
 
 export function getRandomNumberId() {
@@ -138,7 +139,15 @@ async function runSingleBackgroundAutoReview(
     threadId: completed.id,
   });
   const remediated = await params.streamFix(prompt);
-  if (remediated === "paused") return;
+  if (remediated === "paused") {
+    setPendingReviewContinuation(params.chatId, async () => {
+      await ipc.agent.runAutoReviewBarrier({
+        chatId: params.chatId,
+        verification: true,
+      });
+    });
+    return;
+  }
   if (remediated === "failed") {
     await ipc.agent.skipReviewAutoFix({
       chatId: params.chatId,

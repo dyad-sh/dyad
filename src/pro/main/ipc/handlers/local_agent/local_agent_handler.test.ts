@@ -306,6 +306,18 @@ vi.mock(
   }),
 );
 
+const mockSubagentManager = vi.hoisted(() => ({
+  cancelSubagent: vi.fn(async () => {}),
+  endRootFinalization: vi.fn(async () => {}),
+  isAcceptableImplementerJoinStatus: vi.fn(() => true),
+  waitForSubagentsAndBeginFinalization: vi.fn(async () => []),
+}));
+
+vi.mock(
+  "@/pro/main/ipc/handlers/local_agent/subagents/subagent_manager",
+  () => mockSubagentManager,
+);
+
 const {
   mockIsChatPendingCompaction,
   mockPerformCompaction,
@@ -2016,6 +2028,40 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Abort handling", () => {
+    it("cancels spawned sub-agents when the root stream fails", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        expect(ctx.spawnedSubagentThreadIds).toBeDefined();
+        ctx.spawnedSubagentThreadIds?.push("implementer-1");
+        return {};
+      });
+      mockStreamResult = {
+        fullStream: (async function* () {
+          yield { type: "text-delta", text: "Partial response" };
+          throw new Error("provider stream failed");
+        })(),
+        response: Promise.resolve({ messages: [] }),
+      };
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(mockSubagentManager.cancelSubagent).toHaveBeenCalledWith(
+        1,
+        "implementer-1",
+      );
+    });
+
     it("should stop processing stream chunks when abort signal is triggered", async () => {
       // Arrange
       const { event } = createFakeEvent();

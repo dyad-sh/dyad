@@ -14,7 +14,8 @@
 // The CSV file must have a header row with faulting_debug_file,
 // faulting_debug_id, and faulting_offset columns. Values may be double
 // quoted. Rows are split on plain commas, so values must not contain
-// commas.
+// commas. Rows without a valid frame, such as rows from non-native
+// crashes, are skipped with a warning.
 //
 // Prints one line per input frame: the module+offset and the resolved
 // function name, or <unresolved> when no symbol covers the offset.
@@ -51,7 +52,8 @@ Example:
 
 The CSV file needs a header row with faulting_debug_file,
 faulting_debug_id, and faulting_offset columns. Rows are split on plain
-commas, so values must not contain commas.`;
+commas, so values must not contain commas. Rows without a valid frame
+are skipped with a warning.`;
 
 const args = process.argv.slice(2);
 
@@ -73,13 +75,22 @@ function safePathSegment(segment) {
   );
 }
 
-function validateFrame(frame, source) {
+// Returns why the frame cannot be used, or null when it is valid.
+function frameProblem(frame) {
   const { debugFile, debugId, offsetText } = frame;
   if (!safePathSegment(debugFile) || !safePathSegment(debugId)) {
-    usageError(`Bad debug file or debug id in ${source}.`);
+    return "bad debug file or debug id";
   }
   if (!/^(0x)?[0-9a-fA-F]+$/.test(offsetText)) {
-    usageError(`Bad hex offset "${offsetText}" in ${source}.`);
+    return `bad hex offset "${offsetText}"`;
+  }
+  return null;
+}
+
+function validateFrame(frame, source) {
+  const problem = frameProblem(frame);
+  if (problem !== null) {
+    usageError(`In ${source}: ${problem}.`);
   }
   return frame;
 }
@@ -117,17 +128,25 @@ function parseCsv(file) {
       `CSV file ${file} must have faulting_debug_file, faulting_debug_id, and faulting_offset columns.`,
     );
   }
-  return lines.slice(1).map((line, i) => {
+  // Exports can mix in rows from non-native crashes, whose faulting
+  // fields are empty. Skip rows without a valid frame so the rest
+  // still resolve.
+  const frames = [];
+  lines.slice(1).forEach((line, i) => {
     const cells = line.split(",").map(cell);
-    return validateFrame(
-      {
-        debugFile: cells[fileCol] ?? "",
-        debugId: cells[idCol] ?? "",
-        offsetText: cells[offsetCol] ?? "",
-      },
-      `${file} row ${i + 2}`,
-    );
+    const frame = {
+      debugFile: cells[fileCol] ?? "",
+      debugId: cells[idCol] ?? "",
+      offsetText: cells[offsetCol] ?? "",
+    };
+    const problem = frameProblem(frame);
+    if (problem !== null) {
+      console.error(`Skipping ${file} row ${i + 2}: ${problem}.`);
+      return;
+    }
+    frames.push(frame);
   });
+  return frames;
 }
 
 const frames = [];
@@ -174,8 +193,8 @@ async function ensureSymbols(debugFile, debugId) {
   const candidates = [debugFile];
   if (/dyad/i.test(debugFile)) {
     candidates.push(
-      debugFile.replace(/dyad/i, "electron"),
-      debugFile.replace(/dyad/i, "Electron"),
+      debugFile.replace(/dyad/gi, "electron"),
+      debugFile.replace(/dyad/gi, "Electron"),
     );
   }
   // Resolution is best effort: on any failure, warn and move on, and the
@@ -195,7 +214,7 @@ async function ensureSymbols(debugFile, debugId) {
         continue;
       }
       console.error(
-        `Fetching symbols for "${debugFile}" ${debugId} (large; cached after the first run)...`,
+        `Downloading symbols for "${debugFile}" ${debugId} (large; cached after the first run)...`,
       );
       fs.mkdirSync(path.dirname(cached), { recursive: true });
       // Download to a partial file and rename after success, so an

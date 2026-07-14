@@ -10,6 +10,8 @@
 - text: Done https://example.com/docs/getting-started
 - paragraph: Here's a summary of the page content. The getting started guide covers three main items. Let me know if you need more details!
 - button "Copy"
+- button "Agent team" [expanded]
+- button "Review changes"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

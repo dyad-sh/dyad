@@ -2,6 +2,8 @@
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
+- button "Agent team" [expanded]
+- button "Review changes"
 - button "Copy Request ID"
 - button "Undo"
 - button "Retry"

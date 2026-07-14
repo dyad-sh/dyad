@@ -161,6 +161,7 @@ When creating hooks/components that call IPC handlers:
 
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
+- When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.
 - Synchronize TanStack Query data with any global state (like Jotai atoms) via `useEffect` only if required.
 - For renderer launch telemetry that needs first-run state, do not infer it from `settings.hasRunBefore` after startup. `onFirstRunMaybe` flips that setting before `createWindow()`, so expose the pre-write value through an IPC/query context instead.
 - Renderer-side `isProviderSetup()` env-var detection only sees env vars whitelisted by the `get-env-vars` handler in `src/ipc/handlers/app_handlers.ts`, which returns one `envVarName` per provider. Providers needing extra env vars (e.g. Azure's `AZURE_RESOURCE_NAME`) must have those keys added to the handler explicitly, or the renderer reports the provider as not set up even though the main process can use it.

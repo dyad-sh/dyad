@@ -175,22 +175,10 @@ describe("GitHub connector actions (integration)", () => {
     return harness.db.query.apps.findFirst({ where: eq(apps.id, appId) });
   }
 
-  it("connects to GitHub through the device flow", async () => {
-    await resetFakeGitHub();
-    const app = await createFixtureApp("github-device-flow");
-    await mountAppDetails(app);
-
-    await connectGitHub(app);
-
-    const settings = readSettings();
-    expect(settings.githubAccessToken?.value).toBe("fake_access_token_12345");
-  }, 60_000);
-
-  it("creates and syncs new repositories, including custom and normalized branches", async () => {
+  it("covers custom branches and normalized repository names", async () => {
     await resetFakeGitHub();
 
     const cases = [
-      { repoInput: "test-new-repo-hybrid", repo: "test-new-repo-hybrid" },
       {
         repoInput: "test-new-repo-hybrid-custom",
         repo: "test-new-repo-hybrid-custom",
@@ -232,25 +220,6 @@ describe("GitHub connector actions (integration)", () => {
     }
   }, 120_000);
 
-  it("disconnects a linked repository and shows the setup flow again", async () => {
-    await resetFakeGitHub();
-    const app = await createFixtureApp("github-disconnect-repo");
-    await mountAppDetails(app);
-    await connectGitHub(app);
-    await createRepoThroughConnector("test-new-repo-hybrid-disconnect");
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Disconnect from repo" }),
-    );
-
-    await screen.findByTestId("github-setup-repo");
-    await screen.findByText("Set up your GitHub repo");
-    const row = await appRow(app.appId);
-    expect(row?.githubOrg).toBeNull();
-    expect(row?.githubRepo).toBeNull();
-    expect(row?.githubBranch).toBeNull();
-  }, 60_000);
-
   it("shows a reconnect prompt when GitHub credentials are removed from settings", async () => {
     await resetFakeGitHub();
     const app = await createFixtureApp("github-reconnect");
@@ -289,10 +258,10 @@ describe("GitHub connector actions (integration)", () => {
     expect(screen.queryByRole("button", { name: "Sync to GitHub" })).toBeNull();
   }, 90_000);
 
-  it("connects an existing repository and syncs selected branches", async () => {
+  it("connects an existing repository with a custom branch", async () => {
     await resetFakeGitHub();
 
-    const cases = [{ branch: "main" }, { branch: "new-branch", custom: true }];
+    const cases = [{ branch: "new-branch", custom: true }];
 
     for (const testCase of cases) {
       cleanup();

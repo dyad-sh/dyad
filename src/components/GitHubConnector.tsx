@@ -34,6 +34,8 @@ import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflicts
 import { showSuccess, showError } from "@/lib/toast";
 import { useGithubSyncState } from "@/atoms/githubSyncAtoms";
 import { slugifyAppPath } from "@/shared/slugify";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -1281,6 +1283,7 @@ export function GitHubConnector({
   expanded,
 }: GitHubConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
+  const queryClient = useQueryClient();
   const { settings, refreshSettings } = useSettings();
   const [pendingAutoSync, setPendingAutoSync] = useState(false);
   const linkedRepo =
@@ -1289,10 +1292,15 @@ export function GitHubConnector({
       : undefined;
   const hasGitHubCredentials = !!settings?.githubAccessToken;
 
+  const refreshAppData = useCallback(() => {
+    void refreshApp();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+  }, [queryClient, refreshApp]);
+
   const handleRepoSetupComplete = useCallback(() => {
     setPendingAutoSync(true);
-    refreshApp();
-  }, [refreshApp]);
+    refreshAppData();
+  }, [refreshAppData]);
 
   const handleAutoSyncComplete = useCallback(() => {
     setPendingAutoSync(false);
@@ -1303,7 +1311,7 @@ export function GitHubConnector({
       <ConnectedGitHubConnector
         appId={appId}
         app={app}
-        refreshApp={refreshApp}
+        refreshApp={refreshAppData}
         triggerAutoSync={pendingAutoSync}
         onAutoSyncComplete={handleAutoSyncComplete}
       />

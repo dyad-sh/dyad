@@ -185,18 +185,26 @@ describe("sub-agent review orchestration", () => {
     });
   });
 
-  it("does not complete or verify a step-limited background remediation", async () => {
+  it("verifies after a step-limited background remediation resumes", async () => {
     mocks.startAutoReview.mockResolvedValue(review());
     mocks.fixReviewFindings.mockResolvedValue({ prompt: "fix it" });
 
     await runBackgroundAutoReview({
-      chatId: 7,
+      chatId: 12,
       sourceMessageId: 42,
       getAutoFix: () => true,
       streamFix: async () => "paused",
     });
 
     expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
+    expect(hasPendingReviewContinuation(12)).toBe(true);
+
+    await expect(resumePendingReviewContinuation(12)).resolves.toBe(true);
+    expect(mocks.runAutoReviewBarrier).toHaveBeenCalledWith({
+      chatId: 12,
+      verification: true,
+    });
+    await expect(resumePendingReviewContinuation(12)).resolves.toBe(false);
   });
 
   it("reports a background review without fixing when auto-fix is disabled", async () => {

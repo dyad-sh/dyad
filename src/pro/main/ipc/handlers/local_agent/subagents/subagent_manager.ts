@@ -297,6 +297,13 @@ export async function cancelSubagent(
 ): Promise<void> {
   assertPro();
   const thread = await getOwnedThread(chatId, threadId);
+  if (
+    !SUBAGENT_NONTERMINAL_STATUSES.includes(
+      thread.status as (typeof SUBAGENT_NONTERMINAL_STATUSES)[number],
+    )
+  ) {
+    return;
+  }
   cancelledThreadIds.add(threadId);
   const controller = abortControllers.get(threadId);
   controller?.abort();

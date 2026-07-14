@@ -4,6 +4,11 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SubagentThreadSummary } from "@/ipc/types";
+import {
+  clearPendingReviewContinuation,
+  hasPendingReviewContinuation,
+  resumePendingReviewContinuation,
+} from "@/hooks/subagentReviewContinuation";
 import { SubagentTeamCard } from "./SubagentTeamCard";
 
 const mocks = vi.hoisted(() => ({
@@ -106,6 +111,7 @@ function makeWrapper() {
 describe("SubagentTeamCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearPendingReviewContinuation(7);
     mocks.onSubagentUpdate.mockReturnValue(vi.fn());
     mocks.startReview.mockResolvedValue(undefined);
     mocks.sendSubagentMessage.mockResolvedValue(undefined);
@@ -171,6 +177,31 @@ describe("SubagentTeamCard", () => {
         chatId: 7,
         sourceMessageId: 42,
       });
+    });
+  });
+
+  it("verifies a manual fix after a step-limit continuation completes", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      makeReview("current-message", 42, "current report"),
+    ]);
+    mocks.streamMessage.mockImplementation(async ({ onSettled }) => {
+      onSettled?.({ success: true, pausedByStepLimit: true });
+    });
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Fix findings/ }),
+    );
+
+    await waitFor(() => expect(hasPendingReviewContinuation(7)).toBe(true));
+    expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
+
+    await resumePendingReviewContinuation(7);
+    expect(mocks.runAutoReviewBarrier).toHaveBeenCalledWith({
+      chatId: 7,
+      verification: true,
     });
   });
 
@@ -280,5 +311,29 @@ describe("SubagentTeamCard", () => {
     ).toBe(true);
 
     finishSend?.();
+  });
+
+  it("requires Implementer follow-ups to run through a root Agent turn", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("implementer-thread", 42, "implementation report"),
+        persona: "implementer",
+        taskName: "Edit auth flow",
+      },
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Message implementer Edit auth flow",
+      }),
+      { target: { value: "Continue the edit" } },
+    );
+    const followup = screen.getByRole("button", { name: "Follow up" });
+    expect(followup.hasAttribute("disabled")).toBe(true);
+    expect(followup.getAttribute("title")).toMatch(/root Agent turn/);
   });
 });

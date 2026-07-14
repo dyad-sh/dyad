@@ -550,6 +550,12 @@ export async function followupSubagent(
 ): Promise<SubagentPersona> {
   assertPro();
   const thread = await getOwnedThread(chatId, threadId);
+  if (thread.persona === "implementer" && !currentTurn) {
+    throw new DyadError(
+      "Implementer follow-ups must run through an active root Agent turn so their changes are verified, deployed, and committed.",
+      DyadErrorKind.Precondition,
+    );
+  }
   let run = followupRunners.get(threadId);
   if (currentTurn && thread.persona !== "reviewer") {
     if (currentTurn.ctx.chatId !== chatId) {

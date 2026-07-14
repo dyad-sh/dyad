@@ -174,7 +174,7 @@ describe("sub-agent review orchestration", () => {
     await runBackgroundAutoReview({
       chatId: 7,
       sourceMessageId: 42,
-      autoFix: true,
+      getAutoFix: () => true,
       streamFix,
     });
 
@@ -192,7 +192,7 @@ describe("sub-agent review orchestration", () => {
     await runBackgroundAutoReview({
       chatId: 7,
       sourceMessageId: 42,
-      autoFix: true,
+      getAutoFix: () => true,
       streamFix: async () => "paused",
     });
 
@@ -205,12 +205,35 @@ describe("sub-agent review orchestration", () => {
     await runBackgroundAutoReview({
       chatId: 7,
       sourceMessageId: 42,
-      autoFix: false,
+      getAutoFix: () => false,
       streamFix: vi.fn(),
     });
 
     expect(mocks.fixReviewFindings).not.toHaveBeenCalled();
     expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
+  });
+
+  it("reads the latest auto-fix setting after Reviewer completes", async () => {
+    let finishReview!: (value: SubagentThreadSummary) => void;
+    let autoFix = true;
+    mocks.startAutoReview.mockReturnValue(
+      new Promise<SubagentThreadSummary>((resolve) => {
+        finishReview = resolve;
+      }),
+    );
+
+    const run = runBackgroundAutoReview({
+      chatId: 10,
+      sourceMessageId: 42,
+      getAutoFix: () => autoFix,
+      streamFix: vi.fn(),
+    });
+    await vi.waitFor(() => expect(mocks.startAutoReview).toHaveBeenCalled());
+    autoFix = false;
+    finishReview(review({ chatId: 10 }));
+    await run;
+
+    expect(mocks.fixReviewFindings).not.toHaveBeenCalled();
   });
 
   it("replays the newest background auto-review requested while one is active", async () => {
@@ -231,7 +254,7 @@ describe("sub-agent review orchestration", () => {
     const firstRun = runBackgroundAutoReview({
       chatId: 9,
       sourceMessageId: 42,
-      autoFix: false,
+      getAutoFix: () => false,
       streamFix: vi.fn(),
     });
     await vi.waitFor(() => {
@@ -241,7 +264,7 @@ describe("sub-agent review orchestration", () => {
     await runBackgroundAutoReview({
       chatId: 9,
       sourceMessageId: 43,
-      autoFix: false,
+      getAutoFix: () => false,
       streamFix: vi.fn(),
     });
     resolveFirstReview(

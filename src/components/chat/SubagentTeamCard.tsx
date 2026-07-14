@@ -18,6 +18,7 @@ import { ipc, type SubagentThreadSummary } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { setPendingReviewContinuation } from "@/hooks/subagentReviewContinuation";
 
 export function SubagentTeamCard({
   chatId,
@@ -69,7 +70,21 @@ export function SubagentTeamCard({
           });
         },
       );
-      if (remediated === "paused") return;
+      if (remediated === "paused") {
+        setPendingReviewContinuation(chatId, async () => {
+          try {
+            await ipc.agent.runAutoReviewBarrier({
+              chatId,
+              verification: true,
+            });
+          } catch (error) {
+            showError(error);
+          } finally {
+            await invalidateThreads();
+          }
+        });
+        return;
+      }
       if (remediated === "completed") {
         await ipc.agent.runAutoReviewBarrier({ chatId, verification: true });
       } else {
@@ -261,8 +276,14 @@ export function SubagentTeamCard({
                     variant="outline"
                     disabled={
                       !messageDrafts[thread.id]?.trim() ||
+                      thread.persona === "implementer" ||
                       sendMessageMutation.isPending ||
                       followupMutation.isPending
+                    }
+                    title={
+                      thread.persona === "implementer"
+                        ? "Start Implementer follow-ups from a root Agent turn so changes are verified and committed."
+                        : undefined
                     }
                     onClick={() =>
                       followupMutation.mutate({
@@ -281,7 +302,7 @@ export function SubagentTeamCard({
               </div>
               {thread.persona === "reviewer" && thread.autoFixAt && (
                 <div className="mt-2 flex items-center justify-between rounded bg-amber-500/10 p-2 text-xs">
-                  <span>
+                  <span aria-live="polite">
                     Fixing findings in{" "}
                     {Math.max(
                       0,

@@ -161,6 +161,7 @@ export function SubagentTeamCard({
       <div className="flex items-center justify-between gap-2 p-2">
         <button
           className="flex items-center gap-2 font-medium"
+          aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? (

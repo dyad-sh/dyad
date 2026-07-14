@@ -65,6 +65,16 @@ describe("sub-agent mutation lease", () => {
     ).toThrow(/assigned paths/);
   });
 
+  it("rejects Implementer mutations after its writer lease is gone", () => {
+    expect(() =>
+      assertMutationLease({
+        appId: 10,
+        subagentThreadId: "implementer",
+        subagentPersona: "implementer",
+      } as AgentContext),
+    ).toThrow(/no longer owns/);
+  });
+
   it("blocks new writer leases while the root finalizes", () => {
     expect(beginAppFinalization(8)).toBe(true);
     expect(

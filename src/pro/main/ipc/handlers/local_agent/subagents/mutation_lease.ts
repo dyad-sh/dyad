@@ -52,7 +52,15 @@ export function assertMutationLease(ctx: AgentContext): void {
     );
   }
   const lease = leases.get(ctx.appId);
-  if (!lease) return;
+  if (!lease) {
+    if (ctx.subagentPersona === "implementer") {
+      throw new DyadError(
+        "This Implementer no longer owns the app writer lease.",
+        DyadErrorKind.Conflict,
+      );
+    }
+    return;
+  }
   if (ctx.subagentThreadId !== lease.threadId) {
     throw new DyadError(
       "Another agent is currently editing this app. Wait for it to finish before making changes.",

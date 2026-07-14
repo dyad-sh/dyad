@@ -111,6 +111,19 @@ export interface AgentContext {
   subagentPersona?: "explorer" | "reviewer" | "implementer";
   /** Explicit relative path prefixes an Implementer may mutate. */
   subagentPathScope?: string[];
+  /** Child threads spawned by this root turn, joined before deploy/commit. */
+  spawnedSubagentThreadIds?: string[];
+  /** Implementer children that must finish before root deploy/commit. */
+  spawnedImplementerThreadIds?: string[];
+  /**
+   * Whether file tools may deploy server functions immediately. Implementer
+   * children disable this so deployment stays owned by the root turn.
+   */
+  allowDeploySideEffects?: boolean;
+  /** Propagates child shared-module edits to the root turn's deploy tracker. */
+  onSharedServerModuleChange?: (relativePath: string) => void;
+  /** Propagates child function deploy work to the root turn. */
+  onDeferredFunctionDeploy?: (functionName: string) => void;
   /** Turn-scoped schema gates for root orchestration tools. */
   canUseExplorerSubagent?: boolean;
   canUseImplementerSubagent?: boolean;

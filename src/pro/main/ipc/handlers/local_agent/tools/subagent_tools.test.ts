@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { spawnAgentTool } from "./subagent_tools";
+import {
+  cancelAgentTool,
+  compilerExploreTool,
+  followupTaskTool,
+  sendMessageTool,
+  spawnAgentTool,
+} from "./subagent_tools";
 import type { AgentContext } from "./types";
 
 describe("spawn_agent schema", () => {
@@ -31,6 +37,29 @@ describe("spawn_agent schema", () => {
         task_name: "edit",
         assignment: "Edit a file",
         scope: ["src"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("classifies durable orchestration writes as state modifying", () => {
+    expect(spawnAgentTool.modifiesState).toBe(true);
+    expect(cancelAgentTool.modifiesState).toBe(true);
+    expect(sendMessageTool.modifiesState).toBe(true);
+    expect(followupTaskTool.modifiesState).toBe(true);
+  });
+
+  it("exposes bounded compiler exploration arguments", () => {
+    expect(
+      compilerExploreTool.inputSchema.safeParse({
+        query: "trace the request flow",
+        max_files: 8,
+        max_depth: 3,
+      }).success,
+    ).toBe(true);
+    expect(
+      compilerExploreTool.inputSchema.safeParse({
+        query: "trace the request flow",
+        max_files: 9,
       }).success,
     ).toBe(false);
   });

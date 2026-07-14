@@ -55,6 +55,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
     if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
       ctx.sharedServerModulePaths.push(operationPath);
+      ctx.onSharedServerModuleChange?.(operationPath);
     }
 
     await withLock(getFileWriteKey(fullFilePath), async () => {
@@ -79,7 +80,10 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       } catch {
         return `Successfully wrote ${args.path}`;
       }
-      if (!ctx.isSharedModulesChanged) {
+      if (ctx.allowDeploySideEffects === false) {
+        ctx.pendingFunctionDeploys.push(functionName);
+        ctx.onDeferredFunctionDeploy?.(functionName);
+      } else if (!ctx.isSharedModulesChanged) {
         try {
           await deploySupabaseFunction({
             supabaseProjectId: ctx.supabaseProjectId,

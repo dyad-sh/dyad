@@ -113,6 +113,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
       ctx.sharedServerModulePaths.push(operationPath);
+      ctx.onSharedServerModuleChange?.(operationPath);
     }
 
     await withLock(getFileWriteKey(fullFilePath), async () => {
@@ -157,7 +158,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
       try {
         const functionName = extractFunctionNameFromPath(operationPath);
-        if (!ctx.isSharedModulesChanged) {
+        if (ctx.allowDeploySideEffects === false) {
+          ctx.pendingFunctionDeploys.push(functionName);
+          ctx.onDeferredFunctionDeploy?.(functionName);
+        } else if (!ctx.isSharedModulesChanged) {
           await deploySupabaseFunction({
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,

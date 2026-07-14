@@ -68,6 +68,7 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
+import { cancelSubagent, waitForSubagents } from "./subagents/subagent_manager";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -663,6 +664,7 @@ export async function handleLocalAgentStream(
   // Snapshot of todos persisted by a previous turn. Declared outside the try so
   // the cancellation handler in `catch` can roll back to this pre-turn state.
   let persistedTodos: Todo[] = [];
+  const spawnedImplementerThreadIds: string[] = [];
 
   try {
     // Get model client
@@ -711,6 +713,8 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
+      spawnedSubagentThreadIds: [],
+      spawnedImplementerThreadIds,
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
@@ -1627,6 +1631,31 @@ export async function handleLocalAgentStream(
       );
     }
 
+    const implementerThreadIds = ctx.spawnedImplementerThreadIds ?? [];
+    if (abortController.signal.aborted) {
+      await Promise.allSettled(
+        implementerThreadIds.map((threadId) =>
+          cancelSubagent(ctx.chatId, threadId),
+        ),
+      );
+    } else if (implementerThreadIds.length > 0) {
+      const implementers = await waitForSubagents(
+        ctx.chatId,
+        implementerThreadIds,
+        abortController.signal,
+      );
+      const unsuccessful = implementers.filter(
+        (thread) => thread.status !== "completed",
+      );
+      if (unsuccessful.length > 0) {
+        throw new Error(
+          `Implementer sub-agent did not complete successfully: ${unsuccessful
+            .map((thread) => `${thread.taskName} (${thread.status})`)
+            .join(", ")}`,
+        );
+      }
+    }
+
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
       await db
@@ -1806,6 +1835,11 @@ export async function handleLocalAgentStream(
 
     if (abortController.signal.aborted) {
       // Handle cancellation
+      await Promise.allSettled(
+        spawnedImplementerThreadIds.map((threadId) =>
+          cancelSubagent(req.chatId, threadId),
+        ),
+      );
       await db
         .update(messages)
         .set({

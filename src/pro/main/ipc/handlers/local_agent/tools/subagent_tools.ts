@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-import { db } from "@/db";
-import { agentThreads } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { buildAgentToolSet } from "../tool_definitions";
 import {
   cancelSubagent,
@@ -10,17 +7,32 @@ import {
   listSubagents,
   sendSubagentMessage,
   spawnModelSubagent,
+  waitForSubagents,
 } from "../subagents/subagent_manager";
 import type { AgentContext, ToolDefinition } from "./types";
+import {
+  formatRawExploreCodeResult,
+  normalizeExploreCodeArgsForApp,
+  rawExploreCodeSchema,
+  runRawExploreCode,
+} from "./explore_code_raw";
+import { resolveTargetAppPath } from "./resolve_app_context";
+import { getExploreCodeAvailability } from "./explore_code";
 
 const baseSpawnShape = {
-  task_name: z.string().min(1).describe("A stable short name for this task"),
+  task_name: z
+    .string()
+    .min(1)
+    .max(100)
+    .describe("A stable short name for this task"),
   assignment: z
     .string()
     .min(1)
+    .max(20_000)
     .describe("A bounded assignment and intended outcome"),
   scope: z
-    .array(z.string())
+    .array(z.string().min(1).max(500))
+    .max(100)
     .default([])
     .describe("Explicit relative paths or path prefixes in scope"),
 };
@@ -56,6 +68,7 @@ export const spawnAgentTool: ToolDefinition<
     });
   },
   defaultConsent: "always",
+  modifiesState: true,
   usesEngineEndpoint: true,
   isEnabled: (ctx) =>
     Boolean(
@@ -66,7 +79,7 @@ export const spawnAgentTool: ToolDefinition<
   execute: async (args, ctx) => {
     const allowlist =
       args.persona === "explorer"
-        ? ["read_file", "list_files", "grep", "code_search"]
+        ? ["read_file", "list_files", "grep", "code_search", "compiler_explore"]
         : ["read_file", "list_files", "grep", "write_file", "search_replace"];
     const threadId = await spawnModelSubagent({
       ctx,
@@ -80,23 +93,41 @@ export const spawnAgentTool: ToolDefinition<
           subagentThreadId: threadId,
           subagentPersona: args.persona,
           subagentPathScope: args.scope,
+          allowDeploySideEffects: false,
+          onSharedServerModuleChange: (relativePath) => {
+            ctx.isSharedModulesChanged = true;
+            if (!ctx.sharedServerModulePaths.includes(relativePath)) {
+              ctx.sharedServerModulePaths.push(relativePath);
+            }
+          },
+          onDeferredFunctionDeploy: (functionName) => {
+            if (!ctx.pendingFunctionDeploys.includes(functionName)) {
+              ctx.pendingFunctionDeploys.push(functionName);
+            }
+          },
           canUseExplorerSubagent: false,
           canUseImplementerSubagent: false,
           referencedApps: new Map(ctx.referencedApps),
           todos: [],
-          fileEditTracker: Object.create(null),
+          fileEditTracker: ctx.fileEditTracker,
           onXmlStream: () => {},
           onXmlComplete: () => {},
         };
         const allTools = buildAgentToolSet(childCtx, {
           readOnly: args.persona === "explorer",
-          enableAppBlueprint: false,
+          enableAppBlueprint: ctx.enableAppBlueprint,
         });
         return Object.fromEntries(
           Object.entries(allTools).filter(([name]) => allowlist.includes(name)),
         );
       },
     });
+    ctx.spawnedSubagentThreadIds ??= [];
+    ctx.spawnedSubagentThreadIds.push(threadId);
+    if (args.persona === "implementer") {
+      ctx.spawnedImplementerThreadIds ??= [];
+      ctx.spawnedImplementerThreadIds.push(threadId);
+    }
     return `Started ${args.persona} sub-agent ${threadId}. Use list_agents or wait_agents to inspect it.`;
   },
 };
@@ -121,24 +152,10 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
   inputSchema: threadIdsSchema,
   defaultConsent: "always",
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
-  execute: async (args) => {
-    while (true) {
-      const rows = await Promise.all(
-        args.thread_ids.map((id) =>
-          db.query.agentThreads.findFirst({ where: eq(agentThreads.id, id) }),
-        ),
-      );
-      if (
-        rows.every(
-          (row) =>
-            row &&
-            !["queued", "running", "waiting_for_writer"].includes(row.status),
-        )
-      )
-        return JSON.stringify(rows);
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  },
+  execute: async (args, ctx) =>
+    JSON.stringify(
+      await waitForSubagents(ctx.chatId, args.thread_ids, ctx.abortSignal),
+    ),
 };
 
 export const cancelAgentTool: ToolDefinition<{ thread_id: string }> = {
@@ -146,16 +163,17 @@ export const cancelAgentTool: ToolDefinition<{ thread_id: string }> = {
   description: "Cancel a running sub-agent at its next safe boundary.",
   inputSchema: z.object({ thread_id: z.string() }),
   defaultConsent: "always",
+  modifiesState: true,
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
-  execute: async (args) => {
-    await cancelSubagent(args.thread_id);
+  execute: async (args, ctx) => {
+    await cancelSubagent(ctx.chatId, args.thread_id);
     return "Cancellation requested.";
   },
 };
 
 const messageSchema = z.object({
   thread_id: z.string(),
-  message: z.string().min(1),
+  message: z.string().min(1).max(20_000),
 });
 
 export const sendMessageTool: ToolDefinition<z.infer<typeof messageSchema>> = {
@@ -163,9 +181,10 @@ export const sendMessageTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   description: "Durably queue a message for an existing sub-agent thread.",
   inputSchema: messageSchema,
   defaultConsent: "always",
+  modifiesState: true,
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
-  execute: async (args) => {
-    await sendSubagentMessage(args.thread_id, args.message);
+  execute: async (args, ctx) => {
+    await sendSubagentMessage(ctx.chatId, args.thread_id, args.message);
     return "Message queued durably.";
   },
 };
@@ -175,8 +194,38 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   name: "followup_task",
   description:
     "Queue a durable follow-up assignment on an existing child thread. An idle child will consume it on its next turn.",
-  execute: async (args) => {
-    await followupSubagent(args.thread_id, args.message);
+  execute: async (args, ctx) => {
+    const persona = await followupSubagent(
+      ctx.chatId,
+      args.thread_id,
+      args.message,
+    );
+    if (persona === "implementer") {
+      ctx.spawnedImplementerThreadIds ??= [];
+      if (!ctx.spawnedImplementerThreadIds.includes(args.thread_id)) {
+        ctx.spawnedImplementerThreadIds.push(args.thread_id);
+      }
+    }
     return "Follow-up queued durably.";
+  },
+};
+
+export const compilerExploreTool: ToolDefinition<
+  z.infer<typeof rawExploreCodeSchema>
+> = {
+  name: "compiler_explore",
+  description:
+    "Explore the configured TypeScript project using compiler-backed symbol and dependency analysis.",
+  inputSchema: rawExploreCodeSchema,
+  defaultConsent: "always",
+  isEnabled: (ctx) =>
+    ctx.subagentPersona === "explorer" &&
+    getExploreCodeAvailability(ctx).enabled,
+  execute: async (args, ctx) => {
+    const appPath = resolveTargetAppPath(ctx, args.app_name);
+    const effectiveArgs = normalizeExploreCodeArgsForApp({ appPath, args });
+    return formatRawExploreCodeResult(
+      await runRawExploreCode({ appPath, args: effectiveArgs }),
+    );
   },
 };

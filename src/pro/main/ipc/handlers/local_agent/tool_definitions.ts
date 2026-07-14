@@ -39,6 +39,7 @@ import { searchChatsTool } from "./tools/search_chats";
 import { readChatTool } from "./tools/read_chat";
 import {
   cancelAgentTool,
+  compilerExploreTool,
   followupTaskTool,
   listAgentsTool,
   sendMessageTool,
@@ -122,6 +123,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   exploreChatHistoryTool,
   searchChatsTool,
   readChatTool,
+  compilerExploreTool,
   spawnAgentTool,
   listAgentsTool,
   waitAgentsTool,

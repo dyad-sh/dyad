@@ -177,6 +177,7 @@ export const SubagentThreadSummarySchema = z.object({
   reviewBaseCommit: z.string().nullable(),
   reviewTargetCommit: z.string().nullable(),
   reviewDiffHash: z.string().nullable(),
+  sourceMessageId: z.number().nullable(),
   invocationSource: z.enum([
     "model",
     "review_button",
@@ -238,7 +239,7 @@ export const agentContracts = {
 
   getSubagentMessages: defineContract({
     channel: "agent:get-subagent-messages",
-    input: z.object({ threadId: z.string() }),
+    input: z.object({ chatId: z.number(), threadId: z.string() }),
     output: z.array(SubagentMessageSchema),
   }),
 
@@ -269,19 +270,19 @@ export const agentContracts = {
 
   fixReviewFindings: defineContract({
     channel: "agent:fix-review-findings",
-    input: z.object({ threadId: z.string() }),
+    input: z.object({ chatId: z.number(), threadId: z.string() }),
     output: z.object({ prompt: z.string() }),
   }),
 
   skipReviewAutoFix: defineContract({
     channel: "agent:skip-review-auto-fix",
-    input: z.object({ threadId: z.string() }),
+    input: z.object({ chatId: z.number(), threadId: z.string() }),
     output: z.void(),
   }),
 
   cancelSubagent: defineContract({
     channel: "agent:cancel-subagent",
-    input: z.object({ threadId: z.string() }),
+    input: z.object({ chatId: z.number(), threadId: z.string() }),
     output: z.void(),
   }),
 } as const;

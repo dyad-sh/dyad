@@ -40,6 +40,15 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("Use `grep` and `code_search`");
   });
 
+  it("uses direct search guidance when Explorer is unavailable", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      codeExplorerAvailable: false,
+    });
+
+    expect(prompt).not.toContain('spawn_agent` with persona="explorer"');
+    expect(prompt).toContain("Use `grep` and `code_search`");
+  });
+
   it("agent mode system prompt (vite framework includes Nitro nudge)", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       frameworkType: "vite",

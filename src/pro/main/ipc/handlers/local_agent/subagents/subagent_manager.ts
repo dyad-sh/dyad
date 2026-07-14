@@ -246,13 +246,13 @@ export async function startReview(params: {
   if (existing && isReusableReviewStatus(existing.status)) {
     const existingSourceMessageId = existing.contextJson?.sourceMessageId;
     if (existingSourceMessageId !== params.sourceMessageId) {
-      const contextJson = {
-        ...existing.contextJson,
-        sourceMessageId: params.sourceMessageId,
-      };
+      const reboundState = buildReboundReviewState(
+        existing.contextJson,
+        params.sourceMessageId,
+      );
       const [rebound] = await db
         .update(agentThreads)
-        .set({ contextJson, updatedAt: new Date() })
+        .set(reboundState)
         .where(eq(agentThreads.id, existing.id))
         .returning();
       emit(params.chatId, existing.id);
@@ -1186,6 +1186,22 @@ export function isReusableReviewStatus(status: string): boolean {
     "needs_approval",
     "completed",
   ].includes(status);
+}
+
+export function buildReboundReviewState(
+  contextJson: Record<string, unknown> | null,
+  sourceMessageId: number,
+  updatedAt = new Date(),
+) {
+  return {
+    contextJson: {
+      ...contextJson,
+      sourceMessageId,
+    },
+    remediationSource: null,
+    autoFixAt: null,
+    updatedAt,
+  };
 }
 
 export function isWaitCompleteStatus(status: string): boolean {

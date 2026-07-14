@@ -79,7 +79,6 @@ import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
-import { isCodeExplorerReady } from "../processors/code_explorer";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
   isModelRefusal,
@@ -1339,12 +1338,13 @@ ${componentSnippet}
         );
 
         const frameworkType = detectFrameworkType(appPath);
-        // Gate on Pro to match the `explore_code` tool's `isEnabled`, so the
-        // prompt never points the model at a tool that isn't in the toolset.
-        const codeExplorerAvailable =
-          isDyadProEnabled(settings) &&
-          !!settings.enableCodeExplorer &&
-          isCodeExplorerReady(appPath);
+        // Match the Explorer persona's actual tool gate so the prompt never
+        // points the model at spawn_agent(persona="explorer") when that
+        // persona is disabled. Code-index readiness is independent now that
+        // spawn_agent replaces the old explore_code tool.
+          const codeExplorerAvailable =
+            isDyadProEnabled(settings) &&
+            settings.enableExplorerSubagent !== false;
         // Mirrors explore_chat_history's toolset inclusion (Pro, and not
         // consent-"never") so the prompt never points the model at a tool
         // that isn't in the toolset. Consent is read from settings directly

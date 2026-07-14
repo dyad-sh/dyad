@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildReboundReviewState,
   buildBoundedModelHistory,
   isAcceptableImplementerJoinStatus,
   isReusableReviewStatus,
@@ -36,6 +37,23 @@ describe("sub-agent manager status policy", () => {
     ]) {
       expect(isReusableReviewStatus(status)).toBe(false);
     }
+  });
+
+  it("clears prior remediation state when rebinding a reusable review", () => {
+    const updatedAt = new Date("2026-07-14T00:00:00Z");
+
+    expect(
+      buildReboundReviewState(
+        { sourceMessageId: 41, files: ["src/app.ts"] },
+        42,
+        updatedAt,
+      ),
+    ).toEqual({
+      contextJson: { sourceMessageId: 42, files: ["src/app.ts"] },
+      remediationSource: null,
+      autoFixAt: null,
+      updatedAt,
+    });
   });
 
   it("waits through active workflows but treats idle and terminal states as complete", () => {

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import {
   Tooltip,
   TooltipContent,
@@ -34,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 
 type ToolbarMode = Exclude<PreviewMode, "plan">;
 
@@ -46,18 +48,23 @@ const TAB_ORDER = [
   "security",
   "tests",
 ] as const satisfies readonly ToolbarMode[];
-const EXPERIMENTAL_MODES = new Set<PreviewMode>(["tests"]);
 const VERSION_TAB_ORDER = ["preview", "code"] as const satisfies readonly [
   ToolbarMode,
   ToolbarMode,
 ];
 
 const TAB_GAP_PX = 4;
+const ACTIVE_TAB_SPRING = {
+  type: "spring" as const,
+  stiffness: 800,
+  damping: 40,
+  mass: 0.5,
+};
 
 // Every tab shares one size-affecting style so a tab's width never changes
 // when it becomes active — the overflow math depends on stable widths.
 const TAB_BASE_CLASSES =
-  "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium whitespace-nowrap";
+  "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium whitespace-nowrap";
 
 const problemBadgeClasses =
   "px-1 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center";
@@ -122,6 +129,7 @@ export function computeVisibleTabs<T extends string>({
 
 export const PreviewToolbar = () => {
   const { t, i18n } = useTranslation("home");
+  const reducedMotion = useReducedMotionPref();
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
@@ -264,33 +272,48 @@ export const PreviewToolbar = () => {
   const renderTab = (mode: ToolbarMode) => {
     const meta = modeMeta[mode];
     const isActive = previewMode === mode && isPreviewOpen;
+    const tabContent = (
+      <>
+        {isActive && (
+          <motion.span
+            layoutId="preview-toolbar-active-tab"
+            aria-hidden="true"
+            className="absolute inset-0 rounded-md bg-primary/10 dark:bg-purple-900/40"
+            initial={false}
+            transition={reducedMotion ? { duration: 0 } : ACTIVE_TAB_SPRING}
+          />
+        )}
+        <span className="relative z-10 flex items-center gap-1.5">
+          {meta.icon}
+          <span>{meta.label}</span>
+        </span>
+        {mode === "problems" && displayCount && (
+          <span
+            className={cn("absolute -top-1 -right-1 z-20", problemBadgeClasses)}
+          >
+            {displayCount}
+          </span>
+        )}
+      </>
+    );
+    const tabClassName = cn(
+      "no-app-region-drag relative cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+      TAB_BASE_CLASSES,
+      isActive
+        ? "text-primary dark:text-purple-300"
+        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+    );
+
     return (
       <button
         key={mode}
         data-testid={meta.testId}
         aria-label={meta.label}
         aria-pressed={isActive}
-        className={cn(
-          "no-app-region-drag cursor-pointer relative transition-colors",
-          TAB_BASE_CLASSES,
-          isActive
-            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
-            : "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
-        )}
+        className={tabClassName}
         onClick={() => selectPanel(mode)}
       >
-        {meta.icon}
-        <span>{meta.label}</span>
-        {EXPERIMENTAL_MODES.has(mode) && (
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-amber-700 uppercase dark:bg-amber-900/40 dark:text-amber-300">
-            Experimental
-          </span>
-        )}
-        {mode === "problems" && displayCount && (
-          <span className={cn("absolute -top-1 -right-1", problemBadgeClasses)}>
-            {displayCount}
-          </span>
-        )}
+        {tabContent}
       </button>
     );
   };
@@ -342,11 +365,6 @@ export const PreviewToolbar = () => {
                   >
                     {meta.icon}
                     <span>{meta.label}</span>
-                    {EXPERIMENTAL_MODES.has(mode) && (
-                      <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-amber-700 uppercase dark:bg-amber-900/40 dark:text-amber-300">
-                        Experimental
-                      </span>
-                    )}
                     {mode === "problems" && displayCount && (
                       <span className={cn("ml-auto", problemBadgeClasses)}>
                         {displayCount}
@@ -358,8 +376,8 @@ export const PreviewToolbar = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {/* Invisible measurement replica: same classes as real tabs so
-            offsetWidth matches; no testids/labels so it stays inert. */}
+        {/* Invisible measurement replica: same size-affecting classes and
+            content as real tabs so offsetWidth matches. */}
         <div
           aria-hidden="true"
           className="pointer-events-none invisible absolute left-0 top-0 flex items-center gap-1"
@@ -391,28 +409,30 @@ export const PreviewToolbar = () => {
           </div>
         </div>
       </div>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-              aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
-              aria-pressed={isChatPanelHidden}
-              className="no-app-region-drag cursor-pointer shrink-0 rounded-md p-1.5 text-gray-700 transition-colors hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700"
-              data-testid="preview-toggle-chat-panel-button"
-            />
-          }
-        >
-          {isChatPanelHidden ? (
-            <Maximize2 size={16} />
-          ) : (
-            <Minimize2 size={16} />
-          )}
-        </TooltipTrigger>
-        <TooltipContent>
-          {isChatPanelHidden ? "Show chat" : "Hide chat"}
-        </TooltipContent>
-      </Tooltip>
+      <div className="flex shrink-0 items-center border-l border-border pl-2">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
+                aria-pressed={isChatPanelHidden}
+                className="no-app-region-drag cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                data-testid="preview-toggle-chat-panel-button"
+              />
+            }
+          >
+            {isChatPanelHidden ? (
+              <Maximize2 size={16} />
+            ) : (
+              <Minimize2 size={16} />
+            )}
+          </TooltipTrigger>
+          <TooltipContent>
+            {isChatPanelHidden ? "Show chat" : "Hide chat"}
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 };

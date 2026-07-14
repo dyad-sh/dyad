@@ -8,7 +8,14 @@ import {
   type PreviewErrorUpdate,
 } from "@/atoms/previewRuntimeAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -41,6 +48,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -93,6 +101,7 @@ import {
   formatPreviewAddressPath,
   normalizePreviewAddressPath,
 } from "./previewAddressPath";
+import { getPreviewToolbarActionVisibility } from "./previewToolbarLayout";
 
 interface ErrorBannerProps {
   error:
@@ -199,6 +208,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 };
 
 const SCREENSHOT_CAPTURE_DELAY_MS = 3_000;
+const PREVIEW_TOOLBAR_BUTTON_CLASSES =
+  "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
@@ -275,6 +286,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const currentIframeUrlRef = useRef<string | null>(initialUrl || appUrl);
   const [isPicking, setIsPicking] = useState(false);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const previewToolbarRef = useRef<HTMLDivElement>(null);
+  const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
+    null,
+  );
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
     screenshotDataUrlAtom,
   );
@@ -320,6 +335,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   useEffect(() => {
     isEditingAddressBarRef.current = isEditingAddressBar;
   }, [isEditingAddressBar]);
+
+  useLayoutEffect(() => {
+    const node = previewToolbarRef.current;
+    if (!node) return;
+
+    const updateWidth = () => {
+      setPreviewToolbarWidth(Math.floor(node.getBoundingClientRect().width));
+    };
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(node);
+    updateWidth();
+    return () => observer.disconnect();
+  }, [annotatorMode, selectedAppId]);
 
   useEffect(() => {
     if (!isEditingAddressBarRef.current) {
@@ -1580,6 +1608,24 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     restartApp();
   };
 
+  const openPreviewInBrowser = async () => {
+    try {
+      const url = await resolvePreviewBrowserUrl({
+        isCloudMode,
+        selectedAppId,
+        originalUrl,
+        createCloudSandboxShareLink,
+      });
+      await ipc.system.openExternalUrl(url);
+    } catch (error) {
+      showError(
+        error instanceof Error
+          ? error.message
+          : "Failed to open cloud sandbox share link.",
+      );
+    }
+  };
+
   const onCleanRestart = () => {
     restartApp({ removeNodeModules: true });
   };
@@ -1588,13 +1634,98 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     restartApp({ recreateSandbox: true });
   };
 
+  const { showOpenBrowser } =
+    getPreviewToolbarActionVisibility(previewToolbarWidth);
+  const openBrowserDisabled = isCloudMode
+    ? isCreatingCloudSandboxShareLink
+    : !originalUrl;
+
   return (
     <div className="flex flex-col h-full">
       {/* Browser-style header - hide when annotator is active */}
       {!annotatorMode && (
-        <div className="flex min-w-0 items-center space-x-2 border-b p-2">
+        <div
+          ref={previewToolbarRef}
+          className="flex min-w-0 items-center gap-1.5 border-b px-2 py-1.5"
+        >
+          <div
+            className="flex shrink-0 items-center overflow-hidden rounded-md border border-border"
+            aria-label="Preview editing tools"
+            role="group"
+          >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    aria-label={
+                      isPicking
+                        ? "Deactivate component selector"
+                        : "Select component"
+                    }
+                    aria-pressed={isPicking}
+                    className={cn(
+                      PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                      "rounded-none",
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 hover:text-white dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : "text-purple-700 hover:bg-purple-100 hover:text-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/50 dark:hover:text-purple-200",
+                    )}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-pick-element-button"
+                  />
+                }
+              >
+                <MousePointerClick size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isPicking
+                  ? "Deactivate component selector"
+                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleAnnotatorClick}
+                    aria-label={
+                      annotatorMode
+                        ? "Annotator mode active"
+                        : "Activate annotator"
+                    }
+                    aria-pressed={annotatorMode}
+                    className={cn(
+                      PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                      "rounded-none border-l border-border",
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 hover:text-white dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : "text-purple-700 hover:bg-purple-100 hover:text-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/50 dark:hover:text-purple-200",
+                    )}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  />
+                }
+              >
+                <Pen size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
           {/* Browser navigation group */}
-          <div className="flex items-center space-x-2 ml-auto">
+          <div className="flex shrink-0 items-center gap-1.5">
             {isCloudMode && (
               <Tooltip>
                 <TooltipTrigger
@@ -1612,12 +1743,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <TooltipContent>Running in a Cloud sandbox</TooltipContent>
               </Tooltip>
             )}
-            <div className="flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full p-0.5">
+            <div className="flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <button
-                      className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                      className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
                       disabled={!canGoBack || loading || !selectedAppId}
                       onClick={handleNavigateBack}
                       data-testid="preview-navigate-back-button"
@@ -1633,7 +1764,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <TooltipTrigger
                   render={
                     <button
-                      className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                      className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
                       disabled={!canGoForward || loading || !selectedAppId}
                       onClick={handleNavigateForward}
                       data-testid="preview-navigate-forward-button"
@@ -1648,93 +1779,94 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </div>
           </div>
 
-          {/* Address Bar - white pill with device mode, refresh + external inside */}
-          <div className="relative w-1/2 min-w-20 flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-1">
-            <Popover open={isDevicePopoverOpen} modal={false}>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <PopoverTrigger
-                      data-testid="device-mode-button"
-                      onClick={() => {
-                        // Toggle popover open/close
-                        if (isDevicePopoverOpen)
-                          updateSettings({ previewDeviceMode: "desktop" });
-                        setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                      }}
-                      className={cn(
-                        "flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300",
-                        deviceMode !== "desktop" &&
-                          "bg-gray-200 dark:bg-gray-700",
-                      )}
-                    />
+          {/* Device mode sits beside the route field because it controls the
+              preview viewport rather than the current route. */}
+          <Popover open={isDevicePopoverOpen} modal={false}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <PopoverTrigger
+                    data-testid="device-mode-button"
+                    onClick={() => {
+                      // Toggle popover open/close
+                      if (isDevicePopoverOpen)
+                        updateSettings({ previewDeviceMode: "desktop" });
+                      setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                    }}
+                    className={cn(
+                      PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                      deviceMode !== "desktop" &&
+                        "bg-primary/10 text-primary dark:bg-purple-900/40 dark:text-purple-300",
+                    )}
+                  />
+                }
+              >
+                <MonitorSmartphone size={14} />
+              </TooltipTrigger>
+              <TooltipContent>Device Mode</TooltipContent>
+            </Tooltip>
+            <PopoverContent className="w-auto p-2">
+              <ToggleGroup
+                value={[deviceMode]}
+                onValueChange={(value) => {
+                  if (value && value.length > 0) {
+                    updateSettings({
+                      previewDeviceMode: value[value.length - 1] as DeviceMode,
+                    });
+                    setIsDevicePopoverOpen(false);
                   }
-                >
-                  <MonitorSmartphone size={14} />
-                </TooltipTrigger>
-                <TooltipContent>Device Mode</TooltipContent>
-              </Tooltip>
-              <PopoverContent className="w-auto p-2">
-                <ToggleGroup
-                  value={[deviceMode]}
-                  onValueChange={(value) => {
-                    if (value && value.length > 0) {
-                      updateSettings({
-                        previewDeviceMode: value[
-                          value.length - 1
-                        ] as DeviceMode,
-                      });
-                      setIsDevicePopoverOpen(false);
+                }}
+                variant="outline"
+              >
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <ToggleGroupItem
+                        value="desktop"
+                        aria-label="Desktop view"
+                      />
                     }
-                  }}
-                  variant="outline"
-                >
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <ToggleGroupItem
-                          value="desktop"
-                          aria-label="Desktop view"
-                        />
-                      }
-                    >
-                      <Monitor size={16} />
-                    </TooltipTrigger>
-                    <TooltipContent>Desktop</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <ToggleGroupItem
-                          value="tablet"
-                          aria-label="Tablet view"
-                        />
-                      }
-                    >
-                      <Tablet size={16} className="scale-x-130" />
-                    </TooltipTrigger>
-                    <TooltipContent>Tablet</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <ToggleGroupItem
-                          value="mobile"
-                          aria-label="Mobile view"
-                        />
-                      }
-                    >
-                      <Smartphone size={16} />
-                    </TooltipTrigger>
-                    <TooltipContent>Mobile</TooltipContent>
-                  </Tooltip>
-                </ToggleGroup>
-              </PopoverContent>
-            </Popover>
+                  >
+                    <Monitor size={16} />
+                  </TooltipTrigger>
+                  <TooltipContent>Desktop</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <ToggleGroupItem
+                        value="tablet"
+                        aria-label="Tablet view"
+                      />
+                    }
+                  >
+                    <Tablet size={16} className="scale-x-130" />
+                  </TooltipTrigger>
+                  <TooltipContent>Tablet</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <ToggleGroupItem
+                        value="mobile"
+                        aria-label="Mobile view"
+                      />
+                    }
+                  >
+                    <Smartphone size={16} />
+                  </TooltipTrigger>
+                  <TooltipContent>Mobile</TooltipContent>
+                </Tooltip>
+              </ToggleGroup>
+            </PopoverContent>
+          </Popover>
+
+          {/* Flexible route field keeps priority as the panel narrows. */}
+          <div className="relative flex h-8 min-w-24 flex-1 items-center rounded-md border border-border bg-(--background-lighter) px-1">
             <div className="flex min-w-[2rem] flex-1 items-center">
               <input
                 aria-label="Preview path"
-                className="min-w-0 flex-1 rounded-sm bg-transparent py-1 pl-2 pr-1 text-sm text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200"
+                className="min-w-0 flex-1 rounded-sm bg-transparent px-2 py-1 text-xs text-foreground outline-none placeholder:text-muted-foreground"
                 data-testid="preview-address-bar-input"
                 disabled={loading || !selectedAppId}
                 onBlur={() => {
@@ -1767,7 +1899,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <DropdownMenu>
                 <DropdownMenuTrigger
                   aria-label="Show detected routes"
-                  className="flex-shrink-0 rounded-full p-1 text-gray-700 opacity-70 hover:bg-gray-200 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
                   data-testid="preview-address-bar-routes-button"
                   disabled={loading || !selectedAppId}
                 >
@@ -1808,7 +1940,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 render={
                   <button
                     onClick={handleReload}
-                    className="flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                    className="flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={loading || !selectedAppId}
                     data-testid="preview-refresh-button"
                     aria-label="Refresh preview"
@@ -1819,36 +1951,18 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipTrigger>
               <TooltipContent>Refresh preview</TooltipContent>
             </Tooltip>
+          </div>
+
+          {showOpenBrowser && (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
                     data-testid="preview-open-browser-button"
                     aria-label="Open in browser"
-                    onClick={async () => {
-                      try {
-                        const url = await resolvePreviewBrowserUrl({
-                          isCloudMode,
-                          selectedAppId,
-                          originalUrl,
-                          createCloudSandboxShareLink,
-                        });
-                        await ipc.system.openExternalUrl(url);
-                      } catch (error) {
-                        showError(
-                          error instanceof Error
-                            ? error.message
-                            : "Failed to open cloud sandbox share link.",
-                        );
-                      }
-                    }}
-                    disabled={
-                      isCloudMode
-                        ? selectedAppId === null ||
-                          isCreatingCloudSandboxShareLink
-                        : !originalUrl
-                    }
-                    className="flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300"
+                    onClick={openPreviewInBrowser}
+                    disabled={openBrowserDisabled}
+                    className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
                   />
                 }
               >
@@ -1856,10 +1970,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipTrigger>
               <TooltipContent>Open in browser</TooltipContent>
             </Tooltip>
-          </div>
+          )}
 
-          {/* Right action group - restart, editing tools, panel toggle */}
-          <div className="flex items-center space-x-1 ml-auto pl-2">
+          {/* Right action group - runtime and overflow actions */}
+          <div className="flex shrink-0 items-center gap-1.5">
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1869,7 +1983,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     aria-label={
                       isCloudMode ? "Restart Cloud Sandbox" : "Restart"
                     }
-                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                    className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
                   />
                 }
               >
@@ -1879,80 +1993,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleActivateComponentSelector}
-                    aria-label={
-                      isPicking
-                        ? "Deactivate component selector"
-                        : "Select component"
-                    }
-                    aria-pressed={isPicking}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isPicking
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-pick-element-button"
-                  />
-                }
-              >
-                <MousePointerClick size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {isPicking
-                  ? "Deactivate component selector"
-                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleAnnotatorClick}
-                    aria-label={
-                      annotatorMode
-                        ? "Annotator mode active"
-                        : "Activate annotator"
-                    }
-                    aria-pressed={annotatorMode}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      annotatorMode
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      isPicking ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-annotator-button"
-                  />
-                }
-              >
-                <Pen size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
-              </TooltipContent>
-            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger
                 data-testid="preview-more-options-button"
                 aria-label={t("preview.moreOptions")}
-                className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
               >
                 <MoreVertical size={16} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-60">
+                {!showOpenBrowser && (
+                  <DropdownMenuItem
+                    onClick={openPreviewInBrowser}
+                    disabled={openBrowserDisabled}
+                    data-testid="preview-open-browser-menu-item"
+                  >
+                    <ExternalLink size={16} />
+                    <span>Open in browser</span>
+                  </DropdownMenuItem>
+                )}
+                {!showOpenBrowser && <DropdownMenuSeparator />}
                 <DropdownMenuItem onClick={onCleanRestart}>
                   <Cog size={16} />
                   <div className="flex flex-col">

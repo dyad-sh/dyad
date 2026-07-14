@@ -351,10 +351,11 @@ describe("handleLocalAgentStream", () => {
     mockSettings = buildTestSettings();
     mockStreamResult = null;
     mockStreamTextImpl = null;
-    mockIsChatPendingCompaction.mockResolvedValue(false);
-    mockPerformCompaction.mockResolvedValue({ success: true });
-    mockCheckAndMarkForCompaction.mockResolvedValue(false);
+    mockIsChatPendingCompaction.mockReset().mockResolvedValue(false);
+    mockPerformCompaction.mockReset().mockResolvedValue({ success: true });
+    mockCheckAndMarkForCompaction.mockReset().mockResolvedValue(false);
     vi.mocked(streamText).mockClear();
+    vi.mocked(buildAgentToolSet).mockImplementation(() => ({}));
     mockRequireMcpToolConsent.mockResolvedValue({ approved: true });
   });
 
@@ -906,6 +907,194 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Mid-turn compaction", () => {
+    it("preserves the full in-flight tail after sanitizing follow-up history", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+        return {
+          update_todos: {
+            execute: async (args: any) => {
+              ctx.todos = args.todos;
+              ctx.onUpdateTodos(ctx.todos);
+              return "Updated todos";
+            },
+          },
+        } as any;
+      });
+
+      mockIsChatPendingCompaction
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValue(false);
+      mockCheckAndMarkForCompaction.mockResolvedValue(true);
+      mockPerformCompaction.mockImplementation(async () => {
+        if (!mockChatData) {
+          return { success: false, error: "missing chat" };
+        }
+        mockChatData = {
+          ...mockChatData,
+          messages: [
+            ...mockChatData.messages,
+            {
+              id: 20,
+              role: "assistant",
+              content: "Conversation compacted.",
+              isCompactionSummary: true,
+              createdAt: new Date("2025-01-01T00:03:30Z"),
+            },
+          ],
+        } as any;
+        return {
+          success: true,
+          summary: "Conversation compacted.",
+          backupPath: ".dyad/chats/1/compaction-test.md",
+        };
+      });
+
+      const splitParallelToolHistory = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              input: { path: "src/App.tsx" },
+            },
+            {
+              type: "tool-call",
+              toolCallId: "call-2",
+              toolName: "read_file",
+              input: { path: "src/main.tsx" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "read_file",
+              output: "App result",
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-2",
+              toolName: "read_file",
+              output: "main result",
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "I started the work." }],
+        },
+      ];
+      const inFlightAssistant = {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-live",
+            toolName: "read_file",
+            input: { path: "src/live.ts" },
+          },
+        ],
+      };
+      const inFlightTool = {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-live",
+            toolName: "read_file",
+            output: "live result",
+          },
+        ],
+      };
+
+      let passCount = 0;
+      let preparedAfterCompaction: any[] = [];
+      mockStreamTextImpl = (options) => {
+        passCount += 1;
+        if (passCount === 1) {
+          return {
+            fullStream: (async function* () {
+              await options.tools.update_todos.execute({
+                merge: false,
+                todos: [
+                  {
+                    id: "todo-1",
+                    content: "Finish the requested work",
+                    status: "pending",
+                  },
+                ],
+              });
+              yield { type: "text-delta", text: "I started the work." };
+            })(),
+            response: Promise.resolve({
+              messages: splitParallelToolHistory,
+            }),
+            steps: Promise.resolve([
+              {
+                toolCalls: [{ toolName: "set_chat_summary" }],
+                response: { messages: splitParallelToolHistory },
+              },
+            ]),
+          };
+        }
+
+        return {
+          fullStream: (async function* () {
+            await options.onStepFinish?.({
+              usage: { totalTokens: 200_000 },
+              toolCalls: [{}],
+            });
+            const stepMessages = [
+              ...options.messages,
+              inFlightAssistant,
+              inFlightTool,
+            ];
+            const prepared = (await options.prepareStep?.({
+              messages: stepMessages,
+              stepNumber: 1,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            })) ?? { messages: stepMessages };
+            preparedAfterCompaction = prepared.messages;
+            yield { type: "text-delta", text: "Finished the work." };
+          })(),
+          response: Promise.resolve({ messages: [] }),
+          steps: Promise.resolve([]),
+        };
+      };
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(passCount).toBe(2);
+      expect(mockPerformCompaction).toHaveBeenCalledTimes(1);
+      expect(preparedAfterCompaction).toContain(inFlightAssistant);
+      expect(preparedAfterCompaction).toContain(inFlightTool);
+    });
+
     it("should compact between steps when token usage crosses threshold", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();

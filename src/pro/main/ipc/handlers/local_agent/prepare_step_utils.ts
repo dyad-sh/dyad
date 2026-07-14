@@ -7,7 +7,12 @@
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart, Todo } from "./tools/types";
-import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
+import {
+  cleanMessage,
+  isToolCallPart,
+  isToolResultPart,
+  sanitizeToolCallTranscript,
+} from "@/ipc/utils/ai_messages_utils";
 import { validateImageDimensions } from "./tools/image_utils";
 
 /**
@@ -283,26 +288,27 @@ export function ensureToolResultOrdering<T extends ModelMessage>(
   return changed ? result : null;
 }
 
-function isToolCallPart(
-  part: unknown,
-): part is { type: "tool-call"; toolCallId: string } {
-  return (
-    typeof part === "object" &&
-    part !== null &&
-    "type" in part &&
-    (part as Record<string, unknown>).type === "tool-call" &&
-    "toolCallId" in part
-  );
+export function sanitizeStepMessages<T extends ModelMessage>(
+  messages: T[],
+): { messages: T[]; changed: boolean } {
+  const ordered = ensureToolResultOrdering(messages);
+  const beforeSanitize = ordered ?? messages;
+  const sanitized = sanitizeToolCallTranscript(beforeSanitize);
+  const changed =
+    ordered != null || didMessageArrayChange(sanitized, beforeSanitize);
+
+  return {
+    messages: changed ? (sanitized as T[]) : messages,
+    changed,
+  };
 }
 
-function isToolResultPart(
-  part: unknown,
-): part is { type: "tool-result"; toolCallId: string } {
+function didMessageArrayChange(
+  nextMessages: ModelMessage[],
+  previousMessages: ModelMessage[],
+) {
   return (
-    typeof part === "object" &&
-    part !== null &&
-    "type" in part &&
-    (part as Record<string, unknown>).type === "tool-result" &&
-    "toolCallId" in part
+    nextMessages.length !== previousMessages.length ||
+    nextMessages.some((message, index) => message !== previousMessages[index])
   );
 }

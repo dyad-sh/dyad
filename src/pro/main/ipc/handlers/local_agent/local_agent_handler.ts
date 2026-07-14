@@ -84,7 +84,7 @@ import {
   buildTodoReminderMessage,
   hasIncompleteTodos,
   formatTodoSummary,
-  ensureToolResultOrdering,
+  sanitizeStepMessages,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
@@ -92,6 +92,7 @@ import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
+  sanitizeToolCallTranscript,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
 import {
@@ -923,12 +924,23 @@ export async function handleLocalAgentStream(
         let streamErrorFromCallback: unknown;
         const retryReplayEvents: RetryReplayEvent[] = [];
         activeRetryReplayEvents = retryReplayEvents;
+        // Keep the stored history and its compaction boundary in the same
+        // canonical shape as the initial messages passed to the AI SDK. The
+        // sanitizer can merge split tool-result messages or remove orphaned
+        // messages, so a count taken before sanitization can skip generated
+        // in-flight messages during mid-turn compaction.
+        currentMessageHistory = sanitizeToolCallTranscript(
+          currentMessageHistory,
+        );
+        baseMessageHistoryCount = currentMessageHistory.length;
         const attemptMessages = needsContinuationInstruction
           ? [
               ...currentMessageHistory,
               buildTerminatedRetryContinuationInstruction(),
             ]
           : currentMessageHistory;
+        const sanitizedAttemptMessages =
+          sanitizeToolCallTranscript(attemptMessages);
         const attemptToolInputIds = new Set<string>();
         const cleanupAttemptToolStreamingEntries = () => {
           for (const toolCallId of attemptToolInputIds) {
@@ -960,7 +972,7 @@ export async function handleLocalAgentStream(
             temperature,
             maxRetries: 2,
             system: systemPrompt,
-            messages: attemptMessages,
+            messages: sanitizedAttemptMessages,
             tools: allTools,
             stopWhen: [
               stepCountIs(maxToolCallSteps),
@@ -1090,17 +1102,20 @@ export async function handleLocalAgentStream(
                 preparedStep ??
                 (stepOptions === options ? undefined : stepOptions);
 
-              // Defensive: ensure injected user messages don't break
-              // tool_use/tool_result pairing. Catches edge cases where
-              // injection indices become stale after compaction.
-              if (result?.messages) {
-                const fixed = ensureToolResultOrdering(result.messages);
-                if (fixed) {
-                  logger.warn(
-                    `ensureToolResultOrdering fixed misplaced user messages in chat ${req.chatId}`,
-                  );
-                  result = { ...result, messages: fixed };
-                }
+              // Defensive: ensure injected user messages and split tool result
+              // messages don't break tool_use/tool_result pairing. This also
+              // runs when prepareStepMessages had no other changes to apply.
+              const normalizedStep = sanitizeStepMessages(
+                result?.messages ?? stepOptions.messages,
+              );
+              if (normalizedStep.changed) {
+                logger.warn(
+                  `Normalized local-agent tool-call transcript before step for chat ${req.chatId}`,
+                );
+                result = {
+                  ...(result ?? stepOptions),
+                  messages: normalizedStep.messages,
+                };
               }
 
               return result;

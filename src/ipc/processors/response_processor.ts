@@ -4,7 +4,13 @@ import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
-import { safeJoin } from "../utils/path_utils";
+import {
+  assertNotProjectRootPath,
+  lstatIfExists,
+  prepareDeletePath,
+  PreparedDeletePath,
+  safeJoin,
+} from "../utils/path_utils";
 import { normalizeTestPath } from "../utils/normalize_test_path";
 import { SPEC_FILE_RE } from "../types/tests";
 
@@ -67,6 +73,39 @@ function formatOutputError(error: unknown): string {
   }
 
   return error instanceof Error ? error.toString() : String(error);
+}
+
+function formatSkippedActionSummary(fullResponse: string): string {
+  const counts: Array<[number, string, string]> = [
+    [getDyadWriteTags(fullResponse).length, "write", "writes"],
+    [getDyadRenameTags(fullResponse).length, "rename", "renames"],
+    [getDyadDeleteTags(fullResponse).length, "delete", "deletes"],
+    [
+      getDyadAddDependencyTags(fullResponse).length,
+      "dependency install",
+      "dependency installs",
+    ],
+    [getDyadExecuteSqlTags(fullResponse).length, "SQL query", "SQL queries"],
+    [
+      getDyadSearchReplaceTags(fullResponse).length,
+      "search-replace",
+      "search-replaces",
+    ],
+    [getDyadCopyTags(fullResponse).length, "copy", "copies"],
+    [
+      getDyadGenerateTestTags(fullResponse).length,
+      "test generation",
+      "test generations",
+    ],
+  ];
+
+  return counts
+    .filter(([count]) => count > 0)
+    .map(
+      ([count, singular, plural]) =>
+        `${count} ${count === 1 ? singular : plural}`,
+    )
+    .join(", ");
 }
 
 export async function dryRunSearchReplace({
@@ -143,6 +182,27 @@ export async function processFullResponseActions(
     return {};
   }
 
+  const appPath = getDyadAppPath(chatWithApp.app.path);
+  const dyadDeletePaths = getDyadDeleteTags(fullResponse);
+  let preparedDeletePaths: PreparedDeletePath[];
+  try {
+    // Perform the lexical pass across the entire batch first so a later root
+    // alias cannot cause even read-only filesystem work for an earlier path.
+    for (const filePath of dyadDeletePaths) {
+      assertNotProjectRootPath(appPath, filePath);
+    }
+    preparedDeletePaths = await Promise.all(
+      dyadDeletePaths.map((filePath) => prepareDeletePath(appPath, filePath)),
+    );
+  } catch (error) {
+    logger.error("Refusing unsafe delete response:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const skippedActions = formatSkippedActionSummary(fullResponse);
+    return {
+      error: `${message} No actions from this response were applied. Skipped: ${skippedActions}.`,
+    };
+  }
+
   if (
     chatWithApp.app.neonProjectId &&
     (chatWithApp.app.neonActiveBranchId ||
@@ -163,10 +223,10 @@ export async function processFullResponseActions(
   }
 
   const settings: UserSettings = readSettings();
-  const appPath = getDyadAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
   const deletedFiles: string[] = [];
+  const processedDeletePaths: string[] = [];
   let hasChanges = false;
   // Track if any shared modules were modified
   let sharedModulesChanged = false;
@@ -181,7 +241,6 @@ export async function processFullResponseActions(
     // Extract all tags
     const dyadWriteTags = getDyadWriteTags(fullResponse);
     const dyadRenameTags = getDyadRenameTags(fullResponse);
-    const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
     const hasDbProvider =
       chatWithApp.app.supabaseProjectId || chatWithApp.app.neonProjectId;
@@ -332,8 +391,12 @@ export async function processFullResponseActions(
     //////////////////////
 
     // Process all file deletions
-    for (const filePath of dyadDeletePaths) {
-      const fullFilePath = safeJoin(appPath, filePath);
+    for (const preparedDeletePath of preparedDeletePaths) {
+      // Revalidate as a best-effort check after the batch preflight. A narrow
+      // TOCTOU window remains before the userspace unlink/rmdir call.
+      const { relativePath: filePath, fullPath: fullFilePath } =
+        await prepareDeletePath(appPath, preparedDeletePath.relativePath);
+      processedDeletePaths.push(filePath);
 
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
@@ -342,8 +405,9 @@ export async function processFullResponseActions(
       }
 
       // Delete the file if it exists
-      if (fs.existsSync(fullFilePath)) {
-        if (fs.lstatSync(fullFilePath).isDirectory()) {
+      const targetStat = lstatIfExists(fullFilePath);
+      if (targetStat) {
+        if (targetStat.isDirectory()) {
           fs.rmdirSync(fullFilePath, { recursive: true });
         } else {
           fs.unlinkSync(fullFilePath);
@@ -772,7 +836,7 @@ export async function processFullResponseActions(
         appId: chatWithApp.app.id,
         changedPaths: [...writtenFiles, ...renamedFiles],
         deletedPaths: [
-          ...dyadDeletePaths,
+          ...processedDeletePaths,
           ...dyadRenameTags.map((renameTag) => renameTag.from),
         ],
       });

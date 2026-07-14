@@ -78,6 +78,17 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
   );
 }
 
+export function lstatIfExists(filePath: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(filePath);
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function stripTrailingPathSeparators(filePath: string): string {
   const root = path.parse(filePath).root;
   let strippedPath = filePath;
@@ -165,4 +176,65 @@ export async function assertMutationPathAllowed(params: {
     );
   }
   return relative.split(path.sep).join("/");
+}
+
+/**
+ * Returns whether a model-provided relative path resolves lexically to the
+ * project root. The case-insensitive comparison also covers the common
+ * case-insensitive macOS and Windows filesystems.
+ */
+export function isProjectRootPath(
+  basePath: string,
+  inputPath: string,
+): boolean {
+  const resolvedBasePath = path.resolve(basePath);
+  const resolvedTargetPath = path.resolve(
+    path.join(basePath, normalizePath(inputPath)),
+  );
+  return resolvedTargetPath.toLowerCase() === resolvedBasePath.toLowerCase();
+}
+
+export function assertNotProjectRootPath(
+  basePath: string,
+  inputPath: string,
+): void {
+  if (isProjectRootPath(basePath, inputPath)) {
+    throw new DyadError(
+      `Refusing to delete project root for path: "${inputPath}"`,
+      DyadErrorKind.Validation,
+    );
+  }
+  safeJoin(basePath, inputPath);
+}
+
+export interface PreparedDeletePath {
+  /** Canonical project-relative path to the physical entry being removed. */
+  relativePath: string;
+  /** Canonical absolute path to the physical entry being removed. */
+  fullPath: string;
+}
+
+/**
+ * Canonically validate a delete target while preserving a final symlink as
+ * the directory entry to unlink. Symlinked ancestors must remain contained.
+ */
+export async function prepareDeletePath(
+  basePath: string,
+  inputPath: string,
+): Promise<PreparedDeletePath> {
+  assertNotProjectRootPath(basePath, inputPath);
+  const relativePath = path.posix
+    .normalize(normalizePath(inputPath))
+    .replace(/\/+$/, "");
+  const canonicalRelativePath = await assertMutationPathAllowed({
+    appPath: basePath,
+    relativePath,
+    followFinalSymlink: false,
+  });
+  const realBasePath = await fs.promises.realpath(basePath);
+
+  return {
+    relativePath: canonicalRelativePath,
+    fullPath: path.join(realBasePath, ...canonicalRelativePath.split("/")),
+  };
 }

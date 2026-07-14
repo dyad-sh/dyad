@@ -18,6 +18,10 @@ approval, template apply).
 - Collision probing must exclude the app being renamed (DB row AND its own
   on-disk folder), or re-running the same rename inflates suffixes
   (`Todo App 2` → `Todo App 3`).
+- Collision probing is deliberately capped at 1000 candidates to keep a
+  pathological database/filesystem state from blocking a user action
+  indefinitely. Exhausting the cap must surface a `DyadErrorKind.Conflict`
+  with actionable context; auto-suffixing is not an unbounded guarantee.
 - A case-only folder rename (`MyApp` → `myapp`) must use `fs.rename`, never
   copy-then-delete: on case-insensitive filesystems (macOS/Windows defaults)
   source and destination are the same physical directory, so the delete step

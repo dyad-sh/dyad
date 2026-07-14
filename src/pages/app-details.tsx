@@ -99,6 +99,7 @@ function UnavailableIntegrationCard({
 export default function AppDetailsPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/app-details" as const });
+  const appId = search.appId ? Number(search.appId) : null;
   const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -125,19 +126,31 @@ export default function AppDetailsPage() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
 
-  const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
+  const trimmedNewCopyAppName = newCopyAppName.trim();
+  const debouncedNewCopyAppName = useDebounce(trimmedNewCopyAppName, 150);
+  const copyQueryMatchesInput =
+    debouncedNewCopyAppName === trimmedNewCopyAppName;
   const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
     debouncedNewCopyAppName,
   );
-  const nameExists = checkNameResult?.exists ?? false;
+  const nameExists = copyQueryMatchesInput && !!checkNameResult?.exists;
   const { data: copyFolderPreview } = useAppFolderPreview(
     debouncedNewCopyAppName,
   );
+  const trimmedNewAppName = newAppName.trim();
+  const debouncedNewAppName = useDebounce(trimmedNewAppName, 150);
+  const renameQueryMatchesInput = debouncedNewAppName === trimmedNewAppName;
+  const { data: renameFolderPreview, isLoading: isLoadingRenameFolderPreview } =
+    useAppFolderPreview(debouncedNewAppName, appId ?? undefined);
+  const desiredRenameFolder = slugifyAppFolderName(trimmedNewAppName);
+  const renameFolderHasCollision =
+    renameQueryMatchesInput &&
+    !!renameFolderPreview &&
+    renameFolderPreview !== desiredRenameFolder;
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
 
   // Get the appId and provider filter from search params
-  const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
   const { chats, loading: chatsLoading, invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
@@ -794,7 +807,12 @@ export default function AppDetailsPage() {
                 variant="outline"
                 className="w-full justify-start p-2 h-auto relative text-sm"
                 onClick={() => handleRenameApp(true)}
-                disabled={isRenaming}
+                disabled={
+                  isRenaming ||
+                  !renameQueryMatchesInput ||
+                  isLoadingRenameFolderPreview ||
+                  renameFolderHasCollision
+                }
               >
                 <div className="absolute top-1 right-1">
                   <span className="bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300 text-[10px]">
@@ -803,10 +821,16 @@ export default function AppDetailsPage() {
                 </div>
                 <div className="text-left">
                   <p className="font-medium text-xs">Rename app and folder</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Renames the folder to "
-                    {slugifyAppFolderName(newAppName.trim())}".
-                  </p>
+                  {renameFolderHasCollision ? (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-500">
+                      Folder "{desiredRenameFolder}" is already in use. Choose a
+                      different app name to rename the folder.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Renames the folder to "{desiredRenameFolder}".
+                    </p>
+                  )}
                 </div>
               </Button>
 
@@ -877,8 +901,9 @@ export default function AppDetailsPage() {
                     </p>
                   )}
                   {!nameExists &&
+                    copyQueryMatchesInput &&
                     copyFolderPreview &&
-                    copyFolderPreview !== newCopyAppName.trim() && (
+                    copyFolderPreview !== trimmedNewCopyAppName && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         Folder name: {copyFolderPreview}
                       </p>
@@ -895,7 +920,8 @@ export default function AppDetailsPage() {
                     disabled={
                       copyAppMutation.isPending ||
                       nameExists ||
-                      !newCopyAppName.trim() ||
+                      !trimmedNewCopyAppName ||
+                      !copyQueryMatchesInput ||
                       isCheckingName
                     }
                   >
@@ -928,7 +954,8 @@ export default function AppDetailsPage() {
                     disabled={
                       copyAppMutation.isPending ||
                       nameExists ||
-                      !newCopyAppName.trim() ||
+                      !trimmedNewCopyAppName ||
+                      !copyQueryMatchesInput ||
                       isCheckingName
                     }
                   >

@@ -67,7 +67,11 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
-import { cancelSubagent, waitForSubagents } from "./subagents/subagent_manager";
+import {
+  cancelSubagent,
+  endRootFinalization,
+  waitForSubagentsAndBeginFinalization,
+} from "./subagents/subagent_manager";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -615,6 +619,7 @@ export async function handleLocalAgentStream(
   // the cancellation handler in `catch` can roll back to this pre-turn state.
   let persistedTodos: Todo[] = [];
   const spawnedImplementerThreadIds: string[] = [];
+  let rootFinalizationActive = false;
 
   try {
     // Get model client
@@ -1545,12 +1550,14 @@ export async function handleLocalAgentStream(
           cancelSubagent(ctx.chatId, threadId),
         ),
       );
-    } else if (implementerThreadIds.length > 0) {
-      const implementers = await waitForSubagents(
+    } else if (!readOnly && !planModeOnly) {
+      const implementers = await waitForSubagentsAndBeginFinalization(
         ctx.chatId,
         implementerThreadIds,
+        ctx.appId,
         abortController.signal,
       );
+      rootFinalizationActive = true;
       const unsuccessful = implementers.filter(
         (thread) => thread.status !== "completed",
       );
@@ -1708,8 +1715,16 @@ export async function handleLocalAgentStream(
       pausePromptQueue: hitStepLimit || undefined,
     } satisfies ChatResponseEnd);
 
+    if (rootFinalizationActive) {
+      await endRootFinalization(chat.app.id, chat.id);
+      rootFinalizationActive = false;
+    }
     return true; // Success
   } catch (error) {
+    if (rootFinalizationActive) {
+      await endRootFinalization(chat.app.id, chat.id);
+      rootFinalizationActive = false;
+    }
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);

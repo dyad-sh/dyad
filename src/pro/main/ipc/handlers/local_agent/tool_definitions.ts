@@ -497,6 +497,9 @@ export function shouldIncludeTool(
   if (options.freeModelMode && tool.usesEngineEndpoint) {
     return false;
   }
+  if (tool.subagentOnly && !ctx.isDyadPro) {
+    return false;
+  }
   // Skip app blueprint tools when the feature is disabled.
   if (
     options.enableAppBlueprint === false &&
@@ -536,7 +539,10 @@ export function buildAgentToolSet(
       inputSchema: tool.getInputSchema?.(ctx) ?? tool.inputSchema,
       execute: async (args: any) => {
         try {
-          if (toolModifiesState(tool, ctx)) {
+          if (
+            toolModifiesState(tool, ctx) &&
+            tool.requiresMutationLease !== false
+          ) {
             assertMutationLease(ctx);
           }
           // Guard against state-modifying tools running before the app

@@ -104,7 +104,7 @@ export async function runBackgroundAutoReview(params: {
   chatId: number;
   sourceMessageId: number;
   autoFix: boolean;
-  streamFix: (prompt: string) => Promise<boolean>;
+  streamFix: (prompt: string) => Promise<"completed" | "failed" | "paused">;
 }): Promise<void> {
   if (backgroundAutoReviewChatIds.has(params.chatId)) return;
   backgroundAutoReviewChatIds.add(params.chatId);
@@ -126,7 +126,8 @@ export async function runBackgroundAutoReview(params: {
       threadId: completed.id,
     });
     const remediated = await params.streamFix(prompt);
-    if (!remediated) {
+    if (remediated === "paused") return;
+    if (remediated === "failed") {
       await ipc.agent.skipReviewAutoFix({
         chatId: params.chatId,
         threadId: completed.id,
@@ -646,21 +647,30 @@ export function useStreamChat({
                           sourceMessageId: latestAssistant.id,
                           autoFix: settings?.autoFixReviewIssues === true,
                           streamFix: (fixPrompt) =>
-                            new Promise<boolean>((resolve) => {
-                              const startStream = streamMessageRef.current;
-                              if (!startStream) {
-                                resolve(false);
-                                return;
-                              }
-                              startStream({
-                                prompt: fixPrompt,
-                                chatId,
-                                redo: false,
-                                requestedChatMode: "local-agent",
-                                suppressAutoReview: true,
-                                onSettled: ({ success }) => resolve(success),
-                              });
-                            }),
+                            new Promise<"completed" | "failed" | "paused">(
+                              (resolve) => {
+                                const startStream = streamMessageRef.current;
+                                if (!startStream) {
+                                  resolve("failed");
+                                  return;
+                                }
+                                startStream({
+                                  prompt: fixPrompt,
+                                  chatId,
+                                  redo: false,
+                                  requestedChatMode: "local-agent",
+                                  suppressAutoReview: true,
+                                  onSettled: ({ success, pausedByStepLimit }) =>
+                                    resolve(
+                                      pausedByStepLimit
+                                        ? "paused"
+                                        : success
+                                          ? "completed"
+                                          : "failed",
+                                    ),
+                                });
+                              },
+                            ),
                         });
                       }
                     })

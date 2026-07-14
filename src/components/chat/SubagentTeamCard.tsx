@@ -51,16 +51,22 @@ export function SubagentTeamCard({
         chatId,
         threadId: thread.id,
       });
-      const remediated = await new Promise<boolean>((resolve) => {
-        void streamMessage({
-          prompt,
-          chatId,
-          requestedChatMode: "local-agent",
-          suppressAutoReview: true,
-          onSettled: ({ success }) => resolve(success),
-        });
-      });
-      if (remediated) {
+      const remediated = await new Promise<"completed" | "failed" | "paused">(
+        (resolve) => {
+          void streamMessage({
+            prompt,
+            chatId,
+            requestedChatMode: "local-agent",
+            suppressAutoReview: true,
+            onSettled: ({ success, pausedByStepLimit }) =>
+              resolve(
+                pausedByStepLimit ? "paused" : success ? "completed" : "failed",
+              ),
+          });
+        },
+      );
+      if (remediated === "paused") return;
+      if (remediated === "completed") {
         await ipc.agent.runAutoReviewBarrier({ chatId, verification: true });
       } else {
         await ipc.agent.skipReviewAutoFix({ chatId, threadId: thread.id });
@@ -87,8 +93,20 @@ export function SubagentTeamCard({
     [chatId, queryClient],
   );
   useEffect(() => {
-    if (!query.data?.some((thread) => thread.autoFixAt)) return;
-    const timer = setInterval(() => setNow(Date.now()), 250);
+    const activeDeadlines =
+      query.data
+        ?.map((thread) => thread.autoFixAt?.getTime())
+        .filter((deadline): deadline is number =>
+          deadline ? deadline > Date.now() : false,
+        ) ?? [];
+    if (activeDeadlines.length === 0) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setNow(now);
+      if (activeDeadlines.every((deadline) => deadline <= now)) {
+        clearInterval(timer);
+      }
+    }, 250);
     return () => clearInterval(timer);
   }, [query.data]);
 

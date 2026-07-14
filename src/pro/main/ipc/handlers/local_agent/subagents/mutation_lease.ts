@@ -9,12 +9,14 @@ interface MutationLease {
 }
 
 const leases = new Map<number, MutationLease>();
+const finalizingApps = new Set<number>();
 
 export function acquireMutationLease(params: {
   appId: number;
   threadId: string;
   scope: string[];
 }): boolean {
+  if (finalizingApps.has(params.appId)) return false;
   const current = leases.get(params.appId);
   if (current && current.threadId !== params.threadId) return false;
   leases.set(params.appId, {
@@ -22,6 +24,16 @@ export function acquireMutationLease(params: {
     scope: params.scope.map(normalizeScope),
   });
   return true;
+}
+
+export function beginAppFinalization(appId: number): boolean {
+  if (leases.has(appId) || finalizingApps.has(appId)) return false;
+  finalizingApps.add(appId);
+  return true;
+}
+
+export function endAppFinalization(appId: number): void {
+  finalizingApps.delete(appId);
 }
 
 export function releaseMutationLease(appId: number, threadId: string): void {

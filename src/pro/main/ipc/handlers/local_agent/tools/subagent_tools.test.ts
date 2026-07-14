@@ -4,8 +4,10 @@ import {
   cancelAgentTool,
   compilerExploreTool,
   followupTaskTool,
+  listAgentsTool,
   sendMessageTool,
   spawnAgentTool,
+  waitAgentsTool,
 } from "./subagent_tools";
 import type { AgentContext } from "./types";
 
@@ -46,6 +48,24 @@ describe("spawn_agent schema", () => {
     expect(cancelAgentTool.modifiesState).toBe(true);
     expect(sendMessageTool.modifiesState).toBe(true);
     expect(followupTaskTool.modifiesState).toBe(true);
+  });
+
+  it("derives Pro gating and mutation-lease exemptions from tool metadata", () => {
+    expect(
+      [
+        spawnAgentTool,
+        listAgentsTool,
+        waitAgentsTool,
+        cancelAgentTool,
+        sendMessageTool,
+        followupTaskTool,
+        compilerExploreTool,
+      ].every((tool) => tool.subagentOnly),
+    ).toBe(true);
+    expect(spawnAgentTool.requiresMutationLease).toBe(false);
+    expect(cancelAgentTool.requiresMutationLease).toBe(false);
+    expect(sendMessageTool.requiresMutationLease).toBe(false);
+    expect(followupTaskTool.requiresMutationLease).toBe(false);
   });
 
   it("exposes bounded compiler exploration arguments", () => {

@@ -5,6 +5,8 @@ import {
   acquireMutationLease,
   assertImplementerPathAllowed,
   assertMutationLease,
+  beginAppFinalization,
+  endAppFinalization,
   releaseMutationLease,
 } from "./mutation_lease";
 
@@ -58,5 +60,37 @@ describe("sub-agent mutation lease", () => {
     expect(() =>
       assertImplementerPathAllowed(ctx, "src/server/secrets.ts"),
     ).toThrow(/assigned paths/);
+  });
+
+  it("blocks new writer leases while the root finalizes", () => {
+    expect(beginAppFinalization(8)).toBe(true);
+    expect(
+      acquireMutationLease({
+        appId: 8,
+        threadId: "late-implementer",
+        scope: ["src"],
+      }),
+    ).toBe(false);
+    endAppFinalization(8);
+    expect(
+      acquireMutationLease({
+        appId: 8,
+        threadId: "late-implementer",
+        scope: ["src"],
+      }),
+    ).toBe(true);
+    releaseMutationLease(8, "late-implementer");
+  });
+
+  it("does not begin root finalization while a writer owns the lease", () => {
+    expect(
+      acquireMutationLease({
+        appId: 9,
+        threadId: "implementer",
+        scope: ["src"],
+      }),
+    ).toBe(true);
+    expect(beginAppFinalization(9)).toBe(false);
+    releaseMutationLease(9, "implementer");
   });
 });

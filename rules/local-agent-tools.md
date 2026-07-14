@@ -12,7 +12,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - Writable Local Agent turns normally commit file changes before emitting `chat:response:end`, so the working tree is usually clean immediately after a successful turn. Features that inspect or review the latest assistant turn must use the assistant message's `sourceCommitHash` as the base and `commitHash` as the target. Use the working tree only as a fallback when that message has no valid commit range.
 - If a root turn spawns or resumes a writable child, reserve the writer lease before returning the tool result and join that child before root-owned deploy/commit. Cancellation must stop the child, and a failed child must not let the root commit partial edits.
-- A queued-message review barrier must release FIFO processing on every terminal path, including review, remediation, verification, consent, entitlement, and model failures. Persist the failure for visibility, but never leave the queue paused indefinitely.
+- A queued-message review barrier must release FIFO processing on every terminal path, including review, remediation, verification, consent, entitlement, and model failures. A remediation that hits the Local Agent step limit is not terminal: preserve its `paused` outcome and keep the queue paused until the user continues it.
+- Keep orchestration-state writes distinct from workspace mutation. Sub-agent control tools may be `modifiesState` for ask/plan filtering while opting out of the workspace mutation lease; writable children acquire that lease in the manager, and root deploy/commit must hold a finalization fence so late durable follow-ups cannot start editing concurrently.
 
 ## Async I/O
 

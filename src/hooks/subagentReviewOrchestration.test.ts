@@ -97,7 +97,7 @@ describe("sub-agent review orchestration", () => {
     });
     const streamRemediation = vi.fn(async () => {
       events.push("fix");
-      return true;
+      return "completed" as const;
     });
 
     await expect(
@@ -117,7 +117,7 @@ describe("sub-agent review orchestration", () => {
     await expect(
       runQueuedReviewFlow({
         runBarrier,
-        streamRemediation: async () => false,
+        streamRemediation: async () => "failed",
         onRemediationFailed,
       }),
     ).resolves.toBe("released");
@@ -125,11 +125,30 @@ describe("sub-agent review orchestration", () => {
     expect(onRemediationFailed).toHaveBeenCalledWith("review-1");
   });
 
+  it("keeps the queue paused when remediation hits the step limit", async () => {
+    const runBarrier = vi.fn(async () => ({
+      outcome: "fix_required" as const,
+      threadId: "review-1",
+      prompt: "fix it",
+    }));
+    const onRemediationFailed = vi.fn(async () => {});
+
+    await expect(
+      runQueuedReviewFlow({
+        runBarrier,
+        streamRemediation: async () => "paused",
+        onRemediationFailed,
+      }),
+    ).resolves.toBe("paused");
+    expect(runBarrier).toHaveBeenCalledTimes(1);
+    expect(onRemediationFailed).not.toHaveBeenCalled();
+  });
+
   it("auto-fixes a background review only when enabled, then verifies", async () => {
     mocks.startAutoReview.mockResolvedValue(review());
     mocks.fixReviewFindings.mockResolvedValue({ prompt: "fix it" });
     mocks.runAutoReviewBarrier.mockResolvedValue({ outcome: "released" });
-    const streamFix = vi.fn(async () => true);
+    const streamFix = vi.fn(async () => "completed" as const);
 
     await runBackgroundAutoReview({
       chatId: 7,
@@ -143,6 +162,20 @@ describe("sub-agent review orchestration", () => {
       chatId: 7,
       verification: true,
     });
+  });
+
+  it("does not complete or verify a step-limited background remediation", async () => {
+    mocks.startAutoReview.mockResolvedValue(review());
+    mocks.fixReviewFindings.mockResolvedValue({ prompt: "fix it" });
+
+    await runBackgroundAutoReview({
+      chatId: 7,
+      sourceMessageId: 42,
+      autoFix: true,
+      streamFix: async () => "paused",
+    });
+
+    expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
   });
 
   it("reports a background review without fixing when auto-fix is disabled", async () => {

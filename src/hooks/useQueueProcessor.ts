@@ -17,24 +17,27 @@ import { ipc } from "@/ipc/types";
 const reviewBarrierInFlight = new Set<number>();
 const reviewBarrierPassed = new Set<number>();
 
+export type ReviewRemediationOutcome = "completed" | "failed" | "paused";
+
 export async function runQueuedReviewFlow(params: {
   runBarrier: (verification?: boolean) => Promise<{
     outcome: "released" | "skipped" | "fix_required";
     threadId?: string;
     prompt?: string;
   }>;
-  streamRemediation: (prompt: string) => Promise<boolean>;
+  streamRemediation: (prompt: string) => Promise<ReviewRemediationOutcome>;
   onRemediationFailed?: (threadId: string) => Promise<void>;
-}): Promise<"released"> {
+}): Promise<"released" | "paused"> {
   const barrier = await params.runBarrier();
   if (barrier.outcome !== "fix_required" || !barrier.prompt) {
     return "released";
   }
 
   const remediated = await params.streamRemediation(barrier.prompt);
+  if (remediated === "paused") return "paused";
   // A failed or denied remediation remains visible, but the user's queued
   // message must still be released rather than stranded behind the barrier.
-  if (!remediated) {
+  if (remediated === "failed") {
     if (barrier.threadId) {
       await params.onRemediationFailed?.(barrier.threadId);
     }
@@ -96,20 +99,28 @@ export function useQueueProcessor() {
           runBarrier: (verification) =>
             ipc.agent.runAutoReviewBarrier({ chatId, verification }),
           streamRemediation: (prompt) =>
-            new Promise<boolean>((resolve) => {
+            new Promise<ReviewRemediationOutcome>((resolve) => {
               streamMessage({
                 prompt,
                 chatId,
                 redo: false,
                 requestedChatMode: "local-agent",
                 suppressAutoReview: true,
-                onSettled: ({ success }) => resolve(success),
+                onSettled: ({ success, pausedByStepLimit }) =>
+                  resolve(
+                    pausedByStepLimit
+                      ? "paused"
+                      : success
+                        ? "completed"
+                        : "failed",
+                  ),
               });
             }),
           onRemediationFailed: (threadId) =>
             ipc.agent.skipReviewAutoFix({ chatId, threadId }),
         })
-          .then(() => {
+          .then((outcome) => {
+            if (outcome === "paused") return;
             // Every terminal review/remediation outcome releases the user's
             // queued message. Failures stay visible in the agent card but
             // must never strand the FIFO queue.

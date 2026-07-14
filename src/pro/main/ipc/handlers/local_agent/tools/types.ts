@@ -244,6 +244,14 @@ export interface ToolDefinition<T = any> {
    * conditionally exposed by the current turn context.
    */
   readonly modifiesState?: boolean | ((ctx: AgentContext) => boolean);
+  /** Sub-agent capability; hidden and runtime-rejected for non-Pro users. */
+  readonly subagentOnly?: boolean;
+  /**
+   * Whether a state-modifying tool must own the app mutation lease. Set false
+   * for orchestration controls whose state is durable metadata, not workspace
+   * mutation; writable children acquire their own lease in the manager.
+   */
+  readonly requiresMutationLease?: boolean;
   /**
    * If true, this tool calls a Dyad Engine endpoint outside the main model
    * generation endpoint.

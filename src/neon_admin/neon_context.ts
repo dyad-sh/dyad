@@ -4,6 +4,7 @@ import { getNeonClient } from "./neon_management_client";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import { renderTestDatabaseSchema } from "@/lib/test_database_schema";
 import {
   buildSchemaSnapshotSql,
   filterSchemaForTable,
@@ -337,9 +338,7 @@ export async function getNeonTableSchema({
   tableName?: string;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return tableName
-      ? `CREATE TABLE "public"."${tableName}" (\n\t"id" bigint NOT NULL\n);`
-      : `CREATE TABLE "public"."users" (\n\t"id" bigint NOT NULL\n);`;
+    return renderTestDatabaseSchema(tableName);
   }
 
   try {

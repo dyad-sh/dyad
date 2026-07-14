@@ -37,6 +37,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Normalize an empty optional table name to `undefined` before snapshot scoping; provider tools historically treat an empty name as the all-tables request, not as a request for a table named `''`. Reject null bytes in values before embedding escaped SQL literals so invalid agent input fails clearly.
 - Single-table schema filtering must retain functions referenced by column defaults, generated expressions, RLS policies, triggers, and checks, including helpers outside the table's schema. Capture those dependencies from PostgreSQL catalogs, include them and their named schemas in snapshot scoping without pre-filtering their schemas, and sort retained functions/schemas deterministically so provider paths render identically.
 - Rendered schema DDL must be replayable: create helper schemas before functions, and defer function-dependent defaults, generated columns, policies, and checks until after function definitions but before indexes, foreign keys, and triggers that may reference deferred columns.
+- When filtering schema output to one table, retain unowned sequences because opaque defaults may reference them, but retain an owned sequence only when its owning table is also retained; otherwise replay emits `OWNED BY` for an omitted table.
 
 ## Stream retries
 

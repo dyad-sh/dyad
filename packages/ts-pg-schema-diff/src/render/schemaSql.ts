@@ -255,10 +255,14 @@ export function filterSchemaForTable(
     foreignKeyConstraints: schema.foreignKeyConstraints.filter((constraint) =>
       tableNames.has(fqName(constraint.owningTable)),
     ),
-    // Column defaults are opaque SQL strings, so retain all sequences in the
-    // schema to preserve unowned/shared nextval() dependencies.
+    // Column defaults are opaque SQL strings, so retain unowned/shared
+    // sequences that they may reference. Owned sequences are only valid when
+    // their owning table is part of the scoped schema.
     sequences: schema.sequences.filter(
-      (sequence) => sequence.name.schemaName === schemaName,
+      (sequence) =>
+        sequence.name.schemaName === schemaName &&
+        (sequence.owner === null ||
+          tableNames.has(fqName(sequence.owner.tableName))),
     ),
     functions,
     triggers,

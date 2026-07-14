@@ -1,6 +1,7 @@
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
+import { renderTestDatabaseSchema } from "@/lib/test_database_schema";
 import { getSupabaseClient } from "./supabase_management_client";
 import {
   SUPABASE_SCHEMA_QUERY,
@@ -265,9 +266,7 @@ export async function getSupabaseTableSchema({
   tableName?: string;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return tableName
-      ? `CREATE TABLE "public"."${tableName}" (\n\t"id" bigint NOT NULL\n);`
-      : `CREATE TABLE "public"."users" (\n\t"id" bigint NOT NULL\n);`;
+    return renderTestDatabaseSchema(tableName);
   }
 
   try {

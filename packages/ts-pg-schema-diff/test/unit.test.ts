@@ -993,6 +993,36 @@ describe("renderSchemaSql", () => {
     expect(filtered.sequences).toEqual([sharedSequence]);
   });
 
+  it("drops owned sequences for tables outside the selected scope", () => {
+    const selectedSequence: Sequence = {
+      ...sequenceSchema("accounts_id_seq"),
+      owner: {
+        tableName: schemaQualifiedName("public", "accounts"),
+        columnName: "id",
+      },
+    };
+    const unrelatedSequence: Sequence = {
+      ...sequenceSchema("users_id_seq"),
+      owner: {
+        tableName: schemaQualifiedName("public", "users"),
+        columnName: "id",
+      },
+    };
+    const filtered = filterSchemaForTable(
+      {
+        ...emptySchema(),
+        tables: [
+          table("accounts", [column("id", "bigint", false)]),
+          table("users", [column("id", "bigint", false)]),
+        ],
+        sequences: [selectedSequence, unrelatedSequence],
+      },
+      { tableName: "accounts" },
+    );
+
+    expect(filtered.sequences).toEqual([selectedSequence]);
+  });
+
   it("retains functions referenced by selected table defaults and policies", () => {
     const defaultFunction = functionSchema("new_account_id", "sql");
     const policyFunction: FunctionSchema = {

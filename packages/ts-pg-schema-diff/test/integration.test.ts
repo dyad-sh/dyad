@@ -4918,7 +4918,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         $$;
         CREATE TRIGGER accounts_touch BEFORE UPDATE ON accounts
           FOR EACH ROW EXECUTE FUNCTION touch_account();
-        CREATE TABLE unrelated (id integer PRIMARY KEY);
+        CREATE TABLE unrelated (id serial PRIMARY KEY);
         CREATE FUNCTION unrelated_function() RETURNS integer
           LANGUAGE sql RETURN 1;
         CREATE TABLE private_data.secret_table (id integer PRIMARY KEY);
@@ -4980,6 +4980,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       const renderedSql = renderSchemaSql(
         filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
       );
+      expect(renderedSql).not.toContain("unrelated_id_seq");
       await createDatabase(pg, "snapshot_render_replay_db");
       await execSql(
         pg.databaseUrl("snapshot_render_replay_db"),

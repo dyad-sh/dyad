@@ -554,13 +554,13 @@ describe("handleLocalAgentStream", () => {
       const finalContent = contentUpdates.at(-1)?.data.content as string;
       expect(finalContent).not.toContain("Incomplete output");
       expect(finalContent).toContain(
-        '<dyad-output type="warning" message="Request declined by the model">',
+        '<dyad-output type="warning" message="Model refused to respond for safety reasons">',
       );
       const aiMessagesUpdate = dbOperations.updates.find(
         (update) => update.data.aiMessagesJson !== undefined,
       );
       expect(JSON.stringify(aiMessagesUpdate?.data.aiMessagesJson)).toContain(
-        "Request declined by the model",
+        "Model refused to respond for safety reasons",
       );
       expect(
         getMessagesByChannel("chat:response:end")[0].args[0],

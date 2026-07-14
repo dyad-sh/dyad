@@ -160,7 +160,7 @@ describe("processStreamChunks", () => {
     expect(result.fullResponse).not.toContain("Spurious output");
     expect(result.fullResponse).toContain("Existing response.");
     expect(result.fullResponse).toContain(
-      '<dyad-output type="warning" message="Request declined by the model">',
+      '<dyad-output type="warning" message="Model refused to respond for safety reasons">',
     );
     expect(result.incrementalResponse).toContain("<dyad-output");
     expect(result.modelRefused).toBe(true);

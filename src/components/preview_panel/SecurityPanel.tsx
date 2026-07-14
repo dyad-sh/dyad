@@ -255,6 +255,9 @@ function SecurityHeader({
       : `${selectedFixCount} issue${selectedFixCount === 1 ? "" : "s"}`;
   const hasSelectedFix = selectedFixCount !== undefined;
   const showSelectedFixActions = hasSelectedFix && !isFixingSelected;
+  const activeIssueLabel = hasSelectedFix
+    ? existingFixIssueLabel
+    : selectedIssueLabel;
 
   return (
     <div className="sticky top-0 z-10 space-y-2.5 bg-background py-3">
@@ -325,12 +328,9 @@ function SecurityHeader({
                   <ChevronDown className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={onRerunSelectedFix}
-                    disabled={isFixingSelected}
-                  >
+                  <DropdownMenuItem onClick={onRerunSelectedFix}>
                     <Wrench className="size-4" />
-                    {isFixingSelected ? "Re-running fix..." : "Re-run fix"}
+                    Re-run fix
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -368,7 +368,7 @@ function SecurityHeader({
                       d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  Fixing {selectedIssueLabel}...
+                  Fixing {activeIssueLabel}...
                 </>
               ) : (
                 <>

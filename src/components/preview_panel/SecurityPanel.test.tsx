@@ -150,7 +150,7 @@ describe("SecurityPanel", () => {
       expect(mocks.streamMessage).toHaveBeenCalledTimes(1);
     });
     expect(
-      screen.getByRole("button", { name: /Fixing 2 issues/ }),
+      screen.getByRole("button", { name: /Fixing all issues/ }),
     ).toBeTruthy();
 
     // Persisting the fix-chat mapping refetches the same review with new
@@ -158,7 +158,7 @@ describe("SecurityPanel", () => {
     mocks.reviewData = { ...mocks.reviewData };
     rerender(<SecurityPanel />);
     expect(
-      screen.getByRole("button", { name: /Fixing 2 issues/ }),
+      screen.getByRole("button", { name: /Fixing all issues/ }),
     ).toBeTruthy();
 
     act(() => {
@@ -167,7 +167,7 @@ describe("SecurityPanel", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /Fixing 2 issues/ }),
+        screen.queryByRole("button", { name: /Fixing all issues/ }),
       ).toBeNull();
     });
     expect(
@@ -230,7 +230,7 @@ describe("SecurityPanel", () => {
       );
     });
     expect(
-      screen.getByRole("button", { name: /Fixing 2 issues/ }),
+      screen.getByRole("button", { name: /Fixing all issues/ }),
     ).toBeTruthy();
 
     act(() => {
@@ -242,6 +242,35 @@ describe("SecurityPanel", () => {
         screen.getByRole("button", { name: "Show fix for all issues" }),
       ).toBeTruthy();
     });
+  });
+
+  it("uses the reused subset scope while a bulk fix is re-running", async () => {
+    mocks.getOrCreateSecurityFixChat.mockResolvedValue({
+      chatId: 85,
+      created: false,
+    });
+    mocks.streamMessage.mockImplementation(async () => {});
+
+    render(<SecurityPanel />);
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select SQL injection" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fix 1 issue" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Show fix for 1 issue" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "More fix actions for 1 issue" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Re-run fix" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Fixing 1 issue..." }),
+    ).toBeTruthy();
   });
 
   it("offers to fix all findings when none are selected", async () => {

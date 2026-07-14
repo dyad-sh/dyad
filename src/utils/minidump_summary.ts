@@ -10,6 +10,8 @@ export interface MinidumpSummary {
   exceptionCode: number; // raw code, in case the name table misses it
   faultingModule?: string; // basename of the module containing the crash address
   faultingOffset?: string; // hex offset of the crash address within that module
+  faultingDebugFile?: string; // name keying the module's symbol file, e.g. "electron.exe.pdb"
+  faultingDebugId?: string; // build fingerprint keying the module's symbol file
   ptype?: string; // crashing process type: "browser" (main) / "renderer" / "gpu-process" / …
 }
 
@@ -62,10 +64,18 @@ const EXC_CONTEXT_RVA_OFF = 164;
 
 // MINIDUMP_MODULE record: u64 base @0, u32 size @8, ... u32 nameRva @20, with
 // the whole record being 108 bytes (so module N starts at N * 108).
+// VS_FIXEDFILEINFO (52 bytes) sits at @24, so the CvRecord
+// LOCATION_DESCRIPTOR follows at @76 (dataSize) and @80 (rva).
 const MODULE_RECORD_SIZE = 108;
 const MODULE_BASE_OFF = 0;
 const MODULE_SIZE_OFF = 8;
 const MODULE_NAME_RVA_OFF = 20;
+const MODULE_CV_SIZE_OFF = 76;
+const MODULE_CV_RVA_OFF = 80;
+
+// CodeView record signatures.
+const CV_SIG_PDB70 = 0x53445352; // "RSDS": GUID + age + debug file name
+const CV_SIG_ELF_BUILD_ID = 0x4270454c; // Crashpad's ELF build id record
 
 // MinidumpCrashpadInfo: u32 version @0 | UUID report_id (16) @4 | UUID client_id
 // (16) @20 | LOCATION_DESCRIPTOR simple_annotations (8) @36 | LOCATION_DESCRIPTOR
@@ -118,6 +128,7 @@ interface MinidumpModule {
   base: bigint;
   size: number;
   name: string;
+  recordRva: number; // file offset of this module's 108-byte record
 }
 
 // Byte offset of the instruction pointer (where the crash happened) within each
@@ -249,6 +260,8 @@ export function parseMinidumpBuffer(
 
     let faultingModule: string | undefined;
     let faultingOffset: string | undefined;
+    let faultingDebugFile: string | undefined;
+    let faultingDebugId: string | undefined;
     if (moduleListRva !== 0 && instructionPointer !== 0n) {
       const module = findModule(
         parseModules(view, buf, moduleListRva),
@@ -257,6 +270,12 @@ export function parseMinidumpBuffer(
       if (module) {
         faultingModule = basename(module.name);
         faultingOffset = "0x" + (instructionPointer - module.base).toString(16);
+        const identity = parseDebugIdentity(view, buf, module.recordRva);
+        faultingDebugId = identity.debugId;
+        // ELF build id records carry no name; the module name keys the file.
+        faultingDebugFile = identity.debugId
+          ? (identity.debugFile ?? faultingModule)
+          : undefined;
       }
     }
 
@@ -265,6 +284,8 @@ export function parseMinidumpBuffer(
       exceptionCode,
       faultingModule,
       faultingOffset,
+      faultingDebugFile,
+      faultingDebugId,
       ptype: crashpadInfoRva
         ? parsePtype(view, buf, crashpadInfoRva)
         : undefined,
@@ -378,7 +399,12 @@ function parseModules(
     const base = view.getBigUint64(m + MODULE_BASE_OFF, true);
     const size = view.getUint32(m + MODULE_SIZE_OFF, true);
     const nameRva = view.getUint32(m + MODULE_NAME_RVA_OFF, true);
-    modules.push({ base, size, name: readMinidumpString(view, buf, nameRva) });
+    modules.push({
+      base,
+      size,
+      name: readMinidumpString(view, buf, nameRva),
+      recordRva: m,
+    });
   }
   return modules;
 }
@@ -392,6 +418,80 @@ function findModule(
   return modules.find(
     (m) => address >= m.base && address < m.base + BigInt(m.size),
   );
+}
+
+// Debug identity from a module's CodeView record: the file name and the
+// Breakpad debug id that key the module's symbol file on a symbol server.
+function parseDebugIdentity(
+  view: DataView,
+  buf: Buffer,
+  moduleRecordRva: number,
+): { debugFile?: string; debugId?: string } {
+  try {
+    if (moduleRecordRva + MODULE_CV_RVA_OFF + 4 > buf.length) {
+      return {};
+    }
+    const cvSize = view.getUint32(moduleRecordRva + MODULE_CV_SIZE_OFF, true);
+    const cvRva = view.getUint32(moduleRecordRva + MODULE_CV_RVA_OFF, true);
+    if (cvRva === 0 || cvSize < 4 || cvRva + cvSize > buf.length) {
+      return {};
+    }
+    const signature = view.getUint32(cvRva, true);
+    // Minimum pdb70 size: 4 signature + 16 GUID + 4 age + 1 for the name's
+    // NUL terminator.
+    if (signature === CV_SIG_PDB70 && cvSize >= 25) {
+      // "RSDS" | GUID (16) | u32 age | debug file name, NUL terminated.
+      const guid = buf.subarray(cvRva + 4, cvRva + 20);
+      const age = view.getUint32(cvRva + 20, true);
+      const nameStart = cvRva + 24;
+      let nameEnd = buf.indexOf(0, nameStart);
+      if (nameEnd < 0 || nameEnd > cvRva + cvSize) {
+        nameEnd = cvRva + cvSize;
+      }
+      const debugFile = basename(buf.toString("utf8", nameStart, nameEnd));
+      return {
+        debugFile: debugFile || undefined,
+        debugId: formatDebugId(guid, age),
+      };
+    }
+    if (signature === CV_SIG_ELF_BUILD_ID && cvSize > 4) {
+      // "BpEL" | raw build id. The id is the first 16 bytes with age 0,
+      // and there is no name field. Buffer.alloc zero fills, so a build
+      // id shorter than 16 bytes comes out zero padded; Math.min stops
+      // the copy at whichever ends first, the 16 bytes or the record.
+      const raw = Buffer.alloc(16);
+      buf.copy(raw, 0, cvRva + 4, Math.min(cvRva + 20, cvRva + cvSize));
+      return { debugId: formatDebugId(raw, 0) };
+    }
+  } catch {
+    // best effort: the debug identity is optional
+  }
+  return {};
+}
+
+// Breakpad debug id: the GUID's first three fields are stored little
+// endian and printed byte swapped, then the rest in order, then the age
+// in hex, all uppercase.
+function formatDebugId(guid: Buffer, age: number): string {
+  const ordered = [
+    // A GUID is u32 + u16 + u16 + 8 raw bytes. The integers are stored
+    // little endian but print big endian, so reverse the bytes within
+    // each one. Data1, 4 bytes:
+    guid[3],
+    guid[2],
+    guid[1],
+    guid[0],
+    // Data2 and Data3, 2 bytes each:
+    guid[5],
+    guid[4],
+    guid[7],
+    guid[6],
+    // Data4 is raw bytes with no internal order to fix.
+    ...guid.subarray(8, 16),
+  ];
+  // Two hex digits per byte, zero padded so 0x5 prints as "05".
+  const hex = ordered.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return (hex + age.toString(16)).toUpperCase();
 }
 
 // MINIDUMP_STRING: u32 byte-length followed by UTF-16LE.

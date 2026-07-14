@@ -646,6 +646,8 @@ const createWindow = () => {
           exception_code: nativeCrash.exceptionCode,
           faulting_module: nativeCrash.faultingModule,
           faulting_offset: nativeCrash.faultingOffset,
+          faulting_debug_file: nativeCrash.faultingDebugFile,
+          faulting_debug_id: nativeCrash.faultingDebugId,
         }),
       });
 

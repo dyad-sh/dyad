@@ -37,6 +37,14 @@ import { exploreCodeTool } from "./tools/explore_code";
 import { exploreChatHistoryTool } from "./tools/explore_chat_history";
 import { searchChatsTool } from "./tools/search_chats";
 import { readChatTool } from "./tools/read_chat";
+import {
+  cancelAgentTool,
+  followupTaskTool,
+  listAgentsTool,
+  sendMessageTool,
+  spawnAgentTool,
+  waitAgentsTool,
+} from "./tools/subagent_tools";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -73,6 +81,7 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import { assertMutationLease } from "./subagents/mutation_lease";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -113,6 +122,12 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   exploreChatHistoryTool,
   searchChatsTool,
   readChatTool,
+  spawnAgentTool,
+  listAgentsTool,
+  waitAgentsTool,
+  cancelAgentTool,
+  sendMessageTool,
+  followupTaskTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,
@@ -580,9 +595,12 @@ export function buildAgentToolSet(
 
     toolSet[tool.name] = {
       description: tool.description,
-      inputSchema: tool.inputSchema,
+      inputSchema: tool.getInputSchema?.(ctx) ?? tool.inputSchema,
       execute: async (args: any) => {
         try {
+          if (toolModifiesState(tool, ctx)) {
+            assertMutationLease(ctx);
+          }
           // Guard against state-modifying tools running before the app
           // blueprint approval is resolved. `write_app_blueprint` owns the
           // approval gate; blueprint tools themselves are allowed through so

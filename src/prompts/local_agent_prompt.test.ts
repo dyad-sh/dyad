@@ -26,20 +26,17 @@ describe("local_agent_prompt", () => {
       codeExplorerAvailable: true,
     });
     expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain('use `spawn_agent` with persona="explorer"');
     expect(prompt).toContain(
-      "Use `explore_code` when the relevant files are not reasonably clear from the available context",
+      "Continue non-conflicting root work while Explorer runs",
+    );
+    expect(prompt).toContain("use `wait_agents` or `list_agents`");
+    expect(prompt).toContain(
+      "Do not spawn duplicate Explorers for the same investigation",
     );
     expect(prompt).toContain(
-      "already known or reasonably clear from the conversation",
+      "Validate an Explorer report's exact edit targets",
     );
-    expect(prompt).toContain(
-      "Treat the report as a starting map: build on its findings",
-    );
-    expect(prompt).toContain(
-      "Continue with targeted `grep`, `list_files`, or `read_file` calls whenever needed",
-    );
-    expect(prompt).not.toContain("use `explore_code` first");
-    expect(prompt).not.toContain("do not warm up");
     expect(prompt).not.toContain("Use `grep` and `code_search`");
   });
 

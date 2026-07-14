@@ -105,6 +105,15 @@ export interface AgentContext {
    * Engine-dependent tools require this to access the Dyad Pro API.
    */
   isDyadPro: boolean;
+  /** The durable child thread currently executing this tool, if any. */
+  subagentThreadId?: string;
+  /** Persona for a child tool invocation. Root turns leave this undefined. */
+  subagentPersona?: "explorer" | "reviewer" | "implementer";
+  /** Explicit relative path prefixes an Implementer may mutate. */
+  subagentPathScope?: string[];
+  /** Turn-scoped schema gates for root orchestration tools. */
+  canUseExplorerSubagent?: boolean;
+  canUseImplementerSubagent?: boolean;
   /**
    * If true, this turn is using a Dyad Free model. Some Pro-enabled
    * conveniences, such as MCP auto-approval, should stay disabled.
@@ -282,6 +291,8 @@ export interface ToolDefinition<T = any> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodType<T>;
+  /** Build a turn-specific schema when capabilities change the valid input. */
+  readonly getInputSchema?: (ctx: AgentContext) => z.ZodType<T>;
   readonly defaultConsent: AgentToolConsent;
   /**
    * If true, this tool modifies state (files, database, etc.).

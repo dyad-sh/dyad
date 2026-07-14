@@ -318,7 +318,7 @@ function injectReferencedAppsReminder(
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
   const searchTool = options.codeExplorerAvailable
-    ? "`explore_code`"
+    ? "`spawn_agent` (Explorer)"
     : "`code_search`";
   const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, ${searchTool}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
 
@@ -717,6 +717,13 @@ export async function handleLocalAgentStream(
       testingEnabled: Boolean(chat.app.testingEnabled),
       testRunAttempts: new Map(),
       isDyadPro: isDyadProEnabled(settings),
+      canUseExplorerSubagent:
+        isDyadProEnabled(settings) && settings.enableExplorerSubagent !== false,
+      canUseImplementerSubagent:
+        isDyadProEnabled(settings) &&
+        settings.enableImplementerSubagent === true &&
+        !readOnly &&
+        !planModeOnly,
       freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
@@ -887,7 +894,7 @@ export async function handleLocalAgentStream(
     // so the system prompt stays static and cacheable.
     if (referencedApps.length > 0) {
       injectReferencedAppsReminder(messageHistory, referencedApps, {
-        codeExplorerAvailable: agentTools.explore_code != undefined,
+        codeExplorerAvailable: agentTools.spawn_agent != undefined,
       });
     }
 
@@ -1099,7 +1106,7 @@ export async function handleLocalAgentStream(
                       referencedApps,
                       {
                         codeExplorerAvailable:
-                          agentTools.explore_code != undefined,
+                          agentTools.spawn_agent != undefined,
                       },
                     );
                   }

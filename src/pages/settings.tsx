@@ -42,6 +42,7 @@ import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
+import { SubagentSettings } from "@/components/settings/SubagentSettings";
 
 const hint = "text-[13px] leading-relaxed text-muted-foreground";
 
@@ -344,6 +345,8 @@ export default function SettingsPage() {
                 a compiler-backed code graph.
               </p>
             </div>
+
+            <SubagentSettings />
           </SettingsSection>
 
           <SettingsSection

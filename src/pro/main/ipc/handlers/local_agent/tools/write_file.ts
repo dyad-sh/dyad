@@ -12,6 +12,7 @@ import {
 } from "../../../../../../supabase_admin/supabase_utils";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
+import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 const logger = log.scope("write_file");
 
 const writeFileSchema = z.object({
@@ -43,6 +44,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    assertImplementerPathAllowed(ctx, args.path);
     const operationPath = await assertMutationPathAllowed({
       appPath: ctx.appPath,
       relativePath: args.path,

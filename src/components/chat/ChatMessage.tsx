@@ -53,6 +53,7 @@ import {
 } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { isVersionActionBlockedState } from "@/version_preview/state";
+import { SubagentTeamCard } from "./SubagentTeamCard";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -411,6 +412,15 @@ const ChatMessage = ({
                 </div>
               </div>
             ) : null}
+            {message.role === "assistant" &&
+              isLastMessage &&
+              !isStreaming &&
+              selectedChatId != null && (
+                <SubagentTeamCard
+                  chatId={selectedChatId}
+                  messageId={message.id}
+                />
+              )}
           </div>
         )}
         {/* Render attachments outside the message box */}

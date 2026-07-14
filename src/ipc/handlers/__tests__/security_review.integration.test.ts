@@ -27,16 +27,16 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
-import { messages as messagesTable } from "@/db/schema";
+import { messages as messagesTable, security_fix_chats } from "@/db/schema";
 import type { SecurityFinding } from "@/ipc/types/security";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 describe("security review (integration)", () => {
   let harness: HybridChatHarness;
@@ -205,13 +205,11 @@ ${finding.description}`;
     await harness.bridge.settleInFlight();
   }, 60_000);
 
-  it("multi-select fix: streams a combined 2-issue prompt in a new chat", async () => {
+  it("fixes all issues, shows the bulk fix, and re-runs it in the same chat", async () => {
     expect(findings.length).toBeGreaterThanOrEqual(2);
-    const findingsToFix = findings.slice(0, 2);
 
-    // The previous test already committed the canned file1.txt write; perturb
-    // and commit it so this turn's identical canned write is a real change
-    // again (each e2e test ran against a fresh app).
+    // The previous test committed the canned file1.txt write. Perturb and
+    // commit it so this UI-driven bulk fix produces another real change.
     await harness.bridge.settleInFlight();
     fs.writeFileSync(path.join(harness.appDir, "file1.txt"), "perturbed\n");
     execFileSync("git", ["add", "-A"], { cwd: harness.appDir });
@@ -229,49 +227,110 @@ ${finding.description}`;
       { cwd: harness.appDir },
     );
 
-    // Prompt built exactly like SecurityPanel.handleFixSelected.
-    const issuesList = findingsToFix
-      .map(
-        (finding, index) =>
-          `${index + 1}. **${finding.title}** (${finding.level} severity)\n${finding.description}`,
-      )
-      .join("\n\n");
-    const prompt = `Please fix the following ${findingsToFix.length} security issue${findingsToFix.length !== 1 ? "s" : ""} in a simple and effective way:
-
-${issuesList}`;
-
-    const fixChatId = await harness.createChat();
-    harness.mount({ chatId: fixChatId });
-    await waitFor(
-      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
-      { timeout: 15_000 },
-    );
-
-    const fixEnd = harness.waitForNextStreamEnd(fixChatId);
-    const { send } = await harness.typeInChat(prompt, { chatId: fixChatId });
-    send();
-
+    cleanup();
+    harness.mount({ withSecurityPanel: true });
     await waitFor(
       () =>
         expect(
-          screen.getByText(/Please fix the following 2 security issues/),
+          screen.getByRole("button", { name: "Fix all issues" }),
         ).toBeTruthy(),
       { timeout: 15_000 },
     );
-    await waitFor(() => expect(screen.getByText(/EOM/)).toBeTruthy(), {
-      timeout: 20_000,
+
+    fireEvent.click(screen.getByRole("button", { name: "Fix all issues" }));
+
+    let bulkFixChatId: number | undefined;
+    await waitFor(async () => {
+      const [bulkFix] = await harness.db
+        .select()
+        .from(security_fix_chats)
+        .where(
+          and(
+            eq(security_fix_chats.appId, harness.appId),
+            eq(
+              security_fix_chats.reviewChatId,
+              (await getLatestSecurityReview()).chatId,
+            ),
+          ),
+        )
+        .orderBy(desc(security_fix_chats.id))
+        .limit(1);
+      expect(bulkFix).toBeTruthy();
+      bulkFixChatId = bulkFix.fixChatId;
     });
-    await fixEnd;
+    expect(bulkFixChatId).toBeDefined();
+    await harness.waitForStreamEnd(bulkFixChatId);
 
-    const messages = await loadChatMessages(fixChatId);
-    const user = messages.find((m) => m.role === "user")!;
-    expect(user.content).toMatch(/^Please fix the following 2 security issues/);
-    expect(user.content).toContain(findingsToFix[0].title);
-    expect(user.content).toContain(findingsToFix[1].title);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Show fix for all issues" }),
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole("button", { name: "Run review" })
+          .getAttribute("data-variant"),
+      ).toBe("primary");
+    });
 
-    const assistant = messages.find((m) => m.role === "assistant")!;
-    expect(assistant.approvalState).toBe("approved");
-    expect(assistant.commitHash).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show fix for all issues" }),
+    );
+    await waitFor(() => {
+      expect(harness.currentLocation().search.id).toBe(bulkFixChatId);
+    });
+
+    // Make the canned rerun write produce a fresh commit too.
+    await harness.bridge.settleInFlight();
+    fs.writeFileSync(
+      path.join(harness.appDir, "file1.txt"),
+      "perturbed again\n",
+    );
+    execFileSync("git", ["add", "-A"], { cwd: harness.appDir });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=Test User",
+        "commit",
+        "-m",
+        "perturb file1.txt again",
+      ],
+      { cwd: harness.appDir },
+    );
+
+    const rerunEnd = harness.waitForNextStreamEnd(bulkFixChatId);
+    const moreActions = screen.getByRole("button", {
+      name: "More fix actions for all issues",
+    });
+    await harness.openPopover(moreActions);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Re-run fix" }),
+    );
+    await rerunEnd;
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Show fix for all issues" }),
+      ).toBeTruthy(),
+    );
+    const bulkMessages = await loadChatMessages(bulkFixChatId!);
+    const bulkPrompts = bulkMessages.filter(
+      (message) => message.role === "user",
+    );
+    expect(bulkPrompts).toHaveLength(2);
+    for (const prompt of bulkPrompts) {
+      expect(prompt.content).toContain(
+        `Please fix the following ${findings.length} security issues`,
+      );
+    }
+
+    const matchingFixChats = await harness.db
+      .select()
+      .from(security_fix_chats)
+      .where(eq(security_fix_chats.fixChatId, bulkFixChatId!));
+    expect(matchingFixChats).toHaveLength(1);
   }, 60_000);
 
   it("edit and use knowledge: SECURITY_RULES.md is added to the review context", async () => {

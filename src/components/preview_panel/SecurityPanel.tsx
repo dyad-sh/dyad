@@ -15,12 +15,22 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Shield, ChevronDown, Pencil, Wrench } from "lucide-react";
+import {
+  Shield,
+  ChevronDown,
+  ExternalLink,
+  Pencil,
+  Wrench,
+} from "lucide-react";
 import { getSeverityIcon, SeverityBadge } from "@/components/security/severity";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type {
   SecurityFinding,
   SecurityReviewFinding,
@@ -110,15 +120,36 @@ const getSeverityOrder = (level: SecurityFinding["level"]): number => {
   }
 };
 
+const getSeveritySummaryColor = (level: SecurityFinding["level"]): string => {
+  switch (level) {
+    case "critical":
+      return "border-red-500/20 bg-red-500/8 text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300";
+    case "high":
+      return "border-orange-500/20 bg-orange-500/8 text-orange-700 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-300";
+    case "medium":
+      return "border-amber-500/20 bg-amber-500/8 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300";
+    case "low":
+      return "border-slate-500/15 bg-slate-500/8 text-slate-700 dark:border-slate-400/20 dark:bg-slate-400/10 dark:text-slate-300";
+  }
+};
+
 function RunReviewButton({
   isRunning,
   onRun,
+  secondary = false,
 }: {
   isRunning: boolean;
   onRun: () => void;
+  secondary?: boolean;
 }) {
   return (
-    <Button onClick={onRun} className="gap-2" disabled={isRunning}>
+    <Button
+      onClick={onRun}
+      className="gap-2"
+      disabled={isRunning}
+      variant={secondary ? "outline" : "default"}
+      data-variant={secondary ? "secondary" : "primary"}
+    >
       {isRunning ? (
         <>
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -136,12 +167,12 @@ function RunReviewButton({
               d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             />
           </svg>
-          Running Security Review...
+          Running review...
         </>
       ) : (
         <>
           <Shield className="w-4 h-4" />
-          Run Security Review
+          Run review
         </>
       )}
     </Button>
@@ -165,22 +196,24 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
   ];
 
   return (
-    <div className="space-y-1 mt-1">
-      <div className="text-sm text-gray-600 dark:text-gray-400">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="text-xs text-muted-foreground">
         Last reviewed {formatTimeAgo(data.timestamp)}
       </div>
-      <div className="flex items-center gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {severityLevels
           .filter((level) => counts[level] > 0)
           .map((level) => (
-            <span key={level} className="flex items-center gap-1.5">
+            <span
+              key={level}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2 py-1 font-medium",
+                getSeveritySummaryColor(level),
+              )}
+            >
               <span className="flex-shrink-0">{getSeverityIcon(level)}</span>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
-                {counts[level]}
-              </span>
-              <span className="text-gray-600 dark:text-gray-400 capitalize">
-                {level}
-              </span>
+              <span>{counts[level]}</span>
+              <span className="capitalize">{level}</span>
             </span>
           ))}
       </div>
@@ -195,8 +228,10 @@ function SecurityHeader({
   onOpenEditRules,
   selectedCount,
   onFixSelected,
+  onShowSelectedFix,
+  onRerunSelectedFix,
   isFixingSelected,
-  canRerunSelectedFix,
+  selectedFixCount,
 }: {
   isRunning: boolean;
   onRun: () => void;
@@ -204,73 +239,121 @@ function SecurityHeader({
   onOpenEditRules: () => void;
   selectedCount: number;
   onFixSelected: () => void;
+  onShowSelectedFix: () => void;
+  onRerunSelectedFix: () => void;
   isFixingSelected: boolean;
-  canRerunSelectedFix: boolean;
+  selectedFixCount?: number;
 }) {
-  const [isButtonVisible, setIsButtonVisible] = useState(false);
-  const [shouldRender, setShouldRender] = useState(false);
-
-  useEffect(() => {
-    if (selectedCount > 0) {
-      // Show immediately
-      setShouldRender(true);
-      // Trigger animation after render
-      setTimeout(() => setIsButtonVisible(true), 10);
-    } else {
-      // Trigger exit animation
-      setIsButtonVisible(false);
-      // Hide after animation completes
-      const timer = setTimeout(() => setShouldRender(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedCount]);
+  const hasFindings = Boolean(data?.findings.length);
+  const totalFindingCount = data?.findings.length ?? 0;
+  const selectedIssueLabel =
+    selectedCount > 0
+      ? `${selectedCount} issue${selectedCount === 1 ? "" : "s"}`
+      : "all issues";
+  const existingFixIssueLabel =
+    selectedFixCount === undefined
+      ? ""
+      : selectedFixCount === totalFindingCount
+        ? "all issues"
+        : `${selectedFixCount} issue${selectedFixCount === 1 ? "" : "s"}`;
+  const hasSelectedFix = selectedFixCount !== undefined;
+  const showSelectedFixActions = hasSelectedFix && !isFixingSelected;
+  const activeIssueLabel = hasSelectedFix
+    ? existingFixIssueLabel
+    : selectedIssueLabel;
 
   return (
-    <div className="sticky top-0 z-10 bg-background pt-3 pb-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
-            <Shield className="w-5 h-5" />
+    <div className="sticky top-0 z-10 space-y-2.5 bg-background py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-48 flex-1 items-center gap-1">
+          <Shield className="size-5 shrink-0" />
+          <h1 className="truncate text-lg font-semibold text-foreground">
             Security Review
-            <Badge variant="secondary" className="uppercase tracking-wide">
-              experimental
-            </Badge>
           </h1>
-          <div className="text-sm">
-            <p>
-              <a
-                className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                onClick={() =>
-                  ipc.system.openExternalUrl(
-                    "https://www.dyad.sh/docs/guides/security-review",
-                  )
-                }
-              >
-                Open Security Review docs
-              </a>
-            </p>
-          </div>
-          {data && data.findings.length > 0 && <ReviewSummary data={data} />}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-muted-foreground"
+                  aria-label="Open Security Review documentation"
+                  onClick={() =>
+                    ipc.system.openExternalUrl(
+                      "https://www.dyad.sh/docs/guides/security-review",
+                    )
+                  }
+                />
+              }
+            >
+              <ExternalLink className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>Open Security Review docs</TooltipContent>
+          </Tooltip>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <Button variant="outline" onClick={onOpenEditRules}>
-            <Pencil className="w-4 h-4" />
-            Edit Security Rules
-          </Button>
-          <div className="flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  aria-label="Edit security rules"
+                  onClick={onOpenEditRules}
+                />
+              }
+            >
+              <Pencil className="size-4" />
+              Edit rules
+            </TooltipTrigger>
+            <TooltipContent>Edit security rules</TooltipContent>
+          </Tooltip>
+          {showSelectedFixActions && (
+            <div className="inline-flex">
+              <Button
+                onClick={onShowSelectedFix}
+                variant="outline"
+                className="rounded-r-none"
+                disabled={isRunning}
+              >
+                Show fix for {existingFixIssueLabel}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className="rounded-l-none border-l-0 px-2"
+                      aria-label={`More fix actions for ${existingFixIssueLabel}`}
+                      disabled={isRunning}
+                    />
+                  }
+                >
+                  <ChevronDown className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={onRerunSelectedFix}
+                    disabled={isRunning}
+                  >
+                    <Wrench className="size-4" />
+                    Re-run fix
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+          <RunReviewButton
+            isRunning={isRunning}
+            onRun={onRun}
+            secondary={hasFindings && !showSelectedFixActions}
+          />
+          {hasFindings && !showSelectedFixActions && (
             <Button
-              variant="outline"
               onClick={onFixSelected}
-              className="gap-2 transition-all duration-300"
-              disabled={isFixingSelected}
-              style={{
-                visibility: shouldRender ? "visible" : "hidden",
-                opacity: isButtonVisible ? 1 : 0,
-                transform: isButtonVisible
-                  ? "translateY(0)"
-                  : "translateY(-8px)",
-                pointerEvents: shouldRender ? "auto" : "none",
-              }}
+              className="gap-2"
+              disabled={isRunning || isFixingSelected}
             >
               {isFixingSelected ? (
                 <>
@@ -293,21 +376,19 @@ function SecurityHeader({
                       d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  Fixing {selectedCount} Issue{selectedCount !== 1 ? "s" : ""}
-                  ...
+                  Fixing {activeIssueLabel}...
                 </>
               ) : (
                 <>
                   <Wrench className="w-4 h-4" />
-                  {canRerunSelectedFix ? "Re-run Fix for" : "Fix"}{" "}
-                  {selectedCount} Issue{selectedCount !== 1 ? "s" : ""}
+                  Fix {selectedIssueLabel}
                 </>
               )}
             </Button>
-            <RunReviewButton isRunning={isRunning} onRun={onRun} />
-          </div>
+          )}
         </div>
       </div>
+      {hasFindings && data && <ReviewSummary data={data} />}
     </div>
   );
 }
@@ -1019,34 +1100,19 @@ export const SecurityPanel = () => {
       showError("No app selected");
       return;
     }
-    if (selectedFindings.size === 0) {
-      showError("No issues selected");
-      return;
-    }
     if (!data?.findings) {
       showError("No security review loaded");
       return;
     }
 
-    // Get the selected findings
-    const findingsToFix = data.findings.filter((finding) =>
-      selectedFindings.has(createFindingKey(finding)),
-    );
+    const findingsToFix =
+      selectedFindings.size > 0
+        ? data.findings.filter((finding) =>
+            selectedFindings.has(createFindingKey(finding)),
+          )
+        : data.findings;
     if (findingsToFix.length === 0) {
       showError("No valid issues selected");
-      return;
-    }
-
-    if (selectedFixChat) {
-      await streamFixPrompt({
-        chatId: selectedFixChat.chatId,
-        findingsToFix: selectedFixChat.findings,
-        setFixing: setIsFixingSelected,
-        onFixSettled: () => {
-          setSelectedFindings(new Set());
-          setSelectedFixChat(null);
-        },
-      });
       return;
     }
 
@@ -1055,12 +1121,30 @@ export const SecurityPanel = () => {
       setFixing: setIsFixingSelected,
       onFixSettled: () => {
         setSelectedFindings(new Set());
-        setSelectedFixChat(null);
       },
     });
-    if (result && !result.created) {
+    if (result) {
       setSelectedFixChat({ chatId: result.chatId, findings: findingsToFix });
     }
+  };
+
+  const handleShowSelectedFix = () => {
+    if (!selectedFixChat) {
+      return;
+    }
+    showFixChat(selectedFixChat.chatId);
+    toast.info("Opened fix chat");
+  };
+
+  const handleRerunSelectedFix = async () => {
+    if (!selectedFixChat) {
+      return;
+    }
+    await streamFixPrompt({
+      chatId: selectedFixChat.chatId,
+      findingsToFix: selectedFixChat.findings,
+      setFixing: setIsFixingSelected,
+    });
   };
 
   if (isLoading) {
@@ -1086,8 +1170,10 @@ export const SecurityPanel = () => {
           }}
           selectedCount={selectedFindings.size}
           onFixSelected={handleFixSelected}
+          onShowSelectedFix={handleShowSelectedFix}
+          onRerunSelectedFix={handleRerunSelectedFix}
           isFixingSelected={isFixingSelected}
-          canRerunSelectedFix={selectedFixChat !== null}
+          selectedFixCount={selectedFixChat?.findings.length}
         />
 
         {isRunningReview ? (

@@ -111,7 +111,7 @@ async function waitForReview(
 interface BackgroundAutoReviewParams {
   chatId: number;
   sourceMessageId: number;
-  autoFix: boolean;
+  getAutoFix: () => boolean;
   streamFix: (prompt: string) => Promise<"completed" | "failed" | "paused">;
 }
 
@@ -127,7 +127,7 @@ async function runSingleBackgroundAutoReview(
   // loop start that latest request instead of fixing stale findings.
   if (pendingBackgroundAutoReviews.has(params.chatId)) return;
   if (
-    !params.autoFix ||
+    !params.getAutoFix() ||
     completed.status !== "completed" ||
     Number(completed.result?.findingCount ?? 0) === 0
   ) {
@@ -229,6 +229,8 @@ export function useStreamChat({
   const { refetchUserBudget } = useUserBudgetInfo();
   const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
   const { settings } = useSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
@@ -683,7 +685,8 @@ export function useStreamChat({
                         return runBackgroundAutoReview({
                           chatId,
                           sourceMessageId: latestAssistant.id,
-                          autoFix: settings?.autoFixReviewIssues === true,
+                          getAutoFix: () =>
+                            settingsRef.current?.autoFixReviewIssues === true,
                           streamFix: (fixPrompt) =>
                             new Promise<"completed" | "failed" | "paused">(
                               (resolve) => {

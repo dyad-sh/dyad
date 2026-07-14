@@ -45,7 +45,7 @@ testSkipIfWindows("mcp - oauth connects and calls a tool", async ({ po }) => {
   });
 
   try {
-    await po.setUp();
+    await po.setUpDyadPro({ localAgent: true });
 
     // Drive the OAuth authorize URL via fetch (redirect:follow) so
     // the test doesn't open the OS browser. The fake's /authorize
@@ -57,9 +57,6 @@ testSkipIfWindows("mcp - oauth connects and calls a tool", async ({ po }) => {
       };
     });
 
-    await po.navigation.goToSettingsTab();
-    await po.settings.scrollToSettingsSection("experiments");
-    await po.settings.toggleEnableMcpServersForBuildMode();
     await po.navigation.goToPluginsTab();
     await po.plugins.openAddPluginDialog();
 
@@ -74,17 +71,15 @@ testSkipIfWindows("mcp - oauth connects and calls a tool", async ({ po }) => {
     });
 
     await po.navigation.goToAppsTab();
-    await po.chatActions.selectChatMode("build");
-    await po.sendPrompt("[call_tool=calculator_add]", {
+    await po.chatActions.selectChatMode("local-agent");
+    await po.sendPrompt("tc=local-agent/mcp-calculator", {
       skipWaitForCompletion: true,
     });
     await po.agentConsent.waitForAgentConsentBanner();
     await po.snapshotMessages();
     await po.agentConsent.clickAgentConsentAlwaysAllow();
-    await po.approveProposal();
-
-    await po.sendPrompt("[dump]");
-    await po.snapshotServerDump("all-messages");
+    await po.chatActions.waitForChatCompletion();
+    await expect(po.page.getByText(/The sum of 5 and 3 is 8/)).toBeVisible();
   } finally {
     fake.kill();
     await new Promise<void>((resolve) => {
@@ -150,7 +145,7 @@ testSkipIfWindows(
     });
 
     try {
-      await po.setUp();
+      await po.setUpDyadPro({ localAgent: true });
 
       await po.electronApp.evaluate(({ shell }) => {
         shell.openExternal = async (url) => {
@@ -158,9 +153,6 @@ testSkipIfWindows(
         };
       });
 
-      await po.navigation.goToSettingsTab();
-      await po.settings.scrollToSettingsSection("experiments");
-      await po.settings.toggleEnableMcpServersForBuildMode();
       await po.navigation.goToPluginsTab();
       await po.plugins.openAddPluginDialog();
 
@@ -186,17 +178,15 @@ testSkipIfWindows(
       });
 
       await po.navigation.goToAppsTab();
-      await po.chatActions.selectChatMode("build");
-      await po.sendPrompt("[call_tool=calculator_add]", {
+      await po.chatActions.selectChatMode("local-agent");
+      await po.sendPrompt("tc=local-agent/mcp-calculator", {
         skipWaitForCompletion: true,
       });
       await po.agentConsent.waitForAgentConsentBanner();
       await po.snapshotMessages();
       await po.agentConsent.clickAgentConsentAlwaysAllow();
-      await po.approveProposal();
-
-      await po.sendPrompt("[dump]");
-      await po.snapshotServerDump("all-messages");
+      await po.chatActions.waitForChatCompletion();
+      await expect(po.page.getByText(/The sum of 5 and 3 is 8/)).toBeVisible();
     } finally {
       fake.kill();
       await new Promise<void>((resolve) => {
@@ -252,7 +242,7 @@ testSkipIfWindows(
     });
 
     try {
-      await po.setUp();
+      await po.setUpDyadPro({ localAgent: true });
       // Stub openExternal so an unintended browser pop is harmless; the
       // discovery 404 should bail before any redirect would happen.
       await po.electronApp.evaluate(({ shell }) => {
@@ -261,9 +251,6 @@ testSkipIfWindows(
         };
       });
 
-      await po.navigation.goToSettingsTab();
-      await po.settings.scrollToSettingsSection("experiments");
-      await po.settings.toggleEnableMcpServersForBuildMode();
       await po.navigation.goToPluginsTab();
       await po.plugins.openAddPluginDialog();
 
@@ -296,17 +283,15 @@ testSkipIfWindows(
 
       // Drive a tool call to prove the server is actually usable now.
       await po.navigation.goToAppsTab();
-      await po.chatActions.selectChatMode("build");
-      await po.sendPrompt("[call_tool=calculator_add]", {
+      await po.chatActions.selectChatMode("local-agent");
+      await po.sendPrompt("tc=local-agent/mcp-calculator", {
         skipWaitForCompletion: true,
       });
       await po.agentConsent.waitForAgentConsentBanner();
       await po.snapshotMessages();
       await po.agentConsent.clickAgentConsentAlwaysAllow();
-      await po.approveProposal();
-
-      await po.sendPrompt("[dump]");
-      await po.snapshotServerDump("all-messages");
+      await po.chatActions.waitForChatCompletion();
+      await expect(po.page.getByText(/The sum of 5 and 3 is 8/)).toBeVisible();
     } finally {
       fake.kill();
       await new Promise<void>((resolve) => {
@@ -362,16 +347,13 @@ testSkipIfWindows(
     });
 
     try {
-      await po.setUp();
+      await po.setUpDyadPro({ localAgent: true });
       await po.electronApp.evaluate(({ shell }) => {
         shell.openExternal = async (url) => {
           await fetch(url, { redirect: "follow" });
         };
       });
 
-      await po.navigation.goToSettingsTab();
-      await po.settings.scrollToSettingsSection("experiments");
-      await po.settings.toggleEnableMcpServersForBuildMode();
       await po.navigation.goToPluginsTab();
       await po.plugins.openAddPluginDialog();
 

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { app, ipcMain, IpcMainInvokeEvent } from "electron";
+import { app, ipcMain } from "electron";
 import { createTypedHandler } from "./base";
 import {
   computeStreamingPatch,
@@ -15,7 +15,6 @@ import {
   TextStreamPart,
   stepCountIs,
   hasToolCall,
-  type ToolExecutionOptions,
 } from "ai";
 
 import { db } from "../../db";
@@ -70,11 +69,7 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
-import { mcpServers } from "../../db/schema";
-import {
-  requireMcpToolConsent,
-  clearPendingMcpConsentsForChat,
-} from "../utils/mcp_consent";
+import { clearPendingMcpConsentsForChat } from "../utils/mcp_consent";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
@@ -125,8 +120,6 @@ import {
   DYAD_MEDIA_DIR_NAME,
   type AttachmentManifestEntryInput,
 } from "../utils/media_path_utils";
-import { mcpManager } from "../utils/mcp_manager";
-import z from "zod";
 import {
   isBasicAgentMode,
   isDyadProEnabled,
@@ -1564,68 +1557,6 @@ This conversation includes one or more image attachments. When the user uploads 
 
         let modelRefused = false;
 
-        // Use MCP agent code path if:
-        // 1. The enableMcpServersForBuildMode experiment is on AND
-        // 2. Mode is "build" AND there are enabled MCP servers
-        if (
-          settings.enableMcpServersForBuildMode &&
-          selectedChatMode === "build"
-        ) {
-          const tools = await getMcpTools(event, req.chatId);
-          const hasEnabledMcpServers = Object.keys(tools).length > 0;
-
-          // Only run MCP agent path if build mode has enabled MCP servers
-          if (hasEnabledMcpServers) {
-            const { fullStream } = await simpleStreamText({
-              chatMessages: limitedHistoryChatMessages,
-              modelClient,
-              tools: {
-                ...tools,
-                "generate-code": {
-                  description:
-                    "ALWAYS use this tool whenever generating or editing code for the codebase.",
-                  inputSchema: z.object({}),
-                  execute: async () => "",
-                },
-              },
-              systemPromptOverride: constructSystemPrompt({
-                aiRules: await readAiRules(
-                  getDyadAppPath(updatedChat.app.path),
-                ),
-                chatMode: "build",
-                enableTurboEditsV2: false,
-                freeModelMode,
-                frameworkType,
-                hasSupabaseProject: !!updatedChat.app?.supabaseProjectId,
-                testingEnabled: !!updatedChat.app?.testingEnabled,
-              }),
-              files: files,
-              dyadDisableFiles: true,
-            });
-
-            const result = await processStreamChunks({
-              fullStream,
-              fullResponse,
-              abortController,
-              chatId: req.chatId,
-              processResponseChunkUpdate,
-            });
-            fullResponse = result.fullResponse;
-            if (result.modelRefused) {
-              modelRefused = true;
-            } else {
-              chatMessages.push({
-                role: "assistant",
-                content: fullResponse,
-              });
-              chatMessages.push({
-                role: "user",
-                content: "OK.",
-              });
-            }
-          }
-        }
-
         // When calling streamText, the messages need to be properly formatted for mixed content
         const fullStream = modelRefused
           ? createEmptyTextStream()
@@ -2319,68 +2250,4 @@ These are the other apps that I've mentioned in my prompt. These other apps' cod
 
 ${otherAppsCodebaseInfo}
 `;
-}
-
-async function getMcpTools(
-  event: IpcMainInvokeEvent,
-  chatId: number,
-): Promise<ToolSet> {
-  const mcpToolSet: ToolSet = {};
-  try {
-    const servers = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.enabled, true as any));
-    for (const s of servers) {
-      // One bad server (e.g. unconnected OAuth) must not strip tools
-      // from every later enabled server in the same agent run.
-      const toolSet = await (async () => {
-        try {
-          const client = await mcpManager.getClient(s.id);
-          return await client.tools();
-        } catch (e) {
-          logger.warn(
-            `Failed to load tools for MCP server ${s.id} (${s.name})`,
-            e,
-          );
-          return null;
-        }
-      })();
-      if (!toolSet) continue;
-      for (const [name, mcpTool] of Object.entries(toolSet)) {
-        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "-")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-        mcpToolSet[key] = {
-          description: mcpTool.description,
-          inputSchema: mcpTool.inputSchema,
-          execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
-            const inputPreview =
-              typeof args === "string"
-                ? args
-                : Array.isArray(args)
-                  ? args.join(" ")
-                  : JSON.stringify(args).slice(0, 500);
-            const { approved } = await requireMcpToolConsent(event, {
-              serverId: s.id,
-              serverName: s.name,
-              toolName: name,
-              toolDescription: mcpTool.description,
-              inputPreview,
-              chatId,
-            });
-
-            if (!approved)
-              throw new DyadError(
-                `User declined running tool ${key}`,
-                DyadErrorKind.UserCancelled,
-              );
-            const res = await mcpTool.execute(args, execCtx);
-            return sanitizeMcpToolResult(res).serialized;
-          },
-        };
-      }
-    }
-  } catch (e) {
-    logger.warn("Failed building MCP toolset", e);
-  }
-  return mcpToolSet;
 }

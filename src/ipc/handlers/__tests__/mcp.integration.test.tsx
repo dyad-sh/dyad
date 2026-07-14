@@ -6,9 +6,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { asc, eq } from "drizzle-orm";
-
-import { messages as messagesTable } from "@/db/schema";
 import { ipc } from "@/ipc/types";
 import {
   setupHybridChatHarness,
@@ -27,7 +24,6 @@ describe("MCP chat flows (integration)", () => {
         isTestMode: true,
         enableDyadPro: true,
         providerSettings: { auto: { apiKey: { value: "testdyadkey" } } },
-        enableMcpServersForBuildMode: true,
         enableSandboxScriptExecution: true,
         enableMcpToolSearch: true,
         enableCodeExplorer: false,
@@ -39,7 +35,6 @@ describe("MCP chat flows (integration)", () => {
     await harness.mcp.resetServers();
     await ipc.settings.setUserSettings({
       autoApproveSafeMcpTools: false,
-      enableMcpServersForBuildMode: true,
       enableSandboxScriptExecution: true,
       enableMcpToolSearch: true,
       enableCodeExplorer: false,
@@ -50,25 +45,15 @@ describe("MCP chat flows (integration)", () => {
     await harness?.dispose();
   });
 
-  async function mountChat(mode: "build" | "local-agent"): Promise<number> {
+  async function mountChat(): Promise<number> {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
     await waitFor(() => {
       expect(screen.getByTestId("messages-list")).toBeTruthy();
       expect(screen.getByTestId("chat-input-container")).toBeTruthy();
     });
-    await harness.selectChatMode(mode);
+    await harness.selectChatMode("local-agent");
     return chatId;
-  }
-
-  async function assistantContents(chatId: number): Promise<string[]> {
-    const rows = await harness.db.query.messages.findMany({
-      where: eq(messagesTable.chatId, chatId),
-      orderBy: [asc(messagesTable.id)],
-    });
-    return rows
-      .filter((row) => row.role === "assistant")
-      .map((row) => row.content);
   }
 
   async function clickAllowOnce(): Promise<void> {
@@ -81,121 +66,10 @@ describe("MCP chat flows (integration)", () => {
     );
   }
 
-  it("calls a stdio MCP tool from build mode after consent", async () => {
-    await harness.mcp.addStdioServer({
-      env: { testKey1: "testValue1" },
-    });
-    const chatId = await mountChat("build");
-
-    const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
-    const { send } = await harness.typeInChat("[call_tool=calculator_add]", {
-      chatId,
-    });
-    send();
-
-    await screen.findByRole("button", {
-      name: /Always allow/,
-    });
-    expect(
-      screen.getByRole("button", {
-        name: /Tool testing-mcp-server calculator_add/,
-      }),
-    ).toBeTruthy();
-
-    await clickAlwaysAllow();
-    await streamEnd;
-
-    const contents = await assistantContents(chatId);
-    expect(contents.join("\n")).toContain(
-      '<dyad-mcp-tool-call server="testing-mcp-server" tool="calculator_add"',
-    );
-    expect(contents.join("\n")).toContain(
-      '<dyad-mcp-tool-result server="testing-mcp-server" tool="calculator_add"',
-    );
-    expect(
-      harness.bridge.sentEvents.filter(
-        (event) => event.channel === "chat:response:error",
-      ),
-    ).toHaveLength(0);
-  }, 60_000);
-
-  it("calls an HTTP MCP tool from build mode", async () => {
-    const http = await harness.mcp.addHttpServer({
-      headers: { Authorization: "testValue1" },
-    });
-    try {
-      const chatId = await mountChat("build");
-
-      const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
-      const { send } = await harness.typeInChat("[call_tool=calculator_add]", {
-        chatId,
-      });
-      send();
-
-      await clickAllowOnce();
-      await streamEnd;
-
-      expect(
-        screen.getByRole("button", {
-          name: /Tool testing-mcp-server calculator_add/,
-        }),
-      ).toBeTruthy();
-      const contents = await assistantContents(chatId);
-      expect(contents.join("\n")).toContain(
-        '<dyad-mcp-tool-result server="testing-mcp-server" tool="calculator_add"',
-      );
-    } finally {
-      await http.stop();
-    }
-  }, 60_000);
-
-  it("keeps parallel MCP tool results merged while slow results are pending", async () => {
-    await harness.mcp.addStdioServer({
-      env: { SLOW_ADD_DELAY_MS: "4000" },
-    });
-    const chatId = await mountChat("build");
-
-    const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
-    const { send } = await harness.typeInChat("[call_tools_out_of_order]", {
-      chatId,
-    });
-    send();
-
-    for (let i = 0; i < 2; i += 1) {
-      await clickAlwaysAllow();
-    }
-
-    const fastCard = await screen.findByRole("button", {
-      name: /Tool testing-mcp-server calculator_add/,
-    });
-    const slowCard = await screen.findByRole("button", {
-      name: /Tool testing-mcp-server slow_add Running/,
-    });
-
-    expect(fastCard).toBeTruthy();
-    expect(slowCard).toBeTruthy();
-    expect(
-      screen.getAllByRole("button", {
-        name: /Tool testing-mcp-server (calculator_add|slow_add)/,
-      }),
-    ).toHaveLength(2);
-
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByRole("button", {
-            name: /Tool testing-mcp-server slow_add Running/,
-          }),
-        ).toBeNull(),
-      { timeout: 10_000 },
-    );
-    await streamEnd;
-  }, 60_000);
-
   it("auto-approves safe MCP host-function calls in local-agent mode", async () => {
     await ipc.settings.setUserSettings({ autoApproveSafeMcpTools: true });
     await harness.mcp.addStdioServer();
-    const chatId = await mountChat("local-agent");
+    const chatId = await mountChat();
 
     const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
     const { send } = await harness.typeInChat("tc=local-agent/mcp-calculator", {
@@ -213,7 +87,7 @@ describe("MCP chat flows (integration)", () => {
   it("asks for destructive MCP host-function calls after classifier review", async () => {
     await ipc.settings.setUserSettings({ autoApproveSafeMcpTools: true });
     await harness.mcp.addStdioServer();
-    const chatId = await mountChat("local-agent");
+    const chatId = await mountChat();
 
     const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
     const { send } = await harness.typeInChat("tc=local-agent/mcp-delete", {
@@ -231,7 +105,7 @@ describe("MCP chat flows (integration)", () => {
 
   it("asks for safe MCP calls when auto-approval is disabled", async () => {
     await harness.mcp.addStdioServer();
-    const chatId = await mountChat("local-agent");
+    const chatId = await mountChat();
 
     const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
     const { send } = await harness.typeInChat("tc=local-agent/mcp-calculator", {
@@ -251,7 +125,7 @@ describe("MCP chat flows (integration)", () => {
       enableSandboxScriptExecution: false,
     });
     await harness.mcp.addStdioServer();
-    const chatId = await mountChat("local-agent");
+    const chatId = await mountChat();
 
     const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
     const { send } = await harness.typeInChat(
@@ -268,7 +142,7 @@ describe("MCP chat flows (integration)", () => {
   it("lets the user approve while MCP auto-consent classification is pending", async () => {
     await ipc.settings.setUserSettings({ autoApproveSafeMcpTools: true });
     await harness.mcp.addStdioServer();
-    const chatId = await mountChat("local-agent");
+    const chatId = await mountChat();
 
     const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
     const { send } = await harness.typeInChat("tc=local-agent/mcp-print-envs", {
@@ -290,7 +164,7 @@ describe("MCP chat flows (integration)", () => {
     try {
       await harness.mcp.addStdioServer();
 
-      const chatId = await mountChat("local-agent");
+      const chatId = await mountChat();
       const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
       const { send } = await harness.typeInChat(
         "tc=local-agent/mcp-tool-search",
@@ -315,7 +189,7 @@ describe("MCP chat flows (integration)", () => {
     try {
       await harness.mcp.addStdioServer();
 
-      const chatId = await mountChat("local-agent");
+      const chatId = await mountChat();
       const streamEnd = harness.waitForNextStreamEnd(chatId, 30_000);
       const { send } = await harness.typeInChat(
         "tc=local-agent/get-mcp-tool-schema",

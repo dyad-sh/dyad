@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
-import path from "node:path";
 import {
   CommandExecutionError,
   SOCKET_FIREWALL_WARNING_MESSAGE,
@@ -121,21 +120,7 @@ vi.mock("./executeAddDependency", async () => {
 import { db } from "../../db";
 import { gitAdd, hasStagedChanges } from "../utils/git_utils";
 import { processFullResponseActions } from "./response_processor";
-
-function resolveSelfAlias(appPath: string, filePath: unknown): string {
-  const targetPath = String(filePath);
-  const aliasPath = path.join(appPath, "self");
-  const relativePath = path.relative(aliasPath, targetPath);
-  if (
-    relativePath === "" ||
-    (relativePath !== ".." &&
-      !relativePath.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relativePath))
-  ) {
-    return path.join(appPath, relativePath);
-  }
-  return targetPath;
-}
+import { resolveSelfAlias } from "../utils/path_test_utils";
 
 describe("processFullResponseActions add dependency errors", () => {
   beforeEach(() => {

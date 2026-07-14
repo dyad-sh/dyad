@@ -950,6 +950,8 @@ describe("processFullResponse", () => {
     );
 
     const response = `
+      <dyad-write path="src/new.jsx">export default {};</dyad-write>
+      <dyad-rename from="src/old.jsx" to="src/renamed.jsx"></dyad-rename>
       <dyad-delete path="src/keep.jsx"></dyad-delete>
       <dyad-delete path="foo/.."></dyad-delete>
     `;
@@ -959,7 +961,9 @@ describe("processFullResponse", () => {
       messageId: 1,
     });
 
-    expect(result.error).toContain("Refusing to delete project root");
+    expect(result.error).toBe(
+      'Refusing to delete project root for path: "foo/.." No actions from this response were applied. Skipped: 1 write, 1 rename, 2 deletes.',
+    );
     expect(fs.lstatSync).not.toHaveBeenCalled();
     expect(fs.unlinkSync).not.toHaveBeenCalled();
     expect(fs.rmdirSync).not.toHaveBeenCalled();

@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { prepareDeletePath } from "@/ipc/utils/path_utils";
+import { lstatIfExists, prepareDeletePath } from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -52,18 +52,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
         ctx.sharedServerModulePaths.push(operationPath);
       }
 
-      let currentStat: fs.Stats | null = null;
-      try {
-        currentStat = fs.lstatSync(fullFilePath);
-      } catch (error) {
-        if (
-          !(error instanceof Error) ||
-          !("code" in error) ||
-          (error as NodeJS.ErrnoException).code !== "ENOENT"
-        ) {
-          throw error;
-        }
-      }
+      const currentStat = lstatIfExists(fullFilePath);
       if (currentStat) {
         if (currentStat.isDirectory()) {
           fs.rmdirSync(fullFilePath, { recursive: true });

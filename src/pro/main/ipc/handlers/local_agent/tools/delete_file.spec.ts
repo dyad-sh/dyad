@@ -5,6 +5,7 @@ import { deleteFileTool } from "./delete_file";
 import type { AgentContext } from "./types";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
+import { resolveSelfAlias } from "@/ipc/utils/path_test_utils";
 
 vi.mock("node:fs", async () => {
   const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -42,21 +43,6 @@ vi.mock("@/ipc/utils/git_utils", () => ({
 vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
   deleteSupabaseFunction: vi.fn().mockResolvedValue(undefined),
 }));
-
-function resolveSelfAlias(appPath: string, filePath: unknown): string {
-  const targetPath = String(filePath);
-  const aliasPath = path.join(appPath, "self");
-  const relativePath = path.relative(aliasPath, targetPath);
-  if (
-    relativePath === "" ||
-    (relativePath !== ".." &&
-      !relativePath.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relativePath))
-  ) {
-    return path.join(appPath, relativePath);
-  }
-  return targetPath;
-}
 
 describe("deleteFileTool", () => {
   const mockContext: AgentContext = {

@@ -78,6 +78,17 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
   );
 }
 
+export function lstatIfExists(filePath: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(filePath);
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function stripTrailingPathSeparators(filePath: string): string {
   const root = path.parse(filePath).root;
   let strippedPath = filePath;

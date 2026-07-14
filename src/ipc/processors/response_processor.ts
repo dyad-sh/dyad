@@ -6,6 +6,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import {
   assertNotProjectRootPath,
+  lstatIfExists,
   prepareDeletePath,
   PreparedDeletePath,
   safeJoin,
@@ -61,21 +62,6 @@ import { doesSqlMutateSchema } from "@/lib/sqlSchemaMutation";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
-function lstatIfExists(filePath: string): fs.Stats | null {
-  try {
-    return fs.lstatSync(filePath);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      return null;
-    }
-    throw error;
-  }
-}
-
 interface Output {
   message: string;
   error: unknown;
@@ -87,6 +73,39 @@ function formatOutputError(error: unknown): string {
   }
 
   return error instanceof Error ? error.toString() : String(error);
+}
+
+function formatSkippedActionSummary(fullResponse: string): string {
+  const counts: Array<[number, string, string]> = [
+    [getDyadWriteTags(fullResponse).length, "write", "writes"],
+    [getDyadRenameTags(fullResponse).length, "rename", "renames"],
+    [getDyadDeleteTags(fullResponse).length, "delete", "deletes"],
+    [
+      getDyadAddDependencyTags(fullResponse).length,
+      "dependency install",
+      "dependency installs",
+    ],
+    [getDyadExecuteSqlTags(fullResponse).length, "SQL query", "SQL queries"],
+    [
+      getDyadSearchReplaceTags(fullResponse).length,
+      "search-replace",
+      "search-replaces",
+    ],
+    [getDyadCopyTags(fullResponse).length, "copy", "copies"],
+    [
+      getDyadGenerateTestTags(fullResponse).length,
+      "test generation",
+      "test generations",
+    ],
+  ];
+
+  return counts
+    .filter(([count]) => count > 0)
+    .map(
+      ([count, singular, plural]) =>
+        `${count} ${count === 1 ? singular : plural}`,
+    )
+    .join(", ");
 }
 
 export async function dryRunSearchReplace({
@@ -177,7 +196,11 @@ export async function processFullResponseActions(
     );
   } catch (error) {
     logger.error("Refusing unsafe delete response:", error);
-    return { error: String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    const skippedActions = formatSkippedActionSummary(fullResponse);
+    return {
+      error: `${message} No actions from this response were applied. Skipped: ${skippedActions}.`,
+    };
   }
 
   if (
@@ -369,8 +392,8 @@ export async function processFullResponseActions(
 
     // Process all file deletions
     for (const preparedDeletePath of preparedDeletePaths) {
-      // Revalidate immediately before deletion in case the filesystem changed
-      // after the batch preflight.
+      // Revalidate as a best-effort check after the batch preflight. A narrow
+      // TOCTOU window remains before the userspace unlink/rmdir call.
       const { relativePath: filePath, fullPath: fullFilePath } =
         await prepareDeletePath(appPath, preparedDeletePath.relativePath);
       processedDeletePaths.push(filePath);

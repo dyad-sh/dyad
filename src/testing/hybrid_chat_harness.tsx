@@ -83,6 +83,7 @@ import { AppList } from "@/components/AppList";
 import { ChatList } from "@/components/ChatList";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
+import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TitleBar } from "@/app/TitleBar";
 import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
@@ -198,6 +199,8 @@ export interface MountOptions {
   wireAppEvents?: boolean;
   /** Render the plan preview panel alongside ChatPanel for plan-mode tests. */
   withPlanPanel?: boolean;
+  /** Render the security preview panel alongside ChatPanel. */
+  withSecurityPanel?: boolean;
   /** Render the real app sidebar list next to the mounted route. */
   withAppList?: boolean;
   /** Render the real chat sidebar list next to the mounted route. */
@@ -633,10 +636,11 @@ export async function setupHybridChatHarness(
             <>
               <ChatPanel
                 chatId={search.id}
-                isPreviewOpen={!!opts.withPlanPanel}
+                isPreviewOpen={!!opts.withPlanPanel || !!opts.withSecurityPanel}
                 onTogglePreview={() => {}}
               />
               {opts.withPlanPanel && <PlanPanel />}
+              {opts.withSecurityPanel && <SecurityPanel />}
             </>
           );
         },

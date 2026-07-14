@@ -144,13 +144,13 @@ describe("SecurityPanel", () => {
       screen.getByRole("checkbox", { name: "Select SQL injection" }),
     );
     fireEvent.click(screen.getByRole("checkbox", { name: "Select XSS" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fix 2 Issues" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fix 2 issues" }));
 
     await waitFor(() => {
       expect(mocks.streamMessage).toHaveBeenCalledTimes(1);
     });
     expect(
-      screen.getByRole("button", { name: /Fixing 2 Issues/ }),
+      screen.getByRole("button", { name: /Fixing 2 issues/ }),
     ).toBeTruthy();
 
     // Persisting the fix-chat mapping refetches the same review with new
@@ -158,7 +158,7 @@ describe("SecurityPanel", () => {
     mocks.reviewData = { ...mocks.reviewData };
     rerender(<SecurityPanel />);
     expect(
-      screen.getByRole("button", { name: /Fixing 2 Issues/ }),
+      screen.getByRole("button", { name: /Fixing 2 issues/ }),
     ).toBeTruthy();
 
     act(() => {
@@ -167,13 +167,15 @@ describe("SecurityPanel", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /Fixing 2 Issues/ }),
+        screen.queryByRole("button", { name: /Fixing 2 issues/ }),
       ).toBeNull();
     });
-    expect(screen.queryByRole("button", { name: "Fix 2 Issues" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Show fix for all issues" }),
+    ).toBeTruthy();
   });
 
-  it("offers to re-run a reused bulk fix chat with the selected findings", async () => {
+  it("shows a reused all-issues fix chat and offers re-run from its dropdown", async () => {
     mocks.getOrCreateSecurityFixChat.mockResolvedValue({
       chatId: 84,
       created: false,
@@ -191,18 +193,31 @@ describe("SecurityPanel", () => {
       screen.getByRole("checkbox", { name: "Select SQL injection" }),
     );
     fireEvent.click(screen.getByRole("checkbox", { name: "Select XSS" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fix 2 Issues" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fix 2 issues" }));
 
     expect(
       await screen.findByRole("button", {
-        name: "Re-run Fix for 2 Issues",
+        name: "Show fix for all issues",
       }),
     ).toBeTruthy();
     expect(mocks.streamMessage).not.toHaveBeenCalled();
     expect(mocks.selectChat).toHaveBeenLastCalledWith({ chatId: 84, appId: 1 });
+    expect(
+      screen.getByRole("button", { name: "Run review" }).className,
+    ).toContain("bg-primary");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Re-run Fix for 2 Issues" }),
+      screen.getByRole("button", { name: "Show fix for all issues" }),
+    );
+    expect(mocks.toastInfo).toHaveBeenCalledWith("Opened fix chat");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "More fix actions for all issues",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Re-run fix" }),
     );
 
     await waitFor(() => {
@@ -215,7 +230,7 @@ describe("SecurityPanel", () => {
       );
     });
     expect(
-      screen.getByRole("button", { name: /Fixing 2 Issues/ }),
+      screen.getByRole("button", { name: /Fixing 2 issues/ }),
     ).toBeTruthy();
 
     act(() => {
@@ -223,8 +238,31 @@ describe("SecurityPanel", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /2 Issues/ })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Show fix for all issues" }),
+      ).toBeTruthy();
     });
+  });
+
+  it("offers to fix all findings when none are selected", async () => {
+    render(<SecurityPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fix all issues" }));
+
+    await waitFor(() => {
+      expect(mocks.getOrCreateSecurityFixChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appId: 1,
+          reviewChatId: 7,
+          findings: mocks.reviewData.findings,
+        }),
+      );
+    });
+    expect(mocks.streamMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("2 security issues"),
+      }),
+    );
   });
 
   it("shows an existing fix and offers re-run from its overflow menu", async () => {

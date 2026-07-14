@@ -524,6 +524,51 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Warning propagation", () => {
+    it("replaces partial output with an inline warning for Fable refusals", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", id: "text-1", text: "Incomplete output" },
+        {
+          type: "finish",
+          finishReason: "content-filter",
+          rawFinishReason: "refusal",
+        },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const contentUpdates = dbOperations.updates.filter(
+        (update) => update.data.content !== undefined,
+      );
+      const finalContent = contentUpdates.at(-1)?.data.content as string;
+      expect(finalContent).not.toContain("Incomplete output");
+      expect(finalContent).toContain(
+        '<dyad-output type="warning" message="Model refused to respond for safety reasons">',
+      );
+      const aiMessagesUpdate = dbOperations.updates.find(
+        (update) => update.data.aiMessagesJson !== undefined,
+      );
+      expect(JSON.stringify(aiMessagesUpdate?.data.aiMessagesJson)).toContain(
+        "Model refused to respond for safety reasons",
+      );
+      expect(
+        getMessagesByChannel("chat:response:end")[0].args[0],
+      ).toMatchObject({
+        updatedFiles: false,
+      });
+    });
+
     it("includes warning messages in the error payload when a tool fails after warning", async () => {
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });

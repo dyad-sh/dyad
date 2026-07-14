@@ -99,6 +99,10 @@ import { fileExists } from "../utils/file_utils";
 import { isCodeExplorerReady } from "../processors/code_explorer";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
+  isModelRefusal,
+  MODEL_REFUSAL_WARNING,
+} from "@/ipc/utils/model_refusal";
+import {
   extractMentionedAppsCodebasesFromPrompt,
   extractMentionedAppsReferencesFromPrompt,
   type MentionedAppCodebaseEntry,
@@ -163,6 +167,14 @@ import { toRendererMessage } from "../utils/renderer_chat_message";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
+function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
+  return new ReadableStream<TextStreamPart<ToolSet>>({
+    start(controller) {
+      controller.close();
+    },
+  }) as AsyncIterableStream<TextStreamPart<ToolSet>>;
+}
+
 const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
@@ -197,12 +209,13 @@ function parseMcpToolKey(toolKey: string): {
 }
 
 // Helper function to process stream chunks
-async function processStreamChunks({
+export async function processStreamChunks({
   fullStream,
   fullResponse,
   abortController,
   chatId,
   processResponseChunkUpdate,
+  includeReasoning = true,
 }: {
   fullStream: AsyncIterableStream<TextStreamPart<ToolSet>>;
   fullResponse: string;
@@ -211,9 +224,16 @@ async function processStreamChunks({
   processResponseChunkUpdate: (params: {
     fullResponse: string;
   }) => Promise<string>;
-}): Promise<{ fullResponse: string; incrementalResponse: string }> {
+  includeReasoning?: boolean;
+}): Promise<{
+  fullResponse: string;
+  incrementalResponse: string;
+  modelRefused: boolean;
+}> {
+  const responseBeforeStream = fullResponse;
   let incrementalResponse = "";
   let inThinkingBlock = false;
+  let modelRefused = false;
 
   for await (const part of fullStream) {
     let chunk = "";
@@ -226,9 +246,17 @@ async function processStreamChunks({
       chunk = "</think>";
       inThinkingBlock = false;
     }
-    if (part.type === "text-delta") {
+    if (isModelRefusal(part)) {
+      // Anthropic returns Fable classifier refusals as successful responses.
+      // A refusal can arrive after partial output, which Anthropic documents as
+      // incomplete, so replace this stream's output with a persisted warning.
+      fullResponse = responseBeforeStream;
+      incrementalResponse = "";
+      chunk = MODEL_REFUSAL_WARNING;
+      modelRefused = true;
+    } else if (part.type === "text-delta") {
       chunk += part.text;
-    } else if (part.type === "reasoning-delta") {
+    } else if (part.type === "reasoning-delta" && includeReasoning) {
       if (!inThinkingBlock) {
         chunk = "<think>";
         inThinkingBlock = true;
@@ -271,9 +299,13 @@ async function processStreamChunks({
       logger.log(`Stream for chat ${chatId} was aborted`);
       break;
     }
+
+    if (modelRefused) {
+      break;
+    }
   }
 
-  return { fullResponse, incrementalResponse };
+  return { fullResponse, incrementalResponse, modelRefused };
 }
 
 export function registerChatStreamHandlers() {
@@ -1530,6 +1562,8 @@ This conversation includes one or more image attachments. When the user uploads 
           return;
         }
 
+        let modelRefused = false;
+
         // Use MCP agent code path if:
         // 1. The enableMcpServersForBuildMode experiment is on AND
         // 2. Mode is "build" AND there are enabled MCP servers
@@ -1577,23 +1611,31 @@ This conversation includes one or more image attachments. When the user uploads 
               processResponseChunkUpdate,
             });
             fullResponse = result.fullResponse;
-            chatMessages.push({
-              role: "assistant",
-              content: fullResponse,
-            });
-            chatMessages.push({
-              role: "user",
-              content: "OK.",
-            });
+            if (result.modelRefused) {
+              modelRefused = true;
+            } else {
+              chatMessages.push({
+                role: "assistant",
+                content: fullResponse,
+              });
+              chatMessages.push({
+                role: "user",
+                content: "OK.",
+              });
+            }
           }
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { fullStream } = await simpleStreamText({
-          chatMessages,
-          modelClient,
-          files: files,
-        });
+        const fullStream = modelRefused
+          ? createEmptyTextStream()
+          : (
+              await simpleStreamText({
+                chatMessages,
+                modelClient,
+                files: files,
+              })
+            ).fullStream;
 
         // Process the stream as before
         try {
@@ -1605,8 +1647,11 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+          if (result.modelRefused) {
+            modelRefused = true;
+          }
 
-          if (isTurboEditsV2Enabled(settings)) {
+          if (!modelRefused && isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
@@ -1654,9 +1699,7 @@ This conversation includes one or more image attachments. When the user uploads 
               searchReplaceFixAttempts++;
               const userPrompt = {
                 role: "user",
-                content: `${fixSearchReplacePrompt}
-                
-${formattedSearchReplaceIssues}`,
+                content: `${fixSearchReplacePrompt}\n\n${formattedSearchReplaceIssues}`,
               } as const;
 
               const { fullStream: fixSearchReplaceStream } =
@@ -1680,6 +1723,10 @@ ${formattedSearchReplaceIssues}`,
                 processResponseChunkUpdate,
               });
               fullResponse = result.fullResponse;
+              if (result.modelRefused) {
+                modelRefused = true;
+                break;
+              }
               previousAttempts.push({
                 role: "assistant",
                 content: removeNonEssentialTags(result.incrementalResponse),
@@ -1704,6 +1751,7 @@ ${formattedSearchReplaceIssues}`,
           }
 
           if (
+            !modelRefused &&
             !abortController.signal.aborted &&
             hasUnclosedDyadWrite(fullResponse)
           ) {
@@ -1735,23 +1783,24 @@ ${formattedSearchReplaceIssues}`,
                 modelClient,
                 files: files,
               });
-              for await (const part of contStream) {
-                // If the stream was aborted, exit early
-                if (abortController.signal.aborted) {
-                  logger.log(`Stream for chat ${req.chatId} was aborted`);
-                  break;
-                }
-                if (part.type !== "text-delta") continue; // ignore reasoning for continuation
-                fullResponse += part.text;
-                fullResponse = cleanFullResponse(fullResponse);
-                fullResponse = await processResponseChunkUpdate({
-                  fullResponse,
-                });
+              const result = await processStreamChunks({
+                fullStream: contStream,
+                fullResponse,
+                abortController,
+                chatId: req.chatId,
+                processResponseChunkUpdate,
+                includeReasoning: false,
+              });
+              fullResponse = result.fullResponse;
+              if (result.modelRefused) {
+                modelRefused = true;
+                break;
               }
             }
           }
           const addDependencies = getDyadAddDependencyTags(fullResponse);
           if (
+            !modelRefused &&
             !abortController.signal.aborted &&
             // If there are dependencies, we don't want to auto-fix problems
             // because there's going to be type errors since the packages aren't
@@ -1854,6 +1903,10 @@ ${problemReport.problems
                   processResponseChunkUpdate,
                 });
                 fullResponse = result.fullResponse;
+                if (result.modelRefused) {
+                  modelRefused = true;
+                  break;
+                }
                 previousAttempts.push({
                   role: "assistant",
                   content: removeNonEssentialTags(result.incrementalResponse),

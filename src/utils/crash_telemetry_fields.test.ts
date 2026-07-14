@@ -93,9 +93,9 @@ describe("crashAnnotationEventFields", () => {
     });
   });
 
-  it("lets the last key win when sanitized names collide", () => {
+  it("lets the first key win when sanitized names collide", () => {
     expect(
       crashAnnotationEventFields({ "oom-size": "1", oom_size: "2" }),
-    ).toEqual({ crash_annotation_oom_size: "2" });
+    ).toEqual({ crash_annotation_oom_size: "1" });
   });
 });

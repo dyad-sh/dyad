@@ -44,8 +44,11 @@ export function crashAnnotationEventFields(
 ): Record<string, string> {
   const fields: Record<string, string> = {};
   for (const [key, value] of Object.entries(annotations)) {
-    const name = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-    fields[`crash_annotation_${name}`] = value;
+    const name = `crash_annotation_${key.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    // First writer wins on sanitized-name collisions, matching the
+    // parser's precedence of the sources.
+    if (Object.hasOwn(fields, name)) continue;
+    fields[name] = value;
   }
   return fields;
 }

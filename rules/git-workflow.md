@@ -91,7 +91,7 @@ After a commit with lint-staged hooks, re-check both `git status --short` and an
 
 If `pr_push.sh` fails while staging a rename with `fatal: pathspec '<old path>' did not match any files`, run the required format/lint/type checks, commit the already-staged rename manually, then rerun the script so it can complete its checks, push, and PR handling.
 
-When Git file enumeration falls back to filesystem traversal, do not reuse `git check-ignore` for filtering: it depends on the same valid-repository state and can fail open. Use the standalone `ignore` parser for `.gitignore` rules in that fallback.
+For filesystem traversal or bulk sync, do not run `git check-ignore` once per path: it spawns excessive Git processes, and a Git-enumeration fallback may fail open because it depends on the same valid-repository state. Use the cached standalone `ignore` parser for `.gitignore` rules.
 
 ## Skipping automated review
 

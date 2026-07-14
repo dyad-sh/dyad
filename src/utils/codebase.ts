@@ -1,7 +1,7 @@
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import ignore, { type Ignore } from "ignore";
 import { gitListFilesNative } from "../ipc/utils/git_utils";
+import { isPathIgnoredByGitIgnore } from "../ipc/utils/gitignore_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -131,89 +131,6 @@ type FileCache = {
 
 // Cache for file contents
 const fileContentCache = new Map<string, FileCache>();
-
-const gitIgnoreMatcherCache = new Map<
-  string,
-  { mtimeMs: number; matcher: Ignore }
->();
-
-async function loadGitIgnoreMatcher(
-  gitIgnorePath: string,
-): Promise<Ignore | null> {
-  try {
-    const stats = await fsAsync.stat(gitIgnorePath);
-    const cached = gitIgnoreMatcherCache.get(gitIgnorePath);
-    if (cached?.mtimeMs === stats.mtimeMs) {
-      return cached.matcher;
-    }
-
-    const matcher = ignore().add(
-      await fsAsync.readFile(gitIgnorePath, "utf-8"),
-    );
-    gitIgnoreMatcherCache.set(gitIgnorePath, {
-      mtimeMs: stats.mtimeMs,
-      matcher,
-    });
-    return matcher;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      gitIgnoreMatcherCache.delete(gitIgnorePath);
-      return null;
-    }
-    throw error;
-  }
-}
-
-/**
- * Check if a path should be ignored based on git ignore rules.
- */
-async function isGitIgnoredByTraversal(
-  filePath: string,
-  baseDir: string,
-  isDirectory: boolean,
-): Promise<boolean> {
-  try {
-    const relativeToBase = path.relative(baseDir, filePath);
-    if (
-      relativeToBase === "" ||
-      relativeToBase === ".." ||
-      relativeToBase.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativeToBase)
-    ) {
-      return false;
-    }
-
-    const pathParts = relativeToBase.split(path.sep);
-    let currentDir = baseDir;
-    let ignored = false;
-
-    // Apply ignore files from the root toward the path. A nested .gitignore
-    // overrides earlier rules, matching Git's precedence rules. An ignored
-    // directory is never traversed, so its own rules cannot re-include files.
-    for (let index = 0; index < pathParts.length; index++) {
-      const matcher = await loadGitIgnoreMatcher(
-        path.join(currentDir, ".gitignore"),
-      );
-      if (matcher) {
-        const relativePath = path
-          .relative(currentDir, filePath)
-          .split(path.sep)
-          .join("/");
-        const result = matcher.test(
-          isDirectory ? `${relativePath}/` : relativePath,
-        );
-        if (result.ignored) ignored = true;
-        if (result.unignored) ignored = false;
-      }
-      currentDir = path.join(currentDir, pathParts[index]);
-    }
-
-    return ignored;
-  } catch (error) {
-    logger.error(`Error checking if path is git ignored: ${filePath}`, error);
-    return false;
-  }
-}
 
 /**
  * Read file contents with caching based on last modified time
@@ -348,7 +265,11 @@ async function collectFilesByTraversal(
 
       // Skip if the entry is git ignored
       if (
-        await isGitIgnoredByTraversal(fullPath, baseDir, entry.isDirectory())
+        await isPathIgnoredByGitIgnore({
+          basePath: baseDir,
+          filePath: fullPath,
+          isDirectory: entry.isDirectory(),
+        })
       ) {
         return;
       }

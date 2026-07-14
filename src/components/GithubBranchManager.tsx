@@ -25,9 +25,6 @@ import {
   GitPullRequestArrow,
   EllipsisVertical,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
-import { useSettings } from "@/hooks/useSettings";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,8 +76,6 @@ export function GithubBranchManager({
   appId,
   onBranchChange,
 }: BranchManagerProps) {
-  const { settings } = useSettings();
-  const navigate = useNavigate();
   const [branches, setBranches] = useState<string[]>([]);
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -792,32 +787,6 @@ export function GithubBranchManager({
           }`}
         >
           <CardContent className="space-y-4 pt-0">
-            {/* Banner for native git requirement */}
-            {!settings?.enableNativeGit && (
-              <Alert
-                variant="default"
-                className="border-amber-500/50 bg-amber-500/10"
-              >
-                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <AlertTitle className="text-amber-900 dark:text-amber-100">
-                  Native Git Required
-                </AlertTitle>
-                <AlertDescription className="text-amber-800 dark:text-amber-200">
-                  <p className="mb-2">
-                    Some Git actions (like rebase, merge abort, and advanced
-                    branch operations) require Native Git to be enabled.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate({ to: "/settings" })}
-                    className="mt-2 border-amber-600 dark:border-amber-400 text-amber-900 dark:text-amber-100 hover:bg-amber-600/10"
-                  >
-                    Enable in Settings
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
             {/* List of other branches with delete option? Or just rely on Select? */}
             {branches.length > 1 && (
               <div className="mt-2">

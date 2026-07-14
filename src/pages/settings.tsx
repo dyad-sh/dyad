@@ -165,25 +165,6 @@ export default function SettingsPage() {
               </p>
             </div>
             <div className="space-y-4">
-              <div id={SETTING_IDS.nativeGit} className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="enable-native-git"
-                    aria-label="Enable Native Git"
-                    checked={!!settings?.enableNativeGit}
-                    onCheckedChange={(checked) => {
-                      updateSettings({
-                        enableNativeGit: checked,
-                      });
-                    }}
-                  />
-                  <Label htmlFor="enable-native-git">Enable Native Git</Label>
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  This doesn't require any external Git installation and offers
-                  a faster, native-Git performance experience.
-                </div>
-              </div>
               <div
                 id={SETTING_IDS.enableSandboxScriptExecution}
                 className="space-y-1 mt-4"

@@ -3,11 +3,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const { commitPnpmAllowBuildsConfigIfChangedMock, gitIsIgnoredIsoMock } =
-  vi.hoisted(() => ({
-    commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
-    gitIsIgnoredIsoMock: vi.fn(),
-  }));
+const { commitPnpmAllowBuildsConfigIfChangedMock } = vi.hoisted(() => ({
+  commitPnpmAllowBuildsConfigIfChangedMock: vi.fn(),
+}));
 
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
@@ -23,10 +21,6 @@ vi.mock("@/main/settings", () => ({
 
 vi.mock("./test_utils", () => ({
   IS_TEST_BUILD: true,
-}));
-
-vi.mock("./git_utils", () => ({
-  gitIsIgnoredIso: gitIsIgnoredIsoMock,
 }));
 
 vi.mock("@/ipc/utils/socket_firewall", async () => {
@@ -112,8 +106,6 @@ describe("cloud_sandbox_provider incremental sync", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    gitIsIgnoredIsoMock.mockReset();
-    gitIsIgnoredIsoMock.mockResolvedValue(false);
     appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-cloud-sync-"));
     fetchMock = vi.fn(async () => {
       return new Response(
@@ -275,18 +267,15 @@ describe("cloud_sandbox_provider incremental sync", () => {
       path.join(appPath, "symlink-target.ts"),
       path.join(appPath, "linked.ts"),
     );
-
-    gitIsIgnoredIsoMock.mockImplementation(async ({ filepath }) => {
-      return (
-        filepath === ".env" ||
-        filepath === ".env.local" ||
-        filepath === "ignored.ts" ||
-        filepath === "ignored-dir" ||
-        filepath === "nested/.env.local"
-      );
-    });
+    await fs.writeFile(
+      path.join(appPath, ".gitignore"),
+      ".env\n.env.local\nignored.ts\nignored-dir/\nnested/.env.local\n",
+    );
 
     await expect(buildCloudSandboxFileMap(appPath)).resolves.toEqual({
+      ".gitignore": Buffer.from(
+        ".env\n.env.local\nignored.ts\nignored-dir/\nnested/.env.local\n",
+      ),
       ".env": Buffer.from("ROOT_ENV=1"),
       ".env.local": Buffer.from("ROOT_ENV_LOCAL=1"),
       "symlink-target.ts": Buffer.from("outside"),
@@ -298,19 +287,34 @@ describe("cloud_sandbox_provider incremental sync", () => {
     await fs.writeFile(path.join(appPath, "changed.ts"), "updated");
     await fs.writeFile(path.join(appPath, ".env.local"), "SAFE_ENV=1");
     await fs.writeFile(path.join(appPath, "ignored.ts"), "ignored");
+    await fs.mkdir(path.join(appPath, "private"));
+    await fs.writeFile(
+      path.join(appPath, "private", ".gitignore"),
+      "!credentials.ts\n",
+    );
+    await fs.writeFile(
+      path.join(appPath, "private", "credentials.ts"),
+      "secret",
+    );
     await fs.writeFile(path.join(appPath, "symlink-target.ts"), "target");
     await fs.symlink(
       path.join(appPath, "symlink-target.ts"),
       path.join(appPath, "linked.ts"),
     );
-
-    gitIsIgnoredIsoMock.mockImplementation(async ({ filepath }) => {
-      return filepath === ".env.local" || filepath === "ignored.ts";
-    });
+    await fs.writeFile(
+      path.join(appPath, ".gitignore"),
+      ".env.local\nignored.ts\nprivate/\n",
+    );
 
     await syncCloudSandboxDirtyPaths({
       appId: 1,
-      changedPaths: ["changed.ts", ".env.local", "ignored.ts", "linked.ts"],
+      changedPaths: [
+        "changed.ts",
+        ".env.local",
+        "ignored.ts",
+        "private/credentials.ts",
+        "linked.ts",
+      ],
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -318,7 +322,7 @@ describe("cloud_sandbox_provider incremental sync", () => {
     const upload = await parseMultipartUpload(init);
     expect(upload.manifest).toEqual({
       replaceAll: false,
-      deletedFiles: ["ignored.ts", "linked.ts"],
+      deletedFiles: ["ignored.ts", "linked.ts", "private/credentials.ts"],
       files: [
         {
           path: ".env.local",

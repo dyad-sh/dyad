@@ -43,20 +43,6 @@ vi.mock("node:fs", async () => {
 });
 ```
 
-### Mocking isomorphic-git
-
-When mocking isomorphic-git, provide a default export:
-
-```typescript
-vi.mock("isomorphic-git", () => ({
-  default: {
-    add: vi.fn().mockResolvedValue(undefined),
-    commit: vi.fn().mockResolvedValue(undefined),
-    // Add other git methods as needed
-  },
-}));
-```
-
 ### Testing IPC Handlers
 
 When testing IPC handlers, mock the Electron IPC system:

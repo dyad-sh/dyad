@@ -346,11 +346,9 @@ export async function onReady() {
   // Add dyad-apps directory to git safe.directory (required for Windows).
   // The trailing /* allows access to all repositories under the named directory.
   // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
-  if (settings.enableNativeGit) {
-    // Don't need to await because this only needs to run before
-    // the user starts interacting with Dyad app and uses a git-related feature.
-    gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
-  }
+  // Don't need to await because this only needs to run before
+  // the user starts interacting with Dyad app and uses a git-related feature.
+  gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
 
   // Check if app was force-closed by checking for the crash sentinel file.
   // The sentinel is written at startup and deleted in before-quit on clean exit.

@@ -1,6 +1,7 @@
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import { gitIsIgnoredIso, gitListFilesNative } from "../ipc/utils/git_utils";
+import { gitListFilesNative } from "../ipc/utils/git_utils";
+import { isPathIgnoredByGitIgnore } from "../ipc/utils/gitignore_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -131,80 +132,6 @@ type FileCache = {
 // Cache for file contents
 const fileContentCache = new Map<string, FileCache>();
 
-// Cache for git ignored paths
-const gitIgnoreCache = new Map<string, boolean>();
-// Map to store .gitignore file paths and their modification times
-const gitIgnoreMtimes = new Map<string, number>();
-
-/**
- * Check if a path should be ignored based on git ignore rules. Uses isomorphic-git
- */
-async function isGitIgnoredIso(
-  filePath: string,
-  baseDir: string,
-): Promise<boolean> {
-  try {
-    // Check if any relevant .gitignore has been modified
-    // Git checks .gitignore files in the path from the repo root to the file
-    let currentDir = baseDir;
-    const pathParts = path.relative(baseDir, filePath).split(path.sep);
-    let shouldClearCache = false;
-
-    // Check root .gitignore
-    const rootGitIgnorePath = path.join(baseDir, ".gitignore");
-    try {
-      const stats = await fsAsync.stat(rootGitIgnorePath);
-      const lastMtime = gitIgnoreMtimes.get(rootGitIgnorePath) || 0;
-      if (stats.mtimeMs > lastMtime) {
-        gitIgnoreMtimes.set(rootGitIgnorePath, stats.mtimeMs);
-        shouldClearCache = true;
-      }
-    } catch {
-      // Root .gitignore might not exist, which is fine
-    }
-
-    // Check .gitignore files in parent directories
-    for (let i = 0; i < pathParts.length - 1; i++) {
-      currentDir = path.join(currentDir, pathParts[i]);
-      const gitIgnorePath = path.join(currentDir, ".gitignore");
-
-      try {
-        const stats = await fsAsync.stat(gitIgnorePath);
-        const lastMtime = gitIgnoreMtimes.get(gitIgnorePath) || 0;
-        if (stats.mtimeMs > lastMtime) {
-          gitIgnoreMtimes.set(gitIgnorePath, stats.mtimeMs);
-          shouldClearCache = true;
-        }
-      } catch {
-        // This directory might not have a .gitignore, which is fine
-      }
-    }
-
-    // Clear cache if any .gitignore was modified
-    if (shouldClearCache) {
-      gitIgnoreCache.clear();
-    }
-
-    const cacheKey = `${baseDir}:${filePath}`;
-
-    if (gitIgnoreCache.has(cacheKey)) {
-      return gitIgnoreCache.get(cacheKey)!;
-    }
-
-    const relativePath = path.relative(baseDir, filePath);
-    const result = await gitIsIgnoredIso({
-      path: baseDir,
-      filepath: relativePath,
-    });
-
-    gitIgnoreCache.set(cacheKey, result);
-    return result;
-  } catch (error) {
-    logger.error(`Error checking if path is git ignored: ${filePath}`, error);
-    return false;
-  }
-}
-
 /**
  * Read file contents with caching based on last modified time
  */
@@ -269,7 +196,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
   try {
     // We put the vast majority of the computational burden on Git for the
     // sake of performance. Nonetheless, the behavior of this function
-    // should still be as close as possible to collectFilesIsoGit.
+    // should still be as close as possible to collectFilesByTraversal.
     files = (
       await gitListFilesNative({
         path: dir,
@@ -279,12 +206,12 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     ).map((file) => path.join(dir, file));
   } catch (error) {
     logger.error(
-      `Git failed to read directory ${dir} and is falling back to isomorphic-git:`,
+      `Git failed to read directory ${dir} and is falling back to filesystem traversal:`,
       error,
     );
-    // Since collectFilesIsoGit traverses the directory tree manually,
+    // Since collectFilesByTraversal traverses the directory tree manually,
     // we'll still be able to collect the files even if git fails
-    return await collectFilesIsoGit(dir, dir);
+    return await collectFilesByTraversal(dir, dir);
   }
 
   // Git cannot exclude files by size, so we still need to do that manually
@@ -307,10 +234,9 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
 }
 
 /**
- * Recursively walk a directory and collect all relevant files. Uses
- * isomorphic-git to check whether files and directories are gitignored.
+ * Recursively walk a directory and collect all relevant files.
  */
-async function collectFilesIsoGit(
+async function collectFilesByTraversal(
   dir: string,
   baseDir: string,
 ): Promise<string[]> {
@@ -338,13 +264,19 @@ async function collectFilesIsoGit(
       }
 
       // Skip if the entry is git ignored
-      if (await isGitIgnoredIso(fullPath, baseDir)) {
+      if (
+        await isPathIgnoredByGitIgnore({
+          basePath: baseDir,
+          filePath: fullPath,
+          isDirectory: entry.isDirectory(),
+        })
+      ) {
         return;
       }
 
       if (entry.isDirectory()) {
         // Recursively process subdirectories
-        const subDirFiles = await collectFilesIsoGit(fullPath, baseDir);
+        const subDirFiles = await collectFilesByTraversal(fullPath, baseDir);
         files.push(...subDirFiles);
       } else if (entry.isFile()) {
         // Skip excluded files
@@ -513,9 +445,7 @@ async function prepareCodebaseFiles({
     return undefined;
   }
 
-  let files = settings.enableNativeGit
-    ? await collectFilesNativeGit(appPath)
-    : await collectFilesIsoGit(appPath, appPath);
+  let files = await collectFilesNativeGit(appPath);
 
   if (virtualFileSystem) {
     const deletedFiles = new Set(

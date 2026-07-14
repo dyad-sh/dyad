@@ -11,7 +11,7 @@ import {
 } from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
-import { gitIsIgnoredIso } from "./git_utils";
+import { isPathIgnoredByGitIgnore } from "./gitignore_utils";
 import { getDyadEngineBaseUrl } from "./dyad_engine_url";
 
 const logger = log.scope("cloud_sandbox_provider");
@@ -403,18 +403,10 @@ async function isCloudSandboxGitIgnored(
   appPath: string,
   relativePath: string,
 ): Promise<boolean> {
-  try {
-    return await gitIsIgnoredIso({
-      path: appPath,
-      filepath: normalizePath(relativePath),
-    });
-  } catch (error) {
-    logger.warn(
-      `Failed to evaluate gitignore rules for cloud sandbox path ${relativePath}:`,
-      error,
-    );
-    return false;
-  }
+  return isPathIgnoredByGitIgnore({
+    basePath: appPath,
+    filePath: path.join(appPath, normalizePath(relativePath)),
+  });
 }
 
 async function shouldIncludeCloudSandboxPath(

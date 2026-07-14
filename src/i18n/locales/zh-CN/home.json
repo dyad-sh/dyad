@@ -438,8 +438,6 @@
       "abortAndSwitch": "中止 {{type}} 并切换",
       "branches": "分支",
       "branchesDescription": "管理您的分支，包括合并、删除等操作。",
-      "nativeGitRequired": "需要原生 Git",
-      "nativeGitDescription": "某些 Git 操作（如变基、合并中止和高级分支操作）需要启用原生 Git。",
       "enableInSettings": "在设置中启用",
       "mergeInto": "合并到 {{branch}}",
       "branchCreated": "分支 '{{name}}' 已创建",

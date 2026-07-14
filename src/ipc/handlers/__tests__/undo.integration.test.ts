@@ -11,10 +11,7 @@
 // "Restored version" success toast is asserted alongside the revert commit,
 // restored files, and deleted messages.
 //
-// Covers all three e2e tests:
-//   - "undo" (isomorphic git)
-//   - "undo with native git"
-//   - "undo after assistant with no code"
+// Covers the undo and "undo after assistant with no code" e2e scenarios.
 import { execFileSync } from "node:child_process";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -26,7 +23,6 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
-import { writeSettings } from "@/main/settings";
 import { messages as messagesTable } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 
@@ -150,7 +146,6 @@ describe("undo (integration)", () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
       autoApprove: true,
-      enableNativeGit: true,
       settings: { isTestMode: true },
     });
     execFileSync("git", ["branch", "-M", "master"], {
@@ -163,19 +158,11 @@ describe("undo (integration)", () => {
     await harness?.dispose();
   });
 
-  it("undo with native git", async () => {
-    writeSettings({ enableNativeGit: true });
-    await runUndoCycle();
-  }, 60_000);
-
-  it("undo with isomorphic git", async () => {
-    writeSettings({ enableNativeGit: false });
+  it("undo with git", async () => {
     await runUndoCycle();
   }, 60_000);
 
   it("undo after assistant with no code", async () => {
-    writeSettings({ enableNativeGit: true });
-
     harness.mount();
     await waitFor(
       () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),

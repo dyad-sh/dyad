@@ -17,10 +17,6 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("@/main/settings", () => ({
-  readSettings: vi.fn(),
-}));
-
 import { gitListFilesNative } from "@/ipc/utils/git_utils";
 import {
   ensureGitLineEndingPolicy,
@@ -28,7 +24,6 @@ import {
   getGitUncommittedFilesWithStatus,
   countChangedLines,
 } from "@/ipc/utils/git_utils";
-import { readSettings } from "@/main/settings";
 
 const execFileAsync = promisify(execFile);
 
@@ -52,7 +47,6 @@ describe("ensureGitLineEndingPolicy", () => {
   });
 
   it("sets repo-local native git line ending config and creates gitattributes", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
 
     await runGit(repoDir, ["init"]);
@@ -77,7 +71,6 @@ describe("ensureGitLineEndingPolicy", () => {
   });
 
   it("does not overwrite an existing gitattributes file", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: false } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
     await runGit(repoDir, ["init"]);
     await fs.promises.writeFile(
@@ -96,7 +89,6 @@ describe("ensureGitLineEndingPolicy", () => {
   });
 
   it("does not create gitattributes for non-repo paths", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: false } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
 
     await ensureGitLineEndingPolicy({
@@ -110,7 +102,6 @@ describe("ensureGitLineEndingPolicy", () => {
   });
 
   it("caches native git line ending config per repo path", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
 
     await runGit(repoDir, ["init"]);
@@ -200,7 +191,6 @@ describe("getGitUncommittedFiles", () => {
   });
 
   it("ignores Dyad-managed runtime files in native git status", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
 
     await runGit(repoDir, ["init"]);
@@ -221,7 +211,6 @@ describe("getGitUncommittedFiles", () => {
   });
 
   it("ignores Dyad-managed runtime files in native status details", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
 
     await runGit(repoDir, ["init"]);
@@ -243,8 +232,7 @@ describe("getGitUncommittedFiles", () => {
     ]);
   });
 
-  it("reports added/deleted line counts for a modified file (native)", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+  it("reports added/deleted line counts for a modified file", async () => {
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
 
     await runGit(repoDir, ["init"]);

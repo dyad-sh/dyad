@@ -25,11 +25,8 @@ async function amendRuntimeWorkspaceIntoCurrentCommit(po: PageObject) {
   });
 }
 
-const runSwitchVersionTest = async (
-  po: PageObject,
-  disableNativeGit: boolean,
-) => {
-  await po.setUp({ autoApprove: true, disableNativeGit });
+const runSwitchVersionTest = async (po: PageObject) => {
+  await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
 
   await po.previewPanel.snapshotPreview({ name: `v2` });
@@ -53,10 +50,6 @@ const runSwitchVersionTest = async (
   });
 };
 
-testSkipIfWindows("switch versions (native git)", async ({ po }) => {
-  await runSwitchVersionTest(po, false);
-});
-
-testSkipIfWindows("switch versions (isomorphic git)", async ({ po }) => {
-  await runSwitchVersionTest(po, true);
+testSkipIfWindows("switch versions", async ({ po }) => {
+  await runSwitchVersionTest(po);
 });

@@ -64,8 +64,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   selectedThemeId: DEFAULT_THEME_ID,
   isRunning: false,
   lastKnownPerformance: undefined,
-  // Enabled by default in 0.33.0-beta.1
-  enableNativeGit: true,
   enableSandboxScriptExecution: true,
   enableMcpToolSearch: true,
   enableCodeExplorer: true,

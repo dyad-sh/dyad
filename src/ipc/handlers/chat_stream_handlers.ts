@@ -96,7 +96,6 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
-import { isCodeExplorerReady } from "../processors/code_explorer";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
   extractMentionedAppsCodebasesFromPrompt,
@@ -983,12 +982,13 @@ ${componentSnippet}
         );
 
         const frameworkType = detectFrameworkType(appPath);
-        // Gate on Pro to match the `explore_code` tool's `isEnabled`, so the
-        // prompt never points the model at a tool that isn't in the toolset.
+        // Match the Explorer persona's actual tool gate so the prompt never
+        // points the model at spawn_agent(persona="explorer") when that
+        // persona is disabled. Code-index readiness is independent now that
+        // spawn_agent replaces the old explore_code tool.
         const codeExplorerAvailable =
           isDyadProEnabled(settings) &&
-          !!settings.enableCodeExplorer &&
-          isCodeExplorerReady(appPath);
+          settings.enableExplorerSubagent !== false;
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({

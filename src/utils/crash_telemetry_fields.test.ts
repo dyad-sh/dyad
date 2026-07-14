@@ -87,15 +87,28 @@ describe("crashAnnotationEventFields", () => {
     });
   });
 
-  it("lowercases and collapses runs of special characters", () => {
-    expect(crashAnnotationEventFields({ "GPU  Status?!": "ok" })).toEqual({
-      crash_annotation_gpu_status_: "ok",
+  it("drops keys outside the allowlist and reports only their count", () => {
+    expect(
+      crashAnnotationEventFields({
+        "url-chunk": "https://example.com/secret",
+        "switch-1": "--user-data-dir=/home/user",
+        "oom-size": "4096",
+      }),
+    ).toEqual({
+      crash_annotation_oom_size: "4096",
+      crash_annotations_dropped: 2,
+    });
+  });
+
+  it("omits the dropped count when nothing is dropped", () => {
+    expect(crashAnnotationEventFields({ ptype: "browser" })).toEqual({
+      crash_annotation_ptype: "browser",
     });
   });
 
   it("lets the first key win when sanitized names collide", () => {
     expect(
-      crashAnnotationEventFields({ "oom-size": "1", oom_size: "2" }),
-    ).toEqual({ crash_annotation_oom_size: "1" });
+      crashAnnotationEventFields({ "gpu-webgl": "1", gpu_webgl: "2" }),
+    ).toEqual({ crash_annotation_gpu_webgl: "1" });
   });
 });

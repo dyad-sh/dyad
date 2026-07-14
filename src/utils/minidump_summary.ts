@@ -129,7 +129,8 @@ const CRASHPAD_INFO_MIN_SIZE_FOR_MASK = 64; // through the end of address_mask
 // Crashpad annotation object type for plain string values.
 const ANNOTATION_TYPE_STRING = 1;
 
-// Caps so a corrupt dump cannot balloon the summary.
+// Caps so a corrupt dump cannot balloon the summary. Not a strict bound:
+// ptype is exempt, so one entry more is possible.
 const MAX_ANNOTATIONS = 32;
 const MAX_ANNOTATION_KEY_LEN = 64;
 const MAX_ANNOTATION_VALUE_LEN = 512;

@@ -95,16 +95,12 @@ export class PreviewPanel {
       );
     }
 
-    // When the toolbar is narrow (< 700px), `configure`, `problems`,
-    // `security`, and `tests` move into an overflow dropdown. Open the dropdown
-    // first if the direct button isn't visible.
+    // When the tab row is too narrow, trailing tabs move into an overflow
+    // dropdown ("…"). Open the dropdown first if the direct button isn't
+    // visible; the active tab is always rendered in the row itself.
     const directButton = this.page.getByTestId(`${mode}-mode-button`);
     await expect(async () => {
       const isInOverflow =
-        (mode === "security" ||
-          mode === "problems" ||
-          mode === "configure" ||
-          mode === "tests") &&
         (await directButton
           .first()
           .isVisible()

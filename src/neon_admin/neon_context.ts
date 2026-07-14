@@ -2,7 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import log from "electron-log";
 import { getNeonClient } from "./neon_management_client";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import {
   buildSchemaSnapshotSql,
@@ -375,6 +375,9 @@ export async function getNeonTableSchema({
     });
   } catch (error) {
     logger.error("Error getting Neon table schema:", error);
+    if (isDyadError(error)) {
+      throw error;
+    }
     throw new DyadError(
       `Failed to get Neon table schema: ${error instanceof Error ? error.message : String(error)}`,
       DyadErrorKind.External,

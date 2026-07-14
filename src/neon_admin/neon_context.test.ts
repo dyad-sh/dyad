@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getNeonClient } from "./neon_management_client";
 import { getConnectionUri, getNeonTableSchema } from "./neon_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   filterSchemaForTable,
   getSchemaFromSnapshot,
@@ -194,5 +195,20 @@ describe("Neon context", () => {
     ).resolves.toBe(
       '-- No public table named "missing CREATE ROLE admin" found.',
     );
+  });
+
+  it("preserves existing DyadError classifications", async () => {
+    const authError = new DyadError(
+      "Neon authentication failed",
+      DyadErrorKind.Auth,
+    );
+    getNeonClientMock.mockRejectedValue(authError);
+
+    await expect(
+      getNeonTableSchema({
+        projectId: "project-id",
+        branchId: "branch-id",
+      }),
+    ).rejects.toBe(authError);
   });
 });

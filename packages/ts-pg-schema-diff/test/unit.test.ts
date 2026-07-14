@@ -870,6 +870,70 @@ describe("renderSchemaSql", () => {
     expect(sql).not.toContain("CREATE INDEX accounts_invalid_idx");
   });
 
+  it("renders function-dependent table clauses after their functions", () => {
+    const newIdFunction = functionSchema("new_account_id", "sql");
+    const visibilityFunction = functionSchema("can_read_account", "sql");
+    const accounts: Table = {
+      ...table("accounts", [
+        {
+          ...column("id", "integer", false),
+          default: "new_account_id()",
+          dependsOnFunctions: [newIdFunction.name],
+        },
+        {
+          ...column("visible", "boolean", false),
+          isGenerated: true,
+          generationExpression: "can_read_account(id)",
+          dependsOnFunctions: [visibilityFunction.name],
+        },
+      ]),
+      policies: [
+        {
+          kind: "policy",
+          escapedName: escapeIdentifier("accounts_read"),
+          isPermissive: true,
+          appliesTo: ["PUBLIC"],
+          cmd: "r",
+          checkExpression: "",
+          usingExpression: "can_read_account(id)",
+          columns: ["id"],
+          dependsOnFunctions: [visibilityFunction.name],
+        },
+      ],
+    };
+    const accountsIndex: Index = {
+      ...index(
+        "accounts_visible_idx",
+        "CREATE INDEX accounts_visible_idx ON public.accounts (visible)",
+      ),
+      owningRelName: accounts.name,
+    };
+
+    const sql = renderSchemaSql({
+      ...emptySchema(),
+      tables: [accounts],
+      functions: [newIdFunction, visibilityFunction],
+      indexes: [accountsIndex],
+    });
+
+    const functionIndex = sql.indexOf(visibilityFunction.functionDef);
+    const generatedColumnIndex = sql.indexOf(
+      'ADD COLUMN "visible" boolean GENERATED ALWAYS AS (can_read_account(id)) STORED NOT NULL',
+    );
+    const createTableSql = sql.slice(0, sql.indexOf("\n\n"));
+    expect(createTableSql).not.toContain("DEFAULT new_account_id()");
+    expect(createTableSql).not.toContain('"visible"');
+    expect(functionIndex).toBeGreaterThan(-1);
+    expect(sql.indexOf("SET DEFAULT new_account_id()")).toBeGreaterThan(
+      functionIndex,
+    );
+    expect(generatedColumnIndex).toBeGreaterThan(functionIndex);
+    expect(sql.indexOf("CREATE POLICY")).toBeGreaterThan(functionIndex);
+    expect(sql.indexOf("CREATE INDEX accounts_visible_idx")).toBeGreaterThan(
+      generatedColumnIndex,
+    );
+  });
+
   it("filters a schema to a table and its directly relevant objects", () => {
     const touchFunction = functionSchema("touch_account", "sql");
     const unusedFunction = functionSchema("unused", "sql");
@@ -931,7 +995,12 @@ describe("renderSchemaSql", () => {
 
   it("retains functions referenced by selected table defaults and policies", () => {
     const defaultFunction = functionSchema("new_account_id", "sql");
-    const policyFunction = functionSchema("can_read_account", "sql");
+    const policyFunction: FunctionSchema = {
+      ...functionSchema("can_read_account", "sql"),
+      name: procName("private_data", "can_read_account", ""),
+      functionDef:
+        'CREATE FUNCTION "private_data"."can_read_account"() RETURNS integer LANGUAGE sql RETURN 1',
+    };
     const accounts: Table = {
       ...table("accounts", [
         {
@@ -958,6 +1027,10 @@ describe("renderSchemaSql", () => {
     const filtered = filterSchemaForTable(
       {
         ...emptySchema(),
+        namedSchemas: [
+          { kind: "namedSchema", name: "public" },
+          { kind: "namedSchema", name: "private_data" },
+        ],
         tables: [accounts],
         functions: [defaultFunction, policyFunction],
       },
@@ -965,6 +1038,10 @@ describe("renderSchemaSql", () => {
     );
 
     expect(filtered.functions).toEqual([policyFunction, defaultFunction]);
+    expect(filtered.namedSchemas.map((schema) => schema.name)).toEqual([
+      "private_data",
+      "public",
+    ]);
   });
 });
 
@@ -976,6 +1053,12 @@ describe("buildSchemaSnapshotSql", () => {
         tableName: "",
       }),
     ).toBe(buildSchemaSnapshotSql({ includeSchemas: ["public"] }));
+  });
+
+  it("rejects null bytes in schema filters", () => {
+    expect(() => buildSchemaSnapshotSql({ tableName: "users\0admin" })).toThrow(
+      "Database schema filter values cannot contain null bytes",
+    );
   });
 });
 

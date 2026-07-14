@@ -11,6 +11,7 @@ import {
   filterSchemaForTable,
   generateSchemaDiff,
   getSchemaFromSnapshot,
+  renderSchemaSql,
 } from "../src/index.js";
 import { getSchema } from "../src/db/introspect.js";
 import { schemaQualifiedName } from "../src/schema/identifiers.js";
@@ -4975,6 +4976,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
             fn.name.escapedName === '"can_read_account"(account_id bigint)',
         )?.name.schemaName,
       ).toBe("private_data");
+
+      const renderedSql = renderSchemaSql(
+        filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
+      );
+      await createDatabase(pg, "snapshot_render_replay_db");
+      await execSql(
+        pg.databaseUrl("snapshot_render_replay_db"),
+        "DROP SCHEMA public CASCADE;",
+      );
+      await execSql(pg.databaseUrl("snapshot_render_replay_db"), renderedSql);
     } finally {
       await client.end();
     }

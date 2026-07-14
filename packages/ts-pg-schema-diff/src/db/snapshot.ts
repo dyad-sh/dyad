@@ -79,6 +79,9 @@ export type BuildSchemaSnapshotOptions = {
 };
 
 function sqlLiteral(value: string): string {
+  if (value.includes("\0")) {
+    throw new Error("Database schema filter values cannot contain null bytes");
+  }
   return `'${value.replaceAll("'", "''")}'`;
 }
 
@@ -208,6 +211,14 @@ SELECT required_functions.oid FROM required_functions`;
             : `(${functionSchemaPredicate} OR ${requiredFunctionPredicate})`,
         ])
       : scopedQuery(allFunctionsSql, [requiredFunctionPredicate]);
+  const schemasSql =
+    options.includeSchemas === undefined
+      ? getSchemasSql
+      : `SELECT snapshot_schema.*
+FROM (${withoutTrailingSemicolon(scopedQuery(getSchemasSql, [schemaPredicate("schema_name", options.includeSchemas)]))}) AS snapshot_schema
+UNION
+SELECT DISTINCT snapshot_function.func_schema_name AS schema_name
+FROM (${withoutTrailingSemicolon(functionsSql)}) AS snapshot_function`;
   const proceduresSql = scopedQuery(
     replaceRequiredOnce(getProcsSql, "$1", "'p'"),
     tableName === undefined
@@ -250,14 +261,7 @@ SELECT required_functions.oid FROM required_functions`;
         "SELECT current_setting('server_version_num') AS server_version_num",
       ),
     ],
-    [
-      "schemas",
-      queryRows(
-        scopedQuery(getSchemasSql, [
-          schemaPredicate("schema_name", options.includeSchemas),
-        ]),
-      ),
-    ],
+    ["schemas", queryRows(schemasSql)],
     [
       "extensions",
       queryRows(

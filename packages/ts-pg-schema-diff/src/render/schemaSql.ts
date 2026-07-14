@@ -30,11 +30,31 @@ export function renderSchemaSql(
 ): string {
   const deferredChecks: { table: Table; constraint: CheckConstraint }[] = [];
   const omittedComments: string[] = [];
+  const renderedFunctionNames = new Set(
+    schema.functions.map((fn) => fqName(fn.name)),
+  );
   const renderableSchema: Schema = {
     ...schema,
     tables: schema.tables.map((table) => {
+      const deferredGeneratedColumnNames = new Set(
+        table.columns
+          .filter(
+            (column) =>
+              column.isGenerated &&
+              dependsOnRenderedFunction(
+                column.dependsOnFunctions,
+                renderedFunctionNames,
+              ),
+          )
+          .map((column) => column.name),
+      );
       for (const constraint of table.checkConstraints) {
-        if (constraint.dependsOnFunctions.length > 0) {
+        if (
+          constraint.dependsOnFunctions.length > 0 ||
+          constraint.keyColumns.some((columnName) =>
+            deferredGeneratedColumnNames.has(columnName),
+          )
+        ) {
           deferredChecks.push({ table, constraint });
         }
       }
@@ -45,8 +65,30 @@ export function renderSchemaSql(
       }
       return {
         ...table,
+        columns: table.columns
+          .filter((column) => !deferredGeneratedColumnNames.has(column.name))
+          .map((column) =>
+            column.default.length > 0 &&
+            dependsOnRenderedFunction(
+              column.dependsOnFunctions,
+              renderedFunctionNames,
+            )
+              ? { ...column, default: "" }
+              : column,
+          ),
         checkConstraints: table.checkConstraints.filter(
-          (constraint) => constraint.dependsOnFunctions.length === 0,
+          (constraint) =>
+            constraint.dependsOnFunctions.length === 0 &&
+            !constraint.keyColumns.some((columnName) =>
+              deferredGeneratedColumnNames.has(columnName),
+            ),
+        ),
+        policies: table.policies.filter(
+          (policy) =>
+            !dependsOnRenderedFunction(
+              policy.dependsOnFunctions,
+              renderedFunctionNames,
+            ),
         ),
         replicaIdentity:
           table.replicaIdentity === "i" ? "d" : table.replicaIdentity,
@@ -66,17 +108,69 @@ export function renderSchemaSql(
     noConcurrentIndexOperations: options.noConcurrentIndexOperations ?? true,
     schemaRendering: true,
   });
-  const statements = [
-    ...plan.statements.map((statement) => terminateSqlStatement(statement.sql)),
+  const deferredDesiredSchema: Schema = {
+    ...schema,
+    tables: schema.tables.map((table) => {
+      const renderableTable = renderableSchema.tables.find(
+        (candidate) => fqName(candidate.name) === fqName(table.name),
+      );
+      return renderableTable === undefined
+        ? table
+        : {
+            ...table,
+            checkConstraints: renderableTable.checkConstraints,
+            replicaIdentity: renderableTable.replicaIdentity,
+          };
+    }),
+    indexes: renderableSchema.indexes,
+  };
+  const deferredPlan = generatePlan(renderableSchema, deferredDesiredSchema, {
+    noConcurrentIndexOperations: options.noConcurrentIndexOperations ?? true,
+    schemaRendering: true,
+  });
+  const planStatements = plan.statements.map((statement) =>
+    terminateSqlStatement(statement.sql),
+  );
+  const functionStatementSql = new Set(
+    schema.functions.map((fn) => terminateSqlStatement(fn.functionDef)),
+  );
+  let lastFunctionStatementIndex = -1;
+  for (const [index, statement] of planStatements.entries()) {
+    if (functionStatementSql.has(statement)) {
+      lastFunctionStatementIndex = index;
+    }
+  }
+  const deferredStatements = [
+    ...deferredPlan.statements.map((statement) =>
+      terminateSqlStatement(statement.sql),
+    ),
     ...deferredChecks.map(({ table, constraint }) =>
       renderFunctionBackedCheckConstraint(table, constraint),
     ),
+  ];
+  const insertionIndex =
+    lastFunctionStatementIndex >= 0
+      ? lastFunctionStatementIndex + 1
+      : planStatements.length;
+  const statements = [
+    ...planStatements.slice(0, insertionIndex),
+    ...deferredStatements,
+    ...planStatements.slice(insertionIndex),
     ...omittedComments,
   ];
   if (statements.length === 0) {
     return options.emptySchemaComment ?? "-- No schema objects found.";
   }
   return statements.join("\n\n");
+}
+
+function dependsOnRenderedFunction(
+  dependencies: readonly SchemaQualifiedName[],
+  renderedFunctionNames: ReadonlySet<string>,
+): boolean {
+  return dependencies.some((dependency) =>
+    renderedFunctionNames.has(fqName(dependency)),
+  );
 }
 
 function renderFunctionBackedCheckConstraint(
@@ -124,12 +218,27 @@ export function filterSchemaForTable(
       ...table.policies.flatMap((policy) => policy.dependsOnFunctions),
     ]),
   ]);
+  const functions = schema.functions
+    .filter((fn) => functionNames.has(fqName(fn.name)))
+    .sort((left, right) =>
+      fqName(left.name) < fqName(right.name)
+        ? -1
+        : fqName(left.name) > fqName(right.name)
+          ? 1
+          : 0,
+    );
+  const requiredSchemaNames = new Set([
+    schemaName,
+    ...functions.map((fn) => fn.name.schemaName),
+  ]);
 
   return {
     ...emptySchema(),
-    namedSchemas: schema.namedSchemas.filter(
-      (namedSchema) => namedSchema.name === schemaName,
-    ),
+    namedSchemas: schema.namedSchemas
+      .filter((namedSchema) => requiredSchemaNames.has(namedSchema.name))
+      .sort((left, right) =>
+        left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+      ),
     extensions: schema.extensions.filter(
       (extension) => extension.name.schemaName === schemaName,
     ),
@@ -151,15 +260,7 @@ export function filterSchemaForTable(
     sequences: schema.sequences.filter(
       (sequence) => sequence.name.schemaName === schemaName,
     ),
-    functions: schema.functions
-      .filter((fn) => functionNames.has(fqName(fn.name)))
-      .sort((left, right) =>
-        fqName(left.name) < fqName(right.name)
-          ? -1
-          : fqName(left.name) > fqName(right.name)
-            ? 1
-            : 0,
-      ),
+    functions,
     triggers,
   };
 }

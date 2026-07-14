@@ -196,6 +196,7 @@ function SecurityHeader({
   selectedCount,
   onFixSelected,
   isFixingSelected,
+  canRerunSelectedFix,
 }: {
   isRunning: boolean;
   onRun: () => void;
@@ -204,6 +205,7 @@ function SecurityHeader({
   selectedCount: number;
   onFixSelected: () => void;
   isFixingSelected: boolean;
+  canRerunSelectedFix: boolean;
 }) {
   const [isButtonVisible, setIsButtonVisible] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
@@ -297,7 +299,8 @@ function SecurityHeader({
               ) : (
                 <>
                   <Wrench className="w-4 h-4" />
-                  Fix {selectedCount} Issue{selectedCount !== 1 ? "s" : ""}
+                  {canRerunSelectedFix ? "Re-run Fix for" : "Fix"}{" "}
+                  {selectedCount} Issue{selectedCount !== 1 ? "s" : ""}
                 </>
               )}
             </Button>
@@ -744,7 +747,13 @@ export const SecurityPanel = () => {
     new Set(),
   );
   const [isFixingSelected, setIsFixingSelected] = useState(false);
+  const [selectedFixChat, setSelectedFixChat] = useState<{
+    chatId: number;
+    findings: SecurityFinding[];
+  } | null>(null);
   const activeFixStreamChatIdsRef = useRef<Set<number>>(new Set());
+  const selectionScope = `${selectedAppId ?? "no-app"}:${data?.chatId ?? "no-review"}`;
+  const previousSelectionScopeRef = useRef(selectionScope);
 
   const {
     content: fetchedRules,
@@ -761,10 +770,15 @@ export const SecurityPanel = () => {
     }
   }, [fetchedRules]);
 
-  // Clear selections when data changes (e.g., after a new review)
+  // Fix-chat metadata updates also refetch this query. Only a different app or
+  // review should discard the selection for the review currently being fixed.
   useEffect(() => {
-    setSelectedFindings(new Set());
-  }, [data]);
+    if (previousSelectionScopeRef.current !== selectionScope) {
+      setSelectedFindings(new Set());
+      setSelectedFixChat(null);
+      previousSelectionScopeRef.current = selectionScope;
+    }
+  }, [selectionScope]);
 
   const handleSaveRules = async () => {
     if (!selectedAppId) {
@@ -889,7 +903,7 @@ export const SecurityPanel = () => {
     findingsToFix: SecurityFinding[];
     setFixing: (fixing: boolean) => void;
     onFixSettled?: () => void;
-  }): Promise<"created" | "existing" | null> => {
+  }): Promise<{ chatId: number; created: boolean } | null> => {
     if (!selectedAppId) {
       showError("No app selected");
       return null;
@@ -929,7 +943,7 @@ export const SecurityPanel = () => {
       } else {
         setFixing(false);
       }
-      return created ? "created" : "existing";
+      return { chatId, created };
     } catch (err) {
       showError(`Failed to create fix chat: ${err}`);
       setFixing(false);
@@ -969,6 +983,7 @@ export const SecurityPanel = () => {
   };
 
   const handleToggleSelection = (findingKey: string) => {
+    setSelectedFixChat(null);
     setSelectedFindings((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(findingKey)) {
@@ -982,6 +997,8 @@ export const SecurityPanel = () => {
 
   const handleToggleSelectAll = () => {
     if (!data?.findings) return;
+
+    setSelectedFixChat(null);
 
     const sortedFindings = [...data.findings].sort(
       (a, b) => getSeverityOrder(a.level) - getSeverityOrder(b.level),
@@ -1020,15 +1037,29 @@ export const SecurityPanel = () => {
       return;
     }
 
+    if (selectedFixChat) {
+      await streamFixPrompt({
+        chatId: selectedFixChat.chatId,
+        findingsToFix: selectedFixChat.findings,
+        setFixing: setIsFixingSelected,
+        onFixSettled: () => {
+          setSelectedFindings(new Set());
+          setSelectedFixChat(null);
+        },
+      });
+      return;
+    }
+
     const result = await openFixChat({
       findingsToFix,
       setFixing: setIsFixingSelected,
       onFixSettled: () => {
         setSelectedFindings(new Set());
+        setSelectedFixChat(null);
       },
     });
-    if (result === "existing") {
-      setSelectedFindings(new Set());
+    if (result && !result.created) {
+      setSelectedFixChat({ chatId: result.chatId, findings: findingsToFix });
     }
   };
 
@@ -1056,6 +1087,7 @@ export const SecurityPanel = () => {
           selectedCount={selectedFindings.size}
           onFixSelected={handleFixSelected}
           isFixingSelected={isFixingSelected}
+          canRerunSelectedFix={selectedFixChat !== null}
         />
 
         {isRunningReview ? (

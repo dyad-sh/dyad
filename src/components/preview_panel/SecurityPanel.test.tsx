@@ -138,7 +138,7 @@ describe("SecurityPanel", () => {
       settle = onSettled;
     });
 
-    render(<SecurityPanel />);
+    const { rerender } = render(<SecurityPanel />);
 
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Select SQL injection" }),
@@ -153,6 +153,14 @@ describe("SecurityPanel", () => {
       screen.getByRole("button", { name: /Fixing 2 Issues/ }),
     ).toBeTruthy();
 
+    // Persisting the fix-chat mapping refetches the same review with new
+    // metadata. That must not look like a new review and clear the selection.
+    mocks.reviewData = { ...mocks.reviewData };
+    rerender(<SecurityPanel />);
+    expect(
+      screen.getByRole("button", { name: /Fixing 2 Issues/ }),
+    ).toBeTruthy();
+
     act(() => {
       settle?.({ success: true });
     });
@@ -163,6 +171,60 @@ describe("SecurityPanel", () => {
       ).toBeNull();
     });
     expect(screen.queryByRole("button", { name: "Fix 2 Issues" })).toBeNull();
+  });
+
+  it("offers to re-run a reused bulk fix chat with the selected findings", async () => {
+    mocks.getOrCreateSecurityFixChat.mockResolvedValue({
+      chatId: 84,
+      created: false,
+    });
+    let settle:
+      | ((result: { success: boolean; pausedByStepLimit?: boolean }) => void)
+      | undefined;
+    mocks.streamMessage.mockImplementation(async ({ onSettled }) => {
+      settle = onSettled;
+    });
+
+    render(<SecurityPanel />);
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select SQL injection" }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select XSS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Fix 2 Issues" }));
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Re-run Fix for 2 Issues",
+      }),
+    ).toBeTruthy();
+    expect(mocks.streamMessage).not.toHaveBeenCalled();
+    expect(mocks.selectChat).toHaveBeenLastCalledWith({ chatId: 84, appId: 1 });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Re-run Fix for 2 Issues" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.streamMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 84,
+          appId: 1,
+          prompt: expect.stringContaining("2 security issues"),
+        }),
+      );
+    });
+    expect(
+      screen.getByRole("button", { name: /Fixing 2 Issues/ }),
+    ).toBeTruthy();
+
+    act(() => {
+      settle?.({ success: true });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /2 Issues/ })).toBeNull();
+    });
   });
 
   it("shows an existing fix and offers re-run from its overflow menu", async () => {

@@ -605,7 +605,6 @@ validate_pr_body() {
   local body="$1"
 
   grep -qE '^## Summary[[:space:]]*$' <<<"$body" || die "PR body must contain a ## Summary section"
-  grep -qE '^## Testing[[:space:]]*$' <<<"$body" || die "PR body must contain a ## Testing section"
   if grep -qE '^- Primary files:' <<<"$body"; then
     die "PR body must explain the change instead of listing primary files"
   fi

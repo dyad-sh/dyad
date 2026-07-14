@@ -14,11 +14,11 @@ Use this skill to publish the current work to GitHub. It must complete autonomou
 3. Review the complete branch diff and commit range against the base branch. Write:
    - A descriptive commit message for newly staged work.
    - A concise PR title describing the user-visible outcome or engineering purpose.
-   - A reviewer-useful PR body with `## Summary` and `## Testing` sections.
+   - A reviewer-useful PR body with a `## Summary` section.
 
-   The summary must contain 1-3 bullets that explain the motivation, the chosen approach or important design decisions, and meaningful behavior boundaries or trade-offs. Stay close to the user's original intent. Do not use changed filenames as a summary, merely restate commit subjects, or rely on an automated reviewer to explain the change later.
+   Start the summary with a 1-2 sentence overview of the purpose and outcome, then add bullets for the decisions that deserve reviewer attention. Focus those bullets on subjective choices, trade-offs, assumptions, intentional exclusions, behavior boundaries, and questions a reviewer should verify. Use as many bullets as the change needs; optimize for helping a reviewer decide whether the approach is right, not for terseness or narrating the diff.
 
-   The testing section must list the commands run and their results. If local tests were intentionally skipped, state why.
+   Do not add a routine `## Testing` section. Report verification commands and results in the final handoff instead. Stay close to the user's original intent, and do not use changed filenames as a summary, merely restate commit subjects, or rely on an automated reviewer to explain the change later.
 
 4. Save the PR body to an ignored file under `.claude/tmp/`, then run the bundled script from the repository root with all three publishing inputs:
 

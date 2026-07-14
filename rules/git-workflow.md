@@ -72,7 +72,7 @@ When passing a PR body inline via `gh pr create --body "..."`, unescaped backtic
 
 ## PR description quality
 
-Publishing helpers must transport an agent-written PR body based on the complete branch diff; a commit subject plus changed filenames is not an acceptable summary. Include reviewer-useful `Summary` and `Testing` sections, and preserve human or review-tool additions when refreshing an existing PR body.
+Publishing helpers must transport an agent-written PR body based on the complete branch diff; a commit subject plus changed filenames is not an acceptable summary. Start with a 1-2 sentence overview, then highlight subjective design decisions, trade-offs, boundaries, and questions reviewers should verify. Do not add a routine testing section, and preserve human or review-tool additions when refreshing an existing PR body.
 
 ## Formatter Touching Unrelated Skill Files
 

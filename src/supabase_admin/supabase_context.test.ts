@@ -93,7 +93,23 @@ describe("getSupabaseTableSchema", () => {
     expect(runQuery).toHaveBeenCalledTimes(1);
     expect(runQuery).toHaveBeenCalledWith(
       "project-id",
-      expect.stringContaining("AS schema_snapshot"),
+      expect.stringMatching(
+        /snapshot_scope\.table_schema_name IN \('public'\)[\s\S]*snapshot_scope\.table_name = 'users'[\s\S]*AS schema_snapshot/u,
+      ),
     );
+  });
+
+  it("returns the empty-table comment when public has no tables", async () => {
+    const runQuery = vi
+      .fn()
+      .mockResolvedValue([{ schema_snapshot: EMPTY_SNAPSHOT }]);
+    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
+
+    await expect(
+      getSupabaseTableSchema({
+        supabaseProjectId: "project-id",
+        organizationSlug: null,
+      }),
+    ).resolves.toBe("-- No public tables found.");
   });
 });

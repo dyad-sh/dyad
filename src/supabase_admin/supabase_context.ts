@@ -267,13 +267,23 @@ export async function getSupabaseTableSchema({
 
   const supabase = await getSupabaseClient({ organizationSlug });
   const snapshotResult = await retryWithRateLimit(
-    () => supabase.runQuery(supabaseProjectId, buildSchemaSnapshotSql()),
+    () =>
+      supabase.runQuery(
+        supabaseProjectId,
+        buildSchemaSnapshotSql({
+          includeSchemas: ["public"],
+          tableName,
+        }),
+      ),
     `Get schema snapshot for ${supabaseProjectId}`,
   );
   const snapshot = normalizeRunQueryRows(snapshotResult)[0]?.schema_snapshot;
   const schema = await getSchemaFromSnapshot(snapshot, {
     includeSchemas: ["public"],
   });
+  if (!tableName && schema.tables.length === 0) {
+    return "-- No public tables found.";
+  }
   const filteredSchema = tableName
     ? filterSchemaForTable(schema, { tableName })
     : schema;

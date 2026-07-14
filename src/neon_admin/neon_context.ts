@@ -358,6 +358,9 @@ export async function getNeonTableSchema({
       NEON_SCHEMA_INTROSPECTION_CONNECTION_OPTIONS,
       (client) => getSchema(client, { includeSchemas: ["public"] }),
     );
+    if (!tableName && schema.tables.length === 0) {
+      return "-- No public tables found.";
+    }
     const filteredSchema = tableName
       ? filterSchemaForTable(schema, { tableName })
       : schema;

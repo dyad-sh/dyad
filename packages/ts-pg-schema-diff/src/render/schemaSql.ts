@@ -2,9 +2,11 @@ import { generatePlan } from "../plan/generate.js";
 import { escapeIdentifier, fqName } from "../schema/identifiers.js";
 import {
   emptySchema,
+  type CheckConstraint,
   type FunctionSchema,
   type Schema,
   type SchemaQualifiedName,
+  type Table,
 } from "../schema/model.js";
 
 export type RenderSchemaSqlOptions = {
@@ -21,15 +23,69 @@ export function renderSchemaSql(
   schema: Schema,
   options: RenderSchemaSqlOptions = {},
 ): string {
-  const plan = generatePlan(emptySchema(), schema, {
+  const deferredChecks: { table: Table; constraint: CheckConstraint }[] = [];
+  const omittedComments: string[] = [];
+  const renderableSchema: Schema = {
+    ...schema,
+    tables: schema.tables.map((table) => {
+      for (const constraint of table.checkConstraints) {
+        if (constraint.dependsOnFunctions.length > 0) {
+          deferredChecks.push({ table, constraint });
+        }
+      }
+      if (table.replicaIdentity === "i") {
+        omittedComments.push(
+          `-- Replica identity using an index is configured on ${fqName(table.name)}; the index identity is not available from introspection.`,
+        );
+      }
+      return {
+        ...table,
+        checkConstraints: table.checkConstraints.filter(
+          (constraint) => constraint.dependsOnFunctions.length === 0,
+        ),
+        replicaIdentity:
+          table.replicaIdentity === "i" ? "d" : table.replicaIdentity,
+      };
+    }),
+    indexes: schema.indexes.filter((index) => {
+      if (!index.isInvalid) {
+        return true;
+      }
+      omittedComments.push(
+        `-- Invalid index ${escapeIdentifier(index.name)} on ${fqName(index.owningRelName)} cannot be recreated and was omitted.`,
+      );
+      return false;
+    }),
+  };
+  const plan = generatePlan(emptySchema(), renderableSchema, {
     noConcurrentIndexOperations: options.noConcurrentIndexOperations ?? true,
+    schemaRendering: true,
   });
-  if (plan.statements.length === 0) {
+  const statements = [
+    ...plan.statements.map((statement) => terminateSqlStatement(statement.sql)),
+    ...deferredChecks.map(({ table, constraint }) =>
+      renderFunctionBackedCheckConstraint(table, constraint),
+    ),
+    ...omittedComments,
+  ];
+  if (statements.length === 0) {
     return options.emptySchemaComment ?? "-- No schema objects found.";
   }
-  return plan.statements
-    .map((statement) => terminateSqlStatement(statement.sql))
-    .join("\n\n");
+  return statements.join("\n\n");
+}
+
+function renderFunctionBackedCheckConstraint(
+  table: Table,
+  constraint: CheckConstraint,
+): string {
+  let sql = `ALTER TABLE ${fqName(table.name)} ADD CONSTRAINT ${escapeIdentifier(constraint.name)} CHECK(${constraint.expression})`;
+  if (!constraint.isInheritable) {
+    sql += " NO INHERIT";
+  }
+  if (!constraint.isValid) {
+    sql += " NOT VALID";
+  }
+  return terminateSqlStatement(sql);
 }
 
 export function filterSchemaForTable(
@@ -83,10 +139,10 @@ export function filterSchemaForTable(
     foreignKeyConstraints: schema.foreignKeyConstraints.filter((constraint) =>
       tableNames.has(fqName(constraint.owningTable)),
     ),
+    // Column defaults are opaque SQL strings, so retain all sequences in the
+    // schema to preserve unowned/shared nextval() dependencies.
     sequences: schema.sequences.filter(
-      (sequence) =>
-        sequence.owner !== null &&
-        tableNames.has(fqName(sequence.owner.tableName)),
+      (sequence) => sequence.name.schemaName === schemaName,
     ),
     functions: schema.functions.filter((fn) =>
       functionNames.has(fqName(fn.name)),

@@ -127,4 +127,33 @@ describe("getConnectionUri", () => {
       }),
     );
   });
+
+  it("returns the empty-table comment when public has no tables", async () => {
+    const neonClient = {
+      listProjectBranchRoles: vi.fn().mockResolvedValue({
+        data: { roles: [{ name: "neondb_owner", protected: false }] },
+      }),
+      listProjectBranchDatabases: vi.fn().mockResolvedValue({
+        data: { databases: [{ name: "neondb" }] },
+      }),
+      getConnectionUri: vi.fn().mockResolvedValue({
+        data: { uri: "postgresql://test" },
+      }),
+    };
+    getNeonClientMock.mockResolvedValue(
+      neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
+    );
+    withDatabaseClientMock.mockImplementation(
+      async (_connectionUri, _options, callback) => callback({} as any),
+    );
+    getSchemaMock.mockResolvedValue({ tables: [] } as any);
+
+    await expect(
+      getNeonTableSchema({
+        projectId: "project-id",
+        branchId: "branch-id",
+      }),
+    ).resolves.toBe("-- No public tables found.");
+    expect(renderSchemaSqlMock).not.toHaveBeenCalled();
+  });
 });

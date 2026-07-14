@@ -816,6 +816,51 @@ describe("renderSchemaSql", () => {
     );
   });
 
+  it("renders valid live states that migration planning cannot recreate", () => {
+    const validationFunction = functionSchema("is_valid_account", "sql");
+    const accounts: Table = {
+      ...table("accounts", [column("id", "bigint", false)]),
+      replicaIdentity: "i",
+      checkConstraints: [
+        {
+          kind: "checkConstraint",
+          name: "accounts_valid_check",
+          keyColumns: ["id"],
+          expression: "is_valid_account(id)",
+          isValid: true,
+          isInheritable: true,
+          dependsOnFunctions: [validationFunction.name],
+        },
+      ],
+    };
+    const invalidIndex: Index = {
+      ...index(
+        "accounts_invalid_idx",
+        "CREATE INDEX accounts_invalid_idx ON public.accounts (id)",
+      ),
+      owningRelName: accounts.name,
+      isInvalid: true,
+    };
+
+    const sql = renderSchemaSql({
+      ...emptySchema(),
+      tables: [accounts],
+      functions: [validationFunction],
+      indexes: [invalidIndex],
+    });
+
+    expect(sql).toContain(validationFunction.functionDef);
+    expect(sql).toContain(
+      'ALTER TABLE "public"."accounts" ADD CONSTRAINT "accounts_valid_check" CHECK(is_valid_account(id));',
+    );
+    expect(sql.indexOf(validationFunction.functionDef)).toBeLessThan(
+      sql.indexOf('ADD CONSTRAINT "accounts_valid_check"'),
+    );
+    expect(sql).toContain("Replica identity using an index is configured");
+    expect(sql).toContain("Invalid index");
+    expect(sql).not.toContain("CREATE INDEX accounts_invalid_idx");
+  });
+
   it("filters a schema to a table and its directly relevant objects", () => {
     const touchFunction = functionSchema("touch_account", "sql");
     const unusedFunction = functionSchema("unused", "sql");
@@ -859,6 +904,20 @@ describe("renderSchemaSql", () => {
     expect(filteredSql).not.toContain('CREATE TABLE "public"."users"');
     expect(filteredSql).not.toContain("users_name_idx");
     expect(filteredSql).not.toContain(unusedFunction.functionDef);
+  });
+
+  it("retains unowned sequences that a selected table default may reference", () => {
+    const sharedSequence = sequenceSchema("shared_sequence");
+    const filtered = filterSchemaForTable(
+      {
+        ...emptySchema(),
+        tables: [table("accounts", [column("id", "bigint", false)])],
+        sequences: [sharedSequence],
+      },
+      { tableName: "accounts" },
+    );
+
+    expect(filtered.sequences).toEqual([sharedSequence]);
   });
 });
 

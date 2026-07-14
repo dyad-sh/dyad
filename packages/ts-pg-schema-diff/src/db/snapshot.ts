@@ -73,20 +73,109 @@ function queryRows(query: string): string {
   return `COALESCE((SELECT jsonb_agg(to_jsonb(snapshot_row)) FROM (${withoutTrailingSemicolon(query)}) AS snapshot_row), '[]'::jsonb)`;
 }
 
+export type BuildSchemaSnapshotOptions = {
+  readonly includeSchemas?: readonly string[];
+  readonly tableName?: string;
+};
+
+function sqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function schemaPredicate(
+  column: string,
+  includeSchemas: readonly string[] | undefined,
+): string | null {
+  if (includeSchemas === undefined) {
+    return null;
+  }
+  if (includeSchemas.length === 0) {
+    return "FALSE";
+  }
+  return `snapshot_scope.${column} IN (${includeSchemas.map(sqlLiteral).join(", ")})`;
+}
+
+function scopedQuery(
+  query: string,
+  predicates: readonly (string | null)[],
+): string {
+  const activePredicates = predicates.filter(
+    (predicate): predicate is string => predicate !== null,
+  );
+  if (activePredicates.length === 0) {
+    return query;
+  }
+  return `SELECT snapshot_scope.*
+FROM (${withoutTrailingSemicolon(query)}) AS snapshot_scope
+WHERE ${activePredicates.join(" AND ")}`;
+}
+
 /**
  * Build one SQL statement that captures every result set needed by getSchema.
  * This is intended for HTTP database APIs, where each DatabaseClient query
  * would otherwise become a separate network request.
  */
-export function buildSchemaSnapshotSql(): string {
-  const functionsSql = getProcsSql.replace("$1", "'f'");
-  const proceduresSql = getProcsSql.replace("$1", "'p'");
+export function buildSchemaSnapshotSql(
+  options: BuildSchemaSnapshotOptions = {},
+): string {
+  const tableNamePredicate = (column: string): string | null =>
+    options.tableName === undefined
+      ? null
+      : `snapshot_scope.${column} = ${sqlLiteral(options.tableName)}`;
+  const tablesSql = scopedQuery(getTablesSql, [
+    schemaPredicate("table_schema_name", options.includeSchemas),
+    tableNamePredicate("table_name"),
+  ]);
+  const checkConstraintsSql = scopedQuery(getCheckConstraintsSql, [
+    schemaPredicate("table_schema_name", options.includeSchemas),
+    tableNamePredicate("table_name"),
+  ]);
+  const unscopedFunctionsSql = scopedQuery(getProcsSql.replace("$1", "'f'"), [
+    schemaPredicate("func_schema_name", options.includeSchemas),
+  ]);
+  const targetTableOidsSql = `SELECT snapshot_table.oid::OID FROM (${withoutTrailingSemicolon(tablesSql)}) AS snapshot_table`;
+  const requiredFunctionOidsSql = `WITH RECURSIVE function_roots(oid) AS (
+    SELECT trigger_row.tgfoid
+    FROM pg_catalog.pg_trigger AS trigger_row
+    WHERE trigger_row.tgrelid IN (${targetTableOidsSql})
+      AND NOT trigger_row.tgisinternal
+    UNION
+    SELECT dependency.refobjid
+    FROM pg_catalog.pg_depend AS dependency
+    INNER JOIN pg_catalog.pg_constraint AS constraint_row
+      ON dependency.classid = 'pg_constraint'::REGCLASS
+      AND dependency.objid = constraint_row.oid
+    WHERE constraint_row.conrelid IN (${targetTableOidsSql})
+      AND constraint_row.contype = 'c'
+      AND dependency.refclassid = 'pg_proc'::REGCLASS
+      AND dependency.deptype = 'n'
+), required_functions(oid) AS (
+    SELECT function_roots.oid FROM function_roots
+    UNION
+    SELECT dependency.refobjid
+    FROM pg_catalog.pg_depend AS dependency
+    INNER JOIN required_functions
+      ON dependency.classid = 'pg_proc'::REGCLASS
+      AND dependency.objid = required_functions.oid
+    WHERE dependency.refclassid = 'pg_proc'::REGCLASS
+      AND dependency.deptype = 'n'
+)
+SELECT required_functions.oid FROM required_functions`;
+  const functionsSql =
+    options.tableName === undefined
+      ? unscopedFunctionsSql
+      : scopedQuery(unscopedFunctionsSql, [
+          `snapshot_scope.oid::OID IN (${requiredFunctionOidsSql})`,
+        ]);
+  const proceduresSql = scopedQuery(
+    getProcsSql.replace("$1", "'p'"),
+    options.tableName === undefined
+      ? [schemaPredicate("func_schema_name", options.includeSchemas)]
+      : ["FALSE"],
+  );
   const allColumnsSql = getColumnsForTableSql.replace(
     "a.attrelid = $1::OID",
-    `a.attrelid IN (
-        SELECT snapshot_table.oid::OID
-        FROM (${withoutTrailingSemicolon(getTablesSql)}) AS snapshot_table
-    )`,
+    `a.attrelid IN (${targetTableOidsSql})`,
   );
   const allFunctionDependenciesSql = getDependsOnFunctionsSql
     .replace(
@@ -96,7 +185,7 @@ export function buildSchemaSnapshotSql(): string {
             depend.classid = 'pg_constraint'::REGCLASS
             AND depend.objid IN (
                 SELECT snapshot_constraint.oid::OID
-                FROM (${withoutTrailingSemicolon(getCheckConstraintsSql)}) AS snapshot_constraint
+                FROM (${withoutTrailingSemicolon(checkConstraintsSql)}) AS snapshot_constraint
             )
         )
         OR (
@@ -116,23 +205,107 @@ export function buildSchemaSnapshotSql(): string {
         "SELECT current_setting('server_version_num') AS server_version_num",
       ),
     ],
-    ["schemas", queryRows(getSchemasSql)],
-    ["extensions", queryRows(getExtensionsSql)],
-    ["enums", queryRows(getEnumsSql)],
-    ["tables", queryRows(getTablesSql)],
+    [
+      "schemas",
+      queryRows(
+        scopedQuery(getSchemasSql, [
+          schemaPredicate("schema_name", options.includeSchemas),
+        ]),
+      ),
+    ],
+    [
+      "extensions",
+      queryRows(
+        scopedQuery(getExtensionsSql, [
+          schemaPredicate("schema_name", options.includeSchemas),
+        ]),
+      ),
+    ],
+    [
+      "enums",
+      queryRows(
+        scopedQuery(getEnumsSql, [
+          schemaPredicate("enum_schema_name", options.includeSchemas),
+        ]),
+      ),
+    ],
+    ["tables", queryRows(tablesSql)],
     ["columns", queryRows(allColumnsSql)],
-    ["checkConstraints", queryRows(getCheckConstraintsSql)],
-    ["policies", queryRows(getPoliciesSql)],
-    ["tablePrivileges", queryRows(getTablePrivilegesSql)],
-    ["indexes", queryRows(getIndexesSql)],
-    ["foreignKeyConstraints", queryRows(getForeignKeyConstraintsSql)],
-    ["sequences", queryRows(getSequencesSql)],
+    ["checkConstraints", queryRows(checkConstraintsSql)],
+    [
+      "policies",
+      queryRows(
+        scopedQuery(getPoliciesSql, [
+          schemaPredicate("owning_table_schema_name", options.includeSchemas),
+          tableNamePredicate("owning_table_name"),
+        ]),
+      ),
+    ],
+    [
+      "tablePrivileges",
+      queryRows(
+        scopedQuery(getTablePrivilegesSql, [
+          schemaPredicate("table_schema_name", options.includeSchemas),
+          tableNamePredicate("table_name"),
+        ]),
+      ),
+    ],
+    [
+      "indexes",
+      queryRows(
+        scopedQuery(getIndexesSql, [
+          schemaPredicate("table_schema_name", options.includeSchemas),
+          tableNamePredicate("table_name"),
+        ]),
+      ),
+    ],
+    [
+      "foreignKeyConstraints",
+      queryRows(
+        scopedQuery(getForeignKeyConstraintsSql, [
+          schemaPredicate("owning_table_schema_name", options.includeSchemas),
+          tableNamePredicate("owning_table_name"),
+        ]),
+      ),
+    ],
+    [
+      "sequences",
+      queryRows(
+        scopedQuery(getSequencesSql, [
+          schemaPredicate("sequence_schema_name", options.includeSchemas),
+        ]),
+      ),
+    ],
     ["functions", queryRows(functionsSql)],
     ["procedures", queryRows(proceduresSql)],
     ["functionDependencies", queryRows(allFunctionDependenciesSql)],
-    ["triggers", queryRows(getTriggersSql)],
-    ["views", queryRows(getViewsSql)],
-    ["materializedViews", queryRows(getMaterializedViewsSql)],
+    [
+      "triggers",
+      queryRows(
+        scopedQuery(getTriggersSql, [
+          schemaPredicate("owning_table_schema_name", options.includeSchemas),
+          tableNamePredicate("owning_table_name"),
+        ]),
+      ),
+    ],
+    [
+      "views",
+      queryRows(
+        scopedQuery(getViewsSql, [
+          schemaPredicate("schema_name", options.includeSchemas),
+          options.tableName === undefined ? null : "FALSE",
+        ]),
+      ),
+    ],
+    [
+      "materializedViews",
+      queryRows(
+        scopedQuery(getMaterializedViewsSql, [
+          schemaPredicate("schema_name", options.includeSchemas),
+          options.tableName === undefined ? null : "FALSE",
+        ]),
+      ),
+    ],
   ];
   const argumentsSql = fields
     .flatMap(([key, expression]) => [`'${key}'`, expression])

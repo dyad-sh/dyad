@@ -8,6 +8,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildSchemaSnapshotSql,
+  filterSchemaForTable,
   generateSchemaDiff,
   getSchemaFromSnapshot,
 } from "../src/index.js";
@@ -4909,6 +4910,11 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         $$;
         CREATE TRIGGER accounts_touch BEFORE UPDATE ON accounts
           FOR EACH ROW EXECUTE FUNCTION touch_account();
+        CREATE TABLE unrelated (id integer PRIMARY KEY);
+        CREATE FUNCTION unrelated_function() RETURNS integer
+          LANGUAGE sql RETURN 1;
+        CREATE SCHEMA private_data;
+        CREATE TABLE private_data.secret_table (id integer PRIMARY KEY);
       `,
     );
 
@@ -4927,6 +4933,20 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       );
 
       expect(snapshotSchema).toEqual(directSchema);
+
+      const scopedResult = await client.query(
+        buildSchemaSnapshotSql({
+          includeSchemas: ["public"],
+          tableName: "accounts",
+        }),
+      );
+      const scopedSchema = await getSchemaFromSnapshot(
+        scopedResult.rows[0]?.schema_snapshot,
+        { includeSchemas: ["public"] },
+      );
+      expect(
+        filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
+      ).toEqual(filterSchemaForTable(directSchema, { tableName: "accounts" }));
     } finally {
       await client.end();
     }

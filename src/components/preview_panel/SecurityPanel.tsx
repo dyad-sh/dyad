@@ -148,6 +148,7 @@ function RunReviewButton({
       className="gap-2"
       disabled={isRunning}
       variant={secondary ? "outline" : "default"}
+      data-variant={secondary ? "secondary" : "primary"}
     >
       {isRunning ? (
         <>

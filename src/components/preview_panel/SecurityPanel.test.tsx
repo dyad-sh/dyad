@@ -287,11 +287,13 @@ describe("SecurityPanel", () => {
         }),
       );
     });
-    expect(mocks.streamMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("2 security issues"),
-      }),
-    );
+    await waitFor(() => {
+      expect(mocks.streamMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: expect.stringContaining("2 security issues"),
+        }),
+      );
+    });
   });
 
   it("shows an existing fix and offers re-run from its overflow menu", async () => {

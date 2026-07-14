@@ -266,8 +266,10 @@ ${finding.description}`;
         screen.getByRole("button", { name: "Show fix for all issues" }),
       ).toBeTruthy();
       expect(
-        screen.getByRole("button", { name: "Run review" }).className,
-      ).toContain("bg-primary");
+        screen
+          .getByRole("button", { name: "Run review" })
+          .getAttribute("data-variant"),
+      ).toBe("primary");
     });
 
     fireEvent.click(

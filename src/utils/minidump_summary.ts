@@ -8,6 +8,11 @@ import fs from "node:fs";
 export interface MinidumpSummary {
   crashReason?: string; // e.g. "SIGABRT" / "SIGSEGV" (POSIX) or NTSTATUS name
   exceptionCode: number; // raw code, in case the name table misses it
+  faultAddress?: `0x${string}` | "non-null"; // for memory faults; exact only near null
+  accessType?: "read" | "write" | "execute"; // Windows access violations and in-page errors
+  inPageErrorStatus?: string; // NTSTATUS of the paging failure, hex (e.g. "0xc000009c")
+  oomAllocationSizeBytes?: number; // failed allocation size for Chromium OOM crashes
+  fastFailCode?: number; // FAST_FAIL reason for Windows 0xC0000409, e.g. 7 is abort()
   faultingModule?: string; // basename of the module containing the crash address
   faultingOffset?: string; // hex offset of the crash address within that module
   faultingDebugFile?: string; // name keying the module's symbol file, e.g. "electron.exe.pdb"
@@ -60,7 +65,34 @@ const DIR_ENTRY_RVA_OFF = 8;
 //   u32 dataSize          @160
 //   u32 rva               @164  -> file offset of the crashing thread's CPU context
 const EXC_CODE_OFF = 8;
+const EXC_FLAGS_OFF = 12;
+const EXC_ADDRESS_OFF = 24;
+const EXC_NUM_PARAMS_OFF = 32;
+const EXC_PARAMS_OFF = 40;
+const EXC_MAX_PARAMS = 15;
 const EXC_CONTEXT_RVA_OFF = 164;
+// The stream is a fixed-size struct. A smaller declared size means the dump
+// is corrupt, and reads past it would land in a neighboring stream's bytes.
+const EXC_STREAM_SIZE = 168;
+
+// Exception codes whose parameters carry extra detail on Windows.
+const EXC_CODE_ACCESS_VIOLATION = 0xc0000005;
+const EXC_CODE_IN_PAGE_ERROR = 0xc0000006;
+const EXC_CODE_CHROMIUM_OOM = 0xe0000008; // Chromium's kOomExceptionCode
+const EXC_CODE_FAST_FAIL = 0xc0000409;
+
+// ACCESS_VIOLATION parameter 0: how the faulting address was accessed.
+const ACCESS_TYPES: Record<number, "read" | "write" | "execute"> = {
+  0: "read",
+  1: "write",
+  8: "execute",
+};
+
+// macOS EXC_BAD_ACCESS code values whose subcode carries no data fault
+// address; Crashpad stores the instruction pointer instead.
+const MACH_BAD_ACCESS_GPFLT = 13n; // EXC_I386_GPFLT
+const MACH_BAD_ACCESS_PROT_COLLISION = 5n; // VM_PROT_READ | VM_PROT_EXECUTE
+const LINUX_SI_KERNEL = 0x80; // si_code of kernel-origin faults without si_addr
 
 // MINIDUMP_MODULE record: u64 base @0, u32 size @8, ... u32 nameRva @20, with
 // the whole record being 108 bytes (so module N starts at N * 108).
@@ -115,6 +147,7 @@ const MACH_EXCEPTION_NAMES: Record<number, string> = {
 // Windows uses NTSTATUS exception codes; degrades to the raw code when unmatched.
 const NTSTATUS_NAMES: Record<number, string> = {
   0xc0000005: "ACCESS_VIOLATION",
+  0xc0000006: "IN_PAGE_ERROR",
   0xc000001d: "ILLEGAL_INSTRUCTION",
   0xc0000094: "INTEGER_DIVIDE_BY_ZERO",
   0xc00000fd: "STACK_OVERFLOW",
@@ -198,6 +231,7 @@ export function parseMinidumpBuffer(
     // we care about.
     let moduleListRva = 0;
     let exceptionRva = 0;
+    let exceptionSize = 0;
     let crashpadInfoRva = 0;
     let crashpadInfoSize = 0;
     for (let i = 0; i < numStreams; i++) {
@@ -207,17 +241,37 @@ export function parseMinidumpBuffer(
       const size = view.getUint32(entry + DIR_ENTRY_SIZE_OFF, true);
       const rva = view.getUint32(entry + DIR_ENTRY_RVA_OFF, true);
       if (type === STREAM_MODULE_LIST) moduleListRva = rva;
-      else if (type === STREAM_EXCEPTION) exceptionRva = rva;
-      else if (type === STREAM_CRASHPAD_INFO) {
+      else if (type === STREAM_EXCEPTION) {
+        exceptionRva = rva;
+        exceptionSize = size;
+      } else if (type === STREAM_CRASHPAD_INFO) {
         crashpadInfoRva = rva;
         crashpadInfoSize = size;
       }
     }
 
-    if (exceptionRva === 0 || exceptionRva + EXC_CONTEXT_RVA_OFF > buf.length) {
+    if (
+      exceptionRva === 0 ||
+      exceptionSize < EXC_STREAM_SIZE ||
+      exceptionRva + EXC_STREAM_SIZE > buf.length
+    ) {
       return null;
     }
     const exceptionCode = view.getUint32(exceptionRva + EXC_CODE_OFF, true);
+
+    // On arm64, saved addresses can carry pointer-auth / top-byte tag bits.
+    // Crashpad records an address_mask to recover the real address.
+    const addressMask = crashpadInfoRva
+      ? readAddressMask(view, buf, crashpadInfoRva, crashpadInfoSize)
+      : 0n;
+
+    const details = parseExceptionDetails(
+      view,
+      exceptionRva,
+      exceptionCode,
+      platform,
+      addressMask,
+    );
 
     const crashReason =
       platform === "win32"
@@ -232,10 +286,7 @@ export function parseMinidumpBuffer(
     // context; the IP sits at an arch-specific offset within it.
     let instructionPointer = 0n;
     const ipOffset = IP_OFFSET_IN_CONTEXT[arch];
-    if (
-      ipOffset !== undefined &&
-      exceptionRva + EXC_CONTEXT_RVA_OFF + 4 <= buf.length
-    ) {
+    if (ipOffset !== undefined) {
       const contextRva = view.getUint32(
         exceptionRva + EXC_CONTEXT_RVA_OFF,
         true,
@@ -245,17 +296,8 @@ export function parseMinidumpBuffer(
       }
     }
 
-    // On arm64 the saved pointer can carry pointer-auth / top-byte tag bits.
-    // Crashpad records an address_mask to recover the real address before module
-    // lookup.
-    if (instructionPointer !== 0n && crashpadInfoRva) {
-      const mask = readAddressMask(
-        view,
-        buf,
-        crashpadInfoRva,
-        crashpadInfoSize,
-      );
-      instructionPointer = applyAddressMask(instructionPointer, mask);
+    if (instructionPointer !== 0n) {
+      instructionPointer = applyAddressMask(instructionPointer, addressMask);
     }
 
     let faultingModule: string | undefined;
@@ -282,6 +324,7 @@ export function parseMinidumpBuffer(
     return {
       crashReason,
       exceptionCode,
+      ...details,
       faultingModule,
       faultingOffset,
       faultingDebugFile,
@@ -293,6 +336,113 @@ export function parseMinidumpBuffer(
   } catch {
     return null;
   }
+}
+
+// Read the extra detail the exception record carries: the parameter array
+// (ExceptionInformation) and the data fault address. Parameter meaning depends
+// on the exception code; only codes where they say something useful are
+// mapped. All reads stay within the bounds already checked by the caller
+// (the exception stream spans at least EXC_STREAM_SIZE bytes).
+function parseExceptionDetails(
+  view: DataView,
+  exceptionRva: number,
+  exceptionCode: number,
+  platform: NodeJS.Platform,
+  addressMask: bigint,
+): Pick<
+  MinidumpSummary,
+  | "faultAddress"
+  | "accessType"
+  | "inPageErrorStatus"
+  | "oomAllocationSizeBytes"
+  | "fastFailCode"
+> {
+  const numParams = Math.min(
+    view.getUint32(exceptionRva + EXC_NUM_PARAMS_OFF, true),
+    EXC_MAX_PARAMS,
+  );
+  const params: bigint[] = [];
+  for (let i = 0; i < numParams; i++) {
+    params.push(view.getBigUint64(exceptionRva + EXC_PARAMS_OFF + i * 8, true));
+  }
+
+  if (platform === "win32") {
+    if (exceptionCode === EXC_CODE_ACCESS_VIOLATION && params.length >= 2) {
+      return {
+        accessType: ACCESS_TYPES[Number(params[0])],
+        faultAddress: redactFaultAddress(params[1], addressMask),
+      };
+    }
+    if (exceptionCode === EXC_CODE_IN_PAGE_ERROR && params.length >= 2) {
+      // Same first two parameters as an access violation, plus the NTSTATUS
+      // of the paging failure (e.g. a failing disk or dropped network share).
+      return {
+        accessType: ACCESS_TYPES[Number(params[0])],
+        faultAddress: redactFaultAddress(params[1], addressMask),
+        // The 32-bit NTSTATUS is sign extended into the 64-bit slot;
+        // mask it so every dump prints the status the same way.
+        ...(params.length >= 3 && {
+          inPageErrorStatus: toHex(params[2] & 0xffffffffn),
+        }),
+      };
+    }
+    if (exceptionCode === EXC_CODE_CHROMIUM_OOM && params.length >= 1) {
+      // Number is exact below 2^53 bytes (9 PB), far beyond any real allocation.
+      return { oomAllocationSizeBytes: Number(params[0]) };
+    }
+    if (exceptionCode === EXC_CODE_FAST_FAIL && params.length >= 1) {
+      return { fastFailCode: Number(params[0]) };
+    }
+    return {};
+  }
+
+  // On POSIX, Crashpad stores the data fault address in ExceptionAddress.
+  // Only memory faults have one; for other signals the field is meaningless.
+  // On macOS the parameters are [exception, code0, code1]. For general
+  // protection faults and the read|execute protection collision, there is
+  // no data fault address and Crashpad stores the instruction pointer
+  // instead, so skip the field for those code0 values.
+  const machCode0 = params.length >= 2 ? params[1] : undefined;
+  // On Linux the exception flags field holds si_code. Kernel-origin
+  // faults (SI_KERNEL, e.g. a general protection fault from a
+  // non-canonical address) have no valid fault address and store 0,
+  // which would read as a null dereference.
+  const siCode = view.getUint32(exceptionRva + EXC_FLAGS_OFF, true);
+  const isMemoryFault =
+    platform === "darwin"
+      ? exceptionCode === 1 && // EXC_BAD_ACCESS
+        machCode0 !== MACH_BAD_ACCESS_GPFLT &&
+        machCode0 !== MACH_BAD_ACCESS_PROT_COLLISION
+      : (exceptionCode === 11 || exceptionCode === 7) && // SIGSEGV, SIGBUS
+        siCode !== LINUX_SI_KERNEL;
+  if (isMemoryFault) {
+    return {
+      faultAddress: redactFaultAddress(
+        view.getBigUint64(exceptionRva + EXC_ADDRESS_OFF, true),
+        addressMask,
+      ),
+    };
+  }
+  return {};
+}
+
+function toHex(value: bigint): `0x${string}` {
+  return `0x${value.toString(16)}`;
+}
+
+// Fault addresses are only diagnostic near null, where they mean a field
+// access off a null pointer. An exact address past the null page would
+// expose ASLR layout, and after memory corruption the "pointer" can hold
+// application bytes, so those values are reduced to "non-null" before
+// they can reach telemetry or logs.
+const NULL_PAGE_LIMIT = 0xffffn;
+
+function redactFaultAddress(
+  address: bigint,
+  mask: bigint,
+): `0x${string}` | "non-null" {
+  const masked = applyAddressMask(address, mask);
+  return masked <= NULL_PAGE_LIMIT ? toHex(masked) : "non-null";
 }
 
 // Read the "ptype" Crashpad annotation (the crashing process type) from the

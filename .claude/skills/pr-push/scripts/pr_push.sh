@@ -592,14 +592,21 @@ pr_body() {
     return
   fi
 
-  local base_ref files_line
-  base_ref="$(base_comparison_ref)"
-  files_line="$(git diff --name-only "$base_ref"...HEAD 2>/dev/null | awk 'NR <= 6 { printf "%s%s", sep, $0; sep=", " }' || true)"
+  if [[ -n "${PR_PUSH_PR_BODY_FILE:-}" ]]; then
+    [[ -f "$PR_PUSH_PR_BODY_FILE" ]] || die "PR body file does not exist: $PR_PUSH_PR_BODY_FILE"
+    cat "$PR_PUSH_PR_BODY_FILE"
+    return
+  fi
 
-  printf '## Summary\n'
-  printf -- '- %s\n' "$(git log -1 --pretty=%s)"
-  if [[ -n "$files_line" ]]; then
-    printf -- '- Primary files: %s\n' "$files_line"
+  die "PR body is required; set PR_PUSH_PR_BODY_FILE or PR_PUSH_PR_BODY after reviewing the complete branch diff"
+}
+
+validate_pr_body() {
+  local body="$1"
+
+  grep -qE '^## Summary[[:space:]]*$' <<<"$body" || die "PR body must contain a ## Summary section"
+  if grep -qE '^- Primary files:' <<<"$body"; then
+    die "PR body must explain the change instead of listing primary files"
   fi
 }
 
@@ -653,6 +660,7 @@ create_or_update_pr() {
 
     title="$(pr_title)"
     body="$(pr_body)"
+    validate_pr_body "$body"
     SUGGESTED_TITLE="$title"
     SUGGESTED_BODY="$body"
 

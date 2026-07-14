@@ -8,7 +8,7 @@ import fs from "node:fs";
 export interface MinidumpSummary {
   crashReason?: string; // e.g. "SIGABRT" / "SIGSEGV" (POSIX) or NTSTATUS name
   exceptionCode: number; // raw code, in case the name table misses it
-  faultAddress?: string; // for memory faults: hex address if near null, else "non-null"
+  faultAddress?: `0x${string}` | "non-null"; // for memory faults; exact only near null
   accessType?: "read" | "write" | "execute"; // Windows access violations and in-page errors
   inPageErrorStatus?: string; // NTSTATUS of the paging failure, hex (e.g. "0xc000009c")
   oomAllocationSizeBytes?: number; // failed allocation size for Chromium OOM crashes
@@ -63,6 +63,7 @@ const DIR_ENTRY_RVA_OFF = 8;
 //   u32 dataSize          @160
 //   u32 rva               @164  -> file offset of the crashing thread's CPU context
 const EXC_CODE_OFF = 8;
+const EXC_FLAGS_OFF = 12;
 const EXC_ADDRESS_OFF = 24;
 const EXC_NUM_PARAMS_OFF = 32;
 const EXC_PARAMS_OFF = 40;
@@ -89,6 +90,7 @@ const ACCESS_TYPES: Record<number, "read" | "write" | "execute"> = {
 // address; Crashpad stores the instruction pointer instead.
 const MACH_BAD_ACCESS_GPFLT = 13n; // EXC_I386_GPFLT
 const MACH_BAD_ACCESS_PROT_COLLISION = 5n; // VM_PROT_READ | VM_PROT_EXECUTE
+const LINUX_SI_KERNEL = 0x80; // si_code of kernel-origin faults without si_addr
 
 // MINIDUMP_MODULE record: u64 base @0, u32 size @8, ... u32 nameRva @20, with
 // the whole record being 108 bytes (so module N starts at N * 108).
@@ -354,7 +356,11 @@ function parseExceptionDetails(
       return {
         accessType: ACCESS_TYPES[Number(params[0])],
         faultAddress: redactFaultAddress(params[1], addressMask),
-        ...(params.length >= 3 && { inPageErrorStatus: toHex(params[2]) }),
+        // The 32-bit NTSTATUS is sign extended into the 64-bit slot;
+        // mask it so every dump prints the status the same way.
+        ...(params.length >= 3 && {
+          inPageErrorStatus: toHex(params[2] & 0xffffffffn),
+        }),
       };
     }
     if (exceptionCode === EXC_CODE_CHROMIUM_OOM && params.length >= 1) {
@@ -374,12 +380,18 @@ function parseExceptionDetails(
   // no data fault address and Crashpad stores the instruction pointer
   // instead, so skip the field for those code0 values.
   const machCode0 = params.length >= 2 ? params[1] : undefined;
+  // On Linux the exception flags field holds si_code. Kernel-origin
+  // faults (SI_KERNEL, e.g. a general protection fault from a
+  // non-canonical address) have no valid fault address and store 0,
+  // which would read as a null dereference.
+  const siCode = view.getUint32(exceptionRva + EXC_FLAGS_OFF, true);
   const isMemoryFault =
     platform === "darwin"
       ? exceptionCode === 1 && // EXC_BAD_ACCESS
         machCode0 !== MACH_BAD_ACCESS_GPFLT &&
         machCode0 !== MACH_BAD_ACCESS_PROT_COLLISION
-      : exceptionCode === 11 || exceptionCode === 7; // SIGSEGV, SIGBUS
+      : (exceptionCode === 11 || exceptionCode === 7) && // SIGSEGV, SIGBUS
+        siCode !== LINUX_SI_KERNEL;
   if (isMemoryFault) {
     return {
       faultAddress: redactFaultAddress(
@@ -391,8 +403,8 @@ function parseExceptionDetails(
   return {};
 }
 
-function toHex(value: bigint): string {
-  return "0x" + value.toString(16);
+function toHex(value: bigint): `0x${string}` {
+  return `0x${value.toString(16)}`;
 }
 
 // Fault addresses are only diagnostic near null, where they mean a field
@@ -402,7 +414,10 @@ function toHex(value: bigint): string {
 // they can reach telemetry or logs.
 const NULL_PAGE_LIMIT = 0xffffn;
 
-function redactFaultAddress(address: bigint, mask: bigint): string {
+function redactFaultAddress(
+  address: bigint,
+  mask: bigint,
+): `0x${string}` | "non-null" {
   const masked = applyAddressMask(address, mask);
   return masked <= NULL_PAGE_LIMIT ? toHex(masked) : "non-null";
 }

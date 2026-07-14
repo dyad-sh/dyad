@@ -20,6 +20,7 @@ import { parseMinidumpBuffer } from "@/utils/minidump_summary";
 function buildMinidump(opts: {
   modules: { base: bigint; size: number; name: string }[];
   exceptionCode: number;
+  exceptionFlags?: number; // si_code on Linux dumps
   exceptionAddress?: bigint;
   exceptionParams?: bigint[]; // info[] values, with numberParameters set to length
   ip: bigint;
@@ -81,11 +82,12 @@ function buildMinidump(opts: {
   cursor = (contextRva + contextSize + 7) & ~7;
 
   // --- Exception stream ---
-  // exceptionCode @ +8; exceptionAddress @ +24; numberParameters @ +32 with
-  // info[] @ +40; then a location descriptor for the CPU context above
-  // (its size @ +160, its RVA @ +164).
+  // exceptionCode @ +8; exceptionFlags @ +12; exceptionAddress @ +24;
+  // numberParameters @ +32 with info[] @ +40; then a location descriptor
+  // for the CPU context above (its size @ +160, its RVA @ +164).
   const exceptionRva = cursor;
   dv.setUint32(exceptionRva + 8, opts.exceptionCode, true);
+  dv.setUint32(exceptionRva + 12, opts.exceptionFlags ?? 0, true);
   dv.setBigUint64(exceptionRva + 24, opts.exceptionAddress ?? 0n, true);
   if (opts.exceptionParams) {
     if (opts.exceptionParams.length > 15) {
@@ -208,11 +210,43 @@ describe("parseMinidumpBuffer", () => {
     );
   });
 
+  it("omits the fault address for Linux kernel-origin faults", () => {
+    // A general protection fault (e.g. from a non-canonical address)
+    // arrives as SIGSEGV with SI_KERNEL and si_addr 0. Reporting that 0
+    // would disguise pointer corruption as a null dereference.
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11, // SIGSEGV
+      exceptionFlags: 0x80, // SI_KERNEL
+      exceptionAddress: 0n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(
+      parseMinidumpBuffer(dump, "linux", "x64")!.faultAddress,
+    ).toBeUndefined();
+  });
+
   it("omits the fault address for macOS general protection faults", () => {
     const dump = buildMinidump({
       modules: oneModule,
       exceptionCode: 1, // EXC_BAD_ACCESS
       exceptionParams: [1n, 13n, 0n], // code0 13 is EXC_I386_GPFLT
+      // Crashpad stores the instruction pointer here, not a data address.
+      exceptionAddress: 0x10010n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(
+      parseMinidumpBuffer(dump, "darwin", "x64")!.faultAddress,
+    ).toBeUndefined();
+  });
+
+  it("omits the fault address for macOS read|execute protection collisions", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 1, // EXC_BAD_ACCESS
+      exceptionParams: [1n, 5n, 0n], // code0 5 is VM_PROT_READ | VM_PROT_EXECUTE
       // Crashpad stores the instruction pointer here, not a data address.
       exceptionAddress: 0x10010n,
       ip: 0x10010n,
@@ -329,6 +363,20 @@ describe("parseMinidumpBuffer", () => {
     expect(s!.accessType).toBe("read");
     expect(s!.faultAddress).toBe("0x18");
     expect(s!.inPageErrorStatus).toBe("0xc000009c");
+  });
+
+  it("masks a sign-extended in-page error status to 32 bits", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000006,
+      // The negative NTSTATUS sign extends into the 64-bit slot.
+      exceptionParams: [0n, 0x18n, 0xffffffffc000009cn],
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(parseMinidumpBuffer(dump, "win32", "x64")!.inPageErrorStatus).toBe(
+      "0xc000009c",
+    );
   });
 
   it("reads the failed allocation size for a Chromium OOM crash", () => {

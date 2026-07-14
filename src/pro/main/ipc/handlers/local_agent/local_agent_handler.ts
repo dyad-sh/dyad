@@ -924,6 +924,15 @@ export async function handleLocalAgentStream(
         let streamErrorFromCallback: unknown;
         const retryReplayEvents: RetryReplayEvent[] = [];
         activeRetryReplayEvents = retryReplayEvents;
+        // Keep the stored history and its compaction boundary in the same
+        // canonical shape as the initial messages passed to the AI SDK. The
+        // sanitizer can merge split tool-result messages or remove orphaned
+        // messages, so a count taken before sanitization can skip generated
+        // in-flight messages during mid-turn compaction.
+        currentMessageHistory = sanitizeToolCallTranscript(
+          currentMessageHistory,
+        );
+        baseMessageHistoryCount = currentMessageHistory.length;
         const attemptMessages = needsContinuationInstruction
           ? [
               ...currentMessageHistory,

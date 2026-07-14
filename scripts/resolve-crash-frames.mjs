@@ -134,6 +134,12 @@ function parseCsv(file) {
   const frames = [];
   lines.slice(1).forEach((line, i) => {
     const cells = line.split(",").map(cell);
+    if (cells.length !== header.length) {
+      console.error(
+        `Skipping ${file} row ${i + 2}: expected ${header.length} columns, got ${cells.length}; values with commas are not supported.`,
+      );
+      return;
+    }
     const frame = {
       debugFile: cells[fileCol] ?? "",
       debugId: cells[idCol] ?? "",

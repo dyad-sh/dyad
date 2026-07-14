@@ -60,12 +60,6 @@ describe("MCP chat flows (integration)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Allow once" }));
   }
 
-  async function clickAlwaysAllow(): Promise<void> {
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Always allow" }),
-    );
-  }
-
   it("auto-approves safe MCP host-function calls in local-agent mode", async () => {
     await ipc.settings.setUserSettings({ autoApproveSafeMcpTools: true });
     await harness.mcp.addStdioServer();

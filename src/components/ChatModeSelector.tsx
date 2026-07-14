@@ -5,7 +5,11 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";

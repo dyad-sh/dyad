@@ -7,10 +7,10 @@ import {
   SUPABASE_FUNCTIONS_QUERY,
 } from "./supabase_schema_query";
 import {
+  buildSchemaSnapshotSql,
   filterSchemaForTable,
-  getSchema,
+  getSchemaFromSnapshot,
   renderSchemaSql,
-  type DatabaseClient,
 } from "ts-pg-schema-diff";
 
 async function getPublishableKey({
@@ -139,76 +139,6 @@ const TABLE_NAMES_QUERY = `
   ORDER BY table_name;
 `;
 
-type SupabaseClient = Awaited<ReturnType<typeof getSupabaseClient>>;
-
-function buildSupabaseDatabaseClient({
-  supabase,
-  supabaseProjectId,
-}: {
-  supabase: SupabaseClient;
-  supabaseProjectId: string;
-}): DatabaseClient {
-  const query = (async (
-    queryTextOrConfig: string | { text: string; values?: readonly unknown[] },
-    values?: readonly unknown[],
-  ) => {
-    const queryText =
-      typeof queryTextOrConfig === "string"
-        ? queryTextOrConfig
-        : queryTextOrConfig.text;
-    const queryValues =
-      values ??
-      (typeof queryTextOrConfig === "string"
-        ? undefined
-        : queryTextOrConfig.values);
-    const renderedQuery = inlinePostgresQueryParams(
-      queryText,
-      queryValues ?? [],
-    );
-    const result = await retryWithRateLimit(
-      () => supabase.runQuery(supabaseProjectId, renderedQuery),
-      `Run schema introspection query for ${supabaseProjectId}`,
-    );
-    return { rows: normalizeRunQueryRows(result) };
-  }) as DatabaseClient["query"];
-
-  return {
-    query,
-  };
-}
-
-function inlinePostgresQueryParams(
-  query: string,
-  values: readonly unknown[],
-): string {
-  let rendered = query;
-  for (let index = values.length; index >= 1; index -= 1) {
-    rendered = rendered.replaceAll(
-      new RegExp(`\\$${index}(?!\\d)`, "g"),
-      postgresLiteral(values[index - 1]),
-    );
-  }
-  return rendered;
-}
-
-function postgresLiteral(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "NULL";
-  }
-  if (typeof value === "string") {
-    return `'${value.replaceAll("'", "''")}'`;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  if (typeof value === "boolean") {
-    return value ? "TRUE" : "FALSE";
-  }
-  throw new Error(
-    `Unsupported Supabase schema query parameter: ${String(value)}`,
-  );
-}
-
 function normalizeRunQueryRows(
   result: unknown,
 ): readonly Record<string, unknown>[] {
@@ -336,8 +266,14 @@ export async function getSupabaseTableSchema({
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });
-  const client = buildSupabaseDatabaseClient({ supabase, supabaseProjectId });
-  const schema = await getSchema(client, { includeSchemas: ["public"] });
+  const snapshotResult = await retryWithRateLimit(
+    () => supabase.runQuery(supabaseProjectId, buildSchemaSnapshotSql()),
+    `Get schema snapshot for ${supabaseProjectId}`,
+  );
+  const snapshot = normalizeRunQueryRows(snapshotResult)[0]?.schema_snapshot;
+  const schema = await getSchemaFromSnapshot(snapshot, {
+    includeSchemas: ["public"],
+  });
   const filteredSchema = tableName
     ? filterSchemaForTable(schema, { tableName })
     : schema;

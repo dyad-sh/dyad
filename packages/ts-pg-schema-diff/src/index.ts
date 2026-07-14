@@ -5,6 +5,10 @@ import {
 } from "./db/connect.js";
 import { getSchema, type GetSchemaOptions } from "./db/introspect.js";
 import {
+  buildSchemaSnapshotSql,
+  getSchemaFromSnapshot,
+} from "./db/snapshot.js";
+import {
   generatePlan,
   toSchemaDiffResult,
   type GeneratePlanOptions,
@@ -49,7 +53,9 @@ export type {
 export {
   emptySchema,
   filterSchemaForTable,
+  buildSchemaSnapshotSql,
   getSchema,
+  getSchemaFromSnapshot,
   renderSchemaSql,
   withDatabaseClient,
 };

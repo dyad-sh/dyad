@@ -1,60 +1,84 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getSupabaseClient } from "./supabase_management_client";
 import { getSupabaseTableSchema } from "./supabase_context";
-import {
-  filterSchemaForTable,
-  getSchema,
-  renderSchemaSql,
-} from "ts-pg-schema-diff";
 
 vi.mock("./supabase_management_client", () => ({
   getSupabaseClient: vi.fn(),
 }));
 
-vi.mock("ts-pg-schema-diff", async () => {
-  const actual =
-    await vi.importActual<typeof import("ts-pg-schema-diff")>(
-      "ts-pg-schema-diff",
-    );
-
-  return {
-    ...actual,
-    filterSchemaForTable: vi.fn(),
-    getSchema: vi.fn(),
-    renderSchemaSql: vi.fn(),
-  };
-});
-
 const getSupabaseClientMock = vi.mocked(getSupabaseClient);
-const filterSchemaForTableMock = vi.mocked(filterSchemaForTable);
-const getSchemaMock = vi.mocked(getSchema);
-const renderSchemaSqlMock = vi.mocked(renderSchemaSql);
+
+const EMPTY_SNAPSHOT = {
+  serverVersion: [{ server_version_num: "150000" }],
+  schemas: [{ schema_name: "public" }],
+  extensions: [],
+  enums: [],
+  tables: [],
+  columns: [],
+  checkConstraints: [],
+  policies: [],
+  tablePrivileges: [],
+  indexes: [],
+  foreignKeyConstraints: [],
+  sequences: [],
+  functions: [],
+  procedures: [],
+  functionDependencies: [],
+  triggers: [],
+  views: [],
+  materializedViews: [],
+};
 
 describe("getSupabaseTableSchema", () => {
   beforeEach(() => {
     getSupabaseClientMock.mockReset();
-    filterSchemaForTableMock.mockReset();
-    getSchemaMock.mockReset();
-    renderSchemaSqlMock.mockReset();
   });
 
-  it("renders table schema as SQL through a Supabase runQuery adapter", async () => {
-    const runQuery = vi.fn().mockResolvedValue([{ ok: true }]);
-    const schema = { tables: [{ name: "users" }] } as any;
-    const filteredSchema = { tables: [{ name: "users-filtered" }] } as any;
+  it("renders table schema from one Supabase schema snapshot query", async () => {
+    const runQuery = vi.fn().mockResolvedValue([
+      {
+        schema_snapshot: {
+          ...EMPTY_SNAPSHOT,
+          tables: [
+            {
+              oid: "123",
+              table_name: "users",
+              table_schema_name: "public",
+              replica_identity: "d",
+              rls_enabled: false,
+              rls_forced: false,
+              parent_table_name: "",
+              parent_table_schema_name: "",
+              partition_key_def: "",
+              partition_for_values: "",
+            },
+          ],
+          columns: [
+            {
+              table_oid: "123",
+              column_name: "id",
+              is_not_null: true,
+              has_missing_val_optimization: false,
+              column_size: 8,
+              identity_type: "",
+              start_value: null,
+              increment_value: null,
+              max_value: null,
+              min_value: null,
+              cache_size: null,
+              is_cycle: null,
+              collation_name: "",
+              collation_schema_name: "",
+              default_value: "",
+              generation_expression: "",
+              is_generated: false,
+              column_type: "bigint",
+            },
+          ],
+        },
+      },
+    ]);
     getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
-    getSchemaMock.mockImplementation(async (client) => {
-      const result = await client.query(
-        "SELECT $1::text AS value, $2::int AS number",
-        ["O'Hare", 7],
-      );
-      expect(result.rows).toEqual([{ ok: true }]);
-      return schema;
-    });
-    filterSchemaForTableMock.mockReturnValue(filteredSchema);
-    renderSchemaSqlMock.mockReturnValue(
-      'CREATE TABLE "public"."users" ("id" bigint);',
-    );
 
     await expect(
       getSupabaseTableSchema({
@@ -62,23 +86,14 @@ describe("getSupabaseTableSchema", () => {
         organizationSlug: null,
         tableName: "users",
       }),
-    ).resolves.toBe('CREATE TABLE "public"."users" ("id" bigint);');
+    ).resolves.toBe(
+      'CREATE SCHEMA "public";\n\nCREATE TABLE "public"."users" (\n\t"id" bigint NOT NULL\n);',
+    );
 
+    expect(runQuery).toHaveBeenCalledTimes(1);
     expect(runQuery).toHaveBeenCalledWith(
       "project-id",
-      "SELECT 'O''Hare'::text AS value, 7::int AS number",
-    );
-    expect(getSchemaMock).toHaveBeenCalledWith(expect.anything(), {
-      includeSchemas: ["public"],
-    });
-    expect(filterSchemaForTableMock).toHaveBeenCalledWith(schema, {
-      tableName: "users",
-    });
-    expect(renderSchemaSqlMock).toHaveBeenCalledWith(
-      filteredSchema,
-      expect.objectContaining({
-        emptySchemaComment: '-- No public table named "users" found.',
-      }),
+      expect.stringContaining("AS schema_snapshot"),
     );
   });
 });

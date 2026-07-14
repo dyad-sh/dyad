@@ -6,7 +6,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { generateSchemaDiff } from "../src/index.js";
+import {
+  buildSchemaSnapshotSql,
+  generateSchemaDiff,
+  getSchemaFromSnapshot,
+} from "../src/index.js";
 import { getSchema } from "../src/db/introspect.js";
 import { schemaQualifiedName } from "../src/schema/identifiers.js";
 
@@ -4878,6 +4882,51 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         },
         parentIdx: schemaQualifiedName("public", "foobar_foo_id_key"),
       });
+    } finally {
+      await client.end();
+    }
+  }, 30_000);
+
+  it("reconstructs the same schema from one snapshot query", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "single_query_snapshot_db");
+    await execSql(
+      pg.databaseUrl("single_query_snapshot_db"),
+      `
+        CREATE TYPE account_state AS ENUM ('active', 'disabled');
+        CREATE TABLE accounts (
+          id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+          state account_state NOT NULL,
+          balance integer NOT NULL CHECK (balance >= 0)
+        );
+        CREATE INDEX accounts_state_idx ON accounts (state);
+        ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY accounts_read ON accounts FOR SELECT USING (true);
+        CREATE FUNCTION touch_account() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RETURN NEW;
+        END
+        $$;
+        CREATE TRIGGER accounts_touch BEFORE UPDATE ON accounts
+          FOR EACH ROW EXECUTE FUNCTION touch_account();
+      `,
+    );
+
+    const client = new Client({
+      connectionString: pg.databaseUrl("single_query_snapshot_db"),
+    });
+    await client.connect();
+    try {
+      const directSchema = await getSchema(client, {
+        includeSchemas: ["public"],
+      });
+      const result = await client.query(buildSchemaSnapshotSql());
+      const snapshotSchema = await getSchemaFromSnapshot(
+        result.rows[0]?.schema_snapshot,
+        { includeSchemas: ["public"] },
+      );
+
+      expect(snapshotSchema).toEqual(directSchema);
     } finally {
       await client.end();
     }

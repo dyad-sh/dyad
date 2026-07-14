@@ -116,6 +116,7 @@ WITH identity_col_seq AS (
     WHERE owner_attr.attidentity != ''
 )
 SELECT
+    a.attrelid::TEXT AS table_oid,
     a.attname::TEXT AS column_name,
     a.attnotnull AS is_not_null,
     a.atthasmissing AS has_missing_val_optimization,
@@ -322,6 +323,11 @@ WHERE
 
 export const getDependsOnFunctionsSql = `
 SELECT
+    CASE
+        WHEN depend.classid = 'pg_constraint'::REGCLASS THEN 'pg_constraint'
+        ELSE 'pg_proc'
+    END AS dependent_class,
+    depend.objid::TEXT AS dependent_oid,
     pg_proc.proname::TEXT AS func_name,
     proc_namespace.nspname::TEXT AS func_schema_name,
     pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) AS func_identity_arguments

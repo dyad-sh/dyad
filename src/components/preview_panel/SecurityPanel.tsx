@@ -251,9 +251,11 @@ function SecurityHeader({
       ? `${selectedCount} issue${selectedCount === 1 ? "" : "s"}`
       : "all issues";
   const existingFixIssueLabel =
-    selectedFixCount === totalFindingCount
-      ? "all issues"
-      : `${selectedFixCount} issue${selectedFixCount === 1 ? "" : "s"}`;
+    selectedFixCount === undefined
+      ? ""
+      : selectedFixCount === totalFindingCount
+        ? "all issues"
+        : `${selectedFixCount} issue${selectedFixCount === 1 ? "" : "s"}`;
   const hasSelectedFix = selectedFixCount !== undefined;
   const showSelectedFixActions = hasSelectedFix && !isFixingSelected;
   const activeIssueLabel = hasSelectedFix
@@ -313,6 +315,7 @@ function SecurityHeader({
                 onClick={onShowSelectedFix}
                 variant="outline"
                 className="rounded-r-none"
+                disabled={isRunning}
               >
                 Show fix for {existingFixIssueLabel}
               </Button>
@@ -323,13 +326,17 @@ function SecurityHeader({
                       variant="outline"
                       className="rounded-l-none border-l-0 px-2"
                       aria-label={`More fix actions for ${existingFixIssueLabel}`}
+                      disabled={isRunning}
                     />
                   }
                 >
                   <ChevronDown className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={onRerunSelectedFix}>
+                  <DropdownMenuItem
+                    onClick={onRerunSelectedFix}
+                    disabled={isRunning}
+                  >
                     <Wrench className="size-4" />
                     Re-run fix
                   </DropdownMenuItem>
@@ -346,7 +353,7 @@ function SecurityHeader({
             <Button
               onClick={onFixSelected}
               className="gap-2"
-              disabled={isFixingSelected}
+              disabled={isRunning || isFixingSelected}
             >
               {isFixingSelected ? (
                 <>

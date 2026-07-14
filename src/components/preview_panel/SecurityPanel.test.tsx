@@ -127,6 +127,7 @@ describe("SecurityPanel", () => {
       created: true,
     });
     mocks.streamMessage.mockResolvedValue(undefined);
+    mocks.createChat.mockResolvedValue(99);
     mocks.reviewData.findings[0].fixChatId = undefined;
   });
 
@@ -294,6 +295,24 @@ describe("SecurityPanel", () => {
         }),
       );
     });
+  });
+
+  it("disables fixes from stale review data while a new review is running", async () => {
+    mocks.streamMessage.mockImplementation(async () => {});
+
+    render(<SecurityPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Run review" }));
+
+    await screen.findByRole("button", { name: "Running review..." });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Fix all issues",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(mocks.getOrCreateSecurityFixChat).not.toHaveBeenCalled();
   });
 
   it("shows an existing fix and offers re-run from its overflow menu", async () => {

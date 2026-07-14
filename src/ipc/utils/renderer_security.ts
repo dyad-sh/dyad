@@ -17,6 +17,19 @@ let trustPolicy: RendererTrustPolicy = {
   packagedRendererVolumePrefix: "",
 };
 
+function rendererTrustPoliciesMatch(
+  left: RendererTrustPolicy,
+  right: RendererTrustPolicy,
+): boolean {
+  return (
+    left.devServerOrigin === right.devServerOrigin &&
+    left.packagedRendererProtocol === right.packagedRendererProtocol &&
+    left.packagedRendererHost === right.packagedRendererHost &&
+    left.packagedRendererEntryPath === right.packagedRendererEntryPath &&
+    left.packagedRendererVolumePrefix === right.packagedRendererVolumePrefix
+  );
+}
+
 // TanStack Router uses the browser history API. In a packaged file:// build,
 // root-relative routes therefore appear as file:///, file:///chat, etc. Keep
 // this list aligned with src/router.ts so an arbitrary local file path is not
@@ -76,7 +89,7 @@ export function configureTrustedRenderer(options: {
   if (options.devServerUrl) {
     devServerOrigin = new URL(options.devServerUrl).origin;
   }
-  trustPolicy = {
+  const nextTrustPolicy: RendererTrustPolicy = {
     devServerOrigin,
     packagedRendererProtocol: packagedRenderer.protocol,
     packagedRendererHost: packagedRenderer.host,
@@ -85,6 +98,14 @@ export function configureTrustedRenderer(options: {
       packagedRenderer.pathname,
     ),
   };
+  if (
+    trustPolicy.packagedRendererProtocol !== null &&
+    process.env.NODE_ENV !== "test" &&
+    !rendererTrustPoliciesMatch(trustPolicy, nextTrustPolicy)
+  ) {
+    throw new Error("The renderer trust policy cannot be reconfigured.");
+  }
+  trustPolicy = nextTrustPolicy;
 }
 
 export function isTrustedRendererUrl(url: string): boolean {
@@ -136,6 +157,12 @@ function isSenderMainFrame(event: IpcMainInvokeEvent): boolean {
 }
 
 export function assertTrustedRenderer(event: IpcMainInvokeEvent): void {
+  if (trustPolicy.packagedRendererProtocol === null) {
+    throw new DyadError(
+      "Renderer trust policy is not configured. Call configureTrustedRenderer() before handling IPC.",
+      DyadErrorKind.Internal,
+    );
+  }
   const frame = event.senderFrame;
   if (!frame || !isSenderMainFrame(event) || !isTrustedRendererUrl(frame.url)) {
     throw new DyadError(

@@ -275,7 +275,7 @@ describe("IPC handler envelopes", () => {
       expect(() => unwrapIpcEnvelope(envelope)).toThrow(
         "trusted Dyad renderer",
       );
-      expect(mocks.sendTelemetryException).toHaveBeenCalledTimes(1);
+      expect(mocks.sendTelemetryException).not.toHaveBeenCalled();
     } finally {
       process.env.NODE_ENV = previousNodeEnv;
     }
@@ -365,6 +365,29 @@ describe("IPC handler envelopes", () => {
     expect(mocks.sendTelemetryException).not.toHaveBeenCalled();
   });
 
+  it("rejects untrusted callers before parsing typed handler input", async () => {
+    const inputValidation = vi.fn(() => true);
+    createTypedHandler(
+      defineContract({
+        channel: "trust-before-validation-channel",
+        input: z.object({ value: z.string().refine(inputValidation) }),
+        output: z.void(),
+      }),
+      async () => undefined,
+    );
+    const frame = { url: "https://attacker.example/" };
+
+    const envelope = await getEnvelope(
+      "trust-before-validation-channel",
+      { value: "attacker-controlled" },
+      { sender: { mainFrame: frame }, senderFrame: frame },
+    );
+
+    expect(() => unwrapIpcEnvelope(envelope)).toThrow("trusted Dyad renderer");
+    expect(inputValidation).not.toHaveBeenCalled();
+    expect(mocks.sendTelemetryException).not.toHaveBeenCalled();
+  });
+
   it("returns handler DyadError envelopes after telemetry", async () => {
     createTypedHandler(
       defineContract({
@@ -449,6 +472,6 @@ describe("IPC handler envelopes", () => {
 
     expect(() => unwrapIpcEnvelope(envelope)).toThrow("trusted Dyad renderer");
     expect(implementation).not.toHaveBeenCalled();
-    expect(mocks.sendTelemetryException).toHaveBeenCalledTimes(1);
+    expect(mocks.sendTelemetryException).not.toHaveBeenCalled();
   });
 });

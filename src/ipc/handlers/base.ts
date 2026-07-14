@@ -59,6 +59,12 @@ export function createTypedHandler<
   ipcMain?.handle(
     contract.channel,
     async (event: IpcMainInvokeEvent, rawInput: unknown) => {
+      try {
+        assertTrustedRenderer(event);
+      } catch (err) {
+        return createIpcErrorEnvelope(err);
+      }
+
       // Runtime validation of input
       const parsed = contract.input.safeParse(rawInput);
       if (!parsed.success) {
@@ -75,7 +81,6 @@ export function createTypedHandler<
 
       let result: z.infer<TOutput>;
       try {
-        assertTrustedRenderer(event);
         result = await handler(event, parsed.data);
       } catch (err) {
         sendTelemetryException(err, { ipc_channel: contract.channel });
@@ -130,6 +135,12 @@ export function createLoggedTypedHandler(logger: {
     ipcMain?.handle(
       contract.channel,
       async (event: IpcMainInvokeEvent, rawInput: unknown) => {
+        try {
+          assertTrustedRenderer(event);
+        } catch (err) {
+          return createIpcErrorEnvelope(err);
+        }
+
         // Runtime validation of input
         const parsed = contract.input.safeParse(rawInput);
         if (!parsed.success) {
@@ -145,7 +156,6 @@ export function createLoggedTypedHandler(logger: {
         }
 
         try {
-          assertTrustedRenderer(event);
           logger.info(`[${contract.channel}] Handling request`);
           const result = await handler(event, parsed.data);
 

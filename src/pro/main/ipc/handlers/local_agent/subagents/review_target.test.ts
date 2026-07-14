@@ -117,6 +117,23 @@ describe("buildReviewTarget", () => {
     );
   });
 
+  it("changes the hash when exclusion metadata changes", async () => {
+    const repo = await makeRepo();
+    const before = await buildReviewTarget({ appPath: repo });
+    await fs.writeFile(
+      path.join(repo, "oversized.txt"),
+      Buffer.alloc(REVIEW_MAX_FILE_BYTES + 1, "x"),
+    );
+
+    const after = await buildReviewTarget({ appPath: repo });
+
+    expect(after.diff).toBe(before.diff);
+    expect(after.exclusions).toContain(
+      "oversized.txt (exceeds per-file review limit)",
+    );
+    expect(after.hash).not.toBe(before.hash);
+  });
+
   it("excludes oversized tracked diffs", async () => {
     const repo = await makeRepo();
     await fs.writeFile(path.join(repo, "large.txt"), "small\n");

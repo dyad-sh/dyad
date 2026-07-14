@@ -167,13 +167,18 @@ export async function buildReviewTarget(params: {
   }
 
   const diff = chunks.filter(Boolean).join("\n");
+  const files = [...includedFiles];
+  const hash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ diff, files, exclusions }))
+    .digest("hex");
   return {
     baseCommit: effectiveBaseCommit,
     targetCommit: params.targetCommit?.trim() || null,
     diff,
-    files: [...includedFiles],
+    files,
     exclusions,
-    hash: crypto.createHash("sha256").update(diff).digest("hex"),
+    hash,
   };
 }
 

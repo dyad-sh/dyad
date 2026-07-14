@@ -162,6 +162,10 @@ export const SubagentStatusSchema = z.enum([
 ]);
 export type SubagentStatus = z.infer<typeof SubagentStatusSchema>;
 
+export function isSubagentAcceptingMessages(status: SubagentStatus): boolean {
+  return ["queued", "running", "waiting_for_writer"].includes(status);
+}
+
 export const SubagentThreadSummarySchema = z.object({
   id: z.string(),
   chatId: z.number(),

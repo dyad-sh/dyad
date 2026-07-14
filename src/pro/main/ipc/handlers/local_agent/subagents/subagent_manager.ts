@@ -19,6 +19,7 @@ import type {
   SubagentPersona,
   SubagentThreadSummary,
 } from "@/ipc/types";
+import { isSubagentAcceptingMessages } from "@/ipc/types";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
@@ -534,6 +535,12 @@ export async function sendSubagentMessage(
 ): Promise<void> {
   assertPro();
   const thread = await getOwnedThread(chatId, threadId);
+  if (!isSubagentAcceptingMessages(thread.status)) {
+    throw new DyadError(
+      "Messages can only be sent while a sub-agent is active. Use a follow-up assignment to resume an inactive sub-agent.",
+      DyadErrorKind.Precondition,
+    );
+  }
   await appendThreadMessage({
     threadId,
     role: "root",

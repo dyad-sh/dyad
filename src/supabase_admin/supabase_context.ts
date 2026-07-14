@@ -1,4 +1,4 @@
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
 import { getSupabaseClient } from "./supabase_management_client";
@@ -10,6 +10,7 @@ import {
   buildSchemaSnapshotSql,
   filterSchemaForTable,
   getSchemaFromSnapshot,
+  missingPublicTableComment,
   renderSchemaSql,
 } from "ts-pg-schema-diff";
 
@@ -155,7 +156,11 @@ function normalizeRunQueryRows(
       return maybeResultRows as readonly Record<string, unknown>[];
     }
   }
-  return [];
+  const shape =
+    result !== null && typeof result === "object"
+      ? `object keys: ${Object.keys(result).join(", ") || "none"}`
+      : typeof result;
+  throw new Error(`Unexpected Supabase runQuery response shape (${shape})`);
 }
 
 /**
@@ -265,31 +270,41 @@ export async function getSupabaseTableSchema({
       : `CREATE TABLE "public"."users" (\n\t"id" bigint NOT NULL\n);`;
   }
 
-  const supabase = await getSupabaseClient({ organizationSlug });
-  const snapshotResult = await retryWithRateLimit(
-    () =>
-      supabase.runQuery(
-        supabaseProjectId,
-        buildSchemaSnapshotSql({
-          includeSchemas: ["public"],
-          tableName,
-        }),
-      ),
-    `Get schema snapshot for ${supabaseProjectId}`,
-  );
-  const snapshot = normalizeRunQueryRows(snapshotResult)[0]?.schema_snapshot;
-  const schema = await getSchemaFromSnapshot(snapshot, {
-    includeSchemas: ["public"],
-  });
-  if (!tableName && schema.tables.length === 0) {
-    return "-- No public tables found.";
+  try {
+    const supabase = await getSupabaseClient({ organizationSlug });
+    const snapshotResult = await retryWithRateLimit(
+      () =>
+        supabase.runQuery(
+          supabaseProjectId,
+          buildSchemaSnapshotSql({
+            includeSchemas: ["public"],
+            tableName,
+          }),
+        ),
+      `Get schema snapshot for ${supabaseProjectId}`,
+    );
+    const snapshot = normalizeRunQueryRows(snapshotResult)[0]?.schema_snapshot;
+    const schema = await getSchemaFromSnapshot(snapshot, {
+      includeSchemas: ["public"],
+    });
+    if (!tableName && schema.tables.length === 0) {
+      return "-- No public tables found.";
+    }
+    const filteredSchema = tableName
+      ? filterSchemaForTable(schema, { tableName })
+      : schema;
+    return renderSchemaSql(filteredSchema, {
+      emptySchemaComment: tableName
+        ? missingPublicTableComment(tableName)
+        : "-- No public tables found.",
+    });
+  } catch (error) {
+    if (isDyadError(error)) {
+      throw error;
+    }
+    throw new DyadError(
+      `Failed to get table schema for Supabase project "${supabaseProjectId}": ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.External,
+    );
   }
-  const filteredSchema = tableName
-    ? filterSchemaForTable(schema, { tableName })
-    : schema;
-  return renderSchemaSql(filteredSchema, {
-    emptySchemaComment: tableName
-      ? `-- No public table named "${tableName}" found.`
-      : "-- No public tables found.",
-  });
 }

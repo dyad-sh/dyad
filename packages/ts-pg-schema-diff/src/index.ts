@@ -18,6 +18,7 @@ import { PgSchemaDiffError } from "./errors.js";
 import { emptySchema, type Schema } from "./schema/model.js";
 import {
   filterSchemaForTable,
+  missingPublicTableComment,
   renderSchemaSql,
   type FilterSchemaForTableOptions,
   type RenderSchemaSqlOptions,
@@ -53,6 +54,7 @@ export type {
 export {
   emptySchema,
   filterSchemaForTable,
+  missingPublicTableComment,
   buildSchemaSnapshotSql,
   getSchema,
   getSchemaFromSnapshot,

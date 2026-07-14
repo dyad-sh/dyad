@@ -33,6 +33,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - For local-agent database schema context, keep generic PostgreSQL schema modeling/rendering in `packages/ts-pg-schema-diff`; provider helpers should adapt Neon/Supabase into that shared `Schema` model instead of hand-rolling provider-specific JSON.
 - Supabase Management API `runQuery` accepts raw SQL only, not `pg`-style bind parameters. If adapting `client.query(sql, params)`, only inline controlled internal introspection params with SQL-literal escaping; never inline user-authored SQL.
+- Each Supabase Management API `runQuery` is a separate HTTP request. Batch schema introspection into one set-based snapshot query, and apply schema/table filters inside that SQL so single-table reads do not serialize unrelated Supabase-managed schemas.
 
 ## Stream retries
 

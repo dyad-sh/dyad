@@ -7,6 +7,7 @@ import type { AppFrameworkType } from "@/lib/framework_constants";
 import {
   filterSchemaForTable,
   getSchema,
+  missingPublicTableComment,
   renderSchemaSql,
   withDatabaseClient,
   type DatabaseConnectionOptions,
@@ -366,7 +367,7 @@ export async function getNeonTableSchema({
       : schema;
     return renderSchemaSql(filteredSchema, {
       emptySchemaComment: tableName
-        ? `-- No public table named "${tableName}" found.`
+        ? missingPublicTableComment(tableName)
         : "-- No public tables found.",
     });
   } catch (error) {

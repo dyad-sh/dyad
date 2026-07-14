@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getSupabaseClient } from "./supabase_management_client";
 import { getSupabaseTableSchema } from "./supabase_context";
+import { DyadErrorKind } from "@/errors/dyad_error";
 
 vi.mock("./supabase_management_client", () => ({
   getSupabaseClient: vi.fn(),
@@ -111,5 +112,22 @@ describe("getSupabaseTableSchema", () => {
         organizationSlug: null,
       }),
     ).resolves.toBe("-- No public tables found.");
+  });
+
+  it("wraps an unexpected Management API response as an external error", async () => {
+    const runQuery = vi.fn().mockResolvedValue({ error: "unexpected" });
+    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
+
+    await expect(
+      getSupabaseTableSchema({
+        supabaseProjectId: "project-id",
+        organizationSlug: null,
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining(
+        "Unexpected Supabase runQuery response shape (object keys: error)",
+      ),
+    });
   });
 });

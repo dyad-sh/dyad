@@ -8,6 +8,7 @@ import { generatePlan, toSchemaDiffResult } from "../src/plan/generate.js";
 import type { InternalStatement, MigrationHazard } from "../src/plan/types.js";
 import {
   filterSchemaForTable,
+  missingPublicTableComment,
   renderSchemaSql,
 } from "../src/render/schemaSql.js";
 import { randomPostgresIdentifierToken } from "../src/schema/randomIdentifier.js";
@@ -737,6 +738,12 @@ describe("buildPoolConfig", () => {
 });
 
 describe("renderSchemaSql", () => {
+  it("keeps missing-table comments on one line", () => {
+    expect(missingPublicTableComment('users\nCREATE ROLE "admin"')).toBe(
+      '-- No public table named "users CREATE ROLE "admin"" found.',
+    );
+  });
+
   it("renders an empty schema as a SQL comment", () => {
     expect(renderSchemaSql(emptySchema())).toBe("-- No schema objects found.");
   });

@@ -19,6 +19,11 @@ export type FilterSchemaForTableOptions = {
   readonly tableName: string;
 };
 
+export function missingPublicTableComment(tableName: string): string {
+  const singleLineName = tableName.replace(/[\r\n]+/gu, " ");
+  return `-- No public table named "${singleLineName}" found.`;
+}
+
 export function renderSchemaSql(
   schema: Schema,
   options: RenderSchemaSqlOptions = {},

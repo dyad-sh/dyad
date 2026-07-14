@@ -33,7 +33,7 @@ const getSchemaMock = vi.mocked(getSchema);
 const renderSchemaSqlMock = vi.mocked(renderSchemaSql);
 const withDatabaseClientMock = vi.mocked(withDatabaseClient);
 
-describe("getConnectionUri", () => {
+describe("Neon context", () => {
   beforeEach(() => {
     getNeonClientMock.mockReset();
     filterSchemaForTableMock.mockReset();
@@ -155,5 +155,40 @@ describe("getConnectionUri", () => {
       }),
     ).resolves.toBe("-- No public tables found.");
     expect(renderSchemaSqlMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a missing table name on one SQL comment line", async () => {
+    const neonClient = {
+      listProjectBranchRoles: vi.fn().mockResolvedValue({
+        data: { roles: [{ name: "neondb_owner", protected: false }] },
+      }),
+      listProjectBranchDatabases: vi.fn().mockResolvedValue({
+        data: { databases: [{ name: "neondb" }] },
+      }),
+      getConnectionUri: vi.fn().mockResolvedValue({
+        data: { uri: "postgresql://test" },
+      }),
+    };
+    getNeonClientMock.mockResolvedValue(
+      neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
+    );
+    withDatabaseClientMock.mockImplementation(
+      async (_connectionUri, _options, callback) => callback({} as any),
+    );
+    getSchemaMock.mockResolvedValue({ tables: [{ name: "users" }] } as any);
+    filterSchemaForTableMock.mockReturnValue({ tables: [] } as any);
+    renderSchemaSqlMock.mockImplementation(
+      (_schema, options) => options?.emptySchemaComment ?? "",
+    );
+
+    await expect(
+      getNeonTableSchema({
+        projectId: "project-id",
+        branchId: "branch-id",
+        tableName: "missing\nCREATE ROLE admin",
+      }),
+    ).resolves.toBe(
+      '-- No public table named "missing CREATE ROLE admin" found.',
+    );
   });
 });

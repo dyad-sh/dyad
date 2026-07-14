@@ -137,7 +137,7 @@ When modifying `ChatResponseChunkSchema` or adding new `safeSend("chat:response:
 
 **Renderer-visible fields must be in the output schema:** `createTypedHandler` validates handler output through the contract's Zod schema. If the handler returns extra fields that are not declared in the output schema, renderer code cannot type-safely consume them and they may be stripped by parsing. Add any consumed fields (for example `appId` on `ChatSchema`) to the IPC output schema when relying on them in renderer code.
 
-**Model refusals are stream completions, not errors:** AI SDK providers can normalize a successful safety refusal to `finishReason: "content-filter"` while preserving a provider-specific value such as `rawFinishReason: "refusal"`. Handle these terminal parts in both `chat_stream_handlers.ts` and `local_agent_handler.ts`, discard incomplete output from the refused attempt, and persist a renderer-visible warning instead of relying on `onError` or matching generated text.
+**Model refusals are stream completions, not errors:** AI SDK providers can normalize a successful safety refusal to `finishReason: "content-filter"` while preserving a provider-specific value such as `rawFinishReason: "refusal"`. Route every stream-consumption path (including continuation/fix streams) through the shared refusal handling, treat refusal as terminal for follow-up generation, discard incomplete output from the refused attempt, and persist a renderer-visible warning in both renderer content and AI history instead of relying on `onError` or matching generated text.
 
 ## End-of-turn warnings
 

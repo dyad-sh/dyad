@@ -525,7 +525,7 @@ describe("handleLocalAgentStream", () => {
 
   describe("Warning propagation", () => {
     it("replaces partial output with an inline warning for Fable refusals", async () => {
-      const { event } = createFakeEvent();
+      const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
@@ -556,6 +556,17 @@ describe("handleLocalAgentStream", () => {
       expect(finalContent).toContain(
         '<dyad-output type="warning" message="Request declined by the model">',
       );
+      const aiMessagesUpdate = dbOperations.updates.find(
+        (update) => update.data.aiMessagesJson !== undefined,
+      );
+      expect(JSON.stringify(aiMessagesUpdate?.data.aiMessagesJson)).toContain(
+        "Request declined by the model",
+      );
+      expect(
+        getMessagesByChannel("chat:response:end")[0].args[0],
+      ).toMatchObject({
+        updatedFiles: false,
+      });
     });
 
     it("includes warning messages in the error payload when a tool fails after warning", async () => {

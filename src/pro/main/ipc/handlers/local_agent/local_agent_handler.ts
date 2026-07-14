@@ -1586,6 +1586,13 @@ export async function handleLocalAgentStream(
       return false; // Cancelled - don't consume quota
     }
 
+    if (modelRefused) {
+      accumulatedAiMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: MODEL_REFUSAL_WARNING }],
+      });
+    }
+
     // Collect XML produced by post-turn side-effects (step-limit notice,
     // Supabase deploy results) so we can persist them into aiMessagesJson.
     // parseAiMessagesJson reads from aiMessagesJson when present and ignores
@@ -1716,7 +1723,8 @@ export async function handleLocalAgentStream(
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
-      updatedFiles: !readOnly,
+      updatedFiles:
+        !readOnly && (!modelRefused || Object.keys(fileEditTracker).length > 0),
       chatSummary: ctx.chatSummary,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,

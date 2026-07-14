@@ -135,6 +135,11 @@ describe("processStreamChunks", () => {
           totalTokens: 15,
         },
       };
+      yield {
+        type: "text-delta",
+        id: "text-after-finish",
+        text: "Spurious output after finish",
+      };
     }
 
     const updates: string[] = [];
@@ -152,11 +157,13 @@ describe("processStreamChunks", () => {
     });
 
     expect(result.fullResponse).not.toContain("Partial response");
+    expect(result.fullResponse).not.toContain("Spurious output");
     expect(result.fullResponse).toContain("Existing response.");
     expect(result.fullResponse).toContain(
       '<dyad-output type="warning" message="Request declined by the model">',
     );
     expect(result.incrementalResponse).toContain("<dyad-output");
+    expect(result.modelRefused).toBe(true);
     expect(updates.at(-1)).toBe(result.fullResponse);
   });
 
@@ -195,6 +202,7 @@ describe("processStreamChunks", () => {
 
     expect(result.fullResponse).toBe("Existing response.");
     expect(result.incrementalResponse).toBe("");
+    expect(result.modelRefused).toBe(false);
   });
 });
 

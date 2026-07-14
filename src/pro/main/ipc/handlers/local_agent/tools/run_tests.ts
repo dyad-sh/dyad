@@ -168,7 +168,12 @@ function guardAlreadyPassed(
   state: TestRunAttemptState,
   currentEditCount: number,
 ): string | null {
-  if (args.flakeCheck || !state.passedAtEditCount) return null;
+  // flakeCheck bypasses this guard only while the spec's one free flake rerun
+  // is unspent. Once used, a green spec can't be rerun by re-sending the flag —
+  // passes reset the attempt counter, so this would otherwise allow unlimited
+  // full isolated runs of an already-passing spec.
+  const flakeRerunAvailable = args.flakeCheck && !state.flakeCheckUsed;
+  if (flakeRerunAvailable || !state.passedAtEditCount) return null;
   const passed = state.passedAtEditCount;
   const wholeFilePassed = passed[WHOLE_FILE] === currentEditCount;
   const targetPassed = passed[args.testName ?? WHOLE_FILE] === currentEditCount;
@@ -177,16 +182,20 @@ function guardAlreadyPassed(
   const what = wholeFilePassed
     ? `The whole spec already passed`
     : `"${args.testName}" already passed`;
-  const body = `${what} with the current code — you haven't modified any files since, so rerunning would produce the same result. Do NOT run it again. Stop and summarize the outcome for the user. (If you suspect the pass is flaky, you may rerun once with flakeCheck: true.) This did NOT count as a fix attempt.`;
+  const flakeNote = state.flakeCheckUsed
+    ? "You have already used this spec's one flakeCheck rerun."
+    : "(If you suspect the pass is flaky, you may rerun once with flakeCheck: true.)";
+  const body = `${what} with the current code — you haven't modified any files since, so rerunning would produce the same result. Do NOT run it again. Stop and summarize the outcome for the user. ${flakeNote} This did NOT count as a fix attempt.`;
   completeWarning(ctx, "Tests already passed — no rerun needed", body);
   return body;
 }
 
 /**
- * Require a file change between runs. Skipped on the first run, on flakeCheck,
- * after infra failures (which leave fileEditCountAtLastRun unset), and when the
- * target changed (a different testName, or one test ↔ whole file) — running
- * different tests can produce a different result without an edit.
+ * Require a file change between runs. Skipped on the first run, on the (still
+ * unspent) flakeCheck rerun, after infra failures (which leave
+ * fileEditCountAtLastRun unset), and when the target changed (a different
+ * testName, or one test ↔ whole file) — running different tests can produce a
+ * different result without an edit.
  */
 function guardChangedSinceLastRun(
   ctx: AgentContext,
@@ -195,7 +204,7 @@ function guardChangedSinceLastRun(
   currentEditCount: number,
 ): string | null {
   if (
-    args.flakeCheck ||
+    (args.flakeCheck && !state.flakeCheckUsed) ||
     state.attempts === 0 ||
     state.fileEditCountAtLastRun === undefined ||
     currentEditCount !== state.fileEditCountAtLastRun ||
@@ -203,8 +212,10 @@ function guardChangedSinceLastRun(
   ) {
     return null;
   }
-  const body =
-    "You haven't modified any files since the last run of this spec, so rerunning would produce the same result. Make a fix first — or, if you suspect the failure is flaky, pass flakeCheck: true (allowed once). This did NOT count as a fix attempt.";
+  const flakeHint = state.flakeCheckUsed
+    ? "You have already used this spec's one flakeCheck rerun."
+    : "Or, if you suspect the failure is flaky, pass flakeCheck: true (allowed once).";
+  const body = `You haven't modified any files since the last run of this spec, so rerunning would produce the same result. Make a fix first. ${flakeHint} This did NOT count as a fix attempt.`;
   completeWarning(ctx, "No changes since last run", body);
   return body;
 }

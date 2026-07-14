@@ -303,6 +303,47 @@ describe("runTestsTool", () => {
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
   });
 
+  it("refuses a second flakeCheck rerun of a green spec", async () => {
+    // Passes reset the attempt counter, so without this guard a model could
+    // loop full isolated runs of an already-passing spec forever by re-sending
+    // flakeCheck: true.
+    runner.mockResolvedValue(passedResult);
+    const ctx = makeCtx();
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    runner.mockClear();
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    expect(runner).not.toHaveBeenCalled();
+    expect(out).toContain("already passed");
+    expect(out).toContain("already used this spec's one flakeCheck rerun");
+  });
+
+  it("refuses a second flakeCheck without changes on a failing spec", async () => {
+    runner.mockResolvedValue(failResult("boom"));
+    const ctx = makeCtx();
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, ctx);
+    await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    runner.mockClear();
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    expect(runner).not.toHaveBeenCalled();
+    expect(out).toContain("haven't modified any files");
+    expect(out).toContain("already used this spec's one flakeCheck rerun");
+    // Only the first (non-flake) failure counted.
+    expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
+  });
+
   it("refuses without running once the attempt cap is reached", async () => {
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();

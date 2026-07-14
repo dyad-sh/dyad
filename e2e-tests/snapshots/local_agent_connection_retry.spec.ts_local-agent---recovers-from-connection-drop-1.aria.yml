@@ -9,6 +9,8 @@
 - 'button "recovered.ts src/recovered.ts Edit Summary: File created after connection recovery"'
 - paragraph: Successfully created the file after automatic retry.
 - button "Copy"
+- button "Agent team" [expanded]
+- button "Review changes"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - button "Undo"

@@ -21,7 +21,7 @@
         "content": [
           {
             "type": "text",
-            "text": "[dump] @app:minimal-with-ai-rules hi\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: `minimal-with-ai-rules`. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the `app_name` parameter to read-only tools (`read_file`, `list_files`, `grep`, `code_search`); matching is case-insensitive. Write tools cannot target these apps. Omit `app_name` to operate on the current app.\n</system-reminder>"
+            "text": "[dump] @app:minimal-with-ai-rules hi\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: `minimal-with-ai-rules`. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the `app_name` parameter to read-only tools (`read_file`, `list_files`, `grep`, `code_search`); matching is case-insensitive. Write tools cannot target these apps. Omit `app_name` to operate on the current app. You may assign an Explorer to inspect a referenced app; name that app explicitly in the assignment, and the child must pass `app_name` to its read tools.\n</system-reminder>"
           }
         ]
       }
@@ -307,6 +307,149 @@
           },
           "required": [
             "query"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "spawn_agent",
+        "description": "Start an asynchronous depth-one Explorer or enabled Implementer sub-agent. Reviewer is user/application controlled and is never available here.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "persona": {
+              "type": "string",
+              "const": "explorer"
+            },
+            "task_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "description": "A stable short name for this task"
+            },
+            "assignment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000,
+              "description": "A bounded assignment and intended outcome"
+            },
+            "scope": {
+              "default": [],
+              "description": "Explicit relative paths or path prefixes in scope",
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          "required": [
+            "persona",
+            "task_name",
+            "assignment"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "list_agents",
+        "description": "List durable sub-agent threads and their current status for this chat.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "wait_agents",
+        "description": "Wait until all specified sub-agents reach a terminal or idle state.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_ids": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "thread_ids"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "cancel_agent",
+        "description": "Cancel a running sub-agent at its next safe boundary.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "thread_id"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "send_message",
+        "description": "Durably queue a message for an existing sub-agent thread.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          "required": [
+            "thread_id",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "followup_task",
+        "description": "Queue a durable follow-up assignment on an existing child thread. An idle child will consume it on its next turn.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          "required": [
+            "thread_id",
+            "message"
           ],
           "additionalProperties": false
         },

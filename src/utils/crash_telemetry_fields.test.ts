@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { crashPerformanceEventFields } from "@/utils/crash_telemetry_fields";
+import {
+  crashAnnotationEventFields,
+  crashPerformanceEventFields,
+} from "@/utils/crash_telemetry_fields";
 
 describe("crashPerformanceEventFields", () => {
   it("flattens working sets and activity into scalar fields", () => {
@@ -58,5 +61,41 @@ describe("crashPerformanceEventFields", () => {
     expect(fields.last_known_working_set_browser_mb).toBeUndefined();
     expect(fields.last_known_active_streams).toBeUndefined();
     expect(fields.peak_active_streams).toBeUndefined();
+  });
+});
+
+describe("crashAnnotationEventFields", () => {
+  it("prefixes and snake-cases annotation keys", () => {
+    expect(
+      crashAnnotationEventFields({
+        "electron.v8-oom.is_heap_oom": "1",
+        "lsb-release": "Linux Mint 22.3",
+        ptype: "utility",
+      }),
+    ).toEqual({
+      crash_annotation_electron_v8_oom_is_heap_oom: "1",
+      crash_annotation_lsb_release: "Linux Mint 22.3",
+      crash_annotation_ptype: "utility",
+    });
+  });
+
+  it("keeps the leading underscore of Electron's internal keys", () => {
+    // _productName and friends come from Electron's crashReporter; the
+    // double underscore marks them apart from same-named plain keys.
+    expect(crashAnnotationEventFields({ _productName: "dyad" })).toEqual({
+      crash_annotation__productname: "dyad",
+    });
+  });
+
+  it("lowercases and collapses runs of special characters", () => {
+    expect(crashAnnotationEventFields({ "GPU  Status?!": "ok" })).toEqual({
+      crash_annotation_gpu_status_: "ok",
+    });
+  });
+
+  it("lets the last key win when sanitized names collide", () => {
+    expect(
+      crashAnnotationEventFields({ "oom-size": "1", oom_size: "2" }),
+    ).toEqual({ crash_annotation_oom_size: "2" });
   });
 });

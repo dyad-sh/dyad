@@ -37,6 +37,19 @@ export function crashPerformanceEventFields(
   };
 }
 
+// Crash annotations as flat telemetry fields, one property per key, because
+// PostHog cannot easily filter nested JSON. Keys are sanitized to snake case.
+export function crashAnnotationEventFields(
+  annotations: Record<string, string>,
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(annotations)) {
+    const name = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    fields[`crash_annotation_${name}`] = value;
+  }
+  return fields;
+}
+
 function workingSetFields(
   prefix: string,
   sets: Record<string, number> | undefined,

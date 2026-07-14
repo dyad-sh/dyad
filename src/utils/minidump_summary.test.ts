@@ -724,6 +724,26 @@ describe("parseMinidumpBuffer", () => {
     expect(annotations!.long).toHaveLength(512);
   });
 
+  it("keeps ptype when the cap fills across both annotation sources", () => {
+    // ptype is a module annotation object and the summary depends on it,
+    // so it must win over a cap's worth of simple annotations.
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 40; i++) {
+      many[`key${i}`] = "v";
+    }
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10010n,
+      ipOffset: 248,
+      ptype: "browser",
+      simpleAnnotations: many,
+    });
+    const summary = parseMinidumpBuffer(dump, "linux", "x64")!;
+    expect(summary.ptype).toBe("browser");
+    expect(Object.keys(summary.annotations!)).toHaveLength(32);
+  });
+
   it("leaves ptype undefined when there is no CrashpadInfo stream", () => {
     const dump = buildMinidump({
       modules: oneModule,

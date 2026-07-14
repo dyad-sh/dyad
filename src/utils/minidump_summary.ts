@@ -635,8 +635,11 @@ function parseAnnotations(
 ): Record<string, string> | undefined {
   const annotations: Record<string, string> = {};
   try {
-    readSimpleAnnotations(view, buf, infoRva, annotations);
+    // Module annotation objects first: they hold ptype, which the summary
+    // needs to attribute the crash, so once the cap fills it can only
+    // drop simple annotations.
     readModuleAnnotationObjects(view, buf, infoRva, annotations);
+    readSimpleAnnotations(view, buf, infoRva, annotations);
   } catch {
     // best effort: keep whatever was collected
   }
@@ -659,6 +662,9 @@ function readSimpleAnnotations(
   if (dictRva === 0 || dictRva + 4 > buf.length) return;
   const count = view.getUint32(dictRva, true);
   for (let i = 0; i < count; i++) {
+    // Also bounds a corrupt count, which could otherwise run the loop
+    // to the end of the file.
+    if (annotationsFull(out)) break;
     const entry = dictRva + 4 + i * 8;
     if (entry + 8 > buf.length) break;
     addAnnotation(
@@ -693,6 +699,7 @@ function readModuleAnnotationObjects(
   if (modListRva === 0 || modListRva + 4 > buf.length) return;
   const moduleCount = view.getUint32(modListRva, true);
   for (let i = 0; i < moduleCount; i++) {
+    if (annotationsFull(out)) break;
     const link = modListRva + 4 + i * 12;
     if (link + 12 > buf.length) break;
     const moduleInfoRva = view.getUint32(link + 8, true);
@@ -701,6 +708,9 @@ function readModuleAnnotationObjects(
     if (objectsRva === 0 || objectsRva + 4 > buf.length) continue;
     const objectCount = view.getUint32(objectsRva, true);
     for (let j = 0; j < objectCount; j++) {
+      // Also bounds a corrupt count, which could otherwise run the loop
+      // to the end of the file.
+      if (annotationsFull(out)) break;
       const obj = objectsRva + 4 + j * 12;
       if (obj + 12 > buf.length) break;
       if (view.getUint16(obj + 4, true) !== ANNOTATION_TYPE_STRING) continue;
@@ -713,14 +723,19 @@ function readModuleAnnotationObjects(
   }
 }
 
+function annotationsFull(out: Record<string, string>): boolean {
+  return Object.keys(out).length >= MAX_ANNOTATIONS;
+}
+
 function addAnnotation(
   out: Record<string, string>,
   key: string,
   value: string,
 ): void {
-  if (!key || Object.keys(out).length >= MAX_ANNOTATIONS) return;
-  out[key.slice(0, MAX_ANNOTATION_KEY_LEN)] = value.slice(
-    0,
-    MAX_ANNOTATION_VALUE_LEN,
-  );
+  // Truncate before the checks so lookup and storage use the same key.
+  const k = key.slice(0, MAX_ANNOTATION_KEY_LEN);
+  if (!k) return;
+  // The cap only blocks new keys; overwriting an existing key is fine.
+  if (!Object.hasOwn(out, k) && annotationsFull(out)) return;
+  out[k] = value.slice(0, MAX_ANNOTATION_VALUE_LEN);
 }

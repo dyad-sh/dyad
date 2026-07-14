@@ -67,7 +67,10 @@ import {
   moveDump,
   pruneDumps,
 } from "./utils/crash_dumps";
-import { crashPerformanceEventFields } from "./utils/crash_telemetry_fields";
+import {
+  crashAnnotationEventFields,
+  crashPerformanceEventFields,
+} from "./utils/crash_telemetry_fields";
 import {
   stopAllAppsSync,
   stopAppGarbageCollection,
@@ -239,19 +242,6 @@ function processNativeCrashDumps(): void {
     moveDump(file, path.join(retainDir, crashReportName(file)));
   }
   pruneDumps(retainDir, MAX_RETAINED_DUMPS);
-}
-
-// Crash annotations as flat telemetry fields, one property per key, because
-// PostHog cannot easily filter nested JSON. Keys are sanitized to snake case.
-function crashAnnotationEventFields(
-  annotations: Record<string, string>,
-): Record<string, string> {
-  const fields: Record<string, string> = {};
-  for (const [key, value] of Object.entries(annotations)) {
-    const name = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-    fields[`crash_annotation_${name}`] = value;
-  }
-  return fields;
 }
 
 // A readable, sortable dump name from the crash time (the dump's mtime), with a

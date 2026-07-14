@@ -1,0 +1,70 @@
+import path from "node:path";
+
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import type { AgentContext } from "../tools/types";
+
+interface MutationLease {
+  threadId: string;
+  scope: string[];
+}
+
+const leases = new Map<number, MutationLease>();
+
+export function acquireMutationLease(params: {
+  appId: number;
+  threadId: string;
+  scope: string[];
+}): boolean {
+  const current = leases.get(params.appId);
+  if (current && current.threadId !== params.threadId) return false;
+  leases.set(params.appId, {
+    threadId: params.threadId,
+    scope: params.scope.map(normalizeScope),
+  });
+  return true;
+}
+
+export function releaseMutationLease(appId: number, threadId: string): void {
+  if (leases.get(appId)?.threadId === threadId) leases.delete(appId);
+}
+
+export function hasMutationLease(appId: number): boolean {
+  return leases.has(appId);
+}
+
+export function assertMutationLease(ctx: AgentContext): void {
+  const lease = leases.get(ctx.appId);
+  if (!lease) return;
+  if (ctx.subagentThreadId !== lease.threadId) {
+    throw new DyadError(
+      "Another agent is currently editing this app. Wait for it to finish before making changes.",
+      DyadErrorKind.Conflict,
+    );
+  }
+}
+
+export function assertImplementerPathAllowed(
+  ctx: AgentContext,
+  relativePath: string,
+): void {
+  if (ctx.subagentPersona !== "implementer") return;
+  const normalizedPath = normalizeScope(relativePath);
+  const scope = ctx.subagentPathScope?.map(normalizeScope) ?? [];
+  if (
+    scope.length === 0 ||
+    !scope.some(
+      (allowed) =>
+        normalizedPath === allowed || normalizedPath.startsWith(`${allowed}/`),
+    )
+  ) {
+    throw new DyadError(
+      `Implementer may only edit its assigned paths: ${scope.join(", ") || "none"}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+}
+
+function normalizeScope(value: string): string {
+  const normalized = path.posix.normalize(value.replaceAll("\\", "/"));
+  return normalized.replace(/^\.\//, "").replace(/\/$/, "");
+}

@@ -8,6 +8,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - If a read/inspection wrapper tool gains a state-changing host function (for example a new sandbox `write_file` capability inside `execute_sandbox_script`), either mark the parent tool `modifiesState: true` or make `modifiesState` a context predicate that returns true whenever the writable host function is exposed. Otherwise read-only / plan-only filtering can still expose writes through the wrapper tool. Prompt descriptions, tool filtering, and runtime capability injection should all derive from the same turn-scoped flag so ask/plan mode can keep the read-only surface without advertising or exposing writes.
 - Similarly, code in the `handleLocalAgentStream` handler that writes to the workspace (e.g., `ensureDyadGitignored`, injecting synthetic todo reminders) should be guarded with `if (!readOnly && !planModeOnly)` checks. Injecting instructions that reference state-changing tools into non-writable runs will confuse the model since those tools are filtered out.
 
+## Latest-turn review targets
+
+- Writable Local Agent turns normally commit file changes before emitting `chat:response:end`, so the working tree is usually clean immediately after a successful turn. Features that inspect or review the latest assistant turn must use the assistant message's `sourceCommitHash` as the base and `commitHash` as the target. Use the working tree only as a fallback when that message has no valid commit range.
+
 ## Async I/O
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.

@@ -40,6 +40,7 @@ import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
+import { SubagentSettings } from "@/components/settings/SubagentSettings";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -377,6 +378,7 @@ export default function SettingsPage() {
                   with a compiler-backed code graph.
                 </div>
               </div>
+              <SubagentSettings />
             </div>
           </div>
 

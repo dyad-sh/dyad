@@ -20,6 +20,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
+import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 
 const logger = log.scope("search_replace");
 
@@ -93,6 +94,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
   },
 
   execute: async (args, ctx: AgentContext) => {
+    assertImplementerPathAllowed(ctx, args.file_path);
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
       throw new DyadError(

@@ -38,6 +38,7 @@ import {
   isCancelledResponseContent,
   stripCancelledResponseNotice,
 } from "@/shared/chatCancellation";
+import { SubagentTeamCard } from "./SubagentTeamCard";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -290,6 +291,15 @@ const ChatMessage = ({
                 </div>
               </div>
             ) : null}
+            {message.role === "assistant" &&
+              isLastMessage &&
+              !isStreaming &&
+              selectedChatId != null && (
+                <SubagentTeamCard
+                  chatId={selectedChatId}
+                  messageId={message.id}
+                />
+              )}
           </div>
         )}
         {/* Render attachments outside the message box */}

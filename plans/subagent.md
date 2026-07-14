@@ -25,7 +25,7 @@ These are binding decisions:
 - Reviewer is always manually available to Pro users through the Review UI button. Manual review does not enable auto-review.
 - Reviewer is never available to the root model. The default-off auto-review setting lets the application—not the model—start Reviewer after a completed writable assistant turn once the writer lease is free.
 - Reviewer always receives an explicit review scope.
-- The Review UI button reviews the current working-tree changes since the last commit.
+- The Review UI button reviews the latest assistant turn's committed change range (`sourceCommitHash` to `commitHash`), with the working tree as a fallback when that turn has no commit range.
 - Explorer and Reviewer are read-only at both tool-registration and execution time.
 - Implementer directly edits files when enabled; it is not a patch-only advisor.
 - Implementer has an independent `enableImplementerSubagent` setting that defaults to `false`.
@@ -44,7 +44,7 @@ These are binding decisions:
 - Future write isolation—finer-grained leases versus worktrees—remains intentionally undecided.
 - If a persona's required model is unavailable, the run is blocked with setup guidance. Dyad does not silently substitute the root model or another provider model.
 - Auto-review runs after a completed writable assistant turn, including an Implementer handoff, once no writer holds the lease. It requires a non-empty diff hash that has not already been reviewed.
-- Review scope includes staged, unstaged, and non-ignored untracked text files under the app root compared with `HEAD`. Ignored files and binary contents are excluded; an unborn repository compares against Git's empty tree; non-Git projects cannot be reviewed initially.
+- Review scope primarily uses the latest assistant message's immutable commit range because Local Agent normally auto-commits each writable turn. When no turn range exists, it includes staged, unstaged, and non-ignored untracked text files under the app root compared with `HEAD`. Ignored files and binary contents are excluded; an unborn repository compares against Git's empty tree; non-Git projects cannot be reviewed initially.
 - The **Review changes** button lives at the bottom of the latest assistant message, not in the code-diff UI. Its label/file count must make the repository-wide since-commit scope clear.
 - Manual review reuses an existing run for the same hash and takes priority over auto-review. Auto-review is latest-wins and coalesces superseded targets instead of building a stale queue.
 - If Pro entitlement is lost, reject new sub-agent operations immediately and cancel active children at the next safe boundary after any atomic file write. Preserve partial state and mark the thread `entitlement_revoked`.
@@ -57,11 +57,11 @@ These are binding decisions:
 
 Each persona has its own model and reasoning defaults rather than inheriting the root model:
 
-| Persona | Default model | Default reasoning effort |
-| --- | --- | --- |
-| Explorer | `gpt-5.6-luna` | High |
-| Reviewer | `gpt-5.6-sol` | Medium |
-| Implementer | `gpt-5.6-luna` | High |
+| Persona     | Default model  | Default reasoning effort |
+| ----------- | -------------- | ------------------------ |
+| Explorer    | `gpt-5.6-luna` | High                     |
+| Reviewer    | `gpt-5.6-sol`  | Medium                   |
+| Implementer | `gpt-5.6-luna` | High                     |
 
 Both selected models exist in the reviewed Codex model catalog but are not currently registered in Dyad. Adding them to Dyad's model catalog/constants is therefore an implementation prerequisite. Resolve the exact persona model before scheduling; if it is unavailable for the Pro user's configured account/provider, block the run with setup guidance.
 
@@ -125,18 +125,18 @@ The root-level `explore_code` definition and prompt references are removed as so
 
 **Invocation boundary:** Reviewer is never part of the model-visible `spawn_agent` persona enum or autonomous prompt guidance. It may start only from:
 
-- The Review UI button, scoped to the working-tree changes since the last commit.
+- The Review UI button, scoped to the latest assistant turn's commit range with a working-tree fallback.
 - The application's deterministic auto-review trigger after a completed writable assistant turn once the writer lease is free, but only when `enableAutoReview` is true.
 
 Manual actions and the application auto-review trigger call a dedicated internal review-start path. The root may then use durable messaging to answer a Reviewer question or request a follow-up, but it cannot originate a Reviewer thread autonomously. Auto-review must be initiated by application state, never by a hidden model tool call.
 
 **Default runtime:** `gpt-5.6-sol`, medium reasoning effort.
 
-**Purpose:** Independently evaluate the current code changes since the last commit against the user request and repository expectations without editing away its own findings.
+**Purpose:** Independently evaluate the latest assistant turn's changes against the user request and repository expectations without editing away its own findings.
 
 **Authority:** Read-only, enforced identically to Explorer.
 
-**Explicit review target:** Every review targets the full working-tree diff since the last commit. It includes staged, unstaged, and non-ignored untracked text files under the app root. Ignored files and binary contents are excluded. Capture at start:
+**Explicit review target:** Every review first targets the latest assistant message's `sourceCommitHash` to `commitHash` range. This matches Local Agent's auto-commit architecture and avoids an empty post-turn working tree. If no valid turn range exists, review the full working-tree diff since the last commit, including staged, unstaged, and non-ignored untracked text files. Ignored files and binary contents are excluded. Capture at start:
 
 - Base commit and diff hash.
 - Included file list and exclusions.
@@ -169,19 +169,19 @@ The root performs final tests, verification, commit, deploy, synthesis, and comp
 
 ## Capability Matrix
 
-| Capability | Explorer | Reviewer | Implementer |
-| --- | --- | --- | --- |
-| Root-model automatic start | Yes | Never | Yes, when enabled |
-| Application automatic start | No | When auto-review is enabled | No |
-| Explicit user start | Natural request | Review button | Natural request |
-| Read scoped app files | Yes | Yes | Yes |
-| Modify app files | No | No | Scoped controlled edits only |
-| Terminal / sandbox / MCP / SQL | No | No | No |
-| Git / commit / deploy | No | No | No |
-| Spawn agents | No | No | No |
-| Receive durable root messages | Yes | Yes | Yes |
-| Receive follow-up turns | Yes | Yes | Yes |
-| Existing write consent | N/A | N/A | Required |
+| Capability                     | Explorer        | Reviewer                    | Implementer                  |
+| ------------------------------ | --------------- | --------------------------- | ---------------------------- |
+| Root-model automatic start     | Yes             | Never                       | Yes, when enabled            |
+| Application automatic start    | No              | When auto-review is enabled | No                           |
+| Explicit user start            | Natural request | Review button               | Natural request              |
+| Read scoped app files          | Yes             | Yes                         | Yes                          |
+| Modify app files               | No              | No                          | Scoped controlled edits only |
+| Terminal / sandbox / MCP / SQL | No              | No                          | No                           |
+| Git / commit / deploy          | No              | No                          | No                           |
+| Spawn agents                   | No              | No                          | No                           |
+| Receive durable root messages  | Yes             | Yes                         | Yes                          |
+| Receive follow-up turns        | Yes             | Yes                         | Yes                          |
+| Existing write consent         | N/A             | N/A                         | Required                     |
 
 ## Settings
 
@@ -226,7 +226,7 @@ Follow `rules/adding-settings.md`: schema, defaults, search IDs/index, switches,
 
 ### User-directed Reviewer flow
 
-- A **Review changes** button appears at the bottom of the latest assistant message, outside the code-diff UI. It captures the full working-tree diff since the last commit, including the base commit, current file list, exclusions, and diff hash. Show the included file count so its repository-wide scope is not mistaken for a message-only review.
+- A **Review changes** button appears at the bottom of the latest assistant message, outside the code-diff UI. It captures that message's commit range, falling back to the full working-tree diff since the last commit, including the base commit, current file list, exclusions, and diff hash. Show the included file count so the scope is clear.
 - Manual review is available to Pro users regardless of `enableAutoReview` and does not change that setting.
 - When `enableAutoReview` is true, the application starts Reviewer after any completed writable assistant turn, including an Implementer handoff, once the writer lease is free. It requires a non-empty diff and skips a hash already reviewed.
 - A clean working tree disables the button with a concise `No changes to review` explanation. A non-Git project disables it with a Git-history requirement. An unborn repository is reviewable against Git's empty tree.
@@ -358,7 +358,7 @@ Reviewer starts through a separate typed IPC/internal command authorized by a Re
 
 Build review targets from Git, not assistant-turn attribution:
 
-- Base is `HEAD`, or Git's empty tree for an unborn repository.
+- Base is the assistant message's `sourceCommitHash`; the fallback is `HEAD`, or Git's empty tree for an unborn repository.
 - Include staged, unstaged, and non-ignored untracked text files inside the app root.
 - Exclude ignored files and binary contents while retaining bounded exclusion metadata.
 - Disable review for a clean tree or non-Git project with an explanatory state.
@@ -489,7 +489,7 @@ Record persona, resolved provider/model, counts, durations, token totals, state,
 - [ ] Context/report/message bounds, mailbox ordering, idempotency, safe-boundary delivery, follow-up turns, and restart persistence.
 - [ ] Manager lifecycle, three-child cap, FIFO scheduling, review priority/coalescing, root-only/depth-one enforcement, targeted/tree cancellation, entitlement-revoked cancellation, and reconciliation.
 - [ ] Explorer/Reviewer can never register or execute mutation tools.
-- [ ] Review button and auto-review capture all working-tree changes since the last commit and become outdated if the hash changes.
+- [ ] Review button and auto-review capture the latest assistant turn's commit range, fall back to working-tree changes when needed, and become outdated if the hash changes.
 - [ ] Manual review works while auto-review is off and does not mutate the setting; auto-review deduplicates an already-reviewed diff hash.
 - [ ] Review target includes staged/unstaged/non-ignored untracked text; handles clean/unborn/non-Git repositories and ignored/binary exclusions.
 - [ ] Fix findings starts a root remediation turn; auto-fix shares one persistent setting across surfaces and cannot recurse after its verification review.
@@ -520,7 +520,7 @@ After `npm run build`:
 - Explorer is enabled by default for Pro users, may be model-invoked, and uses `gpt-5.6-luna` with high reasoning.
 - Reviewer uses `gpt-5.6-sol` with medium reasoning and is never exposed to or autonomously started by the root model.
 - Manual Reviewer is available to Pro users while auto-review is off; `enableAutoReview` controls only deterministic application-triggered review.
-- **Review changes** appears at the bottom of the latest assistant message and, like auto-review, captures staged, unstaged, and non-ignored untracked text changes since the last commit; no slash-command path exists.
+- **Review changes** appears at the bottom of the latest assistant message and, like auto-review, captures that turn's commit range with a staged, unstaged, and non-ignored untracked text fallback; no slash-command path exists.
 - Clean and non-Git projects cannot start review; unborn repositories compare against Git's empty tree; ignored files and binary contents are excluded.
 - Manual review focuses an existing matching hash and outranks auto-review; pending auto-reviews coalesce latest-wins.
 - Every Review target is explicit and hashed before execution.
@@ -546,23 +546,23 @@ After `npm run build`:
 
 ## Risks and Mitigations
 
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| Read-only wrapper exposes a write path | High | Immutable policy, allowlist intersection, execution revalidation, escalation tests |
-| Model starts Reviewer despite the invocation contract | High | Never include Reviewer in model schema/prompt; dedicated manual/application start path; audit invocation source |
-| Review covers the wrong or moving change | High | One documented since-commit target, base/hash/files, writer serialization, and outdated state |
-| Root and Implementer conflict | High | One Implementer, exclusive app lease, handled root write failure, root verification |
-| Persona default model is unavailable for a provider/account | High | Resolve before scheduling, block without fallback, and provide visible setup guidance |
-| Non-Pro user reaches sub-agent execution through stale state or replay | High | Entitlement in schema/prompt policy plus repeated IPC, manager, messaging, follow-up, and execution checks |
-| Durable messaging duplicates or loses instructions | High | Durable IDs, ordered mailbox, acknowledgement, safe-boundary injection, idempotency tests |
-| Parallel children multiply cost | Medium | Three-child concurrency cap, bounded context/reports, visible measured usage, and telemetry; no token/step/time budgets initially |
-| Auto-review creates stale review backlog | Medium | Diff-hash identity, manual priority, same-hash reuse, latest-wins auto-review coalescing |
-| Auto-fix and auto-review loop indefinitely | High | Tag remediation origin; permit one verification review; never recursively auto-fix its findings |
-| Review barrier strands a queued user message | High | One scheduler-owned release path exercised by every terminal outcome; FIFO integration tests and visible barrier state |
-| Forced queued-message auto-fix surprises users | Medium | Visible 10-second countdown, clear reason, **Skip fix**, unchanged persistent setting, and canonical consent |
-| No transcript pruning grows the database | Medium | Bounded message/content fields, no token-delta/event persistence, cascade delete with chat, measure growth without silently pruning |
-| Crash leaves stale status | Medium | Bounded shutdown and startup reconciliation to interrupted; retain partial state |
-| Implementer setting seems like blanket approval | High | Default off, warning, clear two-gate copy, canonical existing consent |
+| Risk                                                                   | Impact | Mitigation                                                                                                                          |
+| ---------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Read-only wrapper exposes a write path                                 | High   | Immutable policy, allowlist intersection, execution revalidation, escalation tests                                                  |
+| Model starts Reviewer despite the invocation contract                  | High   | Never include Reviewer in model schema/prompt; dedicated manual/application start path; audit invocation source                     |
+| Review covers the wrong or moving change                               | High   | One documented since-commit target, base/hash/files, writer serialization, and outdated state                                       |
+| Root and Implementer conflict                                          | High   | One Implementer, exclusive app lease, handled root write failure, root verification                                                 |
+| Persona default model is unavailable for a provider/account            | High   | Resolve before scheduling, block without fallback, and provide visible setup guidance                                               |
+| Non-Pro user reaches sub-agent execution through stale state or replay | High   | Entitlement in schema/prompt policy plus repeated IPC, manager, messaging, follow-up, and execution checks                          |
+| Durable messaging duplicates or loses instructions                     | High   | Durable IDs, ordered mailbox, acknowledgement, safe-boundary injection, idempotency tests                                           |
+| Parallel children multiply cost                                        | Medium | Three-child concurrency cap, bounded context/reports, visible measured usage, and telemetry; no token/step/time budgets initially   |
+| Auto-review creates stale review backlog                               | Medium | Diff-hash identity, manual priority, same-hash reuse, latest-wins auto-review coalescing                                            |
+| Auto-fix and auto-review loop indefinitely                             | High   | Tag remediation origin; permit one verification review; never recursively auto-fix its findings                                     |
+| Review barrier strands a queued user message                           | High   | One scheduler-owned release path exercised by every terminal outcome; FIFO integration tests and visible barrier state              |
+| Forced queued-message auto-fix surprises users                         | Medium | Visible 10-second countdown, clear reason, **Skip fix**, unchanged persistent setting, and canonical consent                        |
+| No transcript pruning grows the database                               | Medium | Bounded message/content fields, no token-delta/event persistence, cascade delete with chat, measure growth without silently pruning |
+| Crash leaves stale status                                              | Medium | Bounded shutdown and startup reconciliation to interrupted; retain partial state                                                    |
+| Implementer setting seems like blanket approval                        | High   | Default off, warning, clear two-gate copy, canonical existing consent                                                               |
 
 ## Product Principle Alignment
 

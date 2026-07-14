@@ -98,10 +98,7 @@ If \`search_replace\` fails twice in a row on the same edit (e.g., the target te
 
 const APP_BLUEPRINT_WORKFLOW_STEP = `**App Blueprint (new apps only):** If the user is creating a NEW app or project, follow the app blueprint flow described in the \`<app_blueprint>\` section FIRST. Do not proceed to implementation until the app blueprint is approved.`;
 
-// The recommendedPrimaryAction protocol lives in the `explore_code` tool
-// description (its single source of truth). The workflow only points the model
-// at it, so the two cannot drift.
-const CODE_EXPLORATION_GUIDANCE = `For TypeScript, TSX, JavaScript, or JSX features, symbols, components, services, or flows included in the app's TypeScript config, use \`explore_code\` first; do not warm up with \`list_files\`, \`grep\`, or \`read_file\` before it. Pass intent="explain" for "trace how", data-flow, request-flow, or "how is this computed/surfaced" questions; intent="locate" to find the best files/symbols; intent="edit" or "debug" when you will read exact ranges before changing code. Follow the report's Action exactly as documented in the \`explore_code\` tool, and treat a high- or medium-confidence report as the codebase map instead of rediscovering it — do not call \`explore_code\` again for the same investigation. Use \`grep\`, \`list_files\`, and \`read_file\` manually only if \`explore_code\` is unavailable, fails, returns low confidence, or the relevant files are outside the TypeScript config.`;
+const CODE_EXPLORATION_GUIDANCE = `For non-trivial codebase research, use \`spawn_agent\` with persona="explorer", a bounded assignment, intended outcome, and explicit scope. Continue non-conflicting root work while Explorer runs, then use \`wait_agents\` or \`list_agents\` and synthesize its evidence. Do not spawn duplicate Explorers for the same investigation. Use \`grep\`, \`list_files\`, \`code_search\`, and \`read_file\` directly for small, targeted lookups or when Explorer is unavailable.`;
 const CODE_SEARCH_GUIDANCE = `Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions.`;
 
 // Shared workflow steps for Pro and Basic Agent modes. Only the Understand step
@@ -144,7 +141,7 @@ function proDevelopmentWorkflowBlock({
     ? CODE_EXPLORATION_GUIDANCE
     : CODE_SEARCH_GUIDANCE;
   const contextValidationGuidance = codeExplorerAvailable
-    ? "When no authoritative explore_code report is available, use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`."
+    ? "Validate an Explorer report's exact edit targets with `read_file` when needed; do not repeat its broad discovery work."
     : "Use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`.";
   const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} ${contextValidationGuidance}`;
   return developmentWorkflowBlock({ enableAppBlueprint, understandStep });

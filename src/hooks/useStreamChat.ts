@@ -542,6 +542,30 @@ export function useStreamChat({
                     appId: targetAppId,
                   }),
                 });
+                if (
+                  response.updatedFiles &&
+                  settings?.enableAutoReview &&
+                  (store.get(queuedMessagesByIdAtom).get(chatId)?.length ??
+                    0) === 0
+                ) {
+                  void ipc.chat
+                    .getChat(chatId)
+                    .then((latestChat) => {
+                      const latestAssistant = [...latestChat.messages]
+                        .reverse()
+                        .find((message) => message.role === "assistant");
+                      if (latestAssistant) {
+                        return ipc.agent.startAutoReview({
+                          chatId,
+                          sourceMessageId: latestAssistant.id,
+                        });
+                      }
+                    })
+                    .catch(() => {
+                      // Auto-review failures stay non-blocking when no message
+                      // is queued. The Agent team card surfaces explicit runs.
+                    });
+                }
                 onSettled?.({
                   success: true,
                   pausedByStepLimit: response.pausePromptQueue === true,

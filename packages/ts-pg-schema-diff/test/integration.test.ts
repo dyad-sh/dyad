@@ -4897,7 +4897,8 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         CREATE TYPE account_state AS ENUM ('active', 'disabled');
         CREATE FUNCTION new_account_id() RETURNS bigint
           LANGUAGE sql RETURN 42;
-        CREATE FUNCTION can_read_account(account_id bigint) RETURNS boolean
+        CREATE SCHEMA private_data;
+        CREATE FUNCTION private_data.can_read_account(account_id bigint) RETURNS boolean
           LANGUAGE sql RETURN account_id > 0;
         CREATE TABLE accounts (
           id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -4908,7 +4909,7 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         CREATE INDEX accounts_state_idx ON accounts (state);
         ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
         CREATE POLICY accounts_read ON accounts FOR SELECT
-          USING (can_read_account(id));
+          USING (private_data.can_read_account(id));
         CREATE FUNCTION touch_account() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
           RETURN NEW;
@@ -4919,7 +4920,6 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         CREATE TABLE unrelated (id integer PRIMARY KEY);
         CREATE FUNCTION unrelated_function() RETURNS integer
           LANGUAGE sql RETURN 1;
-        CREATE SCHEMA private_data;
         CREATE TABLE private_data.secret_table (id integer PRIMARY KEY);
       `,
     );
@@ -4948,11 +4948,15 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       );
       const scopedSchema = await getSchemaFromSnapshot(
         scopedResult.rows[0]?.schema_snapshot,
-        { includeSchemas: ["public"] },
       );
+      const directUnfilteredSchema = await getSchema(client);
       expect(
         filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
-      ).toEqual(filterSchemaForTable(directSchema, { tableName: "accounts" }));
+      ).toEqual(
+        filterSchemaForTable(directUnfilteredSchema, {
+          tableName: "accounts",
+        }),
+      );
       expect(
         filterSchemaForTable(scopedSchema, {
           tableName: "accounts",
@@ -4963,6 +4967,14 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
           '"can_read_account"(account_id bigint)',
         ]),
       );
+      expect(
+        filterSchemaForTable(scopedSchema, {
+          tableName: "accounts",
+        }).functions.find(
+          (fn) =>
+            fn.name.escapedName === '"can_read_account"(account_id bigint)',
+        )?.name.schemaName,
+      ).toBe("private_data");
     } finally {
       await client.end();
     }

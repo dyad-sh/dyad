@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPoolConfig } from "../src/db/connect.js";
 import { assertSupportedPostgresVersion } from "../src/db/introspect.js";
+import { buildSchemaSnapshotSql } from "../src/db/snapshot.js";
 import { diffLists } from "../src/diff/listDiff.js";
 import { DuplicateIdentifierError } from "../src/errors.js";
 import { toPublicStatement } from "../src/plan/classify.js";
@@ -964,6 +965,17 @@ describe("renderSchemaSql", () => {
     );
 
     expect(filtered.functions).toEqual([policyFunction, defaultFunction]);
+  });
+});
+
+describe("buildSchemaSnapshotSql", () => {
+  it("treats an empty table name as an all-tables snapshot", () => {
+    expect(
+      buildSchemaSnapshotSql({
+        includeSchemas: ["public"],
+        tableName: "",
+      }),
+    ).toBe(buildSchemaSnapshotSql({ includeSchemas: ["public"] }));
   });
 });
 

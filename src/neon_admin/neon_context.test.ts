@@ -122,12 +122,7 @@ describe("Neon context", () => {
       ),
       [],
     );
-    expect(getSchemaFromSnapshotMock).toHaveBeenCalledWith(
-      { tables: [] },
-      {
-        includeSchemas: ["public"],
-      },
-    );
+    expect(getSchemaFromSnapshotMock).toHaveBeenCalledWith({ tables: [] });
     expect(filterSchemaForTableMock).toHaveBeenCalledWith(schema, {
       tableName: "users",
     });

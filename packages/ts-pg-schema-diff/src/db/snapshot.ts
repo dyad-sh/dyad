@@ -135,10 +135,11 @@ function replaceRequiredOnce(
 export function buildSchemaSnapshotSql(
   options: BuildSchemaSnapshotOptions = {},
 ): string {
+  const tableName = options.tableName || undefined;
   const tableNamePredicate = (column: string): string | null =>
-    options.tableName === undefined
+    tableName === undefined
       ? null
-      : `snapshot_scope.${column} = ${sqlLiteral(options.tableName)}`;
+      : `snapshot_scope.${column} = ${sqlLiteral(tableName)}`;
   const tablesSql = scopedQuery(getTablesSql, [
     schemaPredicate("table_schema_name", options.includeSchemas),
     tableNamePredicate("table_name"),
@@ -147,10 +148,7 @@ export function buildSchemaSnapshotSql(
     schemaPredicate("table_schema_name", options.includeSchemas),
     tableNamePredicate("table_name"),
   ]);
-  const unscopedFunctionsSql = scopedQuery(
-    replaceRequiredOnce(getProcsSql, "$1", "'f'"),
-    [schemaPredicate("func_schema_name", options.includeSchemas)],
-  );
+  const allFunctionsSql = replaceRequiredOnce(getProcsSql, "$1", "'f'");
   const targetTableOidsSql = `SELECT snapshot_table.oid::OID FROM (${withoutTrailingSemicolon(tablesSql)}) AS snapshot_table`;
   const requiredFunctionOidsSql = `WITH RECURSIVE function_roots(oid) AS (
     SELECT trigger_row.tgfoid
@@ -197,15 +195,22 @@ export function buildSchemaSnapshotSql(
       AND dependency.deptype = 'n'
 )
 SELECT required_functions.oid FROM required_functions`;
+  const requiredFunctionPredicate = `snapshot_scope.oid::OID IN (${requiredFunctionOidsSql})`;
+  const functionSchemaPredicate = schemaPredicate(
+    "func_schema_name",
+    options.includeSchemas,
+  );
   const functionsSql =
-    options.tableName === undefined
-      ? unscopedFunctionsSql
-      : scopedQuery(unscopedFunctionsSql, [
-          `snapshot_scope.oid::OID IN (${requiredFunctionOidsSql})`,
-        ]);
+    tableName === undefined
+      ? scopedQuery(allFunctionsSql, [
+          functionSchemaPredicate === null
+            ? null
+            : `(${functionSchemaPredicate} OR ${requiredFunctionPredicate})`,
+        ])
+      : scopedQuery(allFunctionsSql, [requiredFunctionPredicate]);
   const proceduresSql = scopedQuery(
     replaceRequiredOnce(getProcsSql, "$1", "'p'"),
-    options.tableName === undefined
+    tableName === undefined
       ? [schemaPredicate("func_schema_name", options.includeSchemas)]
       : ["FALSE"],
   );
@@ -333,7 +338,7 @@ SELECT required_functions.oid FROM required_functions`;
       queryRows(
         scopedQuery(getViewsSql, [
           schemaPredicate("schema_name", options.includeSchemas),
-          options.tableName === undefined ? null : "FALSE",
+          tableName === undefined ? null : "FALSE",
         ]),
       ),
     ],
@@ -342,7 +347,7 @@ SELECT required_functions.oid FROM required_functions`;
       queryRows(
         scopedQuery(getMaterializedViewsSql, [
           schemaPredicate("schema_name", options.includeSchemas),
-          options.tableName === undefined ? null : "FALSE",
+          tableName === undefined ? null : "FALSE",
         ]),
       ),
     ],

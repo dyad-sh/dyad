@@ -361,9 +361,7 @@ export async function getNeonTableSchema({
         "Neon schema snapshot response is missing schema_snapshot",
       );
     }
-    const schema = await getSchemaFromSnapshot(snapshot, {
-      includeSchemas: ["public"],
-    });
+    const schema = await getSchemaFromSnapshot(snapshot);
     if (!tableName && schema.tables.length === 0) {
       return "-- No public tables found.";
     }

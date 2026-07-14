@@ -34,7 +34,8 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - For local-agent database schema context, keep generic PostgreSQL schema modeling/rendering in `packages/ts-pg-schema-diff`; provider helpers should adapt Neon/Supabase into that shared `Schema` model instead of hand-rolling provider-specific JSON.
 - Supabase Management API `runQuery` accepts raw SQL only, not `pg`-style bind parameters. If adapting `client.query(sql, params)`, only inline controlled internal introspection params with SQL-literal escaping; never inline user-authored SQL.
 - Each Supabase Management API `runQuery` and Neon serverless SQL query is a separate HTTP request. Batch provider schema introspection into one set-based snapshot query, and apply schema/table filters inside that SQL so single-table reads do not serialize unrelated schemas.
-- Single-table schema filtering must retain functions referenced by column defaults, generated expressions, RLS policies, triggers, and checks. Capture those dependencies from PostgreSQL catalogs, include them as roots in snapshot scoping, and sort retained functions deterministically so provider paths render identically.
+- Normalize an empty optional table name to `undefined` before snapshot scoping; provider tools historically treat an empty name as the all-tables request, not as a request for a table named `''`.
+- Single-table schema filtering must retain functions referenced by column defaults, generated expressions, RLS policies, triggers, and checks, including helpers outside the table's schema. Capture those dependencies from PostgreSQL catalogs, include them as roots in snapshot scoping without pre-filtering their schemas, and sort retained functions deterministically so provider paths render identically.
 
 ## Stream retries
 

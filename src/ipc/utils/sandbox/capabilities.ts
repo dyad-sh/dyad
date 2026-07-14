@@ -8,6 +8,7 @@ import {
   toAttachmentLogicalPath,
 } from "@/ipc/utils/media_path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { isDotenvFilePath, redactDotenvValues } from "@/utils/dotenv_redaction";
 import { SANDBOX_READ_FILE_LIMIT_BYTES } from "./limits";
 
 type StructuredObject = { [key: string]: unknown };
@@ -43,7 +44,6 @@ export type SandboxHostCallObserver = (params: {
 }) => void;
 
 const DENIED_PATH_PATTERNS = [
-  /(^|[/\\])(?:\.env(?:\.[^/\\]+)*|\.envrc)(?:[/\\]|$)/i,
   /(^|[/\\])\.git([/\\]|$)/i,
   /(^|[/\\])\.npmrc$/i,
   /(^|[/\\])\.yarnrc(?:\.yml)?$/i,
@@ -57,6 +57,21 @@ const DENIED_PATH_PATTERNS = [
   /\.key$/i,
   /\.pem$/i,
 ];
+const DOTENV_DENIED_PATH_PATTERN =
+  /(^|[/\\])(?:\.env(?:\.[^/\\]+)*|\.envrc)(?:[/\\]|$)/i;
+
+function isDeniedSandboxPath(
+  filePath: string,
+  options?: { allowDotenvFile?: boolean },
+): boolean {
+  if (DENIED_PATH_PATTERNS.some((pattern) => pattern.test(filePath))) {
+    return true;
+  }
+  if (!DOTENV_DENIED_PATH_PATTERN.test(filePath)) {
+    return false;
+  }
+  return !(options?.allowDotenvFile && isDotenvFilePath(filePath));
+}
 
 const TEXT_EXTENSIONS = new Set([
   ".css",
@@ -140,7 +155,10 @@ function parseReadOptions(value: unknown): SandboxReadFileOptions {
   };
 }
 
-export function assertAllowedGuestPath(guestPath: string): void {
+function assertSandboxGuestPath(
+  guestPath: string,
+  options?: { allowDotenvFile?: boolean },
+): void {
   if (!guestPath || typeof guestPath !== "string") {
     throw new DyadError("File path is required.", DyadErrorKind.Validation);
   }
@@ -162,12 +180,16 @@ export function assertAllowedGuestPath(guestPath: string): void {
       DyadErrorKind.Validation,
     );
   }
-  if (DENIED_PATH_PATTERNS.some((pattern) => pattern.test(guestPath))) {
+  if (isDeniedSandboxPath(guestPath, options)) {
     throw new DyadError(
       `Sandbox scripts cannot access protected path: ${guestPath}`,
       DyadErrorKind.Precondition,
     );
   }
+}
+
+export function assertAllowedGuestPath(guestPath: string): void {
+  assertSandboxGuestPath(guestPath);
 }
 
 function isTextPath(filePath: string): boolean {
@@ -183,7 +205,7 @@ export async function assertSandboxWritePathAllowed(params: {
     appPath: params.appPath,
     relativePath: params.guestPath,
   });
-  if (DENIED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))) {
+  if (isDeniedSandboxPath(normalized)) {
     throw new DyadError(
       `Sandbox scripts cannot access protected path: ${params.guestPath}`,
       DyadErrorKind.Precondition,
@@ -194,6 +216,7 @@ export async function assertSandboxWritePathAllowed(params: {
 async function resolveSandboxPath(params: {
   appPath: string;
   guestPath: string;
+  allowDotenvRead?: boolean;
 }): Promise<{ filePath: string; displayPath: string }> {
   if (params.guestPath.startsWith("attachments:")) {
     const attachment = await resolveAttachmentLogicalPath(
@@ -212,7 +235,11 @@ async function resolveSandboxPath(params: {
     };
   }
 
-  assertAllowedGuestPath(params.guestPath);
+  if (params.allowDotenvRead) {
+    assertSandboxGuestPath(params.guestPath, { allowDotenvFile: true });
+  } else {
+    assertAllowedGuestPath(params.guestPath);
+  }
   return {
     filePath: safeJoin(params.appPath, params.guestPath),
     displayPath: params.guestPath,
@@ -223,7 +250,8 @@ async function assertResolvedPathAllowed(params: {
   appPath: string;
   filePath: string;
   displayPath: string;
-}): Promise<void> {
+  allowDotenvRead?: boolean;
+}): Promise<{ realFilePath: string; isDotenv: boolean }> {
   const realAppPath = await fs.realpath(params.appPath);
   let realFilePath: string;
   try {
@@ -253,15 +281,22 @@ async function assertResolvedPathAllowed(params: {
         DyadErrorKind.Precondition,
       );
     }
-    return;
+    return { realFilePath, isDotenv: isDotenvFilePath(params.displayPath) };
   }
   const normalized = relative.split(path.sep).join("/");
-  if (DENIED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))) {
+  if (
+    isDeniedSandboxPath(normalized, {
+      allowDotenvFile: params.allowDotenvRead,
+    })
+  ) {
     throw new DyadError(
       `Sandbox scripts cannot access protected path: ${params.displayPath}`,
       DyadErrorKind.Precondition,
     );
   }
+  const isDotenv =
+    isDotenvFilePath(params.displayPath) || isDotenvFilePath(normalized);
+  return { realFilePath, isDotenv };
 }
 
 export async function sandboxReadFile(
@@ -270,8 +305,16 @@ export async function sandboxReadFile(
   rawOptions?: unknown,
 ): Promise<string> {
   const options = parseReadOptions(rawOptions);
-  const resolved = await resolveSandboxPath({ appPath, guestPath });
-  await assertResolvedPathAllowed({ appPath, ...resolved });
+  const resolved = await resolveSandboxPath({
+    appPath,
+    guestPath,
+    allowDotenvRead: true,
+  });
+  const { isDotenv } = await assertResolvedPathAllowed({
+    appPath,
+    ...resolved,
+    allowDotenvRead: true,
+  });
 
   const stat = await fs.stat(resolved.filePath);
   if (!stat.isFile()) {
@@ -281,7 +324,6 @@ export async function sandboxReadFile(
     );
   }
 
-  const start = options.start ?? 0;
   if (
     options.length !== undefined &&
     options.length > SANDBOX_READ_FILE_LIMIT_BYTES
@@ -291,6 +333,37 @@ export async function sandboxReadFile(
       DyadErrorKind.Validation,
     );
   }
+
+  if (isDotenv) {
+    if (stat.size > SANDBOX_READ_FILE_LIMIT_BYTES) {
+      throw new DyadError(
+        `read_file would read ${stat.size} bytes from ${resolved.displayPath}, exceeding the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Dotenv files must be read and sanitized as a whole before applying ranges.`,
+        DyadErrorKind.Validation,
+      );
+    }
+    const sanitized = Buffer.from(
+      redactDotenvValues(await fs.readFile(resolved.filePath, "utf8")),
+      "utf8",
+    );
+    const start = options.start ?? 0;
+    if (start > sanitized.length) {
+      return "";
+    }
+    const remainingBytes = sanitized.length - start;
+    const length = options.length ?? remainingBytes;
+    if (length > SANDBOX_READ_FILE_LIMIT_BYTES) {
+      throw new DyadError(
+        `read_file would read ${length} sanitized bytes from ${resolved.displayPath}, exceeding the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Use file_stats to get the source size, then read bounded chunks with start and length.`,
+        DyadErrorKind.Validation,
+      );
+    }
+    const bytes = sanitized.subarray(start, start + length);
+    return (options.encoding ?? "utf8") === "base64"
+      ? bytes.toString("base64")
+      : bytes.toString("utf8");
+  }
+
+  const start = options.start ?? 0;
   if (start > stat.size) {
     return "";
   }
@@ -373,7 +446,7 @@ export async function sandboxListFiles(
   }
   const entries = await fs.readdir(realDirPath, { withFileTypes: true });
   return entries
-    .filter((entry) => !DENIED_PATH_PATTERNS.some((p) => p.test(entry.name)))
+    .filter((entry) => !isDeniedSandboxPath(entry.name))
     .map((entry) => {
       const relativePath = path
         .join(relative, entry.name)

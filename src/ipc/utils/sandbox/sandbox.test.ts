@@ -96,9 +96,17 @@ describe("sandbox capabilities", () => {
     ).resolves.toBe("hello");
   });
 
-  it("denies protected app paths", async () => {
-    await expect(sandboxReadFile(appPath, ".env")).rejects.toThrow(
-      "protected path",
+  it("redacts dotenv app paths and denies other protected paths", async () => {
+    await fs.writeFile(
+      path.join(appPath, ".env.local"),
+      'API_KEY=sk-123\nEMPTY=\nQUOTED_EMPTY=""',
+      "utf8",
+    );
+    await expect(sandboxReadFile(appPath, ".env")).resolves.toBe(
+      "SECRET=[redacted]",
+    );
+    await expect(sandboxReadFile(appPath, ".env.local")).resolves.toBe(
+      'API_KEY=[redacted]\nEMPTY=\nQUOTED_EMPTY=""',
     );
     await expect(sandboxReadFile(appPath, ".envrc")).rejects.toThrow(
       "protected path",
@@ -116,6 +124,33 @@ describe("sandbox capabilities", () => {
       sandboxReadFile(appPath, path.join(appPath, "src", "data.txt")),
     ).rejects.toThrow("Absolute paths");
   });
+
+  it("applies sandbox byte ranges after dotenv values are redacted", async () => {
+    await fs.writeFile(path.join(appPath, ".env"), "SECRET=sk-123\nEMPTY=");
+    const sanitized = "SECRET=[redacted]\nEMPTY=";
+
+    await expect(
+      sandboxReadFile(appPath, ".env", { start: 7, length: 10 }),
+    ).resolves.toBe("[redacted]");
+    await expect(
+      sandboxReadFile(appPath, ".env", { encoding: "base64" }),
+    ).resolves.toBe(Buffer.from(sanitized).toString("base64"));
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "redacts sandbox dotenv reads reached through symlink aliases",
+    async () => {
+      await fs.writeFile(path.join(appPath, ".env.local"), "TOKEN=secret");
+      await fs.symlink(
+        path.join(appPath, ".env.local"),
+        path.join(appPath, "config.txt"),
+      );
+
+      await expect(sandboxReadFile(appPath, "config.txt")).resolves.toBe(
+        "TOKEN=[redacted]",
+      );
+    },
+  );
 
   it("rejects sandbox writes that escape the app through symlinks", async () => {
     const outsideDir = await fs.mkdtemp(
@@ -268,7 +303,7 @@ describe("sandbox capabilities", () => {
     ]);
 
     await expect(sandboxReadFile(appPath, "attachments:.env")).resolves.toBe(
-      "ATTACHED=1",
+      "ATTACHED=[redacted]",
     );
     await expect(sandboxListFiles(appPath, "attachments:")).resolves.toEqual([
       "attachments:server.log",

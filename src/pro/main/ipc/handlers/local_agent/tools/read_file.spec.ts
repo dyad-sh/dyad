@@ -198,6 +198,53 @@ line 5`;
       expect(result).toBe("");
     });
 
+    it("redacts non-empty dotenv values while preserving empty values", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env.local"),
+        [
+          "API_KEY=sk-123",
+          "EMPTY=",
+          "SPACED_EMPTY=   ",
+          'QUOTED_EMPTY=""',
+          "export TOKEN = secret",
+          "# dotenv comment",
+        ].join("\n"),
+      );
+
+      const result = await readFileTool.execute(
+        { path: ".env.local" },
+        mockContext,
+      );
+
+      expect(result).toBe(
+        [
+          "API_KEY=[redacted]",
+          "EMPTY=",
+          "SPACED_EMPTY=   ",
+          'QUOTED_EMPTY=""',
+          "export TOKEN = [redacted]",
+          "# dotenv comment",
+        ].join("\n"),
+      );
+      expect(result).not.toContain("sk-123");
+      expect(result).not.toContain("secret");
+    });
+
+    it.runIf(process.platform !== "win32")(
+      "redacts dotenv files reached through symlink aliases",
+      async () => {
+        await fs.promises.writeFile(path.join(testDir, ".env"), "TOKEN=secret");
+        await fs.promises.symlink(
+          path.join(testDir, ".env"),
+          path.join(testDir, "config.txt"),
+        );
+
+        await expect(
+          readFileTool.execute({ path: "config.txt" }, mockContext),
+        ).resolves.toBe("TOKEN=[redacted]");
+      },
+    );
+
     it("throws error for non-existent file", async () => {
       await expect(
         readFileTool.execute({ path: "nope.txt" }, mockContext),

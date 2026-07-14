@@ -11,6 +11,7 @@ import {
   AGENT_READ_FILE_TRUNCATION_NOTICE,
   readTextFileLines,
 } from "@/ipc/utils/bounded_text_file";
+import { isDotenvFilePath, redactDotenvValues } from "@/utils/dotenv_redaction";
 
 const readFileSchema = z
   .object({
@@ -127,22 +128,33 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       ? `${args.path} (in app: ${args.app_name})`
       : args.path;
 
+    let shouldRedactDotenv = isDotenvFilePath(args.path);
     const result = await readTextFileLines({
       rootPath: targetAppPath,
       filePath: fullFilePath,
       displayPath,
       startLine: args.start_line_one_indexed,
       endLineInclusive: args.end_line_one_indexed_inclusive,
-      validateRealPath: (realPath, realRootPath) =>
+      validateRealPath: (realPath, realRootPath) => {
         assertDyadInternalAccessAllowed({
           targetAppPath: realRootPath,
           fullFilePath: realPath,
           appName: args.app_name,
-        }),
+        });
+        shouldRedactDotenv ||= isDotenvFilePath(realPath);
+      },
     });
 
-    return result.truncated
-      ? result.content + AGENT_READ_FILE_TRUNCATION_NOTICE
+    const content = shouldRedactDotenv
+      ? redactDotenvValues(result.content, {
+          // A range beginning after line one may start inside a multiline
+          // quoted value, where comment-looking content is still secret.
+          preserveComments: (args.start_line_one_indexed ?? 1) === 1,
+        })
       : result.content;
+
+    return result.truncated
+      ? content + AGENT_READ_FILE_TRUNCATION_NOTICE
+      : content;
   },
 };

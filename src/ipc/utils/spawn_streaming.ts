@@ -44,6 +44,12 @@ export interface SpawnStreamingResult {
   stderr: string;
   /** True if the process was terminated via the abort signal. */
   aborted: boolean;
+  /**
+   * True if the process was tree-killed after exceeding `timeoutMs`. Callers
+   * that parse process artifacts (e.g. a test report the child may have
+   * partially written before the kill) should check this before trusting them.
+   */
+  timedOut: boolean;
 }
 
 /**
@@ -92,7 +98,13 @@ export async function spawnStreaming({
     // just to immediately tree-kill it can still kick off side effects (e.g. a
     // package install or browser download briefly starting after Stop).
     if (signal?.aborted) {
-      resolve({ code: null, stdout: "", stderr: "", aborted: true });
+      resolve({
+        code: null,
+        stdout: "",
+        stderr: "",
+        aborted: true,
+        timedOut: false,
+      });
       return;
     }
 
@@ -186,6 +198,7 @@ export async function spawnStreaming({
           stdout,
           stderr,
           aborted,
+          timedOut,
         });
       }, FORCE_KILL_GRACE_MS);
     };
@@ -232,7 +245,7 @@ export async function spawnStreaming({
       // A timeout kill leaves `code` null (or a signal exit); normalize it to a
       // non-zero code so callers treat it as a failure, not a clean exit.
       const exitCode = timedOut && (code === null || code === 0) ? 124 : code;
-      finish({ code: exitCode, stdout, stderr, aborted });
+      finish({ code: exitCode, stdout, stderr, aborted, timedOut });
     });
 
     child.on("error", (err) => {

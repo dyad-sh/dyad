@@ -18,6 +18,13 @@ export function stripDynamic(text: string): string {
       .replace(/\b\d+(?:\.\d+)?\s?ms\b/gi, "<dur>")
       .replace(/\b\d+(?:\.\d+)?\s?s\b/gi, "<dur>")
       .replace(/:\d{2,5}\b/g, ":<port>")
+      // UUIDs before the contiguous-hex rule: their 4-char middle segments are
+      // too short for it, so a generated id would otherwise change the
+      // signature on every run and defeat no-progress detection.
+      .replace(
+        /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,
+        "<uuid>",
+      )
       .replace(/\b[0-9a-f]{8,}\b/gi, "<hex>")
       .replace(/\s+/g, " ")
       .trim()
@@ -31,8 +38,17 @@ function firstErrorLine(error: string | undefined): string {
   return stripDynamic(line);
 }
 
-/** A test that ran and didn't pass: assertion ("failed") or "inconclusive". */
-function isFailing(status: string): boolean {
+/**
+ * A test that RAN and didn't pass — both "failed" (assertion) and
+ * "inconclusive" (selector/timeout/strict-mode, which Playwright's error
+ * heuristic flags as infra-ish) count. Only a whole-run failure that produced
+ * NO report — surfaced separately as `infraError` — is a true environment
+ * problem; anything with a per-test verdict is a fixable test result.
+ *
+ * Lives here (a leaf module) as the single source of truth so failure
+ * signatures can never disagree with `run_tests_utils`' result classification.
+ */
+export function isFailingStatus(status: string): boolean {
   return status === "failed" || status === "inconclusive";
 }
 
@@ -48,11 +64,11 @@ export function normalizeFailureSignature(results: TestResult[]): string {
   for (const r of results) {
     if (r.tests && r.tests.length > 0) {
       for (const t of r.tests) {
-        if (isFailing(t.status)) {
+        if (isFailingStatus(t.status)) {
           entries.push(`${r.file} :: ${t.title} :: ${firstErrorLine(t.error)}`);
         }
       }
-    } else if (isFailing(r.status)) {
+    } else if (isFailingStatus(r.status)) {
       entries.push(`${r.file} :: <file> :: ${firstErrorLine(r.error)}`);
     }
   }

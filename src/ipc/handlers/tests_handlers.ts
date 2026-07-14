@@ -338,6 +338,20 @@ export async function runAppTestsCore({
     return { appId, results: [], infraError: { message: "Test run stopped." } };
   }
 
+  // Classify a timeout BEFORE parsing the report: Playwright may have written
+  // a parseable (but incomplete) JSON report before the kill, which would
+  // otherwise surface as a clean pass/fail instead of the uncounted
+  // infrastructure outcome the agent tool is promised.
+  if (run.timedOut) {
+    return {
+      appId,
+      results: [],
+      infraError: {
+        message: `The test run exceeded the ${Math.round((timeoutMs ?? 0) / 60000)}-minute limit and was stopped before it could finish.`,
+      },
+    };
+  }
+
   // 3. Parse the JSON report.
   let results: TestResult[] = [];
   let parseOk = false;
@@ -519,14 +533,6 @@ export async function runAppTestsWithIsolation({
   const emit = (chunk: string, phase: "setup" | "running") =>
     emitOutput(event, appId, chunk, phase);
 
-  emitRunState(event, {
-    appId,
-    source,
-    state: "started",
-    testFile: normalizedTestFile ?? undefined,
-    testLine,
-  });
-
   let finalResult: RunAppTestsResult = { appId, results: [] };
   try {
     // Wait for the prior run's full lifecycle (prepare → run → teardown) to
@@ -536,6 +542,18 @@ export async function runAppTestsWithIsolation({
     if (prior) {
       await prior.done.catch(() => {});
     }
+
+    // Emit "started" only after the prior lifecycle has fully drained: the
+    // prior run's `finally` emits its "finished" event during teardown, and
+    // announcing this run first would let that stale "finished" flip the
+    // panel back to idle while this run is still executing.
+    emitRunState(event, {
+      appId,
+      source,
+      state: "started",
+      testFile: normalizedTestFile ?? undefined,
+      testLine,
+    });
 
     // Hold the per-app lock across the whole isolation lifecycle (prepare →
     // run → teardown). Startup reconciliation (reconcileOrphanTestBranches /

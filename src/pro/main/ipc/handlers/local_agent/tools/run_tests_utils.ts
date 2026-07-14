@@ -1,12 +1,15 @@
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { PLAYWRIGHT_REPORT_ERROR_FILE } from "@/ipc/utils/playwright_report";
 import { normalizeRunTestFile } from "@/ipc/handlers/tests_handlers";
+import { isFailingStatus } from "./test_failure_signature";
 import {
   AgentContext,
   FileEditTracker,
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
+
+export { isFailingStatus };
 
 /** Fix attempts allowed per spec per turn before the tool refuses to rerun. */
 export const MAX_ATTEMPTS = 4;
@@ -43,17 +46,6 @@ export interface Classification {
   message?: string;
 }
 
-/**
- * A test that RAN and didn't pass — both "failed" (assertion) and
- * "inconclusive" (selector/timeout/strict-mode, which Playwright's error
- * heuristic flags as infra-ish) count. Only a whole-run failure that produced
- * NO report — surfaced separately as `infraError` — is a true environment
- * problem; anything with a per-test verdict is a fixable test result.
- */
-export function isFailingStatus(status: string): boolean {
-  return status === "failed" || status === "inconclusive";
-}
-
 export function classify(res: RunAppTestsResult): Classification {
   const runnerError = res.results.find(
     (r) => r.file === PLAYWRIGHT_REPORT_ERROR_FILE,
@@ -80,14 +72,34 @@ export function classify(res: RunAppTestsResult): Classification {
       allInconclusive: false,
     };
   }
-  const passed = res.results.filter((r) => r.status === "passed").length;
-  const assertionFailures = res.results.filter(
-    (r) => r.status === "failed",
+  // Count individual test() verdicts, not spec files — a file result's status
+  // is an aggregate, so counting files would report a spec with several
+  // passing tests and one failure as "0 passed, 1 failed".
+  const verdicts = res.results.flatMap(
+    (r): { status: TestResult["status"]; error?: string }[] =>
+      r.tests && r.tests.length > 0 ? r.tests : [r],
+  );
+  const passed = verdicts.filter((v) => v.status === "passed").length;
+  const assertionFailures = verdicts.filter(
+    (v) => v.status === "failed",
   ).length;
-  const inconclusive = res.results.filter(
-    (r) => r.status === "inconclusive",
+  const inconclusive = verdicts.filter(
+    (v) => v.status === "inconclusive",
   ).length;
   const failed = assertionFailures + inconclusive;
+  // Skipped tests (`test.skip`/`test.fixme`) surface as errorless
+  // "inconclusive" verdicts. When NOTHING ran — no pass, no assertion failure,
+  // and no failing verdict carries an error — the spec has no runnable test,
+  // which the agent fixes by un-skipping, not by burning a fix attempt on
+  // locator-failure guidance.
+  if (
+    passed === 0 &&
+    failed > 0 &&
+    assertionFailures === 0 &&
+    verdicts.every((v) => !isFailingStatus(v.status) || !v.error)
+  ) {
+    return { kind: "no-tests", passed: 0, failed: 0, allInconclusive: false };
+  }
   if (failed > 0) {
     return {
       kind: "failed",

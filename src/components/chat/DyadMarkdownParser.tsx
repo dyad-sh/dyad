@@ -621,6 +621,10 @@ function renderCustomTag(
           {content}
         </DyadThink>
       );
+    // "dyad-generate-test" is legacy: no longer emitted, but historical chats
+    // still contain it. Both tags carry a path/description and a file body, so
+    // the old test cards render as plain file-write cards instead of raw markup.
+    case "dyad-generate-test":
     case "dyad-write":
       return (
         <DyadWrite

@@ -5,6 +5,15 @@ import log from "electron-log";
 const logger = log.scope("test_screenshot");
 
 /**
+ * Refuse to read screenshots above this size. The read is synchronous on the
+ * Electron main process and the base64 data URL inflates it by ~33% before
+ * going over IPC or into a model request, so an unexpectedly huge Playwright
+ * artifact should degrade to "no screenshot" rather than freeze the app or
+ * blow up the agent request. Real failure screenshots are well under this.
+ */
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
+
+/**
  * Read a Playwright failure screenshot as a PNG data URL, enforcing the same
  * containment guards as the `tests:screenshot` IPC handler: PNG-only, resolved
  * through symlinks, and inside the app's `test-results/` directory. Returns
@@ -60,6 +69,13 @@ export function readTestScreenshotDataUrl(
     return null;
   }
   try {
+    const { size } = fs.statSync(realPath);
+    if (size > MAX_SCREENSHOT_BYTES) {
+      logger.warn(
+        `Screenshot ${realPath} is ${size} bytes (limit ${MAX_SCREENSHOT_BYTES}); skipping`,
+      );
+      return null;
+    }
     const buf = fs.readFileSync(realPath);
     return `data:image/png;base64,${buf.toString("base64")}`;
   } catch (error) {

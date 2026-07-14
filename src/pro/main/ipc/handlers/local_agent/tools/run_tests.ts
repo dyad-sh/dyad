@@ -287,10 +287,16 @@ function reportPassed(params: {
 }): string {
   const { ctx, testFile, state, outcome, res, currentEditCount, testName } =
     params;
-  // A pass grants a fresh fix budget, but the state is kept so an unchanged
-  // rerun of what just passed can be refused instead of looping.
-  state.attempts = 0;
-  delete state.lastFailureSignature;
+  // Only a WHOLE-FILE pass grants a fresh fix budget — everything in the spec
+  // is green, so prior attempts are moot. A targeted pass proves only that one
+  // test and must NOT reset the counter: otherwise alternating a known-green
+  // target with a failing one would launder unlimited attempts past the cap.
+  // Either way the state is kept so an unchanged rerun of what just passed can
+  // be refused instead of looping.
+  if (!testName) {
+    state.attempts = 0;
+    delete state.lastFailureSignature;
+  }
   delete state.fileEditCountAtLastRun;
   delete state.lastRunTestName;
   state.passedAtEditCount = {
@@ -333,7 +339,13 @@ function attachFailureArtifacts(
       { type: "image-url", url: dataUrl },
     ]);
   }
-  return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page\n- Screenshot: ${rel} (attached to the next message as an image)`;
+  // Only promise the image when it was actually attached — the read can fail
+  // (missing/oversized/escaping file), and the model would otherwise burn a
+  // turn looking for an attachment that never arrives.
+  const screenshotLine = dataUrl
+    ? `\n- Screenshot: ${rel} (attached to the next message as an image)`
+    : `\n- Screenshot: ${rel} (could NOT be attached as an image — rely on the page snapshot instead)`;
+  return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page${screenshotLine}`;
 }
 
 function reportFailure(params: {
@@ -454,7 +466,22 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 
     const isFreeFlakeRun = consumeFreeFlakeCheck(args, state);
 
-    const res = await runSpec(ctx, testFile, target);
+    let res: RunAppTestsResult;
+    try {
+      res = await runSpec(ctx, testFile, target);
+    } catch (error) {
+      // An unexpected throw (isolation setup, database access, teardown) must
+      // not crash the whole agent turn or leave the loop state inconsistent:
+      // give back the free flake rerun if this run consumed it, and surface
+      // the same uncounted infrastructure outcome as a structured infra error.
+      if (isFreeFlakeRun) {
+        state.flakeCheckUsed = false;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      const body = `Test run could not complete — an unexpected error occurred in the test infrastructure, NOT a test failure, and this did NOT count as a fix attempt.\n\n${message}\n\nFix the environment (or ask the user), then call run_tests again.`;
+      completeWarning(ctx, "Test run couldn't complete", body);
+      return body;
+    }
     const outcome = classify(res);
 
     switch (outcome.kind) {

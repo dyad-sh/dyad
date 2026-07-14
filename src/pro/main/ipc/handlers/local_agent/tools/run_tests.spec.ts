@@ -600,4 +600,66 @@ describe("runTestsTool", () => {
     expect(out).toContain("(truncated)");
     expect(out.length).toBeLessThan(longError.length);
   });
+
+  it("keeps the fix budget after a targeted pass (no attempt laundering)", async () => {
+    // Only a whole-file pass resets the counter. If a targeted pass did too,
+    // alternating a known-green target with a failing one would launder
+    // unlimited attempts past the per-spec cap.
+    runner.mockResolvedValue(failResult("boom"));
+    const ctx = makeCtx();
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, ctx);
+    expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
+    addEdit(ctx, "tests/a.spec.ts");
+    runner.mockResolvedValue(passedResult);
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      ctx,
+    );
+    expect(out).toContain('"does a thing" passed');
+    expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
+  });
+
+  it("treats an all-skipped spec (errorless inconclusive) as no runnable tests (uncounted)", async () => {
+    // `test.skip`/`test.fixme` specs parse as errorless "inconclusive"
+    // verdicts; they should ask the agent to un-skip, not burn a fix attempt
+    // on locator-failure guidance.
+    runner.mockResolvedValue({
+      appId: 1,
+      results: [
+        {
+          file: "tests/a.spec.ts",
+          status: "inconclusive",
+          tests: [{ title: "does a thing", status: "inconclusive" }],
+        },
+      ],
+      isolation: { mode: "neon-branch" },
+    });
+    const ctx = makeCtx();
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts" },
+      ctx,
+    );
+    expect(out).toContain("skipped");
+    expect(out).toContain("did NOT count");
+    expect(out).not.toContain("Test run FAILED");
+    expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts ?? 0).toBe(0);
+  });
+
+  it("survives a thrown runner error: uncounted, and the free flakeCheck is restored", async () => {
+    runner.mockResolvedValue(failResult("boom"));
+    const ctx = makeCtx();
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, ctx);
+    runner.mockRejectedValue(new Error("db exploded"));
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    expect(out).toContain("did NOT count");
+    expect(out).toContain("db exploded");
+    const state = ctx.testRunAttempts.get("tests/a.spec.ts")!;
+    expect(state.attempts).toBe(1);
+    // The throw happened after the free flake rerun was consumed — it must be
+    // handed back so the model can still use it once the environment is fixed.
+    expect(state.flakeCheckUsed).toBeFalsy();
+  });
 });

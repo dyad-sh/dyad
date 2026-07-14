@@ -345,6 +345,37 @@ function configRespectsBaseUrlEnv(appPath: string): boolean {
   return text != null && text.includes(TEST_BASE_URL_ENV);
 }
 
+/**
+ * Preserve a config we're about to regenerate. Dyad-generated configs are pure
+ * template output with nothing of the user's to lose; anything else (an AI- or
+ * hand-written config with custom reporters/projects/fixtures) is copied to a
+ * `.backup` sibling — a name Playwright never resolves — before the overwrite.
+ * Returns the backup filename, or null when no backup was needed. The first
+ * backup wins: an existing `.backup` is never clobbered by later regenerations.
+ */
+function backupPlaywrightConfig(appPath: string): string | null {
+  if (isDyadGeneratedConfig(appPath)) return null;
+  const candidates = [
+    tsConfigPath(appPath),
+    path.join(appPath, "playwright.config.js"),
+  ];
+  for (const configPath of candidates) {
+    if (!fs.existsSync(configPath)) continue;
+    const backupPath = `${configPath}.backup`;
+    try {
+      if (!fs.existsSync(backupPath)) {
+        fs.copyFileSync(configPath, backupPath);
+        logger.info(`Backed up ${path.basename(configPath)} to ${backupPath}`);
+      }
+      return path.basename(backupPath);
+    } catch (err) {
+      logger.warn(`Failed to back up ${configPath}: ${err}`);
+      return null;
+    }
+  }
+  return null;
+}
+
 function writePlaywrightConfig(
   appPath: string,
   channel: BrowserChannel | null,
@@ -462,8 +493,12 @@ export async function ensurePlaywrightBootstrap({
     // port instead of the running dev server. This happens when the app-
     // building model writes its own playwright.config.ts. The test baseURL is
     // Dyad-owned infra (not user product code), so regenerate the config to
-    // restore the env-var contract. Drop a stale .js so the two configs don't
-    // both resolve after we write the canonical .ts.
+    // restore the env-var contract. A non-Dyad config may carry custom
+    // reporters/projects/setup the user wants to keep, so it's preserved as a
+    // one-time backup rather than silently discarded.
+    const backupName = backupPlaywrightConfig(appPath);
+    // Drop a stale .js so the two configs don't both resolve after we write
+    // the canonical .ts.
     try {
       fs.rmSync(path.join(appPath, "playwright.config.js"), { force: true });
     } catch {
@@ -472,7 +507,9 @@ export async function ensurePlaywrightBootstrap({
     usesChannel = detectedChannel !== null;
     writePlaywrightConfig(appPath, usesChannel ? detectedChannel : null);
     onOutput?.(
-      "Regenerated playwright.config.ts so tests run against Dyad's dev server.\n",
+      backupName
+        ? `Your Playwright config didn't read the DYAD_TEST_BASE_URL env var, so tests would not reach Dyad's dev server. It was regenerated; your original config was saved as ${backupName} — port any custom settings into the new config, keeping baseURL read from DYAD_TEST_BASE_URL.\n`
+        : "Regenerated playwright.config.ts so tests run against Dyad's dev server.\n",
     );
   } else {
     usesChannel = configUsesChannel(appPath);

@@ -30,6 +30,7 @@ import {
   currentTestRunStateAtom,
   setTestSpecsForAppAtom,
   setTestRunStateForAppAtom,
+  testSpecsByAppIdAtom,
   type RuntimeTestResult,
   type TestStatus,
 } from "@/atoms/testRuntimeAtoms";
@@ -507,12 +508,23 @@ export function TestsPanel() {
   const queryClient = useQueryClient();
 
   // "Generate test" / "Fix with AI" run in Agent mode. When the current chat is
-  // in another mode, we confirm the switch first and stash the action to run on
-  // Continue.
-  const [agentModeDialog, setAgentModeDialog] = useState<{
-    action: "generate" | "fix";
-    run: () => void;
-  } | null>(null);
+  // in another mode, we confirm the switch first and stash the action's
+  // parameters to replay on Continue. Only declarative params are stored (never
+  // a callback) so Continue always runs through the latest handlers instead of
+  // a closure captured when the dialog opened.
+  const [agentModeDialog, setAgentModeDialog] = useState<
+    | { action: "generate" }
+    | {
+        action: "fix";
+        params: {
+          file: string;
+          error: string | undefined;
+          testTitle?: string;
+          screenshotPath?: string;
+        };
+      }
+    | null
+  >(null);
 
   // Per-app opt-in gate. Running tests can mutate the app's real data, so every
   // run/generate control stays hidden behind the opt-in screen until the user
@@ -635,13 +647,22 @@ export function TestsPanel() {
     };
   }, [setRunState, flushPendingOutput, testingEnabled]);
 
+  // Specs for an arbitrary app, read lazily from the store: agent-initiated
+  // runs can start/finish for an app other than the selected one, and using
+  // the selected app's `specs` there would derive runningFiles and reconcile
+  // results against the wrong file list.
+  const specsForApp = useCallback(
+    (appId: number) => jotaiStore.get(testSpecsByAppIdAtom).get(appId) ?? [],
+    [jotaiStore],
+  );
+
   // Transition the panel into the "running" state for a run. Shared by
   // panel-initiated runs (runTests) and agent-initiated runs (the tests:run-state
   // subscription), so both show the same spinners/cleared-output chrome.
   const applyRunStarted = useCallback(
     (appId: number, file: string | undefined, line: number | undefined) => {
       const isSingleTest = file != null && line != null;
-      const targetFiles = file ? [file] : specs.map((s) => s.file);
+      const targetFiles = file ? [file] : specsForApp(appId).map((s) => s.file);
       flushPendingOutput(appId);
       clearOutput(appId);
       setRunState({
@@ -666,9 +687,13 @@ export function TestsPanel() {
           startedAt: Date.now(),
         }),
       });
-      setOutputOpen(true);
+      // Only pop the output drawer for the app the user is actually looking
+      // at — an agent run on another app shouldn't rearrange this one's view.
+      if (appId === selectedAppId) {
+        setOutputOpen(true);
+      }
     },
-    [specs, flushPendingOutput, clearOutput, setRunState],
+    [specsForApp, selectedAppId, flushPendingOutput, clearOutput, setRunState],
   );
 
   // Merge a finished run's results back onto the panel. Shared by panel- and
@@ -679,8 +704,9 @@ export function TestsPanel() {
       // may not match the glob-relative paths in our spec list (e.g. missing
       // the "tests/" prefix). Reconcile each result back onto a known spec
       // key so rows actually pick up their status.
-      const specFiles = specs.map((s) => s.file);
-      const specsByFile = new Map(specs.map((s) => [s.file, s]));
+      const appSpecs = specsForApp(appId);
+      const specFiles = appSpecs.map((s) => s.file);
+      const specsByFile = new Map(appSpecs.map((s) => [s.file, s]));
       setRunState({
         appId,
         update: (prev) => {
@@ -713,7 +739,7 @@ export function TestsPanel() {
         },
       });
     },
-    [specs, setRunState],
+    [specsForApp, setRunState],
   );
 
   const runTests = useCallback(
@@ -764,9 +790,12 @@ export function TestsPanel() {
   // Reflect runs the panel didn't start itself — the agent's run_tests tool
   // streams the same lifecycle via tests:run-state. Ignore source: "panel"
   // (runTests already writes state directly, and main serializes runs so an
-  // agent and a panel run never overlap). Gated on the opt-in like onOutput.
+  // agent and a panel run never overlap). Registered unconditionally — not
+  // gated on the selected app's opt-in — so a run that started before the user
+  // switched apps still receives its terminal event instead of stranding that
+  // app's spinner. Events only fire for apps that enabled testing (main
+  // enforces the opt-in before running).
   useEffect(() => {
-    if (!testingEnabled) return;
     const unsubscribe = ipc.events.tests.onRunState((payload) => {
       if (payload.source === "panel") return;
       const isSingleTest = payload.testFile != null && payload.testLine != null;
@@ -783,10 +812,16 @@ export function TestsPanel() {
           },
           isSingleTest,
         );
+        // The agent may have written the spec it just ran in this same turn;
+        // refetch now so its result row reconciles right away instead of
+        // waiting for the end-of-turn invalidation.
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.tests.list({ appId: payload.appId }),
+        });
       }
     });
     return unsubscribe;
-  }, [testingEnabled, applyRunStarted, applyRunFinished]);
+  }, [applyRunStarted, applyRunFinished, queryClient]);
 
   const stop = useCallback(() => {
     if (selectedAppId == null) return;
@@ -875,11 +910,13 @@ export function TestsPanel() {
   // already in it, then run the fix.
   const askAiToFix = useCallback<AskAiToFix>(
     (file, error, testTitle, screenshotPath) => {
-      const run = () => doAskAiToFix(file, error, testTitle, screenshotPath);
       if (isAgentMode) {
-        run();
+        doAskAiToFix(file, error, testTitle, screenshotPath);
       } else {
-        setAgentModeDialog({ action: "fix", run });
+        setAgentModeDialog({
+          action: "fix",
+          params: { file, error, testTitle, screenshotPath },
+        });
       }
     },
     [doAskAiToFix, isAgentMode],
@@ -906,7 +943,7 @@ export function TestsPanel() {
     if (isAgentMode) {
       doGenerateTest();
     } else {
-      setAgentModeDialog({ action: "generate", run: doGenerateTest });
+      setAgentModeDialog({ action: "generate" });
     }
   }, [doGenerateTest, isAgentMode]);
 
@@ -1309,7 +1346,13 @@ export function TestsPanel() {
         }}
         action={agentModeDialog?.action ?? "generate"}
         onContinue={() => {
-          agentModeDialog?.run();
+          if (agentModeDialog?.action === "fix") {
+            const { file, error, testTitle, screenshotPath } =
+              agentModeDialog.params;
+            doAskAiToFix(file, error, testTitle, screenshotPath);
+          } else if (agentModeDialog) {
+            doGenerateTest();
+          }
           setAgentModeDialog(null);
         }}
       />

@@ -19,6 +19,13 @@ describe("stripDynamic", () => {
   it("strips ANSI color codes", () => {
     expect(stripDynamic("[31mError[0m: boom")).toBe("Error: boom");
   });
+
+  it("normalizes generated UUIDs (short middle segments included)", () => {
+    const a = stripDynamic("row 123e4567-e89b-12d3-a456-426614174000 missing");
+    const b = stripDynamic("row 9b2fa0ee-1c2d-4e3f-8a4b-5c6d7e8f9a0b missing");
+    expect(a).toBe(b);
+    expect(a).toContain("<uuid>");
+  });
 });
 
 describe("normalizeFailureSignature", () => {

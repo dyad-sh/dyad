@@ -29,6 +29,7 @@ export async function buildReviewTarget(params: {
   const chunks: string[] = [];
   const includedFiles = new Set<string>();
   let includedBytes = 0;
+  let effectiveBaseCommit = params.baseCommit?.trim() || null;
 
   const addDiff = (file: string, value: string): void => {
     const bytes = Buffer.byteLength(value);
@@ -162,12 +163,12 @@ export async function buildReviewTarget(params: {
       const syntheticDiff = `diff --git a/${file} b/${file}\nnew file mode 100644\n--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${textLines.length} @@\n${textLines.map((line) => `+${line}`).join("\n")}`;
       addDiff(file, syntheticDiff);
     }
-    params.baseCommit = head?.trim() || null;
+    effectiveBaseCommit = head?.trim() || null;
   }
 
   const diff = chunks.filter(Boolean).join("\n");
   return {
-    baseCommit: params.baseCommit?.trim() || null,
+    baseCommit: effectiveBaseCommit,
     targetCommit: params.targetCommit?.trim() || null,
     diff,
     files: [...includedFiles],

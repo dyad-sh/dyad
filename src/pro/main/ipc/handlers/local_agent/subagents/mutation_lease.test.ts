@@ -30,6 +30,23 @@ describe("sub-agent mutation lease", () => {
     ).not.toThrow();
   });
 
+  it("allows only one Implementer reservation per app", () => {
+    expect(
+      acquireMutationLease({
+        appId: 7,
+        threadId: "implementer-1",
+        scope: ["src/first"],
+      }),
+    ).toBe(true);
+    expect(
+      acquireMutationLease({
+        appId: 7,
+        threadId: "implementer-2",
+        scope: ["src/second"],
+      }),
+    ).toBe(false);
+  });
+
   it("enforces the Implementer's explicit path scope", () => {
     const ctx = {
       subagentPersona: "implementer",

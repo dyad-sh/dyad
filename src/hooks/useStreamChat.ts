@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { ComponentSelection, FileAttachment } from "@/ipc/types";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
@@ -18,6 +18,7 @@ import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { pendingScreenshotAppIdAtom } from "@/atoms/previewAtoms";
 import type { ChatResponseEnd, Chat } from "@/ipc/types";
+import type { SubagentThreadSummary } from "@/ipc/types/agent";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
@@ -62,6 +63,84 @@ export function getRandomNumberId() {
 // Module-level set to track chatIds with active/pending streams
 // This prevents race conditions when clicking rapidly before state updates
 const pendingStreamChatIds = new Set<number>();
+const backgroundAutoReviewChatIds = new Set<number>();
+
+const ACTIVE_REVIEW_STATUSES = new Set<SubagentThreadSummary["status"]>([
+  "queued",
+  "running",
+  "waiting_for_writer",
+]);
+
+export function shouldStartBackgroundAutoReview(params: {
+  updatedFiles: boolean;
+  enableAutoReview: boolean;
+  hasQueuedMessages: boolean;
+  suppressAutoReview: boolean;
+}): boolean {
+  return (
+    params.updatedFiles &&
+    params.enableAutoReview &&
+    !params.hasQueuedMessages &&
+    !params.suppressAutoReview
+  );
+}
+
+async function waitForReview(
+  chatId: number,
+  initial: SubagentThreadSummary,
+): Promise<SubagentThreadSummary> {
+  let review = initial;
+  while (ACTIVE_REVIEW_STATUSES.has(review.status)) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const threads = await ipc.agent.listSubagents({ chatId });
+    const updated = threads.find((thread) => thread.id === review.id);
+    if (!updated) return review;
+    review = updated;
+  }
+  return review;
+}
+
+export async function runBackgroundAutoReview(params: {
+  chatId: number;
+  sourceMessageId: number;
+  autoFix: boolean;
+  streamFix: (prompt: string) => Promise<boolean>;
+}): Promise<void> {
+  if (backgroundAutoReviewChatIds.has(params.chatId)) return;
+  backgroundAutoReviewChatIds.add(params.chatId);
+  try {
+    const started = await ipc.agent.startAutoReview({
+      chatId: params.chatId,
+      sourceMessageId: params.sourceMessageId,
+    });
+    const completed = await waitForReview(params.chatId, started);
+    if (
+      !params.autoFix ||
+      completed.status !== "completed" ||
+      Number(completed.result?.findingCount ?? 0) === 0
+    ) {
+      return;
+    }
+    const { prompt } = await ipc.agent.fixReviewFindings({
+      chatId: params.chatId,
+      threadId: completed.id,
+    });
+    const remediated = await params.streamFix(prompt);
+    if (!remediated) {
+      await ipc.agent.skipReviewAutoFix({
+        chatId: params.chatId,
+        threadId: completed.id,
+      });
+      return;
+    }
+    await ipc.agent.runAutoReviewBarrier({
+      chatId: params.chatId,
+      verification: true,
+    });
+  } finally {
+    backgroundAutoReviewChatIds.delete(params.chatId);
+  }
+}
 
 // Throttled ack scheduler for the canned test stream's ack-based
 // backpressure. Stores the highest chunkSeq received per chatId; at most
@@ -177,6 +256,7 @@ export function useStreamChat({
       selectedComponents,
       requestedChatMode,
       onSettled,
+      suppressAutoReview = false,
     }: {
       prompt: string;
       chatId: number;
@@ -189,6 +269,8 @@ export function useStreamChat({
         success: boolean;
         pausedByStepLimit?: boolean;
       }) => void;
+      /** Internal turns such as review remediation must not review themselves. */
+      suppressAutoReview?: boolean;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -543,10 +625,14 @@ export function useStreamChat({
                   }),
                 });
                 if (
-                  response.updatedFiles &&
-                  settings?.enableAutoReview &&
-                  (store.get(queuedMessagesByIdAtom).get(chatId)?.length ??
-                    0) === 0
+                  shouldStartBackgroundAutoReview({
+                    updatedFiles: response.updatedFiles === true,
+                    enableAutoReview: settings?.enableAutoReview === true,
+                    hasQueuedMessages:
+                      (store.get(queuedMessagesByIdAtom).get(chatId)?.length ??
+                        0) > 0,
+                    suppressAutoReview,
+                  })
                 ) {
                   void ipc.chat
                     .getChat(chatId)
@@ -555,9 +641,26 @@ export function useStreamChat({
                         .reverse()
                         .find((message) => message.role === "assistant");
                       if (latestAssistant) {
-                        return ipc.agent.startAutoReview({
+                        return runBackgroundAutoReview({
                           chatId,
                           sourceMessageId: latestAssistant.id,
+                          autoFix: settings?.autoFixReviewIssues === true,
+                          streamFix: (fixPrompt) =>
+                            new Promise<boolean>((resolve) => {
+                              const startStream = streamMessageRef.current;
+                              if (!startStream) {
+                                resolve(false);
+                                return;
+                              }
+                              startStream({
+                                prompt: fixPrompt,
+                                chatId,
+                                redo: false,
+                                requestedChatMode: "local-agent",
+                                suppressAutoReview: true,
+                                onSettled: ({ success }) => resolve(success),
+                              });
+                            }),
                         });
                       }
                     })
@@ -660,6 +763,8 @@ export function useStreamChat({
       store,
     ],
   );
+  const streamMessageRef = useRef<typeof streamMessage | null>(null);
+  streamMessageRef.current = streamMessage;
 
   // Memoize queue management functions to prevent unnecessary re-renders
   // in components that depend on these functions (e.g., restore effect)

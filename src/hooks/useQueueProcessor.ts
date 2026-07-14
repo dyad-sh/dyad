@@ -17,6 +17,37 @@ import { ipc } from "@/ipc/types";
 const reviewBarrierInFlight = new Set<number>();
 const reviewBarrierPassed = new Set<number>();
 
+export async function runQueuedReviewFlow(params: {
+  runBarrier: (verification?: boolean) => Promise<{
+    outcome: "released" | "skipped" | "fix_required";
+    threadId?: string;
+    prompt?: string;
+  }>;
+  streamRemediation: (prompt: string) => Promise<boolean>;
+  onRemediationFailed?: (threadId: string) => Promise<void>;
+}): Promise<"released"> {
+  const barrier = await params.runBarrier();
+  if (barrier.outcome !== "fix_required" || !barrier.prompt) {
+    return "released";
+  }
+
+  const remediated = await params.streamRemediation(barrier.prompt);
+  // A failed or denied remediation remains visible, but the user's queued
+  // message must still be released rather than stranded behind the barrier.
+  if (!remediated) {
+    if (barrier.threadId) {
+      await params.onRemediationFailed?.(barrier.threadId);
+    }
+    return "released";
+  }
+
+  // The queued user message remains paused until the remediation turn has
+  // itself been independently reviewed. The main process treats this as a
+  // verification review and will never start another remediation countdown.
+  await params.runBarrier(true);
+  return "released";
+}
+
 /**
  * Root-level hook that processes queued messages for any chat,
  * even when the user is not on the chat page.
@@ -58,39 +89,43 @@ export function useQueueProcessor() {
           next.set(chatId, true);
           return next;
         });
-        void ipc.agent
-          .runAutoReviewBarrier({ chatId })
-          .then((barrier) => {
-            if (barrier.outcome !== "fix_required" || !barrier.prompt) {
-              reviewBarrierPassed.add(chatId);
-              return;
-            }
-            streamMessage({
-              prompt: barrier.prompt,
-              chatId,
-              redo: false,
-              requestedChatMode: "local-agent",
-              onSettled: () => {
-                void ipc.agent
-                  .runAutoReviewBarrier({ chatId, verification: true })
-                  .finally(() => {
-                    reviewBarrierPassed.add(chatId);
-                    reviewBarrierInFlight.delete(chatId);
-                    setQueuePausedById((prev) => {
-                      const next = new Map(prev);
-                      next.set(chatId, false);
-                      return next;
-                    });
-                  });
-              },
-            });
+        void runQueuedReviewFlow({
+          runBarrier: (verification) =>
+            ipc.agent.runAutoReviewBarrier({ chatId, verification }),
+          streamRemediation: (prompt) =>
+            new Promise<boolean>((resolve) => {
+              streamMessage({
+                prompt,
+                chatId,
+                redo: false,
+                requestedChatMode: "local-agent",
+                suppressAutoReview: true,
+                onSettled: ({ success }) => resolve(success),
+              });
+            }),
+          onRemediationFailed: (threadId) =>
+            ipc.agent.skipReviewAutoFix({ chatId, threadId }),
+        })
+          .then(() => {
+            // Every terminal review/remediation outcome releases the user's
+            // queued message. Failures stay visible in the agent card but
+            // must never strand the FIFO queue.
+            reviewBarrierPassed.add(chatId);
           })
           .catch(() => {
+            // Review infrastructure failures are non-blocking. This mirrors
+            // the manager's fail-open barrier while still guaranteeing that
+            // a review was attempted before the queued message is released.
             reviewBarrierPassed.add(chatId);
           })
           .finally(() => {
-            if (!reviewBarrierPassed.has(chatId)) return;
             reviewBarrierInFlight.delete(chatId);
+            if (!reviewBarrierPassed.has(chatId)) return;
+            setStreamCompletedSuccessfullyById((prev) => {
+              const next = new Map(prev);
+              next.set(chatId, true);
+              return next;
+            });
             setQueuePausedById((prev) => {
               const next = new Map(prev);
               next.set(chatId, false);

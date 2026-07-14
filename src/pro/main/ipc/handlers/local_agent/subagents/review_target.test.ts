@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildReviewTarget } from "./review_target";
+import { buildReviewTarget, REVIEW_MAX_FILE_BYTES } from "./review_target";
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
@@ -62,6 +62,78 @@ describe("buildReviewTarget", () => {
     expect(review.files.sort()).toEqual(["new.ts", "tracked.ts"]);
     expect(review.diff).toContain("+created");
     expect(review.diff).not.toContain("secret");
+  });
+
+  it("reviews staged and untracked files in a repository without a commit", async () => {
+    const repo = await makeRepo();
+    await fs.writeFile(
+      path.join(repo, "staged.ts"),
+      "export const staged = true;\n",
+    );
+    await git(repo, "add", "staged.ts");
+    await fs.writeFile(
+      path.join(repo, "untracked.ts"),
+      "export const untracked = true;\n",
+    );
+
+    const review = await buildReviewTarget({ appPath: repo });
+
+    expect(review.baseCommit).toBeNull();
+    expect(review.files.sort()).toEqual(["staged.ts", "untracked.ts"]);
+    expect(review.diff).toContain("+export const staged = true;");
+    expect(review.diff).toContain("+export const untracked = true;");
+  });
+
+  it("does not follow untracked symbolic links", async () => {
+    const repo = await makeRepo();
+    const outside = path.join(
+      path.dirname(repo),
+      `${path.basename(repo)}-secret`,
+    );
+    await fs.writeFile(outside, "host secret\n");
+    await fs.symlink(outside, path.join(repo, "linked-secret.txt"));
+
+    const review = await buildReviewTarget({ appPath: repo });
+
+    expect(review.diff).not.toContain("host secret");
+    expect(review.files).not.toContain("linked-secret.txt");
+    expect(review.exclusions).toContain("linked-secret.txt (symbolic link)");
+    await fs.rm(outside, { force: true });
+  });
+
+  it("excludes oversized untracked files without reading them into the diff", async () => {
+    const repo = await makeRepo();
+    await fs.writeFile(
+      path.join(repo, "oversized.txt"),
+      Buffer.alloc(REVIEW_MAX_FILE_BYTES + 1, "x"),
+    );
+
+    const review = await buildReviewTarget({ appPath: repo });
+
+    expect(review.diff).toBe("");
+    expect(review.files).not.toContain("oversized.txt");
+    expect(review.exclusions).toContain(
+      "oversized.txt (exceeds per-file review limit)",
+    );
+  });
+
+  it("excludes oversized tracked diffs", async () => {
+    const repo = await makeRepo();
+    await fs.writeFile(path.join(repo, "large.txt"), "small\n");
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "base");
+    await fs.writeFile(
+      path.join(repo, "large.txt"),
+      Buffer.alloc(REVIEW_MAX_FILE_BYTES + 1, "x"),
+    );
+
+    const review = await buildReviewTarget({ appPath: repo });
+
+    expect(review.diff).toBe("");
+    expect(review.files).not.toContain("large.txt");
+    expect(review.exclusions).toContain(
+      "large.txt (diff exceeds per-file review limit)",
+    );
   });
 });
 

@@ -34,6 +34,7 @@ import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import {
   cancelAgentTool,
+  compilerExploreTool,
   followupTaskTool,
   listAgentsTool,
   sendMessageTool,
@@ -97,6 +98,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   listFilesTool,
   grepTool,
   codeSearchTool,
+  compilerExploreTool,
   spawnAgentTool,
   listAgentsTool,
   waitAgentsTool,

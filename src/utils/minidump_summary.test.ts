@@ -783,6 +783,23 @@ describe("parseMinidumpBuffer", () => {
     expect(summary.ptype).toBe("browser");
   });
 
+  it("keeps allowlisted keys behind a cap's worth of unknown keys", () => {
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 32; i++) {
+      many[`key${i}`] = "v";
+    }
+    many["electron.v8-oom.is_heap_oom"] = "1";
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10010n,
+      ipOffset: 248,
+      annotations: many,
+    });
+    const summary = parseMinidumpBuffer(dump, "linux", "x64")!;
+    expect(summary.annotations!["electron.v8-oom.is_heap_oom"]).toBe("1");
+  });
+
   it("collects a module's simple annotations dictionary", () => {
     const dump = buildMinidump({
       modules: oneModule,

@@ -40,7 +40,8 @@ export function crashPerformanceEventFields(
 // Only annotation keys known to hold diagnostic, non-sensitive values are
 // exported to telemetry, each by its exact name. Unknown keys, including
 // ones future Electron versions may add, are dropped and only counted.
-const ALLOWED_ANNOTATION_KEYS = new Set([
+// The minidump parser also exempts these keys from its annotation cap.
+export const ALLOWED_ANNOTATION_KEYS = new Set([
   // Our crashReporter globalExtra parameters.
   "app_version",
   "electron_version",

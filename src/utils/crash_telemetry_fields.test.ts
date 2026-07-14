@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  ALLOWED_ANNOTATION_KEYS,
   crashAnnotationEventFields,
   crashPerformanceEventFields,
 } from "@/utils/crash_telemetry_fields";
@@ -106,11 +107,21 @@ describe("crashAnnotationEventFields", () => {
     });
   });
 
+  it("normalizes every allowlisted key to a distinct field name", () => {
+    // Distinct field names are what lets the flattener assign without a
+    // collision check; this guards additions to the allowlist.
+    const fields = crashAnnotationEventFields(
+      Object.fromEntries([...ALLOWED_ANNOTATION_KEYS].map((k) => [k, "v"])),
+    );
+    expect(Object.keys(fields)).toHaveLength(ALLOWED_ANNOTATION_KEYS.size);
+  });
+
   it("passes the V8 heap keys through by exact name", () => {
     expect(
       crashAnnotationEventFields({
         "electron.v8-oom.heap.limit": "4144",
-        "electron.v8-fatal.message": "MarkCompactCollector: young object promotion failed",
+        "electron.v8-fatal.message":
+          "MarkCompactCollector: young object promotion failed",
       }),
     ).toEqual({
       crash_annotation_electron_v8_oom_heap_limit: "4144",

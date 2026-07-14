@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { ALLOWED_ANNOTATION_KEYS } from "./crash_telemetry_fields";
 
 // A small, symbol-free summary extracted from a minidump: enough to attribute a
 // native crash (which signal, which module faulted) without any memory contents,
@@ -129,8 +130,9 @@ const CRASHPAD_INFO_MIN_SIZE_FOR_MASK = 64; // through the end of address_mask
 // Crashpad annotation object type for plain string values.
 const ANNOTATION_TYPE_STRING = 1;
 
-// Caps so a corrupt dump cannot balloon the summary. Not a strict bound:
-// ptype is exempt, so one entry more is possible.
+// Caps so a corrupt dump cannot balloon the summary. Allowlisted keys are
+// exempt, so unknown keys cannot crowd them out; the true bound is the cap
+// plus the allowlist size.
 const MAX_ANNOTATIONS = 32;
 const MAX_ANNOTATION_KEY_LEN = 64;
 const MAX_ANNOTATION_VALUE_LEN = 512;
@@ -498,7 +500,11 @@ function applyAddressMask(pointer: bigint, mask: bigint): bigint {
 }
 
 // A u32 byte-length followed by UTF-8 bytes (MinidumpUTF8String / ByteArray).
-function readLengthPrefixed(view: DataView, buf: Buffer, rva: number): string {
+function readAnnotationString(
+  view: DataView,
+  buf: Buffer,
+  rva: number,
+): string {
   if (rva === 0 || rva + 4 > buf.length) return "";
   const len = view.getUint32(rva, true);
   const start = rva + 4;
@@ -681,8 +687,8 @@ function readSimpleDictionary(
     if (entry + 8 > buf.length) break;
     addAnnotation(
       out,
-      readLengthPrefixed(view, buf, view.getUint32(entry, true)),
-      readLengthPrefixed(view, buf, view.getUint32(entry + 4, true)),
+      readAnnotationString(view, buf, view.getUint32(entry, true)),
+      readAnnotationString(view, buf, view.getUint32(entry + 4, true)),
     );
   }
 }
@@ -758,8 +764,8 @@ function readModuleAnnotations(
       if (view.getUint16(obj + 4, true) !== ANNOTATION_TYPE_STRING) continue;
       addAnnotation(
         out,
-        readLengthPrefixed(view, buf, view.getUint32(obj, true)),
-        readLengthPrefixed(view, buf, view.getUint32(obj + 8, true)),
+        readAnnotationString(view, buf, view.getUint32(obj, true)),
+        readAnnotationString(view, buf, view.getUint32(obj + 8, true)),
       );
     }
   }
@@ -779,7 +785,7 @@ function addAnnotation(
   // First writer wins, so the trusted source (module annotations, read
   // first) cannot be overwritten by a later dictionary.
   if (!k || Object.hasOwn(out, k)) return;
-  // ptype drives crash attribution, so the cap never drops it.
-  if (annotationsFull(out) && k !== "ptype") return;
+  // Keys telemetry keeps (ptype among them) are never dropped by the cap.
+  if (annotationsFull(out) && !ALLOWED_ANNOTATION_KEYS.has(k)) return;
   out[k] = value.slice(0, MAX_ANNOTATION_VALUE_LEN);
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { apps, chats, security_fix_chats } from "@/db/schema";
+import { apps, chats, messages, security_fix_chats } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   type HandlerTestHarness,
@@ -89,6 +89,34 @@ describe("registerSecurityHandlers", () => {
     expect(first.created).toBe(true);
     expect(second).toEqual({ chatId: first.chatId, created: false });
     expect(harness.db.select().from(security_fix_chats).all()).toHaveLength(1);
+  });
+
+  it("includes the existing fix chat in the latest security review", async () => {
+    const appId = seedApp("app");
+    const reviewChatId = seedChat(appId);
+    harness.db
+      .insert(messages)
+      .values({
+        chatId: reviewChatId,
+        role: "assistant",
+        content: `<dyad-security-finding title="${finding.title}" level="${finding.level}">${finding.description}</dyad-security-finding>`,
+      })
+      .run();
+
+    const { chatId: fixChatId } = await harness.invokeHandler<{
+      chatId: number;
+      created: boolean;
+    }>("get-or-create-security-fix-chat", {
+      appId,
+      reviewChatId,
+      findings: [finding],
+    });
+
+    const review = await harness.invokeHandler<{
+      findings: Array<SecurityFinding & { fixChatId?: number }>;
+    }>("get-latest-security-review", appId);
+
+    expect(review.findings).toEqual([{ ...finding, fixChatId }]);
   });
 
   it("does not collide findings that only match when delimiter-joined", async () => {

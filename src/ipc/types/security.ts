@@ -13,8 +13,14 @@ export const SecurityFindingSchema = z.object({
 
 export type SecurityFinding = z.infer<typeof SecurityFindingSchema>;
 
+export const SecurityReviewFindingSchema = SecurityFindingSchema.extend({
+  fixChatId: z.number().optional(),
+});
+
+export type SecurityReviewFinding = z.infer<typeof SecurityReviewFindingSchema>;
+
 export const SecurityReviewResultSchema = z.object({
-  findings: z.array(SecurityFindingSchema),
+  findings: z.array(SecurityReviewFindingSchema),
   timestamp: z.string(),
   chatId: z.number(),
 });

@@ -56,8 +56,25 @@ export function registerSecurityHandlers() {
         );
       }
 
+      const existingFixChats = await db.query.security_fix_chats.findMany({
+        where: and(
+          eq(security_fix_chats.appId, appId),
+          eq(security_fix_chats.reviewChatId, message.chatId),
+        ),
+        columns: { findingKey: true, fixChatId: true },
+      });
+      const fixChatIdByFindingKey = new Map(
+        existingFixChats.map(({ findingKey, fixChatId }) => [
+          findingKey,
+          fixChatId,
+        ]),
+      );
+
       return {
-        findings,
+        findings: findings.map((finding) => ({
+          ...finding,
+          fixChatId: fixChatIdByFindingKey.get(computeFindingKey([finding])),
+        })),
         timestamp: message.createdAt.toISOString(),
         chatId: message.chatId,
       };

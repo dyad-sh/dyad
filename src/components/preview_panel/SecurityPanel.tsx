@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type {
   SecurityFinding,
+  SecurityReviewFinding,
   SecurityReviewResult,
 } from "@/ipc/types/security";
 import { useState, useEffect, useRef } from "react";
@@ -31,6 +32,12 @@ import { showSuccess, showWarning, toast } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const DESCRIPTION_PREVIEW_LENGTH = 150;
 
@@ -440,18 +447,104 @@ function NoIssuesCard({ data }: { data?: SecurityReviewResult }) {
   );
 }
 
+function FindingFixActions({
+  finding,
+  isFixing,
+  onFix,
+  onShowFix,
+  onRerunFix,
+  compact = false,
+}: {
+  finding: SecurityReviewFinding;
+  isFixing: boolean;
+  onFix: (finding: SecurityFinding) => void;
+  onShowFix: (finding: SecurityReviewFinding) => void;
+  onRerunFix: (finding: SecurityReviewFinding) => void;
+  compact?: boolean;
+}) {
+  const size = compact ? "sm" : "default";
+
+  if (isFixing) {
+    return (
+      <Button size={size} disabled className="gap-2">
+        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
+        Fixing Issue...
+      </Button>
+    );
+  }
+
+  if (!finding.fixChatId) {
+    return (
+      <Button onClick={() => onFix(finding)} size={size} variant="default">
+        Fix Issue
+      </Button>
+    );
+  }
+
+  return (
+    <div className="inline-flex">
+      <Button
+        onClick={() => onShowFix(finding)}
+        size={size}
+        variant="outline"
+        className="rounded-r-none"
+      >
+        Show fix
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              size={size}
+              variant="outline"
+              className={cn("rounded-l-none border-l-0 px-2", compact && "w-8")}
+              aria-label={`More fix actions for ${finding.title}`}
+            />
+          }
+        >
+          <ChevronDown className="w-4 h-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => onRerunFix(finding)}>
+            <Wrench className="w-4 h-4" />
+            Re-run fix
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 function FindingsTable({
   findings,
   onOpenDetails,
   onFix,
+  onShowFix,
+  onRerunFix,
   fixingFindingKey,
   selectedFindings,
   onToggleSelection,
   onToggleSelectAll,
 }: {
-  findings: SecurityFinding[];
-  onOpenDetails: (finding: SecurityFinding) => void;
+  findings: SecurityReviewFinding[];
+  onOpenDetails: (finding: SecurityReviewFinding) => void;
   onFix: (finding: SecurityFinding) => void;
+  onShowFix: (finding: SecurityReviewFinding) => void;
+  onRerunFix: (finding: SecurityReviewFinding) => void;
   fixingFindingKey?: string | null;
   selectedFindings: Set<string>;
   onToggleSelection: (findingKey: string) => void;
@@ -557,40 +650,14 @@ function FindingsTable({
                   </div>
                 </td>
                 <td className="px-4 py-4 align-top text-right">
-                  <Button
-                    onClick={() => onFix(finding)}
-                    size="sm"
-                    variant="default"
-                    className="gap-2"
-                    disabled={isFixing}
-                  >
-                    {isFixing ? (
-                      <>
-                        <svg
-                          className="w-4 h-4 animate-spin"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          />
-                        </svg>
-                        Fixing Issue...
-                      </>
-                    ) : (
-                      <>Fix Issue</>
-                    )}
-                  </Button>
+                  <FindingFixActions
+                    finding={finding}
+                    isFixing={isFixing}
+                    onFix={onFix}
+                    onShowFix={onShowFix}
+                    onRerunFix={onRerunFix}
+                    compact
+                  />
                 </td>
               </tr>
             );
@@ -606,12 +673,16 @@ function FindingDetailsDialog({
   finding,
   onClose,
   onFix,
+  onShowFix,
+  onRerunFix,
   fixingFindingKey,
 }: {
   open: boolean;
-  finding: SecurityFinding | null;
+  finding: SecurityReviewFinding | null;
   onClose: (open: boolean) => void;
   onFix: (finding: SecurityFinding) => void;
+  onShowFix: (finding: SecurityReviewFinding) => void;
+  onRerunFix: (finding: SecurityReviewFinding) => void;
   fixingFindingKey?: string | null;
 }) {
   return (
@@ -627,44 +698,24 @@ function FindingDetailsDialog({
           {finding && <VanillaMarkdownParser content={finding.description} />}
         </div>
         <DialogFooter>
-          <Button
-            onClick={() => {
-              if (finding) {
-                onFix(finding);
+          {finding && (
+            <FindingFixActions
+              finding={finding}
+              isFixing={fixingFindingKey === createFindingKey(finding)}
+              onFix={(selectedFinding) => {
+                onFix(selectedFinding);
                 onClose(false);
-              }
-            }}
-            disabled={
-              finding ? fixingFindingKey === createFindingKey(finding) : false
-            }
-          >
-            {finding && fixingFindingKey === createFindingKey(finding) ? (
-              <>
-                <svg
-                  className="w-4 h-4 animate-spin mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Fixing Issue...
-              </>
-            ) : (
-              <>Fix Issue</>
-            )}
-          </Button>
+              }}
+              onShowFix={(selectedFinding) => {
+                onShowFix(selectedFinding);
+                onClose(false);
+              }}
+              onRerunFix={(selectedFinding) => {
+                onRerunFix(selectedFinding);
+                onClose(false);
+              }}
+            />
+          )}
           <DialogClose className={cn(buttonVariants({ variant: "outline" }))}>
             Close
           </DialogClose>
@@ -683,9 +734,8 @@ export const SecurityPanel = () => {
   const { data, isLoading, error, refetch } = useSecurityReview(selectedAppId);
   const [isRunningReview, setIsRunningReview] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsFinding, setDetailsFinding] = useState<SecurityFinding | null>(
-    null,
-  );
+  const [detailsFinding, setDetailsFinding] =
+    useState<SecurityReviewFinding | null>(null);
   const [isEditRulesOpen, setIsEditRulesOpen] = useState(false);
   const [rulesContent, setRulesContent] = useState("");
   const [fixingFindingKey, setFixingFindingKey] = useState<string | null>(null);
@@ -746,7 +796,7 @@ export const SecurityPanel = () => {
     }
   };
 
-  const openFindingDetails = (finding: SecurityFinding) => {
+  const openFindingDetails = (finding: SecurityReviewFinding) => {
     setDetailsFinding(finding);
     setDetailsOpen(true);
   };
@@ -784,9 +834,53 @@ export const SecurityPanel = () => {
     }
   };
 
+  const showFixChat = (chatId: number) => {
+    if (!selectedAppId) {
+      showError("No app selected");
+      return;
+    }
+    setIsChatPanelHidden(false);
+    selectChat({ chatId, appId: selectedAppId });
+  };
+
+  const streamFixPrompt = async ({
+    chatId,
+    findingsToFix,
+    setFixing,
+    onFixSettled,
+  }: {
+    chatId: number;
+    findingsToFix: SecurityFinding[];
+    setFixing: (fixing: boolean) => void;
+    onFixSettled?: () => void;
+  }) => {
+    if (!selectedAppId || activeFixStreamChatIdsRef.current.has(chatId)) {
+      return;
+    }
+
+    setFixing(true);
+    showFixChat(chatId);
+    activeFixStreamChatIdsRef.current.add(chatId);
+    try {
+      await streamMessage({
+        prompt: buildFixPrompt(findingsToFix),
+        chatId,
+        appId: selectedAppId,
+        onSettled: () => {
+          activeFixStreamChatIdsRef.current.delete(chatId);
+          setFixing(false);
+          onFixSettled?.();
+        },
+      });
+    } catch (err) {
+      activeFixStreamChatIdsRef.current.delete(chatId);
+      showError(`Failed to run fix: ${err}`);
+      setFixing(false);
+    }
+  };
+
   // Opens the fix chat for the given findings, creating it (and sending the
   // fix prompt) only if one doesn't already exist for this review + findings.
-  // Returns true if a fix chat was opened.
   const openFixChat = async ({
     findingsToFix,
     setFixing,
@@ -819,50 +913,21 @@ export const SecurityPanel = () => {
         },
       );
 
-      // Make sure the user can see the fix chat
-      setIsChatPanelHidden(false);
-      selectChat({ chatId, appId: selectedAppId });
-
-      const sendFixPrompt = async () => {
-        if (activeFixStreamChatIdsRef.current.has(chatId)) {
-          return;
-        }
-        setFixing(true);
-        setIsChatPanelHidden(false);
-        selectChat({ chatId, appId: selectedAppId });
-        activeFixStreamChatIdsRef.current.add(chatId);
-        try {
-          await streamMessage({
-            prompt: buildFixPrompt(findingsToFix),
-            chatId,
-            appId: selectedAppId,
-            onSettled: () => {
-              activeFixStreamChatIdsRef.current.delete(chatId);
-              setFixing(false);
-              onFixSettled?.();
-            },
-          });
-        } catch (err) {
-          activeFixStreamChatIdsRef.current.delete(chatId);
-          showError(`Failed to run fix: ${err}`);
-          setFixing(false);
-        }
-      };
+      showFixChat(chatId);
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.securityReview.byApp({ appId: selectedAppId }),
+      });
 
       if (created) {
         queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-        await sendFixPrompt();
+        await streamFixPrompt({
+          chatId,
+          findingsToFix,
+          setFixing,
+          onFixSettled,
+        });
       } else {
         setFixing(false);
-        toast.info("Opened existing fix chat", {
-          duration: 10_000,
-          action: {
-            label: "Re-run fix",
-            onClick: () => {
-              void sendFixPrompt();
-            },
-          },
-        });
       }
       return created ? "created" : "existing";
     } catch (err) {
@@ -875,6 +940,27 @@ export const SecurityPanel = () => {
   const handleFixIssue = async (finding: SecurityFinding) => {
     const key = createFindingKey(finding);
     await openFixChat({
+      findingsToFix: [finding],
+      setFixing: (fixing) => {
+        setFixingFindingKey(fixing ? key : null);
+      },
+    });
+  };
+
+  const handleShowFix = (finding: SecurityReviewFinding) => {
+    if (finding.fixChatId) {
+      showFixChat(finding.fixChatId);
+      toast.info("Opened fix chat");
+    }
+  };
+
+  const handleRerunFix = async (finding: SecurityReviewFinding) => {
+    if (!finding.fixChatId) {
+      return;
+    }
+    const key = createFindingKey(finding);
+    await streamFixPrompt({
+      chatId: finding.fixChatId,
       findingsToFix: [finding],
       setFixing: (fixing) => {
         setFixingFindingKey(fixing ? key : null);
@@ -984,6 +1070,8 @@ export const SecurityPanel = () => {
             findings={data.findings}
             onOpenDetails={openFindingDetails}
             onFix={handleFixIssue}
+            onShowFix={handleShowFix}
+            onRerunFix={handleRerunFix}
             fixingFindingKey={fixingFindingKey}
             selectedFindings={selectedFindings}
             onToggleSelection={handleToggleSelection}
@@ -997,6 +1085,8 @@ export const SecurityPanel = () => {
           finding={detailsFinding}
           onClose={setDetailsOpen}
           onFix={handleFixIssue}
+          onShowFix={handleShowFix}
+          onRerunFix={handleRerunFix}
           fixingFindingKey={fixingFindingKey}
         />
         <Dialog open={isEditRulesOpen} onOpenChange={setIsEditRulesOpen}>

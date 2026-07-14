@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
         title: "SQL injection",
         level: "high",
         description: "User input reaches a query.",
+        fixChatId: undefined as number | undefined,
       },
       {
         title: "XSS",
@@ -126,6 +127,7 @@ describe("SecurityPanel", () => {
       created: true,
     });
     mocks.streamMessage.mockResolvedValue(undefined);
+    mocks.reviewData.findings[0].fixChatId = undefined;
   });
 
   it("keeps selected findings until a newly-created bulk fix stream settles", async () => {
@@ -163,11 +165,8 @@ describe("SecurityPanel", () => {
     expect(screen.queryByRole("button", { name: "Fix 2 Issues" })).toBeNull();
   });
 
-  it("navigates before toast re-runs and ignores duplicate clicks while the re-run streams", async () => {
-    mocks.getOrCreateSecurityFixChat.mockResolvedValue({
-      chatId: 42,
-      created: false,
-    });
+  it("shows an existing fix and offers re-run from its overflow menu", async () => {
+    mocks.reviewData.findings[0].fixChatId = 42;
     let settle:
       | ((result: { success: boolean; pausedByStepLimit?: boolean }) => void)
       | undefined;
@@ -177,30 +176,31 @@ describe("SecurityPanel", () => {
 
     render(<SecurityPanel />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Fix Issue" })[0]);
-    await waitFor(() => {
-      expect(mocks.toastInfo).toHaveBeenCalledTimes(1);
-    });
+    expect(screen.getByRole("button", { name: "Show fix" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Fix Issue" })).toHaveLength(
+      1,
+    );
 
-    const toastOptions = mocks.toastInfo.mock.calls[0][1];
-    act(() => {
-      toastOptions.action.onClick();
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Show fix" }));
+    expect(mocks.setIsChatPanelHidden).toHaveBeenLastCalledWith(false);
+    expect(mocks.selectChat).toHaveBeenLastCalledWith({ chatId: 42, appId: 1 });
+    expect(mocks.toastInfo).toHaveBeenCalledWith("Opened fix chat");
+    expect(mocks.getOrCreateSecurityFixChat).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "More fix actions for SQL injection",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Re-run fix" }),
+    );
 
     await waitFor(() => {
       expect(mocks.streamMessage).toHaveBeenCalledTimes(1);
     });
     expect(mocks.setIsChatPanelHidden).toHaveBeenLastCalledWith(false);
     expect(mocks.selectChat).toHaveBeenLastCalledWith({ chatId: 42, appId: 1 });
-    expect(
-      screen.getByRole("button", { name: "Fixing Issue..." }),
-    ).toBeTruthy();
-
-    act(() => {
-      toastOptions.action.onClick();
-    });
-
-    expect(mocks.streamMessage).toHaveBeenCalledTimes(1);
     expect(
       screen.getByRole("button", { name: "Fixing Issue..." }),
     ).toBeTruthy();

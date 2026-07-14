@@ -24,7 +24,6 @@ vi.mock("@/main/settings", () => ({
 }));
 
 vi.mock("@/ipc/utils/git_utils", () => ({
-  gitIsIgnored: vi.fn(async () => false),
   gitListFilesNative: vi.fn(async () => {
     throw new Error("Git unavailable in filesystem traversal tests");
   }),
@@ -107,6 +106,56 @@ describe("extractCodebase", () => {
       "src.ts",
     ]);
     expect(result.formattedOutput).not.toContain(".gitattributes");
+  });
+
+  it("honors nested gitignore rules without a Git repository", async () => {
+    appDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "codebase-"));
+    await fs.promises.mkdir(path.join(appDir, "src"), { recursive: true });
+    await fs.promises.mkdir(path.join(appDir, "private"), {
+      recursive: true,
+    });
+    await fs.promises.writeFile(
+      path.join(appDir, ".gitignore"),
+      "secret.json\nprivate/\n",
+    );
+    await fs.promises.writeFile(
+      path.join(appDir, "src", ".gitignore"),
+      "ignored.ts\n",
+    );
+    await fs.promises.writeFile(
+      path.join(appDir, "secret.json"),
+      '{"token":"secret"}',
+    );
+    await fs.promises.writeFile(
+      path.join(appDir, "private", "credentials.ts"),
+      'export const password = "secret";',
+    );
+    await fs.promises.writeFile(
+      path.join(appDir, "src", "ignored.ts"),
+      'export const ignored = "secret";',
+    );
+    await fs.promises.writeFile(
+      path.join(appDir, "src", "visible.ts"),
+      "export const visible = true;",
+    );
+
+    const result = await extractCodebase({
+      appPath: appDir,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+      },
+    });
+
+    expect(result.files.map((file) => file.path).sort()).toEqual([
+      ".gitignore",
+      "src/.gitignore",
+      "src/visible.ts",
+    ]);
+    expect(result.formattedOutput).not.toContain('{"token":"secret"}');
+    expect(result.formattedOutput).not.toContain(
+      'export const password = "secret";',
+    );
   });
 
   it("lists file metadata without reading file contents", async () => {

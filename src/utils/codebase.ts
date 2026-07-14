@@ -1,6 +1,7 @@
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import { gitIsIgnored, gitListFilesNative } from "../ipc/utils/git_utils";
+import ignore, { type Ignore } from "ignore";
+import { gitListFilesNative } from "../ipc/utils/git_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -131,10 +132,37 @@ type FileCache = {
 // Cache for file contents
 const fileContentCache = new Map<string, FileCache>();
 
-// Cache for git ignored paths
-const gitIgnoreCache = new Map<string, boolean>();
-// Map to store .gitignore file paths and their modification times
-const gitIgnoreMtimes = new Map<string, number>();
+const gitIgnoreMatcherCache = new Map<
+  string,
+  { mtimeMs: number; matcher: Ignore }
+>();
+
+async function loadGitIgnoreMatcher(
+  gitIgnorePath: string,
+): Promise<Ignore | null> {
+  try {
+    const stats = await fsAsync.stat(gitIgnorePath);
+    const cached = gitIgnoreMatcherCache.get(gitIgnorePath);
+    if (cached?.mtimeMs === stats.mtimeMs) {
+      return cached.matcher;
+    }
+
+    const matcher = ignore().add(
+      await fsAsync.readFile(gitIgnorePath, "utf-8"),
+    );
+    gitIgnoreMatcherCache.set(gitIgnorePath, {
+      mtimeMs: stats.mtimeMs,
+      matcher,
+    });
+    return matcher;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      gitIgnoreMatcherCache.delete(gitIgnorePath);
+      return null;
+    }
+    throw error;
+  }
+}
 
 /**
  * Check if a path should be ignored based on git ignore rules.
@@ -142,63 +170,45 @@ const gitIgnoreMtimes = new Map<string, number>();
 async function isGitIgnoredByTraversal(
   filePath: string,
   baseDir: string,
+  isDirectory: boolean,
 ): Promise<boolean> {
   try {
-    // Check if any relevant .gitignore has been modified
-    // Git checks .gitignore files in the path from the repo root to the file
+    const relativeToBase = path.relative(baseDir, filePath);
+    if (
+      relativeToBase === "" ||
+      relativeToBase === ".." ||
+      relativeToBase.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeToBase)
+    ) {
+      return false;
+    }
+
+    const pathParts = relativeToBase.split(path.sep);
     let currentDir = baseDir;
-    const pathParts = path.relative(baseDir, filePath).split(path.sep);
-    let shouldClearCache = false;
+    let ignored = false;
 
-    // Check root .gitignore
-    const rootGitIgnorePath = path.join(baseDir, ".gitignore");
-    try {
-      const stats = await fsAsync.stat(rootGitIgnorePath);
-      const lastMtime = gitIgnoreMtimes.get(rootGitIgnorePath) || 0;
-      if (stats.mtimeMs > lastMtime) {
-        gitIgnoreMtimes.set(rootGitIgnorePath, stats.mtimeMs);
-        shouldClearCache = true;
+    // Apply ignore files from the root toward the path. A nested .gitignore
+    // overrides earlier rules, matching Git's precedence rules. An ignored
+    // directory is never traversed, so its own rules cannot re-include files.
+    for (let index = 0; index < pathParts.length; index++) {
+      const matcher = await loadGitIgnoreMatcher(
+        path.join(currentDir, ".gitignore"),
+      );
+      if (matcher) {
+        const relativePath = path
+          .relative(currentDir, filePath)
+          .split(path.sep)
+          .join("/");
+        const result = matcher.test(
+          isDirectory ? `${relativePath}/` : relativePath,
+        );
+        if (result.ignored) ignored = true;
+        if (result.unignored) ignored = false;
       }
-    } catch {
-      // Root .gitignore might not exist, which is fine
+      currentDir = path.join(currentDir, pathParts[index]);
     }
 
-    // Check .gitignore files in parent directories
-    for (let i = 0; i < pathParts.length - 1; i++) {
-      currentDir = path.join(currentDir, pathParts[i]);
-      const gitIgnorePath = path.join(currentDir, ".gitignore");
-
-      try {
-        const stats = await fsAsync.stat(gitIgnorePath);
-        const lastMtime = gitIgnoreMtimes.get(gitIgnorePath) || 0;
-        if (stats.mtimeMs > lastMtime) {
-          gitIgnoreMtimes.set(gitIgnorePath, stats.mtimeMs);
-          shouldClearCache = true;
-        }
-      } catch {
-        // This directory might not have a .gitignore, which is fine
-      }
-    }
-
-    // Clear cache if any .gitignore was modified
-    if (shouldClearCache) {
-      gitIgnoreCache.clear();
-    }
-
-    const cacheKey = `${baseDir}:${filePath}`;
-
-    if (gitIgnoreCache.has(cacheKey)) {
-      return gitIgnoreCache.get(cacheKey)!;
-    }
-
-    const relativePath = path.relative(baseDir, filePath);
-    const result = await gitIsIgnored({
-      path: baseDir,
-      filepath: relativePath,
-    });
-
-    gitIgnoreCache.set(cacheKey, result);
-    return result;
+    return ignored;
   } catch (error) {
     logger.error(`Error checking if path is git ignored: ${filePath}`, error);
     return false;
@@ -337,7 +347,9 @@ async function collectFilesByTraversal(
       }
 
       // Skip if the entry is git ignored
-      if (await isGitIgnoredByTraversal(fullPath, baseDir)) {
+      if (
+        await isGitIgnoredByTraversal(fullPath, baseDir, entry.isDirectory())
+      ) {
         return;
       }
 

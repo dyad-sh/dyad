@@ -7,10 +7,8 @@ import {
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import type { PersistedQueue } from "@/ipc/types/queue";
-import {
-  chatAttachmentToFileAttachment,
-  fileAttachmentToChatAttachment,
-} from "@/lib/attachment_conversion";
+import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
+import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 
 const PERSIST_DEBOUNCE_MS = 400;
 
@@ -164,9 +162,7 @@ async function persistQueue(
           id: item.id,
           prompt: item.prompt,
           attachments: item.attachments
-            ? await Promise.all(
-                item.attachments.map(fileAttachmentToChatAttachment),
-              )
+            ? await convertFileAttachmentsToChatAttachments(item.attachments)
             : undefined,
           selectedComponents: item.selectedComponents,
         })),

@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  chatAttachmentToFileAttachment,
-  fileAttachmentToChatAttachment,
-} from "@/lib/attachment_conversion";
+import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
+import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 import type { ChatAttachment, FileAttachment } from "@/ipc/types";
 
 describe("attachment_conversion", () => {
@@ -15,7 +13,9 @@ describe("attachment_conversion", () => {
       type: "upload-to-codebase",
     };
 
-    const chatAttachment = await fileAttachmentToChatAttachment(fileAttachment);
+    const [chatAttachment] = await convertFileAttachmentsToChatAttachments([
+      fileAttachment,
+    ]);
     expect(chatAttachment.name).toBe("blob.bin");
     expect(chatAttachment.type).toBe("application/octet-stream");
     expect(chatAttachment.attachmentType).toBe("upload-to-codebase");

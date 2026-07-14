@@ -112,6 +112,10 @@ import { exitPlanTool } from "./tools/exit_plan";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
+  isModelRefusal,
+  MODEL_REFUSAL_WARNING,
+} from "@/ipc/utils/model_refusal";
+import {
   isChatPendingCompaction,
   performCompaction,
   checkAndMarkForCompaction,
@@ -864,6 +868,7 @@ export async function handleLocalAgentStream(
     // Track total steps across all passes to detect step limit
     let totalStepsExecuted = 0;
     let hitStepLimit = false;
+    let modelRefused = false;
 
     // If there are persisted todos from a previous turn, inject a synthetic
     // user message so the LLM is aware of them. Inserted BEFORE the user's
@@ -948,6 +953,7 @@ export async function handleLocalAgentStream(
           }
           attemptToolInputIds.clear();
         };
+        const responseBeforeAttempt = fullResponse;
 
         try {
           const streamResult = streamText({
@@ -1240,6 +1246,18 @@ export async function handleLocalAgentStream(
               }
 
               switch (part.type) {
+                case "finish":
+                  if (isModelRefusal(part)) {
+                    // Refusals are successful responses and may arrive after
+                    // incomplete output, so replace this attempt with a warning.
+                    fullResponse = responseBeforeAttempt;
+                    passProducedChatText = false;
+                    inThinkingBlock = false;
+                    chunk = MODEL_REFUSAL_WARNING;
+                    modelRefused = true;
+                  }
+                  break;
+
                 case "text-delta":
                   passProducedChatText = true;
                   chunk += part.text;
@@ -1340,6 +1358,10 @@ export async function handleLocalAgentStream(
                 await updateResponseInDb(placeholderMessageId, fullResponse);
                 sendChunk(fullResponse);
               }
+
+              if (modelRefused) {
+                break;
+              }
             }
           } catch (error) {
             if (!abortController.signal.aborted) {
@@ -1361,6 +1383,12 @@ export async function handleLocalAgentStream(
           activeRetryReplayEvents = null;
 
           if (abortController.signal.aborted) {
+            break;
+          }
+
+          if (modelRefused) {
+            responseMessages = [];
+            steps = [];
             break;
           }
 
@@ -1474,6 +1502,10 @@ export async function handleLocalAgentStream(
         break;
       }
 
+      if (modelRefused) {
+        break;
+      }
+
       // Track total steps for step limit detection
       totalStepsExecuted += steps.length;
 
@@ -1554,6 +1586,13 @@ export async function handleLocalAgentStream(
       return false; // Cancelled - don't consume quota
     }
 
+    if (modelRefused) {
+      accumulatedAiMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: MODEL_REFUSAL_WARNING }],
+      });
+    }
+
     // Collect XML produced by post-turn side-effects (step-limit notice,
     // Supabase deploy results) so we can persist them into aiMessagesJson.
     // parseAiMessagesJson reads from aiMessagesJson when present and ignores
@@ -1607,7 +1646,11 @@ export async function handleLocalAgentStream(
       });
     }
 
-    if (shouldWarnIfAttachmentUnread && !usedAttachmentAccessTool) {
+    if (
+      !modelRefused &&
+      shouldWarnIfAttachmentUnread &&
+      !usedAttachmentAccessTool
+    ) {
       const unreadAttachmentWarning =
         "Your model did not reference the attached file. If this was unintended, try a larger model or paste the contents inline.";
       const warningMessage = `\n\n<dyad-output type="warning" message="${escapeXmlAttr(unreadAttachmentWarning)}">${escapeXmlContent(unreadAttachmentWarning)}</dyad-output>`;
@@ -1680,7 +1723,8 @@ export async function handleLocalAgentStream(
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
-      updatedFiles: !readOnly,
+      updatedFiles:
+        !readOnly && (!modelRefused || Object.keys(fileEditTracker).length > 0),
       chatSummary: ctx.chatSummary,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,

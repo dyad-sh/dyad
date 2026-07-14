@@ -73,6 +73,7 @@ describe("local agent search_replace (hybrid)", () => {
 
     // Gate main-side (file/db/git) assertions on the real end-of-stream event.
     await harness.waitForStreamEnd(harness.chatId);
+    await harness.waitForEvent("chat:stream:end");
 
     // The local-agent branch signals success by the stream-end event and the
     // absence of error events (original node assertions, now read off the

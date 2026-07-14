@@ -88,6 +88,7 @@ describe("local agent supabase deploy progress (integration)", () => {
 
     // Gate main-side assertions on the real end-of-stream event.
     await harness.waitForStreamEnd(harness.chatId);
+    await harness.waitForEvent("chat:stream:end");
 
     // The local-agent branch of chat:stream returns void; success is signaled
     // by the stream-end event and the absence of error events (read off the

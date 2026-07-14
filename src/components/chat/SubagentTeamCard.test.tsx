@@ -14,6 +14,7 @@ import { SubagentTeamCard } from "./SubagentTeamCard";
 const mocks = vi.hoisted(() => ({
   fixReviewFindings: vi.fn(),
   followupSubagent: vi.fn(),
+  getSubagentMessages: vi.fn(),
   listSubagents: vi.fn(),
   onSubagentUpdate: vi.fn(),
   runAutoReviewBarrier: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
     agent: {
       fixReviewFindings: mocks.fixReviewFindings,
       followupSubagent: mocks.followupSubagent,
+      getSubagentMessages: mocks.getSubagentMessages,
       listSubagents: mocks.listSubagents,
       runAutoReviewBarrier: mocks.runAutoReviewBarrier,
       skipReviewAutoFix: mocks.skipReviewAutoFix,
@@ -116,6 +118,7 @@ describe("SubagentTeamCard", () => {
     mocks.startReview.mockResolvedValue(undefined);
     mocks.sendSubagentMessage.mockResolvedValue(undefined);
     mocks.followupSubagent.mockResolvedValue("explorer");
+    mocks.getSubagentMessages.mockResolvedValue([]);
     mocks.skipReviewAutoFix.mockResolvedValue(undefined);
     mocks.fixReviewFindings.mockResolvedValue({ prompt: "Fix current review" });
     mocks.runAutoReviewBarrier.mockResolvedValue({ outcome: "released" });
@@ -205,7 +208,7 @@ describe("SubagentTeamCard", () => {
     });
   });
 
-  it("sends durable messages and follow-up assignments", async () => {
+  it("sends durable messages and routes Explorer follow-ups through a root Agent turn", async () => {
     mocks.listSubagents.mockResolvedValue([
       {
         ...makeReview("explorer-thread", 42, "exploration report"),
@@ -241,14 +244,148 @@ describe("SubagentTeamCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Follow up" }));
 
     await waitFor(() => {
+      expect(mocks.followupSubagent).not.toHaveBeenCalled();
+      expect(mocks.streamMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 7,
+          requestedChatMode: "local-agent",
+          prompt: expect.stringContaining('thread_id: "explorer-thread"'),
+        }),
+      );
+      expect(mocks.streamMessage.mock.calls.at(-1)?.[0].prompt).toContain(
+        'message: "Investigate the remaining gap"',
+      );
+      expect((messageInput as HTMLTextAreaElement).value).toBe("");
+    });
+  });
+
+  it("renders Explorer reports and lazily loads the durable transcript", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("explorer-thread", 42, "exploration report"),
+        persona: "explorer",
+        taskName: "Find auth flow",
+        assignment: "Trace auth",
+      },
+    ]);
+    mocks.getSubagentMessages.mockResolvedValue([
+      {
+        id: 1,
+        threadId: "explorer-thread",
+        sequence: 1,
+        messageId: "message-1",
+        role: "root",
+        content: "Check the callback path",
+        consumed: true,
+        createdAt: new Date(),
+      },
+      {
+        id: 2,
+        threadId: "explorer-thread",
+        sequence: 2,
+        messageId: "message-2",
+        role: "assistant",
+        content: "The callback is handled in auth.ts.",
+        consumed: false,
+        createdAt: new Date(),
+      },
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    expect(await screen.findByText("Find auth flow")).toBeTruthy();
+    expect(mocks.getSubagentMessages).not.toHaveBeenCalled();
+    expect(screen.queryByText("exploration report")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Show details for explorer Find auth flow",
+      }),
+    );
+
+    expect(await screen.findByText("exploration report")).toBeTruthy();
+    expect(await screen.findByText("Check the callback path")).toBeTruthy();
+    expect(
+      screen.getByText("The callback is handled in auth.ts."),
+    ).toBeTruthy();
+    expect(mocks.getSubagentMessages).toHaveBeenCalledWith({
+      chatId: 7,
+      threadId: "explorer-thread",
+    });
+  });
+
+  it("renders the bounded Implementer report in thread details", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("implementer-thread", 42, "implementation report"),
+        persona: "implementer",
+        taskName: "Edit auth flow",
+        assignment: "Implement auth",
+      },
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Show details for implementer Edit auth flow",
+      }),
+    );
+
+    expect(await screen.findByText("implementation report")).toBeTruthy();
+  });
+
+  it("keeps Reviewer follow-ups on the direct read-only runner", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      makeReview("review-thread", 42, "review report"),
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const messageInput = await screen.findByRole("textbox", {
+      name: "Message reviewer Review review-thread",
+    });
+    fireEvent.change(messageInput, { target: { value: "Check this edge" } });
+    fireEvent.click(screen.getByRole("button", { name: "Follow up" }));
+
+    await waitFor(() => {
       expect(mocks.followupSubagent).toHaveBeenCalledWith({
         chatId: 7,
-        threadId: "explorer-thread",
-        message: "Investigate the remaining gap",
+        threadId: "review-thread",
+        message: "Check this edge",
       });
       expect((messageInput as HTMLTextAreaElement).value).toBe("");
     });
   });
+
+  it.each([
+    "auto_fix_countdown",
+    "fixing_findings",
+    "verification_review",
+  ] as const)(
+    "hides Fix findings while review status is %s",
+    async (status) => {
+      mocks.listSubagents.mockResolvedValue([
+        {
+          ...makeReview("current-message", 42, "current report"),
+          status,
+        },
+      ]);
+
+      render(<SubagentTeamCard chatId={7} messageId={42} />, {
+        wrapper: makeWrapper(),
+      });
+
+      expect(await screen.findByText("current report")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Fix findings/ })).toBeNull();
+    },
+  );
 
   it("disables one-way messages for inactive sub-agents", async () => {
     mocks.listSubagents.mockResolvedValue([

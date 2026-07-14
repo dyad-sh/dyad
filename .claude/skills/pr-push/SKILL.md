@@ -1,6 +1,6 @@
 ---
 name: dyad:pr-push
-description: Fast script-driven workflow to commit uncommitted changes, run checks, push the branch, and create or update a GitHub PR.
+description: Publish local work by committing changes, running checks, pushing the branch, and creating or refreshing a GitHub PR with a reviewer-useful description.
 ---
 
 # PR Push
@@ -11,14 +11,27 @@ Use this skill to publish the current work to GitHub. It must complete autonomou
 
 1. Run `/remember-learnings` first. This captures session learnings before any push or PR creation, so any resulting `AGENTS.md` or `rules/` changes are included in the same publish flow.
 2. Decide whether to run unit tests locally before publishing. For broad or cross-cutting changes, run `npm test`. For targeted changes, run the narrowest relevant test command, such as `npm test -- path/to/file.test.ts`. For docs, agent-config, or other low-risk changes, it is acceptable to skip local unit tests because GitHub CI will run the full suite.
-3. Run the bundled script from the repository root. Set `PR_PUSH_COMMIT_MESSAGE` to a descriptive commit message for the work being published:
+3. Review the complete branch diff and commit range against the base branch. Write:
+   - A descriptive commit message for newly staged work.
+   - A concise PR title describing the user-visible outcome or engineering purpose.
+   - A reviewer-useful PR body with `## Summary` and `## Testing` sections.
+
+   The summary must contain 1-3 bullets that explain the motivation, the chosen approach or important design decisions, and meaningful behavior boundaries or trade-offs. Stay close to the user's original intent. Do not use changed filenames as a summary, merely restate commit subjects, or rely on an automated reviewer to explain the change later.
+
+   The testing section must list the commands run and their results. If local tests were intentionally skipped, state why.
+
+4. Save the PR body to an ignored file under `.claude/tmp/`, then run the bundled script from the repository root with all three publishing inputs:
 
    ```bash
-   PR_PUSH_COMMIT_MESSAGE="<descriptive commit message>" bash .agents/skills/pr-push/scripts/pr_push.sh
+   PR_PUSH_COMMIT_MESSAGE="<descriptive commit message>" \
+   PR_PUSH_PR_TITLE="<descriptive PR title>" \
+   PR_PUSH_PR_BODY_FILE=".claude/tmp/pr-body.md" \
+   bash .agents/skills/pr-push/scripts/pr_push.sh
    ```
 
-4. If the script reports a fixable failure, fix it and rerun the script. When fixing issues, do not run `git pull` from fork remotes; only pull from the upstream repo configured by `PR_PUSH_BASE_REPO` (default `dyad-sh/dyad`) if needed. Do not manually replay the full workflow unless the script itself is broken.
-5. Summarize the script's final output, including the branch, committed files, ignored files, checks, pushed remote, and PR URL or bot-account PR creation link. Also report the local unit-test decision and any test command that was run.
+5. If the script reports a fixable failure, fix it and rerun the script. When fixing issues, do not run `git pull` from fork remotes; only pull from the upstream repo configured by `PR_PUSH_BASE_REPO` (default `dyad-sh/dyad`) if needed. Do not manually replay the full workflow unless the script itself is broken.
+6. If the PR already existed, inspect its current title and body after the push. Refresh stale or generic agent-authored text to reflect the complete branch, while preserving human-written notes and sections added by review tools. Do not overwrite the entire body blindly.
+7. Summarize the script's final output, including the branch, committed files, ignored files, checks, pushed remote, and PR URL or bot-account PR creation link. Also report the local unit-test decision and any test command that was run.
 
 ## Script Behavior
 
@@ -31,14 +44,15 @@ The script handles the mechanical workflow:
 - Does not run unit tests. The agent decides whether to run `npm test` for broad changes or a targeted `npm test -- ...` command for narrow changes; GitHub CI runs the full suite.
 - Amends automated formatting/lint changes into the commit it created.
 - Pushes to the tracked upstream, an existing PR head remote, or `origin` with the documented fallback behavior.
-- Creates or updates the PR against `dyad-sh/dyad:main`, unless the active GitHub account is a bot.
+- Creates the PR against `dyad-sh/dyad:main`, unless the active GitHub account is a bot. Existing PR branches are pushed without blindly overwriting their descriptions.
 - Removes `needs-human:review-issue` when a PR exists.
 
 Optional environment overrides:
 
 - `PR_PUSH_COMMIT_MESSAGE`: commit message for newly staged work.
 - `PR_PUSH_PR_TITLE`: PR title.
-- `PR_PUSH_PR_BODY`: PR body.
+- `PR_PUSH_PR_BODY_FILE`: path to the prepared PR body; required when creating a PR.
+- `PR_PUSH_PR_BODY`: inline PR body override; useful when shell quoting is known to be safe.
 - `PR_PUSH_BASE_REPO`: default `dyad-sh/dyad`.
 - `PR_PUSH_BASE_BRANCH`: default `main`.
 - `PR_PUSH_REMOTE`: default fallback remote `origin`.

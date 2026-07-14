@@ -70,6 +70,10 @@ gh pr create --repo dyad-sh/dyad --head <owner>:<branch> --no-maintainer-edit --
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
 
+## PR description quality
+
+Publishing helpers must transport an agent-written PR body based on the complete branch diff; a commit subject plus changed filenames is not an acceptable summary. Include reviewer-useful `Summary` and `Testing` sections, and preserve human or review-tool additions when refreshing an existing PR body.
+
 ## Formatter Touching Unrelated Skill Files
 
 `npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After

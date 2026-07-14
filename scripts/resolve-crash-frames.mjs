@@ -304,7 +304,7 @@ function atOrBelow(entries, offset) {
   let hi = entries.length - 1;
   let found = null;
   while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
+    const mid = (lo + hi) >>> 1;
     if (entries[mid].addr <= offset) {
       found = entries[mid];
       lo = mid + 1;

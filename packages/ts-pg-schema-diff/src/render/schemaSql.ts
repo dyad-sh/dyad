@@ -116,11 +116,13 @@ export function filterSchemaForTable(
   );
   const functionNames = collectRelevantFunctionNames(schema.functions, [
     ...triggers.map((trigger) => trigger.functionName),
-    ...tables.flatMap((table) =>
-      table.checkConstraints.flatMap(
+    ...tables.flatMap((table) => [
+      ...table.columns.flatMap((column) => column.dependsOnFunctions),
+      ...table.checkConstraints.flatMap(
         (constraint) => constraint.dependsOnFunctions,
       ),
-    ),
+      ...table.policies.flatMap((policy) => policy.dependsOnFunctions),
+    ]),
   ]);
 
   return {
@@ -149,9 +151,15 @@ export function filterSchemaForTable(
     sequences: schema.sequences.filter(
       (sequence) => sequence.name.schemaName === schemaName,
     ),
-    functions: schema.functions.filter((fn) =>
-      functionNames.has(fqName(fn.name)),
-    ),
+    functions: schema.functions
+      .filter((fn) => functionNames.has(fqName(fn.name)))
+      .sort((left, right) =>
+        fqName(left.name) < fqName(right.name)
+          ? -1
+          : fqName(left.name) > fqName(right.name)
+            ? 1
+            : 0,
+      ),
     triggers,
   };
 }

@@ -74,6 +74,9 @@ describe("getSupabaseTableSchema", () => {
               generation_expression: "",
               is_generated: false,
               column_type: "bigint",
+              dependent_func_schema_names: [],
+              dependent_func_names: [],
+              dependent_func_identity_arguments: [],
             },
           ],
         },
@@ -127,6 +130,23 @@ describe("getSupabaseTableSchema", () => {
       kind: DyadErrorKind.External,
       message: expect.stringContaining(
         "Unexpected Supabase runQuery response shape (object keys: error)",
+      ),
+    });
+  });
+
+  it("reports an empty schema snapshot response clearly", async () => {
+    const runQuery = vi.fn().mockResolvedValue([]);
+    getSupabaseClientMock.mockResolvedValue({ runQuery } as any);
+
+    await expect(
+      getSupabaseTableSchema({
+        supabaseProjectId: "project-id",
+        organizationSlug: null,
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining(
+        "Supabase schema snapshot query returned no rows",
       ),
     });
   });

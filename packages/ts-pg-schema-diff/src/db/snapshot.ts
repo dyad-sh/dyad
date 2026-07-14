@@ -110,6 +110,23 @@ FROM (${withoutTrailingSemicolon(query)}) AS snapshot_scope
 WHERE ${activePredicates.join(" AND ")}`;
 }
 
+function replaceRequiredOnce(
+  query: string,
+  search: string,
+  replacement: string,
+): string {
+  const firstIndex = query.indexOf(search);
+  if (
+    firstIndex === -1 ||
+    query.indexOf(search, firstIndex + search.length) !== -1
+  ) {
+    throw new Error(
+      `Expected database introspection query fragment exactly once: ${search}`,
+    );
+  }
+  return query.replace(search, replacement);
+}
+
 /**
  * Build one SQL statement that captures every result set needed by getSchema.
  * This is intended for HTTP database APIs, where each DatabaseClient query
@@ -130,9 +147,10 @@ export function buildSchemaSnapshotSql(
     schemaPredicate("table_schema_name", options.includeSchemas),
     tableNamePredicate("table_name"),
   ]);
-  const unscopedFunctionsSql = scopedQuery(getProcsSql.replace("$1", "'f'"), [
-    schemaPredicate("func_schema_name", options.includeSchemas),
-  ]);
+  const unscopedFunctionsSql = scopedQuery(
+    replaceRequiredOnce(getProcsSql, "$1", "'f'"),
+    [schemaPredicate("func_schema_name", options.includeSchemas)],
+  );
   const targetTableOidsSql = `SELECT snapshot_table.oid::OID FROM (${withoutTrailingSemicolon(tablesSql)}) AS snapshot_table`;
   const requiredFunctionOidsSql = `WITH RECURSIVE function_roots(oid) AS (
     SELECT trigger_row.tgfoid
@@ -147,6 +165,24 @@ export function buildSchemaSnapshotSql(
       AND dependency.objid = constraint_row.oid
     WHERE constraint_row.conrelid IN (${targetTableOidsSql})
       AND constraint_row.contype = 'c'
+      AND dependency.refclassid = 'pg_proc'::REGCLASS
+      AND dependency.deptype = 'n'
+    UNION
+    SELECT dependency.refobjid
+    FROM pg_catalog.pg_depend AS dependency
+    INNER JOIN pg_catalog.pg_attrdef AS attrdef_row
+      ON dependency.classid = 'pg_attrdef'::REGCLASS
+      AND dependency.objid = attrdef_row.oid
+    WHERE attrdef_row.adrelid IN (${targetTableOidsSql})
+      AND dependency.refclassid = 'pg_proc'::REGCLASS
+      AND dependency.deptype = 'n'
+    UNION
+    SELECT dependency.refobjid
+    FROM pg_catalog.pg_depend AS dependency
+    INNER JOIN pg_catalog.pg_policy AS policy_row
+      ON dependency.classid = 'pg_policy'::REGCLASS
+      AND dependency.objid = policy_row.oid
+    WHERE policy_row.polrelid IN (${targetTableOidsSql})
       AND dependency.refclassid = 'pg_proc'::REGCLASS
       AND dependency.deptype = 'n'
 ), required_functions(oid) AS (
@@ -168,17 +204,19 @@ SELECT required_functions.oid FROM required_functions`;
           `snapshot_scope.oid::OID IN (${requiredFunctionOidsSql})`,
         ]);
   const proceduresSql = scopedQuery(
-    getProcsSql.replace("$1", "'p'"),
+    replaceRequiredOnce(getProcsSql, "$1", "'p'"),
     options.tableName === undefined
       ? [schemaPredicate("func_schema_name", options.includeSchemas)]
       : ["FALSE"],
   );
-  const allColumnsSql = getColumnsForTableSql.replace(
+  const allColumnsSql = replaceRequiredOnce(
+    getColumnsForTableSql,
     "a.attrelid = $1::OID",
     `a.attrelid IN (${targetTableOidsSql})`,
   );
-  const allFunctionDependenciesSql = getDependsOnFunctionsSql
-    .replace(
+  const allFunctionDependenciesSql = replaceRequiredOnce(
+    replaceRequiredOnce(
+      getDependsOnFunctionsSql,
       "depend.classid = $1::REGCLASS",
       `(
         (
@@ -196,8 +234,10 @@ SELECT required_functions.oid FROM required_functions`;
             )
         )
     )`,
-    )
-    .replace("depend.objid = $2::OID", "TRUE");
+    ),
+    "depend.objid = $2::OID",
+    "TRUE",
+  );
   const fields: readonly [keyof SchemaSnapshot, string][] = [
     [
       "serverVersion",

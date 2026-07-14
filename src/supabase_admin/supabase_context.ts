@@ -283,7 +283,16 @@ export async function getSupabaseTableSchema({
         ),
       `Get schema snapshot for ${supabaseProjectId}`,
     );
-    const snapshot = normalizeRunQueryRows(snapshotResult)[0]?.schema_snapshot;
+    const snapshotRows = normalizeRunQueryRows(snapshotResult);
+    if (snapshotRows.length === 0) {
+      throw new Error("Supabase schema snapshot query returned no rows");
+    }
+    const snapshot = snapshotRows[0]?.schema_snapshot;
+    if (snapshot === undefined) {
+      throw new Error(
+        "Supabase schema snapshot response is missing schema_snapshot",
+      );
+    }
     const schema = await getSchemaFromSnapshot(snapshot, {
       includeSchemas: ["public"],
     });

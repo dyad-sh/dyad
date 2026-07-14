@@ -783,6 +783,7 @@ describe("renderSchemaSql", () => {
               checkExpression: "",
               usingExpression: "true",
               columns: [],
+              dependsOnFunctions: [],
             },
           ],
           rlsEnabled: true,
@@ -926,6 +927,44 @@ describe("renderSchemaSql", () => {
 
     expect(filtered.sequences).toEqual([sharedSequence]);
   });
+
+  it("retains functions referenced by selected table defaults and policies", () => {
+    const defaultFunction = functionSchema("new_account_id", "sql");
+    const policyFunction = functionSchema("can_read_account", "sql");
+    const accounts: Table = {
+      ...table("accounts", [
+        {
+          ...column("id", "integer", false),
+          default: "new_account_id()",
+          dependsOnFunctions: [defaultFunction.name],
+        },
+      ]),
+      policies: [
+        {
+          kind: "policy",
+          escapedName: escapeIdentifier("accounts_read"),
+          isPermissive: true,
+          appliesTo: ["PUBLIC"],
+          cmd: "r",
+          checkExpression: "",
+          usingExpression: "can_read_account(id)",
+          columns: ["id"],
+          dependsOnFunctions: [policyFunction.name],
+        },
+      ],
+    };
+
+    const filtered = filterSchemaForTable(
+      {
+        ...emptySchema(),
+        tables: [accounts],
+        functions: [defaultFunction, policyFunction],
+      },
+      { tableName: "accounts" },
+    );
+
+    expect(filtered.functions).toEqual([policyFunction, defaultFunction]);
+  });
 });
 
 describe("randomPostgresIdentifierToken", () => {
@@ -1031,6 +1070,7 @@ function column(name: string, type: string, isNullable: boolean): Column {
     hasMissingValOptimization: false,
     size: 4,
     identity: null,
+    dependsOnFunctions: [],
   };
 }
 

@@ -4895,14 +4895,20 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       pg.databaseUrl("single_query_snapshot_db"),
       `
         CREATE TYPE account_state AS ENUM ('active', 'disabled');
+        CREATE FUNCTION new_account_id() RETURNS bigint
+          LANGUAGE sql RETURN 42;
+        CREATE FUNCTION can_read_account(account_id bigint) RETURNS boolean
+          LANGUAGE sql RETURN account_id > 0;
         CREATE TABLE accounts (
           id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
           state account_state NOT NULL,
-          balance integer NOT NULL CHECK (balance >= 0)
+          balance integer NOT NULL CHECK (balance >= 0),
+          external_id bigint DEFAULT new_account_id()
         );
         CREATE INDEX accounts_state_idx ON accounts (state);
         ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
-        CREATE POLICY accounts_read ON accounts FOR SELECT USING (true);
+        CREATE POLICY accounts_read ON accounts FOR SELECT
+          USING (can_read_account(id));
         CREATE FUNCTION touch_account() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
           RETURN NEW;
@@ -4947,6 +4953,16 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
       expect(
         filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
       ).toEqual(filterSchemaForTable(directSchema, { tableName: "accounts" }));
+      expect(
+        filterSchemaForTable(scopedSchema, {
+          tableName: "accounts",
+        }).functions.map((fn) => fn.name.escapedName),
+      ).toEqual(
+        expect.arrayContaining([
+          '"new_account_id"()',
+          '"can_read_account"(account_id bigint)',
+        ]),
+      );
     } finally {
       await client.end();
     }

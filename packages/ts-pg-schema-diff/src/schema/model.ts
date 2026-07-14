@@ -55,6 +55,7 @@ export type Column = {
   readonly hasMissingValOptimization: boolean;
   readonly size: number;
   readonly identity: ColumnIdentity | null;
+  readonly dependsOnFunctions: readonly SchemaQualifiedName[];
 };
 
 export type TablePrivilege = {
@@ -83,6 +84,7 @@ export type Policy = {
   readonly checkExpression: string;
   readonly usingExpression: string;
   readonly columns: readonly string[];
+  readonly dependsOnFunctions: readonly SchemaQualifiedName[];
 };
 
 export type Table = {

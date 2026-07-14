@@ -99,6 +99,10 @@ import { fileExists } from "../utils/file_utils";
 import { isCodeExplorerReady } from "../processors/code_explorer";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
+  isModelRefusal,
+  MODEL_REFUSAL_WARNING,
+} from "@/ipc/utils/model_refusal";
+import {
   extractMentionedAppsCodebasesFromPrompt,
   extractMentionedAppsReferencesFromPrompt,
   type MentionedAppCodebaseEntry,
@@ -197,7 +201,7 @@ function parseMcpToolKey(toolKey: string): {
 }
 
 // Helper function to process stream chunks
-async function processStreamChunks({
+export async function processStreamChunks({
   fullStream,
   fullResponse,
   abortController,
@@ -212,6 +216,7 @@ async function processStreamChunks({
     fullResponse: string;
   }) => Promise<string>;
 }): Promise<{ fullResponse: string; incrementalResponse: string }> {
+  const responseBeforeStream = fullResponse;
   let incrementalResponse = "";
   let inThinkingBlock = false;
 
@@ -226,7 +231,14 @@ async function processStreamChunks({
       chunk = "</think>";
       inThinkingBlock = false;
     }
-    if (part.type === "text-delta") {
+    if (isModelRefusal(part)) {
+      // Anthropic returns Fable classifier refusals as successful responses.
+      // A refusal can arrive after partial output, which Anthropic documents as
+      // incomplete, so replace this stream's output with a persisted warning.
+      fullResponse = responseBeforeStream;
+      incrementalResponse = "";
+      chunk = MODEL_REFUSAL_WARNING;
+    } else if (part.type === "text-delta") {
       chunk += part.text;
     } else if (part.type === "reasoning-delta") {
       if (!inThinkingBlock) {

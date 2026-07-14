@@ -3,10 +3,18 @@ import { getNeonClient } from "./neon_management_client";
 import { getConnectionUri, getNeonTableSchema } from "./neon_context";
 import {
   filterSchemaForTable,
-  getSchema,
+  getSchemaFromSnapshot,
   renderSchemaSql,
-  withDatabaseClient,
 } from "ts-pg-schema-diff";
+
+const { neonMock, neonQueryMock } = vi.hoisted(() => ({
+  neonMock: vi.fn(),
+  neonQueryMock: vi.fn(),
+}));
+
+vi.mock("@neondatabase/serverless", () => ({
+  neon: neonMock.mockImplementation(() => ({ query: neonQueryMock })),
+}));
 
 vi.mock("./neon_management_client", () => ({
   getNeonClient: vi.fn(),
@@ -21,25 +29,24 @@ vi.mock("ts-pg-schema-diff", async () => {
   return {
     ...actual,
     filterSchemaForTable: vi.fn(),
-    getSchema: vi.fn(),
+    getSchemaFromSnapshot: vi.fn(),
     renderSchemaSql: vi.fn(),
-    withDatabaseClient: vi.fn(),
   };
 });
 
 const getNeonClientMock = vi.mocked(getNeonClient);
 const filterSchemaForTableMock = vi.mocked(filterSchemaForTable);
-const getSchemaMock = vi.mocked(getSchema);
+const getSchemaFromSnapshotMock = vi.mocked(getSchemaFromSnapshot);
 const renderSchemaSqlMock = vi.mocked(renderSchemaSql);
-const withDatabaseClientMock = vi.mocked(withDatabaseClient);
 
 describe("Neon context", () => {
   beforeEach(() => {
     getNeonClientMock.mockReset();
+    neonMock.mockClear();
+    neonQueryMock.mockReset();
     filterSchemaForTableMock.mockReset();
-    getSchemaMock.mockReset();
+    getSchemaFromSnapshotMock.mockReset();
     renderSchemaSqlMock.mockReset();
-    withDatabaseClientMock.mockReset();
   });
 
   it("forwards the pooled option to Neon", async () => {
@@ -92,10 +99,8 @@ describe("Neon context", () => {
     getNeonClientMock.mockResolvedValue(
       neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
     );
-    withDatabaseClientMock.mockImplementation(
-      async (_connectionUri, _options, callback) => callback({} as any),
-    );
-    getSchemaMock.mockResolvedValue(schema);
+    neonQueryMock.mockResolvedValue([{ schema_snapshot: { tables: [] } }]);
+    getSchemaFromSnapshotMock.mockResolvedValue(schema);
     filterSchemaForTableMock.mockReturnValue(filteredSchema);
     renderSchemaSqlMock.mockReturnValue(
       'CREATE TABLE "public"."users" ("id" bigint);',
@@ -109,14 +114,20 @@ describe("Neon context", () => {
       }),
     ).resolves.toBe('CREATE TABLE "public"."users" ("id" bigint);');
 
-    expect(withDatabaseClientMock).toHaveBeenCalledWith(
-      "postgresql://test",
-      expect.objectContaining({ ssl: true }),
-      expect.any(Function),
+    expect(neonMock).toHaveBeenCalledWith("postgresql://test");
+    expect(neonQueryMock).toHaveBeenCalledTimes(1);
+    expect(neonQueryMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /snapshot_scope\.table_schema_name IN \('public'\)[\s\S]*snapshot_scope\.table_name = 'users'[\s\S]*AS schema_snapshot/u,
+      ),
+      [],
     );
-    expect(getSchemaMock).toHaveBeenCalledWith(expect.anything(), {
-      includeSchemas: ["public"],
-    });
+    expect(getSchemaFromSnapshotMock).toHaveBeenCalledWith(
+      { tables: [] },
+      {
+        includeSchemas: ["public"],
+      },
+    );
     expect(filterSchemaForTableMock).toHaveBeenCalledWith(schema, {
       tableName: "users",
     });
@@ -143,10 +154,8 @@ describe("Neon context", () => {
     getNeonClientMock.mockResolvedValue(
       neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
     );
-    withDatabaseClientMock.mockImplementation(
-      async (_connectionUri, _options, callback) => callback({} as any),
-    );
-    getSchemaMock.mockResolvedValue({ tables: [] } as any);
+    neonQueryMock.mockResolvedValue([{ schema_snapshot: { tables: [] } }]);
+    getSchemaFromSnapshotMock.mockResolvedValue({ tables: [] } as any);
 
     await expect(
       getNeonTableSchema({
@@ -172,10 +181,10 @@ describe("Neon context", () => {
     getNeonClientMock.mockResolvedValue(
       neonClient as unknown as Awaited<ReturnType<typeof getNeonClient>>,
     );
-    withDatabaseClientMock.mockImplementation(
-      async (_connectionUri, _options, callback) => callback({} as any),
-    );
-    getSchemaMock.mockResolvedValue({ tables: [{ name: "users" }] } as any);
+    neonQueryMock.mockResolvedValue([{ schema_snapshot: { tables: [] } }]);
+    getSchemaFromSnapshotMock.mockResolvedValue({
+      tables: [{ name: "users" }],
+    } as any);
     filterSchemaForTableMock.mockReturnValue({ tables: [] } as any);
     renderSchemaSqlMock.mockImplementation(
       (_schema, options) => options?.emptySchemaComment ?? "",

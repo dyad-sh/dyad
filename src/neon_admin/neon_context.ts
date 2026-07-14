@@ -5,12 +5,11 @@ import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import {
+  buildSchemaSnapshotSql,
   filterSchemaForTable,
-  getSchema,
+  getSchemaFromSnapshot,
   missingPublicTableComment,
   renderSchemaSql,
-  withDatabaseClient,
-  type DatabaseConnectionOptions,
 } from "ts-pg-schema-diff";
 
 const logger = log.scope("neon_context");
@@ -240,15 +239,6 @@ const TABLE_NAMES_QUERY = `
   ORDER BY table_name;
 `;
 
-const NEON_SCHEMA_INTROSPECTION_CONNECTION_OPTIONS = {
-  ssl: true,
-  maxConnections: 1,
-  connectionTimeoutMs: 30_000,
-  queryTimeoutMs: 120_000,
-  statementTimeoutMs: 120_000,
-  lockTimeoutMs: 30_000,
-} as const satisfies DatabaseConnectionOptions;
-
 // =============================================================================
 // Project Info
 // =============================================================================
@@ -354,11 +344,26 @@ export async function getNeonTableSchema({
 
   try {
     const connectionUri = await getConnectionUri({ projectId, branchId });
-    const schema = await withDatabaseClient(
-      connectionUri,
-      NEON_SCHEMA_INTROSPECTION_CONNECTION_OPTIONS,
-      (client) => getSchema(client, { includeSchemas: ["public"] }),
+    const sql = neon(connectionUri);
+    const snapshotRows = await sql.query(
+      buildSchemaSnapshotSql({
+        includeSchemas: ["public"],
+        tableName,
+      }),
+      [],
     );
+    if (snapshotRows.length === 0) {
+      throw new Error("Neon schema snapshot query returned no rows");
+    }
+    const snapshot = snapshotRows[0]?.schema_snapshot;
+    if (snapshot === undefined) {
+      throw new Error(
+        "Neon schema snapshot response is missing schema_snapshot",
+      );
+    }
+    const schema = await getSchemaFromSnapshot(snapshot, {
+      includeSchemas: ["public"],
+    });
     if (!tableName && schema.tables.length === 0) {
       return "-- No public tables found.";
     }

@@ -444,8 +444,6 @@
       "abortAndSwitch": "{{type}} 중단 및 전환",
       "branches": "브랜치",
       "branchesDescription": "브랜치를 관리하고 병합, 삭제 등을 수행하세요.",
-      "nativeGitRequired": "네이티브 Git 필요",
-      "nativeGitDescription": "일부 Git 작업(리베이스, 병합 중단, 고급 브랜치 작업 등)은 네이티브 Git이 활성화되어 있어야 합니다.",
       "enableInSettings": "설정에서 활성화",
       "mergeInto": "{{branch}}에 병합",
       "branchCreated": "'{{name}}' 브랜치가 생성되었습니다",

@@ -208,7 +208,6 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     thinkingBudget: settings.thinkingBudget ?? null,
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
     enableAutoFixProblems: settings.enableAutoFixProblems ?? null,
-    enableNativeGit: settings.enableNativeGit ?? null,
     enableAutoUpdate: settings.enableAutoUpdate,
     releaseChannel: settings.releaseChannel,
     runtimeMode2: settings.runtimeMode2 ?? null,

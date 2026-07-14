@@ -1,10 +1,5 @@
 import { expect } from "@playwright/test";
-import {
-  PageObject,
-  test,
-  testSkipIfWindows,
-  Timeout,
-} from "./helpers/test_helper";
+import { PageObject, test, Timeout } from "./helpers/test_helper";
 import * as fs from "fs";
 import * as path from "path";
 import { execFileSync, execSync } from "child_process";
@@ -47,8 +42,8 @@ function commitRuntimeBaselineChanges(appPath: string) {
   );
 }
 
-const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
-  await po.setUp({ disableNativeGit: !nativeGit });
+const runDiscardChangesTest = async (po: PageObject) => {
+  await po.setUp();
   await po.sendPrompt("tc=basic");
 
   const appPath = await po.appManagement.getCurrentAppPath();
@@ -116,11 +111,8 @@ const runDiscardChangesTest = async (po: PageObject, nativeGit: boolean) => {
   }
 };
 
-const runUncommittedFilesBannerTest = async (
-  po: PageObject,
-  nativeGit: boolean,
-) => {
-  await po.setUp({ disableNativeGit: !nativeGit });
+const runUncommittedFilesBannerTest = async (po: PageObject) => {
+  await po.setUp();
   await po.sendPrompt("tc=basic");
 
   const appPath = await po.appManagement.getCurrentAppPath();
@@ -211,23 +203,9 @@ const runUncommittedFilesBannerTest = async (
 };
 
 test("uncommitted files banner", async ({ po }) => {
-  await runUncommittedFilesBannerTest(po, false);
+  await runUncommittedFilesBannerTest(po);
 });
-
-testSkipIfWindows(
-  "uncommitted files banner with native git",
-  async ({ po }) => {
-    await runUncommittedFilesBannerTest(po, true);
-  },
-);
 
 test("discard all uncommitted changes", async ({ po }) => {
-  await runDiscardChangesTest(po, false);
+  await runDiscardChangesTest(po);
 });
-
-testSkipIfWindows(
-  "discard all uncommitted changes with native git",
-  async ({ po }) => {
-    await runDiscardChangesTest(po, true);
-  },
-);

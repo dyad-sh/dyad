@@ -405,7 +405,6 @@ const BaseUserSettingsFields = {
   blockUnsafeNpmPackages: z.boolean().optional(),
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
-  enableNativeGit: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpServersForBuildMode: z.boolean().optional(),
   enableMcpToolSearch: z.boolean().optional(),
@@ -438,6 +437,8 @@ export const StoredUserSettingsSchema = z
     defaultChatMode: StoredChatModeSchema.optional(),
     // Deprecated: renamed to enableChatEventNotifications
     enableChatCompletionNotifications: z.boolean().optional(),
+    // Deprecated: Dyad always uses the bundled Dugite Git backend.
+    enableNativeGit: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -488,8 +489,11 @@ export function migrateStoredChatMode(
 export function migrateStoredSettings(
   stored: StoredUserSettings,
 ): UserSettings {
+  const activeSettings = { ...stored };
+  delete activeSettings.enableNativeGit;
+
   return {
-    ...stored,
+    ...activeSettings,
     selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),
     defaultChatMode: migrateStoredChatMode(stored.defaultChatMode),
     enableChatEventNotifications:

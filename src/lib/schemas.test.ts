@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { StoredUserSettingsSchema } from "@/lib/schemas";
+import { migrateStoredSettings, StoredUserSettingsSchema } from "@/lib/schemas";
 
 const baseSettings = {
   selectedModel: { name: "auto", provider: "auto" },
@@ -64,5 +64,16 @@ describe("StoredUserSettingsSchema lastKnownPerformance", () => {
       timestamp: 1751500000000,
       memoryUsageMB: 400,
     });
+  });
+});
+
+describe("migrateStoredSettings", () => {
+  it("accepts and removes the deprecated native Git setting", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      enableNativeGit: false,
+    });
+
+    expect(migrateStoredSettings(stored)).not.toHaveProperty("enableNativeGit");
   });
 });

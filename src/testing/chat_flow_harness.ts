@@ -138,7 +138,6 @@ export interface ChatFlowHarnessOptions {
   selectedModel?: { provider: string; name: string };
   chatMode?: UserSettings["selectedChatMode"];
   autoApprove?: boolean;
-  enableNativeGit?: boolean;
   /** Arbitrary extra settings overrides (highest precedence). */
   settings?: Partial<UserSettings>;
   /**
@@ -300,7 +299,6 @@ export async function setupChatFlowHarness(
       },
       selectedChatMode: options.chatMode ?? "build",
       autoApproveChanges: options.autoApprove ?? true,
-      enableNativeGit: options.enableNativeGit ?? true,
       hasRunBefore: true,
       ...options.settings,
     };

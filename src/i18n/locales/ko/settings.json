@@ -187,9 +187,7 @@
     "deny": "거부"
   },
   "experiments": {
-    "title": "실험 기능",
-    "enableNativeGit": "네이티브 Git 사용",
-    "enableNativeGitDescription": "외부 Git 설치가 필요 없으며, 더 빠르고 네이티브한 Git 성능을 제공합니다."
+    "title": "실험 기능"
   },
   "dangerZone": {
     "title": "위험 구역",

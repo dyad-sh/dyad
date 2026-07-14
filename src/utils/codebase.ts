@@ -1,6 +1,6 @@
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import { gitIsIgnoredIso, gitListFilesNative } from "../ipc/utils/git_utils";
+import { gitIsIgnored, gitListFilesNative } from "../ipc/utils/git_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -137,9 +137,9 @@ const gitIgnoreCache = new Map<string, boolean>();
 const gitIgnoreMtimes = new Map<string, number>();
 
 /**
- * Check if a path should be ignored based on git ignore rules. Uses isomorphic-git
+ * Check if a path should be ignored based on git ignore rules.
  */
-async function isGitIgnoredIso(
+async function isGitIgnoredByTraversal(
   filePath: string,
   baseDir: string,
 ): Promise<boolean> {
@@ -192,7 +192,7 @@ async function isGitIgnoredIso(
     }
 
     const relativePath = path.relative(baseDir, filePath);
-    const result = await gitIsIgnoredIso({
+    const result = await gitIsIgnored({
       path: baseDir,
       filepath: relativePath,
     });
@@ -269,7 +269,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
   try {
     // We put the vast majority of the computational burden on Git for the
     // sake of performance. Nonetheless, the behavior of this function
-    // should still be as close as possible to collectFilesIsoGit.
+    // should still be as close as possible to collectFilesByTraversal.
     files = (
       await gitListFilesNative({
         path: dir,
@@ -279,12 +279,12 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     ).map((file) => path.join(dir, file));
   } catch (error) {
     logger.error(
-      `Git failed to read directory ${dir} and is falling back to isomorphic-git:`,
+      `Git failed to read directory ${dir} and is falling back to filesystem traversal:`,
       error,
     );
-    // Since collectFilesIsoGit traverses the directory tree manually,
+    // Since collectFilesByTraversal traverses the directory tree manually,
     // we'll still be able to collect the files even if git fails
-    return await collectFilesIsoGit(dir, dir);
+    return await collectFilesByTraversal(dir, dir);
   }
 
   // Git cannot exclude files by size, so we still need to do that manually
@@ -307,10 +307,9 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
 }
 
 /**
- * Recursively walk a directory and collect all relevant files. Uses
- * isomorphic-git to check whether files and directories are gitignored.
+ * Recursively walk a directory and collect all relevant files.
  */
-async function collectFilesIsoGit(
+async function collectFilesByTraversal(
   dir: string,
   baseDir: string,
 ): Promise<string[]> {
@@ -338,13 +337,13 @@ async function collectFilesIsoGit(
       }
 
       // Skip if the entry is git ignored
-      if (await isGitIgnoredIso(fullPath, baseDir)) {
+      if (await isGitIgnoredByTraversal(fullPath, baseDir)) {
         return;
       }
 
       if (entry.isDirectory()) {
         // Recursively process subdirectories
-        const subDirFiles = await collectFilesIsoGit(fullPath, baseDir);
+        const subDirFiles = await collectFilesByTraversal(fullPath, baseDir);
         files.push(...subDirFiles);
       } else if (entry.isFile()) {
         // Skip excluded files
@@ -513,9 +512,7 @@ async function prepareCodebaseFiles({
     return undefined;
   }
 
-  let files = settings.enableNativeGit
-    ? await collectFilesNativeGit(appPath)
-    : await collectFilesIsoGit(appPath, appPath);
+  let files = await collectFilesNativeGit(appPath);
 
   if (virtualFileSystem) {
     const deletedFiles = new Set(

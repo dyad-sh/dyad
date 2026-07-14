@@ -11,7 +11,7 @@ import {
 } from "@/ipc/utils/socket_firewall";
 import { IS_TEST_BUILD } from "./test_utils";
 import { z } from "zod";
-import { gitIsIgnoredIso } from "./git_utils";
+import { gitIsIgnored } from "./git_utils";
 import { getDyadEngineBaseUrl } from "./dyad_engine_url";
 
 const logger = log.scope("cloud_sandbox_provider");
@@ -404,7 +404,7 @@ async function isCloudSandboxGitIgnored(
   relativePath: string,
 ): Promise<boolean> {
   try {
-    return await gitIsIgnoredIso({
+    return await gitIsIgnored({
       path: appPath,
       filepath: normalizePath(relativePath),
     });

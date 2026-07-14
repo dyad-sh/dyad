@@ -442,8 +442,6 @@
       "abortAndSwitch": "Abortar {{type}} y Cambiar",
       "branches": "Ramas",
       "branchesDescription": "Gestiona tus ramas, fusiona, elimina y más.",
-      "nativeGitRequired": "Se Requiere Git Nativo",
-      "nativeGitDescription": "Algunas acciones de Git (como rebase, abortar fusión y operaciones avanzadas de ramas) requieren que Git Nativo esté habilitado.",
       "enableInSettings": "Habilitar en Configuración",
       "mergeInto": "Fusionar en {{branch}}",
       "branchCreated": "Rama '{{name}}' creada",

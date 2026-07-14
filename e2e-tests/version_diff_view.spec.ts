@@ -1,11 +1,8 @@
 import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-const runVersionDiffViewTest = async (
-  po: PageObject,
-  disableNativeGit: boolean,
-) => {
-  await po.setUp({ autoApprove: true, disableNativeGit });
+const runVersionDiffViewTest = async (po: PageObject) => {
+  await po.setUp({ autoApprove: true });
 
   // Create a second version so there's a commit with file changes to inspect.
   await po.sendPrompt("tc=write-index");
@@ -47,10 +44,6 @@ const runVersionDiffViewTest = async (
   }
 };
 
-testSkipIfWindows("version diff view (native git)", async ({ po }) => {
-  await runVersionDiffViewTest(po, false);
-});
-
-testSkipIfWindows("version diff view (isomorphic git)", async ({ po }) => {
-  await runVersionDiffViewTest(po, true);
+testSkipIfWindows("version diff view", async ({ po }) => {
+  await runVersionDiffViewTest(po);
 });

@@ -94,8 +94,6 @@ const DebugSettingsSchema = z.object({
   maxChatTurnsInContext: z.number().nullable(),
   /** Whether auto-fix problems is enabled */
   enableAutoFixProblems: z.boolean().nullable(),
-  /** Whether native git is enabled */
-  enableNativeGit: z.boolean().nullable(),
   /** Whether auto-update is enabled */
   enableAutoUpdate: z.boolean(),
   /** Release channel: "stable" | "beta" */

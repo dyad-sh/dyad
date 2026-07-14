@@ -438,8 +438,6 @@
       "abortAndSwitch": "Abortar {{type}} e Mudar",
       "branches": "Branches",
       "branchesDescription": "Gerencie suas branches, faça merge, exclua e mais.",
-      "nativeGitRequired": "Git Nativo Necessário",
-      "nativeGitDescription": "Algumas ações do Git (como rebase, abort de merge e operações avançadas de branch) requerem que o Git Nativo esteja ativado.",
       "enableInSettings": "Ativar nas Configurações",
       "mergeInto": "Fazer merge em {{branch}}",
       "branchCreated": "Branch '{{name}}' criada",

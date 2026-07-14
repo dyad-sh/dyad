@@ -182,9 +182,7 @@
     "deny": "Negar"
   },
   "experiments": {
-    "title": "Experimentos",
-    "enableNativeGit": "Ativar Git Nativo",
-    "enableNativeGitDescription": "Não requer nenhuma instalação externa do Git e oferece uma experiência de desempenho mais rápida com Git nativo."
+    "title": "Experimentos"
   },
   "dangerZone": {
     "title": "Zona de Perigo",

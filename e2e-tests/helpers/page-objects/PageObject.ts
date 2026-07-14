@@ -342,13 +342,11 @@ export class PageObject {
 
   async setUp({
     autoApprove = false,
-    disableNativeGit = false,
     enableAutoFixProblems = false,
     enableBasicAgent = false,
     enableSelectAppFromHomeChatInput = false,
   }: {
     autoApprove?: boolean;
-    disableNativeGit?: boolean;
     enableAutoFixProblems?: boolean;
     enableBasicAgent?: boolean;
     enableSelectAppFromHomeChatInput?: boolean;
@@ -357,9 +355,6 @@ export class PageObject {
     await this.navigation.goToSettingsTab();
     if (autoApprove) {
       await this.settings.toggleAutoApprove();
-    }
-    if (disableNativeGit) {
-      await this.settings.toggleNativeGit();
     }
     if (enableAutoFixProblems) {
       await this.settings.toggleAutoFixProblems();

@@ -161,7 +161,7 @@ Web/PWA:  Browser        -> Cloud Node.js server -> Cloud DB + Container filesys
 | `src/main/settings.ts`              | File JSON + `safeStorage`              | Platform-agnostic `SettingsProvider` (safeStorage for desktop, encrypted cloud storage for web) |
 | `src/paths/paths.ts`                | `electron.app.getPath()`               | Abstract path provider                                                                          |
 | `src/main.ts`                       | Full Electron app lifecycle            | Thin Electron shell; business logic extracted                                                   |
-| `src/ipc/utils/git_utils.ts`        | dugite + isomorphic-git                | isomorphic-git for web; keep dugite for desktop                                                 |
+| `src/ipc/utils/git_utils.ts`        | dugite                                 | Use a server-side Git proxy for web; keep dugite for desktop                                    |
 | `src/ipc/utils/simpleSpawn.ts`      | `child_process.spawn()`                | Remote container execution for web                                                              |
 | `electron-log` (all handlers)       | Electron-specific logger               | Platform-agnostic logger (pino)                                                                 |
 
@@ -320,7 +320,7 @@ Unify desktop and web backends to prevent codebase divergence.
 - [ ] Port remaining 35+ IPC handler categories to HTTP endpoints
 - [ ] Desktop Electron app spawns local Node.js server (same server as web, running locally)
 - [ ] Unified feature development: new features work on both desktop and web from a single implementation
-- [ ] Audit isomorphic-git coverage vs. dugite -- implement web-compatible git for all critical operations
+- [ ] Implement web-compatible Git for all critical operations through a server-side Git proxy
 - [ ] Unify Dyad Pro subscription: one account, one Pro status, works on desktop + web
 - [ ] Billing/payment integration (Stripe or similar)
 - [ ] Feature flags for platform-specific capabilities (`hasFilesystem`, `hasShell`, `hasLocalModels`, etc.)
@@ -380,7 +380,7 @@ Enable seamless work across desktop and web.
 | Container costs exceed freemium revenue                         | M          | H      | Aggressive idle timeouts, free tier time limits, monitor cost-per-user closely                                            |
 | Two-codebase divergence (desktop vs. web backend)               | H          | M      | Timebox: Phase 2 convergence must start within 6 months of web MVP launch                                                 |
 | User trust concerns storing API keys in cloud                   | M          | H      | Clear trust indicators in UI, key rotation support, consider browser-side key storage with proxy pattern                  |
-| isomorphic-git missing critical git features for web            | M          | M      | Audit git usage early; fall back to server-side git proxy for unsupported operations                                      |
+| Server-side Git proxy missing critical features for web         | M          | M      | Audit git usage early and cover unsupported operations in the proxy                                                       |
 | Freemium conversion < 5% makes web unsustainable                | M          | H      | Track conversion from day one; adjust free tier limits; desktop download as fallback CTA                                  |
 | Container security (arbitrary npm install, user code execution) | M          | H      | Use gVisor/Firecracker sandboxing; network isolation; resource limits; security audit before public launch                |
 | Sync conflicts cause data loss                                  | L          | H      | Last-write-wins with confirmation toast for low-stakes data; explicit conflict UI for high-stakes data; never auto-delete |

@@ -14,6 +14,8 @@
   - code: "`server/routes/api/`"
 - paragraph: Server layer added. Now I'll write the API route.
 - button "Copy"
+- button "Agent team" [expanded]
+- button "Review changes"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - text: Modified files (6)

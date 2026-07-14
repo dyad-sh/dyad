@@ -8,7 +8,7 @@ import fs from "node:fs";
 export interface MinidumpSummary {
   crashReason?: string; // e.g. "SIGABRT" / "SIGSEGV" (POSIX) or NTSTATUS name
   exceptionCode: number; // raw code, in case the name table misses it
-  faultAddress?: string; // hex data address the crash touched, for memory faults
+  faultAddress?: string; // for memory faults: hex address if near null, else "non-null"
   accessType?: "read" | "write" | "execute"; // Windows access violations and in-page errors
   inPageErrorStatus?: string; // NTSTATUS of the paging failure, hex (e.g. "0xc000009c")
   oomAllocationSizeBytes?: number; // failed allocation size for Chromium OOM crashes
@@ -345,7 +345,7 @@ function parseExceptionDetails(
     if (exceptionCode === EXC_CODE_ACCESS_VIOLATION && params.length >= 2) {
       return {
         accessType: ACCESS_TYPES[Number(params[0])],
-        faultAddress: toHex(applyAddressMask(params[1], addressMask)),
+        faultAddress: redactFaultAddress(params[1], addressMask),
       };
     }
     if (exceptionCode === EXC_CODE_IN_PAGE_ERROR && params.length >= 2) {
@@ -353,7 +353,7 @@ function parseExceptionDetails(
       // of the paging failure (e.g. a failing disk or dropped network share).
       return {
         accessType: ACCESS_TYPES[Number(params[0])],
-        faultAddress: toHex(applyAddressMask(params[1], addressMask)),
+        faultAddress: redactFaultAddress(params[1], addressMask),
         ...(params.length >= 3 && { inPageErrorStatus: toHex(params[2]) }),
       };
     }
@@ -382,11 +382,9 @@ function parseExceptionDetails(
       : exceptionCode === 11 || exceptionCode === 7; // SIGSEGV, SIGBUS
   if (isMemoryFault) {
     return {
-      faultAddress: toHex(
-        applyAddressMask(
-          view.getBigUint64(exceptionRva + EXC_ADDRESS_OFF, true),
-          addressMask,
-        ),
+      faultAddress: redactFaultAddress(
+        view.getBigUint64(exceptionRva + EXC_ADDRESS_OFF, true),
+        addressMask,
       ),
     };
   }
@@ -395,6 +393,18 @@ function parseExceptionDetails(
 
 function toHex(value: bigint): string {
   return "0x" + value.toString(16);
+}
+
+// Fault addresses are only diagnostic near null, where they mean a field
+// access off a null pointer. An exact address past the null page would
+// expose ASLR layout, and after memory corruption the "pointer" can hold
+// application bytes, so those values are reduced to "non-null" before
+// they can reach telemetry or logs.
+const NULL_PAGE_LIMIT = 0xffffn;
+
+function redactFaultAddress(address: bigint, mask: bigint): string {
+  const masked = applyAddressMask(address, mask);
+  return masked <= NULL_PAGE_LIMIT ? toHex(masked) : "non-null";
 }
 
 // Read the "ptype" Crashpad annotation (the crashing process type) from the

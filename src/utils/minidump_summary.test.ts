@@ -234,6 +234,19 @@ describe("parseMinidumpBuffer", () => {
     expect(parseMinidumpBuffer(dump, "linux", "x64")!.faultAddress).toBe("0x0");
   });
 
+  it("reduces a POSIX fault address past the null page to non-null", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11, // SIGSEGV
+      exceptionAddress: 0x7f3a91c2b418n,
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    expect(parseMinidumpBuffer(dump, "linux", "x64")!.faultAddress).toBe(
+      "non-null",
+    );
+  });
+
   it("strips arm64 tag bits from the fault address using the address mask", () => {
     const dump = buildMinidump({
       modules: oneModule,
@@ -274,6 +287,19 @@ describe("parseMinidumpBuffer", () => {
     const s = parseMinidumpBuffer(dump, "win32", "x64");
     expect(s!.accessType).toBe("write");
     expect(s!.faultAddress).toBe("0x18");
+  });
+
+  it("reduces a Windows fault address past the null page to non-null", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 0xc0000005,
+      exceptionParams: [0n, 0x7f3a91c2b418n], // read of a heap-range address
+      ip: 0x10010n,
+      ipOffset: 248,
+    });
+    const s = parseMinidumpBuffer(dump, "win32", "x64");
+    expect(s!.accessType).toBe("read");
+    expect(s!.faultAddress).toBe("non-null");
   });
 
   it("leaves accessType undefined for unknown access type values", () => {

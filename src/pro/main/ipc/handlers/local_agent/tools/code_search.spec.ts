@@ -120,6 +120,7 @@ describe("codeSearchTool", () => {
 
   describe("isEnabled", () => {
     it("is enabled for Dyad Pro when the code explorer setting is disabled", () => {
+      mockContext.subagentPersona = "explorer";
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: false });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
@@ -127,6 +128,7 @@ describe("codeSearchTool", () => {
     });
 
     it("is disabled when explore_code is enabled and ready for the current app", () => {
+      mockContext.subagentPersona = "explorer";
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(true);
 
@@ -134,6 +136,7 @@ describe("codeSearchTool", () => {
     });
 
     it("stays enabled when the code explorer setting is on but the app is not ready", () => {
+      mockContext.subagentPersona = "explorer";
       mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
       mocks.isCodeExplorerReady.mockReturnValue(false);
 
@@ -147,6 +150,13 @@ describe("codeSearchTool", () => {
       expect(
         codeSearchTool.isEnabled?.({ ...mockContext, isDyadPro: false }),
       ).toBe(false);
+    });
+
+    it("stays enabled for a root turn when compiler exploration is ready", () => {
+      mocks.readSettings.mockReturnValue({ enableCodeExplorer: true });
+      mocks.isCodeExplorerReady.mockReturnValue(true);
+
+      expect(codeSearchTool.isEnabled?.(mockContext)).toBe(true);
     });
   });
 

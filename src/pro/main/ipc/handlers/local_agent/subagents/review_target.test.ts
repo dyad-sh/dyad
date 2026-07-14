@@ -5,7 +5,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildReviewTarget, REVIEW_MAX_FILE_BYTES } from "./review_target";
+import {
+  buildReviewTarget,
+  REVIEW_MAX_FILE_BYTES,
+  REVIEW_MAX_TOTAL_BYTES,
+} from "./review_target";
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
@@ -150,6 +154,23 @@ describe("buildReviewTarget", () => {
     expect(review.files).not.toContain("large.txt");
     expect(review.exclusions).toContain(
       "large.txt (diff exceeds per-file review limit)",
+    );
+  });
+
+  it("keeps the aggregate diff conservatively below Reviewer context", async () => {
+    const repo = await makeRepo();
+    for (const file of ["first.ts", "second.ts", "third.ts"]) {
+      await fs.writeFile(path.join(repo, file), "x".repeat(70 * 1024));
+    }
+
+    const review = await buildReviewTarget({ appPath: repo });
+
+    expect(Buffer.byteLength(review.diff)).toBeLessThanOrEqual(
+      REVIEW_MAX_TOTAL_BYTES,
+    );
+    expect(review.files).toEqual(["first.ts", "second.ts"]);
+    expect(review.exclusions).toContain(
+      "third.ts (aggregate review limit reached)",
     );
   });
 });

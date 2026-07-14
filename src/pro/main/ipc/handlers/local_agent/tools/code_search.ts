@@ -10,6 +10,7 @@ import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { isCodeExplorerReady } from "@/ipc/processors/code_explorer";
+import { readSettings } from "@/main/settings";
 import {
   filterDyadInternalFiles,
   resolveTargetAppPath,
@@ -108,9 +109,13 @@ export const codeSearchTool: ToolDefinition<CodeSearchArgs> = {
   // Root turns retain targeted semantic discovery even when Explorer is
   // disabled. Inside Explorer, compiler exploration supersedes code_search so
   // the child still receives a single semantic discovery surface.
-  isEnabled: (ctx) =>
-    ctx.isDyadPro &&
-    !(ctx.subagentPersona === "explorer" && isCodeExplorerReady(ctx.appPath)),
+  isEnabled: (ctx) => {
+    const compilerExplorerAvailable =
+      ctx.subagentPersona === "explorer" &&
+      readSettings().enableCodeExplorer === true &&
+      isCodeExplorerReady(ctx.appPath);
+    return ctx.isDyadPro && !compilerExplorerAvailable;
+  },
 
   getConsentPreview: (args) =>
     args.app_name

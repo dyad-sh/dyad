@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Bot,
   ChevronDown,
@@ -24,6 +29,8 @@ import { isDyadProEnabled } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 import { setPendingReviewContinuation } from "@/hooks/subagentReviewContinuation";
 
+const MAX_RENDERED_REPORT_CHARS = 100_000;
+
 export function SubagentTeamCard({
   chatId,
   messageId,
@@ -38,6 +45,9 @@ export function SubagentTeamCard({
   const [expanded, setExpanded] = useState(true);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
     {},
+  );
+  const [expandedThreadIds, setExpandedThreadIds] = useState<Set<string>>(
+    new Set(),
   );
   const [, setNow] = useState(Date.now());
   const isPro = settings ? isDyadProEnabled(settings) : false;
@@ -119,14 +129,40 @@ export function SubagentTeamCard({
     onError: (error) => showError(error),
   });
   const followupMutation = useMutation({
-    mutationFn: ({
-      threadId,
+    mutationFn: async ({
+      thread,
       message,
     }: {
-      threadId: string;
+      thread: SubagentThreadSummary;
       message: string;
-    }) => ipc.agent.followupSubagent({ chatId, threadId, message }),
-    onSuccess: (_result, { threadId }) => {
+    }) => {
+      if (thread.persona === "reviewer") {
+        await ipc.agent.followupSubagent({
+          chatId,
+          threadId: thread.id,
+          message,
+        });
+        return true;
+      }
+      if (thread.persona !== "explorer") return false;
+
+      return new Promise<boolean>((resolve) => {
+        void streamMessage({
+          prompt: [
+            "Continue an existing Explorer sub-agent by calling followup_task with exactly these arguments:",
+            `thread_id: ${JSON.stringify(thread.id)}`,
+            `message: ${JSON.stringify(message)}`,
+            "Wait for the Explorer to finish, then summarize its result.",
+          ].join("\n"),
+          chatId,
+          requestedChatMode: "local-agent",
+          onSettled: ({ success }) => resolve(success),
+        });
+      });
+    },
+    onSuccess: (success, { thread }) => {
+      if (!success) return;
+      const threadId = thread.id;
       setMessageDrafts((drafts) => ({ ...drafts, [threadId]: "" }));
       void invalidateThreads();
     },
@@ -161,8 +197,19 @@ export function SubagentTeamCard({
     return () => clearInterval(timer);
   }, [query.data]);
 
-  if (!isPro) return null;
   const threads = query.data ?? [];
+  const transcriptQueries = useQueries({
+    queries: threads.map((thread) => ({
+      queryKey: queryKeys.subagents.messages({ chatId, threadId: thread.id }),
+      queryFn: () =>
+        ipc.agent.getSubagentMessages({ chatId, threadId: thread.id }),
+      enabled: isPro && expandedThreadIds.has(thread.id),
+    })),
+  });
+  const transcriptQueriesByThreadId = new Map(
+    threads.map((thread, index) => [thread.id, transcriptQueries[index]]),
+  );
+  if (!isPro) return null;
   const visibleThreads = threads.filter(
     (thread) =>
       thread.persona !== "reviewer" || thread.sourceMessageId === messageId,
@@ -239,6 +286,81 @@ export function SubagentTeamCard({
               {thread.error && (
                 <p className="mt-1 text-xs text-destructive">{thread.error}</p>
               )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="mt-1"
+                aria-label={`${expandedThreadIds.has(thread.id) ? "Hide" : "Show"} details for ${thread.persona} ${thread.taskName}`}
+                aria-expanded={expandedThreadIds.has(thread.id)}
+                onClick={() =>
+                  setExpandedThreadIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(thread.id)) next.delete(thread.id);
+                    else next.add(thread.id);
+                    return next;
+                  })
+                }
+              >
+                {expandedThreadIds.has(thread.id) ? (
+                  <ChevronDown className="mr-1 h-4 w-4" />
+                ) : (
+                  <ChevronRight className="mr-1 h-4 w-4" />
+                )}
+                {expandedThreadIds.has(thread.id)
+                  ? "Hide details"
+                  : "Show details"}
+              </Button>
+              {expandedThreadIds.has(thread.id) && (
+                <div className="mt-2 space-y-2 border-l pl-3">
+                  {thread.persona !== "reviewer" &&
+                    typeof thread.result?.report === "string" && (
+                      <pre
+                        aria-label={`${thread.persona} report`}
+                        className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs"
+                      >
+                        {thread.result.report.slice(
+                          0,
+                          MAX_RENDERED_REPORT_CHARS,
+                        )}
+                      </pre>
+                    )}
+                  <div aria-label={`${thread.persona} transcript`}>
+                    <p className="text-xs font-medium">Durable transcript</p>
+                    {transcriptQueriesByThreadId.get(thread.id)?.isPending ? (
+                      <p className="text-xs text-muted-foreground">
+                        Loading transcript…
+                      </p>
+                    ) : transcriptQueriesByThreadId.get(thread.id)?.isError ? (
+                      <p className="text-xs text-destructive">
+                        Unable to load transcript.
+                      </p>
+                    ) : transcriptQueriesByThreadId.get(thread.id)?.data
+                        ?.length ? (
+                      <ol className="mt-1 space-y-1">
+                        {transcriptQueriesByThreadId
+                          .get(thread.id)
+                          ?.data?.map((message) => (
+                            <li
+                              key={message.id}
+                              className="rounded bg-muted/60 p-2 text-xs"
+                            >
+                              <span className="font-medium capitalize">
+                                {message.role}
+                              </span>
+                              <p className="mt-1 whitespace-pre-wrap">
+                                {message.content}
+                              </p>
+                            </li>
+                          ))}
+                      </ol>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No durable messages yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="mt-2 space-y-2">
                 <Textarea
                   aria-label={`Message ${thread.persona} ${thread.taskName}`}
@@ -297,13 +419,13 @@ export function SubagentTeamCard({
                     }
                     onClick={() =>
                       followupMutation.mutate({
-                        threadId: thread.id,
+                        thread,
                         message: messageDrafts[thread.id].trim(),
                       })
                     }
                   >
                     {followupMutation.isPending &&
-                      followupMutation.variables?.threadId === thread.id && (
+                      followupMutation.variables?.thread.id === thread.id && (
                         <Loader2 className="mr-1 h-4 w-4 animate-spin" />
                       )}
                     Follow up
@@ -337,9 +459,9 @@ export function SubagentTeamCard({
                 thread.id === review?.id && (
                   <div className="mt-2 space-y-2">
                     <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">
-                      {report}
+                      {report.slice(0, MAX_RENDERED_REPORT_CHARS)}
                     </pre>
-                    {findingCount > 0 && (
+                    {findingCount > 0 && review.status === "completed" && (
                       <div className="flex flex-wrap items-center gap-2">
                         <Button
                           size="sm"

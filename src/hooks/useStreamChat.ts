@@ -9,6 +9,7 @@ import {
   recentStreamChatIdsAtom,
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
+  streamReviewEligibleByIdAtom,
   streamingPreviewByChatIdAtom,
   queuePausedByIdAtom,
   publishChatCompletionEventAtom,
@@ -63,6 +64,12 @@ import {
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
+}
+
+export function isStreamReviewEligible(
+  response: Pick<ChatResponseEnd, "updatedFiles" | "wasCancelled">,
+): boolean {
+  return !response.wasCancelled && response.updatedFiles === true;
 }
 
 // Module-level set to track chatIds with active/pending streams
@@ -247,6 +254,7 @@ export function useStreamChat({
   const setStreamCompletedSuccessfullyById = useSetAtom(
     streamCompletedSuccessfullyByIdAtom,
   );
+  const setStreamReviewEligibleById = useSetAtom(streamReviewEligibleByIdAtom);
   const setStreamingPreviewByChatId = useSetAtom(streamingPreviewByChatIdAtom);
   const queuePausedById = useAtomValue(queuePausedByIdAtom);
   const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
@@ -365,6 +373,11 @@ export function useStreamChat({
       });
       // Reset the successful completion flag when starting a new stream
       setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
+        return next;
+      });
+      setStreamReviewEligibleById((prev) => {
         const next = new Map(prev);
         next.set(chatId, false);
         return next;
@@ -508,6 +521,11 @@ export function useStreamChat({
             onEnd: (response: ChatResponseEnd) => {
               finalizeStream(chatId);
               void (async () => {
+                setStreamReviewEligibleById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, isStreamReviewEligible(response));
+                  return next;
+                });
                 // Only mark as successful if NOT cancelled - wasCancelled flag is set
                 // by the backend when user cancels the stream
                 if (response.wasCancelled) {
@@ -817,6 +835,7 @@ export function useStreamChat({
       setIsPreviewOpen,
       setStreamCompletedSuccessfullyById,
       setQueuePausedById,
+      setStreamReviewEligibleById,
       setStreamingPreviewByChatId,
       selectedAppId,
       refetchUserBudget,

@@ -82,3 +82,8 @@ like `Failed to resolve ref 'main'` or a branch banner showing `master`, check
 the fixture repo's `git init` default branch. Either make production code use
 the current branch instead of assuming `main`, or force the fixture branch name
 in the test so local and CI exercise the same branch layout.
+
+`harness.waitForStreamEnd()` waits for `chat:response:end`, which can arrive
+before the transport emits `chat:stream:end`. If a test asserts the latter
+channel, also await `harness.waitForEvent("chat:stream:end")` before inspecting
+the recorded bridge events.

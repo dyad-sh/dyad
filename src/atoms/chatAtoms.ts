@@ -535,8 +535,29 @@ export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
   new Map(),
 );
 
-// Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
+// Tracks whether the most recently completed stream changed files and is
+// therefore eligible for the queued-message review barrier.
+export const streamReviewEligibleByIdAtom = atom<Map<number, boolean>>(
+  new Map(),
+);
+
+// Tracks the user's explicit queue pause for each chat.
 export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());
+
+// Tracks the queue hold owned by an in-flight review barrier. Keeping this
+// separate prevents barrier completion from clearing an explicit user pause.
+export const reviewBarrierHeldByIdAtom = atom<Map<number, boolean>>(new Map());
+
+// Effective queue blocking combines independent pause owners.
+export const effectiveQueuePausedByIdAtom = atom((get) => {
+  const userPaused = get(queuePausedByIdAtom);
+  const reviewHeld = get(reviewBarrierHeldByIdAtom);
+  const effective = new Map(userPaused);
+  for (const [chatId, held] of reviewHeld) {
+    if (held) effective.set(chatId, true);
+  }
+  return effective;
+});
 
 // Sidecar overlay for tool-input XML preview during Pro/Agent v2 streaming.
 // Lives outside message.content so the patch protocol stays strictly

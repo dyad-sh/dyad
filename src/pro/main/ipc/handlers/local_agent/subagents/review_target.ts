@@ -6,8 +6,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export const REVIEW_MAX_FILE_BYTES = 512 * 1024;
-export const REVIEW_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+// gpt-5.6-sol has a 372k-token context window. Keep the raw diff well below
+// that ceiling even for token-dense source, leaving room for instructions,
+// durable thread history, and the structured response.
+export const REVIEW_MAX_FILE_BYTES = 96 * 1024;
+export const REVIEW_MAX_TOTAL_BYTES = 192 * 1024;
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 export interface ReviewTarget {

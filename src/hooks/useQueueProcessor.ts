@@ -13,6 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import type { Chat } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
+import { setPendingReviewContinuation } from "./subagentReviewContinuation";
 
 const reviewBarrierInFlight = new Set<number>();
 const reviewBarrierPassed = new Set<number>();
@@ -27,6 +28,7 @@ export async function runQueuedReviewFlow(params: {
   }>;
   streamRemediation: (prompt: string) => Promise<ReviewRemediationOutcome>;
   onRemediationFailed?: (threadId: string) => Promise<void>;
+  onRemediationPaused?: () => void;
 }): Promise<"released" | "paused"> {
   const barrier = await params.runBarrier();
   if (barrier.outcome !== "fix_required" || !barrier.prompt) {
@@ -34,7 +36,10 @@ export async function runQueuedReviewFlow(params: {
   }
 
   const remediated = await params.streamRemediation(barrier.prompt);
-  if (remediated === "paused") return "paused";
+  if (remediated === "paused") {
+    params.onRemediationPaused?.();
+    return "paused";
+  }
   // A failed or denied remediation remains visible, but the user's queued
   // message must still be released rather than stranded behind the barrier.
   if (remediated === "failed") {
@@ -118,6 +123,37 @@ export function useQueueProcessor() {
             }),
           onRemediationFailed: (threadId) =>
             ipc.agent.skipReviewAutoFix({ chatId, threadId }),
+          onRemediationPaused: () => {
+            setPendingReviewContinuation(chatId, async () => {
+              try {
+                // Resume at verification rather than running a fresh normal
+                // barrier, whose findings would incorrectly trigger another
+                // forced remediation cycle.
+                await ipc.agent.runAutoReviewBarrier({
+                  chatId,
+                  verification: true,
+                });
+              } catch {
+                // Review infrastructure is fail-open for the queued message.
+                // Keep this error out of the already-successful Continue
+                // stream's completion path.
+              } finally {
+                // Verification is fail-open for the queued user message.
+                // The original review is completed by the verification IPC.
+                reviewBarrierPassed.add(chatId);
+                setStreamCompletedSuccessfullyById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, true);
+                  return next;
+                });
+                setQueuePausedById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, false);
+                  return next;
+                });
+              }
+            });
+          },
         })
           .then((outcome) => {
             if (outcome === "paused") return;

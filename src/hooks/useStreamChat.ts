@@ -55,6 +55,10 @@ import {
 import { isFreeProModel } from "@/lib/freeProModel";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
 import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
+import {
+  hasPendingReviewContinuation,
+  resumePendingReviewContinuation,
+} from "./subagentReviewContinuation";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -64,6 +68,10 @@ export function getRandomNumberId() {
 // This prevents race conditions when clicking rapidly before state updates
 const pendingStreamChatIds = new Set<number>();
 const backgroundAutoReviewChatIds = new Set<number>();
+const pendingBackgroundAutoReviews = new Map<
+  number,
+  BackgroundAutoReviewParams
+>();
 
 const ACTIVE_REVIEW_STATUSES = new Set<SubagentThreadSummary["status"]>([
   "queued",
@@ -100,44 +108,70 @@ async function waitForReview(
   return review;
 }
 
-export async function runBackgroundAutoReview(params: {
+interface BackgroundAutoReviewParams {
   chatId: number;
   sourceMessageId: number;
   autoFix: boolean;
   streamFix: (prompt: string) => Promise<"completed" | "failed" | "paused">;
-}): Promise<void> {
-  if (backgroundAutoReviewChatIds.has(params.chatId)) return;
-  backgroundAutoReviewChatIds.add(params.chatId);
-  try {
-    const started = await ipc.agent.startAutoReview({
-      chatId: params.chatId,
-      sourceMessageId: params.sourceMessageId,
-    });
-    const completed = await waitForReview(params.chatId, started);
-    if (
-      !params.autoFix ||
-      completed.status !== "completed" ||
-      Number(completed.result?.findingCount ?? 0) === 0
-    ) {
-      return;
-    }
-    const { prompt } = await ipc.agent.fixReviewFindings({
+}
+
+async function runSingleBackgroundAutoReview(
+  params: BackgroundAutoReviewParams,
+): Promise<void> {
+  const started = await ipc.agent.startAutoReview({
+    chatId: params.chatId,
+    sourceMessageId: params.sourceMessageId,
+  });
+  const completed = await waitForReview(params.chatId, started);
+  // A newer completed root turn supersedes this target. Let the owning drain
+  // loop start that latest request instead of fixing stale findings.
+  if (pendingBackgroundAutoReviews.has(params.chatId)) return;
+  if (
+    !params.autoFix ||
+    completed.status !== "completed" ||
+    Number(completed.result?.findingCount ?? 0) === 0
+  ) {
+    return;
+  }
+  const { prompt } = await ipc.agent.fixReviewFindings({
+    chatId: params.chatId,
+    threadId: completed.id,
+  });
+  const remediated = await params.streamFix(prompt);
+  if (remediated === "paused") return;
+  if (remediated === "failed") {
+    await ipc.agent.skipReviewAutoFix({
       chatId: params.chatId,
       threadId: completed.id,
     });
-    const remediated = await params.streamFix(prompt);
-    if (remediated === "paused") return;
-    if (remediated === "failed") {
-      await ipc.agent.skipReviewAutoFix({
-        chatId: params.chatId,
-        threadId: completed.id,
-      });
-      return;
+    return;
+  }
+  await ipc.agent.runAutoReviewBarrier({
+    chatId: params.chatId,
+    verification: true,
+  });
+}
+
+export async function runBackgroundAutoReview(
+  params: BackgroundAutoReviewParams,
+): Promise<void> {
+  pendingBackgroundAutoReviews.set(params.chatId, params);
+  if (backgroundAutoReviewChatIds.has(params.chatId)) return;
+  backgroundAutoReviewChatIds.add(params.chatId);
+  try {
+    while (true) {
+      const next = pendingBackgroundAutoReviews.get(params.chatId);
+      if (!next) break;
+      pendingBackgroundAutoReviews.delete(params.chatId);
+      try {
+        await runSingleBackgroundAutoReview(next);
+      } catch (error) {
+        // A stale target commonly fails once a newer assistant turn exists.
+        // Preserve the latest-wins guarantee by draining the replacement; only
+        // surface an error when there is no newer request to run.
+        if (!pendingBackgroundAutoReviews.has(params.chatId)) throw error;
+      }
     }
-    await ipc.agent.runAutoReviewBarrier({
-      chatId: params.chatId,
-      verification: true,
-    });
   } finally {
     backgroundAutoReviewChatIds.delete(params.chatId);
   }
@@ -625,6 +659,9 @@ export function useStreamChat({
                     appId: targetAppId,
                   }),
                 });
+                const shouldResumeReviewContinuation =
+                  response.pausePromptQueue !== true &&
+                  hasPendingReviewContinuation(chatId);
                 if (
                   shouldStartBackgroundAutoReview({
                     updatedFiles: response.updatedFiles === true,
@@ -632,7 +669,8 @@ export function useStreamChat({
                     hasQueuedMessages:
                       (store.get(queuedMessagesByIdAtom).get(chatId)?.length ??
                         0) > 0,
-                    suppressAutoReview,
+                    suppressAutoReview:
+                      suppressAutoReview || shouldResumeReviewContinuation,
                   })
                 ) {
                   void ipc.chat
@@ -678,6 +716,9 @@ export function useStreamChat({
                       // Auto-review failures stay non-blocking when no message
                       // is queued. The Agent team card surfaces explicit runs.
                     });
+                }
+                if (shouldResumeReviewContinuation) {
+                  await resumePendingReviewContinuation(chatId);
                 }
                 onSettled?.({
                   success: true,

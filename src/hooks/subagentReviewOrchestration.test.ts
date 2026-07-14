@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   listSubagents: vi.fn(),
   fixReviewFindings: vi.fn(),
   runAutoReviewBarrier: vi.fn(),
+  skipReviewAutoFix: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", async (importOriginal) => {
@@ -27,6 +28,11 @@ import {
   shouldStartBackgroundAutoReview,
 } from "./useStreamChat";
 import { runQueuedReviewFlow } from "./useQueueProcessor";
+import {
+  hasPendingReviewContinuation,
+  resumePendingReviewContinuation,
+  setPendingReviewContinuation,
+} from "./subagentReviewContinuation";
 
 function review(
   overrides: Partial<SubagentThreadSummary> = {},
@@ -132,16 +138,31 @@ describe("sub-agent review orchestration", () => {
       prompt: "fix it",
     }));
     const onRemediationFailed = vi.fn(async () => {});
+    const onRemediationPaused = vi.fn();
 
     await expect(
       runQueuedReviewFlow({
         runBarrier,
         streamRemediation: async () => "paused",
         onRemediationFailed,
+        onRemediationPaused,
       }),
     ).resolves.toBe("paused");
     expect(runBarrier).toHaveBeenCalledTimes(1);
     expect(onRemediationFailed).not.toHaveBeenCalled();
+    expect(onRemediationPaused).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes a paused remediation with exactly one verification", async () => {
+    const verify = vi.fn(async () => {});
+    setPendingReviewContinuation(8, verify);
+
+    expect(hasPendingReviewContinuation(8)).toBe(true);
+    await expect(resumePendingReviewContinuation(8)).resolves.toBe(true);
+    await expect(resumePendingReviewContinuation(8)).resolves.toBe(false);
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(hasPendingReviewContinuation(8)).toBe(false);
   });
 
   it("auto-fixes a background review only when enabled, then verifies", async () => {
@@ -190,5 +211,53 @@ describe("sub-agent review orchestration", () => {
 
     expect(mocks.fixReviewFindings).not.toHaveBeenCalled();
     expect(mocks.runAutoReviewBarrier).not.toHaveBeenCalled();
+  });
+
+  it("replays the newest background auto-review requested while one is active", async () => {
+    let resolveFirstReview!: (value: SubagentThreadSummary) => void;
+    const firstReview = new Promise<SubagentThreadSummary>((resolve) => {
+      resolveFirstReview = resolve;
+    });
+    mocks.startAutoReview
+      .mockReturnValueOnce(firstReview)
+      .mockResolvedValueOnce(
+        review({
+          id: "review-2",
+          sourceMessageId: 43,
+          result: { findingCount: 0 },
+        }),
+      );
+
+    const firstRun = runBackgroundAutoReview({
+      chatId: 9,
+      sourceMessageId: 42,
+      autoFix: false,
+      streamFix: vi.fn(),
+    });
+    await vi.waitFor(() => {
+      expect(mocks.startAutoReview).toHaveBeenCalledTimes(1);
+    });
+
+    await runBackgroundAutoReview({
+      chatId: 9,
+      sourceMessageId: 43,
+      autoFix: false,
+      streamFix: vi.fn(),
+    });
+    resolveFirstReview(
+      review({ sourceMessageId: 42, result: { findingCount: 0 } }),
+    );
+    await firstRun;
+
+    expect(mocks.startAutoReview).toHaveBeenCalledTimes(2);
+    expect(mocks.startAutoReview).toHaveBeenNthCalledWith(1, {
+      chatId: 9,
+      sourceMessageId: 42,
+    });
+    expect(mocks.startAutoReview).toHaveBeenNthCalledWith(2, {
+      chatId: 9,
+      sourceMessageId: 43,
+    });
+    expect(mocks.fixReviewFindings).not.toHaveBeenCalled();
   });
 });

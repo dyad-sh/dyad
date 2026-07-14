@@ -11,6 +11,7 @@ import {
 
 import { AutoFixReviewIssuesSwitch } from "@/components/settings/SubagentSettings";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { ipc, type SubagentThreadSummary } from "@/ipc/types";
@@ -30,6 +31,9 @@ export function SubagentTeamCard({
   const queryClient = useQueryClient();
   const queryKey = queryKeys.subagents.byChat({ chatId });
   const [expanded, setExpanded] = useState(true);
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const [, setNow] = useState(Date.now());
   const isPro = settings ? isDyadProEnabled(settings) : false;
   const query = useQuery({
@@ -79,6 +83,34 @@ export function SubagentTeamCard({
     mutationFn: (threadId: string) =>
       ipc.agent.skipReviewAutoFix({ chatId, threadId }),
     onSuccess: invalidateThreads,
+    onError: (error) => showError(error),
+  });
+  const sendMessageMutation = useMutation({
+    mutationFn: ({
+      threadId,
+      message,
+    }: {
+      threadId: string;
+      message: string;
+    }) => ipc.agent.sendSubagentMessage({ chatId, threadId, message }),
+    onSuccess: (_result, { threadId }) => {
+      setMessageDrafts((drafts) => ({ ...drafts, [threadId]: "" }));
+      void invalidateThreads();
+    },
+    onError: (error) => showError(error),
+  });
+  const followupMutation = useMutation({
+    mutationFn: ({
+      threadId,
+      message,
+    }: {
+      threadId: string;
+      message: string;
+    }) => ipc.agent.followupSubagent({ chatId, threadId, message }),
+    onSuccess: (_result, { threadId }) => {
+      setMessageDrafts((drafts) => ({ ...drafts, [threadId]: "" }));
+      void invalidateThreads();
+    },
     onError: (error) => showError(error),
   });
 
@@ -187,6 +219,65 @@ export function SubagentTeamCard({
               {thread.error && (
                 <p className="mt-1 text-xs text-destructive">{thread.error}</p>
               )}
+              <div className="mt-2 space-y-2">
+                <Textarea
+                  aria-label={`Message ${thread.persona} ${thread.taskName}`}
+                  value={messageDrafts[thread.id] ?? ""}
+                  maxLength={20_000}
+                  rows={2}
+                  placeholder={`Send a durable message to ${thread.taskName}`}
+                  onChange={(event) =>
+                    setMessageDrafts((drafts) => ({
+                      ...drafts,
+                      [thread.id]: event.target.value,
+                    }))
+                  }
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !messageDrafts[thread.id]?.trim() ||
+                      sendMessageMutation.isPending ||
+                      followupMutation.isPending
+                    }
+                    onClick={() =>
+                      sendMessageMutation.mutate({
+                        threadId: thread.id,
+                        message: messageDrafts[thread.id].trim(),
+                      })
+                    }
+                  >
+                    {sendMessageMutation.isPending &&
+                      sendMessageMutation.variables?.threadId === thread.id && (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      )}
+                    Send message
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      !messageDrafts[thread.id]?.trim() ||
+                      sendMessageMutation.isPending ||
+                      followupMutation.isPending
+                    }
+                    onClick={() =>
+                      followupMutation.mutate({
+                        threadId: thread.id,
+                        message: messageDrafts[thread.id].trim(),
+                      })
+                    }
+                  >
+                    {followupMutation.isPending &&
+                      followupMutation.variables?.threadId === thread.id && (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      )}
+                    Follow up
+                  </Button>
+                </div>
+              </div>
               {thread.persona === "reviewer" && thread.autoFixAt && (
                 <div className="mt-2 flex items-center justify-between rounded bg-amber-500/10 p-2 text-xs">
                   <span>

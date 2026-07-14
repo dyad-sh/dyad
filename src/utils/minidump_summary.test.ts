@@ -34,6 +34,7 @@ function buildMinidump(opts: {
   annotations?: Record<string, string>; // module annotation objects beyond ptype
   annotationType?: number; // type written on annotation objects, default 1 (string)
   simpleAnnotations?: Record<string, string>; // process-level dictionary
+  moduleSimpleAnnotations?: Record<string, string>; // module-level dictionary
 }): Buffer {
   const buf = Buffer.alloc(16384);
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -49,6 +50,7 @@ function buildMinidump(opts: {
   const hasCrashpadInfo =
     objectAnnotations.length > 0 ||
     opts.simpleAnnotations !== undefined ||
+    opts.moduleSimpleAnnotations !== undefined ||
     opts.addressMask !== undefined;
   const streamCount = hasCrashpadInfo ? 3 : 2;
   let cursor = 32 + streamCount * 12;
@@ -176,8 +178,26 @@ function buildMinidump(opts: {
       cursor = annObjectsRva + 4 + entries.length * 12;
     }
 
-    // ModuleCrashpadInfo: annotation_objects RVA @ +24.
+    // Module-level simple annotations dictionary: same layout as the
+    // process-level one below.
+    let moduleSimpleRva = 0;
+    if (opts.moduleSimpleAnnotations) {
+      const entries = Object.entries(opts.moduleSimpleAnnotations).map(
+        ([key, value]) => [writeUtf8(key), writeUtf8(value)] as const,
+      );
+      moduleSimpleRva = cursor;
+      dv.setUint32(moduleSimpleRva, entries.length, true);
+      entries.forEach(([keyRva, valueRva], i) => {
+        dv.setUint32(moduleSimpleRva + 4 + i * 8, keyRva, true);
+        dv.setUint32(moduleSimpleRva + 8 + i * 8, valueRva, true);
+      });
+      cursor = moduleSimpleRva + 4 + entries.length * 8;
+    }
+
+    // ModuleCrashpadInfo: simple_annotations RVA @ +16,
+    // annotation_objects RVA @ +24.
     const moduleInfoRva = cursor;
+    dv.setUint32(moduleInfoRva + 16, moduleSimpleRva, true);
     dv.setUint32(moduleInfoRva + 24, annObjectsRva, true);
     cursor = moduleInfoRva + 28;
 
@@ -742,6 +762,53 @@ describe("parseMinidumpBuffer", () => {
     const summary = parseMinidumpBuffer(dump, "linux", "x64")!;
     expect(summary.ptype).toBe("browser");
     expect(Object.keys(summary.annotations!)).toHaveLength(32);
+  });
+
+  it("keeps a ptype that sits past the cap in the module annotations", () => {
+    // ptype is exempt from the cap, so it survives even as the last of
+    // 33 module annotation objects.
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 32; i++) {
+      many[`key${i}`] = "v";
+    }
+    many.ptype = "browser";
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10010n,
+      ipOffset: 248,
+      annotations: many,
+    });
+    const summary = parseMinidumpBuffer(dump, "linux", "x64")!;
+    expect(summary.ptype).toBe("browser");
+  });
+
+  it("collects a module's simple annotations dictionary", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10010n,
+      ipOffset: 248,
+      ptype: "renderer",
+      moduleSimpleAnnotations: { "module-key": "module-value" },
+      simpleAnnotations: { "process-key": "process-value" },
+    });
+    const annotations = parseMinidumpBuffer(dump, "linux", "x64")!.annotations!;
+    expect(annotations["module-key"]).toBe("module-value");
+    expect(annotations["process-key"]).toBe("process-value");
+    expect(annotations.ptype).toBe("renderer");
+  });
+
+  it("keeps the module annotation when a simple annotation repeats the key", () => {
+    const dump = buildMinidump({
+      modules: oneModule,
+      exceptionCode: 11,
+      ip: 0x10010n,
+      ipOffset: 248,
+      ptype: "browser",
+      simpleAnnotations: { ptype: "impostor" },
+    });
+    expect(parseMinidumpBuffer(dump, "linux", "x64")!.ptype).toBe("browser");
   });
 
   it("leaves ptype undefined when there is no CrashpadInfo stream", () => {

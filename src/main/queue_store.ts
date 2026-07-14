@@ -90,21 +90,32 @@ export async function readPersistedQueue(): Promise<PersistedQueue> {
       await tryUnlink(ref.filePath);
       continue;
     }
+    let raw: string;
     try {
-      const raw = await fs.promises.readFile(ref.filePath, "utf-8");
+      raw = await fs.promises.readFile(ref.filePath, "utf-8");
+    } catch (error) {
+      // Read failures may be transient (e.g. permissions) — keep the file.
+      logger.error(`Error reading queue file ${ref.filePath}:`, error);
+      continue;
+    }
+    try {
       const parsed = ChatQueueSchema.safeParse(JSON.parse(raw));
       if (!parsed.success) {
         logger.error(
-          `Invalid queue file ${ref.filePath}, ignoring:`,
+          `Invalid queue file ${ref.filePath}, removing:`,
           parsed.error,
         );
+        await tryUnlink(ref.filePath);
         continue;
       }
       if (parsed.data.length > 0) {
         result[String(ref.chatId)] = parsed.data;
       }
     } catch (error) {
-      logger.error(`Error reading queue file ${ref.filePath}:`, error);
+      // The content is provably corrupt — remove it so it doesn't log an
+      // error on every startup forever.
+      logger.error(`Corrupt queue file ${ref.filePath}, removing:`, error);
+      await tryUnlink(ref.filePath);
     }
   }
   return result;

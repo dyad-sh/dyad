@@ -122,6 +122,19 @@ describe("queue_store", () => {
     fs.writeFileSync(filePath, "{ not valid json");
 
     expect(await readPersistedQueue()).toEqual({});
+    // The corrupt file is removed so it doesn't log an error on every startup.
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+
+  it("removes a queue file that fails schema validation", async () => {
+    const appId = createApp("app1");
+    const chatId = createChat(appId);
+    const filePath = queueFilePath("app1", chatId);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify([{ wrong: "shape" }]));
+
+    expect(await readPersistedQueue()).toEqual({});
+    expect(fs.existsSync(filePath)).toBe(false);
   });
 
   it("cleans up an orphan file whose chat no longer exists", async () => {

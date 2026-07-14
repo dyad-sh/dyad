@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
   queuedMessagesByIdAtom,
-  streamCompletedSuccessfullyByIdAtom,
+  queuePausedByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
@@ -23,9 +23,7 @@ const PERSIST_DEBOUNCE_MS = 400;
 export function useQueuePersistence() {
   const queuedMessagesById = useAtomValue(queuedMessagesByIdAtom);
   const setQueuedMessagesById = useSetAtom(queuedMessagesByIdAtom);
-  const setStreamCompletedSuccessfullyById = useSetAtom(
-    streamCompletedSuccessfullyByIdAtom,
-  );
+  const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
 
   // Only start persisting after the initial hydration completes, so we never
   // clobber the on-disk queue with the empty initial atom state.
@@ -75,21 +73,25 @@ export function useQueuePersistence() {
           // Merge rather than replace: if a prompt was enqueued between mount
           // and when this async hydration resolves, replacing would silently
           // discard it. Existing in-memory entries win over persisted ones.
+          const restoredChatIds = new Set<number>();
           setQueuedMessagesById((prev) => {
-            if (prev.size === 0) return map;
             const merged = new Map(prev);
             for (const [chatId, items] of map) {
               if (!merged.has(chatId)) {
                 merged.set(chatId, items);
+                restoredChatIds.add(chatId);
               }
             }
             return merged;
           });
-          // Seed the completion flag so the queue processor auto-resumes
-          // draining restored prompts (mirrors resumeQueue() when idle).
-          setStreamCompletedSuccessfullyById((prev) => {
+          // Restore in a paused state: a restart may happen hours after the
+          // prompts were queued (or after a crash mid-sequence), so silently
+          // auto-executing them would be a hidden side effect. The user
+          // reviews the restored queue and resumes it from the chat input.
+          // Chats the user queued during hydration are left untouched.
+          setQueuePausedById((prev) => {
             const next = new Map(prev);
-            for (const chatId of map.keys()) {
+            for (const chatId of restoredChatIds) {
               next.set(chatId, true);
             }
             return next;

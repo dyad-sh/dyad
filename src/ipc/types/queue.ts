@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
-import { ChatAttachmentSchema, ComponentSelectionSchema } from "./chat";
+import { ChatAttachmentShapeSchema, ComponentSelectionSchema } from "./chat";
 
 // =============================================================================
 // Queued Prompts Persistence Contracts
@@ -11,11 +11,16 @@ import { ChatAttachmentSchema, ComponentSelectionSchema } from "./chat";
  * (src/atoms/chatAtoms.ts) but uses the serializable ChatAttachment shape
  * (base64) instead of the renderer FileAttachment (which holds a browser File
  * object and cannot be JSON-serialized).
+ *
+ * Attachments use ChatAttachmentShapeSchema (shape only, no size-limit
+ * refinement): sizes were already validated at the original submission
+ * boundary, so re-checking on every persist/hydrate round-trip wastes CPU and
+ * could silently drop previously valid queued prompts if limits are tightened.
  */
 export const PersistedQueuedMessageSchema = z.object({
   id: z.string(),
   prompt: z.string(),
-  attachments: z.array(ChatAttachmentSchema).optional(),
+  attachments: z.array(ChatAttachmentShapeSchema).optional(),
   selectedComponents: z.array(ComponentSelectionSchema).optional(),
 });
 

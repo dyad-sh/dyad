@@ -29,6 +29,7 @@ import {
 import { Virtuoso } from "react-virtuoso";
 
 import { useRunApp } from "@/hooks/useRunApp";
+import { showError } from "@/lib/toast";
 
 function HighlightMatch({
   text,
@@ -352,9 +353,11 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     selectedVersionIdAtom,
   );
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
-  const { branchInfo } = useCurrentBranch(appId);
+  const { refetchBranchInfo } = useCurrentBranch(appId);
   const wasVisibleRef = useRef(false);
-  const returnBranchNameRef = useRef<string | null>(null);
+  const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
+    null,
+  );
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -470,12 +473,6 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   }, [versions]);
 
   useEffect(() => {
-    if (branchInfo?.branch && branchInfo.branch !== "<no-branch>") {
-      returnBranchNameRef.current = branchInfo.branch;
-    }
-  }, [branchInfo?.branch]);
-
-  useEffect(() => {
     async function updatePaneState() {
       // When pane becomes visible after being closed
       if (isVisible && !wasVisibleRef.current) {
@@ -494,12 +491,19 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         setAutoFocusNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
-          await checkoutVersion({
-            appId,
-            versionId: returnBranchNameRef.current ?? "main",
-          });
-          if (app?.neonProjectId) {
-            await restartApp();
+          const returnBranch =
+            returnBranchRef.current?.appId === appId
+              ? returnBranchRef.current.branch
+              : null;
+          if (returnBranch) {
+            await checkoutVersion({ appId, versionId: returnBranch });
+            if (app?.neonProjectId) {
+              await restartApp();
+            }
+          } else {
+            showError(
+              "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
+            );
           }
         }
       }
@@ -524,6 +528,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       return;
     }
     previousAppIdRef.current = appId;
+    returnBranchRef.current = null;
     flushPendingNoteSaves(false);
     setCachedVersions([]);
     setSearchQuery("");
@@ -551,8 +556,20 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const handleVersionClick = async (version: Version) => {
     if (appId) {
-      if (branchInfo?.branch && branchInfo.branch !== "<no-branch>") {
-        returnBranchNameRef.current = branchInfo.branch;
+      const latestBranchResult = await refetchBranchInfo();
+      const latestBranch = latestBranchResult.data?.branch;
+      if (latestBranch && latestBranch !== "<no-branch>") {
+        returnBranchRef.current = { appId, branch: latestBranch };
+      }
+      const returnBranch =
+        returnBranchRef.current?.appId === appId
+          ? returnBranchRef.current.branch
+          : null;
+      if (!returnBranch) {
+        showError(
+          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
+        );
+        return;
       }
       setSelectedVersionId(version.oid);
       try {
@@ -711,9 +728,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const handleRestoreVersion = (version: Version) => {
     void (async () => {
+      const returnBranch =
+        appId !== null && returnBranchRef.current?.appId === appId
+          ? returnBranchRef.current.branch
+          : undefined;
       await revertVersion({
         versionId: version.oid,
-        targetBranchName: returnBranchNameRef.current ?? undefined,
+        targetBranchName: returnBranch,
       });
       setSelectedVersionId(null);
       // Close the pane after revert to force a refresh on next open

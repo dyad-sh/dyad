@@ -10,25 +10,27 @@ import { VersionPane } from "./VersionPane";
 
 const {
   checkoutVersionMock,
-  currentBranchMock,
   listAppScreenshotsMock,
+  refetchBranchInfoMock,
   refreshAppMock,
   refreshVersionsMock,
   restartAppMock,
   revertVersionMock,
   setVersionFavoriteMock,
   setVersionNoteMock,
+  showErrorMock,
   versionsMock,
 } = vi.hoisted(() => ({
   checkoutVersionMock: vi.fn(),
-  currentBranchMock: { branch: "main" },
   listAppScreenshotsMock: vi.fn(),
+  refetchBranchInfoMock: vi.fn(),
   refreshAppMock: vi.fn(),
   refreshVersionsMock: vi.fn(),
   restartAppMock: vi.fn(),
   revertVersionMock: vi.fn(),
   setVersionFavoriteMock: vi.fn(),
   setVersionNoteMock: vi.fn(),
+  showErrorMock: vi.fn(),
   versionsMock: [] as Version[],
 }));
 
@@ -85,10 +87,14 @@ vi.mock("@/hooks/useCheckoutVersion", () => ({
 
 vi.mock("@/hooks/useCurrentBranch", () => ({
   useCurrentBranch: () => ({
-    branchInfo: currentBranchMock,
+    branchInfo: undefined,
     isLoading: false,
-    refetchBranchInfo: vi.fn(),
+    refetchBranchInfo: refetchBranchInfoMock,
   }),
+}));
+
+vi.mock("@/lib/toast", () => ({
+  showError: showErrorMock,
 }));
 
 vi.mock("@/hooks/useLoadApp", () => ({
@@ -142,16 +148,18 @@ describe("VersionPane", () => {
   beforeEach(() => {
     checkoutVersionMock.mockReset();
     listAppScreenshotsMock.mockReset();
+    refetchBranchInfoMock.mockReset();
     refreshAppMock.mockReset();
     refreshVersionsMock.mockReset();
     restartAppMock.mockReset();
     revertVersionMock.mockReset();
     setVersionFavoriteMock.mockReset();
     setVersionNoteMock.mockReset();
+    showErrorMock.mockReset();
 
     versionsMock.length = 0;
-    currentBranchMock.branch = "main";
     listAppScreenshotsMock.mockResolvedValue({ screenshots: [] });
+    refetchBranchInfoMock.mockResolvedValue({ data: { branch: "main" } });
   });
 
   it("renders a large version list through the virtualizer", async () => {
@@ -176,7 +184,9 @@ describe("VersionPane", () => {
   });
 
   it("restores selected versions on the branch active before checkout", async () => {
-    currentBranchMock.branch = "feature/test";
+    refetchBranchInfoMock.mockResolvedValue({
+      data: { branch: "feature/test" },
+    });
     const version = makeVersion(1);
     versionsMock.push(version);
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
@@ -204,5 +214,62 @@ describe("VersionPane", () => {
         targetBranchName: "feature/test",
       });
     });
+  });
+
+  it("returns to the captured branch when version history closes", async () => {
+    refetchBranchInfoMock.mockResolvedValue({
+      data: { branch: "feature/test" },
+    });
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    const { rerender } = render(<VersionPane isVisible onClose={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: version.oid,
+      });
+    });
+
+    rerender(<VersionPane isVisible={false} onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenLastCalledWith({
+        appId: 1,
+        versionId: "feature/test",
+      });
+    });
+    expect(checkoutVersionMock).not.toHaveBeenCalledWith({
+      appId: 1,
+      versionId: "main",
+    });
+  });
+
+  it("does not preview a version when the current branch is unavailable", async () => {
+    refetchBranchInfoMock.mockResolvedValue({
+      data: { branch: "<no-branch>" },
+    });
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane isVisible onClose={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+
+    await waitFor(() => {
+      expect(refetchBranchInfoMock).toHaveBeenCalled();
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
+      );
+    });
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
   });
 });

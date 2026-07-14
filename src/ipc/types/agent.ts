@@ -243,6 +243,26 @@ export const agentContracts = {
     output: z.array(SubagentMessageSchema),
   }),
 
+  sendSubagentMessage: defineContract({
+    channel: "agent:send-subagent-message",
+    input: z.object({
+      chatId: z.number(),
+      threadId: z.string(),
+      message: z.string().min(1).max(20_000),
+    }),
+    output: z.void(),
+  }),
+
+  followupSubagent: defineContract({
+    channel: "agent:followup-subagent",
+    input: z.object({
+      chatId: z.number(),
+      threadId: z.string(),
+      message: z.string().min(1).max(20_000),
+    }),
+    output: SubagentPersonaSchema,
+  }),
+
   startReview: defineContract({
     channel: "agent:start-review",
     input: z.object({ chatId: z.number(), sourceMessageId: z.number() }),

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ToolSet } from "ai";
 
 import { buildAgentToolSet } from "../tool_definitions";
 import {
@@ -42,6 +43,51 @@ const spawnFallbackSchema = z.object({
   ...baseSpawnShape,
 });
 
+function buildSubagentToolSet(params: {
+  ctx: AgentContext;
+  threadId: string;
+  persona: "explorer" | "implementer";
+  scope: string[];
+}): ToolSet {
+  const { ctx, threadId, persona, scope } = params;
+  const allowlist =
+    persona === "explorer"
+      ? ["read_file", "list_files", "grep", "code_search", "compiler_explore"]
+      : ["read_file", "list_files", "grep", "write_file", "search_replace"];
+  const childCtx: AgentContext = {
+    ...ctx,
+    subagentThreadId: threadId,
+    subagentPersona: persona,
+    subagentPathScope: scope,
+    allowDeploySideEffects: false,
+    onSharedServerModuleChange: (relativePath) => {
+      ctx.isSharedModulesChanged = true;
+      if (!ctx.sharedServerModulePaths.includes(relativePath)) {
+        ctx.sharedServerModulePaths.push(relativePath);
+      }
+    },
+    onDeferredFunctionDeploy: (functionName) => {
+      if (!ctx.pendingFunctionDeploys.includes(functionName)) {
+        ctx.pendingFunctionDeploys.push(functionName);
+      }
+    },
+    canUseExplorerSubagent: false,
+    canUseImplementerSubagent: false,
+    referencedApps: new Map(ctx.referencedApps),
+    todos: [],
+    fileEditTracker: ctx.fileEditTracker,
+    onXmlStream: () => {},
+    onXmlComplete: () => {},
+  };
+  const allTools = buildAgentToolSet(childCtx, {
+    readOnly: persona === "explorer",
+    enableAppBlueprint: ctx.enableAppBlueprint,
+  });
+  return Object.fromEntries(
+    Object.entries(allTools).filter(([name]) => allowlist.includes(name)),
+  );
+}
+
 export const spawnAgentTool: ToolDefinition<
   z.infer<typeof spawnFallbackSchema>
 > = {
@@ -79,50 +125,19 @@ export const spawnAgentTool: ToolDefinition<
       !ctx.subagentThreadId,
     ),
   execute: async (args, ctx) => {
-    const allowlist =
-      args.persona === "explorer"
-        ? ["read_file", "list_files", "grep", "code_search", "compiler_explore"]
-        : ["read_file", "list_files", "grep", "write_file", "search_replace"];
     const threadId = await spawnModelSubagent({
       ctx,
       persona: args.persona,
       taskName: args.task_name,
       assignment: args.assignment,
       scope: args.scope,
-      buildTools: (threadId) => {
-        const childCtx: AgentContext = {
-          ...ctx,
-          subagentThreadId: threadId,
-          subagentPersona: args.persona,
-          subagentPathScope: args.scope,
-          allowDeploySideEffects: false,
-          onSharedServerModuleChange: (relativePath) => {
-            ctx.isSharedModulesChanged = true;
-            if (!ctx.sharedServerModulePaths.includes(relativePath)) {
-              ctx.sharedServerModulePaths.push(relativePath);
-            }
-          },
-          onDeferredFunctionDeploy: (functionName) => {
-            if (!ctx.pendingFunctionDeploys.includes(functionName)) {
-              ctx.pendingFunctionDeploys.push(functionName);
-            }
-          },
-          canUseExplorerSubagent: false,
-          canUseImplementerSubagent: false,
-          referencedApps: new Map(ctx.referencedApps),
-          todos: [],
-          fileEditTracker: ctx.fileEditTracker,
-          onXmlStream: () => {},
-          onXmlComplete: () => {},
-        };
-        const allTools = buildAgentToolSet(childCtx, {
-          readOnly: args.persona === "explorer",
-          enableAppBlueprint: ctx.enableAppBlueprint,
-        });
-        return Object.fromEntries(
-          Object.entries(allTools).filter(([name]) => allowlist.includes(name)),
-        );
-      },
+      buildTools: (threadId) =>
+        buildSubagentToolSet({
+          ctx,
+          threadId,
+          persona: args.persona,
+          scope: args.scope,
+        }),
     });
     ctx.spawnedSubagentThreadIds ??= [];
     ctx.spawnedSubagentThreadIds.push(threadId);
@@ -209,7 +224,21 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       ctx.chatId,
       args.thread_id,
       args.message,
+      {
+        ctx,
+        buildTools: (threadId, childPersona, scope) =>
+          buildSubagentToolSet({
+            ctx,
+            threadId,
+            persona: childPersona,
+            scope,
+          }),
+      },
     );
+    ctx.spawnedSubagentThreadIds ??= [];
+    if (!ctx.spawnedSubagentThreadIds.includes(args.thread_id)) {
+      ctx.spawnedSubagentThreadIds.push(args.thread_id);
+    }
     if (persona === "implementer") {
       ctx.spawnedImplementerThreadIds ??= [];
       if (!ctx.spawnedImplementerThreadIds.includes(args.thread_id)) {

@@ -8,11 +8,13 @@ import { SubagentTeamCard } from "./SubagentTeamCard";
 
 const mocks = vi.hoisted(() => ({
   fixReviewFindings: vi.fn(),
+  followupSubagent: vi.fn(),
   listSubagents: vi.fn(),
   onSubagentUpdate: vi.fn(),
   runAutoReviewBarrier: vi.fn(),
   showError: vi.fn(),
   skipReviewAutoFix: vi.fn(),
+  sendSubagentMessage: vi.fn(),
   startReview: vi.fn(),
   streamMessage: vi.fn(),
 }));
@@ -40,9 +42,11 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
   ipc: {
     agent: {
       fixReviewFindings: mocks.fixReviewFindings,
+      followupSubagent: mocks.followupSubagent,
       listSubagents: mocks.listSubagents,
       runAutoReviewBarrier: mocks.runAutoReviewBarrier,
       skipReviewAutoFix: mocks.skipReviewAutoFix,
+      sendSubagentMessage: mocks.sendSubagentMessage,
       startReview: mocks.startReview,
     },
     events: {
@@ -104,6 +108,8 @@ describe("SubagentTeamCard", () => {
     vi.clearAllMocks();
     mocks.onSubagentUpdate.mockReturnValue(vi.fn());
     mocks.startReview.mockResolvedValue(undefined);
+    mocks.sendSubagentMessage.mockResolvedValue(undefined);
+    mocks.followupSubagent.mockResolvedValue("explorer");
     mocks.skipReviewAutoFix.mockResolvedValue(undefined);
     mocks.fixReviewFindings.mockResolvedValue({ prompt: "Fix current review" });
     mocks.runAutoReviewBarrier.mockResolvedValue({ outcome: "released" });
@@ -166,5 +172,113 @@ describe("SubagentTeamCard", () => {
         sourceMessageId: 42,
       });
     });
+  });
+
+  it("sends durable messages and follow-up assignments", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("explorer-thread", 42, "exploration report"),
+        persona: "explorer",
+        taskName: "Find auth flow",
+        assignment: "Trace auth",
+      },
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const messageInput = await screen.findByRole("textbox", {
+      name: "Message explorer Find auth flow",
+    });
+    fireEvent.change(messageInput, { target: { value: "Check callbacks" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() => {
+      expect(mocks.sendSubagentMessage).toHaveBeenCalledWith({
+        chatId: 7,
+        threadId: "explorer-thread",
+        message: "Check callbacks",
+      });
+      expect((messageInput as HTMLTextAreaElement).value).toBe("");
+    });
+
+    fireEvent.change(messageInput, {
+      target: { value: "Investigate the remaining gap" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Follow up" }));
+
+    await waitFor(() => {
+      expect(mocks.followupSubagent).toHaveBeenCalledWith({
+        chatId: 7,
+        threadId: "explorer-thread",
+        message: "Investigate the remaining gap",
+      });
+      expect((messageInput as HTMLTextAreaElement).value).toBe("");
+    });
+  });
+
+  it("surfaces durable message failures and keeps the draft", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("explorer-thread", 42, "exploration report"),
+        persona: "explorer",
+        taskName: "Find auth flow",
+      },
+    ]);
+    const error = new Error("Message failed");
+    mocks.sendSubagentMessage.mockRejectedValue(error);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const messageInput = await screen.findByRole("textbox", {
+      name: "Message explorer Find auth flow",
+    });
+    fireEvent.change(messageInput, { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith(error));
+    expect((messageInput as HTMLTextAreaElement).value).toBe("Keep this draft");
+  });
+
+  it("disables durable message actions while a send is pending", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("explorer-thread", 42, "exploration report"),
+        persona: "explorer",
+        taskName: "Find auth flow",
+      },
+    ]);
+    let finishSend: (() => void) | undefined;
+    mocks.sendSubagentMessage.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSend = resolve;
+        }),
+    );
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Message explorer Find auth flow",
+      }),
+      { target: { value: "Check callbacks" } },
+    );
+    const sendButton = screen.getByRole("button", { name: "Send message" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => expect(sendButton.hasAttribute("disabled")).toBe(true));
+    expect(
+      screen
+        .getByRole("button", { name: "Follow up" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+
+    finishSend?.();
   });
 });

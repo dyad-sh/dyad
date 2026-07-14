@@ -15,6 +15,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - If a root turn spawns or resumes a writable child, reserve the writer lease before returning the tool result and join that child before root-owned deploy/commit. Cancellation must stop the child, and a failed child must not let the root commit partial edits.
 - A queued-message review barrier must release FIFO processing on every terminal path, including review, remediation, verification, consent, entitlement, and model failures. A remediation that hits the Local Agent step limit is not terminal: preserve its `paused` outcome and keep the queue paused until the user continues it.
 - Keep orchestration-state writes distinct from workspace mutation. Sub-agent control tools may be `modifiesState` for ask/plan filtering while opting out of the workspace mutation lease; writable children acquire that lease in the manager, and root deploy/commit must hold a finalization fence so late durable follow-ups cannot start editing concurrently.
+- Durable child follow-ups must rebuild tools from the invoking root turn instead of reusing a `ToolSet` whose callbacks close over an older completed turn. Include a bounded projection of consumed root messages and prior child reports so contextual follow-ups retain their transcript while new file/deploy tracking belongs to the current finalizer.
 
 ## Async I/O
 

@@ -11,7 +11,10 @@ import {
 } from "./mutation_lease";
 
 describe("sub-agent mutation lease", () => {
-  afterEach(() => releaseMutationLease(7, "implementer-1"));
+  afterEach(() => {
+    releaseMutationLease(7, "implementer-1");
+    endAppFinalization(7);
+  });
 
   it("blocks root mutations while an Implementer holds the app lease", () => {
     expect(
@@ -80,6 +83,13 @@ describe("sub-agent mutation lease", () => {
       }),
     ).toBe(true);
     releaseMutationLease(8, "late-implementer");
+  });
+
+  it("blocks normal mutation tools while the root finalizes", () => {
+    expect(beginAppFinalization(7)).toBe(true);
+    expect(() => assertMutationLease({ appId: 7 } as AgentContext)).toThrow(
+      /currently being finalized/,
+    );
   });
 
   it("does not begin root finalization while a writer owns the lease", () => {

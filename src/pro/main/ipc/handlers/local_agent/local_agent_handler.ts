@@ -71,6 +71,7 @@ import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers
 import {
   cancelSubagent,
   endRootFinalization,
+  isAcceptableImplementerJoinStatus,
   waitForSubagentsAndBeginFinalization,
 } from "./subagents/subagent_manager";
 
@@ -322,10 +323,10 @@ function injectReferencedAppsReminder(
   options: { codeExplorerAvailable: boolean },
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
-  const searchTool = options.codeExplorerAvailable
-    ? "`spawn_agent` (Explorer)"
-    : "`code_search`";
-  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, ${searchTool}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+  const explorerGuidance = options.codeExplorerAvailable
+    ? " You may assign an Explorer to inspect a referenced app; name that app explicitly in the assignment, and the child must pass `app_name` to its read tools."
+    : "";
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.${explorerGuidance}\n</system-reminder>`;
 
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];
@@ -668,6 +669,7 @@ export async function handleLocalAgentStream(
   // Snapshot of todos persisted by a previous turn. Declared outside the try so
   // the cancellation handler in `catch` can roll back to this pre-turn state.
   let persistedTodos: Todo[] = [];
+  const spawnedSubagentThreadIds: string[] = [];
   const spawnedImplementerThreadIds: string[] = [];
   let rootFinalizationActive = false;
 
@@ -718,7 +720,7 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
-      spawnedSubagentThreadIds: [],
+      spawnedSubagentThreadIds,
       spawnedImplementerThreadIds,
       todos: persistedTodos,
       dyadRequestId,
@@ -1639,7 +1641,7 @@ export async function handleLocalAgentStream(
     const implementerThreadIds = ctx.spawnedImplementerThreadIds ?? [];
     if (abortController.signal.aborted) {
       await Promise.allSettled(
-        implementerThreadIds.map((threadId) =>
+        spawnedSubagentThreadIds.map((threadId) =>
           cancelSubagent(ctx.chatId, threadId),
         ),
       );
@@ -1652,7 +1654,7 @@ export async function handleLocalAgentStream(
       );
       rootFinalizationActive = true;
       const unsuccessful = implementers.filter(
-        (thread) => thread.status !== "completed",
+        (thread) => !isAcceptableImplementerJoinStatus(thread.status),
       );
       if (unsuccessful.length > 0) {
         throw new Error(
@@ -1828,13 +1830,13 @@ export async function handleLocalAgentStream(
     } satisfies ChatResponseEnd);
 
     if (rootFinalizationActive) {
-      await endRootFinalization(chat.app.id, chat.id);
+      await endRootFinalization(chat.app.id);
       rootFinalizationActive = false;
     }
     return true; // Success
   } catch (error) {
     if (rootFinalizationActive) {
-      await endRootFinalization(chat.app.id, chat.id);
+      await endRootFinalization(chat.app.id);
       rootFinalizationActive = false;
     }
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
@@ -1851,7 +1853,7 @@ export async function handleLocalAgentStream(
     if (abortController.signal.aborted) {
       // Handle cancellation
       await Promise.allSettled(
-        spawnedImplementerThreadIds.map((threadId) =>
+        spawnedSubagentThreadIds.map((threadId) =>
           cancelSubagent(req.chatId, threadId),
         ),
       );

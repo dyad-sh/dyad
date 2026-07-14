@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { streamText, type ModelMessage, type ToolSet } from "ai";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { WebContents } from "electron";
+import log from "electron-log";
 
 import { db } from "@/db";
 import { agentMessages, agentThreads, chats, messages } from "@/db/schema";
@@ -13,7 +14,11 @@ import {
   cancelOrphanedBaseStream,
   fastTextOutput,
 } from "@/ipc/utils/stream_text_utils";
-import type { SubagentPersona, SubagentThreadSummary } from "@/ipc/types";
+import type {
+  SubagentMessage,
+  SubagentPersona,
+  SubagentThreadSummary,
+} from "@/ipc/types";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
@@ -37,6 +42,8 @@ const MODELS = {
   implementer: { provider: "openai", name: "gpt-5.6-luna", effort: "high" },
 } as const;
 const MAX_DURABLE_REPORT_CHARS = 100_000;
+const MAX_MODEL_HISTORY_CHARS = 100_000;
+const logger = log.scope("subagent_manager");
 
 export const SUBAGENT_NONTERMINAL_STATUSES = [
   "queued",
@@ -51,6 +58,7 @@ export const SUBAGENT_NONTERMINAL_STATUSES = [
 ] as const;
 const ACTIVE = ["queued", "running", "waiting_for_writer"] as const;
 const abortControllers = new Map<string, AbortController>();
+const cancelledThreadIds = new Set<string>();
 const skippedAutoFixes = new Set<string>();
 const followupRunners = new Map<string, (assignment: string) => void>();
 const followupStarts = new Set<string>();
@@ -93,10 +101,22 @@ export async function listSubagents(
 export async function getSubagentMessages(chatId: number, threadId: string) {
   assertPro();
   await getOwnedThread(chatId, threadId);
-  return db.query.agentMessages.findMany({
+  const rows = await db.query.agentMessages.findMany({
     where: eq(agentMessages.threadId, threadId),
     orderBy: [asc(agentMessages.sequence)],
   });
+  return rows.map(
+    (row): SubagentMessage => ({
+      id: row.id,
+      threadId: row.threadId,
+      sequence: row.sequence,
+      messageId: row.messageId,
+      role: row.role,
+      content: row.content,
+      consumed: row.consumed,
+      createdAt: row.createdAt,
+    }),
+  );
 }
 
 export async function spawnModelSubagent(params: {
@@ -175,10 +195,12 @@ export async function startReview(params: {
   chatId: number;
   sourceMessageId: number;
   invocationSource: "review_button" | "auto_review";
+  allowWhenAutoReviewDisabled?: boolean;
 }): Promise<SubagentThreadSummary> {
   assertPro("reviewer");
   if (
     params.invocationSource === "auto_review" &&
+    !params.allowWhenAutoReviewDisabled &&
     readSettings().enableAutoReview !== true
   ) {
     throw new DyadError(
@@ -275,12 +297,19 @@ export async function cancelSubagent(
 ): Promise<void> {
   assertPro();
   const thread = await getOwnedThread(chatId, threadId);
-  abortControllers.get(threadId)?.abort();
+  cancelledThreadIds.add(threadId);
+  const controller = abortControllers.get(threadId);
+  controller?.abort();
   const pendingIndex = pendingRuns.findIndex(
     (run) => run.threadId === threadId,
   );
+  const schedulerStillOwnsRun =
+    activeRunsByChat.get(chatId)?.has(threadId) === true;
   if (pendingIndex >= 0) pendingRuns.splice(pendingIndex, 1);
-  if (thread.persona === "implementer") {
+  // An active writer keeps its lease until its current atomic tool invocation
+  // has unwound through runThread.finally. Pending and not-yet-registered runs
+  // are safe to release because the cancellation tombstone prevents startup.
+  if (thread.persona === "implementer" && !controller) {
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
       with: { app: true },
@@ -288,6 +317,9 @@ export async function cancelSubagent(
     if (chat?.app) releaseMutationLease(chat.app.id, threadId);
   }
   await finishThread(threadId, "cancelled", null, "Cancelled by user.");
+  if (pendingIndex >= 0 || (!controller && !schedulerStillOwnsRun)) {
+    cancelledThreadIds.delete(threadId);
+  }
 }
 
 export async function skipReviewAutoFix(
@@ -400,7 +432,9 @@ export async function runAutoReviewBarrier(params: {
   if (params.verification && isPro) {
     await completeRemediatedReviews(params.chatId);
   }
-  if (!settings.enableAutoReview || !isPro) return { outcome: "skipped" };
+  if ((!settings.enableAutoReview && !params.verification) || !isPro) {
+    return { outcome: "skipped" };
+  }
   const latest = await db.query.messages.findFirst({
     where: and(
       eq(messages.chatId, params.chatId),
@@ -415,6 +449,7 @@ export async function runAutoReviewBarrier(params: {
       chatId: params.chatId,
       sourceMessageId: latest.id,
       invocationSource: "auto_review",
+      allowWhenAutoReviewDisabled: params.verification === true,
     });
   } catch {
     if (params.verification) {
@@ -504,16 +539,55 @@ export async function followupSubagent(
   chatId: number,
   threadId: string,
   assignment: string,
+  currentTurn?: {
+    ctx: AgentContext;
+    buildTools: (
+      threadId: string,
+      persona: "explorer" | "implementer",
+      scope: string[],
+    ) => ToolSet;
+  },
 ): Promise<SubagentPersona> {
-  await sendSubagentMessage(chatId, threadId, assignment);
-  const run = followupRunners.get(threadId);
+  assertPro();
+  const thread = await getOwnedThread(chatId, threadId);
+  let run = followupRunners.get(threadId);
+  if (currentTurn && thread.persona !== "reviewer") {
+    if (currentTurn.ctx.chatId !== chatId) {
+      throw new DyadError(
+        "The follow-up must belong to the current root chat.",
+        DyadErrorKind.Validation,
+      );
+    }
+    const scope = Array.isArray(thread.contextJson?.scope)
+      ? thread.contextJson.scope.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+    const tools = currentTurn.buildTools(thread.id, thread.persona, scope);
+    run = (nextAssignment: string) =>
+      enqueueRun({
+        threadId: thread.id,
+        chatId,
+        source: "followup",
+        run: () =>
+          runThread(
+            thread.id,
+            currentTurn.ctx.appId,
+            nextAssignment,
+            tools,
+            scope,
+          ),
+      });
+    followupRunners.set(thread.id, run);
+  }
   if (!run) {
     throw new DyadError(
       "This sub-agent was interrupted by an app restart and cannot resume.",
       DyadErrorKind.Precondition,
     );
   }
-  const thread = await getOwnedThread(chatId, threadId);
+  await appendThreadMessage({ threadId, role: "root", content: assignment });
+  emit(thread.chatId, threadId);
   if (ACTIVE.includes(thread.status as (typeof ACTIVE)[number])) {
     return thread.persona;
   }
@@ -578,25 +652,12 @@ export async function waitForSubagentsAndBeginFinalization(
   }
 }
 
-export async function endRootFinalization(
-  appId: number,
-  chatId: number,
-): Promise<void> {
+export async function endRootFinalization(appId: number): Promise<void> {
   endAppFinalization(appId);
-  try {
-    const implementers = await db.query.agentThreads.findMany({
-      where: and(
-        eq(agentThreads.chatId, chatId),
-        eq(agentThreads.persona, "implementer"),
-      ),
-    });
-    for (const thread of implementers) {
-      void startPendingFollowup(thread.id).catch(() => {});
-    }
-  } catch {
-    // The fence is already released. Pending durable messages remain stored
-    // and will be picked up by the next follow-up attempt.
-  }
+}
+
+export function isAcceptableImplementerJoinStatus(status: string): boolean {
+  return status === "completed" || status === "cancelled";
 }
 
 async function runThread(
@@ -607,6 +668,7 @@ async function runThread(
   scope: string[],
 ): Promise<void> {
   const thread = await getThread(threadId);
+  if (cancelledThreadIds.delete(threadId)) return;
   const controller = new AbortController();
   let shouldContinue = false;
   abortControllers.set(threadId, controller);
@@ -621,7 +683,8 @@ async function runThread(
         DyadErrorKind.Conflict,
       );
     }
-    await updateStatus(threadId, "running");
+    if (controller.signal.aborted || cancelledThreadIds.has(threadId)) return;
+    if (!(await updateStatus(threadId, "running"))) return;
     const result = await runModel({
       threadId,
       appId,
@@ -649,6 +712,7 @@ async function runThread(
     clearInterval(entitlementWatcher);
     releaseMutationLease(appId, threadId);
     abortControllers.delete(threadId);
+    cancelledThreadIds.delete(threadId);
     if (shouldContinue) void startPendingFollowup(threadId).catch(() => {});
   }
 }
@@ -670,7 +734,7 @@ async function runReview(
       await new Promise((resolve) => setTimeout(resolve, 250));
       if (controller.signal.aborted) return;
     }
-    await updateStatus(threadId, "running");
+    if (!(await updateStatus(threadId, "running"))) return;
     const report = await runModel({
       threadId,
       appId,
@@ -736,6 +800,7 @@ async function runModel(params: {
     thinkingBudget: defaults.effort,
   };
   const modelInfo = await getModelClient(settings.selectedModel, settings);
+  const history = await buildModelHistory(params.threadId, params.assignment);
   const result = streamText({
     output: fastTextOutput(),
     model: modelInfo.modelClient.model,
@@ -751,7 +816,7 @@ async function runModel(params: {
       settings,
     }),
     system: systemPrompt(params.persona),
-    prompt: params.assignment,
+    messages: history,
     tools: params.tools,
     prepareStep: async ({ messages: stepMessages }) => {
       assertPro(params.persona);
@@ -813,6 +878,65 @@ async function runModel(params: {
   return text;
 }
 
+async function buildModelHistory(
+  threadId: string,
+  currentAssignment: string,
+): Promise<ModelMessage[]> {
+  const thread = await getThread(threadId);
+  const rows = await db.query.agentMessages.findMany({
+    where: eq(agentMessages.threadId, threadId),
+    orderBy: [asc(agentMessages.sequence)],
+  });
+  return buildBoundedModelHistory({
+    originalAssignment: thread.assignment,
+    currentAssignment,
+    messages: rows,
+  });
+}
+
+export function buildBoundedModelHistory(params: {
+  originalAssignment: string;
+  currentAssignment: string;
+  messages: Array<{
+    role: "root" | "assistant" | "system";
+    content: string;
+    consumed: boolean;
+  }>;
+}): ModelMessage[] {
+  const prior = params.messages.filter(
+    (message) => message.role === "assistant" || message.consumed,
+  );
+  const bounded: typeof prior = [];
+  let chars =
+    params.currentAssignment.length + params.originalAssignment.length;
+  for (let index = prior.length - 1; index >= 0; index--) {
+    const message = prior[index];
+    if (chars + message.content.length > MAX_MODEL_HISTORY_CHARS) break;
+    bounded.unshift(message);
+    chars += message.content.length;
+  }
+  const history: ModelMessage[] = [];
+  if (
+    bounded.length > 0 &&
+    params.originalAssignment !== params.currentAssignment
+  ) {
+    history.push({ role: "user", content: params.originalAssignment });
+  }
+  history.push(
+    ...bounded.map(
+      (message): ModelMessage => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content:
+          message.role === "system"
+            ? `System note: ${message.content}`
+            : message.content,
+      }),
+    ),
+  );
+  history.push({ role: "user", content: params.currentAssignment });
+  return history;
+}
+
 function systemPrompt(persona: SubagentPersona): string {
   if (persona === "reviewer")
     return "You are Dyad Reviewer. Be independent, concise, evidence-based, and read-only.";
@@ -858,22 +982,35 @@ async function createThread(params: {
 async function updateStatus(
   threadId: string,
   status: "running",
-): Promise<void> {
+): Promise<boolean> {
   const thread = await getThread(threadId);
-  await db
+  const updated = await db
     .update(agentThreads)
     .set({ status, startedAt: new Date(), updatedAt: new Date() })
-    .where(eq(agentThreads.id, threadId));
-  emit(thread.chatId, threadId);
+    .where(
+      and(
+        eq(agentThreads.id, threadId),
+        inArray(agentThreads.status, [...SUBAGENT_NONTERMINAL_STATUSES]),
+      ),
+    )
+    .returning({ id: agentThreads.id });
+  if (updated.length > 0) emit(thread.chatId, threadId);
+  return updated.length > 0;
 }
 
 async function setWaitingForWriter(threadId: string): Promise<void> {
   const thread = await getThread(threadId);
-  await db
+  const updated = await db
     .update(agentThreads)
     .set({ status: "waiting_for_writer", updatedAt: new Date() })
-    .where(eq(agentThreads.id, threadId));
-  emit(thread.chatId, threadId);
+    .where(
+      and(
+        eq(agentThreads.id, threadId),
+        inArray(agentThreads.status, [...SUBAGENT_NONTERMINAL_STATUSES]),
+      ),
+    )
+    .returning({ id: agentThreads.id });
+  if (updated.length > 0) emit(thread.chatId, threadId);
 }
 
 async function finishThread(
@@ -1084,6 +1221,7 @@ async function startPendingFollowup(
     if (!pending) return;
     const thread = await getThread(threadId);
     if (ACTIVE.includes(thread.status as (typeof ACTIVE)[number])) return;
+    let acquiredAppId: number | null = null;
 
     if (thread.persona === "implementer") {
       const chat = await db.query.chats.findFirst({
@@ -1108,25 +1246,32 @@ async function startPendingFollowup(
           DyadErrorKind.Conflict,
         );
       }
+      acquiredAppId = chat.app.id;
     }
 
     followupStarts.add(threadId);
-    await db
-      .update(agentThreads)
-      .set({
-        status: "queued",
-        invocationSource: "followup",
-        resultJson: null,
-        remediationSource: null,
-        error: null,
-        startedAt: null,
-        completedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(agentThreads.id, threadId));
-    emit(thread.chatId, threadId);
     try {
+      await db
+        .update(agentThreads)
+        .set({
+          status: "queued",
+          invocationSource: "followup",
+          resultJson: null,
+          remediationSource: null,
+          error: null,
+          startedAt: null,
+          completedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(agentThreads.id, threadId));
+      emit(thread.chatId, threadId);
       run("Continue by addressing the queued root messages in order.");
+      acquiredAppId = null;
+    } catch (error) {
+      if (acquiredAppId !== null) {
+        releaseMutationLease(acquiredAppId, threadId);
+      }
+      throw error;
     } finally {
       followupStarts.delete(threadId);
     }
@@ -1169,16 +1314,21 @@ function drainRuns(chatId: number): void {
     if (index < 0) break;
     const [item] = pendingRuns.splice(index, 1);
     active.add(item.threadId);
-    void item.run().finally(() => {
-      active.delete(item.threadId);
-      if (
-        active.size === 0 &&
-        !pendingRuns.some((run) => run.chatId === chatId)
-      ) {
-        activeRunsByChat.delete(chatId);
-      }
-      drainRuns(chatId);
-    });
+    void item
+      .run()
+      .catch((error) =>
+        logger.error(`Sub-agent run ${item.threadId} rejected`, error),
+      )
+      .finally(() => {
+        active.delete(item.threadId);
+        if (
+          active.size === 0 &&
+          !pendingRuns.some((run) => run.chatId === chatId)
+        ) {
+          activeRunsByChat.delete(chatId);
+        }
+        drainRuns(chatId);
+      });
   }
 }
 
@@ -1195,6 +1345,11 @@ function watchEntitlement(
       "entitlement_revoked",
       null,
       "Dyad Pro entitlement was revoked while this sub-agent was running.",
+    ).catch((error) =>
+      logger.error(
+        `Failed to persist entitlement revocation for ${threadId}`,
+        error,
+      ),
     );
   }, 500);
   return timer;

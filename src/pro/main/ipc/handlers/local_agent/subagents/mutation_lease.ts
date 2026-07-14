@@ -45,6 +45,12 @@ export function hasMutationLease(appId: number): boolean {
 }
 
 export function assertMutationLease(ctx: AgentContext): void {
+  if (finalizingApps.has(ctx.appId)) {
+    throw new DyadError(
+      "This app is currently being finalized. Wait for deployment and commit to finish before making changes.",
+      DyadErrorKind.Conflict,
+    );
+  }
   const lease = leases.get(ctx.appId);
   if (!lease) return;
   if (ctx.subagentThreadId !== lease.threadId) {

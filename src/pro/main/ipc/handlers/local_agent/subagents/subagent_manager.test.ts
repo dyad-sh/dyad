@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildBoundedModelHistory,
+  isAcceptableImplementerJoinStatus,
   isReusableReviewStatus,
   isWaitCompleteStatus,
   SUBAGENT_NONTERMINAL_STATUSES,
@@ -43,5 +45,45 @@ describe("sub-agent manager status policy", () => {
     expect(isWaitCompleteStatus("idle")).toBe(true);
     expect(isWaitCompleteStatus("completed")).toBe(true);
     expect(isWaitCompleteStatus("failed")).toBe(true);
+  });
+
+  it("allows an intentionally cancelled Implementer to reach root finalization", () => {
+    expect(isAcceptableImplementerJoinStatus("completed")).toBe(true);
+    expect(isAcceptableImplementerJoinStatus("cancelled")).toBe(true);
+    expect(isAcceptableImplementerJoinStatus("failed")).toBe(false);
+    expect(isAcceptableImplementerJoinStatus("entitlement_revoked")).toBe(
+      false,
+    );
+  });
+
+  it("preserves consumed thread history for contextual follow-up turns", () => {
+    expect(
+      buildBoundedModelHistory({
+        originalAssignment: "Compare both auth options",
+        currentAssignment: "Address queued messages in order",
+        messages: [
+          {
+            role: "root",
+            content: "Focus on option two",
+            consumed: true,
+          },
+          {
+            role: "assistant",
+            content: "Option two uses callbacks.",
+            consumed: false,
+          },
+          {
+            role: "root",
+            content: "This is the pending follow-up",
+            consumed: false,
+          },
+        ],
+      }),
+    ).toEqual([
+      { role: "user", content: "Compare both auth options" },
+      { role: "user", content: "Focus on option two" },
+      { role: "assistant", content: "Option two uses callbacks." },
+      { role: "user", content: "Address queued messages in order" },
+    ]);
   });
 });

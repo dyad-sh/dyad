@@ -80,7 +80,7 @@ export async function recoverInterruptedSubagents(): Promise<void> {
 export async function listSubagents(
   chatId: number,
 ): Promise<SubagentThreadSummary[]> {
-  assertPro("explorer");
+  assertPro();
   const rows = await db.query.agentThreads.findMany({
     where: eq(agentThreads.chatId, chatId),
     orderBy: [desc(agentThreads.createdAt)],
@@ -89,7 +89,7 @@ export async function listSubagents(
 }
 
 export async function getSubagentMessages(chatId: number, threadId: string) {
-  assertPro("explorer");
+  assertPro();
   await getOwnedThread(chatId, threadId);
   return db.query.agentMessages.findMany({
     where: eq(agentMessages.threadId, threadId),
@@ -175,6 +175,15 @@ export async function startReview(params: {
   invocationSource: "review_button" | "auto_review";
 }): Promise<SubagentThreadSummary> {
   assertPro("reviewer");
+  if (
+    params.invocationSource === "auto_review" &&
+    readSettings().enableAutoReview !== true
+  ) {
+    throw new DyadError(
+      "Automatic review is disabled in Settings.",
+      DyadErrorKind.Precondition,
+    );
+  }
   const chat = await db.query.chats.findFirst({
     where: eq(chats.id, params.chatId),
     with: { app: true },
@@ -247,7 +256,7 @@ export async function cancelSubagent(
   chatId: number,
   threadId: string,
 ): Promise<void> {
-  assertPro("explorer");
+  assertPro();
   const thread = await getOwnedThread(chatId, threadId);
   abortControllers.get(threadId)?.abort();
   const pendingIndex = pendingRuns.findIndex(
@@ -370,8 +379,11 @@ export async function runAutoReviewBarrier(params: {
   prompt?: string;
 }> {
   const settings = readSettings();
-  if (!settings.enableAutoReview || !isDyadProEnabled(settings))
-    return { outcome: "skipped" };
+  const isPro = isDyadProEnabled(settings);
+  if (params.verification && isPro) {
+    await completeRemediatedReviews(params.chatId);
+  }
+  if (!settings.enableAutoReview || !isPro) return { outcome: "skipped" };
   const latest = await db.query.messages.findFirst({
     where: and(
       eq(messages.chatId, params.chatId),
@@ -461,7 +473,7 @@ export async function sendSubagentMessage(
   threadId: string,
   content: string,
 ): Promise<void> {
-  assertPro("explorer");
+  assertPro();
   const thread = await getOwnedThread(chatId, threadId);
   await appendThreadMessage({
     threadId,
@@ -497,7 +509,7 @@ export async function waitForSubagents(
   threadIds: string[],
   abortSignal?: AbortSignal,
 ): Promise<SubagentThreadSummary[]> {
-  assertPro("explorer");
+  assertPro();
   const uniqueIds = [...new Set(threadIds)];
   await Promise.all(uniqueIds.map((id) => getOwnedThread(chatId, id)));
   while (true) {
@@ -885,10 +897,12 @@ async function getOwnedThread(chatId: number, threadId: string) {
   return thread;
 }
 
-function assertPro(persona: SubagentPersona): void {
+function assertPro(persona?: SubagentPersona): void {
   if (!isDyadProEnabled(readSettings())) {
     throw new DyadError(
-      `${persona} sub-agents require Dyad Pro.`,
+      persona
+        ? `${persona} sub-agents require Dyad Pro.`
+        : "Sub-agents require Dyad Pro.",
       DyadErrorKind.Auth,
     );
   }

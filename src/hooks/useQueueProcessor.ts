@@ -65,6 +65,9 @@ export function useQueueProcessor() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    for (const chatId of reviewBarrierPassed) {
+      if (!queuedMessagesById.has(chatId)) reviewBarrierPassed.delete(chatId);
+    }
     // Find any chatId that has both completed successfully and has queued messages
     for (const [chatId, queuedMessages] of queuedMessagesById) {
       if (queuedMessages.length === 0) continue;

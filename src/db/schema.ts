@@ -182,74 +182,78 @@ export const messages = sqliteTable("messages", {
     .default(sql`(unixepoch())`),
 });
 
-export const agentThreads = sqliteTable("agent_threads", {
-  id: text("id").primaryKey(),
-  chatId: integer("chat_id")
-    .notNull()
-    .references(() => chats.id, { onDelete: "cascade" }),
-  persona: text("persona", {
-    enum: ["explorer", "reviewer", "implementer"],
-  }).notNull(),
-  taskName: text("task_name").notNull(),
-  assignment: text("assignment").notNull(),
-  status: text("status", {
-    enum: [
-      "queued",
-      "running",
-      "idle",
-      "waiting_for_writer",
-      "waiting_for_auto_review",
-      "auto_fix_countdown",
-      "fixing_findings",
-      "verification_review",
-      "needs_approval",
-      "completed",
-      "partial",
-      "review_outdated",
-      "cancelled",
-      "entitlement_revoked",
-      "interrupted_by_restart",
-      "failed",
-    ],
-  })
-    .notNull()
-    .default("queued"),
-  provider: text("provider").notNull(),
-  model: text("model").notNull(),
-  reasoningEffort: text("reasoning_effort", {
-    enum: ["low", "medium", "high"],
-  }).notNull(),
-  contextJson: text("context_json", { mode: "json" }).$type<Record<
-    string,
-    unknown
-  > | null>(),
-  resultJson: text("result_json", { mode: "json" }).$type<Record<
-    string,
-    unknown
-  > | null>(),
-  reviewBaseCommit: text("review_base_commit"),
-  reviewTargetCommit: text("review_target_commit"),
-  reviewDiffHash: text("review_diff_hash"),
-  invocationSource: text("invocation_source", {
-    enum: ["model", "review_button", "auto_review", "followup"],
-  }).notNull(),
-  remediationSource: text("remediation_source", {
-    enum: ["fix_button", "auto_fix", "queued_message_override"],
-  }),
-  autoFixAt: integer("auto_fix_at", { mode: "timestamp" }),
-  error: text("error"),
-  inputTokens: integer("input_tokens").notNull().default(0),
-  outputTokens: integer("output_tokens").notNull().default(0),
-  toolCallCount: integer("tool_call_count").notNull().default(0),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  startedAt: integer("started_at", { mode: "timestamp" }),
-  completedAt: integer("completed_at", { mode: "timestamp" }),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const agentThreads = sqliteTable(
+  "agent_threads",
+  {
+    id: text("id").primaryKey(),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    persona: text("persona", {
+      enum: ["explorer", "reviewer", "implementer"],
+    }).notNull(),
+    taskName: text("task_name").notNull(),
+    assignment: text("assignment").notNull(),
+    status: text("status", {
+      enum: [
+        "queued",
+        "running",
+        "idle",
+        "waiting_for_writer",
+        "waiting_for_auto_review",
+        "auto_fix_countdown",
+        "fixing_findings",
+        "verification_review",
+        "needs_approval",
+        "completed",
+        "partial",
+        "review_outdated",
+        "cancelled",
+        "entitlement_revoked",
+        "interrupted_by_restart",
+        "failed",
+      ],
+    })
+      .notNull()
+      .default("queued"),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    reasoningEffort: text("reasoning_effort", {
+      enum: ["low", "medium", "high"],
+    }).notNull(),
+    contextJson: text("context_json", { mode: "json" }).$type<Record<
+      string,
+      unknown
+    > | null>(),
+    resultJson: text("result_json", { mode: "json" }).$type<Record<
+      string,
+      unknown
+    > | null>(),
+    reviewBaseCommit: text("review_base_commit"),
+    reviewTargetCommit: text("review_target_commit"),
+    reviewDiffHash: text("review_diff_hash"),
+    invocationSource: text("invocation_source", {
+      enum: ["model", "review_button", "auto_review", "followup"],
+    }).notNull(),
+    remediationSource: text("remediation_source", {
+      enum: ["fix_button", "auto_fix", "queued_message_override"],
+    }),
+    autoFixAt: integer("auto_fix_at", { mode: "timestamp" }),
+    error: text("error"),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    toolCallCount: integer("tool_call_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    startedAt: integer("started_at", { mode: "timestamp" }),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index("agent_threads_chat_id_idx").on(table.chatId)],
+);
 
 export const agentMessages = sqliteTable(
   "agent_messages",

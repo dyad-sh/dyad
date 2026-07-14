@@ -230,7 +230,7 @@ export async function startReview(params: {
     baseCommit: source.sourceCommitHash,
     targetCommit: source.commitHash,
   });
-  if (!target.diff.trim()) {
+  if (!target.diff.trim() && target.exclusions.length === 0) {
     throw new DyadError(
       "There are no changes to review.",
       DyadErrorKind.Precondition,
@@ -273,6 +273,12 @@ export async function startReview(params: {
     },
     review: target,
   });
+  if (!target.diff.trim()) {
+    const partial = buildAllExcludedReviewResult(target.exclusions);
+    await appendAssistantMessage(thread.id, partial.report);
+    await finishThread(thread.id, "partial", partial, partial.report);
+    return toSummary(await getThread(thread.id));
+  }
   const run = (followup?: string) =>
     enqueueRun({
       threadId: thread.id,
@@ -644,10 +650,8 @@ export async function waitForSubagents(
       pendingRootMessages.map((message) => message.threadId),
     );
     if (
-      rows.every(
-        (row) =>
-          isWaitCompleteStatus(row.status) &&
-          !threadsWithPendingMessages.has(row.id),
+      rows.every((row) =>
+        isSubagentJoinReady(row.status, threadsWithPendingMessages.has(row.id)),
       )
     ) {
       return rows.map(toSummary);
@@ -1210,6 +1214,31 @@ export function isWaitCompleteStatus(status: string): boolean {
       status as (typeof SUBAGENT_NONTERMINAL_STATUSES)[number],
     ) || status === "idle"
   );
+}
+
+export function isTerminalSubagentStatus(status: string): boolean {
+  return !SUBAGENT_NONTERMINAL_STATUSES.includes(
+    status as (typeof SUBAGENT_NONTERMINAL_STATUSES)[number],
+  );
+}
+
+export function isSubagentJoinReady(
+  status: string,
+  hasPendingRootMessages: boolean,
+): boolean {
+  return (
+    isWaitCompleteStatus(status) &&
+    (isTerminalSubagentStatus(status) || !hasPendingRootMessages)
+  );
+}
+
+export function buildAllExcludedReviewResult(exclusions: string[]) {
+  const report = [
+    "Review incomplete: every changed file was excluded from automated review.",
+    "",
+    ...exclusions.map((exclusion) => `- ${exclusion}`),
+  ].join("\n");
+  return { findingCount: 0, report };
 }
 
 async function waitForAbortableDelay(

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAllExcludedReviewResult,
   buildReboundReviewState,
   buildBoundedModelHistory,
   isAcceptableImplementerJoinStatus,
   isReusableReviewStatus,
+  isSubagentJoinReady,
+  isTerminalSubagentStatus,
   isWaitCompleteStatus,
   SUBAGENT_NONTERMINAL_STATUSES,
 } from "./subagent_manager";
@@ -63,6 +66,25 @@ describe("sub-agent manager status policy", () => {
     expect(isWaitCompleteStatus("idle")).toBe(true);
     expect(isWaitCompleteStatus("completed")).toBe(true);
     expect(isWaitCompleteStatus("failed")).toBe(true);
+    expect(isTerminalSubagentStatus("idle")).toBe(false);
+    expect(isTerminalSubagentStatus("completed")).toBe(true);
+    expect(isTerminalSubagentStatus("failed")).toBe(true);
+    expect(isSubagentJoinReady("idle", true)).toBe(false);
+    expect(isSubagentJoinReady("idle", false)).toBe(true);
+    expect(isSubagentJoinReady("failed", true)).toBe(true);
+  });
+
+  it("surfaces a durable partial report when every change is excluded", () => {
+    expect(
+      buildAllExcludedReviewResult([
+        "bundle.bin (binary)",
+        "generated.js (exceeds per-file review limit)",
+      ]),
+    ).toEqual({
+      findingCount: 0,
+      report:
+        "Review incomplete: every changed file was excluded from automated review.\n\n- bundle.bin (binary)\n- generated.js (exceeds per-file review limit)",
+    });
   });
 
   it("allows an intentionally cancelled Implementer to reach root finalization", () => {

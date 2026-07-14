@@ -15,13 +15,13 @@ export class SecurityReview {
 
   async clickRunSecurityReview() {
     const runSecurityReviewButton = this.page
-      .getByRole("button", { name: "Run Security Review" })
+      .getByRole("button", { name: "Run review" })
       .first();
     await runSecurityReviewButton.click();
-    // Wait for the "Running Security Review..." button to appear and then disappear
+    // Wait for the "Running review..." button to appear and then disappear
     // This indicates the security review has completed
     const runningButton = this.page.getByRole("button", {
-      name: "Running Security Review...",
+      name: "Running review...",
     });
     await runningButton.waitFor({ state: "visible" });
     await runningButton.waitFor({ state: "hidden" });

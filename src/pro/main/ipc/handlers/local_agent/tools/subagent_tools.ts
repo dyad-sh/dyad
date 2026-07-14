@@ -100,6 +100,7 @@ export const spawnAgentTool: ToolDefinition<
       ...(ctx.canUseExplorerSubagent ? ["explorer" as const] : []),
       ...(ctx.canUseImplementerSubagent ? ["implementer" as const] : []),
     ];
+    if (personas.length === 0) return spawnFallbackSchema;
     return z.object({
       persona:
         personas.length === 1

@@ -32,6 +32,7 @@ vi.mock("@/ipc/types", async (importOriginal) => {
 import {
   isStreamReviewEligible,
   runBackgroundAutoReview,
+  shouldResumePendingReview,
   shouldStartBackgroundAutoReview,
 } from "./useStreamChat";
 import {
@@ -104,6 +105,23 @@ describe("sub-agent review orchestration", () => {
     ).toBe(true);
     expect(shouldRunQueuedReviewBarrier(false)).toBe(false);
     expect(shouldRunQueuedReviewBarrier(true)).toBe(true);
+  });
+
+  it("does not resume a paused review continuation after cancellation", () => {
+    expect(
+      shouldResumePendingReview({
+        wasCancelled: true,
+        pausePromptQueue: false,
+        hasPendingContinuation: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldResumePendingReview({
+        wasCancelled: false,
+        pausePromptQueue: false,
+        hasPendingContinuation: true,
+      }),
+    ).toBe(true);
   });
 
   it("preserves an explicit user pause when the review barrier releases its hold", () => {

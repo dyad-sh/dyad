@@ -51,6 +51,27 @@ describe("buildReviewTarget", () => {
     expect(review.targetCommit).toBe(target.trim());
   });
 
+  it("excludes binary files from immutable commit ranges", async () => {
+    const repo = await makeRepo();
+    await fs.writeFile(path.join(repo, "asset.bin"), Buffer.from([0, 1, 2]));
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "base");
+    const base = (await git(repo, "rev-parse", "HEAD")).trim();
+    await fs.writeFile(path.join(repo, "asset.bin"), Buffer.from([0, 3, 4]));
+    await git(repo, "commit", "-am", "change");
+    const target = (await git(repo, "rev-parse", "HEAD")).trim();
+
+    const review = await buildReviewTarget({
+      appPath: repo,
+      baseCommit: base,
+      targetCommit: target,
+    });
+
+    expect(review.diff).toBe("");
+    expect(review.files).not.toContain("asset.bin");
+    expect(review.exclusions).toContain("asset.bin (binary)");
+  });
+
   it("falls back to tracked and non-ignored untracked working-tree text", async () => {
     const repo = await makeRepo();
     await fs.writeFile(path.join(repo, "tracked.ts"), "old\n");

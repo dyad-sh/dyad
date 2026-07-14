@@ -12,6 +12,22 @@ import {
 import type { AgentContext } from "./types";
 
 describe("spawn_agent schema", () => {
+  it("keeps schema introspection safe when no spawn persona is enabled", () => {
+    const schema = spawnAgentTool.getInputSchema?.({
+      canUseExplorerSubagent: false,
+      canUseImplementerSubagent: false,
+    } as AgentContext);
+
+    expect(
+      schema?.safeParse({
+        persona: "explorer",
+        task_name: "map-flow",
+        assignment: "Trace the flow",
+        scope: ["src"],
+      }).success,
+    ).toBe(true);
+  });
+
   it("never exposes Reviewer and gates Implementer independently", () => {
     const explorerOnly = spawnAgentTool.getInputSchema?.({
       canUseExplorerSubagent: true,

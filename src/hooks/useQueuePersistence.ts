@@ -199,10 +199,13 @@ export function useQueuePersistence() {
 
   // Best-effort flush on graceful window close: if the app is closed within the
   // debounce window, persist the latest snapshot immediately so the final queue
-  // change isn't lost. Attachments are served from the pre-encoded cache, so
-  // the flush avoids FileReader work that can't finish during teardown; only
-  // items queued in the last instants before close (cache warm still pending)
-  // remain best-effort, as do hard crashes/kills.
+  // change isn't lost. The write goes out as a one-way IPC (see
+  // queueSendContracts.setQueuedPrompts): a reply-expecting `invoke` fired here
+  // would leave the main process replying to the frame Electron is tearing
+  // down, throwing "Object has been destroyed". Attachments are served from the
+  // pre-encoded cache, so the flush avoids FileReader work that can't finish
+  // during teardown; only items queued in the last instants before close (cache
+  // warm still pending) remain best-effort, as do hard crashes/kills.
   useEffect(() => {
     const flush = () => {
       if (!hydratedRef.current) return;
@@ -263,7 +266,9 @@ async function persistQueue(
         items.map((item) => encodeQueuedItem(item, cache)),
       );
     }
-    await ipc.queue.setQueuedPrompts(persisted);
+    // Fire-and-forget: main serializes the write and never replies, so this is
+    // safe even when called from the on-close flush during frame teardown.
+    ipc.queue.setQueuedPrompts(persisted);
   } catch (error) {
     console.error("[QUEUE] Failed to persist queued prompts:", error);
   }

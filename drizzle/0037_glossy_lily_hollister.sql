@@ -1,0 +1,1 @@
+CREATE INDEX `agent_threads_chat_id_idx` ON `agent_threads` (`chat_id`);

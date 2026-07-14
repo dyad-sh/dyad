@@ -13,6 +13,8 @@
 - text: "Copied From: attachments:logo.png To: assets/uploaded-file.png Copy uploaded file to codebase"
 - paragraph: I've successfully copied your file to assets/uploaded-file.png in the codebase.
 - button "Copy"
+- button "Agent team" [expanded]
+- button "Review changes"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
 - text: Modified files (1)

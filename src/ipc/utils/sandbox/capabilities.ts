@@ -8,6 +8,7 @@ import {
   toAttachmentLogicalPath,
 } from "@/ipc/utils/media_path_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { readContainedTextFile } from "@/ipc/utils/bounded_text_file";
 import { isDotenvFilePath, redactDotenvValues } from "@/utils/dotenv_redaction";
 import { SANDBOX_READ_FILE_LIMIT_BYTES } from "./limits";
 
@@ -310,19 +311,11 @@ export async function sandboxReadFile(
     guestPath,
     allowDotenvRead: true,
   });
-  const { isDotenv } = await assertResolvedPathAllowed({
+  const { realFilePath, isDotenv } = await assertResolvedPathAllowed({
     appPath,
     ...resolved,
     allowDotenvRead: true,
   });
-
-  const stat = await fs.stat(resolved.filePath);
-  if (!stat.isFile()) {
-    throw new DyadError(
-      `Path is not a file: ${resolved.displayPath}`,
-      DyadErrorKind.Validation,
-    );
-  }
 
   if (
     options.length !== undefined &&
@@ -335,14 +328,15 @@ export async function sandboxReadFile(
   }
 
   if (isDotenv) {
-    if (stat.size > SANDBOX_READ_FILE_LIMIT_BYTES) {
-      throw new DyadError(
-        `read_file would read ${stat.size} bytes from ${resolved.displayPath}, exceeding the ${SANDBOX_READ_FILE_LIMIT_BYTES} byte limit. Dotenv files must be read and sanitized as a whole before applying ranges.`,
-        DyadErrorKind.Validation,
-      );
-    }
     const sanitized = Buffer.from(
-      redactDotenvValues(await fs.readFile(resolved.filePath, "utf8")),
+      redactDotenvValues(
+        await readContainedTextFile({
+          rootPath: appPath,
+          filePath: realFilePath,
+          displayPath: resolved.displayPath,
+          maxBytes: SANDBOX_READ_FILE_LIMIT_BYTES,
+        }),
+      ),
       "utf8",
     );
     const start = options.start ?? 0;
@@ -363,6 +357,13 @@ export async function sandboxReadFile(
       : bytes.toString("utf8");
   }
 
+  const stat = await fs.stat(realFilePath);
+  if (!stat.isFile()) {
+    throw new DyadError(
+      `Path is not a file: ${resolved.displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
   const start = options.start ?? 0;
   if (start > stat.size) {
     return "";
@@ -376,7 +377,7 @@ export async function sandboxReadFile(
     );
   }
 
-  const handle = await fs.open(resolved.filePath, "r");
+  const handle = await fs.open(realFilePath, "r");
   try {
     const bytesToRead = Math.min(length, remainingBytes);
     const buffer = Buffer.alloc(bytesToRead);

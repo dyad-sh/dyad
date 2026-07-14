@@ -137,6 +137,17 @@ describe("sandbox capabilities", () => {
     ).resolves.toBe(Buffer.from(sanitized).toString("base64"));
   });
 
+  it("redacts supported multiline dotenv syntax", async () => {
+    await fs.writeFile(
+      path.join(appPath, ".env"),
+      "BACKTICK=`first\n# sk-123\nlast`",
+    );
+
+    const result = await sandboxReadFile(appPath, ".env");
+    expect(result).toBe("BACKTICK=[redacted]\n[redacted]\n[redacted]");
+    expect(result).not.toContain("sk-123");
+  });
+
   it.runIf(process.platform !== "win32")(
     "redacts sandbox dotenv reads reached through symlink aliases",
     async () => {

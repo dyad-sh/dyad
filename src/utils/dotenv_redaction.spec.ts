@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isDotenvFilePath, redactDotenvValues } from "./dotenv_redaction";
+import {
+  isDotenvFilePath,
+  redactDotenvValues,
+  selectTextLineRange,
+} from "./dotenv_redaction";
 
 describe("dotenv redaction", () => {
   it("recognizes dotenv file names without matching similarly named files", () => {
@@ -18,6 +22,39 @@ describe("dotenv redaction", () => {
     ).toBe("MULTILINE=[redacted]\n[redacted]\n[redacted]\nNEXT=[redacted]");
   });
 
+  it("redacts backtick and escaped-quote multiline values", () => {
+    expect(
+      redactDotenvValues(
+        "BACKTICK=`first\n# sk-backtick\nlast`\n" +
+          "SINGLE='first\\'\n# sk-single\nlast'",
+      ),
+    ).toBe(
+      "BACKTICK=[redacted]\n[redacted]\n[redacted]\n" +
+        "SINGLE=[redacted]\n[redacted]\n[redacted]",
+    );
+  });
+
+  it("preserves supported key syntax while redacting values", () => {
+    expect(
+      redactDotenvValues(
+        "SENTRY.DSN=secret\napi-key=secret\nDATABASE_URL: postgres://secret",
+      ),
+    ).toBe(
+      "SENTRY.DSN=[redacted]\napi-key=[redacted]\nDATABASE_URL: [redacted]",
+    );
+  });
+
+  it("preserves semantically empty values with comments and empty quotes", () => {
+    const content = [
+      "EMPTY= # optional",
+      "SPACED=   # optional",
+      'DOUBLE="" # optional',
+      "SINGLE='' # optional",
+      "BACKTICK=`` # optional",
+    ].join("\n");
+    expect(redactDotenvValues(content)).toBe(content);
+  });
+
   it("preserves comments outside multiline values", () => {
     expect(redactDotenvValues("# configuration\nKEY=value")).toBe(
       "# configuration\nKEY=[redacted]",
@@ -28,5 +65,13 @@ describe("dotenv redaction", () => {
     expect(redactDotenvValues("KEY=value\r\nEMPTY=\r\n")).toBe(
       "KEY=[redacted]\r\nEMPTY=\r\n",
     );
+  });
+
+  it("selects line ranges after multiline values are sanitized", () => {
+    const sanitized = redactDotenvValues(
+      'SECRET="top\nc2VjcmV0=\nbottom"\nEMPTY=',
+    );
+    expect(selectTextLineRange(sanitized, 2, 2)).toBe("[redacted]");
+    expect(selectTextLineRange(sanitized, 4, 4)).toBe("EMPTY=");
   });
 });

@@ -377,6 +377,25 @@ function deepHello() {
       expect(result).toContain(".dyad/backup.txt");
     });
 
+    it("excludes dotenv matches when ignored files are included", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env.local"),
+        "API_KEY=sk-123",
+      );
+
+      const result = await grepTool.execute(
+        {
+          query: "API_KEY",
+          include_ignored: true,
+          include_pattern: ".env*",
+        },
+        mockContext,
+      );
+
+      expect(result).toBe("No matches found.");
+      expect(result).not.toContain("sk-123");
+    });
+
     it("keeps .git excluded when include_ignored is true", async () => {
       const gitDir = path.join(testDir, ".git");
       await fs.promises.mkdir(gitDir, { recursive: true });

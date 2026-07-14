@@ -230,6 +230,38 @@ line 5`;
       expect(result).not.toContain("secret");
     });
 
+    it("sanitizes the full dotenv file before selecting a line range", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env"),
+        'SECRET="top\nc2VjcmV0=\nbottom"\nEMPTY=',
+      );
+
+      await expect(
+        readFileTool.execute(
+          {
+            path: ".env",
+            start_line_one_indexed: 2,
+            end_line_one_indexed_inclusive: 2,
+          },
+          mockContext,
+        ),
+      ).resolves.toBe("[redacted]");
+    });
+
+    it("keeps expanded dotenv redaction within the result byte limit", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env"),
+        "x\n".repeat(AGENT_READ_FILE_RESULT_LIMIT_BYTES),
+      );
+
+      const result = await readFileTool.execute({ path: ".env" }, mockContext);
+
+      expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(
+        AGENT_READ_FILE_RESULT_LIMIT_BYTES,
+      );
+      expect(result.endsWith(AGENT_READ_FILE_TRUNCATION_NOTICE)).toBe(true);
+    });
+
     it.runIf(process.platform !== "win32")(
       "redacts dotenv files reached through symlink aliases",
       async () => {

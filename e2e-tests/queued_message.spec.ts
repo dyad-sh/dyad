@@ -1,5 +1,22 @@
-import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
-import { expect, Locator, type Page } from "@playwright/test";
+import {
+  PageObject,
+  test,
+  testSkipIfWindows,
+  Timeout,
+} from "./helpers/test_helper";
+import {
+  expect,
+  test as baseTest,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
+import * as eph from "electron-playwright-helpers";
+import os from "os";
+import path from "path";
+import treeKill from "tree-kill";
+import { _electron as electron, type ElectronApplication } from "playwright";
+import { FAKE_LLM_BASE_PORT } from "./helpers/test-ports";
 
 async function queueMessage(page: Page, chatInput: Locator, message: string) {
   await expect(async () => {
@@ -12,6 +29,104 @@ async function queueMessage(page: Page, chatInput: Locator, message: string) {
   await expect(page.locator("li", { hasText: message })).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
+}
+
+function configureE2eEnv(fakeLlmPort: number, parallelIndex: number) {
+  process.env.FAKE_LLM_PORT = String(fakeLlmPort);
+  process.env.DYAD_E2E_PORT_BLOCK_INDEX = String(parallelIndex);
+  process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
+  process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
+  process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
+  process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
+  process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
+  process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
+  process.env.E2E_TEST_BUILD = "true";
+  process.env.OPENAI_API_KEY = "sk-test";
+}
+
+function definedProcessEnv() {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+async function launchDyadWithProfile({
+  userDataDir,
+  fakeLlmPort,
+  testInfo,
+}: {
+  userDataDir: string;
+  fakeLlmPort: number;
+  testInfo: TestInfo;
+}) {
+  configureE2eEnv(fakeLlmPort, testInfo.parallelIndex);
+
+  const appInfo = eph.parseElectronApp(eph.findLatestBuild());
+  const electronApp = await electron.launch({
+    args: [appInfo.main, "--enable-logging", `--user-data-dir=${userDataDir}`],
+    executablePath: appInfo.executable,
+    env: definedProcessEnv(),
+  });
+  const page = await electronApp.firstWindow();
+  const po = new PageObject(electronApp, page, {
+    userDataDir,
+    fakeLlmPort,
+    testInfo,
+  });
+
+  await page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      enablePnpmMinimumReleaseAgeWarning: false,
+      hidePnpmMinimumReleaseAgeWarning: true,
+    });
+  });
+
+  return { electronApp, po };
+}
+
+async function closeDyad(electronApp: ElectronApplication) {
+  const childProcess = electronApp.process();
+  const pid = childProcess.pid;
+
+  await Promise.race([
+    electronApp.close().catch(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
+  ]);
+
+  if (!pid || childProcess.exitCode !== null || childProcess.signalCode) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    treeKill(pid, "SIGKILL", () => resolve());
+  });
+}
+
+async function expectPersistedQueuedPrompts(
+  page: Page,
+  expectedPrompts: string[],
+) {
+  await expect
+    .poll(
+      async () => {
+        const persistedQueue = (await page.evaluate(async () => {
+          return (window as any).electron.ipcRenderer.invoke(
+            "get-queued-prompts",
+          );
+        })) as Record<string, Array<{ prompt: string }>>;
+
+        return Object.values(persistedQueue)
+          .flat()
+          .map((item) => item.prompt)
+          .sort();
+      },
+      { timeout: Timeout.MEDIUM },
+    )
+    .toEqual([...expectedPrompts].sort());
 }
 
 test.describe("queued messages", () => {
@@ -213,3 +328,75 @@ testSkipIfWindows(
     await po.chatActions.waitForChatCompletion();
   },
 );
+
+baseTest("persists queued prompts across app restart", async ({}, testInfo) => {
+  baseTest.skip(
+    process.platform === "win32",
+    "Manual Electron restarts can hang on Windows in this E2E environment.",
+  );
+  baseTest.setTimeout(120_000);
+
+  const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
+  const userDataDir = path.join(
+    os.tmpdir(),
+    `dyad-e2e-queued-prompts-${testInfo.parallelIndex}-${Date.now()}`,
+  );
+  const queuedPrompts = ["persisted queued one", "persisted queued two"];
+  let activeApp: ElectronApplication | undefined;
+
+  try {
+    const session1 = await launchDyadWithProfile({
+      userDataDir,
+      fakeLlmPort,
+      testInfo,
+    });
+    activeApp = session1.electronApp;
+    const po = session1.po;
+
+    await po.setUp({ autoApprove: true });
+    const chatInput = po.chatActions.getChatInput();
+
+    await po.sendPrompt("tc=1 [sleep=long]", {
+      skipWaitForCompletion: true,
+    });
+    await expect(chatInput).toBeVisible();
+
+    for (const prompt of queuedPrompts) {
+      await queueMessage(po.page, chatInput, prompt);
+    }
+
+    await expect(po.page.getByText("2 Queued")).toBeVisible();
+    await expectPersistedQueuedPrompts(po.page, queuedPrompts);
+
+    await closeDyad(activeApp);
+    activeApp = undefined;
+
+    const session2 = await launchDyadWithProfile({
+      userDataDir,
+      fakeLlmPort,
+      testInfo,
+    });
+    activeApp = session2.electronApp;
+    const relaunchedPo = session2.po;
+
+    await relaunchedPo.navigation.goToChatTab();
+    const queueHeader = relaunchedPo.page.getByTestId("queue-header");
+    await expect(queueHeader).toContainText("2 Queued", {
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(queueHeader).toContainText("Paused");
+    await expect(
+      relaunchedPo.page.getByRole("button", { name: "Resume queue" }),
+    ).toBeVisible();
+
+    for (const prompt of queuedPrompts) {
+      await expect(
+        relaunchedPo.page.locator("li", { hasText: prompt }),
+      ).toBeVisible();
+    }
+  } finally {
+    if (activeApp) {
+      await closeDyad(activeApp);
+    }
+  }
+});

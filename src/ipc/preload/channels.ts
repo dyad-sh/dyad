@@ -10,6 +10,7 @@
 import {
   getInvokeChannels,
   getReceiveChannels,
+  getSendChannels,
   getStreamChannels,
 } from "../contracts/core";
 
@@ -52,6 +53,7 @@ import {
 import { appCollectionContracts } from "../types/app_collections";
 import { terminalContracts } from "../types/terminal";
 import { testsContracts, testsEvents } from "../types/tests";
+import { queueContracts, queueSendContracts } from "../types/queue";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -117,9 +119,22 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(appCollectionContracts),
   ...getInvokeChannels(terminalContracts),
   ...getInvokeChannels(testsContracts),
+  ...getInvokeChannels(queueContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
+] as const;
+
+// =============================================================================
+// Send Channels (one-way, renderer -> main, fire-and-forget)
+// =============================================================================
+
+/**
+ * All valid one-way send channels derived from send contracts.
+ * Used by preload.ts to whitelist fire-and-forget IPC channels.
+ */
+export const VALID_SEND_CHANNELS = [
+  ...getSendChannels(queueSendContracts),
 ] as const;
 
 // =============================================================================
@@ -152,4 +167,5 @@ export const VALID_RECEIVE_CHANNELS = [
 // =============================================================================
 
 export type ValidInvokeChannel = (typeof VALID_INVOKE_CHANNELS)[number];
+export type ValidSendChannel = (typeof VALID_SEND_CHANNELS)[number];
 export type ValidReceiveChannel = (typeof VALID_RECEIVE_CHANNELS)[number];

@@ -212,6 +212,7 @@ describe("SubagentTeamCard", () => {
         persona: "explorer",
         taskName: "Find auth flow",
         assignment: "Trace auth",
+        status: "running",
       },
     ]);
 
@@ -249,12 +250,45 @@ describe("SubagentTeamCard", () => {
     });
   });
 
+  it("disables one-way messages for inactive sub-agents", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("explorer-thread", 42, "exploration report"),
+        persona: "explorer",
+        taskName: "Find auth flow",
+      },
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Message explorer Find auth flow",
+      }),
+      { target: { value: "Check callbacks" } },
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Send message" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Follow up" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
   it("surfaces durable message failures and keeps the draft", async () => {
     mocks.listSubagents.mockResolvedValue([
       {
         ...makeReview("explorer-thread", 42, "exploration report"),
         persona: "explorer",
         taskName: "Find auth flow",
+        status: "running",
       },
     ]);
     const error = new Error("Message failed");
@@ -280,6 +314,7 @@ describe("SubagentTeamCard", () => {
         ...makeReview("explorer-thread", 42, "exploration report"),
         persona: "explorer",
         taskName: "Find auth flow",
+        status: "running",
       },
     ]);
     let finishSend: (() => void) | undefined;

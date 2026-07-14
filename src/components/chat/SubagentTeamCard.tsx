@@ -14,7 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { ipc, type SubagentThreadSummary } from "@/ipc/types";
+import {
+  ipc,
+  isSubagentAcceptingMessages,
+  type SubagentThreadSummary,
+} from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -255,8 +259,14 @@ export function SubagentTeamCard({
                     variant="outline"
                     disabled={
                       !messageDrafts[thread.id]?.trim() ||
+                      !isSubagentAcceptingMessages(thread.status) ||
                       sendMessageMutation.isPending ||
                       followupMutation.isPending
+                    }
+                    title={
+                      isSubagentAcceptingMessages(thread.status)
+                        ? undefined
+                        : "Use Follow up to resume an inactive sub-agent."
                     }
                     onClick={() =>
                       sendMessageMutation.mutate({

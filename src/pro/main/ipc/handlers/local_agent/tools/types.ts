@@ -39,6 +39,26 @@ export interface FileEditTracker {
   };
 }
 
+/**
+ * Tools beyond write_file/search_replace whose invocation still changes the
+ * app or its data, so a `run_tests` rerun after one of them is meaningful.
+ * Feeds `AgentContext.mutationCount` (file-edit tools are counted there via
+ * `trackFileEditTool`, which the sandbox write_file host bridge also calls).
+ * Turn-scoped bookkeeping tools (update_todos, plan/blueprint tools) and
+ * run_tests itself are deliberately excluded — they can't change a test's
+ * outcome.
+ */
+export const APP_MUTATING_TOOL_NAMES = [
+  "copy_file",
+  "delete_file",
+  "rename_file",
+  "add_dependency",
+  "execute_sql",
+  "add_integration",
+  "enable_nitro",
+  "generate_image",
+] as const;
+
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
@@ -72,6 +92,14 @@ export interface AgentContext {
   fileEditTracker: FileEditTracker;
   /** True after a tool has successfully changed workspace contents this turn. */
   workspaceMutated?: boolean;
+  /**
+   * Turn-scoped count of tool invocations that could change the app or its
+   * data: file edits (via `trackFileEditTool`, including sandbox write_file
+   * host calls) plus the tools in `APP_MUTATING_TOOL_NAMES`. This is the
+   * signal for `run_tests`' require-a-change guards, which must see fixes made
+   * through ANY mutating tool — not just write_file/search_replace.
+   */
+  mutationCount?: number;
   /**
    * If true, the user has Dyad Pro enabled.
    * Engine-dependent tools require this to access the Dyad Pro API.
@@ -183,7 +211,7 @@ export interface TestRunAttemptState {
   attempts: number;
   /** Normalized failure signature of the last failing run, for no-progress detection. */
   lastFailureSignature?: string;
-  /** Sum over `fileEditTracker` at the last run, for the require-a-change guard. */
+  /** `AgentContext.mutationCount` at the last run, for the require-a-change guard. */
   fileEditCountAtLastRun?: number;
   /**
    * The `testName` of the last run (undefined = whole file). Changing what's
@@ -194,7 +222,7 @@ export interface TestRunAttemptState {
   /** Whether the one free `flakeCheck` rerun has been used for this spec. */
   flakeCheckUsed?: boolean;
   /**
-   * Edit-tracker total at the time each target last PASSED, keyed by testName
+   * `AgentContext.mutationCount` at the time each target last PASSED, keyed by testName
    * ("" = whole file). Rerunning a target that already passed with no file
    * changes since is refused — some models otherwise loop re-running
    * already-green tests.

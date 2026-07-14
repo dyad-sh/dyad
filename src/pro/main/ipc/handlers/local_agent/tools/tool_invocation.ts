@@ -14,15 +14,19 @@ import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import type { AgentToolConsent } from "@/lib/schemas";
 import {
   AgentContext,
+  APP_MUTATING_TOOL_NAMES,
   FILE_EDIT_TOOL_NAMES,
   FileEditToolName,
   ToolDefinition,
 } from "./types";
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
+const APP_MUTATING_TOOLS: Set<string> = new Set(APP_MUTATING_TOOL_NAMES);
 
 /**
- * Track file edit tool usage for telemetry
+ * Track file edit tool usage for telemetry and for the mutation count that
+ * feeds `run_tests`' require-a-change guards. Also called by the sandbox
+ * write_file host bridge, so sandbox-script writes count as changes too.
  */
 export function trackFileEditTool(
   ctx: AgentContext,
@@ -43,6 +47,21 @@ export function trackFileEditTool(
     };
   }
   ctx.fileEditTracker[filePath][toolName as FileEditToolName]++;
+  ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
+}
+
+/**
+ * Count non-file-edit tools that still change the app or its data
+ * (delete/rename/copy, dependency installs, SQL, integrations, image
+ * generation), so a `run_tests` rerun after one of them isn't refused as
+ * "you haven't made any changes". File-edit tools are counted inside
+ * `trackFileEditTool`.
+ */
+export function trackAppMutation(ctx: AgentContext, toolName: string): void {
+  if (!APP_MUTATING_TOOLS.has(toolName)) {
+    return;
+  }
+  ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
 }
 
 /**

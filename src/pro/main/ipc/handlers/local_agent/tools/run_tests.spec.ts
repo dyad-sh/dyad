@@ -99,16 +99,9 @@ function inconclusiveResult(error: string): RunAppTestsResult {
   };
 }
 
-/** Bump the edit tracker so the require-a-change guard sees a new edit. */
-function addEdit(ctx: AgentContext, file: string) {
-  const existing = ctx.fileEditTracker[file] ?? {
-    write_file: 0,
-    search_replace: 0,
-  };
-  ctx.fileEditTracker[file] = {
-    ...existing,
-    write_file: existing.write_file + 1,
-  };
+/** Bump the mutation count so the require-a-change guard sees a new change. */
+function addEdit(ctx: AgentContext, _file: string) {
+  ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
 }
 
 describe("runTestsTool", () => {
@@ -159,7 +152,7 @@ describe("runTestsTool", () => {
       { testFile: "tests/a.spec.ts" },
       ctx,
     );
-    expect(out).toContain("All tests passed");
+    expect(out).toContain("All runnable tests passed");
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(0);
   });
 
@@ -229,13 +222,13 @@ describe("runTestsTool", () => {
       { testFile: "tests/a.spec.ts", flakeCheck: true },
       ctx,
     );
-    expect(flake).toContain("All tests passed");
+    expect(flake).toContain("All runnable tests passed");
     addEdit(ctx, "tests/a.spec.ts");
     const afterEdit = await runTestsTool.execute(
       { testFile: "tests/a.spec.ts" },
       ctx,
     );
-    expect(afterEdit).toContain("All tests passed");
+    expect(afterEdit).toContain("All runnable tests passed");
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
@@ -283,7 +276,7 @@ describe("runTestsTool", () => {
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
-    expect(out).toContain("haven't modified any files");
+    expect(out).toContain("haven't made any changes");
     // Still only the one counted attempt.
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
   });
@@ -338,7 +331,7 @@ describe("runTestsTool", () => {
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
-    expect(out).toContain("haven't modified any files");
+    expect(out).toContain("haven't made any changes");
     expect(out).toContain("already used this spec's one flakeCheck rerun");
     // Only the first (non-flake) failure counted.
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
@@ -439,7 +432,7 @@ describe("runTestsTool", () => {
       testFile: "tests/auth-entry.spec.ts",
     });
     expect(runner.mock.calls[0][0].testLine).toBeUndefined();
-    expect(out).toContain("All tests passed");
+    expect(out).toContain("All runnable tests passed");
   });
 
   it("targets a single test by name via its resolved file:line", async () => {
@@ -534,7 +527,7 @@ describe("runTestsTool", () => {
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
-    expect(blocked).toContain("haven't modified any files");
+    expect(blocked).toContain("haven't made any changes");
   });
 
   it("explains a targeted test that executed nothing as skipped (uncounted)", async () => {
@@ -661,5 +654,96 @@ describe("runTestsTool", () => {
     // The throw happened after the free flake rerun was consumed — it must be
     // handed back so the model can still use it once the environment is fixed.
     expect(state.flakeCheckUsed).toBeFalsy();
+  });
+
+  it("restores the free flakeCheck after a structured (resolved) infra failure", async () => {
+    // Infra failures overwhelmingly arrive as RESOLVED infraError results, not
+    // throws. The infra reply promises "call run_tests again" — without the
+    // refund that retry would be refused (flake rerun spent, no changes made).
+    runner.mockResolvedValue(failResult("boom"));
+    const ctx = makeCtx();
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, ctx);
+    runner.mockResolvedValue(infraResult);
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    expect(out).toContain("infrastructure problem");
+    expect(out).toContain("did NOT count");
+    const state = ctx.testRunAttempts.get("tests/a.spec.ts")!;
+    expect(state.attempts).toBe(1);
+    expect(state.flakeCheckUsed).toBeFalsy();
+    // And the promised retry actually runs.
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", flakeCheck: true },
+      ctx,
+    );
+    expect(runner).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports a spec with passing tests plus a skipped test as passing", async () => {
+    // A deliberately skipped test (errorless inconclusive) must never read as
+    // a failure: the spec would be reported FAILED every run, never record its
+    // pass, and drain the whole fix budget on a non-failure.
+    runner.mockResolvedValue({
+      appId: 1,
+      results: [
+        {
+          file: "tests/a.spec.ts",
+          status: "inconclusive",
+          tests: [
+            { title: "does a thing", status: "passed" },
+            { title: "does another thing", status: "passed" },
+            { title: "not ready yet", status: "inconclusive" },
+          ],
+        },
+      ],
+      isolation: { mode: "neon-branch" },
+    });
+    const ctx = makeCtx();
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts" },
+      ctx,
+    );
+    expect(out).toContain("All runnable tests passed");
+    expect(out).toContain("2 passed, 1 deliberately skipped");
+    expect(out).not.toContain("Test run FAILED");
+    expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts ?? 0).toBe(0);
+    // The pass was recorded: an unchanged rerun is refused.
+    runner.mockClear();
+    const rerun = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts" },
+      ctx,
+    );
+    expect(runner).not.toHaveBeenCalled();
+    expect(rerun).toContain("already passed");
+  });
+
+  it("does not list a skipped test as FAILED alongside real failures", async () => {
+    runner.mockResolvedValue({
+      appId: 1,
+      results: [
+        {
+          file: "tests/a.spec.ts",
+          status: "failed",
+          error: "boom",
+          tests: [
+            { title: "does a thing", status: "passed" },
+            { title: "breaks", status: "failed", error: "boom" },
+            { title: "not ready yet", status: "inconclusive" },
+          ],
+        },
+      ],
+      isolation: { mode: "neon-branch" },
+    });
+    const ctx = makeCtx();
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts" },
+      ctx,
+    );
+    expect(out).toContain("1 passed, 1 failed, 1 deliberately skipped");
+    expect(out).toContain('FAILED tests/a.spec.ts > "breaks"');
+    expect(out).not.toContain('FAILED tests/a.spec.ts > "not ready yet"');
   });
 });

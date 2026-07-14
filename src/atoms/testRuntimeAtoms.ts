@@ -1,6 +1,12 @@
 import { atom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
+import type { RunAppTestsResult } from "@/ipc/types/tests";
+import {
+  buildSingleTestFileResult,
+  reconcileResultFile,
+  testKey,
+} from "@/components/preview_panel/testResultUtils";
 
 /**
  * Result-state taxonomy for a single test (see plan's "Result-State Model").
@@ -151,6 +157,110 @@ export const setTestRunStateForAppAtom = atom(
       const next = new Map(prev);
       next.set(appId, nextState);
       return next;
+    });
+  },
+);
+
+/**
+ * Transition an app into the "running" state for a test run. Shared by
+ * panel-initiated runs (TestsPanel.runTests) and agent-initiated runs (the
+ * root-level tests:run-state subscriber in useTestRunEvents), so both show the
+ * same spinners/cleared-output state. Global per-app writes only — UI side
+ * effects (e.g. popping the output drawer) stay in the panel, keyed off the
+ * resulting phase transition.
+ */
+export const applyTestRunStartedAtom = atom(
+  null,
+  (
+    get,
+    set,
+    {
+      appId,
+      testFile,
+      testLine,
+    }: { appId: number; testFile?: string; testLine?: number },
+  ) => {
+    const isSingleTest = testFile != null && testLine != null;
+    const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
+    const targetFiles = testFile ? [testFile] : specs.map((s) => s.file);
+    set(clearTestRunOutputForAppAtom, appId);
+    set(setTestRunStateForAppAtom, {
+      appId,
+      update: (prev) => ({
+        ...prev,
+        phase: "running",
+        runningFiles: targetFiles,
+        runningTests: isSingleTest ? [testKey(testFile, testLine)] : [],
+        // For a single-test run, keep the file's existing results (siblings
+        // keep their status; we merge the one test back in afterward). For a
+        // file/all run, clear the targeted files.
+        results: isSingleTest
+          ? prev.results
+          : Object.fromEntries(
+              Object.entries(prev.results).filter(
+                ([f]) => !targetFiles.includes(f),
+              ),
+            ),
+        runError: undefined,
+        isolation: undefined,
+        startedAt: Date.now(),
+      }),
+    });
+  },
+);
+
+/**
+ * Merge a finished run's results back onto an app's run state. Shared by
+ * panel- and agent-initiated runs (see applyTestRunStartedAtom).
+ */
+export const applyTestRunFinishedAtom = atom(
+  null,
+  (
+    get,
+    set,
+    {
+      appId,
+      res,
+      isSingleTest,
+    }: { appId: number; res: RunAppTestsResult; isSingleTest: boolean },
+  ) => {
+    // Playwright reports a spec's `file` relative to its own rootDir, which
+    // may not match the glob-relative paths in our spec list (e.g. missing
+    // the "tests/" prefix). Reconcile each result back onto a known spec
+    // key so rows actually pick up their status.
+    const appSpecs = get(testSpecsByAppIdAtom).get(appId) ?? [];
+    const specFiles = appSpecs.map((s) => s.file);
+    const specsByFile = new Map(appSpecs.map((s) => [s.file, s]));
+    set(setTestRunStateForAppAtom, {
+      appId,
+      update: (prev) => {
+        const nextResults = { ...prev.results };
+        for (const r of res.results) {
+          const key = reconcileResultFile(r.file, specFiles);
+          const mapped = { ...r, file: key };
+          if (isSingleTest) {
+            nextResults[key] = buildSingleTestFileResult({
+              file: key,
+              knownTests: specsByFile.get(key)?.tests ?? [],
+              previous: prev.results[key],
+              incoming: mapped,
+            });
+          } else {
+            nextResults[key] = mapped;
+          }
+        }
+        return {
+          ...prev,
+          phase: "idle",
+          runningFiles: [],
+          runningTests: [],
+          results: nextResults,
+          runError: res.infraError
+            ? { message: res.infraError.message, kind: "infra" }
+            : undefined,
+          isolation: res.isolation,
+        };
+      },
     });
   },
 );

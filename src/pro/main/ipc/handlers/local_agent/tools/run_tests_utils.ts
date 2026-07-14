@@ -2,12 +2,7 @@ import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { PLAYWRIGHT_REPORT_ERROR_FILE } from "@/ipc/utils/playwright_report";
 import { normalizeRunTestFile } from "@/ipc/handlers/tests_handlers";
 import { isFailingStatus } from "./test_failure_signature";
-import {
-  AgentContext,
-  FileEditTracker,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
+import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 
 export { isFailingStatus };
 
@@ -22,19 +17,12 @@ export function specKey(testFile: string): string {
   return normalizeRunTestFile(testFile) ?? testFile;
 }
 
-/** Total file edits so far this turn — the require-a-change guard's signal. */
-export function sumFileEdits(tracker: FileEditTracker): number {
-  let total = 0;
-  for (const counts of Object.values(tracker)) {
-    total += (counts.write_file ?? 0) + (counts.search_replace ?? 0);
-  }
-  return total;
-}
-
 export interface Classification {
   kind: "passed" | "failed" | "infra" | "no-tests";
   passed: number;
   failed: number;
+  /** Deliberately-skipped tests (`test.skip`/`test.fixme`) — never failures. */
+  skipped: number;
   /**
    * True when every non-passing test was an "inconclusive" result — a
    * selector/timeout/strict-mode/navigation error rather than a plain
@@ -46,6 +34,15 @@ export interface Classification {
   message?: string;
 }
 
+/**
+ * Skipped tests (`test.skip`/`test.fixme`) surface in the report as
+ * "inconclusive" verdicts WITHOUT an error; a real selector/timeout failure
+ * always carries one.
+ */
+function isSkippedVerdict(v: { status: TestResult["status"]; error?: string }) {
+  return v.status === "inconclusive" && !v.error;
+}
+
 export function classify(res: RunAppTestsResult): Classification {
   const runnerError = res.results.find(
     (r) => r.file === PLAYWRIGHT_REPORT_ERROR_FILE,
@@ -55,6 +52,7 @@ export function classify(res: RunAppTestsResult): Classification {
       kind: "infra",
       passed: 0,
       failed: 0,
+      skipped: 0,
       allInconclusive: false,
       message: res.infraError?.message ?? runnerError?.error,
     };
@@ -69,6 +67,7 @@ export function classify(res: RunAppTestsResult): Classification {
       kind: "no-tests",
       passed: 0,
       failed: 0,
+      skipped: 0,
       allInconclusive: false,
     };
   }
@@ -83,32 +82,37 @@ export function classify(res: RunAppTestsResult): Classification {
   const assertionFailures = verdicts.filter(
     (v) => v.status === "failed",
   ).length;
-  const inconclusive = verdicts.filter(
-    (v) => v.status === "inconclusive",
+  // A deliberately skipped test must never read as a failure — a spec that is
+  // green except for one `test.skip` would otherwise be reported FAILED every
+  // run, never record its pass, and drain the whole fix budget on a
+  // non-failure.
+  const skipped = verdicts.filter(isSkippedVerdict).length;
+  const inconclusiveFailures = verdicts.filter(
+    (v) => v.status === "inconclusive" && v.error,
   ).length;
-  const failed = assertionFailures + inconclusive;
-  // Skipped tests (`test.skip`/`test.fixme`) surface as errorless
-  // "inconclusive" verdicts. When NOTHING ran — no pass, no assertion failure,
-  // and no failing verdict carries an error — the spec has no runnable test,
-  // which the agent fixes by un-skipping, not by burning a fix attempt on
-  // locator-failure guidance.
-  if (
-    passed === 0 &&
-    failed > 0 &&
-    assertionFailures === 0 &&
-    verdicts.every((v) => !isFailingStatus(v.status) || !v.error)
-  ) {
-    return { kind: "no-tests", passed: 0, failed: 0, allInconclusive: false };
+  const failed = assertionFailures + inconclusiveFailures;
+  // When NOTHING ran — no pass, no failure, only skips — the spec has no
+  // runnable test, which the agent fixes by un-skipping, not by burning a fix
+  // attempt on locator-failure guidance.
+  if (passed === 0 && failed === 0 && skipped > 0) {
+    return {
+      kind: "no-tests",
+      passed: 0,
+      failed: 0,
+      skipped,
+      allInconclusive: false,
+    };
   }
   if (failed > 0) {
     return {
       kind: "failed",
       passed,
       failed,
+      skipped,
       allInconclusive: assertionFailures === 0,
     };
   }
-  return { kind: "passed", passed, failed: 0, allInconclusive: false };
+  return { kind: "passed", passed, failed: 0, skipped, allInconclusive: false };
 }
 
 /** First failure screenshot in the report, with its owning spec file. */
@@ -133,14 +137,14 @@ export function listFailedTests(results: TestResult[]): string[] {
   const lines: string[] = [];
   for (const r of results) {
     if (!isFailingStatus(r.status)) continue;
-    const failingTests = (r.tests ?? []).filter((t) =>
-      isFailingStatus(t.status),
+    const failingTests = (r.tests ?? []).filter(
+      (t) => isFailingStatus(t.status) && !isSkippedVerdict(t),
     );
     if (failingTests.length > 0) {
       for (const t of failingTests) {
         lines.push(`FAILED ${r.file} > "${t.title}"`);
       }
-    } else {
+    } else if (!isSkippedVerdict(r)) {
       lines.push(`FAILED ${r.file}`);
     }
   }

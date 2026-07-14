@@ -29,7 +29,6 @@ import {
   isolationLine,
   listFailedTests,
   specKey,
-  sumFileEdits,
   truncateError,
 } from "./run_tests_utils";
 
@@ -185,13 +184,13 @@ function guardAlreadyPassed(
   const flakeNote = state.flakeCheckUsed
     ? "You have already used this spec's one flakeCheck rerun."
     : "(If you suspect the pass is flaky, you may rerun once with flakeCheck: true.)";
-  const body = `${what} with the current code — you haven't modified any files since, so rerunning would produce the same result. Do NOT run it again. Stop and summarize the outcome for the user. ${flakeNote} This did NOT count as a fix attempt.`;
+  const body = `${what} with the current code — you haven't made any changes (file edits, dependencies, SQL, …) since, so rerunning would produce the same result. Do NOT run it again. Stop and summarize the outcome for the user. ${flakeNote} This did NOT count as a fix attempt.`;
   completeWarning(ctx, "Tests already passed — no rerun needed", body);
   return body;
 }
 
 /**
- * Require a file change between runs. Skipped on the first run, on the (still
+ * Require a change (any app-mutating tool call) between runs. Skipped on the first run, on the (still
  * unspent) flakeCheck rerun, after infra failures (which leave
  * fileEditCountAtLastRun unset), and when the target changed (a different
  * testName, or one test ↔ whole file) — running different tests can produce a
@@ -215,7 +214,7 @@ function guardChangedSinceLastRun(
   const flakeHint = state.flakeCheckUsed
     ? "You have already used this spec's one flakeCheck rerun."
     : "Or, if you suspect the failure is flaky, pass flakeCheck: true (allowed once).";
-  const body = `You haven't modified any files since the last run of this spec, so rerunning would produce the same result. Make a fix first. ${flakeHint} This did NOT count as a fix attempt.`;
+  const body = `You haven't made any changes (file edits, dependencies, SQL, …) since the last run of this spec, so rerunning would produce the same result. Make a fix first. ${flakeHint} This did NOT count as a fix attempt.`;
   completeWarning(ctx, "No changes since last run", body);
   return body;
 }
@@ -303,9 +302,11 @@ function reportPassed(params: {
     ...state.passedAtEditCount,
     [testName ?? WHOLE_FILE]: currentEditCount,
   };
+  const skippedNote =
+    outcome.skipped > 0 ? `, ${outcome.skipped} deliberately skipped` : "";
   const summary = testName
     ? `Targeted test "${testName}" passed — do NOT run it again unless you change files. Only that test ran (not the rest of ${testFile}).`
-    : `All tests passed (${outcome.passed} passed). This spec is verified — do NOT run it again unless you change files.`;
+    : `All runnable tests passed (${outcome.passed} passed${skippedNote}). This spec is verified — do NOT run it again unless you change files.`;
   const body = `${summary} ${isolationLine(res)}`;
   const title = testName
     ? `Test passed: ${testFile} › "${testName}"`
@@ -390,8 +391,10 @@ function reportFailure(params: {
       ? `Next: read error-context.md, decide whether the TEST or the APP is wrong, make one targeted fix, then call run_tests again. ${remaining} attempt(s) remain for this spec this turn.`
       : `You have now used all ${MAX_ATTEMPTS} attempts for this spec. Stop and summarize the situation for the user.`;
 
+  const skippedNote =
+    outcome.skipped > 0 ? `, ${outcome.skipped} deliberately skipped` : "";
   const body = [
-    `Test run FAILED (attempt ${state.attempts} of ${MAX_ATTEMPTS} for ${key}). ${outcome.passed} passed, ${outcome.failed} failed.`,
+    `Test run FAILED (attempt ${state.attempts} of ${MAX_ATTEMPTS} for ${key}). ${outcome.passed} passed, ${outcome.failed} failed${skippedNote}.`,
     noProgressNote,
     inconclusiveHint,
     listFailedTests(res.results).join("\n"),
@@ -449,7 +452,9 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     };
     ctx.testRunAttempts.set(key, state);
 
-    const currentEditCount = sumFileEdits(ctx.fileEditTracker);
+    // Mutation count, not just file edits: a fix made via delete_file,
+    // add_dependency, execute_sql, etc. must also unblock the guards below.
+    const currentEditCount = ctx.mutationCount ?? 0;
     const blocked =
       guardAttemptLimit(ctx, key, state) ??
       guardDevServerRunning(ctx) ??
@@ -483,6 +488,17 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
       return body;
     }
     const outcome = classify(res);
+    // A structured non-run (infra failure, nothing executed) is not a real
+    // flake rerun either — hand the free rerun back, matching the thrown-error
+    // path above. The infra reply promises "call run_tests again", and without
+    // the refund that retry would be refused by the guards (flake rerun spent,
+    // no files changed), dead-ending the agent.
+    if (
+      isFreeFlakeRun &&
+      (outcome.kind === "infra" || outcome.kind === "no-tests")
+    ) {
+      state.flakeCheckUsed = false;
+    }
 
     switch (outcome.kind) {
       case "no-tests":

@@ -24,18 +24,17 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   appendTestRunOutputAtom,
-  clearTestRunOutputForAppAtom,
+  applyTestRunFinishedAtom,
+  applyTestRunStartedAtom,
   currentTestRunOutputAtom,
   currentTestSpecsAtom,
   currentTestRunStateAtom,
   setTestSpecsForAppAtom,
   setTestRunStateForAppAtom,
-  testSpecsByAppIdAtom,
   type RuntimeTestResult,
   type TestStatus,
 } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
-import type { RunAppTestsResult } from "@/ipc/types/tests";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useRunApp } from "@/hooks/useRunApp";
@@ -47,13 +46,7 @@ import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showInfo } from "@/lib/toast";
-import {
-  buildSingleTestFileResult,
-  findCaseResult,
-  reconcileResultFile,
-  statusLabel,
-  testKey,
-} from "./testResultUtils";
+import { findCaseResult, statusLabel, testKey } from "./testResultUtils";
 
 /**
  * How long streamed output chunks are buffered before one batched atom write.
@@ -491,7 +484,6 @@ export function TestsPanel() {
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const appendOutput = useSetAtom(appendTestRunOutputAtom);
-  const clearOutput = useSetAtom(clearTestRunOutputForAppAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
   // long after the chunks arrive; subscribing would re-render the whole panel
   // on every flush and defeat the point of the separate output atom).
@@ -647,100 +639,24 @@ export function TestsPanel() {
     };
   }, [setRunState, flushPendingOutput, testingEnabled]);
 
-  // Specs for an arbitrary app, read lazily from the store: agent-initiated
-  // runs can start/finish for an app other than the selected one, and using
-  // the selected app's `specs` there would derive runningFiles and reconcile
-  // results against the wrong file list.
-  const specsForApp = useCallback(
-    (appId: number) => jotaiStore.get(testSpecsByAppIdAtom).get(appId) ?? [],
-    [jotaiStore],
-  );
+  // Pop the output drawer when a run starts for the app being viewed. Keyed
+  // off the global atom's phase transition — not the raw IPC event — so it
+  // fires for panel-initiated and agent-initiated runs alike (the latter are
+  // consumed globally by useTestRunEvents), and an agent run on ANOTHER app
+  // never rearranges this one's view.
+  const prevPhaseRef = useRef(runState.phase);
+  useEffect(() => {
+    if (prevPhaseRef.current === "idle" && runState.phase !== "idle") {
+      setOutputOpen(true);
+    }
+    prevPhaseRef.current = runState.phase;
+  }, [runState.phase]);
 
-  // Transition the panel into the "running" state for a run. Shared by
-  // panel-initiated runs (runTests) and agent-initiated runs (the tests:run-state
-  // subscription), so both show the same spinners/cleared-output chrome.
-  const applyRunStarted = useCallback(
-    (appId: number, file: string | undefined, line: number | undefined) => {
-      const isSingleTest = file != null && line != null;
-      const targetFiles = file ? [file] : specsForApp(appId).map((s) => s.file);
-      flushPendingOutput(appId);
-      clearOutput(appId);
-      setRunState({
-        appId,
-        update: (prev) => ({
-          ...prev,
-          phase: "running",
-          runningFiles: targetFiles,
-          runningTests: isSingleTest ? [testKey(file, line)] : [],
-          // For a single-test run, keep the file's existing results (siblings
-          // keep their status; we merge the one test back in afterward). For a
-          // file/all run, clear the targeted files.
-          results: isSingleTest
-            ? prev.results
-            : Object.fromEntries(
-                Object.entries(prev.results).filter(
-                  ([f]) => !targetFiles.includes(f),
-                ),
-              ),
-          runError: undefined,
-          isolation: undefined,
-          startedAt: Date.now(),
-        }),
-      });
-      // Only pop the output drawer for the app the user is actually looking
-      // at — an agent run on another app shouldn't rearrange this one's view.
-      if (appId === selectedAppId) {
-        setOutputOpen(true);
-      }
-    },
-    [specsForApp, selectedAppId, flushPendingOutput, clearOutput, setRunState],
-  );
-
-  // Merge a finished run's results back onto the panel. Shared by panel- and
-  // agent-initiated runs.
-  const applyRunFinished = useCallback(
-    (appId: number, res: RunAppTestsResult, isSingleTest: boolean) => {
-      // Playwright reports a spec's `file` relative to its own rootDir, which
-      // may not match the glob-relative paths in our spec list (e.g. missing
-      // the "tests/" prefix). Reconcile each result back onto a known spec
-      // key so rows actually pick up their status.
-      const appSpecs = specsForApp(appId);
-      const specFiles = appSpecs.map((s) => s.file);
-      const specsByFile = new Map(appSpecs.map((s) => [s.file, s]));
-      setRunState({
-        appId,
-        update: (prev) => {
-          const nextResults = { ...prev.results };
-          for (const r of res.results) {
-            const key = reconcileResultFile(r.file, specFiles);
-            const mapped = { ...r, file: key };
-            if (isSingleTest) {
-              nextResults[key] = buildSingleTestFileResult({
-                file: key,
-                knownTests: specsByFile.get(key)?.tests ?? [],
-                previous: prev.results[key],
-                incoming: mapped,
-              });
-            } else {
-              nextResults[key] = mapped;
-            }
-          }
-          return {
-            ...prev,
-            phase: "idle",
-            runningFiles: [],
-            runningTests: [],
-            results: nextResults,
-            runError: res.infraError
-              ? { message: res.infraError.message, kind: "infra" }
-              : undefined,
-            isolation: res.isolation,
-          };
-        },
-      });
-    },
-    [specsForApp, setRunState],
-  );
+  // Run-state transitions shared with the root-level agent-run subscriber
+  // (useTestRunEvents), so panel- and agent-initiated runs show the same
+  // spinners/cleared-output chrome.
+  const applyRunStarted = useSetAtom(applyTestRunStartedAtom);
+  const applyRunFinished = useSetAtom(applyTestRunFinishedAtom);
 
   const runTests = useCallback(
     async (file?: string, line?: number) => {
@@ -748,7 +664,8 @@ export function TestsPanel() {
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
 
-      applyRunStarted(appId, file, line);
+      flushPendingOutput(appId);
+      applyRunStarted({ appId, testFile: file, testLine: line });
 
       try {
         const res = await ipc.tests.runAppTests({
@@ -760,7 +677,7 @@ export function TestsPanel() {
           // file/all runs.
           parallel: parallel && !isSingleTest,
         });
-        applyRunFinished(appId, res, isSingleTest);
+        applyRunFinished({ appId, res, isSingleTest });
       } catch (err) {
         setRunState({
           appId,
@@ -779,6 +696,7 @@ export function TestsPanel() {
     },
     [
       selectedAppId,
+      flushPendingOutput,
       applyRunStarted,
       applyRunFinished,
       setRunState,
@@ -787,41 +705,9 @@ export function TestsPanel() {
     ],
   );
 
-  // Reflect runs the panel didn't start itself — the agent's run_tests tool
-  // streams the same lifecycle via tests:run-state. Ignore source: "panel"
-  // (runTests already writes state directly, and main serializes runs so an
-  // agent and a panel run never overlap). Registered unconditionally — not
-  // gated on the selected app's opt-in — so a run that started before the user
-  // switched apps still receives its terminal event instead of stranding that
-  // app's spinner. Events only fire for apps that enabled testing (main
-  // enforces the opt-in before running).
-  useEffect(() => {
-    const unsubscribe = ipc.events.tests.onRunState((payload) => {
-      if (payload.source === "panel") return;
-      const isSingleTest = payload.testFile != null && payload.testLine != null;
-      if (payload.state === "started") {
-        applyRunStarted(payload.appId, payload.testFile, payload.testLine);
-      } else {
-        applyRunFinished(
-          payload.appId,
-          {
-            appId: payload.appId,
-            results: payload.results ?? [],
-            infraError: payload.infraError,
-            isolation: payload.isolation,
-          },
-          isSingleTest,
-        );
-        // The agent may have written the spec it just ran in this same turn;
-        // refetch now so its result row reconciles right away instead of
-        // waiting for the end-of-turn invalidation.
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.tests.list({ appId: payload.appId }),
-        });
-      }
-    });
-    return unsubscribe;
-  }, [applyRunStarted, applyRunFinished, queryClient]);
+  // Agent-initiated runs (the tests:run-state lifecycle) are consumed by the
+  // root-level useTestRunEvents subscriber — NOT here — so the terminal
+  // "finished" event still lands when this panel is unmounted mid-run.
 
   const stop = useCallback(() => {
     if (selectedAppId == null) return;

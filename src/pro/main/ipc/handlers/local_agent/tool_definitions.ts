@@ -61,6 +61,7 @@ import {
 import {
   assertAppBlueprintApproved,
   requireToolConsentOrThrow,
+  trackAppMutation,
   trackFileEditTool,
 } from "./tools/tool_invocation";
 import type { AgentToolConsent } from "@/lib/schemas";
@@ -570,6 +571,10 @@ export function buildAgentToolSet(
           // Track file edit tool usage before execution to capture all attempts
           // (including failures) for retry/fallback telemetry
           trackFileEditTool(ctx, tool.name, processedArgs);
+          // Other app-mutating tools count toward the change signal run_tests'
+          // guards read, so a fix made via e.g. add_dependency or delete_file
+          // unblocks a rerun just like a file edit does.
+          trackAppMutation(ctx, tool.name);
 
           const result = await tool.execute(processedArgs, ctx);
 

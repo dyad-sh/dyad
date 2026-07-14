@@ -1,10 +1,15 @@
+import { createHash } from "node:crypto";
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { chats, messages, security_fix_chats } from "../../db/schema";
 import { eq, and, like, desc } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { securityContracts } from "../types/security";
 import type { SecurityFinding } from "../types/security";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { createChatForApp } from "../utils/chat_creation_utils";
+import log from "electron-log";
+
+const logger = log.scope("security_handlers");
 
 export function registerSecurityHandlers() {
   createTypedHandler(
@@ -51,13 +56,150 @@ export function registerSecurityHandlers() {
         );
       }
 
+      const existingFixChats = await db.query.security_fix_chats.findMany({
+        where: and(
+          eq(security_fix_chats.appId, appId),
+          eq(security_fix_chats.reviewChatId, message.chatId),
+        ),
+        columns: { findingKey: true, fixChatId: true },
+      });
+      const fixChatIdByFindingKey = new Map(
+        existingFixChats.map(({ findingKey, fixChatId }) => [
+          findingKey,
+          fixChatId,
+        ]),
+      );
+
       return {
-        findings,
+        findings: findings.map((finding) => ({
+          ...finding,
+          fixChatId: fixChatIdByFindingKey.get(computeFindingKey([finding])),
+        })),
         timestamp: message.createdAt.toISOString(),
         chatId: message.chatId,
       };
     },
   );
+
+  createTypedHandler(
+    securityContracts.getOrCreateSecurityFixChat,
+    async (_, { appId, reviewChatId, findings }) => {
+      const findingKey = computeFindingKey(findings);
+      const reviewChat = await db.query.chats.findFirst({
+        where: and(eq(chats.id, reviewChatId), eq(chats.appId, appId)),
+        columns: { id: true },
+      });
+      if (!reviewChat) {
+        throw new DyadError(
+          "Security review chat not found for this app",
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      const findExisting = async () =>
+        db.query.security_fix_chats.findFirst({
+          where: and(
+            eq(security_fix_chats.appId, appId),
+            eq(security_fix_chats.reviewChatId, reviewChatId),
+            eq(security_fix_chats.findingKey, findingKey),
+          ),
+        });
+
+      const existing = await findExisting();
+      if (existing) {
+        return { chatId: existing.fixChatId, created: false };
+      }
+
+      const title =
+        findings.length === 1
+          ? `Fix: ${findings[0].title}`
+          : `Fix ${findings.length} security issues`;
+
+      const chatId = await createChatForApp({ appId, title });
+      const cleanupCreatedChat = async () => {
+        try {
+          await db.delete(chats).where(eq(chats.id, chatId));
+        } catch (cleanupError) {
+          logger.error("Failed to clean up orphaned security fix chat", {
+            chatId,
+            cleanupError,
+          });
+        }
+      };
+
+      // The unique index on (appId, reviewChatId, findingKey) makes this safe
+      // against concurrent clicks: only one insert wins.
+      let inserted: Array<typeof security_fix_chats.$inferSelect>;
+      try {
+        inserted = await db
+          .insert(security_fix_chats)
+          .values({ appId, reviewChatId, findingKey, fixChatId: chatId })
+          .onConflictDoNothing()
+          .returning();
+      } catch (error) {
+        await cleanupCreatedChat();
+        if (!isSqliteForeignKeyConstraintError(error)) {
+          throw error;
+        }
+        // If the review chat was cascade-deleted between validation and
+        // insert, surface a user-friendly NotFound instead of a raw FK error.
+        const currentReviewChat = await db.query.chats.findFirst({
+          where: and(eq(chats.id, reviewChatId), eq(chats.appId, appId)),
+          columns: { id: true },
+        });
+        if (!currentReviewChat) {
+          throw new DyadError(
+            "Security review chat not found for this app",
+            DyadErrorKind.NotFound,
+          );
+        }
+        throw error;
+      }
+
+      if (inserted.length === 0) {
+        // Lost the race; discard the chat we just created and reuse the winner's.
+        await cleanupCreatedChat();
+        const winner = await findExisting();
+        if (!winner) {
+          throw new DyadError(
+            "Failed to create security fix chat",
+            DyadErrorKind.Internal,
+          );
+        }
+        return { chatId: winner.fixChatId, created: false };
+      }
+
+      return { chatId, created: true };
+    },
+  );
+}
+
+function isSqliteForeignKeyConstraintError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("FOREIGN KEY constraint failed") ||
+    message.includes("SQLITE_CONSTRAINT_FOREIGNKEY")
+  );
+}
+
+function computeFindingKey(findings: SecurityFinding[]): string {
+  const hashes = findings
+    .map((finding) =>
+      createHash("sha256")
+        .update(
+          JSON.stringify([
+            finding.title.trim(),
+            finding.level,
+            finding.description.trim(),
+          ]),
+        )
+        .digest("hex"),
+    )
+    .sort();
+  if (hashes.length === 1) {
+    return hashes[0];
+  }
+  return createHash("sha256").update(hashes.join("|")).digest("hex");
 }
 
 function parseSecurityFindings(content: string): SecurityFinding[] {

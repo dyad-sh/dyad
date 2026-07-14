@@ -1,22 +1,18 @@
 import { db } from "../../db";
-import { apps, chats, messages } from "../../db/schema";
+import { chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getDyadAppPath } from "../../paths/paths";
-import { getCurrentCommitHash } from "../utils/git_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
-import {
-  getInitialChatModeForNewChat,
-  normalizeStoredChatMode,
-} from "./chat_mode_resolution";
+import { normalizeStoredChatMode } from "./chat_mode_resolution";
 import {
   rendererMessageColumns,
   toRendererMessage,
 } from "../utils/renderer_chat_message";
+import { createChatForApp } from "../utils/chat_creation_utils";
 
 const logger = log.scope("chat_handlers");
 
@@ -27,49 +23,7 @@ export function registerChatHandlers() {
         ? { appId: input, initialChatMode: undefined }
         : input;
 
-    // Get the app's path first
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-      columns: {
-        path: true,
-      },
-    });
-
-    if (!app) {
-      throw new DyadError("App not found", DyadErrorKind.NotFound);
-    }
-
-    let initialCommitHash = null;
-    try {
-      // Get the current git revision of the currently checked-out branch
-      initialCommitHash = await getCurrentCommitHash({
-        path: getDyadAppPath(app.path),
-      });
-    } catch (error) {
-      logger.error("Error getting git revision:", error);
-      // Continue without the git revision
-    }
-
-    const chatMode = await getInitialChatModeForNewChat(initialChatMode);
-
-    // Create a new chat
-    const [chat] = await db
-      .insert(chats)
-      .values({
-        appId,
-        initialCommitHash,
-        chatMode,
-      })
-      .returning();
-    logger.info(
-      "Created chat:",
-      chat.id,
-      "for app:",
-      appId,
-      "with initial commit hash:",
-      initialCommitHash,
-    );
-    return chat.id;
+    return createChatForApp({ appId, initialChatMode });
   });
 
   createTypedHandler(chatContracts.getChat, async (_, chatId) => {

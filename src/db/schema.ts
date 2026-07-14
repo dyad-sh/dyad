@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  unique,
+} from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 import type { StoredChatMode } from "@/lib/schemas";
@@ -198,10 +204,41 @@ export const versions = sqliteTable(
   ],
 );
 
+export const security_fix_chats = sqliteTable(
+  "security_fix_chats",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    reviewChatId: integer("review_chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    // Hash of the normalized finding(s) the fix chat was created for
+    findingKey: text("finding_key").notNull(),
+    fixChatId: integer("fix_chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("security_fix_chats_unique").on(
+      table.appId,
+      table.reviewChatId,
+      table.findingKey,
+    ),
+    index("security_fix_chats_review_chat_id_idx").on(table.reviewChatId),
+    index("security_fix_chats_fix_chat_id_idx").on(table.fixChatId),
+  ],
+);
+
 // Define relations
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),
+  securityFixChats: many(security_fix_chats),
   collection: one(appCollections, {
     fields: [apps.collectionId],
     references: [appCollections.id],
@@ -217,6 +254,12 @@ export const appCollectionsRelations = relations(
 
 export const chatsRelations = relations(chats, ({ many, one }) => ({
   messages: many(messages),
+  securityFixReviewMappings: many(security_fix_chats, {
+    relationName: "securityFixReviewChat",
+  }),
+  securityFixChatMappings: many(security_fix_chats, {
+    relationName: "securityFixChat",
+  }),
   app: one(apps, {
     fields: [chats.appId],
     references: [apps.id],
@@ -229,6 +272,26 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     references: [chats.id],
   }),
 }));
+
+export const securityFixChatsRelations = relations(
+  security_fix_chats,
+  ({ one }) => ({
+    app: one(apps, {
+      fields: [security_fix_chats.appId],
+      references: [apps.id],
+    }),
+    reviewChat: one(chats, {
+      fields: [security_fix_chats.reviewChatId],
+      references: [chats.id],
+      relationName: "securityFixReviewChat",
+    }),
+    fixChat: one(chats, {
+      fields: [security_fix_chats.fixChatId],
+      references: [chats.id],
+      relationName: "securityFixChat",
+    }),
+  }),
+);
 
 export const language_model_providers = sqliteTable(
   "language_model_providers",

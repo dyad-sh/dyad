@@ -35,6 +35,10 @@ export async function buildReviewTarget(params: {
   let effectiveBaseCommit = params.baseCommit?.trim() || null;
 
   const addDiff = (file: string, value: string): void => {
+    if (/(?:^|\n)Binary files .* differ(?:\n|$)/.test(value)) {
+      exclusions.push(`${file} (binary)`);
+      return;
+    }
     const bytes = Buffer.byteLength(value);
     if (bytes > REVIEW_MAX_FILE_BYTES) {
       exclusions.push(`${file} (diff exceeds per-file review limit)`);

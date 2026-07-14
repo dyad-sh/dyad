@@ -72,6 +72,18 @@ export function isStreamReviewEligible(
   return !response.wasCancelled && response.updatedFiles === true;
 }
 
+export function shouldResumePendingReview(params: {
+  wasCancelled: boolean | undefined;
+  pausePromptQueue: boolean | undefined;
+  hasPendingContinuation: boolean;
+}): boolean {
+  return (
+    !params.wasCancelled &&
+    params.pausePromptQueue !== true &&
+    params.hasPendingContinuation
+  );
+}
+
 // Module-level set to track chatIds with active/pending streams
 // This prevents race conditions when clicking rapidly before state updates
 const pendingStreamChatIds = new Set<number>();
@@ -689,8 +701,12 @@ export function useStreamChat({
                   }),
                 });
                 const shouldResumeReviewContinuation =
-                  response.pausePromptQueue !== true &&
-                  hasPendingReviewContinuation(chatId);
+                  shouldResumePendingReview({
+                    wasCancelled: response.wasCancelled,
+                    pausePromptQueue: response.pausePromptQueue,
+                    hasPendingContinuation:
+                      hasPendingReviewContinuation(chatId),
+                  });
                 if (
                   shouldStartBackgroundAutoReview({
                     updatedFiles: response.updatedFiles === true,

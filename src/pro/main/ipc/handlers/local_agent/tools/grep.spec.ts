@@ -382,6 +382,10 @@ function deepHello() {
         path.join(testDir, ".env.local"),
         "API_KEY=sk-123",
       );
+      await fs.promises.writeFile(
+        path.join(testDir, ".envrc"),
+        "export ENVRC_KEY=sk-456",
+      );
 
       const result = await grepTool.execute(
         {
@@ -394,6 +398,17 @@ function deepHello() {
 
       expect(result).toBe("No matches found.");
       expect(result).not.toContain("sk-123");
+
+      const envrcResult = await grepTool.execute(
+        {
+          query: "ENVRC_KEY",
+          include_ignored: true,
+          include_pattern: ".env*",
+        },
+        mockContext,
+      );
+      expect(envrcResult).toBe("No matches found.");
+      expect(envrcResult).not.toContain("sk-456");
     });
 
     it("keeps .git excluded when include_ignored is true", async () => {

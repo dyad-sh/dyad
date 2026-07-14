@@ -230,6 +230,17 @@ line 5`;
       expect(result).not.toContain("secret");
     });
 
+    it("redacts dotenv values in .envrc files", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".envrc"),
+        "export API_KEY=sk-123",
+      );
+
+      await expect(
+        readFileTool.execute({ path: ".envrc" }, mockContext),
+      ).resolves.toBe("export API_KEY=[redacted]");
+    });
+
     it("sanitizes the full dotenv file before selecting a line range", async () => {
       await fs.promises.writeFile(
         path.join(testDir, ".env"),

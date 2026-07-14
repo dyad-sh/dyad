@@ -108,9 +108,13 @@ describe("sandbox capabilities", () => {
     await expect(sandboxReadFile(appPath, ".env.local")).resolves.toBe(
       'API_KEY=[redacted]\nEMPTY=\nQUOTED_EMPTY=""',
     );
-    await expect(sandboxReadFile(appPath, ".envrc")).rejects.toThrow(
-      "protected path",
+    await expect(sandboxReadFile(appPath, ".envrc")).resolves.toBe(
+      "SECRET=[redacted]",
     );
+    await expect(sandboxFileStats(appPath, ".env")).resolves.toMatchObject({
+      size: 8,
+      isText: true,
+    });
     await expect(
       sandboxReadFile(appPath, ".environment-setup.md"),
     ).resolves.toBe("docs");

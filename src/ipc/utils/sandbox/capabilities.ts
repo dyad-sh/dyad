@@ -395,9 +395,17 @@ export async function sandboxFileStats(
   appPath: string,
   guestPath: string,
 ): Promise<SandboxFileStats> {
-  const resolved = await resolveSandboxPath({ appPath, guestPath });
-  await assertResolvedPathAllowed({ appPath, ...resolved });
-  const stat = await fs.stat(resolved.filePath);
+  const resolved = await resolveSandboxPath({
+    appPath,
+    guestPath,
+    allowDotenvRead: true,
+  });
+  const { realFilePath, isDotenv } = await assertResolvedPathAllowed({
+    appPath,
+    ...resolved,
+    allowDotenvRead: true,
+  });
+  const stat = await fs.stat(realFilePath);
   if (!stat.isFile()) {
     throw new DyadError(
       `Path is not a file: ${resolved.displayPath}`,
@@ -406,7 +414,7 @@ export async function sandboxFileStats(
   }
   return {
     size: stat.size,
-    isText: isTextPath(resolved.filePath),
+    isText: isDotenv || isTextPath(realFilePath),
     mtime: stat.mtime.toISOString(),
   };
 }

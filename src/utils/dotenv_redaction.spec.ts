@@ -9,6 +9,7 @@ describe("dotenv redaction", () => {
   it("recognizes dotenv file names without matching similarly named files", () => {
     expect(isDotenvFilePath(".env")).toBe(true);
     expect(isDotenvFilePath("config/.env.local")).toBe(true);
+    expect(isDotenvFilePath(".envrc")).toBe(true);
     expect(isDotenvFilePath("attachments:.ENV.production")).toBe(true);
     expect(isDotenvFilePath(".environment-setup.md")).toBe(false);
     expect(isDotenvFilePath(".envoy/config.yaml")).toBe(false);

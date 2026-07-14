@@ -1,6 +1,6 @@
 import path from "node:path";
 
-const DOTENV_FILE_NAME = /^\.env(?:\.[^/\\]+)*$/i;
+const DOTENV_FILE_NAME = /^(?:\.env(?:\.[^/\\]+)*|\.envrc)$/i;
 
 // Keep this grammar aligned with the dotenv parser used by the app. In
 // particular, dotenv accepts dotted/hyphenated keys, colon separators, escaped

@@ -29,7 +29,7 @@ describe("attachment_conversion", () => {
     expect(Array.from(restoredBytes)).toEqual(Array.from(originalBytes));
   });
 
-  it("decodes a bare base64 payload (no data-URL prefix)", () => {
+  it("decodes a bare base64 payload (no data-URL prefix)", async () => {
     const attachment: ChatAttachment = {
       name: "a.txt",
       type: "text/plain",
@@ -39,5 +39,6 @@ describe("attachment_conversion", () => {
     const restored = chatAttachmentToFileAttachment(attachment);
     expect(restored.type).toBe("chat-context");
     expect(restored.file.name).toBe("a.txt");
+    expect(await restored.file.text()).toBe("hello");
   });
 });

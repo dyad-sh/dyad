@@ -34,7 +34,10 @@ export type PersistedQueuedMessage = z.infer<
  * boundary in the renderer.
  */
 export const PersistedQueueSchema = z.record(
-  z.string(),
+  // Canonical decimal chat IDs only: without this, "01" and "1" would both
+  // resolve to the same numeric chat ID and silently overwrite each other's
+  // persisted file. `String(chatId)` always produces the canonical form.
+  z.string().regex(/^(0|[1-9]\d*)$/),
   z.array(PersistedQueuedMessageSchema),
 );
 

@@ -127,13 +127,19 @@ export async function readPersistedQueue(): Promise<PersistedQueue> {
  * (completed / cleared / deleted) have their file removed.
  */
 export async function writePersistedQueue(data: PersistedQueue): Promise<void> {
+  // Empty entries count as absent so an explicit `{ chatId: [] }` clears the
+  // chat's file instead of leaving a stale one behind.
   const incomingChatIds = new Set(
-    Object.keys(data)
-      .map(Number)
+    Object.entries(data)
+      .filter(([, items]) => items.length > 0)
+      .map(([chatIdStr]) => Number(chatIdStr))
       .filter((id) => Number.isInteger(id)),
   );
 
-  // Remove files for chats that are no longer queued.
+  // Remove files for chats that are no longer queued. Enumerate-then-delete
+  // assumes a single writer: renderer-side writes are serialized and Dyad runs
+  // a single window. If multi-window support is ever added, this needs a write
+  // lock to avoid a list/delete race between concurrent writers.
   for (const ref of await listQueueFiles()) {
     if (!incomingChatIds.has(ref.chatId)) {
       await tryUnlink(ref.filePath);

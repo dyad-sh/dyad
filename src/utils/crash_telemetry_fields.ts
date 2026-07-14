@@ -38,8 +38,8 @@ export function crashPerformanceEventFields(
 }
 
 // Only annotation keys known to hold diagnostic, non-sensitive values are
-// exported to telemetry. Chromium can add new crash keys in future Electron
-// versions, so unknown keys are dropped and only counted.
+// exported to telemetry, each by its exact name. Unknown keys, including
+// ones future Electron versions may add, are dropped and only counted.
 const ALLOWED_ANNOTATION_KEYS = new Set([
   // Our crashReporter globalExtra parameters.
   "app_version",
@@ -64,23 +64,22 @@ const ALLOWED_ANNOTATION_KEYS = new Set([
   "service-name",
   "chrome-trace-id",
   "num-experiments",
+  // Memory and GPU state.
+  "oom-size",
+  "total-discardable-memory-allocated",
+  "gpu_webgl",
+  "gpu_compositing",
+  // V8 OOM and fatal error keys, from Electron's node_bindings.cc.
+  "electron.v8-oom.is_heap_oom",
+  "electron.v8-oom.location",
+  "electron.v8-oom.detail",
+  "electron.v8-oom.heap.used",
+  "electron.v8-oom.heap.total",
+  "electron.v8-oom.heap.limit",
+  "electron.v8-oom.heap.total_available",
+  "electron.v8-fatal.message",
+  "electron.v8-fatal.location",
 ]);
-
-// Families of diagnostic keys: memory and GPU state.
-const ALLOWED_ANNOTATION_PREFIXES = [
-  "electron.", // e.g. electron.v8-oom.is_heap_oom
-  "gpu", // gpu_webgl, gpu_compositing
-  "oom-", // oom-size
-  "total-", // total-discardable-memory-allocated
-  "v8", // v8-oom variants outside the electron. namespace
-];
-
-function isAllowedAnnotation(key: string): boolean {
-  return (
-    ALLOWED_ANNOTATION_KEYS.has(key) ||
-    ALLOWED_ANNOTATION_PREFIXES.some((prefix) => key.startsWith(prefix))
-  );
-}
 
 // Allowlisted crash annotations as flat telemetry fields, one property per
 // key, because PostHog cannot easily filter nested JSON. Keys are sanitized
@@ -91,15 +90,12 @@ export function crashAnnotationEventFields(
   const fields: Record<string, string | number> = {};
   let dropped = 0;
   for (const [key, value] of Object.entries(annotations)) {
-    if (!isAllowedAnnotation(key)) {
+    if (!ALLOWED_ANNOTATION_KEYS.has(key)) {
       dropped++;
       continue;
     }
-    const name = `crash_annotation_${key.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
-    // First writer wins on sanitized-name collisions, matching the
-    // parser's precedence of the sources.
-    if (Object.hasOwn(fields, name)) continue;
-    fields[name] = value;
+    const name = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    fields[`crash_annotation_${name}`] = value;
   }
   if (dropped > 0) {
     fields.crash_annotations_dropped = dropped;

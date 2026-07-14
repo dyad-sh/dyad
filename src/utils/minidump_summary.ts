@@ -647,14 +647,20 @@ function parseAnnotations(
   infoRva: number,
 ): Record<string, string> | undefined {
   const annotations: Record<string, string> = {};
+  // Each source is best effort on its own: a throw in one still keeps
+  // whatever the other collects.
   try {
     // Module annotations first: they hold ptype, which the summary needs
     // to attribute the crash. First writer wins in addAnnotation, so the
     // process-level dictionary cannot overwrite them.
     readModuleAnnotations(view, buf, infoRva, annotations);
+  } catch {
+    // keep whatever was collected
+  }
+  try {
     readSimpleAnnotations(view, buf, infoRva, annotations);
   } catch {
-    // best effort: keep whatever was collected
+    // keep whatever was collected
   }
   return Object.keys(annotations).length > 0 ? annotations : undefined;
 }

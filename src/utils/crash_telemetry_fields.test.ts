@@ -106,9 +106,16 @@ describe("crashAnnotationEventFields", () => {
     });
   });
 
-  it("lets the first key win when sanitized names collide", () => {
+  it("passes the V8 heap keys through by exact name", () => {
     expect(
-      crashAnnotationEventFields({ "gpu-webgl": "1", gpu_webgl: "2" }),
-    ).toEqual({ crash_annotation_gpu_webgl: "1" });
+      crashAnnotationEventFields({
+        "electron.v8-oom.heap.limit": "4144",
+        "electron.v8-fatal.message": "MarkCompactCollector: young object promotion failed",
+      }),
+    ).toEqual({
+      crash_annotation_electron_v8_oom_heap_limit: "4144",
+      crash_annotation_electron_v8_fatal_message:
+        "MarkCompactCollector: young object promotion failed",
+    });
   });
 });

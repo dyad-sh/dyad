@@ -69,6 +69,8 @@ export const spawnAgentTool: ToolDefinition<
   },
   defaultConsent: "always",
   modifiesState: true,
+  subagentOnly: true,
+  requiresMutationLease: false,
   usesEngineEndpoint: true,
   isEnabled: (ctx) =>
     Boolean(
@@ -140,6 +142,7 @@ export const listAgentsTool: ToolDefinition<{}> = {
     "List durable sub-agent threads and their current status for this chat.",
   inputSchema: z.object({}),
   defaultConsent: "always",
+  subagentOnly: true,
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
   execute: async (_args, ctx) =>
     JSON.stringify(await listSubagents(ctx.chatId)),
@@ -151,6 +154,7 @@ export const waitAgentsTool: ToolDefinition<z.infer<typeof threadIdsSchema>> = {
     "Wait until all specified sub-agents reach a terminal or idle state.",
   inputSchema: threadIdsSchema,
   defaultConsent: "always",
+  subagentOnly: true,
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
   execute: async (args, ctx) =>
     JSON.stringify(
@@ -164,6 +168,8 @@ export const cancelAgentTool: ToolDefinition<{ thread_id: string }> = {
   inputSchema: z.object({ thread_id: z.string() }),
   defaultConsent: "always",
   modifiesState: true,
+  subagentOnly: true,
+  requiresMutationLease: false,
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
   execute: async (args, ctx) => {
     await cancelSubagent(ctx.chatId, args.thread_id);
@@ -182,6 +188,8 @@ export const sendMessageTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   inputSchema: messageSchema,
   defaultConsent: "always",
   modifiesState: true,
+  subagentOnly: true,
+  requiresMutationLease: false,
   isEnabled: (ctx) => Boolean(ctx.isDyadPro && !ctx.subagentThreadId),
   execute: async (args, ctx) => {
     await sendSubagentMessage(ctx.chatId, args.thread_id, args.message);
@@ -194,6 +202,8 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
   name: "followup_task",
   description:
     "Queue a durable follow-up assignment on an existing child thread. An idle child will consume it on its next turn.",
+  subagentOnly: true,
+  requiresMutationLease: false,
   execute: async (args, ctx) => {
     const persona = await followupSubagent(
       ctx.chatId,
@@ -218,6 +228,7 @@ export const compilerExploreTool: ToolDefinition<
     "Explore the configured TypeScript project using compiler-backed symbol and dependency analysis.",
   inputSchema: rawExploreCodeSchema,
   defaultConsent: "always",
+  subagentOnly: true,
   isEnabled: (ctx) =>
     ctx.subagentPersona === "explorer" &&
     getExploreCodeAvailability(ctx).enabled,

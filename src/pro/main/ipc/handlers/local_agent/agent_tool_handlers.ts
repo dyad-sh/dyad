@@ -41,17 +41,8 @@ export function registerAgentToolHandlers() {
   // Get list of available tools with their consent settings
   handle(agentContracts.getTools, async (): Promise<AgentTool[]> => {
     const consents = getAllAgentToolConsents();
-    const subagentTools = new Set([
-      "spawn_agent",
-      "list_agents",
-      "wait_agents",
-      "cancel_agent",
-      "send_message",
-      "followup_task",
-    ]);
     return TOOL_DEFINITIONS.filter(
-      (tool) =>
-        isDyadProEnabled(readSettings()) || !subagentTools.has(tool.name),
+      (tool) => isDyadProEnabled(readSettings()) || !tool.subagentOnly,
     ).map((tool) => ({
       name: tool.name,
       description: tool.description,

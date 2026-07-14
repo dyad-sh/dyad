@@ -21,6 +21,8 @@ import type { AgentContext } from "../tools/types";
 import { buildReviewTarget, type ReviewTarget } from "./review_target";
 import {
   acquireMutationLease,
+  beginAppFinalization,
+  endAppFinalization,
   hasMutationLease,
   releaseMutationLease,
 } from "./mutation_lease";
@@ -218,8 +220,23 @@ export async function startReview(params: {
     ),
     orderBy: [desc(agentThreads.createdAt)],
   });
-  if (existing && isReusableReviewStatus(existing.status))
+  if (existing && isReusableReviewStatus(existing.status)) {
+    const existingSourceMessageId = existing.contextJson?.sourceMessageId;
+    if (existingSourceMessageId !== params.sourceMessageId) {
+      const contextJson = {
+        ...existing.contextJson,
+        sourceMessageId: params.sourceMessageId,
+      };
+      const [rebound] = await db
+        .update(agentThreads)
+        .set({ contextJson, updatedAt: new Date() })
+        .where(eq(agentThreads.id, existing.id))
+        .returning();
+      emit(params.chatId, existing.id);
+      return toSummary(rebound);
+    }
     return toSummary(existing);
+  }
   const thread = await createThread({
     chatId: params.chatId,
     persona: "reviewer",
@@ -545,6 +562,43 @@ export async function waitForSubagents(
   }
 }
 
+export async function waitForSubagentsAndBeginFinalization(
+  chatId: number,
+  threadIds: string[],
+  appId: number,
+  abortSignal?: AbortSignal,
+): Promise<SubagentThreadSummary[]> {
+  while (true) {
+    const summaries =
+      threadIds.length > 0
+        ? await waitForSubagents(chatId, threadIds, abortSignal)
+        : [];
+    if (beginAppFinalization(appId)) return summaries;
+    await waitForAbortableDelay(250, abortSignal);
+  }
+}
+
+export async function endRootFinalization(
+  appId: number,
+  chatId: number,
+): Promise<void> {
+  endAppFinalization(appId);
+  try {
+    const implementers = await db.query.agentThreads.findMany({
+      where: and(
+        eq(agentThreads.chatId, chatId),
+        eq(agentThreads.persona, "implementer"),
+      ),
+    });
+    for (const thread of implementers) {
+      void startPendingFollowup(thread.id).catch(() => {});
+    }
+  } catch {
+    // The fence is already released. Pending durable messages remain stored
+    // and will be picked up by the next follow-up attempt.
+  }
+}
+
 async function runThread(
   threadId: string,
   appId: number,
@@ -835,7 +889,7 @@ async function finishThread(
   error: string | null,
 ): Promise<void> {
   const thread = await getThread(threadId);
-  await db
+  const updated = await db
     .update(agentThreads)
     .set({
       status,
@@ -844,8 +898,14 @@ async function finishThread(
       completedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(agentThreads.id, threadId));
-  emit(thread.chatId, threadId);
+    .where(
+      and(
+        eq(agentThreads.id, threadId),
+        inArray(agentThreads.status, [...SUBAGENT_NONTERMINAL_STATUSES]),
+      ),
+    )
+    .returning({ id: agentThreads.id });
+  if (updated.length > 0) emit(thread.chatId, threadId);
 }
 
 async function appendAssistantMessage(

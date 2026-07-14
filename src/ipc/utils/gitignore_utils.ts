@@ -54,28 +54,45 @@ export async function isPathIgnoredByGitIgnore({
 
     const pathParts = relativeToBase.split(path.sep);
     let currentDir = basePath;
-    let ignored = false;
+    const matchers: Array<{ basePath: string; matcher: Ignore }> = [];
 
-    // Apply ignore files from the root toward the path. A nested .gitignore
-    // overrides earlier rules, matching Git's precedence rules. An ignored
-    // directory is never traversed, so its own rules cannot re-include files.
-    for (let index = 0; index < pathParts.length; index++) {
-      const matcher = await loadMatcher(path.join(currentDir, ".gitignore"));
-      if (matcher) {
+    const evaluatePath = (targetPath: string, targetIsDirectory: boolean) => {
+      let ignored = false;
+      for (const entry of matchers) {
         const relativePath = path
-          .relative(currentDir, filePath)
+          .relative(entry.basePath, targetPath)
           .split(path.sep)
           .join("/");
-        const result = matcher.test(
-          isDirectory ? `${relativePath}/` : relativePath,
+        const result = entry.matcher.test(
+          targetIsDirectory ? `${relativePath}/` : relativePath,
         );
         if (result.ignored) ignored = true;
         if (result.unignored) ignored = false;
       }
-      currentDir = path.join(currentDir, pathParts[index]);
+      return ignored;
+    };
+
+    // Apply ignore files from the root toward the path. Before loading rules
+    // from a child directory, verify that Git would enter that directory at
+    // all. A nested negation cannot re-include files below an ignored parent.
+    for (let index = 0; index < pathParts.length; index++) {
+      const matcher = await loadMatcher(path.join(currentDir, ".gitignore"));
+      if (matcher) {
+        matchers.push({ basePath: currentDir, matcher });
+      }
+
+      if (index === pathParts.length - 1) {
+        return evaluatePath(filePath, isDirectory);
+      }
+
+      const childDirectory = path.join(currentDir, pathParts[index]);
+      if (evaluatePath(childDirectory, true)) {
+        return true;
+      }
+      currentDir = childDirectory;
     }
 
-    return ignored;
+    return false;
   } catch (error) {
     logger.error(`Error checking if path is git ignored: ${filePath}`, error);
     return false;

@@ -287,6 +287,15 @@ describe("cloud_sandbox_provider incremental sync", () => {
     await fs.writeFile(path.join(appPath, "changed.ts"), "updated");
     await fs.writeFile(path.join(appPath, ".env.local"), "SAFE_ENV=1");
     await fs.writeFile(path.join(appPath, "ignored.ts"), "ignored");
+    await fs.mkdir(path.join(appPath, "private"));
+    await fs.writeFile(
+      path.join(appPath, "private", ".gitignore"),
+      "!credentials.ts\n",
+    );
+    await fs.writeFile(
+      path.join(appPath, "private", "credentials.ts"),
+      "secret",
+    );
     await fs.writeFile(path.join(appPath, "symlink-target.ts"), "target");
     await fs.symlink(
       path.join(appPath, "symlink-target.ts"),
@@ -294,12 +303,18 @@ describe("cloud_sandbox_provider incremental sync", () => {
     );
     await fs.writeFile(
       path.join(appPath, ".gitignore"),
-      ".env.local\nignored.ts\n",
+      ".env.local\nignored.ts\nprivate/\n",
     );
 
     await syncCloudSandboxDirtyPaths({
       appId: 1,
-      changedPaths: ["changed.ts", ".env.local", "ignored.ts", "linked.ts"],
+      changedPaths: [
+        "changed.ts",
+        ".env.local",
+        "ignored.ts",
+        "private/credentials.ts",
+        "linked.ts",
+      ],
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -307,7 +322,7 @@ describe("cloud_sandbox_provider incremental sync", () => {
     const upload = await parseMultipartUpload(init);
     expect(upload.manifest).toEqual({
       replaceAll: false,
-      deletedFiles: ["ignored.ts", "linked.ts"],
+      deletedFiles: ["ignored.ts", "linked.ts", "private/credentials.ts"],
       files: [
         {
           path: ".env.local",

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { crashPerformanceEventFields } from "@/utils/crash_telemetry_fields";
+import {
+  ALLOWED_ANNOTATION_KEYS,
+  crashAnnotationEventFields,
+  crashPerformanceEventFields,
+} from "@/utils/crash_telemetry_fields";
 
 describe("crashPerformanceEventFields", () => {
   it("flattens working sets and activity into scalar fields", () => {
@@ -58,5 +62,71 @@ describe("crashPerformanceEventFields", () => {
     expect(fields.last_known_working_set_browser_mb).toBeUndefined();
     expect(fields.last_known_active_streams).toBeUndefined();
     expect(fields.peak_active_streams).toBeUndefined();
+  });
+});
+
+describe("crashAnnotationEventFields", () => {
+  it("prefixes and snake-cases annotation keys", () => {
+    expect(
+      crashAnnotationEventFields({
+        "electron.v8-oom.is_heap_oom": "1",
+        "lsb-release": "Linux Mint 22.3",
+        ptype: "utility",
+      }),
+    ).toEqual({
+      crash_annotation_electron_v8_oom_is_heap_oom: "1",
+      crash_annotation_lsb_release: "Linux Mint 22.3",
+      crash_annotation_ptype: "utility",
+    });
+  });
+
+  it("keeps the leading underscore of Electron's internal keys", () => {
+    // _productName and friends come from Electron's crashReporter; the
+    // double underscore marks them apart from same-named plain keys.
+    expect(crashAnnotationEventFields({ _productName: "dyad" })).toEqual({
+      crash_annotation__productname: "dyad",
+    });
+  });
+
+  it("drops keys outside the allowlist and reports only their count", () => {
+    expect(
+      crashAnnotationEventFields({
+        "url-chunk": "https://example.com/secret",
+        "switch-1": "--user-data-dir=/home/user",
+        "oom-size": "4096",
+      }),
+    ).toEqual({
+      crash_annotation_oom_size: "4096",
+      crash_annotations_dropped: 2,
+    });
+  });
+
+  it("omits the dropped count when nothing is dropped", () => {
+    expect(crashAnnotationEventFields({ ptype: "browser" })).toEqual({
+      crash_annotation_ptype: "browser",
+    });
+  });
+
+  it("normalizes every allowlisted key to a distinct field name", () => {
+    // Distinct field names are what lets the flattener assign without a
+    // collision check; this guards additions to the allowlist.
+    const fields = crashAnnotationEventFields(
+      Object.fromEntries([...ALLOWED_ANNOTATION_KEYS].map((k) => [k, "v"])),
+    );
+    expect(Object.keys(fields)).toHaveLength(ALLOWED_ANNOTATION_KEYS.size);
+  });
+
+  it("passes the V8 heap keys through by exact name", () => {
+    expect(
+      crashAnnotationEventFields({
+        "electron.v8-oom.heap.limit": "4144",
+        "electron.v8-fatal.message":
+          "MarkCompactCollector: young object promotion failed",
+      }),
+    ).toEqual({
+      crash_annotation_electron_v8_oom_heap_limit: "4144",
+      crash_annotation_electron_v8_fatal_message:
+        "MarkCompactCollector: young object promotion failed",
+    });
   });
 });

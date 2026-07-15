@@ -67,7 +67,10 @@ import {
   moveDump,
   pruneDumps,
 } from "./utils/crash_dumps";
-import { crashPerformanceEventFields } from "./utils/crash_telemetry_fields";
+import {
+  crashAnnotationEventFields,
+  crashPerformanceEventFields,
+} from "./utils/crash_telemetry_fields";
 import {
   stopAllAppsSync,
   stopAppGarbageCollection,
@@ -652,6 +655,8 @@ const createWindow = () => {
           faulting_debug_file: nativeCrash.faultingDebugFile,
           faulting_debug_id: nativeCrash.faultingDebugId,
         }),
+        ...(nativeCrash?.annotations &&
+          crashAnnotationEventFields(nativeCrash.annotations)),
       });
 
       pendingForceCloseData = null;

@@ -1,7 +1,9 @@
 import type { UserSettings } from "../lib/schemas";
 import type { ActivitySnapshot } from "./memory_activity";
 
-type PerformanceSnapshot = NonNullable<UserSettings["lastKnownPerformance"]>;
+export type PerformanceSnapshot = NonNullable<
+  UserSettings["lastKnownPerformance"]
+>;
 
 // Known Electron process types get their own telemetry field; anything else
 // is summed into "other" so the set of PostHog columns stays stable.

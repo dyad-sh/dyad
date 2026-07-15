@@ -59,5 +59,19 @@
   "builtIn": "Built-in",
   "advanced": "Advanced",
   "required": "Required",
-  "optional": "Optional"
+  "optional": "Optional",
+  "billingNudge": {
+    "paymentPastDue": "Payment failed. Update your payment method to keep Dyad Pro active.",
+    "subscriptionEnding_one": "Your Dyad Pro subscription ends in {{count}} day.",
+    "subscriptionEnding_other": "Your Dyad Pro subscription ends in {{count}} days.",
+    "subscriptionEndingToday": "Your Dyad Pro subscription ends today.",
+    "creditsLost_one": "You will lose {{credits}} credit.",
+    "creditsLost_other": "You will lose {{credits}} credits.",
+    "subscriptionPaused": "Your Dyad Pro subscription is paused. Resume it to receive additional credits.",
+    "managePaymentMethods": "Update payment method",
+    "manageSubscription": "Manage subscription",
+    "resumeSubscription": "Resume subscription",
+    "openActionError": "Could not open Academy. Please try again.",
+    "dismiss": "Dismiss billing notice"
+  }
 }

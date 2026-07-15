@@ -79,6 +79,7 @@ const HARNESS_ENV_KEYS = [
   "DYAD_ENGINE_URL",
   "DYAD_GATEWAY_URL",
   "DYAD_USER_INFO_URL",
+  "DYAD_SUBSCRIPTION_STATUS_URL",
 ] as const;
 
 function snapshotHarnessEnv(): Map<string, string | undefined> {

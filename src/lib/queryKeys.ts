@@ -23,6 +23,7 @@ export const queryKeys = {
     appVersion: ["system", "appVersion"] as const,
     nodejsStatus: ["system", "nodejsStatus"] as const,
     platform: ["system", "platform"] as const,
+    subscriptionStatus: ["system", "subscriptionStatus"] as const,
     initialLoadTelemetryContext: [
       "system",
       "initialLoadTelemetryContext",

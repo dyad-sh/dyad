@@ -59,5 +59,19 @@
   "builtIn": "Integrado",
   "advanced": "Avançado",
   "required": "Obrigatório",
-  "optional": "Opcional"
+  "optional": "Opcional",
+  "billingNudge": {
+    "paymentPastDue": "Falha no pagamento. Atualize sua forma de pagamento para manter o Dyad Pro ativo.",
+    "subscriptionEnding_one": "Sua assinatura do Dyad Pro termina em {{count}} dia.",
+    "subscriptionEnding_other": "Sua assinatura do Dyad Pro termina em {{count}} dias.",
+    "subscriptionEndingToday": "Sua assinatura do Dyad Pro termina hoje.",
+    "creditsLost_one": "Você perderá {{credits}} crédito.",
+    "creditsLost_other": "Você perderá {{credits}} créditos.",
+    "subscriptionPaused": "Sua assinatura do Dyad Pro está pausada. Retome-a para receber créditos adicionais.",
+    "managePaymentMethods": "Atualizar forma de pagamento",
+    "manageSubscription": "Gerenciar assinatura",
+    "resumeSubscription": "Retomar assinatura",
+    "openActionError": "Não foi possível abrir a Academy. Tente novamente.",
+    "dismiss": "Dispensar aviso de cobrança"
+  }
 }

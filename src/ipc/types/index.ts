@@ -248,6 +248,7 @@ export type {
   SelectNodeFolderResult,
   DoesReleaseNoteExistParams,
   UserBudgetInfo,
+  SubscriptionStatus,
   TelemetryEventPayload,
 } from "./system";
 
@@ -404,7 +405,7 @@ export {
   AgentToolConsentRequestSchema,
 } from "./agent";
 
-export { UserBudgetInfoSchema } from "./system";
+export { SubscriptionStatusSchema, UserBudgetInfoSchema } from "./system";
 
 // =============================================================================
 // Aggregated IPC Client

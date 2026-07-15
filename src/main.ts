@@ -60,6 +60,7 @@ import {
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
 import {
+  browserCrashAttribution,
   parseMinidumpSummary,
   type MinidumpSummary,
 } from "./utils/minidump_summary";
@@ -200,7 +201,10 @@ const logger = log.scope("main");
 // recent ones for examination/export.
 const MAX_RETAINED_DUMPS = 5;
 let nativeCrashDumpsProcessed = false;
-let pendingNativeBrowserCrash: MinidumpSummary | null = null;
+let pendingNativeBrowserCrash: {
+  summary: MinidumpSummary;
+  attribution: "ptype" | "sentinel";
+} | null = null;
 
 // Summarize each new minidump (signal, faulting module + offset, process type —
 // no memory). A main-process crash is the app crash, so its summary is stashed
@@ -237,11 +241,24 @@ function processNativeCrashDumps(): void {
         summary.faultingModule,
         summary.faultingOffset,
       );
-      if (summary.ptype === "browser" && !pendingNativeBrowserCrash) {
-        pendingNativeBrowserCrash = summary;
-        // A browser-process dump is direct evidence of a main-process crash, so
-        // report it even if the crash sentinel wasn't written (e.g. a crash
-        // during early startup).
+      // The sentinel check in onReady runs before the window exists, so
+      // pendingCrashDetected already reflects it by the time this runs
+      // from did-finish-load.
+      const attribution = browserCrashAttribution(
+        summary,
+        pendingCrashDetected,
+      );
+      // A ptype dump outranks a sentinel-attributed one, so a stripped
+      // child dump cannot claim the crash when the labeled browser dump
+      // is also in the scan.
+      const outranks =
+        attribution === "ptype" &&
+        pendingNativeBrowserCrash?.attribution === "sentinel";
+      if (attribution && (!pendingNativeBrowserCrash || outranks)) {
+        pendingNativeBrowserCrash = { summary, attribution };
+        // A browser-process dump is direct evidence of a main-process crash,
+        // so report it even if the crash sentinel wasn't written (e.g. a
+        // crash during early startup).
         pendingCrashDetected = true;
       }
     }
@@ -682,7 +699,9 @@ const createWindow = () => {
         });
       }
 
-      const nativeCrash = pendingNativeBrowserCrash;
+      const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
+      const nativeCrashAttribution =
+        pendingNativeBrowserCrash?.attribution ?? null;
       pendingNativeBrowserCrash = null;
 
       sendTelemetryEvent("app:crash_detected", {
@@ -692,10 +711,16 @@ const createWindow = () => {
         has_performance_data: !!pendingForceCloseData,
         ...(pendingForceCloseData &&
           crashPerformanceEventFields(pendingForceCloseData)),
-        // "native" when a main-process minidump was captured for this crash,
-        // else "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
+        // "native" when a minidump was attributed to this crash, else
+        // "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
         crash_cause: nativeCrash ? "native" : "unknown",
         ...(nativeCrash && {
+          // "ptype" when the dump named the browser process itself; "sentinel"
+          // when an annotation-stripped dump was correlated with the crash
+          // sentinel instead (see browserCrashAttribution). Sentinel
+          // attribution is weaker: the dump could belong to a child process
+          // that also lost its labels.
+          crash_attribution: nativeCrashAttribution,
           crash_reason: nativeCrash.crashReason,
           exception_code: nativeCrash.exceptionCode,
           fault_address: nativeCrash.faultAddress,

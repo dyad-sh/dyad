@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseMinidumpBuffer } from "@/utils/minidump_summary";
+import {
+  browserCrashAttribution,
+  parseMinidumpBuffer,
+  type MinidumpSummary,
+} from "@/utils/minidump_summary";
 
 // Build a minimal but valid minidump containing only the streams the parser
 // reads (module list + exception, and optionally a CrashpadInfo stream with a
@@ -857,5 +861,49 @@ describe("parseMinidumpBuffer", () => {
 
   it("rejects a truncated buffer", () => {
     expect(parseMinidumpBuffer(Buffer.alloc(8), "linux", "x64")).toBeNull();
+  });
+});
+
+describe("browserCrashAttribution", () => {
+  const summary = (ptype?: string): MinidumpSummary => ({
+    exceptionCode: 0xe0000008,
+    ptype,
+  });
+
+  it("attributes a browser-ptype dump regardless of the sentinel", () => {
+    expect(browserCrashAttribution(summary("browser"), false)).toBe("ptype");
+    expect(browserCrashAttribution(summary("browser"), true)).toBe("ptype");
+  });
+
+  it("attributes a ptype-less dump only when the sentinel detected a crash", () => {
+    // Annotation-stripped dump (e.g. a Windows main-process OOM): the
+    // sentinel is the only remaining evidence of whose crash this was.
+    expect(browserCrashAttribution(summary(undefined), true)).toBe("sentinel");
+    expect(browserCrashAttribution(summary(undefined), false)).toBeNull();
+  });
+
+  it("never attributes a child-process dump, even with the sentinel", () => {
+    expect(browserCrashAttribution(summary("renderer"), true)).toBeNull();
+    expect(browserCrashAttribution(summary("gpu-process"), true)).toBeNull();
+    expect(browserCrashAttribution(summary("utility"), false)).toBeNull();
+  });
+
+  it("reads Electron's process_type key when ptype is stripped", () => {
+    const withProcessType = (value: string): MinidumpSummary => ({
+      exceptionCode: 0xe0000008,
+      annotations: { process_type: value },
+    });
+    expect(browserCrashAttribution(withProcessType("browser"), false)).toBe(
+      "ptype",
+    );
+    // A surviving child label blocks the sentinel fallback.
+    expect(
+      browserCrashAttribution(withProcessType("renderer"), true),
+    ).toBeNull();
+  });
+
+  it("treats an empty ptype as absent", () => {
+    expect(browserCrashAttribution(summary(""), true)).toBe("sentinel");
+    expect(browserCrashAttribution(summary(""), false)).toBeNull();
   });
 });

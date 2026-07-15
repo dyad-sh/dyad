@@ -230,6 +230,38 @@ export function parseMinidumpSummary(
   return parseMinidumpBuffer(buf, platform, arch);
 }
 
+// How a dump attributes to the main (browser) process, or null if it doesn't.
+//
+// "ptype": a process label in the dump names the browser process. Direct
+// evidence, regardless of how the previous session ended. Electron writes
+// two labels, Crashpad's ptype and its own process_type crash key, and
+// either counts; an empty value counts as absent.
+//
+// "sentinel": the dump has no process label, but the crash sentinel says
+// the app died without a clean quit. Crashpad's handler walks the
+// annotation list newest-first and stops at the first entry it cannot
+// read back from the crashed process, so a dump written under memory
+// exhaustion (a main-process V8 OOM) keeps only the crash-time
+// annotations and loses the earlier ones, the labels included. The
+// sentinel stands in as the evidence that the dump is the app's death
+// and not a survived child crash.
+//
+// A dump with a non-browser label is never attributed: renderer and
+// utility crashes have their own reporting paths.
+export function browserCrashAttribution(
+  summary: MinidumpSummary,
+  appCrashDetected: boolean,
+): "ptype" | "sentinel" | null {
+  const label = summary.ptype || summary.annotations?.process_type;
+  if (label === "browser") {
+    return "ptype";
+  }
+  if (!label && appCrashDetected) {
+    return "sentinel";
+  }
+  return null;
+}
+
 // Parse an in-memory minidump into a MinidumpSummary. Finds the streams it needs
 // via the directory, decodes the crash reason from the exception code, resolves
 // the faulting instruction pointer to a module + offset, and reads the process

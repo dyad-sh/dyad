@@ -87,8 +87,9 @@ git_restore_file({
 })
 ```
 
-- Restore exactly one regular file, executable, or symlink from the resolved
-  commit.
+- Restore exactly one regular or executable file from the resolved commit by
+  materializing its blob directly, without checkout filters. Reject symlinks
+  so a later deployment cannot follow an out-of-app target.
 - Set `modifiesState: true` and default consent to `always`.
 - Overwrite dirty or untracked working-tree content while leaving the index
   untouched.
@@ -155,7 +156,8 @@ git_restore_file({
 - Add restore tests proving dirty and untracked targets are overwritten,
   deleted targets are recreated, the index remains unchanged, staged changes
   remain staged, executable/binary content is preserved, and
-  traversal/directories/submodules are rejected.
+  traversal/directories/submodules/symlinks are rejected, and configured
+  fsmonitor/smudge commands are not executed.
 - Add tool-policy tests proving all five read tools appear in normal, ask, and
   plan modes while `git_restore_file` appears only in writable agent mode and
   participates in consent and blueprint gating.

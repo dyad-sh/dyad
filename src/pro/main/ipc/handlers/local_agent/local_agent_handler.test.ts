@@ -700,6 +700,38 @@ describe("handleLocalAgentStream", () => {
       });
     });
 
+    it("reports updated files when a successful workspace mutation precedes a refusal", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        ctx.workspaceMutated = true;
+        return {};
+      });
+      mockStreamResult = createFakeStream([
+        {
+          type: "finish",
+          finishReason: "content-filter",
+          rawFinishReason: "refusal",
+        },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(
+        getMessagesByChannel("chat:response:end")[0].args[0],
+      ).toMatchObject({ updatedFiles: true });
+    });
+
     it("includes warning messages in the error payload when a tool fails after warning", async () => {
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });

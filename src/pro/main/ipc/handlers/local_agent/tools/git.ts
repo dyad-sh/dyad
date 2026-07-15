@@ -65,7 +65,7 @@ const gitStatusSchema = z.object({});
 export const gitStatusTool: ToolDefinition<z.infer<typeof gitStatusSchema>> = {
   name: "git_status",
   description:
-    "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, and staged, unstaged, untracked, and conflicted paths.",
+    "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, bounded staged, unstaged, untracked, and conflicted paths, and whether paths were truncated.",
   inputSchema: gitStatusSchema,
   defaultConsent: "always",
   buildXml: () => gitXml("status", {}),
@@ -247,7 +247,7 @@ export const gitRestoreFileTool: ToolDefinition<
 > = {
   name: "git_restore_file",
   description:
-    "Restore one file from a Git revision into the current app's working tree without changing the index. Existing working-tree content is overwritten.",
+    "Restore one regular file from a Git revision into the current app's working tree without changing the index. Existing working-tree content is overwritten; symlinks are rejected.",
   inputSchema: gitRestoreFileSchema,
   defaultConsent: "always",
   modifiesState: true,
@@ -273,6 +273,9 @@ export const gitRestoreFileTool: ToolDefinition<
         filePath: operationPath,
       });
     });
+    ctx.workspaceMutated = true;
+
+    const successMessage = `Restored ${operationPath} from ${args.revision} without changing the index.`;
 
     if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
@@ -284,7 +287,12 @@ export const gitRestoreFileTool: ToolDefinition<
     });
 
     if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
-      const functionName = extractFunctionNameFromPath(operationPath);
+      let functionName: string;
+      try {
+        functionName = extractFunctionNameFromPath(operationPath);
+      } catch {
+        return successMessage;
+      }
       if (ctx.isSharedModulesChanged) {
         ctx.pendingFunctionDeploys.push(functionName);
       } else {
@@ -296,11 +304,11 @@ export const gitRestoreFileTool: ToolDefinition<
             organizationSlug: ctx.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
-          return `Restored ${operationPath}, but failed to deploy Supabase function: ${error}`;
+          return `${successMessage} Failed to deploy Supabase function: ${error}`;
         }
       }
     }
 
-    return `Restored ${operationPath} from ${args.revision} without changing the index.`;
+    return successMessage;
   },
 };

@@ -70,6 +70,8 @@ export interface AgentContext {
   dyadRequestId: string;
   /** Tracks file edit tool usage per file for telemetry */
   fileEditTracker: FileEditTracker;
+  /** True after a tool has successfully changed workspace contents this turn. */
+  workspaceMutated?: boolean;
   /**
    * If true, the user has Dyad Pro enabled.
    * Engine-dependent tools require this to access the Dyad Pro API.

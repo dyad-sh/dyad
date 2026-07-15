@@ -115,6 +115,7 @@ export interface AgentGitStatus {
   unstaged: string[];
   untracked: string[];
   conflicted: string[];
+  truncated: boolean;
 }
 
 export interface AgentGitTextResult {

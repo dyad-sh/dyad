@@ -106,6 +106,55 @@ describe("agent Git utilities", () => {
     expect(detached).toMatchObject({ branch: null, head, detached: true });
   });
 
+  it("bounds and marks status from very large working trees", async () => {
+    const directory = path.join(repo, "many");
+    await fs.promises.mkdir(directory);
+    const suffix = "x".repeat(170);
+    for (let start = 0; start < 3_000; start += 100) {
+      await Promise.all(
+        Array.from({ length: 100 }, (_, offset) =>
+          fs.promises.writeFile(
+            path.join(
+              directory,
+              `${String(start + offset).padStart(4, "0")}-${suffix}`,
+            ),
+            "x",
+          ),
+        ),
+      );
+    }
+
+    const status = await getAgentGitStatus({ path: repo });
+    const serialized = JSON.stringify(status, null, 2);
+    expect(status.truncated).toBe(true);
+    expect(status.untracked.length).toBeLessThanOrEqual(500);
+    expect(Buffer.byteLength(serialized, "utf8")).toBeLessThanOrEqual(
+      256 * 1024,
+    );
+    expect(status.untracked.every((file) => file.startsWith("many/"))).toBe(
+      true,
+    );
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "does not execute a configured fsmonitor command",
+    async () => {
+      const marker = path.join(repo, "fsmonitor-ran");
+      const hook = path.join(repo, "fsmonitor.sh");
+      await fs.promises.writeFile(
+        hook,
+        `#!/bin/sh\n: > '${marker}'\nprintf '0\\0'\n`,
+        { mode: 0o755 },
+      );
+      await fs.promises.chmod(hook, 0o755);
+      await git(repo, "config", "core.fsmonitor", hook);
+
+      await getAgentGitStatus({ path: repo });
+
+      await expect(fs.promises.access(marker)).rejects.toThrow();
+    },
+  );
+
   it("filters diffs by literal path and context", async () => {
     await fs.promises.writeFile(path.join(repo, "file.txt"), "changed\n");
     await fs.promises.writeFile(path.join(repo, "other.txt"), "base\n");
@@ -351,6 +400,38 @@ describe("agent Git utilities", () => {
     );
   });
 
+  it.runIf(process.platform !== "win32")(
+    "restores blobs without executing smudge filters",
+    async () => {
+      const initial = await git(repo, "rev-parse", "HEAD");
+      const marker = path.join(repo, "smudge-ran");
+      const filter = path.join(repo, "smudge.sh");
+      await fs.promises.writeFile(filter, `#!/bin/sh\n: > '${marker}'\ncat\n`, {
+        mode: 0o755,
+      });
+      await fs.promises.chmod(filter, 0o755);
+      await fs.promises.writeFile(
+        path.join(repo, ".gitattributes"),
+        "file.txt filter=evil\n",
+      );
+      await git(repo, "add", ".gitattributes");
+      await git(repo, "commit", "-m", "add filter attributes");
+      await git(repo, "config", "filter.evil.smudge", filter);
+      await fs.promises.writeFile(path.join(repo, "file.txt"), "dirty\n");
+
+      await restoreAgentGitFile({
+        path: repo,
+        revision: initial,
+        filePath: "file.txt",
+      });
+
+      await expect(fs.promises.access(marker)).rejects.toThrow();
+      await expect(
+        fs.promises.readFile(path.join(repo, "file.txt"), "utf8"),
+      ).resolves.toBe("base\n");
+    },
+  );
+
   it("rejects binary historical reads and traversal paths", async () => {
     await fs.promises.writeFile(
       path.join(repo, "binary.dat"),
@@ -396,7 +477,7 @@ describe("agent Git utilities", () => {
         revision: "HEAD",
         filePath: "directory",
       }),
-    ).rejects.toThrow("Only files and symbolic links can be restored");
+    ).rejects.toThrow("Only regular files can be restored");
 
     const moduleRepo = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "agent-git-module-"),
@@ -425,9 +506,26 @@ describe("agent Git utilities", () => {
           revision: "HEAD",
           filePath: "module",
         }),
-      ).rejects.toThrow("Only files and symbolic links can be restored");
+      ).rejects.toThrow("Only regular files can be restored");
     } finally {
       await fs.promises.rm(moduleRepo, { recursive: true, force: true });
     }
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects historical symbolic links",
+    async () => {
+      await fs.promises.symlink("file.txt", path.join(repo, "linked.txt"));
+      await git(repo, "add", "linked.txt");
+      await git(repo, "commit", "-m", "add symlink");
+
+      await expect(
+        restoreAgentGitFile({
+          path: repo,
+          revision: "HEAD",
+          filePath: "linked.txt",
+        }),
+      ).rejects.toThrow("Only regular files can be restored");
+    },
+  );
 });

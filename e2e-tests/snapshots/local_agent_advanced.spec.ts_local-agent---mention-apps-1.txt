@@ -242,7 +242,7 @@
       },
       {
         "name": "git_status",
-        "description": "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, and staged, unstaged, untracked, and conflicted paths.",
+        "description": "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, bounded staged, unstaged, untracked, and conflicted paths, and whether paths were truncated.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
@@ -383,7 +383,7 @@
       },
       {
         "name": "git_restore_file",
-        "description": "Restore one file from a Git revision into the current app's working tree without changing the index. Existing working-tree content is overwritten.",
+        "description": "Restore one regular file from a Git revision into the current app's working tree without changing the index. Existing working-tree content is overwritten; symlinks are rejected.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

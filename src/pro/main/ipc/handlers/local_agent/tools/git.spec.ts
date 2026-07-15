@@ -1,4 +1,40 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+
+const { mockDeploySupabaseFunction, mockRestoreAgentGitFile } = vi.hoisted(
+  () => ({
+    mockDeploySupabaseFunction: vi.fn(),
+    mockRestoreAgentGitFile: vi.fn(async () => ({
+      oid: "a".repeat(40),
+      mode: "100644",
+      path: "file.txt",
+    })),
+  }),
+);
+
+vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
+  restoreAgentGitFile: mockRestoreAgentGitFile,
+}));
+
+vi.mock(
+  "@/supabase_admin/supabase_management_client",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/supabase_admin/supabase_management_client")
+    >()),
+    deploySupabaseFunction: mockDeploySupabaseFunction,
+  }),
+);
+
+vi.mock("@/ipc/utils/cloud_sandbox_provider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/ipc/utils/cloud_sandbox_provider")
+  >()),
+  queueCloudSandboxSnapshotSync: vi.fn(),
+}));
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({ agentToolConsents: {} })),
@@ -77,6 +113,37 @@ describe("local-agent Git tool definitions", () => {
       ),
     ).rejects.toThrow("App blueprint must be created and approved");
     expect(ctx.requireConsent).not.toHaveBeenCalled();
+  });
+
+  it("records a successful mutation and skips reserved Supabase deployment", async () => {
+    const appPath = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-tool-"),
+    );
+    const ctx = {
+      appId: 1,
+      appPath,
+      supabaseProjectId: "project-id",
+      supabaseOrganizationSlug: null,
+      isSharedModulesChanged: false,
+      sharedServerModulePaths: [],
+      pendingFunctionDeploys: [],
+    } as unknown as AgentContext;
+    try {
+      const result = await gitRestoreFileTool.execute(
+        {
+          revision: "HEAD",
+          path: "supabase/functions/_private/file.ts",
+        },
+        ctx,
+      );
+
+      expect(result).toContain("Restored supabase/functions/_private/file.ts");
+      expect(ctx.workspaceMutated).toBe(true);
+      expect(mockRestoreAgentGitFile).toHaveBeenCalled();
+      expect(mockDeploySupabaseFunction).not.toHaveBeenCalled();
+    } finally {
+      await fs.promises.rm(appPath, { recursive: true, force: true });
+    }
   });
 
   it("rejects Git options and invalid historical line ranges", () => {

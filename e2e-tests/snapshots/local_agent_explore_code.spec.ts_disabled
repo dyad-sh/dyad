@@ -31,6 +31,10 @@
           {
             "type": "text",
             "text": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
+          },
+          {
+            "type": "text",
+            "text": "<dyad-git-context commit=\"[[GIT_COMMIT]]\"></dyad-git-context>"
           }
         ]
       },
@@ -254,6 +258,175 @@
               "type": "boolean"
             }
           },
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "git_status",
+        "description": "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, bounded staged, unstaged, untracked, and conflicted paths, and whether paths were truncated.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "git_diff",
+        "description": "Show a bounded unified diff for tracked files in the current app. Untracked files are reported by git_status. Sensitive dotenv and Dyad-managed patches are omitted.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "scope": {
+              "description": "unstaged compares index to working tree; staged compares HEAD to index; all compares HEAD to working tree (default: all)",
+              "type": "string",
+              "enum": [
+                "unstaged",
+                "staged",
+                "all"
+              ]
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "A literal path relative to the app root"
+            },
+            "context_lines": {
+              "description": "Unchanged context lines around each change (default: 3)",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            }
+          },
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "git_log",
+        "description": "List recent commits in the current app, newest first, with canonical hashes, author details, timestamps, and messages. Optionally start at a revision or filter to a path.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
+            },
+            "max_count": {
+              "description": "Maximum commits to return (default: 20, max: 100)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "A literal path relative to the app root"
+            }
+          },
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "git_show_commit",
+        "description": "Show metadata and a bounded first-parent patch for one commit in the current app. Optionally limit the patch to one path. Sensitive dotenv and Dyad-managed patches are omitted.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "A literal path relative to the app root"
+            }
+          },
+          "required": [
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "git_show_file",
+        "description": "Read a UTF-8 file as it existed at a Git revision in the current app. Supports bounded line ranges and redacts dotenv values. Binary files cannot be displayed.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "A literal path relative to the app root"
+            },
+            "start_line_one_indexed": {
+              "description": "One-indexed first line to return (inclusive)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "end_line_one_indexed_inclusive": {
+              "description": "One-indexed final line to return (inclusive)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "revision",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "git_restore_file",
+        "description": "Restore one regular file from a Git revision into the current app's working tree without changing the index. Existing working-tree content is overwritten; symlinks are rejected.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "A literal path relative to the app root"
+            }
+          },
+          "required": [
+            "revision",
+            "path"
+          ],
           "additionalProperties": false
         },
         "eager_input_streaming": true

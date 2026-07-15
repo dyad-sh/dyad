@@ -1737,7 +1737,10 @@ export async function handleLocalAgentStream(
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
       updatedFiles:
-        !readOnly && (!modelRefused || Object.keys(fileEditTracker).length > 0),
+        !readOnly &&
+        (!modelRefused ||
+          Object.keys(fileEditTracker).length > 0 ||
+          ctx.workspaceMutated === true),
       chatSummary: ctx.chatSummary,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,

@@ -1413,6 +1413,9 @@ export async function gitLogNative(
 const AGENT_GIT_EXEC_BUFFER_BYTES = AGENT_READ_FILE_RESULT_LIMIT_BYTES * 2;
 const AGENT_GIT_SOURCE_FILE_LIMIT_BYTES = 20 * 1024 * 1024;
 const AGENT_GIT_MAX_DIFF_PATHS = 500;
+const AGENT_GIT_MAX_STATUS_PATHS = 500;
+const AGENT_GIT_STATUS_PATH_BUDGET_BYTES =
+  AGENT_READ_FILE_RESULT_LIMIT_BYTES - 4096;
 const AGENT_GIT_TRUNCATION_NOTICE =
   "\n\n[Output truncated at 256 KiB. Narrow the request with a path, line range, or smaller commit count.]";
 
@@ -1436,6 +1439,7 @@ async function execAgentGit(
     readOnly?: boolean;
     encoding?: BufferEncoding;
     stdin?: string | Buffer;
+    allowTruncation?: boolean;
   } = {},
 ): Promise<AgentGitExecutionResult> {
   const globalArgs = [
@@ -1443,6 +1447,8 @@ async function execAgentGit(
     "--no-replace-objects",
     "--literal-pathspecs",
     ...(options.readOnly === false ? [] : ["--no-optional-locks"]),
+    "-c",
+    "core.fsmonitor=false",
     ...args,
   ];
   try {
@@ -1457,7 +1463,8 @@ async function execAgentGit(
     if (
       error instanceof ExecError &&
       error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" &&
-      error.message.includes("stdout maxBuffer")
+      error.message.includes("stdout maxBuffer") &&
+      options.allowTruncation === true
     ) {
       return {
         stdout: String(error.stdout),
@@ -1585,6 +1592,7 @@ export async function getAgentGitStatus({
   const result = await execAgentGit(
     ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
     path,
+    { allowTruncation: true },
   );
   assertAgentGitSuccess(result, "Failed to inspect Git status");
 
@@ -1595,7 +1603,11 @@ export async function getAgentGitStatus({
   const unstaged = new Set<string>();
   const untracked = new Set<string>();
   const conflicted = new Set<string>();
-  const records = result.stdout.split("\0").filter(Boolean);
+  const rawRecords = result.stdout.split("\0");
+  if (result.truncated && !result.stdout.endsWith("\0")) {
+    rawRecords.pop();
+  }
+  const records = rawRecords.filter(Boolean);
 
   for (let index = 0; index < records.length; index++) {
     const record = records[index];
@@ -1633,15 +1645,33 @@ export async function getAgentGitStatus({
     if (statusCode[1] !== ".") addStatusPath(unstaged, filePath);
   }
 
-  const sorted = (values: Set<string>) => [...values].sort();
+  let remainingPaths = AGENT_GIT_MAX_STATUS_PATHS;
+  let remainingBytes = AGENT_GIT_STATUS_PATH_BUDGET_BYTES;
+  let truncated = result.truncated;
+  const sortedAndBounded = (values: Set<string>) => {
+    const output: string[] = [];
+    const sorted = [...values].sort();
+    for (const value of sorted) {
+      const pathBytes = Buffer.byteLength(JSON.stringify(value), "utf8") + 2;
+      if (remainingPaths === 0 || pathBytes > remainingBytes) {
+        truncated = true;
+        continue;
+      }
+      output.push(value);
+      remainingPaths -= 1;
+      remainingBytes -= pathBytes;
+    }
+    return output;
+  };
   return {
     branch,
     head,
     detached,
-    staged: sorted(staged),
-    unstaged: sorted(unstaged),
-    untracked: sorted(untracked),
-    conflicted: sorted(conflicted),
+    conflicted: sortedAndBounded(conflicted),
+    staged: sortedAndBounded(staged),
+    unstaged: sortedAndBounded(unstaged),
+    untracked: sortedAndBounded(untracked),
+    truncated,
   };
 }
 
@@ -1658,7 +1688,7 @@ async function listAgentDiffEntries({
   path: string;
   comparisonArgs: string[];
   filePath?: string;
-}): Promise<DiffEntry[]> {
+}): Promise<{ entries: DiffEntry[]; truncated: boolean }> {
   const result = await execAgentGit(
     [
       "diff",
@@ -1670,20 +1700,28 @@ async function listAgentDiffEntries({
       ...(filePath ? ["--", filePath] : []),
     ],
     path,
-    { maxBuffer: 1024 * 1024 },
+    { maxBuffer: 1024 * 1024, allowTruncation: true },
   );
   assertAgentGitSuccess(result, "Failed to list changed Git paths");
-  const fields = result.stdout.split("\0").filter(Boolean);
+  const rawFields = result.stdout.split("\0");
+  if (result.truncated && !result.stdout.endsWith("\0")) {
+    rawFields.pop();
+  }
+  const fields = rawFields.filter(Boolean);
   const entries: DiffEntry[] = [];
+  let incomplete = false;
   for (let index = 0; index < fields.length; ) {
     const status = fields[index++];
-    const paths = [fields[index++] ?? ""];
-    if (status.startsWith("R") || status.startsWith("C")) {
-      paths.push(fields[index++] ?? "");
+    const pathCount = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
+    if (fields.length - index < pathCount) {
+      incomplete = true;
+      break;
     }
+    const paths = fields.slice(index, index + pathCount);
+    index += pathCount;
     entries.push({ status, paths: paths.map(normalizePath) });
   }
-  return entries;
+  return { entries, truncated: result.truncated || incomplete };
 }
 
 async function renderSafeAgentDiff({
@@ -1697,14 +1735,14 @@ async function renderSafeAgentDiff({
   filePath?: string;
   contextLines: number;
 }): Promise<AgentGitTextResult> {
-  const entries = await listAgentDiffEntries({
+  const discovery = await listAgentDiffEntries({
     path,
     comparisonArgs,
     filePath,
   });
   const sensitive: string[] = [];
   const allowed: string[] = [];
-  for (const entry of entries) {
+  for (const entry of discovery.entries) {
     if (
       entry.paths.some(isDotenvFilePath) ||
       entry.paths.some((entryPath) => !isUserVisibleGitPath(entryPath))
@@ -1719,7 +1757,8 @@ async function renderSafeAgentDiff({
     0,
     AGENT_GIT_MAX_DIFF_PATHS,
   );
-  const omittedByCount = allowed.length > uniqueAllowed.length;
+  const omittedByCount =
+    discovery.truncated || allowed.length > uniqueAllowed.length;
   let patch = "";
   let truncated = omittedByCount;
   if (uniqueAllowed.length > 0) {
@@ -1734,6 +1773,7 @@ async function renderSafeAgentDiff({
         ...uniqueAllowed,
       ],
       path,
+      { allowTruncation: true },
     );
     assertAgentGitSuccess(result, "Failed to render Git diff");
     patch = result.stdout;
@@ -1748,7 +1788,7 @@ async function renderSafeAgentDiff({
   }
   if (omittedByCount) {
     notices.push(
-      `[Diff limited to the first ${AGENT_GIT_MAX_DIFF_PATHS} changed paths. Narrow the request with path.]`,
+      `[Changed-path discovery was truncated or limited to ${AGENT_GIT_MAX_DIFF_PATHS} paths. Narrow the request with path.]`,
     );
   }
   return boundAgentGitContent(
@@ -1853,6 +1893,7 @@ export async function getAgentGitLog({
       ...(normalizedPath ? ["--", normalizedPath] : []),
     ],
     path,
+    { allowTruncation: true },
   );
   assertAgentGitSuccess(result, "Failed to read Git log");
   const commits = result.stdout
@@ -1919,6 +1960,7 @@ export async function getAgentGitCommit({
       oid,
     ],
     path,
+    { allowTruncation: true },
   );
   assertAgentGitSuccess(metadataResult, "Failed to read Git commit metadata");
   const parent = await getAgentGitParent({ path, oid });
@@ -2065,18 +2107,71 @@ export async function restoreAgentGitFile({
     oid,
     filePath: normalizedPath,
   });
-  if (entry.type !== "blob") {
+  if (
+    entry.type !== "blob" ||
+    (entry.mode !== "100644" && entry.mode !== "100755")
+  ) {
     throw new DyadError(
-      `Only files and symbolic links can be restored: ${normalizedPath}`,
+      `Only regular files can be restored: ${normalizedPath}`,
       DyadErrorKind.Validation,
     );
   }
-  const result = await execAgentGit(
-    ["restore", `--source=${oid}`, "--worktree", "--", normalizedPath],
+  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path);
+  assertAgentGitSuccess(sizeResult, "Failed to inspect historical file size");
+  const size = Number(sizeResult.stdout.trim());
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new DyadError(
+      `Git returned an invalid size for historical file: ${normalizedPath}`,
+      DyadErrorKind.External,
+    );
+  }
+  if (size > AGENT_GIT_SOURCE_FILE_LIMIT_BYTES) {
+    throw new DyadError(
+      `Historical file is too large to restore safely: ${normalizedPath} (${size} bytes; ${AGENT_GIT_SOURCE_FILE_LIMIT_BYTES} byte limit)`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const contentResult = await execAgentGit(
+    ["cat-file", "blob", entry.oid],
     path,
-    { readOnly: false },
+    {
+      encoding: "latin1",
+      maxBuffer: AGENT_GIT_SOURCE_FILE_LIMIT_BYTES + 1024,
+    },
   );
-  assertAgentGitSuccess(result, `Failed to restore ${normalizedPath}`);
+  assertAgentGitSuccess(contentResult, `Failed to read ${normalizedPath}`);
+  const destination = safeJoin(path, normalizedPath);
+  const parent = pathModule.dirname(destination);
+  await fsPromises.mkdir(parent, { recursive: true });
+  const temporaryDirectory = await fsPromises.mkdtemp(
+    pathModule.join(parent, ".dyad-git-restore-"),
+  );
+  const temporaryFile = pathModule.join(temporaryDirectory, "file");
+  try {
+    await fsPromises.writeFile(
+      temporaryFile,
+      Buffer.from(contentResult.stdout, "latin1"),
+      { mode: entry.mode === "100755" ? 0o755 : 0o644 },
+    );
+    await fsPromises.chmod(
+      temporaryFile,
+      entry.mode === "100755" ? 0o755 : 0o644,
+    );
+    const existing = await fsPromises.lstat(destination).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    });
+    if (existing?.isDirectory()) {
+      throw new DyadError(
+        `Cannot restore a file over a directory: ${normalizedPath}`,
+        DyadErrorKind.Validation,
+      );
+    }
+    await fsPromises.rm(destination, { force: true });
+    await fsPromises.rename(temporaryFile, destination);
+  } finally {
+    await fsPromises.rm(temporaryDirectory, { recursive: true, force: true });
+  }
   return { oid, mode: entry.mode, path: normalizedPath };
 }
 

@@ -13,8 +13,9 @@ describe("classifyOom", () => {
   });
 
   it("declares native_oom for the Windows OOM exception code", () => {
+    // Matched on the raw code, so no crashReason is needed.
     const result = classifyOom({
-      nativeCrash: { exceptionCode: 0xe0000008, crashReason: "OUT_OF_MEMORY" },
+      nativeCrash: { exceptionCode: 0xe0000008 },
       performance: null,
     });
     expect(result.verdict).toBe("native_oom");
@@ -28,6 +29,24 @@ describe("classifyOom", () => {
     });
     expect(result.verdict).toBe("native_oom");
     expect(result.signals).toContain("oom_allocation_size");
+  });
+
+  it("treats a zero-byte allocation failure as an OOM", () => {
+    const result = classifyOom({
+      nativeCrash: { ...baseDump, oomAllocationSizeBytes: 0 },
+      performance: null,
+    });
+    expect(result.verdict).toBe("native_oom");
+    expect(result.signals).toContain("oom_allocation_size");
+  });
+
+  it("declares native_oom for the oom-size crash key", () => {
+    const result = classifyOom({
+      nativeCrash: { ...baseDump, annotations: { "oom-size": "4096" } },
+      performance: null,
+    });
+    expect(result.verdict).toBe("native_oom");
+    expect(result.signals).toEqual(["oom_size_annotation"]);
   });
 
   it("declares native_oom for V8's heap OOM crash key", () => {
@@ -73,9 +92,60 @@ describe("classifyOom", () => {
         systemMemoryUsageMB: 15600,
         systemMemoryTotalMB: 16000,
       },
+      platform: "win32",
     });
     expect(result.verdict).toBe("suspected_oom");
     expect(result.signals).toEqual(["system_memory_near_limit"]);
+  });
+
+  it("ignores system memory on macOS, where free memory reads low", () => {
+    const result = classifyOom({
+      nativeCrash: null,
+      performance: {
+        timestamp: 0,
+        memoryUsageMB: 100,
+        systemMemoryUsageMB: 15600,
+        systemMemoryTotalMB: 16000,
+      },
+      platform: "darwin",
+    });
+    expect(result).toEqual({ verdict: "none", signals: [] });
+  });
+
+  it("fires the system memory signal at the ratio and not below it", () => {
+    const perf = (usedMB: number) => ({
+      timestamp: 0,
+      memoryUsageMB: 100,
+      systemMemoryUsageMB: usedMB,
+      systemMemoryTotalMB: 1000,
+    });
+    const at = classifyOom({
+      nativeCrash: null,
+      performance: perf(950),
+      platform: "win32",
+    });
+    expect(at.verdict).toBe("suspected_oom");
+
+    const below = classifyOom({
+      nativeCrash: null,
+      performance: perf(949),
+      platform: "win32",
+    });
+    expect(below).toEqual({ verdict: "none", signals: [] });
+  });
+
+  it("ignores system memory when the recorded total is zero", () => {
+    const result = classifyOom({
+      nativeCrash: null,
+      performance: {
+        timestamp: 0,
+        memoryUsageMB: 100,
+        systemMemoryUsageMB: 100,
+        systemMemoryTotalMB: 0,
+      },
+      platform: "win32",
+    });
+    expect(result).toEqual({ verdict: "none", signals: [] });
   });
 
   it("keeps pressure signals without changing the verdict when a non-OOM dump exists", () => {

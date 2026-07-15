@@ -1,7 +1,5 @@
-import type { UserSettings } from "../lib/schemas";
+import type { PerformanceSnapshot } from "./crash_telemetry_fields";
 import type { MinidumpSummary } from "./minidump_summary";
-
-type PerformanceSnapshot = NonNullable<UserSettings["lastKnownPerformance"]>;
 
 // Whether a crash was memory exhaustion, decided from what the crash
 // left behind. The verdict is the decision; the signals are the
@@ -21,10 +19,23 @@ type PerformanceSnapshot = NonNullable<UserSettings["lastKnownPerformance"]>;
 // explained the crash.
 export type OomVerdict = "native_oom" | "suspected_oom" | "none";
 
+export type OomSignal =
+  | "oom_exception_code"
+  | "oom_allocation_size"
+  | "oom_size_annotation"
+  | "v8_heap_oom_annotation"
+  | "v8_oom_annotation"
+  | "peak_heap_near_limit"
+  | "system_memory_near_limit";
+
 export interface OomClassification {
   verdict: OomVerdict;
-  signals: string[];
+  signals: OomSignal[];
 }
+
+// Chromium's kOomExceptionCode, raised for Windows OOM crashes. Matched
+// on the raw code so the verdict does not depend on the name table.
+const CHROMIUM_OOM_EXCEPTION_CODE = 0xe0000008;
 
 // A session peak this close to the V8 heap limit means allocations were
 // at risk of failing. Conservative enough to survive sampling jitter in
@@ -36,17 +47,25 @@ const SYSTEM_MEMORY_NEAR_LIMIT_RATIO = 0.95;
 export function classifyOom(input: {
   nativeCrash: MinidumpSummary | null;
   performance: PerformanceSnapshot | null;
+  platform?: NodeJS.Platform;
 }): OomClassification {
-  const { nativeCrash, performance } = input;
-  const signals: string[] = [];
+  const { nativeCrash, performance, platform = process.platform } = input;
+  const signals: OomSignal[] = [];
 
   if (nativeCrash) {
-    if (nativeCrash.crashReason === "OUT_OF_MEMORY") {
+    if (nativeCrash.exceptionCode === CHROMIUM_OOM_EXCEPTION_CODE) {
       signals.push("oom_exception_code");
     }
     if (nativeCrash.oomAllocationSizeBytes !== undefined) {
       signals.push("oom_allocation_size");
     }
+    // Chromium's allocation size crash key, for dumps that declare the
+    // OOM through annotations instead of exception parameters.
+    if (nativeCrash.annotations?.["oom-size"]) {
+      signals.push("oom_size_annotation");
+    }
+    // The specific heap OOM key subsumes the general v8-oom family, so
+    // the two signals never appear together.
     if (nativeCrash.annotations?.["electron.v8-oom.is_heap_oom"] === "1") {
       signals.push("v8_heap_oom_annotation");
     } else if (hasV8OomAnnotation(nativeCrash.annotations)) {
@@ -59,9 +78,15 @@ export function classifyOom(input: {
     if ((performance.peakHeapPct ?? 0) >= HEAP_NEAR_LIMIT_PCT) {
       signals.push("peak_heap_near_limit");
     }
+    // Skipped on macOS, where os.freemem() excludes reclaimable file
+    // cache and a healthy system can look nearly full.
     const totalMB = performance.systemMemoryTotalMB ?? 0;
     const usedMB = performance.systemMemoryUsageMB ?? 0;
-    if (totalMB > 0 && usedMB / totalMB >= SYSTEM_MEMORY_NEAR_LIMIT_RATIO) {
+    if (
+      platform !== "darwin" &&
+      totalMB > 0 &&
+      usedMB / totalMB >= SYSTEM_MEMORY_NEAR_LIMIT_RATIO
+    ) {
       signals.push("system_memory_near_limit");
     }
   }

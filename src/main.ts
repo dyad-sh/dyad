@@ -73,6 +73,7 @@ import {
   crashAnnotationEventFields,
   crashPerformanceEventFields,
 } from "./utils/crash_telemetry_fields";
+import { classifyOom } from "./utils/oom_classifier";
 import {
   stopAllAppsSync,
   stopAppGarbageCollection,
@@ -704,6 +705,11 @@ const createWindow = () => {
         pendingNativeBrowserCrash?.attribution ?? null;
       pendingNativeBrowserCrash = null;
 
+      const oom = classifyOom({
+        nativeCrash,
+        performance: pendingForceCloseData,
+      });
+
       sendTelemetryEvent("app:crash_detected", {
         // Mark as error so renderer PostHog before_send sampling does not
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
@@ -735,6 +741,9 @@ const createWindow = () => {
         }),
         ...(nativeCrash?.annotations &&
           crashAnnotationEventFields(nativeCrash.annotations)),
+        // The OOM verdict and the signals behind it (see classifyOom).
+        oom_verdict: oom.verdict,
+        ...(oom.signals.length > 0 && { oom_signals: oom.signals }),
       });
 
       pendingForceCloseData = null;

@@ -117,19 +117,36 @@ export function usePluginConnect() {
     await runAutoConnect(serverId);
   };
 
+  // Both retry handlers claim the connecting slot before the settings
+  // update. The update awaits query invalidation, which can take
+  // seconds, and a second click in that window would start a duplicate
+  // OAuth flow or probe. `isUpdatingServer` can't guard this: it comes
+  // from the caller's own useMcp() mutation instance, not the one used
+  // here.
   const onEnableOAuthAndRetry = async (serverId: number) => {
-    await updateServer({ id: serverId, oauthEnabled: true });
-    setConnectFeedback(null);
-    // Just enabled, so no saved port yet -- use the probed one.
-    await runAutoConnect(serverId, {
-      callbackPort: typeof callbackPort === "number" ? callbackPort : undefined,
-    });
+    setConnectingServerId(serverId);
+    try {
+      await updateServer({ id: serverId, oauthEnabled: true });
+      setConnectFeedback(null);
+      // Just enabled, so no saved port yet -- use the probed one.
+      await runAutoConnect(serverId, {
+        callbackPort:
+          typeof callbackPort === "number" ? callbackPort : undefined,
+      });
+    } finally {
+      setConnectingServerId(null);
+    }
   };
 
   const onDisableOAuthAndRetry = async (serverId: number) => {
-    await updateServer({ id: serverId, oauthEnabled: false });
-    setConnectFeedback(null);
-    await runProbe(serverId);
+    setConnectingServerId(serverId);
+    try {
+      await updateServer({ id: serverId, oauthEnabled: false });
+      setConnectFeedback(null);
+      await runProbe(serverId);
+    } finally {
+      setConnectingServerId(null);
+    }
   };
 
   const onDisconnect = async (serverId: number) => {

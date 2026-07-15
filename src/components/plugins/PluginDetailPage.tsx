@@ -170,7 +170,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                     <Button
                       size="sm"
                       onClick={() => onDisableOAuthAndRetry(s.id)}
-                      disabled={isUpdatingServer}
+                      disabled={isUpdatingServer || connectingServerId !== null}
                     >
                       Disable OAuth & retry
                     </Button>

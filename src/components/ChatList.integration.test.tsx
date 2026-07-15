@@ -44,10 +44,17 @@ describe("ChatList favorites (integration)", () => {
     expect(screen.queryByTestId("chat-group-favorites")).toBeNull();
 
     const listContainer = await screen.findByTestId("chat-list-container");
+    expect(listContainer.className).toContain("overflow-x-hidden");
     listContainer.scrollTop = 120;
     const olderFavoriteButton = await screen.findByRole("button", {
       name: "Add Older chat to favorites",
     });
+    expect(olderFavoriteButton.className).not.toContain("group-hover/chat-row");
+    expect(
+      screen.getByRole("button", {
+        name: "Chat actions for Older chat",
+      }).className,
+    ).toContain("group-hover/chat-row:opacity-100");
     olderFavoriteButton.focus();
     const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
     const setChatFavorite = ipc.chat.setChatFavorite.bind(ipc.chat);

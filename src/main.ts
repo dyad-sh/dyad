@@ -742,8 +742,9 @@ const createWindow = () => {
         ...(nativeCrash?.annotations &&
           crashAnnotationEventFields(nativeCrash.annotations)),
         // The OOM verdict and the signals behind it (see classifyOom).
+        // Comma-joined: crash event properties stay scalar for PostHog.
         oom_verdict: oom.verdict,
-        ...(oom.signals.length > 0 && { oom_signals: oom.signals }),
+        ...(oom.signals.length > 0 && { oom_signals: oom.signals.join(",") }),
       });
 
       pendingForceCloseData = null;

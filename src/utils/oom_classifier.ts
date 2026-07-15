@@ -25,7 +25,7 @@ export type OomSignal =
   | "oom_size_annotation"
   | "v8_heap_oom_annotation"
   | "v8_oom_annotation"
-  | "peak_heap_near_limit"
+  | "heap_near_limit"
   | "system_memory_near_limit";
 
 export interface OomClassification {
@@ -37,9 +37,8 @@ export interface OomClassification {
 // on the raw code so the verdict does not depend on the name table.
 const CHROMIUM_OOM_EXCEPTION_CODE = 0xe0000008;
 
-// A session peak this close to the V8 heap limit means allocations were
-// at risk of failing. Conservative enough to survive sampling jitter in
-// the 30 second heartbeat.
+// A heap this close to its limit at the last heartbeat means
+// allocations were at risk of failing.
 const HEAP_NEAR_LIMIT_PCT = 95;
 // Same idea for whole-system memory at the last heartbeat.
 const SYSTEM_MEMORY_NEAR_LIMIT_RATIO = 0.95;
@@ -75,15 +74,24 @@ export function classifyOom(input: {
   const dumpSignals = signals.length;
 
   if (performance) {
-    if ((performance.peakHeapPct ?? 0) >= HEAP_NEAR_LIMIT_PCT) {
-      signals.push("peak_heap_near_limit");
+    // The heap ratio at the last heartbeat, not the session peak: a
+    // peak can be a long-recovered spike from earlier in the session,
+    // while the last heartbeat is at most one interval before death.
+    const heapUsedMB = performance.heapUsedMB ?? 0;
+    const heapLimitMB = performance.heapLimitMB ?? 0;
+    if (
+      heapLimitMB > 0 &&
+      (heapUsedMB / heapLimitMB) * 100 >= HEAP_NEAR_LIMIT_PCT
+    ) {
+      signals.push("heap_near_limit");
     }
-    // Skipped on macOS, where os.freemem() excludes reclaimable file
-    // cache and a healthy system can look nearly full.
+    // Windows only: os.freemem() there reports available memory, cache
+    // included. On Linux and macOS it reports truly free pages, so a
+    // healthy system with a warm file cache can look nearly full.
     const totalMB = performance.systemMemoryTotalMB ?? 0;
     const usedMB = performance.systemMemoryUsageMB ?? 0;
     if (
-      platform !== "darwin" &&
+      platform === "win32" &&
       totalMB > 0 &&
       usedMB / totalMB >= SYSTEM_MEMORY_NEAR_LIMIT_RATIO
     ) {

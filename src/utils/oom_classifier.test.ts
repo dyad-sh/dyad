@@ -74,13 +74,42 @@ describe("classifyOom", () => {
     expect(result.signals).toEqual(["v8_oom_annotation"]);
   });
 
-  it("suspects OOM from a peak heap near the limit when no dump exists", () => {
+  it("suspects OOM from a heap near its limit at the last heartbeat", () => {
     const result = classifyOom({
       nativeCrash: null,
-      performance: { timestamp: 0, memoryUsageMB: 100, peakHeapPct: 97 },
+      performance: {
+        timestamp: 0,
+        memoryUsageMB: 100,
+        heapUsedMB: 4000,
+        heapLimitMB: 4144,
+      },
     });
     expect(result.verdict).toBe("suspected_oom");
-    expect(result.signals).toEqual(["peak_heap_near_limit"]);
+    expect(result.signals).toEqual(["heap_near_limit"]);
+  });
+
+  it("ignores a session heap peak that had recovered by the last heartbeat", () => {
+    // The peak can be a long-recovered spike from earlier in the
+    // session, so it never counts on its own.
+    const result = classifyOom({
+      nativeCrash: null,
+      performance: {
+        timestamp: 0,
+        memoryUsageMB: 100,
+        heapUsedMB: 500,
+        heapLimitMB: 4144,
+        peakHeapPct: 99,
+      },
+    });
+    expect(result).toEqual({ verdict: "none", signals: [] });
+  });
+
+  it("ignores the heap when no limit was recorded", () => {
+    const result = classifyOom({
+      nativeCrash: null,
+      performance: { timestamp: 0, memoryUsageMB: 100, heapUsedMB: 4000 },
+    });
+    expect(result).toEqual({ verdict: "none", signals: [] });
   });
 
   it("suspects OOM from exhausted system memory when no dump exists", () => {
@@ -98,18 +127,21 @@ describe("classifyOom", () => {
     expect(result.signals).toEqual(["system_memory_near_limit"]);
   });
 
-  it("ignores system memory on macOS, where free memory reads low", () => {
-    const result = classifyOom({
-      nativeCrash: null,
-      performance: {
-        timestamp: 0,
-        memoryUsageMB: 100,
-        systemMemoryUsageMB: 15600,
-        systemMemoryTotalMB: 16000,
-      },
-      platform: "darwin",
-    });
-    expect(result).toEqual({ verdict: "none", signals: [] });
+  it("ignores system memory off Windows, where free memory reads low", () => {
+    const exhausted = {
+      timestamp: 0,
+      memoryUsageMB: 100,
+      systemMemoryUsageMB: 15600,
+      systemMemoryTotalMB: 16000,
+    };
+    for (const platform of ["darwin", "linux"] as const) {
+      const result = classifyOom({
+        nativeCrash: null,
+        performance: exhausted,
+        platform,
+      });
+      expect(result).toEqual({ verdict: "none", signals: [] });
+    }
   });
 
   it("fires the system memory signal at the ratio and not below it", () => {
@@ -151,35 +183,42 @@ describe("classifyOom", () => {
   it("keeps pressure signals without changing the verdict when a non-OOM dump exists", () => {
     const result = classifyOom({
       nativeCrash: { ...baseDump, crashReason: "ACCESS_VIOLATION" },
-      performance: { timestamp: 0, memoryUsageMB: 100, peakHeapPct: 97 },
+      performance: {
+        timestamp: 0,
+        memoryUsageMB: 100,
+        heapUsedMB: 4000,
+        heapLimitMB: 4144,
+      },
     });
     expect(result.verdict).toBe("none");
-    expect(result.signals).toEqual(["peak_heap_near_limit"]);
+    expect(result.signals).toEqual(["heap_near_limit"]);
   });
 
   it("fires the heap signal at the threshold and not below it", () => {
-    const at = classifyOom({
-      nativeCrash: null,
-      performance: { timestamp: 0, memoryUsageMB: 100, peakHeapPct: 95 },
+    const perf = (heapUsedMB: number) => ({
+      timestamp: 0,
+      memoryUsageMB: 100,
+      heapUsedMB,
+      heapLimitMB: 1000,
     });
+    const at = classifyOom({ nativeCrash: null, performance: perf(950) });
     expect(at.verdict).toBe("suspected_oom");
 
-    const below = classifyOom({
-      nativeCrash: null,
-      performance: { timestamp: 0, memoryUsageMB: 100, peakHeapPct: 94.9 },
-    });
+    const below = classifyOom({ nativeCrash: null, performance: perf(949) });
     expect(below).toEqual({ verdict: "none", signals: [] });
   });
 
   it("combines dump and pressure signals under a native_oom verdict", () => {
     const result = classifyOom({
-      nativeCrash: { exceptionCode: 0xe0000008, crashReason: "OUT_OF_MEMORY" },
-      performance: { timestamp: 0, memoryUsageMB: 100, peakHeapPct: 99 },
+      nativeCrash: { exceptionCode: 0xe0000008 },
+      performance: {
+        timestamp: 0,
+        memoryUsageMB: 100,
+        heapUsedMB: 4000,
+        heapLimitMB: 4144,
+      },
     });
     expect(result.verdict).toBe("native_oom");
-    expect(result.signals).toEqual([
-      "oom_exception_code",
-      "peak_heap_near_limit",
-    ]);
+    expect(result.signals).toEqual(["oom_exception_code", "heap_near_limit"]);
   });
 });

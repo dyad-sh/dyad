@@ -38,6 +38,7 @@ export async function resolveChatSummary(
       title: chat.title,
       createdAt: chat.createdAt,
       chatMode: chat.chatMode,
+      isFavorite: chat.isFavorite,
     };
   } catch (error) {
     console.warn(

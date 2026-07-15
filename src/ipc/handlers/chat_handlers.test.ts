@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { apps, chats, messages } from "@/db/schema";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -60,5 +61,79 @@ describe("registerChatHandlers", () => {
     expect(JSON.stringify(result)).not.toContain(
       "MAIN_PROCESS_ONLY_SECRET_PAYLOAD",
     );
+  });
+
+  it("sets a chat favorite explicitly and exposes it in chat summaries", async () => {
+    const appResult = harness.db
+      .insert(apps)
+      .values({ name: "favorites-app", path: "favorites-app" })
+      .run();
+    const appId = Number(appResult.lastInsertRowid);
+    const olderChatResult = harness.db
+      .insert(chats)
+      .values({
+        appId,
+        title: "Older chat",
+        createdAt: new Date("2025-01-01T00:00:00Z"),
+      })
+      .run();
+    const olderChatId = Number(olderChatResult.lastInsertRowid);
+    const newerChatResult = harness.db
+      .insert(chats)
+      .values({
+        appId,
+        title: "Newer chat",
+        createdAt: new Date("2025-01-02T00:00:00Z"),
+      })
+      .run();
+    const newerChatId = Number(newerChatResult.lastInsertRowid);
+
+    const initialSummaries = await harness.invokeHandler<
+      Array<{ id: number; isFavorite: boolean }>
+    >("get-chats", appId);
+    expect(initialSummaries).toEqual([
+      expect.objectContaining({ id: newerChatId, isFavorite: false }),
+      expect.objectContaining({ id: olderChatId, isFavorite: false }),
+    ]);
+
+    await expect(
+      harness.invokeHandler("set-chat-favorite", {
+        chatId: olderChatId,
+        isFavorite: true,
+      }),
+    ).resolves.toEqual({ isFavorite: true });
+
+    const favoritedSummaries = await harness.invokeHandler<
+      Array<{ id: number; isFavorite: boolean }>
+    >("get-chats", appId);
+    expect(favoritedSummaries).toEqual([
+      expect.objectContaining({ id: newerChatId, isFavorite: false }),
+      expect.objectContaining({ id: olderChatId, isFavorite: true }),
+    ]);
+
+    await expect(
+      harness.invokeHandler("get-chat-metadata", olderChatId),
+    ).resolves.toEqual(
+      expect.objectContaining({ id: olderChatId, isFavorite: true }),
+    );
+
+    await expect(
+      harness.invokeHandler("set-chat-favorite", {
+        chatId: olderChatId,
+        isFavorite: false,
+      }),
+    ).resolves.toEqual({ isFavorite: false });
+  });
+
+  it("throws NotFound when favoriting a missing chat", async () => {
+    await expect(
+      harness.invokeHandler("set-chat-favorite", {
+        chatId: 123,
+        isFavorite: true,
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.NotFound,
+      message: "Chat not found",
+    });
   });
 });

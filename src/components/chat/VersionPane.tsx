@@ -607,15 +607,15 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     if (appId && !isPreviewCheckoutInProgressRef.current) {
       const previewRequestId = previewRequestIdRef.current + 1;
       previewRequestIdRef.current = previewRequestId;
+      const isCurrentPreviewRequest = () =>
+        previewRequestIdRef.current === previewRequestId &&
+        isVisibleRef.current &&
+        currentAppIdRef.current === appId;
       isResolvingPreviewBranchRef.current = true;
       setIsResolvingPreviewBranch(true);
       setSelectedVersionId(version.oid);
       const latestBranchResult = await refetchBranchInfo();
-      if (
-        previewRequestIdRef.current !== previewRequestId ||
-        !isVisibleRef.current ||
-        currentAppIdRef.current !== appId
-      ) {
+      if (!isCurrentPreviewRequest()) {
         return;
       }
       isResolvingPreviewBranchRef.current = false;
@@ -638,7 +638,9 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         checkedOutVersionIdRef.current = version.oid;
       } catch (error) {
         console.error("Could not checkout version, unselecting version", error);
-        setSelectedVersionId(checkedOutVersionIdRef.current);
+        if (isCurrentPreviewRequest()) {
+          setSelectedVersionId(checkedOutVersionIdRef.current);
+        }
       } finally {
         isPreviewCheckoutInProgressRef.current = false;
       }

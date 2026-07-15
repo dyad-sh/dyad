@@ -550,6 +550,71 @@ describe("VersionPane", () => {
     });
   });
 
+  it("ignores a preview checkout failure after version history closes", async () => {
+    let rejectSecondCheckout!: (error: Error) => void;
+    let resolveReturnCheckout!: () => void;
+    checkoutVersionMock
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(
+        new Promise((_, reject) => {
+          rejectSecondCheckout = reject;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveReturnCheckout = resolve;
+        }),
+      );
+    refetchBranchInfoMock
+      .mockResolvedValueOnce({ data: { branch: "feature/test" } })
+      .mockResolvedValueOnce({ data: { branch: "<no-branch>" } });
+    const firstVersion = makeVersion(1);
+    const secondVersion = makeVersion(2);
+    versionsMock.push(firstVersion, secondVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const store = createStore();
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />,
+      { wrapper: makeWrapper(store) },
+    );
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    await waitFor(() => {
+      expect(refreshAppMock).toHaveBeenCalledOnce();
+    });
+    fireEvent.click(screen.getByTestId("version-row-1"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: secondVersion.oid,
+      });
+    });
+
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
+    );
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: "feature/test",
+      });
+    });
+    expect(store.get(selectedVersionIdAtom)).toBeNull();
+
+    await act(async () => {
+      rejectSecondCheckout(new Error("checkout failed"));
+    });
+    expect(store.get(selectedVersionIdAtom)).toBeNull();
+
+    await act(async () => {
+      resolveReturnCheckout();
+    });
+    consoleErrorSpy.mockRestore();
+  });
+
   it("offers to reopen version history when the return branch is unavailable", async () => {
     const version = makeVersion(1);
     versionsMock.push(version);

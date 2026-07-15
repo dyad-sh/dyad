@@ -887,4 +887,23 @@ describe("browserCrashAttribution", () => {
     expect(browserCrashAttribution(summary("gpu-process"), true)).toBeNull();
     expect(browserCrashAttribution(summary("utility"), false)).toBeNull();
   });
+
+  it("reads Electron's process_type key when ptype is stripped", () => {
+    const withProcessType = (value: string): MinidumpSummary => ({
+      exceptionCode: 0xe0000008,
+      annotations: { process_type: value },
+    });
+    expect(browserCrashAttribution(withProcessType("browser"), false)).toBe(
+      "ptype",
+    );
+    // A surviving child label blocks the sentinel fallback.
+    expect(
+      browserCrashAttribution(withProcessType("renderer"), true),
+    ).toBeNull();
+  });
+
+  it("treats an empty ptype as absent", () => {
+    expect(browserCrashAttribution(summary(""), true)).toBe("sentinel");
+    expect(browserCrashAttribution(summary(""), false)).toBeNull();
+  });
 });

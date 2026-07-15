@@ -201,8 +201,10 @@ const logger = log.scope("main");
 // recent ones for examination/export.
 const MAX_RETAINED_DUMPS = 5;
 let nativeCrashDumpsProcessed = false;
-let pendingNativeBrowserCrash: MinidumpSummary | null = null;
-let pendingNativeBrowserCrashAttribution: "ptype" | "sentinel" | null = null;
+let pendingNativeBrowserCrash: {
+  summary: MinidumpSummary;
+  attribution: "ptype" | "sentinel";
+} | null = null;
 
 // Summarize each new minidump (signal, faulting module + offset, process type —
 // no memory). A main-process crash is the app crash, so its summary is stashed
@@ -251,10 +253,9 @@ function processNativeCrashDumps(): void {
       // is also in the scan.
       const outranks =
         attribution === "ptype" &&
-        pendingNativeBrowserCrashAttribution === "sentinel";
+        pendingNativeBrowserCrash?.attribution === "sentinel";
       if (attribution && (!pendingNativeBrowserCrash || outranks)) {
-        pendingNativeBrowserCrash = summary;
-        pendingNativeBrowserCrashAttribution = attribution;
+        pendingNativeBrowserCrash = { summary, attribution };
         // A browser-process dump is direct evidence of a main-process crash,
         // so report it even if the crash sentinel wasn't written (e.g. a
         // crash during early startup).
@@ -698,10 +699,10 @@ const createWindow = () => {
         });
       }
 
-      const nativeCrash = pendingNativeBrowserCrash;
-      const nativeCrashAttribution = pendingNativeBrowserCrashAttribution;
+      const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
+      const nativeCrashAttribution =
+        pendingNativeBrowserCrash?.attribution ?? null;
       pendingNativeBrowserCrash = null;
-      pendingNativeBrowserCrashAttribution = null;
 
       sendTelemetryEvent("app:crash_detected", {
         // Mark as error so renderer PostHog before_send sampling does not
@@ -716,7 +717,9 @@ const createWindow = () => {
         ...(nativeCrash && {
           // "ptype" when the dump named the browser process itself; "sentinel"
           // when an annotation-stripped dump was correlated with the crash
-          // sentinel instead (see browserCrashAttribution).
+          // sentinel instead (see browserCrashAttribution). Sentinel
+          // attribution is weaker: the dump could belong to a child process
+          // that also lost its labels.
           crash_attribution: nativeCrashAttribution,
           crash_reason: nativeCrash.crashReason,
           exception_code: nativeCrash.exceptionCode,

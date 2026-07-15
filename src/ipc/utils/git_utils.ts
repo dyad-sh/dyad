@@ -479,7 +479,12 @@ export async function gitStageToRevert({
       DyadErrorKind.Conflict,
     );
   }
-  if (statusResult.stdout.trim() !== "") {
+  const userVisibleChanges = statusResult.stdout
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => line.slice(3).trim())
+    .filter(isUserVisibleGitPath);
+  if (userVisibleChanges.length > 0) {
     throw new DyadError(
       "Cannot revert: working tree has uncommitted changes.",
       DyadErrorKind.Conflict,

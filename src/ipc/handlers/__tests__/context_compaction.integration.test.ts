@@ -27,6 +27,7 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { ipc } from "@/ipc/types";
 
 describe("context compaction (integration)", () => {
   let harness: HybridChatHarness;
@@ -122,6 +123,43 @@ describe("context compaction (integration)", () => {
     expect(contents).toContain(
       "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
     );
+
+    // The summary is inserted after the prompt in identity order but backdated
+    // before it for display/model ordering. Restoring to before that prompt
+    // must not carry the summary (which already includes the removed turn) into
+    // the forked chat.
+    const targetPrompt = secondMessages.find(
+      (message) =>
+        message.role === "user" &&
+        message.content === "tc=local-agent/simple-response",
+    );
+    const compactionSummary = secondMessages.find(
+      (message) => message.isCompactionSummary,
+    );
+    expect(targetPrompt).toBeDefined();
+    expect(compactionSummary).toBeDefined();
+    expect(compactionSummary!.id).toBeGreaterThan(targetPrompt!.id);
+    expect(compactionSummary!.createdAt.getTime()).toBeLessThan(
+      targetPrompt!.createdAt.getTime(),
+    );
+
+    const restoreResult = await ipc.version.restoreToMessageVersion({
+      appId: harness.appId,
+      chatId: harness.chatId,
+      messageId: targetPrompt!.id,
+      restoreCodebase: false,
+    });
+    expect(restoreResult).toHaveProperty("newChatId");
+    const restoredMessages = await loadChatMessages(
+      "newChatId" in restoreResult ? restoreResult.newChatId : -1,
+    );
+    expect(
+      restoredMessages.some(
+        (message) =>
+          message.content === "tc=local-agent/simple-response" ||
+          message.isCompactionSummary,
+      ),
+    ).toBe(false);
 
     // The transcript sent to the LLM afterwards contains the compacted
     // summary instead of the original history.

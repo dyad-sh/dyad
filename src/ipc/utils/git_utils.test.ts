@@ -20,12 +20,26 @@ vi.mock("electron-log", () => ({
 import { gitListFilesNative } from "@/ipc/utils/git_utils";
 import {
   ensureGitLineEndingPolicy,
+  gitStageToRevert,
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
   countChangedLines,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
+
+async function commitAll(repoDir: string, message: string): Promise<void> {
+  await runGit(repoDir, ["add", "-A"]);
+  await runGit(repoDir, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test User",
+    "commit",
+    "-m",
+    message,
+  ]);
+}
 
 async function runGit(repoDir: string, args: string[]): Promise<void> {
   await execFileAsync("git", args, { cwd: repoDir });
@@ -279,6 +293,62 @@ describe("countChangedLines", () => {
     expect(countChangedLines("same\n", "same\n")).toEqual({
       additions: 0,
       deletions: 0,
+    });
+  });
+});
+
+describe("gitStageToRevert", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  async function createTwoVersionRepo() {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+    await runGit(repoDir, ["init"]);
+    await fs.promises.writeFile(path.join(repoDir, "app.ts"), "version 1\n");
+    await commitAll(repoDir, "version 1");
+    const targetOid = await runGitOutput(repoDir, ["rev-parse", "HEAD"]);
+    await fs.promises.writeFile(path.join(repoDir, "app.ts"), "version 2\n");
+    await commitAll(repoDir, "version 2");
+    return { repoDir, targetOid };
+  }
+
+  it("ignores untracked Dyad-managed runtime files", async () => {
+    const repo = await createTwoVersionRepo();
+    await fs.promises.mkdir(path.join(repo.repoDir, ".dyad"), {
+      recursive: true,
+    });
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, ".dyad", "screenshot.png"),
+      "generated",
+    );
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "pnpm-workspace.yaml"),
+      'packages: ["."]\n',
+    );
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: repo.targetOid }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("still rejects user-visible uncommitted files", async () => {
+    const repo = await createTwoVersionRepo();
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "manual-notes.txt"),
+      "unfinished work",
+    );
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: repo.targetOid }),
+    ).rejects.toMatchObject({
+      message: "Cannot revert: working tree has uncommitted changes.",
     });
   });
 });

@@ -11,6 +11,7 @@ const {
   getChatMock,
   listVersionsMock,
   restartAppMock,
+  restoreToMessageVersionMock,
   revertVersionMock,
   setVersionFavoriteMock,
   setVersionNoteMock,
@@ -18,6 +19,7 @@ const {
   getChatMock: vi.fn(),
   listVersionsMock: vi.fn(),
   restartAppMock: vi.fn(),
+  restoreToMessageVersionMock: vi.fn(),
   revertVersionMock: vi.fn(),
   setVersionFavoriteMock: vi.fn(),
   setVersionNoteMock: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock("@/ipc/types", () => ({
     },
     version: {
       listVersions: listVersionsMock,
+      restoreToMessageVersion: restoreToMessageVersionMock,
       revertVersion: revertVersionMock,
       setVersionFavorite: setVersionFavoriteMock,
       setVersionNote: setVersionNoteMock,
@@ -45,7 +48,7 @@ vi.mock("./useRunApp", () => ({
 
 vi.mock("./useSettings", () => ({
   useSettings: () => ({
-    settings: undefined,
+    settings: { runtimeMode2: "cloud" },
   }),
 }));
 
@@ -68,9 +71,12 @@ describe("useVersions", () => {
     getChatMock.mockReset();
     listVersionsMock.mockReset();
     restartAppMock.mockReset();
+    restartAppMock.mockResolvedValue(undefined);
+    restoreToMessageVersionMock.mockReset();
     revertVersionMock.mockReset();
     setVersionFavoriteMock.mockReset();
     setVersionNoteMock.mockReset();
+    listVersionsMock.mockResolvedValue([]);
   });
 
   it("updates the versions query cache after saving a note", async () => {
@@ -123,5 +129,70 @@ describe("useVersions", () => {
       note: "Launch note",
       isFavorite: false,
     });
+  });
+
+  it.each([
+    {
+      name: "fork-only",
+      restoreCodebase: false,
+      response: { newChatId: 9, successMessage: "Forked" },
+    },
+    {
+      name: "warning-only",
+      restoreCodebase: true,
+      response: { warningMessage: "Version unavailable" },
+    },
+  ])(
+    "does not restart the cloud runtime for a $name restore result",
+    async ({ restoreCodebase, response }) => {
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      });
+      restoreToMessageVersionMock.mockResolvedValue(response);
+
+      const { result } = renderHook(() => useVersions(42), {
+        wrapper: makeWrapper(queryClient),
+      });
+
+      await act(async () => {
+        await result.current.restoreToMessage({
+          chatId: 7,
+          messageId: 8,
+          restoreCodebase,
+        });
+      });
+
+      expect(restartAppMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { newChatId: 9, successMessage: "Restored" },
+    { newChatId: 9, warningMessage: "Database restore failed" },
+  ])("restarts the cloud runtime after a code restore", async (response) => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    restoreToMessageVersionMock.mockResolvedValue(response);
+
+    const { result } = renderHook(() => useVersions(42), {
+      wrapper: makeWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.restoreToMessage({
+        chatId: 7,
+        messageId: 8,
+        restoreCodebase: true,
+      });
+    });
+
+    expect(restartAppMock).toHaveBeenCalledTimes(1);
   });
 });

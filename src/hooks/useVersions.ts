@@ -202,7 +202,7 @@ export function useVersions(appId: number | null) {
         restoreCodebase,
       });
     },
-    onSuccess: async (result, _variables, context) => {
+    onSuccess: async (result, variables, context) => {
       // Invalidate the app the mutation ran against (see `onMutate`), falling
       // back to the current closure `appId` if no context was captured.
       const restoredAppId = context?.mutationAppId ?? appId;
@@ -239,7 +239,8 @@ export function useVersions(appId: number | null) {
           queryKey: queryKeys.problems.byApp({ appId: restoredAppId }),
         }),
       ]);
-      if (settings?.runtimeMode2 === "cloud") {
+      const didRestoreCode = variables.restoreCodebase && "newChatId" in result;
+      if (didRestoreCode && settings?.runtimeMode2 === "cloud") {
         await restartApp();
       }
     },

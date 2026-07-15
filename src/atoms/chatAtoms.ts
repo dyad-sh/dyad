@@ -81,6 +81,9 @@ hasManuallySelectedChatModeAtom.debugLabel = "hasManuallySelectedChatModeAtom";
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
+export const scrollToBottomRequestedChatIdsAtom = atom<Set<number>>(
+  new Set<number>(),
+);
 export const recentViewedChatIdsAtom = atom<number[]>([]);
 // Track explicitly closed tabs - these should not reappear in the tab bar
 export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());

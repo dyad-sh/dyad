@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { app, type IpcMainInvokeEvent } from "electron";
+import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { createTypedHandler } from "./base";
 import {
   computeStreamingPatch,
@@ -171,6 +171,73 @@ const streamCompletions = new Map<number, Promise<void>>();
 
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
+
+async function cancelTrackedStreams(
+  chatIds: number[],
+  sender: WebContents,
+): Promise<boolean> {
+  const trackedStreams = chatIds
+    .map((chatId) => ({
+      chatId,
+      abortController: activeStreams.get(chatId),
+      completion: streamCompletions.get(chatId),
+    }))
+    .filter(({ abortController, completion }) => abortController || completion);
+
+  if (trackedStreams.length === 0) {
+    return false;
+  }
+
+  // Resolve consent prompts before awaiting completion. A stream parked on a
+  // consent prompt cannot unwind until that prompt is resolved.
+  for (const { chatId, abortController } of trackedStreams) {
+    abortController?.abort();
+    clearPendingMcpConsentsForChat(chatId);
+    logger.log(`Aborted stream for chat ${chatId}`);
+  }
+
+  await Promise.all(
+    trackedStreams.map(({ completion }) => completion?.catch(() => {})),
+  );
+
+  for (const { chatId } of trackedStreams) {
+    safeSend(sender, "chat:response:end", {
+      chatId,
+      updatedFiles: false,
+      wasCancelled: true,
+    } satisfies ChatResponseEnd);
+    safeSend(sender, "chat:stream:end", { chatId });
+  }
+
+  return true;
+}
+
+/**
+ * Abort every in-flight stream whose chat belongs to an app and wait until all
+ * of their handlers have stopped writing. Version handlers call this before
+ * taking the app lock so cancellation cannot deadlock behind a stream write.
+ */
+export async function cancelActiveStreamsForApp(
+  appId: number,
+  sender: WebContents,
+): Promise<boolean> {
+  const inFlightChatIds = [
+    ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
+  ];
+  if (inFlightChatIds.length === 0) {
+    return false;
+  }
+
+  const appChats = await db.query.chats.findMany({
+    columns: { id: true },
+    where: and(eq(chats.appId, appId), inArray(chats.id, inFlightChatIds)),
+  });
+
+  return cancelTrackedStreams(
+    appChats.map(({ id }) => id),
+    sender,
+  );
+}
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
 
@@ -1891,43 +1958,10 @@ This conversation includes one or more image attachments. When the user uploads 
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
-    const abortController = activeStreams.get(chatId);
-    const completion = streamCompletions.get(chatId);
-
-    if (abortController) {
-      // Abort the stream
-      abortController.abort();
-      activeStreams.delete(chatId);
-      logger.log(`Aborted stream for chat ${chatId}`);
-    } else {
+    const cancelled = await cancelTrackedStreams([chatId], event.sender);
+    if (!cancelled) {
       logger.warn(`No active stream found for chat ${chatId}`);
     }
-
-    // Unblock any pending MCP consents *before* awaiting completion. A stream
-    // parked on a consent prompt won't unwind until that consent resolves, so
-    // awaiting `completion` first would hang indefinitely. Resolving the
-    // consents as declined here lets the handler finish so `completion` settles.
-    clearPendingMcpConsentsForChat(chatId);
-
-    // Wait for the in-flight stream handler to fully unwind before returning so
-    // callers (e.g. restore-to-message) know any partial tool/file writes have
-    // settled and won't race a subsequent git revert. The handler logs its own
-    // errors, so a rejected completion here is not actionable.
-    if (completion) {
-      await completion.catch(() => {});
-    }
-
-    // Send the end event to the renderer with wasCancelled flag
-    safeSend(event.sender, "chat:response:end", {
-      chatId,
-      updatedFiles: false,
-      wasCancelled: true,
-    } satisfies ChatResponseEnd);
-
-    // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire
-    safeSend(event.sender, "chat:stream:end", { chatId });
-    // Unblock any pending MCP consents (their banners are cleared on stream end).
-    clearPendingMcpConsentsForChat(chatId);
 
     return true;
   });

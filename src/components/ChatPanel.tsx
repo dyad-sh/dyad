@@ -14,6 +14,7 @@ import {
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
+  scrollToBottomRequestedChatIdsAtom,
 } from "../atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 
@@ -55,7 +56,13 @@ export function ChatPanel({
   const { t } = useTranslation("chat");
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatErrorById = useAtomValue(chatErrorByIdAtom);
+  const scrollToBottomRequestedChatIds = useAtomValue(
+    scrollToBottomRequestedChatIdsAtom,
+  );
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+  const setScrollToBottomRequestedChatIds = useSetAtom(
+    scrollToBottomRequestedChatIdsAtom,
+  );
   const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
     terminalOpenByChatIdAtom,
   );
@@ -144,6 +151,43 @@ export function ChatPanel({
     // Note: if isChatSwitch && messages.length === 0, we don't scroll yet.
     // The messages will be fetched and this effect will re-run with messages.length > 0.
   }, [chatId, streamCount, messages.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (
+      chatId == null ||
+      !messagesById.has(chatId) ||
+      !scrollToBottomRequestedChatIds.has(chatId)
+    ) {
+      return;
+    }
+
+    isAtBottomRef.current = true;
+    setShowScrollButton(false);
+
+    if (messages.length > 0) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom("instant");
+        });
+      });
+    }
+
+    setScrollToBottomRequestedChatIds((prev) => {
+      if (!prev.has(chatId)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(chatId);
+      return next;
+    });
+  }, [
+    chatId,
+    messages.length,
+    messagesById,
+    scrollToBottom,
+    scrollToBottomRequestedChatIds,
+    setScrollToBottomRequestedChatIds,
+  ]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {

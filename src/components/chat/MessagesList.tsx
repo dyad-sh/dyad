@@ -37,6 +37,7 @@ interface FooterContext {
   isStreaming: boolean;
   isUndoLoading: boolean;
   isRetryLoading: boolean;
+  isAnyVersionMutationPending: boolean;
   setIsUndoLoading: (loading: boolean) => void;
   setIsRetryLoading: (loading: boolean) => void;
   versions: ReturnType<typeof useVersions>["versions"];
@@ -59,6 +60,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     isStreaming,
     isUndoLoading,
     isRetryLoading,
+    isAnyVersionMutationPending,
     setIsUndoLoading,
     setIsRetryLoading,
     versions,
@@ -83,6 +85,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // messages produced by that turn. Shared by the modified-files card and the
   // standalone Undo button below.
   const handleUndo = async () => {
+    if (isAnyVersionMutationPending) return;
     if (!selectedChatId || !appId) {
       console.error("No chat selected or app ID not available");
       return;
@@ -140,6 +143,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // otherwise the prompt is redone. Shared by the modified-files card and the
   // standalone Retry button below.
   const handleRetry = async () => {
+    if (isAnyVersionMutationPending) return;
     if (!selectedChatId) {
       console.error("No chat selected");
       return;
@@ -234,7 +238,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             <Button
               variant="outline"
               size="sm"
-              disabled={isUndoLoading}
+              disabled={
+                isUndoLoading || isRetryLoading || isAnyVersionMutationPending
+              }
               onClick={handleUndo}
             >
               {isUndoLoading ? (
@@ -249,7 +255,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             <Button
               variant="outline"
               size="sm"
-              disabled={isRetryLoading}
+              disabled={
+                isRetryLoading || isUndoLoading || isAnyVersionMutationPending
+              }
               onClick={handleRetry}
             >
               {isRetryLoading ? (
@@ -284,7 +292,8 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
-    const { versions, revertVersion } = useVersions(appId);
+    const { versions, revertVersion, isAnyVersionMutationPending } =
+      useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
@@ -371,6 +380,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         isStreaming,
         isUndoLoading,
         isRetryLoading,
+        isAnyVersionMutationPending,
         setIsUndoLoading: handleSetIsUndoLoading,
         setIsRetryLoading: handleSetIsRetryLoading,
         versions,
@@ -387,6 +397,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         isStreaming,
         isUndoLoading,
         isRetryLoading,
+        isAnyVersionMutationPending,
         handleSetIsUndoLoading,
         handleSetIsRetryLoading,
         versions,

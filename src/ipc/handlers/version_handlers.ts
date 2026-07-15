@@ -46,6 +46,7 @@ import {
   DIFF_BINARY_PLACEHOLDER,
   DIFF_TOO_LARGE_PLACEHOLDER,
 } from "@/shared/diff_placeholders";
+import { cancelActiveStreamsForApp } from "./chat_stream_handlers";
 
 const logger = log.scope("version_handlers");
 
@@ -226,12 +227,14 @@ async function revertCodebaseToVersion({
   appPath,
   previousVersionId,
   targetBranchName,
+  preserveDirtyTree = false,
 }: {
   appId: number;
   app: typeof apps.$inferSelect;
   appPath: string;
   previousVersionId: string;
   targetBranchName?: string;
+  preserveDirtyTree?: boolean;
 }): Promise<{ successMessage: string; warningMessage: string }> {
   let successMessage = "Restored version";
   let warningMessage = "";
@@ -249,15 +252,11 @@ async function revertCodebaseToVersion({
     ref: revertRef,
   });
 
-  // A cancelled/aborted stream leaves the AI's partial file writes uncommitted
-  // in the working tree (`cancelStream` only aborts; it never commits). That
-  // would make `gitStageToRevert` refuse to run ("working tree has uncommitted
-  // changes"). Commit those pending changes first so they're preserved as a
-  // version (consistent with Dyad's one-commit-per-turn model) and the revert
-  // can proceed against a clean tree. This must run before
-  // `storeDbTimestampAtCurrentVersion` so the Neon timestamp binds to the
-  // committed state rather than the soon-to-be-discarded dirty tree.
-  if (!(await isGitStatusClean({ path: appPath }))) {
+  // A stream cancelled specifically for restore-to-message may leave partial
+  // writes behind. Preserve that interrupted turn before reverting. Existing
+  // Restore, Undo, Retry, and checkout paths intentionally keep their prior
+  // dirty-tree conflict behavior instead of silently committing manual edits.
+  if (preserveDirtyTree && !(await isGitStatusClean({ path: appPath }))) {
     // Stage everything first so untracked files (e.g. a newly added
     // pnpm-workspace.yaml) are included. With native git, `git commit` only
     // commits staged changes, so without this the commit would fail with
@@ -266,8 +265,7 @@ async function revertCodebaseToVersion({
     await gitAddAll({ path: appPath });
     await gitCommit({
       path: appPath,
-      message:
-        "Saved uncommitted changes before restoring to an earlier version",
+      message: "Saved partial changes before restoring to an earlier version",
     });
   }
 
@@ -681,8 +679,37 @@ export function registerVersionHandlers() {
 
   createTypedHandler(
     versionContracts.restoreToMessageVersion,
-    async (_, params) => {
+    async (event, params) => {
       const { appId, chatId, messageId, restoreCodebase = true } = params;
+      let preserveDirtyTree = false;
+
+      if (restoreCodebase) {
+        // Validate the relationship before cancelling anything. The full chat
+        // is loaded again under the lock so the restore still operates on a
+        // consistent snapshot after all stream handlers have unwound.
+        const requestedChat = await db.query.chats.findFirst({
+          columns: { appId: true },
+          where: eq(chats.id, chatId),
+        });
+        if (!requestedChat) {
+          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+        }
+        if (requestedChat.appId !== appId) {
+          throw new DyadError(
+            "Chat does not belong to this app",
+            DyadErrorKind.Validation,
+          );
+        }
+
+        // Cancellation must happen before taking the app lock. Awaiting a
+        // stream while holding the lock could deadlock once stream writes also
+        // participate in app-scoped coordination.
+        preserveDirtyTree = await cancelActiveStreamsForApp(
+          appId,
+          event.sender,
+        );
+      }
+
       return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
@@ -721,7 +748,12 @@ export function registerVersionHandlers() {
           throw new DyadError("Message not found", DyadErrorKind.NotFound);
         }
 
-        const messagesBefore = chat.messages.slice(0, targetIndex);
+        const messagesBefore = chat.messages
+          .slice(0, targetIndex)
+          .filter(
+            (message) =>
+              !(message.isCompactionSummary && message.id > messageId),
+          );
 
         // Restoring to the very first message is allowed: "version 1" is the
         // commit that existed before the first message's changes were applied,
@@ -806,6 +838,7 @@ export function registerVersionHandlers() {
             app,
             appPath,
             previousVersionId: targetCommitHash,
+            preserveDirtyTree,
           });
           successMessage = result.successMessage;
           warningMessage = result.warningMessage;

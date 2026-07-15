@@ -1,4 +1,4 @@
-import { ipc, type Message } from "@/ipc/types";
+import { type Message } from "@/ipc/types";
 import {
   DyadMarkdownParser,
   VanillaMarkdownParser,
@@ -227,13 +227,6 @@ const ChatMessage = ({
     }
     setShowRestoreConfirm(false);
     try {
-      // Only the code-restore path mutates git state, so it must wait for the
-      // active stream to fully cancel first (avoiding a race with the revert).
-      // Fork-only leaves the codebase untouched, so there's no reason to abort
-      // the original chat's in-progress generation.
-      if (isStreaming && restoreCodebase) {
-        await ipc.chat.cancelStream(selectedChatId);
-      }
       const result = await restoreToMessage({
         chatId: selectedChatId,
         messageId: message.id,
@@ -243,7 +236,11 @@ const ChatMessage = ({
       // no version could be determined, we stay on the current chat (the user
       // still sees the warning toast).
       if ("newChatId" in result) {
-        selectChat({ chatId: result.newChatId, appId });
+        selectChat({
+          chatId: result.newChatId,
+          appId,
+          scrollToBottom: true,
+        });
       }
     } catch (error) {
       showError(error);

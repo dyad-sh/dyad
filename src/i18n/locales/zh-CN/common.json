@@ -61,10 +61,13 @@
   "required": "必填",
   "optional": "可选",
   "billingNudge": {
-    "paymentPastDue": "我们无法续订您的 Dyad Pro 订阅。请更新付款方式以继续使用。",
-    "subscriptionEnding": "您的 Dyad Pro 订阅将于 {{date}} 到期。",
+    "paymentPastDue": "付款失败。请更新付款方式以继续使用 Dyad Pro。",
+    "subscriptionEnding_one": "您的 Dyad Pro 订阅将在 {{count}} 天后到期。",
+    "subscriptionEnding_other": "您的 Dyad Pro 订阅将在 {{count}} 天后到期。",
+    "creditsLost_one": "您将失去 {{credits}} 个积分。",
+    "creditsLost_other": "您将失去 {{credits}} 个积分。",
     "subscriptionPaused": "您的 Dyad Pro 订阅已暂停。恢复订阅即可获得更多积分。",
-    "managePaymentMethods": "管理付款方式",
+    "managePaymentMethods": "更新付款方式",
     "manageSubscription": "管理订阅",
     "resumeSubscription": "恢复订阅",
     "dismiss": "关闭账单通知"

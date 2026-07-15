@@ -1,18 +1,22 @@
 import { createStore, Provider } from "jotai";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SubscriptionStatus } from "@/ipc/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SubscriptionStatus, UserBudgetInfo } from "@/ipc/types";
 import i18n from "@/i18n";
 
 const mocks = vi.hoisted(() => ({
   status: null as SubscriptionStatus | null,
+  userBudget: null as UserBudgetInfo | null,
   openBillingAction: vi.fn(),
   capture: vi.fn(),
 }));
 
 vi.mock("@/hooks/useSubscriptionStatus", () => ({
   useSubscriptionStatus: () => ({ data: mocks.status }),
+}));
+vi.mock("@/hooks/useUserBudgetInfo", () => ({
+  useUserBudgetInfo: () => ({ userBudget: mocks.userBudget }),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -48,9 +52,21 @@ describe("SubscriptionStatusBanner", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en");
     mocks.status = null;
+    mocks.userBudget = {
+      usedCredits: 349.6,
+      totalCredits: 1000,
+      budgetResetDate: new Date("2026-08-01T00:00:00.000Z"),
+      redactedUserId: "test-user",
+      isTrial: false,
+    };
     mocks.openBillingAction.mockReset();
     mocks.capture.mockReset();
+    vi.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-07-14T00:00:00.000Z").getTime(),
+    );
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it("renders nothing for unavailable or healthy status", () => {
     const view = renderBanner();
@@ -63,12 +79,12 @@ describe("SubscriptionStatusBanner", () => {
   it.each([
     {
       alert: "payment_past_due" as const,
-      text: "We couldn’t renew your Dyad Pro subscription.",
-      action: "Manage payment methods",
+      text: "Payment failed. Update your payment method to keep Dyad Pro active.",
+      action: "Update payment method",
     },
     {
       alert: "subscription_ending" as const,
-      text: "Your Dyad Pro subscription ends on Aug 2, 2026.",
+      text: "Your Dyad Pro subscription ends in 20 days. You will lose 650 credits.",
       action: "Manage subscription",
     },
     {
@@ -106,6 +122,26 @@ describe("SubscriptionStatusBanner", () => {
       alert: "subscription_paused",
       has_effective_at: true,
     });
+  });
+
+  it("uses singular day and credit copy", () => {
+    mocks.status = {
+      alert: "subscription_ending",
+      effectiveAt: "2026-07-15T00:00:00.000Z",
+      actionUrl: "https://academy.dyad.sh/subscription",
+    };
+    mocks.userBudget = {
+      ...mocks.userBudget!,
+      usedCredits: 999,
+    };
+
+    renderBanner();
+
+    expect(
+      screen.getByText(
+        "Your Dyad Pro subscription ends in 1 day. You will lose 1 credit.",
+      ),
+    ).not.toBeNull();
   });
 
   it("dismisses only the current alert fingerprint in session memory", async () => {

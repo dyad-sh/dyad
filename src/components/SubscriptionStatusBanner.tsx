@@ -5,10 +5,12 @@ import { useTranslation } from "react-i18next";
 import { usePostHog } from "posthog-js/react";
 import { ipc, type SubscriptionStatus } from "@/ipc/types";
 import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const dismissedBillingAlertsAtom = atom<Set<string>>(new Set<string>());
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 function alertFingerprint(status: SubscriptionStatus) {
   return `${status.alert}:${status.effectiveAt ?? "none"}`;
@@ -18,6 +20,9 @@ export function SubscriptionStatusBanner() {
   const { t, i18n } = useTranslation("common");
   const posthog = usePostHog();
   const { data: status } = useSubscriptionStatus();
+  const { userBudget } = useUserBudgetInfo({
+    enabled: status?.alert === "subscription_ending",
+  });
   const [dismissedAlerts, setDismissedAlerts] = useAtom(
     dismissedBillingAlertsAtom,
   );
@@ -58,15 +63,37 @@ export function SubscriptionStatusBanner() {
 
   const isPastDue = status.alert === "payment_past_due";
   const isEnding = status.alert === "subscription_ending";
-  const formattedDate = status.effectiveAt
-    ? new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, {
-        dateStyle: "medium",
-      }).format(new Date(status.effectiveAt))
+  const daysUntilEnd = status.effectiveAt
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(status.effectiveAt).getTime() - Date.now()) / DAY_IN_MS,
+        ),
+      )
     : null;
+  const remainingCredits = userBudget
+    ? Math.round(Math.max(0, userBudget.totalCredits - userBudget.usedCredits))
+    : null;
+  const formattedCredits =
+    remainingCredits === null
+      ? null
+      : new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language).format(
+          remainingCredits,
+        );
   const message = isPastDue
     ? t("billingNudge.paymentPastDue")
     : isEnding
-      ? t("billingNudge.subscriptionEnding", { date: formattedDate })
+      ? [
+          t("billingNudge.subscriptionEnding", { count: daysUntilEnd ?? 0 }),
+          remainingCredits === null
+            ? null
+            : t("billingNudge.creditsLost", {
+                count: remainingCredits,
+                credits: formattedCredits,
+              }),
+        ]
+          .filter(Boolean)
+          .join(" ")
       : t("billingNudge.subscriptionPaused");
   const actionLabel = isPastDue
     ? t("billingNudge.managePaymentMethods")
@@ -79,44 +106,52 @@ export function SubscriptionStatusBanner() {
     <div
       role={isPastDue ? "alert" : "status"}
       className={cn(
-        "flex w-full shrink-0 items-center gap-3 border-b px-4 py-2.5 text-sm",
+        "flex min-h-11 w-full shrink-0 items-center gap-2.5 border-b px-4 py-1.5 text-sm text-foreground",
         isPastDue
-          ? "border-destructive/30 bg-destructive/10 text-destructive"
+          ? "border-destructive/30 bg-destructive/20"
           : isEnding
-            ? "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100"
-            : "border-blue-500/25 bg-blue-500/10 text-blue-950 dark:text-blue-100",
+            ? "border-amber-500/25 bg-amber-500/8"
+            : "border-blue-500/20 bg-blue-500/8",
       )}
       data-testid="subscription-status-banner"
       data-alert={status.alert}
     >
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
-      <p className="min-w-0 flex-1 leading-5">{message}</p>
-      {status.actionUrl && (
-        <Button
-          type="button"
-          size="sm"
-          variant={isPastDue ? "destructive" : "outline"}
-          className={cn(
-            "h-7 shrink-0",
-            !isPastDue &&
-              "border-current/30 bg-background/80 hover:bg-background",
-          )}
-          onClick={() => {
-            posthog.capture("billing_nudge_clicked", {
-              alert: status.alert,
-              has_effective_at: status.effectiveAt !== null,
-            });
-            ipc.system.openBillingAction(status.actionUrl!);
-          }}
-        >
-          {actionLabel}
-        </Button>
-      )}
+      <Icon
+        className={cn(
+          "size-4 shrink-0",
+          isPastDue
+            ? "text-destructive-foreground"
+            : isEnding
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-blue-600 dark:text-blue-400",
+        )}
+        aria-hidden="true"
+      />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="min-w-0 max-w-[75ch] leading-5">{message}</p>
+        {status.actionUrl && (
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            className="h-8 shrink-0"
+            onClick={() => {
+              posthog.capture("billing_nudge_clicked", {
+                alert: status.alert,
+                has_effective_at: status.effectiveAt !== null,
+              });
+              ipc.system.openBillingAction(status.actionUrl!);
+            }}
+          >
+            {actionLabel}
+          </Button>
+        )}
+      </div>
       <Button
         type="button"
         size="icon"
         variant="ghost"
-        className="size-7 shrink-0 text-current hover:bg-black/5 hover:text-current dark:hover:bg-white/10"
+        className="size-8 shrink-0 text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
         aria-label={t("billingNudge.dismiss")}
         onClick={() => {
           posthog.capture("billing_nudge_dismissed", {

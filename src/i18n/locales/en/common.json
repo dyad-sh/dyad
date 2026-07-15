@@ -61,10 +61,13 @@
   "required": "Required",
   "optional": "Optional",
   "billingNudge": {
-    "paymentPastDue": "We couldn’t renew your Dyad Pro subscription. Update your payment method to keep access.",
-    "subscriptionEnding": "Your Dyad Pro subscription ends on {{date}}.",
+    "paymentPastDue": "Payment failed. Update your payment method to keep Dyad Pro active.",
+    "subscriptionEnding_one": "Your Dyad Pro subscription ends in {{count}} day.",
+    "subscriptionEnding_other": "Your Dyad Pro subscription ends in {{count}} days.",
+    "creditsLost_one": "You will lose {{credits}} credit.",
+    "creditsLost_other": "You will lose {{credits}} credits.",
     "subscriptionPaused": "Your Dyad Pro subscription is paused. Resume it to receive additional credits.",
-    "managePaymentMethods": "Manage payment methods",
+    "managePaymentMethods": "Update payment method",
     "manageSubscription": "Manage subscription",
     "resumeSubscription": "Resume subscription",
     "dismiss": "Dismiss billing notice"

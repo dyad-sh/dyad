@@ -228,6 +228,11 @@ export function useMcp() {
       serversQuery.isLoading ||
       toolsByServerQuery.isLoading ||
       consentsQuery.isLoading,
+    // Tool discovery connects to live servers and can take seconds
+    // (LIST_TOOLS_TIMEOUT_MS), while the servers query is a local DB
+    // read. Callers that render per-server placeholders for pending
+    // tool counts gate on this instead of `isLoading`.
+    isServersLoading: serversQuery.isLoading,
     error:
       serversQuery.error || toolsByServerQuery.error || consentsQuery.error,
     refetchAll,

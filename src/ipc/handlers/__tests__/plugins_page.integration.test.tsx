@@ -1,6 +1,9 @@
 // Drives the Plugins page and plugin detail page over the real mcp:*
 // IPC handlers: add a plugin through the dialog, open its detail page,
 // change a tool consent, and delete it.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
@@ -67,6 +70,52 @@ describe("Plugins page (integration)", () => {
         /1 plugin · \d+ tools enabled/,
       );
     });
+  }, 40_000);
+
+  it("shows cards with a placeholder count while discovery is pending", async () => {
+    // A stdio process that never speaks MCP keeps tool discovery
+    // pending until the listTools timeout (8s). The card and stats must
+    // not wait for it. The process exits once a sentinel file appears,
+    // so the test can release the in-flight listTools invoke after the
+    // assertions instead of holding it into harness teardown; the 60s
+    // self-exit is a backstop against a leak when an assertion fails.
+    const sentinel = path.join(
+      os.tmpdir(),
+      `dyad-hanging-mcp-${process.pid}.sentinel`,
+    );
+    await ipc.mcp.createServer({
+      name: "hanging-mcp-server",
+      transport: "stdio",
+      command: "node",
+      args: [
+        "-e",
+        `const fs = require("fs");
+         setInterval(() => {
+           if (fs.existsSync(${JSON.stringify(sentinel)})) process.exit(0);
+         }, 100);
+         setTimeout(() => process.exit(1), 60_000);`,
+      ],
+      enabled: true,
+    });
+    try {
+      harness.mountSurface({ route: "/plugins" });
+
+      const card = await screen.findByTestId("plugin-card", undefined, {
+        timeout: 5_000,
+      });
+      expect(card.textContent).toContain("hanging-mcp-server");
+      expect(card.textContent).toContain("— tools");
+      expect(screen.getByTestId("plugins-stats").textContent).toBe(
+        "1 plugin · — tools enabled",
+      );
+    } finally {
+      fs.writeFileSync(sentinel, "");
+      try {
+        await harness.bridge.settleInFlight(15_000);
+      } finally {
+        fs.rmSync(sentinel, { force: true });
+      }
+    }
   }, 40_000);
 
   it("opens the detail page, changes a consent, and deletes the plugin", async () => {

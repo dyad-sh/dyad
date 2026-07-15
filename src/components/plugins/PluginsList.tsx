@@ -17,8 +17,15 @@ export function PluginsList({
   onAddDialogOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const { servers, toolsByServer, consentsMap, isLoading, toggleEnabled } =
-    useMcp();
+  // Gate on the servers query alone: tool discovery can take seconds,
+  // and the cards already render a placeholder count until it lands.
+  const {
+    servers,
+    toolsByServer,
+    consentsMap,
+    isServersLoading,
+    toggleEnabled,
+  } = useMcp();
   const { connectingServerId, feedbackFor, onServerCreated, onConnect } =
     usePluginConnect();
 
@@ -49,9 +56,9 @@ export function PluginsList({
         servers={servers}
         toolsByServer={toolsByServer}
         consentsMap={consentsMap}
-        isLoading={isLoading}
+        isLoading={isServersLoading}
       />
-      {isLoading ? (
+      {isServersLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="border-border">

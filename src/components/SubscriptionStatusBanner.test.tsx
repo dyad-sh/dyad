@@ -8,6 +8,7 @@ import i18n from "@/i18n";
 const mocks = vi.hoisted(() => ({
   status: null as SubscriptionStatus | null,
   openBillingAction: vi.fn(),
+  capture: vi.fn(),
 }));
 
 vi.mock("@/hooks/useSubscriptionStatus", () => ({
@@ -18,6 +19,9 @@ vi.mock("@/ipc/types", () => ({
   ipc: {
     system: { openBillingAction: mocks.openBillingAction },
   },
+}));
+vi.mock("posthog-js/react", () => ({
+  usePostHog: () => ({ capture: mocks.capture }),
 }));
 
 import { SubscriptionStatusBanner } from "./SubscriptionStatusBanner";
@@ -45,6 +49,7 @@ describe("SubscriptionStatusBanner", () => {
     await i18n.changeLanguage("en");
     mocks.status = null;
     mocks.openBillingAction.mockReset();
+    mocks.capture.mockReset();
   });
 
   it("renders nothing for unavailable or healthy status", () => {
@@ -97,6 +102,10 @@ describe("SubscriptionStatusBanner", () => {
     expect(mocks.openBillingAction).toHaveBeenCalledWith(
       "https://academy.dyad.sh/subscription?source=app",
     );
+    expect(mocks.capture).toHaveBeenCalledWith("billing_nudge_clicked", {
+      alert: "subscription_paused",
+      has_effective_at: true,
+    });
   });
 
   it("dismisses only the current alert fingerprint in session memory", async () => {
@@ -109,6 +118,10 @@ describe("SubscriptionStatusBanner", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Dismiss billing notice" }),
     );
+    expect(mocks.capture).toHaveBeenCalledWith("billing_nudge_dismissed", {
+      alert: "subscription_paused",
+      has_effective_at: true,
+    });
     expect(screen.queryByTestId("subscription-status-banner")).toBeNull();
 
     mocks.status = {
@@ -117,6 +130,50 @@ describe("SubscriptionStatusBanner", () => {
     };
     view.rerenderBanner();
     expect(screen.queryByTestId("subscription-status-banner")).not.toBeNull();
+  });
+
+  it("deduplicates shown analytics and reports a confirmed resolution", () => {
+    mocks.status = {
+      alert: "payment_past_due",
+      effectiveAt: null,
+      actionUrl: "https://academy.dyad.sh/billing",
+    };
+    const view = renderBanner();
+    expect(mocks.capture).toHaveBeenCalledWith("billing_nudge_shown", {
+      alert: "payment_past_due",
+      has_effective_at: false,
+    });
+
+    view.rerenderBanner();
+    expect(
+      mocks.capture.mock.calls.filter(
+        ([event]) => event === "billing_nudge_shown",
+      ),
+    ).toHaveLength(1);
+
+    mocks.status = { alert: null, effectiveAt: null, actionUrl: null };
+    view.rerenderBanner();
+    expect(mocks.capture).toHaveBeenCalledWith("billing_nudge_resolved", {
+      alert: "payment_past_due",
+      has_effective_at: false,
+    });
+  });
+
+  it("does not report a resolution when status becomes unavailable", () => {
+    mocks.status = {
+      alert: "payment_past_due",
+      effectiveAt: null,
+      actionUrl: "https://academy.dyad.sh/billing",
+    };
+    const view = renderBanner();
+    mocks.capture.mockClear();
+
+    mocks.status = null;
+    view.rerenderBanner();
+    expect(mocks.capture).not.toHaveBeenCalledWith(
+      "billing_nudge_resolved",
+      expect.anything(),
+    );
   });
 
   it.each([

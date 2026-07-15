@@ -1,6 +1,8 @@
 import { atom, useAtom } from "jotai";
 import { AlertTriangle, Clock3, Pause, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { usePostHog } from "posthog-js/react";
 import { ipc, type SubscriptionStatus } from "@/ipc/types";
 import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
 import { Button } from "@/components/ui/button";
@@ -14,10 +16,36 @@ function alertFingerprint(status: SubscriptionStatus) {
 
 export function SubscriptionStatusBanner() {
   const { t, i18n } = useTranslation("common");
+  const posthog = usePostHog();
   const { data: status } = useSubscriptionStatus();
   const [dismissedAlerts, setDismissedAlerts] = useAtom(
     dismissedBillingAlertsAtom,
   );
+  const shownFingerprints = useRef(new Set<string>());
+  const previousAlert = useRef<SubscriptionStatus | null>(null);
+
+  useEffect(() => {
+    if (status?.alert) {
+      const fingerprint = alertFingerprint(status);
+      if (!shownFingerprints.current.has(fingerprint)) {
+        shownFingerprints.current.add(fingerprint);
+        posthog.capture("billing_nudge_shown", {
+          alert: status.alert,
+          has_effective_at: status.effectiveAt !== null,
+        });
+      }
+      previousAlert.current = status;
+      return;
+    }
+
+    if (status?.alert === null && previousAlert.current?.alert) {
+      posthog.capture("billing_nudge_resolved", {
+        alert: previousAlert.current.alert,
+        has_effective_at: previousAlert.current.effectiveAt !== null,
+      });
+      previousAlert.current = null;
+    }
+  }, [posthog, status]);
 
   if (!status?.alert) {
     return null;
@@ -73,7 +101,13 @@ export function SubscriptionStatusBanner() {
             !isPastDue &&
               "border-current/30 bg-background/80 hover:bg-background",
           )}
-          onClick={() => ipc.system.openBillingAction(status.actionUrl!)}
+          onClick={() => {
+            posthog.capture("billing_nudge_clicked", {
+              alert: status.alert,
+              has_effective_at: status.effectiveAt !== null,
+            });
+            ipc.system.openBillingAction(status.actionUrl!);
+          }}
         >
           {actionLabel}
         </Button>
@@ -84,13 +118,17 @@ export function SubscriptionStatusBanner() {
         variant="ghost"
         className="size-7 shrink-0 text-current hover:bg-black/5 hover:text-current dark:hover:bg-white/10"
         aria-label={t("billingNudge.dismiss")}
-        onClick={() =>
+        onClick={() => {
+          posthog.capture("billing_nudge_dismissed", {
+            alert: status.alert,
+            has_effective_at: status.effectiveAt !== null,
+          });
           setDismissedAlerts((current) => {
             const next = new Set(current);
             next.add(fingerprint);
             return next;
-          })
-        }
+          });
+        }}
       >
         <X className="size-4" aria-hidden="true" />
       </Button>

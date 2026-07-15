@@ -129,7 +129,10 @@ describe("sanitizeAppFolderNameInput", () => {
 
   it("avoids Windows reserved device names including extension variants", () => {
     expect(sanitizeAppFolderNameInput("CON")).toBe("CON-app");
-    expect(sanitizeAppFolderNameInput("CON.txt")).toBe("CON.txt-app");
+    expect(sanitizeAppFolderNameInput("CON.txt")).toBe("CON-app.txt");
+    expect(validateAppFolderName(sanitizeAppFolderNameInput("CON.txt"))).toBe(
+      null,
+    );
   });
 
   it("truncates to the maximum length", () => {

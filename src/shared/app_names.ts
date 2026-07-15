@@ -28,6 +28,18 @@ function truncateToCodePoints(value: string, max: number): string {
   return codePoints.length <= max ? value : codePoints.slice(0, max).join("");
 }
 
+function makeWindowsReservedNameSafe(name: string): string {
+  const extensionIndex = name.indexOf(".");
+  const safeName =
+    extensionIndex === -1
+      ? `${name}-app`
+      : `${name.slice(0, extensionIndex)}-app${name.slice(extensionIndex)}`;
+  return truncateToCodePoints(safeName, MAX_APP_FOLDER_NAME_LENGTH).replace(
+    /[-. ]+$/g,
+    "",
+  );
+}
+
 /**
  * Sanitizes a user-facing app name. Display names stay expressive; only
  * whitespace runs and control characters are cleaned up.
@@ -104,7 +116,7 @@ export function sanitizeAppFolderNameInput(folderName: string): string {
     return FALLBACK_FOLDER_NAME;
   }
   if (isWindowsReservedName(sanitized)) {
-    return `${sanitized}-app`;
+    return makeWindowsReservedNameSafe(sanitized);
   }
   return sanitized;
 }

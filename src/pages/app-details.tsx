@@ -738,8 +738,9 @@ export default function AppDetailsPage() {
               sanitizeAppFolderNameInput(newFolderName) !==
                 newFolderName.trim() && (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Will be saved as "{sanitizeAppFolderNameInput(newFolderName)}
-                  ".
+                  {t("folderSanitizedPreview", {
+                    folderName: sanitizeAppFolderNameInput(newFolderName),
+                  })}
                 </p>
               )}
             <DialogFooter className="pt-2">
@@ -823,12 +824,15 @@ export default function AppDetailsPage() {
                   <p className="font-medium text-xs">Rename app and folder</p>
                   {renameFolderHasCollision ? (
                     <p className="text-xs text-yellow-600 dark:text-yellow-500">
-                      Folder "{desiredRenameFolder}" is already in use. Choose a
-                      different app name to rename the folder.
+                      {t("renameFolderCollision", {
+                        folderName: desiredRenameFolder,
+                      })}
                     </p>
                   ) : (
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Renames the folder to "{desiredRenameFolder}".
+                      {t("renameFolderDescription", {
+                        folderName: desiredRenameFolder,
+                      })}
                     </p>
                   )}
                 </div>
@@ -905,7 +909,9 @@ export default function AppDetailsPage() {
                     copyFolderPreview &&
                     copyFolderPreview !== trimmedNewCopyAppName && (
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Folder name: {copyFolderPreview}
+                        {t("appFolderPreview", {
+                          folderName: copyFolderPreview,
+                        })}
                       </p>
                     )}
                 </div>

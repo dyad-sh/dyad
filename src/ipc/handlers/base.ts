@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -7,7 +7,7 @@ import {
   type IpcContract,
 } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
-import { assertTrustedRenderer } from "../utils/renderer_security";
+import { registerTrustedIpcHandler } from "./trusted_handle";
 
 type RegisteredHandler = (
   event: IpcMainInvokeEvent,
@@ -55,16 +55,9 @@ export function createTypedHandler<
   ) => Promise<z.infer<TOutput>>,
 ): void {
   registeredHandlers.set(contract.channel, handler);
-  // Optional chaining: ipcMain is undefined in unit tests (no electron runtime).
-  ipcMain?.handle(
+  registerTrustedIpcHandler(
     contract.channel,
     async (event: IpcMainInvokeEvent, rawInput: unknown) => {
-      try {
-        assertTrustedRenderer(event);
-      } catch (err) {
-        return createIpcErrorEnvelope(err);
-      }
-
       // Runtime validation of input
       const parsed = contract.input.safeParse(rawInput);
       if (!parsed.success) {
@@ -102,6 +95,7 @@ export function createTypedHandler<
 
       return createIpcSuccessEnvelope(result);
     },
+    { onTrustFailure: createIpcErrorEnvelope },
   );
 }
 
@@ -131,16 +125,9 @@ export function createLoggedTypedHandler(logger: {
     ) => Promise<z.infer<TOutput>>,
   ): void {
     registeredHandlers.set(contract.channel, handler);
-    // Optional chaining: ipcMain is undefined in unit tests (no electron runtime).
-    ipcMain?.handle(
+    registerTrustedIpcHandler(
       contract.channel,
       async (event: IpcMainInvokeEvent, rawInput: unknown) => {
-        try {
-          assertTrustedRenderer(event);
-        } catch (err) {
-          return createIpcErrorEnvelope(err);
-        }
-
         // Runtime validation of input
         const parsed = contract.input.safeParse(rawInput);
         if (!parsed.success) {
@@ -179,6 +166,7 @@ export function createLoggedTypedHandler(logger: {
           return createIpcErrorEnvelope(err);
         }
       },
+      { onTrustFailure: createIpcErrorEnvelope },
     );
   };
 }

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { app, ipcMain } from "electron";
+import { app, type IpcMainInvokeEvent } from "electron";
 import { createTypedHandler } from "./base";
 import {
   computeStreamingPatch,
@@ -27,7 +27,7 @@ import {
 } from "../../prompts/system_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
-import { assertTrustedRenderer } from "../utils/renderer_security";
+import { registerTrustedIpcHandler } from "./trusted_handle";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
@@ -321,8 +321,10 @@ export function registerChatStreamHandlers() {
     },
   );
 
-  ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
-    assertTrustedRenderer(event);
+  const chatStreamHandler = async (
+    event: IpcMainInvokeEvent,
+    req: ChatStreamParams,
+  ) => {
     let attachmentPaths: string[] = [];
     try {
       // This legacy stream handler predates createTypedHandler, so enforce the
@@ -2013,7 +2015,8 @@ ${problemReport.problems
       // Unblock any pending MCP consents (their banners are cleared on stream end).
       clearPendingMcpConsentsForChat(req.chatId);
     }
-  });
+  };
+  registerTrustedIpcHandler("chat:stream", chatStreamHandler);
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {

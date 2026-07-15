@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain } from "electron";
+import { app, dialog } from "electron";
 import { closeDatabase, db, getDatabaseFilePaths } from "../../db";
 import { apps, chats, messages, versions } from "../../db/schema";
 import { desc, eq, inArray, like } from "drizzle-orm";
@@ -94,7 +94,7 @@ import {
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
-import { assertTrustedRenderer } from "../utils/renderer_security";
+import { registerTrustedIpcHandler } from "./trusted_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import {
   createCloudSandboxShareLink,
@@ -695,8 +695,7 @@ export function registerAppHandlers() {
   });
 
   // Do NOT use typed handler for this, it contains sensitive information.
-  ipcMain.handle("get-env-vars", async (event) => {
-    assertTrustedRenderer(event);
+  registerTrustedIpcHandler("get-env-vars", async () => {
     const envVars: Record<string, string | undefined> = {};
     const providers = await getLanguageModelProviders();
     for (const provider of providers) {
@@ -2148,13 +2147,12 @@ export function registerAppHandlers() {
   // Test-only: flip needs_app_blueprint for an imported app so E2E tests can
   // exercise the blueprint flow (imports default to 0; only createApp sets it).
   if (IS_TEST_BUILD) {
-    ipcMain.handle(
+    registerTrustedIpcHandler(
       "test:set-needs-app-blueprint",
       async (
-        event,
+        _event,
         { appName, value }: { appName: string; value: boolean },
       ) => {
-        assertTrustedRenderer(event);
         const result = await db
           .update(apps)
           .set({ needsAppBlueprint: value })

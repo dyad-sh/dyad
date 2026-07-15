@@ -359,6 +359,7 @@ export function ChatPanel({
         <VersionPane
           isVisible={isVersionPaneOpen}
           onClose={() => setIsVersionPaneOpen(false)}
+          onOpen={() => setIsVersionPaneOpen(true)}
         />
       </div>
       <AnimatePresence initial={false}>

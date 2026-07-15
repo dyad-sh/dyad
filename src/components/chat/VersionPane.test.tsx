@@ -1,10 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import type React from "react";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
 import { VersionPane } from "./VersionPane";
 
@@ -123,8 +129,7 @@ function makeVersion(index: number): Version {
   };
 }
 
-function makeWrapper() {
-  const store = createStore();
+function makeWrapper(store = createStore()) {
   store.set(selectedAppIdAtom, 1);
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -169,7 +174,7 @@ describe("VersionPane", () => {
     );
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
 
-    render(<VersionPane isVisible onClose={vi.fn()} />, {
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -191,7 +196,7 @@ describe("VersionPane", () => {
     versionsMock.push(version);
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
 
-    render(<VersionPane isVisible onClose={vi.fn()} />, {
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -224,9 +229,10 @@ describe("VersionPane", () => {
     versionsMock.push(version);
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
 
-    const { rerender } = render(<VersionPane isVisible onClose={vi.fn()} />, {
-      wrapper: makeWrapper(),
-    });
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />,
+      { wrapper: makeWrapper() },
+    );
 
     fireEvent.click(await screen.findByTestId("version-row-1"));
     await waitFor(() => {
@@ -236,7 +242,9 @@ describe("VersionPane", () => {
       });
     });
 
-    rerender(<VersionPane isVisible={false} onClose={vi.fn()} />);
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
+    );
 
     await waitFor(() => {
       expect(checkoutVersionMock).toHaveBeenLastCalledWith({
@@ -258,7 +266,7 @@ describe("VersionPane", () => {
     versionsMock.push(version);
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
 
-    render(<VersionPane isVisible onClose={vi.fn()} />, {
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -271,5 +279,78 @@ describe("VersionPane", () => {
       );
     });
     expect(checkoutVersionMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the selected version while resolving the return branch", async () => {
+    let resolveBranchInfo!: (value: { data: { branch: string } }) => void;
+    refetchBranchInfoMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveBranchInfo = resolve;
+      }),
+    );
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const store = createStore();
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(store),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+
+    expect(store.get(selectedVersionIdAtom)).toBe(version.oid);
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
+
+    resolveBranchInfo({ data: { branch: "feature/test" } });
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: version.oid,
+      });
+    });
+  });
+
+  it("offers to reopen version history when the return branch is unavailable", async () => {
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const store = createStore();
+    const onOpen = vi.fn();
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={onOpen} />,
+      { wrapper: makeWrapper(store) },
+    );
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: version.oid,
+      });
+    });
+
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={onOpen} />,
+    );
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
+        {
+          action: {
+            label: "Reopen Version History",
+            onClick: onOpen,
+          },
+        },
+      );
+    });
+
+    const action = showErrorMock.mock.calls.at(-1)?.[1]?.action;
+    action?.onClick();
+    expect(onOpen).toHaveBeenCalledOnce();
   });
 });

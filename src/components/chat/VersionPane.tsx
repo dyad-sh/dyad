@@ -55,6 +55,7 @@ function HighlightMatch({
 interface VersionPaneProps {
   isVisible: boolean;
   onClose: () => void;
+  onOpen: () => void;
 }
 
 type SaveVersionNote = (
@@ -333,7 +334,7 @@ function VersionRow({
   );
 }
 
-export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
+export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
   const currentAppIdRef = useRef(appId);
   const previousAppIdRef = useRef(appId);
@@ -357,6 +358,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const wasVisibleRef = useRef(false);
   const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
     null,
+  );
+  const getReturnBranch = useCallback(
+    () =>
+      returnBranchRef.current?.appId === appId
+        ? returnBranchRef.current.branch
+        : null,
+    [appId],
   );
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -491,10 +499,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         setAutoFocusNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
-          const returnBranch =
-            returnBranchRef.current?.appId === appId
-              ? returnBranchRef.current.branch
-              : null;
+          const returnBranch = getReturnBranch();
           if (returnBranch) {
             await checkoutVersion({ appId, versionId: returnBranch });
             if (app?.neonProjectId) {
@@ -503,6 +508,12 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
           } else {
             showError(
               "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
+              {
+                action: {
+                  label: "Reopen Version History",
+                  onClick: onOpen,
+                },
+              },
             );
           }
         }
@@ -519,6 +530,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     app?.neonProjectId,
     checkoutVersion,
     flushPendingNoteSaves,
+    getReturnBranch,
+    onOpen,
     refreshVersions,
     restartApp,
   ]);
@@ -556,22 +569,21 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const handleVersionClick = async (version: Version) => {
     if (appId) {
+      const previousSelectedVersionId = selectedVersionId;
+      setSelectedVersionId(version.oid);
       const latestBranchResult = await refetchBranchInfo();
       const latestBranch = latestBranchResult.data?.branch;
       if (latestBranch && latestBranch !== "<no-branch>") {
         returnBranchRef.current = { appId, branch: latestBranch };
       }
-      const returnBranch =
-        returnBranchRef.current?.appId === appId
-          ? returnBranchRef.current.branch
-          : null;
+      const returnBranch = getReturnBranch();
       if (!returnBranch) {
+        setSelectedVersionId(previousSelectedVersionId);
         showError(
           "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
         );
         return;
       }
-      setSelectedVersionId(version.oid);
       try {
         await checkoutVersion({ appId, versionId: version.oid });
       } catch (error) {
@@ -728,13 +740,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const handleRestoreVersion = (version: Version) => {
     void (async () => {
-      const returnBranch =
-        appId !== null && returnBranchRef.current?.appId === appId
-          ? returnBranchRef.current.branch
-          : undefined;
       await revertVersion({
         versionId: version.oid,
-        targetBranchName: returnBranch,
+        targetBranchName: getReturnBranch() ?? undefined,
       });
       setSelectedVersionId(null);
       // Close the pane after revert to force a refresh on next open

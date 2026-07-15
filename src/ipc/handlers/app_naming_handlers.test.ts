@@ -10,6 +10,7 @@ import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
+import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 
 // All app folders live under one throwaway base so the filesystem-probing
 // conflict checks (and actual folder moves) run against real directories.
@@ -89,7 +90,11 @@ async function invokeImportHandler<TOutput>(
   if (!handler) {
     throw new Error(`No handler captured for channel "${channel}"`);
   }
-  const envelope = (await handler({}, input)) as {
+  const frame = { url: "http://localhost:5173/" };
+  const envelope = (await handler(
+    { sender: { mainFrame: frame }, senderFrame: frame },
+    input,
+  )) as {
     ok: boolean;
     value?: TOutput;
     error?: { message: string; kind?: string };
@@ -106,6 +111,10 @@ describe("app naming handlers", () => {
   let harness: HandlerTestHarness;
 
   beforeEach(() => {
+    configureTrustedRenderer({
+      devServerUrl: "http://localhost:5173",
+      packagedRendererUrl: "file:///app/renderer/main_window/index.html",
+    });
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();

@@ -20,7 +20,10 @@ import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useThemes } from "@/hooks/useThemes";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
-import { sanitizeAppFolderName } from "@/shared/sanitizeAppFolderName";
+import {
+  sanitizeAppDisplayName,
+  slugifyAppFolderName,
+} from "@/shared/app_names";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type {
   AppBlueprintEditableField,
@@ -368,6 +371,9 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         let templateApplyFailed = false;
         let renameFailed = false;
         let nameConflictDetected = false;
+        // The name the app actually ends up with — the handler may append a
+        // collision suffix ("Todo App" -> "Todo App 2").
+        let finalAppName = effectiveAppName;
         const recordApplyError = (message: string, error: unknown) => {
           console.error(message, error);
           const detail =
@@ -395,27 +401,58 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
             }
           }
 
-          // Rename the app and its folder to match the new name. The handler
-          // moves files when the path differs and no-ops when the sanitized
-          // folder name already matches the current path's leaf.
+          // Rename the app and its folder to match the new name. Approval
+          // always normalizes the folder to the canonical slug of the final
+          // display name; the handler no-ops when both already match and
+          // auto-suffixes name/folder collisions instead of failing.
           if (currentApp && effectiveAppName) {
-            const desiredFolder = sanitizeAppFolderName(effectiveAppName);
+            const desiredName = sanitizeAppDisplayName(effectiveAppName);
+            const desiredFolder = slugifyAppFolderName(desiredName);
             const currentFolder =
               currentApp.path.split(/[\\/]/).filter(Boolean).pop() ??
               currentApp.path;
             const folderChanged = desiredFolder !== currentFolder;
-            const nameChanged = effectiveAppName !== currentApp.name;
+            const nameChanged = desiredName !== currentApp.name;
             if (nameChanged || folderChanged) {
               try {
-                await ipc.app.renameApp({
+                const renamed = await ipc.app.renameApp({
                   appId: selectedAppId,
-                  appName: effectiveAppName,
+                  appName: desiredName,
                   appPath: desiredFolder,
+                  autoResolveConflicts: true,
                 });
+                finalAppName = renamed.name;
+                if (renamed.name !== effectiveAppName) {
+                  // Persist the suffixed name back into the blueprint so the
+                  // blueprint, app row, and agent all agree on the name.
+                  try {
+                    await ipc.appBlueprint.editField({
+                      chatId,
+                      field: "appName",
+                      value: renamed.name,
+                    });
+                    setAppBlueprintState((prev) => {
+                      const nextPlans = new Map(prev.plansByChatId);
+                      const existing = nextPlans.get(chatId);
+                      if (existing) {
+                        nextPlans.set(chatId, {
+                          ...existing,
+                          appName: renamed.name,
+                        });
+                      }
+                      return { ...prev, plansByChatId: nextPlans };
+                    });
+                  } catch (error) {
+                    recordApplyError(
+                      `The app was renamed to "${renamed.name}" but the blueprint could not be updated to match.`,
+                      error,
+                    );
+                  }
+                }
               } catch (error) {
-                // A name (or derived-path) conflict is recoverable: prompt the
-                // user to pick a different name in a dialog and re-approve,
-                // instead of failing with a toast they have to decode.
+                // Conflicts normally auto-resolve with a numeric suffix; this
+                // dialog remains as a fallback for unexpected conflict races,
+                // prompting the user to pick a different name and re-approve.
                 if (isNameConflictError(error)) {
                   nameConflictDetected = true;
                 } else {
@@ -542,7 +579,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         const followUpPrompt = [
           "The app blueprint has been approved. Please build the app based on the following approved blueprint:",
           "",
-          `App Name: ${effectiveAppName}`,
+          `App Name: ${finalAppName}`,
           `Template: ${plan.templateId}`,
           `Theme: ${plan.themeId}`,
           `Primary Color: ${plan.primaryColor}`,

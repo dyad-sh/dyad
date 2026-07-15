@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { useCreateApp } from "@/hooks/useCreateApp";
 import { useCheckName } from "@/hooks/useCheckName";
+import { useAppFolderPreview } from "@/hooks/useAppFolderPreview";
+import { useDebounce } from "@/hooks/useDebounce";
 import { NEON_TEMPLATE_IDS, Template } from "@/shared/templates";
 import { useSelectChat } from "@/hooks/useSelectChat";
 
@@ -35,7 +37,11 @@ export function CreateAppDialog({
   const [appName, setAppName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createApp } = useCreateApp();
-  const { data: nameCheckResult } = useCheckName(appName);
+  const trimmedAppName = appName.trim();
+  const debouncedAppName = useDebounce(trimmedAppName, 150);
+  const { data: nameCheckResult, isLoading: isCheckingName } =
+    useCheckName(debouncedAppName);
+  const { data: folderPreview } = useAppFolderPreview(debouncedAppName);
   const { selectChat } = useSelectChat();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,9 +76,15 @@ export function CreateAppDialog({
     }
   };
 
-  const isNameValid = appName.trim().length > 0;
-  const nameExists = nameCheckResult?.exists;
-  const canSubmit = isNameValid && !nameExists && !isSubmitting;
+  const isNameValid = trimmedAppName.length > 0;
+  const queryMatchesInput = debouncedAppName === trimmedAppName;
+  const nameExists = queryMatchesInput && nameCheckResult?.exists;
+  const canSubmit =
+    isNameValid &&
+    queryMatchesInput &&
+    !isCheckingName &&
+    !nameExists &&
+    !isSubmitting;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -101,6 +113,16 @@ export function CreateAppDialog({
                   {t("home:appNameAlreadyExists")}
                 </p>
               )}
+              {!nameExists &&
+                queryMatchesInput &&
+                folderPreview &&
+                folderPreview !== debouncedAppName && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("home:appFolderPreview", {
+                      folderName: folderPreview,
+                    })}
+                  </p>
+                )}
             </div>
           </div>
 

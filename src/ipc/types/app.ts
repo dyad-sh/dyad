@@ -126,6 +126,31 @@ export const RenameAppParamsSchema = z.object({
   appId: z.number(),
   appName: z.string(),
   appPath: z.string(),
+  // When true, name/path collisions are resolved by appending a numeric
+  // suffix (atomically, under the app lock) instead of throwing Conflict.
+  // Used by blueprint approval so generated names never block the flow.
+  autoResolveConflicts: z.boolean().optional(),
+});
+
+/**
+ * Schema for rename app result: the final display name and stored path,
+ * which may differ from the requested ones when conflicts were auto-resolved.
+ */
+export const RenameAppResultSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+});
+
+/**
+ * Schema for previewing the folder name an app display name resolves to.
+ */
+export const PreviewAppFolderNameParamsSchema = z.object({
+  name: z.string(),
+  appId: z.number().optional(),
+});
+
+export const PreviewAppFolderNameResultSchema = z.object({
+  folderName: z.string(),
 });
 
 /**
@@ -394,7 +419,13 @@ export const appContracts = {
   renameApp: defineContract({
     channel: "rename-app",
     input: RenameAppParamsSchema,
-    output: z.void(),
+    output: RenameAppResultSchema,
+  }),
+
+  previewAppFolderName: defineContract({
+    channel: "preview-app-folder-name",
+    input: PreviewAppFolderNameParamsSchema,
+    output: PreviewAppFolderNameResultSchema,
   }),
 
   runApp: defineContract({

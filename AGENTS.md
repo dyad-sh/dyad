@@ -34,6 +34,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/auto-update.md](rules/auto-update.md)                         | Debugging Squirrel/update-electron-app failures, update feed URLs, or updater log capture in bug reports and session debug bundles                                             |
 | [rules/safe-storage.md](rules/safe-storage.md)                       | Working with Electron `safeStorage`, macOS Keychain identities, or legacy os_crypt secret recovery                                                                             |
 | [rules/electron-workers.md](rules/electron-workers.md)               | Spawning `worker_threads`/`utilityProcess`, moving heavy computation off the main process, or diagnosing main-process memory usage and OOM crashes                             |
+| [rules/app-naming.md](rules/app-naming.md)                           | Touching app display names, folder slugs, or flows that create/move app directories (create, copy, import, rename, blueprint approval, template apply)                         |
 
 ## Project setup and lints
 

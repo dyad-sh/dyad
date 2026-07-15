@@ -283,3 +283,8 @@ When adding E2E test fixtures that need a `.dyad` directory for testing:
 - The `.dyad` directory is git-ignored by default in test fixtures
 - Use `git add -f path/to/.dyad/file` to force-add files inside `.dyad` directories
 - If `mkdir` is blocked on `.dyad` paths due to security restrictions, use the Write tool to create files directly (which auto-creates parent directories)
+
+## Local-agent blueprint fixtures and rename assertions
+
+- `write_app_blueprint` fixture args must include at least one entry in `visuals` (`.min(1)` in the tool schema). An empty `visuals: []` fails tool validation silently: the blueprint card still renders from the streamed XML tag and "Approve Plan" is clickable, but approval fails with "Blueprint data is unavailable. Please regenerate the plan." because the plan never reached the renderer atom.
+- After a rename/approval, the title bar's `data-app-path` can update a beat later than `data-app-name`. Assert the name AND the path inside a single `expect(async () => {...}).toPass()` poll instead of reading `getCurrentAppPath()` once after the name matches.

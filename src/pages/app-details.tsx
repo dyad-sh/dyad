@@ -1,5 +1,9 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
+import {
+  sanitizeAppFolderNameInput,
+  slugifyAppFolderName,
+} from "@/shared/app_names";
 import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -55,6 +59,7 @@ import {
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useCheckName } from "@/hooks/useCheckName";
+import { useAppFolderPreview } from "@/hooks/useAppFolderPreview";
 import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
@@ -94,6 +99,7 @@ function UnavailableIntegrationCard({
 export default function AppDetailsPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/app-details" as const });
+  const appId = search.appId ? Number(search.appId) : null;
   const { t } = useTranslation("home");
   const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -120,16 +126,31 @@ export default function AppDetailsPage() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
 
-  const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
+  const trimmedNewCopyAppName = newCopyAppName.trim();
+  const debouncedNewCopyAppName = useDebounce(trimmedNewCopyAppName, 150);
+  const copyQueryMatchesInput =
+    debouncedNewCopyAppName === trimmedNewCopyAppName;
   const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
     debouncedNewCopyAppName,
   );
-  const nameExists = checkNameResult?.exists ?? false;
+  const nameExists = copyQueryMatchesInput && !!checkNameResult?.exists;
+  const { data: copyFolderPreview } = useAppFolderPreview(
+    debouncedNewCopyAppName,
+  );
+  const trimmedNewAppName = newAppName.trim();
+  const debouncedNewAppName = useDebounce(trimmedNewAppName, 150);
+  const renameQueryMatchesInput = debouncedNewAppName === trimmedNewAppName;
+  const { data: renameFolderPreview, isLoading: isLoadingRenameFolderPreview } =
+    useAppFolderPreview(debouncedNewAppName, appId ?? undefined);
+  const desiredRenameFolder = slugifyAppFolderName(trimmedNewAppName);
+  const renameFolderHasCollision =
+    renameQueryMatchesInput &&
+    !!renameFolderPreview &&
+    renameFolderPreview !== desiredRenameFolder;
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
 
   // Get the appId and provider filter from search params
-  const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
   const { chats, loading: chatsLoading, invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
@@ -207,8 +228,11 @@ export default function AppDetailsPage() {
     try {
       setIsRenaming(true);
 
-      // Determine the new path based on user's choice
-      const appPath = renameFolder ? newAppName : selectedApp.path;
+      // Determine the new path based on user's choice. A folder derived from
+      // the display name is a lowercase slug per the app naming policy.
+      const appPath = renameFolder
+        ? slugifyAppFolderName(newAppName)
+        : selectedApp.path;
 
       await ipc.app.renameApp({
         appId,
@@ -235,10 +259,14 @@ export default function AppDetailsPage() {
 
     try {
       setIsRenamingFolder(true);
+      // Safety-sanitize the user-typed folder name (case-preserving, no
+      // slugification) and keep the sanitized value visible in the field.
+      const sanitizedFolderName = sanitizeAppFolderNameInput(newFolderName);
+      setNewFolderName(sanitizedFolderName);
       await ipc.app.renameApp({
         appId,
         appName: selectedApp.name, // Keep the app name the same
-        appPath: newFolderName, // Change only the folder path
+        appPath: sanitizedFolderName, // Change only the folder path
       });
 
       setIsRenameFolderDialogOpen(false);
@@ -706,6 +734,15 @@ export default function AppDetailsPage() {
               className="my-2"
               autoFocus
             />
+            {newFolderName.trim() &&
+              sanitizeAppFolderNameInput(newFolderName) !==
+                newFolderName.trim() && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {t("folderSanitizedPreview", {
+                    folderName: sanitizeAppFolderNameInput(newFolderName),
+                  })}
+                </p>
+              )}
             <DialogFooter className="pt-2">
               <Button
                 variant="outline"
@@ -771,7 +808,12 @@ export default function AppDetailsPage() {
                 variant="outline"
                 className="w-full justify-start p-2 h-auto relative text-sm"
                 onClick={() => handleRenameApp(true)}
-                disabled={isRenaming}
+                disabled={
+                  isRenaming ||
+                  !renameQueryMatchesInput ||
+                  isLoadingRenameFolderPreview ||
+                  renameFolderHasCollision
+                }
               >
                 <div className="absolute top-1 right-1">
                   <span className="bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300 text-[10px]">
@@ -780,9 +822,19 @@ export default function AppDetailsPage() {
                 </div>
                 <div className="text-left">
                   <p className="font-medium text-xs">Rename app and folder</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Renames the folder to match the new app name.
-                  </p>
+                  {renameFolderHasCollision ? (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-500">
+                      {t("renameFolderCollision", {
+                        folderName: desiredRenameFolder,
+                      })}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {t("renameFolderDescription", {
+                        folderName: desiredRenameFolder,
+                      })}
+                    </p>
+                  )}
                 </div>
               </Button>
 
@@ -852,6 +904,16 @@ export default function AppDetailsPage() {
                       another name.
                     </p>
                   )}
+                  {!nameExists &&
+                    copyQueryMatchesInput &&
+                    copyFolderPreview &&
+                    copyFolderPreview !== trimmedNewCopyAppName && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {t("appFolderPreview", {
+                          folderName: copyFolderPreview,
+                        })}
+                      </p>
+                    )}
                 </div>
 
                 <div className="space-y-2">
@@ -864,7 +926,8 @@ export default function AppDetailsPage() {
                     disabled={
                       copyAppMutation.isPending ||
                       nameExists ||
-                      !newCopyAppName.trim() ||
+                      !trimmedNewCopyAppName ||
+                      !copyQueryMatchesInput ||
                       isCheckingName
                     }
                   >
@@ -897,7 +960,8 @@ export default function AppDetailsPage() {
                     disabled={
                       copyAppMutation.isPending ||
                       nameExists ||
-                      !newCopyAppName.trim() ||
+                      !trimmedNewCopyAppName ||
+                      !copyQueryMatchesInput ||
                       isCheckingName
                     }
                   >

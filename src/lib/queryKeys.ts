@@ -191,6 +191,8 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   appName: {
     check: ({ name }: { name: string }) => ["checkAppName", name] as const,
+    folderPreview: ({ name, appId }: { name: string; appId?: number }) =>
+      ["appFolderPreview", name, appId ?? null] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

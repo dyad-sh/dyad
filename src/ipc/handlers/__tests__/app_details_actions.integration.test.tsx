@@ -140,6 +140,7 @@ describe("app details actions (integration)", () => {
     const copyButton = await screen.findByRole("button", {
       name: /Copy app with history/i,
     });
+    expect((copyButton as HTMLButtonElement).disabled).toBe(true);
     await waitFor(() => {
       expect((copyButton as HTMLButtonElement).disabled).toBe(false);
     });
@@ -243,11 +244,13 @@ describe("app details actions (integration)", () => {
       target: { value: newName },
     });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /Rename app and folder/i,
-      }),
-    );
+    const renameFolderButton = await screen.findByRole("button", {
+      name: /Rename app and folder/i,
+    });
+    await waitFor(() => {
+      expect((renameFolderButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(renameFolderButton);
 
     await waitFor(async () => {
       const row = await harness.db.query.apps.findFirst({
@@ -296,6 +299,28 @@ describe("app details actions (integration)", () => {
     expect(fs.existsSync(app.appDir)).toBe(true);
     await screen.findByText(app.appDir);
   }, 60_000);
+
+  it("blocks folder rename confirmation when the derived folder is taken", async () => {
+    const app = await createFixtureApp("rename-folder-collision-source");
+    const desiredName = `taken-folder-${appCounter}`;
+    const takenPath = path.join(appsRoot, desiredName);
+    fs.mkdirSync(takenPath);
+
+    await mountAppDetails(app);
+    fireEvent.click(screen.getByTestId("app-details-rename-app-button"));
+    fireEvent.change(await screen.findByPlaceholderText("Enter new app name"), {
+      target: { value: desiredName },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    const renameFolderButton = await screen.findByRole("button", {
+      name: /Rename app and folder/i,
+    });
+    await screen.findByText(
+      `Folder "${desiredName}" is already in use. Choose a different app name to rename the folder.`,
+    );
+    expect((renameFolderButton as HTMLButtonElement).disabled).toBe(true);
+  });
 
   it("creates a new chat from the chat header button", async () => {
     const app = await createFixtureApp("new-chat-app");

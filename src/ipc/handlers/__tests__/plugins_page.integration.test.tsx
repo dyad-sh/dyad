@@ -118,6 +118,37 @@ describe("Plugins page (integration)", () => {
     }
   }, 40_000);
 
+  it("shows a placeholder count when tool discovery fails", async () => {
+    const { stop } = await harness.mcp.addHttpServer();
+    harness.mountSurface({ route: "/plugins" });
+
+    const card = await screen.findByTestId("plugin-card");
+    await waitFor(
+      () => {
+        expect(card.textContent).toMatch(/\d+ tools/);
+      },
+      { timeout: 20_000 },
+    );
+
+    // Kill the server, then force a re-listing through the enabled
+    // toggle (each update invalidates the tools query). The failed
+    // listing must fall back to the placeholder, not report "0 tools".
+    await stop();
+    const enabledSwitch = within(card).getByRole("switch");
+    await harness.setSwitch(enabledSwitch, false);
+    await harness.setSwitch(enabledSwitch, true);
+    await waitFor(
+      () => {
+        expect(card.textContent).toContain("— tools");
+        expect(screen.getByTestId("plugins-stats").textContent).toBe(
+          "1 plugin · — tools enabled",
+        );
+      },
+      { timeout: 20_000 },
+    );
+    expect(card.textContent).not.toMatch(/\d+ tools/);
+  }, 40_000);
+
   it("opens the detail page, changes a consent, and deletes the plugin", async () => {
     const server = await harness.mcp.addStdioServer();
     harness.mountSurface({ route: "/plugins" });

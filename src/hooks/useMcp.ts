@@ -78,7 +78,14 @@ export function useMcp() {
   const toolsByServer = useMemo(() => {
     const map: Record<number, McpTool[]> = {};
     for (const [id, result] of Object.entries(toolsByServerQuery.data || {})) {
-      map[Number(id)] = result.tools;
+      // A failed or unauthorized listing has no real tool list, only a
+      // placeholder empty array. Leave the server out so absence means
+      // "no successful discovery" and the UI shows a placeholder count
+      // instead of a misleading zero; the outcome itself is reported
+      // via statusByServer.
+      if (result.status === "ok") {
+        map[Number(id)] = result.tools;
+      }
     }
     return map;
   }, [toolsByServerQuery.data]);

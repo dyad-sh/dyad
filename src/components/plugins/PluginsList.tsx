@@ -37,8 +37,8 @@ export function PluginsList({
   );
   const showPlaintextBanner = oauthStorageEncrypted === false && hasOauthServer;
 
-  // Unconnected or still-loading servers have no tool list yet; the
-  // card shows a placeholder instead of a misleading zero.
+  // Still-loading, unreachable, or unauthorized servers have no tool
+  // list; the card shows a placeholder instead of a misleading zero.
   const toolCountFor = (serverId: number): number | null =>
     toolsByServer[serverId] ? toolsByServer[serverId].length : null;
 

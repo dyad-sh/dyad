@@ -1416,6 +1416,8 @@ const AGENT_GIT_MAX_DIFF_PATHS = 500;
 const AGENT_GIT_MAX_STATUS_PATHS = 500;
 const AGENT_GIT_STATUS_PATH_BUDGET_BYTES =
   AGENT_READ_FILE_RESULT_LIMIT_BYTES - 4096;
+// Keeps diff pathspec argv well under the ~32 KiB Windows command-line limit.
+const AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES = 24 * 1024;
 const AGENT_GIT_TRUNCATION_NOTICE =
   "\n\n[Output truncated at 256 KiB. Narrow the request with a path, line range, or smaller commit count.]";
 
@@ -1753,12 +1755,22 @@ async function renderSafeAgentDiff({
     allowed.push(entry.paths.at(-1) ?? entry.paths[0]);
   }
 
-  const uniqueAllowed = [...new Set(allowed)].slice(
-    0,
-    AGENT_GIT_MAX_DIFF_PATHS,
-  );
+  const uniquePaths = [...new Set(allowed)];
+  const uniqueAllowed: string[] = [];
+  let remainingArgvBytes = AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES;
+  for (const allowedPath of uniquePaths) {
+    const pathBytes = Buffer.byteLength(allowedPath, "utf8") + 1;
+    if (
+      uniqueAllowed.length >= AGENT_GIT_MAX_DIFF_PATHS ||
+      pathBytes > remainingArgvBytes
+    ) {
+      continue;
+    }
+    uniqueAllowed.push(allowedPath);
+    remainingArgvBytes -= pathBytes;
+  }
   const omittedByCount =
-    discovery.truncated || allowed.length > uniqueAllowed.length;
+    discovery.truncated || uniquePaths.length > uniqueAllowed.length;
   let patch = "";
   let truncated = omittedByCount;
   if (uniqueAllowed.length > 0) {
@@ -1888,7 +1900,9 @@ export async function getAgentGitLog({
       "log",
       `--max-count=${maxCount}`,
       "--no-show-signature",
-      "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%B%x1e",
+      // NUL-terminated records: git forbids NUL in commit messages, while
+      // %x1e could legally appear inside %B and split a commit in two.
+      "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%B%x00",
       "--end-of-options",
       oid,
       ...(normalizedPath ? ["--", normalizedPath] : []),
@@ -1898,7 +1912,7 @@ export async function getAgentGitLog({
   );
   assertAgentGitSuccess(result, "Failed to read Git log");
   const commits = result.stdout
-    .split("\x1e")
+    .split("\0")
     .map((chunk) => chunk.trim())
     .filter(Boolean)
     .map((chunk) => {

@@ -67,17 +67,26 @@ describe("ChatList favorites (integration)", () => {
     expect(within(favoritesGroup).getByText("Older chat")).toBeTruthy();
     expect(screen.getAllByText("Older chat")).toHaveLength(1);
     await waitFor(() => {
-      expect(document.activeElement).toBe(
-        screen.getByRole("button", {
-          name: "Remove Older chat from favorites",
-        }),
-      );
+      const pendingFavoriteButton = screen.getByRole("button", {
+        name: "Remove Older chat from favorites",
+      });
+      expect(document.activeElement).toBe(pendingFavoriteButton);
       expect(document.activeElement?.getAttribute("aria-disabled")).toBe(
         "true",
+      );
+      expect(pendingFavoriteButton.className).not.toContain(
+        "aria-disabled:pointer-events-none",
       );
       expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
       expect(listContainer.scrollTop).toBe(120);
     });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Remove Older chat from favorites",
+      }),
+    );
+    expect(mutationSpy).toHaveBeenCalledTimes(1);
+    expect(Number(harness.currentLocation().search.id)).toBe(harness.chatId);
     releaseMutation();
     focusSpy.mockRestore();
     await waitFor(async () => {

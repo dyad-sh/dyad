@@ -76,6 +76,8 @@ writeSettings({
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.
 - For **non-bug** failures (validation, not found, auth, user refusal, etc.), prefer `DyadError` with the right `DyadErrorKind` so PostHog does not flood with `$exception` events — see [rules/dyad-errors.md](dyad-errors.md).
 - Use `createTypedHandler(contract, handler)` which validates inputs at runtime via Zod.
+- Production invoke handlers must register through `createTypedHandler`, `createLoggedHandler`, or `registerTrustedIpcHandler`; never call `ipcMain.handle` or `ipcMain.handleOnce` directly outside `trusted_handle.ts`. The facade enforces the trusted-main-frame policy for both contract and legacy channels.
+- When migrating a large inline `ipcMain.handle` callback to the trusted facade, extract a named local handler first. Adding another wrapper level around the inline callback makes the formatter reindent the entire body and obscures the security-only diff.
 - Treat output schemas as type/validation contracts, not production serializers: `createTypedHandler` returns the handler result unchanged outside development. Explicitly project and map renderer-visible database columns before returning, especially for large or main-only fields such as `aiMessagesJson`.
 - When editing shared IPC contract code imported by `src/preload.ts` (especially `src/ipc/contracts/core.ts`), run `npm run build` before E2E. The preload Vite target may not resolve `@/...` aliases from those shared modules; use relative imports for preload-reachable shared code when packaging reports `Rollup failed to resolve import "@/..."`.
 - Avoid unguarded top-level `app.on(...)` or similar Electron API calls in modules that are imported broadly by tests. Many unit tests mock only the Electron APIs they touch, so prefer guarded calls like `app?.on?.(...)` or move event registration behind an explicit initialization function.
@@ -173,6 +175,7 @@ When creating hooks/components that call IPC handlers:
 `src/testing/handler_test_harness.ts` (`setupHandlerTestHarness` + `harness.invokeHandler("channel", input)`) gives you a real in-memory DB and works even for heavyweight modules: `registerAppHandlers` loads in vitest with just `vi.mock("electron")` plus module mocks for `@/paths/paths` (point `getDyadAppPath` at a temp dir), `@/ipc/services/git_service`, `createFromTemplate`, `gitignoreUtils`, and `chat_mode_resolution`.
 
 - Only handlers registered via `createTypedHandler` land in the harness registry. Handlers registered with `createLoggedHandler`/`handle(...)` (e.g. `import_handlers.ts`) must be captured through the mocked `ipcMain.handle` — and their return value is an IPC envelope shaped `{ ok, value, error }` (NOT `{ success, data }`), so unwrap accordingly.
+- Tests that invoke a captured `ipcMain.handle` listener run through the production trust facade. Call `configureTrustedRenderer(...)` and pass an event whose `senderFrame` matches `sender.mainFrame`; an empty `{}` event now fails with `Renderer trust policy is not configured` before the tested handler runs.
 
 ## Renderer trust and child windows
 

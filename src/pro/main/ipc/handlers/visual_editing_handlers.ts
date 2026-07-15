@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "path";
@@ -30,16 +29,15 @@ import {
 import { normalizePath } from "../../../../../shared/normalizePath";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
-import { assertTrustedRenderer } from "@/ipc/utils/renderer_security";
+import { registerTrustedIpcHandler } from "@/ipc/handlers/trusted_handle";
 
 // Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
 const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
 
 export function registerVisualEditingHandlers() {
-  ipcMain.handle(
+  registerTrustedIpcHandler(
     "apply-visual-editing-changes",
-    async (event, params: ApplyVisualEditingChangesParams) => {
-      assertTrustedRenderer(event);
+    async (_event, params: ApplyVisualEditingChangesParams) => {
       const { appId, changes } = params;
       // Track written image files and staged git paths for cleanup on failure
       const writtenImagePaths: string[] = [];
@@ -227,10 +225,9 @@ export function registerVisualEditingHandlers() {
     },
   );
 
-  ipcMain.handle(
+  registerTrustedIpcHandler(
     "analyze-component",
-    async (event, analyseComponentParams: AnalyseComponentParams) => {
-      assertTrustedRenderer(event);
+    async (_event, analyseComponentParams: AnalyseComponentParams) => {
       const { appId, componentId } = analyseComponentParams;
       try {
         const [filePath, lineStr] = componentId.split(":");

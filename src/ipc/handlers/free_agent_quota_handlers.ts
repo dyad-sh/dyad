@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -6,7 +5,7 @@ import { createTypedHandler } from "./base";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import { assertTrustedRenderer } from "../utils/renderer_security";
+import { registerTrustedIpcHandler } from "./trusted_handle";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 import fetch from "node-fetch";
 
@@ -82,10 +81,9 @@ export function registerFreeAgentQuotaHandlers() {
 
   // Test-only handler to simulate time passing for quota tests
   if (IS_TEST_BUILD) {
-    ipcMain.handle(
+    registerTrustedIpcHandler(
       "test:simulateQuotaTimeElapsed",
-      async (event, hoursAgo: number) => {
-        assertTrustedRenderer(event);
+      async (_event, hoursAgo: number) => {
         const secondsAgo = hoursAgo * 60 * 60;
         const newTimestamp = Math.floor(Date.now() / 1000) - secondsAgo;
 

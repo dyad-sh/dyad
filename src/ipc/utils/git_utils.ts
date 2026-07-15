@@ -1773,7 +1773,7 @@ async function renderSafeAgentDiff({
     filePath,
   });
   const sensitive: string[] = [];
-  const allowed: string[] = [];
+  const allowedPathGroups: string[][] = [];
   for (const entry of discovery.entries) {
     if (
       entry.paths.some(isDotenvFilePath) ||
@@ -1784,25 +1784,35 @@ async function renderSafeAgentDiff({
     }
     // Git needs both sides of a rename/copy pathspec to preserve its R/C
     // classification when rendering the patch.
-    allowed.push(...entry.paths);
+    allowedPathGroups.push(entry.paths);
   }
 
-  const uniquePaths = [...new Set(allowed)];
+  const uniquePaths = new Set(allowedPathGroups.flat());
   const uniqueAllowed: string[] = [];
+  const includedPaths = new Set<string>();
   let remainingArgvBytes = AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES;
-  for (const allowedPath of uniquePaths) {
-    const pathBytes = Buffer.byteLength(allowedPath, "utf8") + 1;
+  for (const pathGroup of allowedPathGroups) {
+    const newPaths = [
+      ...new Set(
+        pathGroup.filter((entryPath) => !includedPaths.has(entryPath)),
+      ),
+    ];
+    const groupBytes = newPaths.reduce(
+      (total, entryPath) => total + Buffer.byteLength(entryPath, "utf8") + 1,
+      0,
+    );
     if (
-      uniqueAllowed.length >= AGENT_GIT_MAX_DIFF_PATHS ||
-      pathBytes > remainingArgvBytes
+      uniqueAllowed.length + newPaths.length > AGENT_GIT_MAX_DIFF_PATHS ||
+      groupBytes > remainingArgvBytes
     ) {
       continue;
     }
-    uniqueAllowed.push(allowedPath);
-    remainingArgvBytes -= pathBytes;
+    uniqueAllowed.push(...newPaths);
+    for (const entryPath of newPaths) includedPaths.add(entryPath);
+    remainingArgvBytes -= groupBytes;
   }
   const omittedByCount =
-    discovery.truncated || uniquePaths.length > uniqueAllowed.length;
+    discovery.truncated || uniquePaths.size > uniqueAllowed.length;
   let patch = "";
   let truncated = omittedByCount;
   if (uniqueAllowed.length > 0) {

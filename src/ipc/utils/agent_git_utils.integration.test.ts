@@ -206,6 +206,35 @@ describe("agent Git utilities", () => {
     }
   });
 
+  it("omits rename path pairs atomically at the diff path limit", async () => {
+    await Promise.all(
+      Array.from({ length: 499 }, (_, index) =>
+        fs.promises.writeFile(
+          path.join(repo, `a-${index.toString().padStart(3, "0")}.txt`),
+          "",
+        ),
+      ),
+    );
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-m", "add empty files");
+    await Promise.all(
+      Array.from({ length: 499 }, (_, index) =>
+        fs.promises.rm(
+          path.join(repo, `a-${index.toString().padStart(3, "0")}.txt`),
+        ),
+      ),
+    );
+    await git(repo, "mv", "file.txt", "z-renamed.txt");
+
+    const result = await getAgentGitDiff({ path: repo });
+
+    expect(result.truncated).toBe(true);
+    expect(result.content).toContain("limited to 500 paths");
+    expect(result.content).not.toContain("rename from file.txt");
+    expect(result.content).not.toContain("rename to z-renamed.txt");
+    expect(result.content).not.toContain("diff --git a/file.txt");
+  });
+
   it("omits dotenv patch content", async () => {
     await fs.promises.writeFile(
       path.join(repo, ".env"),

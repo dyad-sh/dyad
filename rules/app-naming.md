@@ -15,6 +15,10 @@ approval, template apply).
 - `slugifyAppPath` in `src/shared/slugify.ts` is only for GitHub repo /
   Vercel project name defaults (must stay ASCII). App folders use
   `slugifyAppFolderName`, which preserves CJK and transliterates accents.
+- Windows device names remain reserved when they have an extension (`CON.txt`).
+  When sanitizing one, insert the safety suffix before the first dot
+  (`CON-app.txt`); appending it after the extension (`CON.txt-app`) leaves the
+  reserved base unchanged and fails validation.
 - Collision probing must exclude the app being renamed (DB row AND its own
   on-disk folder), or re-running the same rename inflates suffixes
   (`Todo App 2` → `Todo App 3`).

@@ -104,3 +104,20 @@ export interface GitCreateBranchParams extends GitBaseParams {
 export interface GitDeleteBranchParams extends GitBaseParams {
   branch: string;
 }
+
+export type AgentGitDiffScope = "unstaged" | "staged" | "all";
+
+export interface AgentGitStatus {
+  branch: string | null;
+  head: string | null;
+  detached: boolean;
+  staged: string[];
+  unstaged: string[];
+  untracked: string[];
+  conflicted: string[];
+}
+
+export interface AgentGitTextResult {
+  content: string;
+  truncated: boolean;
+}

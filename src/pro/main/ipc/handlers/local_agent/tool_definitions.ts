@@ -41,6 +41,14 @@ import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
 import { searchMcpToolsTool } from "./tools/search_mcp_tools";
 import { getMcpToolSchemaTool } from "./tools/get_mcp_tool_schema";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
+import {
+  gitDiffTool,
+  gitLogTool,
+  gitRestoreFileTool,
+  gitShowCommitTool,
+  gitShowFileTool,
+  gitStatusTool,
+} from "./tools/git";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -87,6 +95,12 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   executeSqlTool,
   readFileTool,
   listFilesTool,
+  gitStatusTool,
+  gitDiffTool,
+  gitLogTool,
+  gitShowCommitTool,
+  gitShowFileTool,
+  gitRestoreFileTool,
   grepTool,
   codeSearchTool,
   exploreCodeTool,

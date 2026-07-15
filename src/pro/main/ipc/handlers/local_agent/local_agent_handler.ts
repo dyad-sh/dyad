@@ -199,7 +199,7 @@ function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
 }
 
-function buildChatMessageHistory(
+export function buildChatMessageHistory(
   chatMessages: Array<
     DbMessageForParsing & {
       isCompactionSummary: boolean | null;
@@ -257,7 +257,20 @@ function buildChatMessageHistory(
     .filter((msg) => !excludedIds?.has(msg.id))
     .filter((msg) => msg.content || msg.aiMessagesJson);
 
-  return filtered.flatMap((msg) => parseAiMessagesJson(msg));
+  return filtered.flatMap((msg) => {
+    const parsed = parseAiMessagesJson(msg);
+    if (msg.role !== "assistant") {
+      return parsed;
+    }
+    const annotation = msg.commitHash
+      ? `<dyad-git-context commit="${escapeXmlAttr(msg.commitHash)}"></dyad-git-context>`
+      : msg.sourceCommitHash
+        ? `<dyad-git-context source_commit="${escapeXmlAttr(msg.sourceCommitHash)}" no_commit="true"></dyad-git-context>`
+        : null;
+    return annotation
+      ? [...parsed, { role: "assistant" as const, content: annotation }]
+      : parsed;
+  });
 }
 
 /**

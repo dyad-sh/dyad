@@ -14,6 +14,7 @@ import {
   normalizeItemReferences,
   normalizeToolCallIds,
   normalizeMcpCallIds,
+  normalizeGitContextHashes,
   normalizeVersionedFiles,
   normalizePath,
   prettifyDump,
@@ -734,6 +735,7 @@ export class PageObject {
     // blocks instead of OpenAI-style message.tool_calls arrays.
     normalizeToolCallIds(parsedDump);
     normalizeMcpCallIds(parsedDump);
+    normalizeGitContextHashes(parsedDump);
     if (type === "request") {
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);

@@ -47,6 +47,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-code-search-result",
   "dyad-code-search",
   "dyad-read",
+  "dyad-git",
   "think",
   "dyad-command",
   "dyad-mcp-tool-call",

@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as parserModule from "@/lib/streamingMessageParser";
@@ -6,6 +7,7 @@ import type {
   Block as ParserBlock,
   ParserState,
 } from "@/lib/streamingMessageParser";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 // Track every render of the inner ReactMarkdown component keyed by the
 // content string it received. The DyadMarkdownParser wraps ReactMarkdown
@@ -70,6 +72,46 @@ describe("DyadMarkdownParser dyad-command", () => {
       screen.getByRole("button", { name: /add typescript/i }),
     ).toBeTruthy();
     expect(screen.queryByText(/Unsupported:/)).toBeNull();
+  });
+});
+
+describe("DyadMarkdownParser dyad-git", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it.each([
+    ["status", "Status"],
+    ["diff", "Diff"],
+    ["log", "Log"],
+    ["show_commit", "Show commit"],
+    ["show_file", "Show file"],
+    ["restore_file", "Restore file"],
+  ])("renders the %s Git operation card", (operation, label) => {
+    render(
+      <DyadMarkdownParser
+        content={`<dyad-git operation="${operation}" revision="abc123" path="src/main.ts"></dyad-git>`}
+      />,
+    );
+
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.getByText("Revision: abc123")).toBeTruthy();
+    expect(screen.getByText("src/main.ts")).toBeTruthy();
+  });
+
+  it("renders a pending state while the Git tag streams", () => {
+    const store = createStore();
+    store.set(selectedChatIdAtom, 1);
+    store.set(isStreamingByIdAtom, new Map([[1, true]]));
+    render(
+      <Provider store={store}>
+        <DyadMarkdownParser
+          content={'<dyad-git operation="status" state="pending">'}
+        />
+      </Provider>,
+    );
+
+    expect(screen.getByText("Inspecting...")).toBeTruthy();
   });
 });
 

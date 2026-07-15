@@ -384,6 +384,8 @@ export type DbMessageForParsing = {
   role: string;
   content: string;
   aiMessagesJson: AiMessagesJsonV6 | ModelMessage[] | null;
+  sourceCommitHash?: string | null;
+  commitHash?: string | null;
 };
 
 /**

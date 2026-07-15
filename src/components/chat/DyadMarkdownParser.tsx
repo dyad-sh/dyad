@@ -63,6 +63,7 @@ import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { DyadScript } from "./DyadScript";
+import { DyadGit } from "./DyadGit";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -520,6 +521,20 @@ function renderCustomTag(
         >
           {content}
         </DyadRead>
+      );
+    case "dyad-git":
+      return (
+        <DyadGit
+          node={{
+            properties: {
+              operation: attributes.operation || "",
+              revision: attributes.revision || "",
+              path: attributes.path || "",
+              scope: attributes.scope || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        />
       );
     case "dyad-web-search":
       return (

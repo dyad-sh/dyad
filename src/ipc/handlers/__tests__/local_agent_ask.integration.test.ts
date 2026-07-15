@@ -182,6 +182,11 @@ describe("local-agent ask mode (integration)", () => {
     expect(toolNames).toEqual([
       "code_search",
       "execute_sandbox_script",
+      "git_diff",
+      "git_log",
+      "git_show_commit",
+      "git_show_file",
+      "git_status",
       "grep",
       "list_files",
       "read_file",

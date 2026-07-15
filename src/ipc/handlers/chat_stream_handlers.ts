@@ -1941,8 +1941,15 @@ This conversation includes one or more image attachments. When the user uploads 
       // Clean up the abort controller
       activeStreams.delete(req.chatId);
 
-      // Notify renderer that stream has ended
-      safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      // Notify renderer that stream has ended. When the stream was cancelled,
+      // `cancelTrackedStreams` is the sole sender of the end events (it emits
+      // both `chat:response:end` with `wasCancelled` and `chat:stream:end`
+      // after awaiting this handler's completion). Sending `chat:stream:end`
+      // here too would deliver a duplicate end event to the renderer, so skip
+      // it on the aborted path.
+      if (!abortController.signal.aborted) {
+        safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      }
       // Unblock any pending MCP consents (their banners are cleared on stream end).
       clearPendingMcpConsentsForChat(req.chatId);
 

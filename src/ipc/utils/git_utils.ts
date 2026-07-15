@@ -482,7 +482,18 @@ export async function gitStageToRevert({
   const userVisibleChanges = statusResult.stdout
     .split("\n")
     .filter((line) => line.trim() !== "")
-    .map((line) => line.slice(3).trim())
+    // A staged rename shows up as `old -> new`. Examine BOTH sides: a rename
+    // from a managed `.dyad/` file to a user-visible destination must still
+    // count as a user-visible change, otherwise the following `reset --hard`
+    // would silently destroy the destination file. Mirrors the rename
+    // handling in `getGitUncommittedFilesWithStatus`.
+    .flatMap((line) => {
+      const filePath = line.slice(3).trim();
+      const renameIndex = filePath.indexOf(" -> ");
+      return renameIndex === -1
+        ? [filePath]
+        : [filePath.slice(0, renameIndex), filePath.slice(renameIndex + 4)];
+    })
     .filter(isUserVisibleGitPath);
   if (userVisibleChanges.length > 0) {
     throw new DyadError(

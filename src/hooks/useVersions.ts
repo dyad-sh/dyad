@@ -19,13 +19,17 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
 
-// Shared keys so every `useVersions` instance can observe whether *any*
-// version-modifying operation is in flight (via `useIsMutating`), not just its
-// own. Both operations are serialized by `withLock(appId)` on the backend, but
-// we also want to prevent the UI from kicking off a second one against state
-// left by the first.
-const restoreToMessageMutationKey = ["restoreToMessageVersion"] as const;
-const revertVersionMutationKey = ["revertVersion"] as const;
+// Shared, per-app keys so every `useVersions` instance for the *same app* can
+// observe whether a version-modifying operation is in flight (via
+// `useIsMutating`), not just its own. The keys include `appId` so a
+// restore/revert running against one app does not disable version actions
+// (message restore arrows, undo/retry) in an unrelated app. Both operations are
+// serialized by `withLock(appId)` on the backend, but we also want to prevent
+// the UI from kicking off a second one against state left by the first.
+const restoreToMessageMutationKey = (appId: number | null) =>
+  ["restoreToMessageVersion", appId] as const;
+const revertVersionMutationKey = (appId: number | null) =>
+  ["revertVersion", appId] as const;
 
 export function useVersions(appId: number | null) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -75,7 +79,7 @@ export function useVersions(appId: number | null) {
       targetBranchName?: string;
     }
   >({
-    mutationKey: revertVersionMutationKey,
+    mutationKey: revertVersionMutationKey(appId),
     mutationFn: async ({
       versionId,
       currentChatMessageId,
@@ -184,7 +188,7 @@ export function useVersions(appId: number | null) {
     { chatId: number; messageId: number; restoreCodebase: boolean },
     { mutationAppId: number | null }
   >({
-    mutationKey: restoreToMessageMutationKey,
+    mutationKey: restoreToMessageMutationKey(appId),
     // Capture the app the mutation targets so `onSuccess` invalidates *that*
     // app's caches. If the user switches apps while the IPC call is in flight,
     // the hook's `appId` closure would point at the newly selected app, leaving
@@ -252,20 +256,22 @@ export function useVersions(appId: number | null) {
   });
 
   // True when *any* version-modifying operation (restore-to-message or
-  // revert-version) is pending across every `useVersions` instance. The
-  // per-instance `isPending` flags above are local to the component that
-  // triggered them, so we use `useIsMutating` on the shared keys to disable all
-  // version-modifying buttons (message restore arrows and the version-pane
-  // revert button) while one is running, preventing a confusing second
-  // operation from running against the state left by the first.
+  // revert-version) is pending for THIS app across every `useVersions` instance
+  // bound to it. The per-instance `isPending` flags above are local to the
+  // component that triggered them, so we use `useIsMutating` on the shared
+  // per-app keys to disable all version-modifying buttons (message restore
+  // arrows and the version-pane revert button) while one is running, preventing
+  // a confusing second operation from running against the state left by the
+  // first. Scoping the keys by `appId` keeps a background mutation in another
+  // app from disabling these actions here.
   // Both `useIsMutating` calls must run on every render — combining them with
   // `||` directly would short-circuit and skip the second hook whenever the
   // first is truthy, violating the rules of hooks ("Should have a queue").
   const restoreToMessagePending = useIsMutating({
-    mutationKey: restoreToMessageMutationKey,
+    mutationKey: restoreToMessageMutationKey(appId),
   });
   const revertVersionPending = useIsMutating({
-    mutationKey: revertVersionMutationKey,
+    mutationKey: revertVersionMutationKey(appId),
   });
   const isAnyVersionMutationPending =
     restoreToMessagePending > 0 || revertVersionPending > 0;

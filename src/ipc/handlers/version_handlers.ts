@@ -16,6 +16,7 @@ import {
   gitAddAll,
   gitCheckout,
   gitCommit,
+  getGitUncommittedFilesWithStatus,
   gitStageToRevert,
   getCurrentCommitHash,
   gitCommitExists,
@@ -240,6 +241,20 @@ async function revertCodebaseToVersion({
   let warningMessage = "";
 
   const currentBranch = await gitCurrentBranch({ path: appPath });
+  // Detached HEAD (e.g. the Version pane has a historical version checked out)
+  // has no branch to anchor the revert commit to. Callers that legitimately
+  // operate while detached (the Version-pane restore) pass an explicit
+  // `targetBranchName` so the commit lands on the live branch. Without one, the
+  // revert commit would be created on the detached HEAD and then abandoned when
+  // the saved branch is checked out again, silently discarding the restore. Bail
+  // out with a clear message instead of doing the work only to throw it away.
+  if (!currentBranch && !targetBranchName) {
+    throw new DyadError(
+      "Cannot restore while viewing a historical version. Close the version " +
+        "preview to return to your branch, then try again.",
+      DyadErrorKind.Conflict,
+    );
+  }
   const revertRef = currentBranch ?? targetBranchName ?? "HEAD";
   // Get the current commit hash before reverting
   const currentCommitHash = await getCurrentCommitHash({
@@ -262,10 +277,26 @@ async function revertCodebaseToVersion({
     // commits staged changes, so without this the commit would fail with
     // "nothing added to commit but untracked files present" and the revert
     // would abort.
+    //
+    // We commit the whole dirty tree (rather than only stream-written files)
+    // because the interrupted turn's writes cannot be reliably distinguished
+    // from any pre-existing edits. This never loses work: the changes are
+    // captured in a recoverable checkpoint commit that stays in history between
+    // the target version and the revert commit, so the user can get back to it
+    // via the Version pane. Log exactly what was captured so the side effect is
+    // transparent rather than silent.
+    const preservedFiles = await getGitUncommittedFilesWithStatus({
+      path: appPath,
+    });
+    logger.log(
+      `Preserving ${preservedFiles.length} uncommitted file(s) in a checkpoint commit before restoring app ${appId}: ` +
+        preservedFiles.map((f) => `${f.status} ${f.path}`).join(", "),
+    );
     await gitAddAll({ path: appPath });
     await gitCommit({
       path: appPath,
-      message: "Saved partial changes before restoring to an earlier version",
+      message:
+        "Saved partial changes (from an interrupted generation) before restoring to an earlier version",
     });
   }
 
@@ -371,11 +402,28 @@ async function revertCodebaseToVersion({
         // It might throw because they picked a timestamp that's too old.
       }
     }
-    await switchPostgresToDevelopmentBranch({
-      neonProjectId: app.neonProjectId,
-      neonDevelopmentBranchId: app.neonDevelopmentBranchId,
-      appPath: app.path,
-    });
+    try {
+      await switchPostgresToDevelopmentBranch({
+        neonProjectId: app.neonProjectId,
+        neonDevelopmentBranchId: app.neonDevelopmentBranchId,
+        appPath: app.path,
+      });
+    } catch (error) {
+      // The git revert has already been committed at this point, so throwing
+      // here would leave the code restored while the caller (revertVersion /
+      // restore-to-message) skips its chat-state updates and reports failure.
+      // Surface this as a warning so the restore still completes; only pointing
+      // the app at the development database failed.
+      logger.error(
+        "Error switching Postgres to the development branch after revert:",
+        getNeonErrorMessage(error),
+      );
+      warningMessage +=
+        "Restored your code to this version, but could not switch the app's " +
+        `database connection back to the development branch: ${getNeonErrorMessage(
+          error,
+        )}. Please check your app's database connection before relying on its data.`;
+    }
   }
   // Re-deploy all Supabase edge functions after reverting
   if (app.supabaseProjectId) {
@@ -699,6 +747,20 @@ export function registerVersionHandlers() {
             "Chat does not belong to this app",
             DyadErrorKind.Validation,
           );
+        }
+
+        // Validate the target message exists before cancelling anything.
+        // Cancelling active streams aborts the user's in-flight generations, so
+        // a stale or invalid request (a message that no longer exists) must not
+        // trigger that destructive side effect for a restore that cannot
+        // succeed. The full message list is still re-loaded under the lock below
+        // to resolve the exact version to restore to.
+        const targetMessage = await db.query.messages.findFirst({
+          columns: { id: true },
+          where: and(eq(messages.id, messageId), eq(messages.chatId, chatId)),
+        });
+        if (!targetMessage) {
+          throw new DyadError("Message not found", DyadErrorKind.NotFound);
         }
 
         // Cancellation must happen before taking the app lock. Awaiting a

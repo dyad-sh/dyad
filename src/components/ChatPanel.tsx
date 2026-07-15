@@ -164,22 +164,38 @@ export function ChatPanel({
     isAtBottomRef.current = true;
     setShowScrollButton(false);
 
-    if (messages.length > 0) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToBottom("instant");
-        });
-      });
+    // Wait for messages to render before scrolling. If they haven't loaded yet,
+    // leave the request pending so this effect re-runs (and scrolls) once they
+    // do, rather than clearing it here and never scrolling.
+    if (messages.length === 0) {
+      return;
     }
 
-    setScrollToBottomRequestedChatIds((prev) => {
-      if (!prev.has(chatId)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.delete(chatId);
-      return next;
+    // Defer the scroll to after paint, but capture the RAF ids so a chat switch
+    // (which cleans up / re-runs this effect) cancels the pending scroll.
+    // scrollToBottom resolves the shared messagesEndRef at execution time, so
+    // an un-cancelled callback firing after a rapid switch would scroll whatever
+    // chat is now mounted. Clear the request only after the scroll actually
+    // runs, so the cleanup can't outrace the deferred scroll.
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        scrollToBottom("instant");
+        setScrollToBottomRequestedChatIds((prev) => {
+          if (!prev.has(chatId)) {
+            return prev;
+          }
+          const next = new Set(prev);
+          next.delete(chatId);
+          return next;
+        });
+      });
     });
+
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+    };
   }, [
     chatId,
     messages.length,

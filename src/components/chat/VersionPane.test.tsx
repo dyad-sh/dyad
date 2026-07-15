@@ -163,6 +163,7 @@ describe("VersionPane", () => {
     showErrorMock.mockReset();
 
     versionsMock.length = 0;
+    checkoutVersionMock.mockResolvedValue(undefined);
     listAppScreenshotsMock.mockResolvedValue({ screenshots: [] });
     refetchBranchInfoMock.mockResolvedValue({ data: { branch: "main" } });
   });
@@ -675,7 +676,7 @@ describe("VersionPane", () => {
     expect(restartAppMock).not.toHaveBeenCalled();
   });
 
-  it("ignores a preview checkout failure after version history closes", async () => {
+  it("waits for an in-flight preview before returning to the branch", async () => {
     let rejectSecondCheckout!: (error: Error) => void;
     let resolveReturnCheckout!: () => void;
     checkoutVersionMock
@@ -721,11 +722,10 @@ describe("VersionPane", () => {
     rerender(
       <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
     );
-    await waitFor(() => {
-      expect(checkoutVersionMock).toHaveBeenCalledWith({
-        appId: 1,
-        versionId: "feature/test",
-      });
+    expect(checkoutVersionMock).toHaveBeenCalledTimes(2);
+    expect(checkoutVersionMock).not.toHaveBeenCalledWith({
+      appId: 1,
+      versionId: "feature/test",
     });
     expect(store.get(selectedVersionIdAtom)).toBeNull();
 
@@ -733,10 +733,61 @@ describe("VersionPane", () => {
       rejectSecondCheckout(new Error("checkout failed"));
     });
     expect(store.get(selectedVersionIdAtom)).toBeNull();
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: "feature/test",
+      });
+    });
 
     await act(async () => {
       resolveReturnCheckout();
     });
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("offers recovery when returning to the captured branch fails", async () => {
+    checkoutVersionMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("return checkout failed"));
+    refetchBranchInfoMock.mockResolvedValue({
+      data: { branch: "feature/test" },
+    });
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const onOpen = vi.fn();
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={onOpen} />,
+      { wrapper: makeWrapper() },
+    );
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    await waitFor(() => {
+      expect(refreshAppMock).toHaveBeenCalledOnce();
+    });
+
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={onOpen} />,
+    );
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Unable to return to the branch that was active before previewing this version. Reopen Version History to try again.",
+        {
+          action: {
+            label: "Reopen Version History",
+            onClick: onOpen,
+          },
+        },
+      );
+    });
+    const action = showErrorMock.mock.calls.at(-1)?.[1]?.action;
+    action?.onClick();
+    expect(onOpen).toHaveBeenCalledOnce();
     consoleErrorSpy.mockRestore();
   });
 

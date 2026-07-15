@@ -366,6 +366,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const previewRequestIdRef = useRef(0);
   const isResolvingPreviewBranchRef = useRef(false);
   const isPreviewCheckoutInProgressRef = useRef(false);
+  const activePreviewCheckoutPromiseRef = useRef<Promise<void> | null>(null);
   const checkedOutVersionIdRef = useRef<string | null>(null);
   const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
     null,
@@ -532,12 +533,33 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
             return;
           }
           if (returnBranch) {
-            await checkoutVersion({ appId, versionId: returnBranch });
-            if (app?.neonProjectId) {
+            const activePreviewCheckout =
+              activePreviewCheckoutPromiseRef.current;
+            if (activePreviewCheckout) {
+              await activePreviewCheckout;
+            }
+            let returnedToBranch = false;
+            try {
+              await checkoutVersion({ appId, versionId: returnBranch });
+              returnedToBranch = true;
+            } catch (error) {
+              console.error("Could not return to branch", error);
+              showError(
+                "Unable to return to the branch that was active before previewing this version. Reopen Version History to try again.",
+                {
+                  action: {
+                    label: "Reopen Version History",
+                    onClick: onOpen,
+                  },
+                },
+              );
+            } finally {
+              checkedOutVersionIdRef.current = null;
+              returnBranchRef.current = null;
+            }
+            if (returnedToBranch && app?.neonProjectId) {
               await restartApp();
             }
-            checkedOutVersionIdRef.current = null;
-            returnBranchRef.current = null;
           } else {
             showError(
               "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
@@ -658,8 +680,17 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         return;
       }
       isPreviewCheckoutInProgressRef.current = true;
+      const previewCheckoutPromise = checkoutVersion({
+        appId,
+        versionId: version.oid,
+      });
+      const previewCheckoutSettledPromise = previewCheckoutPromise.then(
+        () => undefined,
+        () => undefined,
+      );
+      activePreviewCheckoutPromiseRef.current = previewCheckoutSettledPromise;
       try {
-        await checkoutVersion({ appId, versionId: version.oid });
+        await previewCheckoutPromise;
         checkedOutVersionIdRef.current = version.oid;
       } catch (error) {
         console.error("Could not checkout version, unselecting version", error);
@@ -669,6 +700,12 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         return;
       } finally {
         isPreviewCheckoutInProgressRef.current = false;
+        if (
+          activePreviewCheckoutPromiseRef.current ===
+          previewCheckoutSettledPromise
+        ) {
+          activePreviewCheckoutPromiseRef.current = null;
+        }
       }
       if (!isCurrentPreviewRequest()) {
         return;

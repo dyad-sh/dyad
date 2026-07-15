@@ -4,15 +4,12 @@ import path from "node:path";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const APP_FILE_EDITOR_LIMIT_BYTES = 5 * 1024 * 1024;
-export const AGENT_READ_FILE_RESULT_LIMIT_BYTES = 64 * 1024;
+export const AGENT_READ_FILE_RESULT_LIMIT_BYTES = 256 * 1024;
 
 export const AGENT_READ_FILE_TRUNCATION_NOTICE =
-  "\n\n[Output truncated at 64 KiB. Read a smaller range with start_line_one_indexed and end_line_one_indexed_inclusive.]";
+  "\n\n[Output truncated at 256 KiB. Read a smaller range with start_line_one_indexed and end_line_one_indexed_inclusive.]";
 
-const STREAM_CHUNK_BYTES = Math.min(
-  64 * 1024,
-  AGENT_READ_FILE_RESULT_LIMIT_BYTES / 2,
-);
+const STREAM_CHUNK_BYTES = 64 * 1024;
 const BINARY_SAMPLE_BYTES = 8 * 1024;
 const AGENT_READ_FILE_CONTENT_LIMIT_BYTES =
   AGENT_READ_FILE_RESULT_LIMIT_BYTES -

@@ -308,6 +308,22 @@ describe("agent Git utilities", () => {
     expect(filteredLog.content.match(/^commit /gm)).toHaveLength(1);
   });
 
+  it("discards an incomplete log record when output is truncated", async () => {
+    const messagePath = path.join(repo, "large-commit-message.txt");
+    await fs.promises.writeFile(
+      messagePath,
+      "large subject\n\n" + "x".repeat(200_000),
+    );
+    await git(repo, "commit", "--allow-empty", "-F", messagePath);
+
+    const result = await getAgentGitLog({ path: repo, maxCount: 2 });
+
+    expect(result.truncated).toBe(true);
+    expect(result.content).toContain("Output truncated at 64 KiB");
+    expect(result.content).not.toContain("commit undefined");
+    expect(result.content).not.toContain("Author: undefined");
+  });
+
   it("rejects invalid revisions and missing paths while treating pathspecs literally", async () => {
     const literalName = ":(glob)literal.txt";
     await fs.promises.writeFile(path.join(repo, literalName), "literal\n");

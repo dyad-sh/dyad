@@ -17,10 +17,6 @@ import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
-  AGENT_READ_FILE_RESULT_LIMIT_BYTES,
-  boundAgentReadFileContent,
-} from "./bounded_text_file";
-import {
   isDotenvFilePath,
   redactDotenvValues,
   selectTextLineRange,
@@ -1414,12 +1410,12 @@ export async function gitLogNative(
   return entries;
 }
 
-const AGENT_GIT_EXEC_BUFFER_BYTES = AGENT_READ_FILE_RESULT_LIMIT_BYTES * 2;
+const AGENT_GIT_RESULT_LIMIT_BYTES = 64 * 1024;
+const AGENT_GIT_EXEC_BUFFER_BYTES = AGENT_GIT_RESULT_LIMIT_BYTES * 2;
 const AGENT_GIT_SOURCE_FILE_LIMIT_BYTES = 20 * 1024 * 1024;
 const AGENT_GIT_MAX_DIFF_PATHS = 500;
 const AGENT_GIT_MAX_STATUS_PATHS = 500;
-const AGENT_GIT_STATUS_PATH_BUDGET_BYTES =
-  AGENT_READ_FILE_RESULT_LIMIT_BYTES - 4096;
+const AGENT_GIT_STATUS_PATH_BUDGET_BYTES = AGENT_GIT_RESULT_LIMIT_BYTES - 4096;
 // Keeps diff pathspec argv well under the ~32 KiB Windows command-line limit.
 const AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES = 24 * 1024;
 const AGENT_GIT_TRUNCATION_NOTICE =
@@ -1505,11 +1501,19 @@ function boundAgentGitContent(
   const unannotatedContent = hadTruncationNotice
     ? content.slice(0, -AGENT_GIT_TRUNCATION_NOTICE.length)
     : content;
-  const bounded = boundAgentReadFileContent(unannotatedContent);
-  const truncated =
-    alreadyTruncated || hadTruncationNotice || bounded.truncated;
+  const contentLimitBytes =
+    AGENT_GIT_RESULT_LIMIT_BYTES -
+    Buffer.byteLength(AGENT_GIT_TRUNCATION_NOTICE, "utf8");
+  const bytes = Buffer.from(unannotatedContent, "utf8");
+  let end = Math.min(bytes.length, contentLimitBytes);
+  while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) {
+    end -= 1;
+  }
+  const boundedContent = bytes.subarray(0, end).toString("utf8");
+  const boundedTruncated = bytes.length > contentLimitBytes;
+  const truncated = alreadyTruncated || hadTruncationNotice || boundedTruncated;
   return {
-    content: bounded.content + (truncated ? AGENT_GIT_TRUNCATION_NOTICE : ""),
+    content: boundedContent + (truncated ? AGENT_GIT_TRUNCATION_NOTICE : ""),
     truncated,
   };
 }
@@ -1927,8 +1931,11 @@ export async function getAgentGitLog({
     { allowTruncation: true },
   );
   assertAgentGitSuccess(result, "Failed to read Git log");
-  const commits = result.stdout
-    .split("\0")
+  const rawRecords = result.stdout.split("\0");
+  if (result.truncated && !result.stdout.endsWith("\0")) {
+    rawRecords.pop();
+  }
+  const commits = rawRecords
     .map((chunk) => chunk.trim())
     .filter(Boolean)
     .map((chunk) => {
@@ -1977,7 +1984,7 @@ export async function getAgentGitCommit({
 }: GitBaseParams & {
   revision: string;
   filePath?: string;
-}): Promise<AgentGitTextResult> {
+}): Promise<AgentGitTextResult & { patch: string }> {
   const oid = await resolveAgentGitCommit({ path, revision });
   const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
   const metadataResult = await execAgentGit(
@@ -2001,10 +2008,13 @@ export async function getAgentGitCommit({
     filePath: normalizedPath,
     contextLines: 3,
   });
-  return boundAgentGitContent(
-    [metadataResult.stdout.trim(), diff.content].filter(Boolean).join("\n\n"),
-    metadataResult.truncated || diff.truncated,
-  );
+  return {
+    ...boundAgentGitContent(
+      [metadataResult.stdout.trim(), diff.content].filter(Boolean).join("\n\n"),
+      metadataResult.truncated || diff.truncated,
+    ),
+    patch: diff.content,
+  };
 }
 
 interface AgentGitTreeEntry {

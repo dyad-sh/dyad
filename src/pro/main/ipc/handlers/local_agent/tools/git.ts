@@ -325,14 +325,13 @@ export const gitShowCommitTool: ToolDefinition<
     );
   },
   execute: async (args, ctx) => {
-    console.log("git_show_commit", args);
     const filePath = normalizeGitFilterPath(args.path);
     const result = await getAgentGitCommit({
       path: ctx.appPath,
       revision: args.revision,
       filePath,
     });
-    const summary = summarizeDiff(result.content);
+    const summary = summarizeDiff(result.patch);
     ctx.onXmlComplete(
       gitXml(
         "show_commit",

@@ -143,6 +143,19 @@ describe("DyadMarkdownParser dyad-git", () => {
     expect(screen.getByText("src/index.css")).toBeTruthy();
     expect(screen.getByText("src/new.ts")).toBeTruthy();
   });
+
+  it("does not render malformed status detail as structured content", () => {
+    render(
+      <DyadMarkdownParser
+        content={
+          '<dyad-git operation="status" detail_format="status">{"branch":"main","detached":false,"staged":[{}],"unstaged":[],"untracked":[],"conflicted":[]}</dyad-git>'
+        }
+      />,
+    );
+
+    expect(screen.getByText("Checked project changes")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
 });
 
 describe("DyadMarkdownParser dyad-security-finding", () => {

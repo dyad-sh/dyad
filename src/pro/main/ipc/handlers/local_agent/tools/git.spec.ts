@@ -15,7 +15,8 @@ const {
   mockDeploySupabaseFunction: vi.fn(),
   mockGetAgentGitCommit: vi.fn(async () => ({
     content:
-      "commit abc123\nAuthor: Test <test@example.com>\nDate: 2026-01-01\n\nImprove preview\n\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n-old\n+new",
+      "commit abc123\nAuthor: Test <test@example.com>\nDate: 2026-01-01\n\nImprove preview\n\n- message bullet\n+ another message bullet\n\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n-old\n+new",
+    patch: "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n-old\n+new",
     truncated: false,
   })),
   mockGetAgentGitDiff: vi.fn(async () => ({
@@ -277,6 +278,7 @@ describe("local-agent Git tool definitions", () => {
     expect(xml[1]).toContain("diff --git a/a.ts b/a.ts");
     expect(xml[2]).toContain('result_count="2"');
     expect(xml[3]).toContain('subject="Improve preview"');
+    expect(xml[3]).toContain('file_count="1" additions="1" deletions="1"');
     expect(xml[4]).toContain('start_line="4" end_line="5" line_count="2"');
   });
 });

@@ -75,11 +75,13 @@ function shortRevision(revision: string): string {
 function parseStatusDetails(content: string): GitStatusDetails | null {
   try {
     const value = JSON.parse(content) as Partial<GitStatusDetails>;
+    const isStringArray = (items: unknown): items is string[] =>
+      Array.isArray(items) && items.every((item) => typeof item === "string");
     if (
-      Array.isArray(value.staged) &&
-      Array.isArray(value.unstaged) &&
-      Array.isArray(value.untracked) &&
-      Array.isArray(value.conflicted)
+      isStringArray(value.staged) &&
+      isStringArray(value.unstaged) &&
+      isStringArray(value.untracked) &&
+      isStringArray(value.conflicted)
     ) {
       return {
         branch: typeof value.branch === "string" ? value.branch : null,

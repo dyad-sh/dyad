@@ -87,6 +87,26 @@ function getSubscriptionStatusUrl() {
   );
 }
 
+function getSubscriptionStatusApiKey() {
+  const url = getSubscriptionStatusUrl();
+  const fixtureApiKey = process.env.DYAD_SUBSCRIPTION_STATUS_FIXTURE_API_KEY;
+  if (fixtureApiKey) {
+    try {
+      const hostname = new URL(url).hostname;
+      if (
+        hostname === "127.0.0.1" ||
+        hostname === "localhost" ||
+        hostname === "[::1]"
+      ) {
+        return fixtureApiKey;
+      }
+    } catch {
+      // The request path below will log and safely ignore an invalid URL.
+    }
+  }
+  return readSettings().providerSettings?.auto?.apiKey?.value;
+}
+
 export function parseBillingActionUrl(value: string) {
   let url: URL;
   try {
@@ -185,7 +205,7 @@ export function registerProHandlers() {
   });
 
   typedHandle(systemContracts.getSubscriptionStatus, async () => {
-    const apiKey = readSettings().providerSettings?.auto?.apiKey?.value;
+    const apiKey = getSubscriptionStatusApiKey();
     if (!apiKey) {
       return null;
     }

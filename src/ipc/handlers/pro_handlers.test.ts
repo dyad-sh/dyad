@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { unwrapIpcEnvelope } from "@/ipc/contracts/core";
 import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
@@ -232,6 +232,10 @@ describe("subscription status handlers", () => {
     });
   });
 
+  afterEach(() => {
+    delete process.env.DYAD_SUBSCRIPTION_STATUS_FIXTURE_API_KEY;
+  });
+
   it("sends the stored bearer key and validates the response", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
@@ -261,6 +265,43 @@ describe("subscription status handlers", () => {
 
   it("returns null without a configured key", async () => {
     mocks.readSettings.mockReturnValue({ providerSettings: {} });
+    await expect(
+      getSubscriptionStatus({} as never, undefined),
+    ).resolves.toBeNull();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("uses a fixture key for a loopback endpoint without stored Pro settings", async () => {
+    process.env.DYAD_SUBSCRIPTION_STATUS_URL =
+      "http://127.0.0.1:4321/subscription-status";
+    process.env.DYAD_SUBSCRIPTION_STATUS_FIXTURE_API_KEY = "fixture-key";
+    mocks.readSettings.mockReturnValue({ providerSettings: {} });
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        alert: "payment_past_due",
+        effectiveAt: null,
+        actionUrl: "https://academy.dyad.sh/billing",
+      }),
+    });
+
+    await expect(
+      getSubscriptionStatus({} as never, undefined),
+    ).resolves.toMatchObject({ alert: "payment_past_due" });
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:4321/subscription-status",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer fixture-key",
+        }),
+      }),
+    );
+  });
+
+  it("never sends a fixture key to a non-loopback endpoint", async () => {
+    process.env.DYAD_SUBSCRIPTION_STATUS_FIXTURE_API_KEY = "fixture-key";
+    mocks.readSettings.mockReturnValue({ providerSettings: {} });
+
     await expect(
       getSubscriptionStatus({} as never, undefined),
     ).resolves.toBeNull();

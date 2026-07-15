@@ -13,7 +13,6 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
-import { useMcp } from "@/hooks/useMcp";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import {
@@ -62,8 +61,6 @@ export function ChatModeSelector() {
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, messagesLimit, isQuotaExceeded } =
     useFreeAgentQuota();
-  const { servers } = useMcp();
-  const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
   const isDyadFreeSelected = isFreeProModel(settings?.selectedModel);
   const buildUnavailableForDyadFree = isDyadFreeSelected;
 
@@ -269,30 +266,6 @@ export function ChatModeSelector() {
           </SelectItem>
         </SelectContent>
       </Select>
-      {selectedMode === "build" && <McpChip count={enabledMcpServersCount} />}
     </div>
-  );
-}
-
-function McpChip({ count }: { count: number }) {
-  if (count === 0) return null;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            data-testid="mcp-servers-chip"
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400 border border-purple-200 dark:border-purple-800 cursor-default"
-          />
-        }
-      >
-        {count} MCP
-      </TooltipTrigger>
-      <TooltipContent>
-        <span>
-          {count} MCP server{count !== 1 ? "s" : ""} enabled
-        </span>
-      </TooltipContent>
-    </Tooltip>
   );
 }

@@ -43,7 +43,6 @@ export const SETTING_IDS = {
   blockUnsafeNpmPackages: "setting-block-unsafe-npm-packages",
   enablePnpmMinimumReleaseAgeWarning:
     "setting-enable-pnpm-minimum-release-age-warning",
-  enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableMcpToolSearch: "setting-enable-mcp-tool-search",
   enableCodeExplorer: "setting-enable-code-explorer",
   enableSelectAppFromHomeChatInput:
@@ -407,14 +406,6 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Block unsafe npm packages",
     description: "Uses socket.dev to detect unsafe packages and blocks them",
     keywords: ["socket", "npm", "firewall", "package", "unsafe", "security"],
-    sectionId: SECTION_IDS.advanced,
-    sectionLabel: "Advanced",
-  },
-  {
-    id: SETTING_IDS.enableMcpServersForBuildMode,
-    label: "Enable MCP servers for Build mode",
-    description: "Allow MCP servers to be used when in Build mode",
-    keywords: ["mcp", "build", "agent", "tools", "server"],
     sectionId: SECTION_IDS.advanced,
     sectionLabel: "Advanced",
   },

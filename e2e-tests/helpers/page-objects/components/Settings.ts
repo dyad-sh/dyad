@@ -26,12 +26,6 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
   }
 
-  async toggleEnableMcpServersForBuildMode() {
-    await this.page
-      .getByRole("switch", { name: "Enable MCP servers for Build mode" })
-      .click();
-  }
-
   async toggleSandboxScriptExecution() {
     await this.page
       .getByRole("switch", { name: "Enable sandbox script execution" })

@@ -406,7 +406,6 @@ const BaseUserSettingsFields = {
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   enableSandboxScriptExecution: z.boolean().optional(),
-  enableMcpServersForBuildMode: z.boolean().optional(),
   enableMcpToolSearch: z.boolean().optional(),
   enableCodeExplorer: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),

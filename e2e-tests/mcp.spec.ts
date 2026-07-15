@@ -1,5 +1,6 @@
-import path from "path";
+import { expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "child_process";
+import path from "path";
 
 import { testSkipIfWindows } from "./helpers/test_helper";
 
@@ -18,10 +19,7 @@ async function stopProcess(process: ChildProcess): Promise<void> {
 }
 
 testSkipIfWindows("mcp - call calculator", async ({ po }) => {
-  await po.setUp();
-  await po.navigation.goToSettingsTab();
-  await po.settings.scrollToSettingsSection("experiments");
-  await po.settings.toggleEnableMcpServersForBuildMode();
+  await po.setUpDyadPro({ localAgent: true });
   await po.navigation.goToPluginsTab();
   await po.plugins.openAddPluginDialog();
 
@@ -52,18 +50,16 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.plugins.waitForTool("testing-mcp-server", "calculator_add");
 
   await po.navigation.goToAppsTab();
-  await po.chatActions.selectChatMode("build");
-  await po.sendPrompt("[call_tool=calculator_add]", {
+  await po.chatActions.selectChatMode("local-agent");
+  await po.sendPrompt("tc=local-agent/mcp-calculator", {
     skipWaitForCompletion: true,
   });
   await po.agentConsent.waitForAgentConsentBanner();
 
   await po.snapshotMessages();
   await po.agentConsent.clickAgentConsentAlwaysAllow();
-  await po.approveProposal();
-
-  await po.sendPrompt("[dump]");
-  await po.snapshotServerDump("all-messages");
+  await po.chatActions.waitForChatCompletion();
+  await expect(po.page.getByText(/The sum of 5 and 3 is 8/)).toBeVisible();
 });
 
 testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
@@ -101,10 +97,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
   });
 
   try {
-    await po.setUp();
-    await po.navigation.goToSettingsTab();
-    await po.settings.scrollToSettingsSection("experiments");
-    await po.settings.toggleEnableMcpServersForBuildMode();
+    await po.setUpDyadPro({ localAgent: true });
     await po.navigation.goToPluginsTab();
     await po.plugins.openAddPluginDialog();
 
@@ -130,17 +123,15 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await po.plugins.waitForTool("testing-mcp-server", "calculator_add");
 
     await po.navigation.goToAppsTab();
-    await po.chatActions.selectChatMode("build");
-    await po.sendPrompt("[call_tool=calculator_add]", {
+    await po.chatActions.selectChatMode("local-agent");
+    await po.sendPrompt("tc=local-agent/mcp-calculator", {
       skipWaitForCompletion: true,
     });
     await po.agentConsent.waitForAgentConsentBanner();
     await po.snapshotMessages();
     await po.agentConsent.clickAgentConsentAllowOnce();
-    await po.approveProposal();
-
-    await po.sendPrompt("[dump]");
-    await po.snapshotServerDump("all-messages");
+    await po.chatActions.waitForChatCompletion();
+    await expect(po.page.getByText(/The sum of 5 and 3 is 8/)).toBeVisible();
   } finally {
     await stopProcess(httpServerProcess);
   }

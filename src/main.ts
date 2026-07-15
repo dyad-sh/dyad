@@ -8,6 +8,7 @@ import {
   net,
   nativeImage,
   crashReporter,
+  type Event as ElectronEvent,
 } from "electron";
 import * as path from "node:path";
 import { execFile } from "node:child_process";
@@ -103,6 +104,13 @@ import {
   getMediaThumbnailCacheRoot,
 } from "./ipc/utils/media_thumbnail";
 import { createMcpBeforeQuitHandler } from "./ipc/utils/mcp_shutdown";
+import { configureTrustedRenderer } from "./ipc/utils/renderer_security";
+import {
+  getWindowOpenHandlerResponse,
+  securePreviewPopupOptions,
+  shouldBlockMainWindowNavigation,
+} from "./main/window_security";
+import { pathToFileURL } from "node:url";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -569,6 +577,51 @@ const createWindow = () => {
     icon: path.join(app.getAppPath(), "assets/icon/logo.png"),
     // backgroundColor: "#00000001",
     // frame: false,
+  });
+  const packagedRendererUrl = pathToFileURL(
+    path.join(__dirname, "../renderer/main_window/index.html"),
+  ).href;
+  const allowedDevServerUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined;
+  configureTrustedRenderer({
+    devServerUrl: allowedDevServerUrl,
+    packagedRendererUrl,
+  });
+  const rejectUnexpectedNavigation = (
+    event: ElectronEvent<{ isMainFrame: boolean; url: string }>,
+  ) => {
+    if (
+      shouldBlockMainWindowNavigation(
+        event.url,
+        event.isMainFrame,
+        allowedDevServerUrl,
+        packagedRendererUrl,
+      )
+    ) {
+      event.preventDefault();
+      logger.warn("Blocked unexpected main-window navigation:", event.url);
+    }
+  };
+  mainWindow.webContents.on("will-navigate", rejectUnexpectedNavigation);
+  mainWindow.webContents.on("will-redirect", rejectUnexpectedNavigation);
+  const previewPopupWindows = new Set<BrowserWindow>();
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    const response = getWindowOpenHandlerResponse(details, allowedDevServerUrl);
+    if (response.action === "deny") {
+      logger.warn("Blocked unexpected child window:", details.url);
+      return response;
+    }
+
+    logger.debug("Allowing sandboxed preview child window:", details.url);
+    return {
+      ...response,
+      createWindow: (options) => {
+        const popup = new BrowserWindow(securePreviewPopupOptions(options));
+        previewPopupWindows.add(popup);
+        popup.once("closed", () => previewPopupWindows.delete(popup));
+        popup.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+        return popup.webContents;
+      },
+    };
   });
   // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
   if (process.env.NODE_ENV === "development") {

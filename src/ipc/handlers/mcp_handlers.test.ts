@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "@/ipc/contracts/core";
+import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 
 // --- ipcMain capture ----------------------------------------------------
 const handlers = new Map<string, (event: unknown, input: unknown) => unknown>();
@@ -129,12 +130,22 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
 // over file-scope variables (handlers, getClientMock, ...) that must
 // exist first. A static import would load too early and crash them.
 const handlersModule = await import("@/ipc/handlers/mcp_handlers");
+configureTrustedRenderer({
+  devServerUrl: "http://localhost:5173",
+  packagedRendererUrl: "file:///app/renderer/main_window/index.html",
+});
 handlersModule.registerMcpHandlers();
+
+const rendererFrame = { url: "http://localhost:5173/" };
+const rendererEvent = {
+  sender: { mainFrame: rendererFrame },
+  senderFrame: rendererFrame,
+};
 
 function invoke<T>(channel: string, input: unknown): Promise<T> {
   const fn = handlers.get(channel);
   if (!fn) throw new Error(`No handler registered for channel ${channel}`);
-  return Promise.resolve(fn({}, input)).then((result) =>
+  return Promise.resolve(fn(rendererEvent, input)).then((result) =>
     isIpcInvokeEnvelope(result) ? unwrapIpcEnvelope(result) : result,
   ) as Promise<T>;
 }

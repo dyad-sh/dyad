@@ -173,3 +173,9 @@ When creating hooks/components that call IPC handlers:
 `src/testing/handler_test_harness.ts` (`setupHandlerTestHarness` + `harness.invokeHandler("channel", input)`) gives you a real in-memory DB and works even for heavyweight modules: `registerAppHandlers` loads in vitest with just `vi.mock("electron")` plus module mocks for `@/paths/paths` (point `getDyadAppPath` at a temp dir), `@/ipc/services/git_service`, `createFromTemplate`, `gitignoreUtils`, and `chat_mode_resolution`.
 
 - Only handlers registered via `createTypedHandler` land in the harness registry. Handlers registered with `createLoggedHandler`/`handle(...)` (e.g. `import_handlers.ts`) must be captured through the mocked `ipcMain.handle` — and their return value is an IPC envelope shaped `{ ok, value, error }` (NOT `{ success, data }`), so unwrap accordingly.
+
+## Renderer trust and child windows
+
+- In packaged builds, TanStack Router history updates turn the loaded `index.html` URL into root-relative locations such as `file:///chat` (`file:///C:/chat` on Windows). IPC trust must require `senderFrame === sender.mainFrame`, `file:` with an empty host, the configured file-volume prefix, and an allowlisted renderer route; pinning only the built entry pathname breaks packaged IPC, while accepting arbitrary file paths is unsafe.
+- Electron's `setWindowOpenHandler` details do not identify the initiating frame. When preview iframes need popups, fail closed on missing or privileged request details and construct allowed HTTP(S) popups yourself after removing inherited `preload` and forcing sandboxed, Node-disabled web preferences; `about:blank` cannot be safely overridden this way.
+- Keep a strong `BrowserWindow` reference for every popup created through a custom `createWindow` callback until its `closed` event. A callback-local window can be garbage-collected and close an active OAuth or payment flow; remove the reference on close so the owner collection remains bounded.

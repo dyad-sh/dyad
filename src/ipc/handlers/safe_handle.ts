@@ -7,6 +7,7 @@ import {
 } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 
 export function createLoggedHandler(logger: log.LogFunctions) {
   return (
@@ -20,6 +21,7 @@ export function createLoggedHandler(logger: log.LogFunctions) {
           `IPC: ${channel} called with args: ${JSON.stringify(args)}`,
         );
         try {
+          assertTrustedRenderer(event);
           const result = await fn(event, ...args);
           logger.debug(
             `IPC: ${channel} returned: ${JSON.stringify(result)?.slice(0, 100)}...`,

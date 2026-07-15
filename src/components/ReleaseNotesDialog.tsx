@@ -79,9 +79,8 @@ export function ReleaseNotesDialog() {
             size="sm"
             className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
             onClick={() =>
-              window.open(
+              void ipc.system.openExternalUrl(
                 releaseUrl.replace(`?hideHeader=true&theme=${theme}`, ""),
-                "_blank",
               )
             }
           >
@@ -93,6 +92,7 @@ export function ReleaseNotesDialog() {
             <div className="flex-1">
               <iframe
                 src={releaseUrl}
+                sandbox="allow-same-origin allow-scripts"
                 className="w-full h-full border-0 rounded-lg"
                 title={t("releaseNotesTitle", { version: appVersion })}
               />

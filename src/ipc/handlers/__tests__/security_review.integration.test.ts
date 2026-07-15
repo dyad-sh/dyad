@@ -51,8 +51,12 @@ describe("security review (integration)", () => {
 
   const getLatestSecurityReview = async () => {
     const handler = h.ipcHandlers.get("get-latest-security-review")!;
+    const frame = { url: "http://localhost:5173/" };
     const envelope = (await handler(
-      { sender: { isDestroyed: () => false, send: () => {} } },
+      {
+        sender: { mainFrame: frame, isDestroyed: () => false, send: () => {} },
+        senderFrame: frame,
+      },
       harness.appId,
     )) as {
       ok: boolean;

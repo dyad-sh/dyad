@@ -1,11 +1,12 @@
+import { ipcMain } from "electron";
 import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
-import { ipcMain } from "electron";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 import { FREE_AGENT_QUOTA_LIMIT } from "@/lib/free_agent_quota_limit";
 import fetch from "node-fetch";
 
@@ -83,7 +84,8 @@ export function registerFreeAgentQuotaHandlers() {
   if (IS_TEST_BUILD) {
     ipcMain.handle(
       "test:simulateQuotaTimeElapsed",
-      async (_event, hoursAgo: number) => {
+      async (event, hoursAgo: number) => {
+        assertTrustedRenderer(event);
         const secondsAgo = hoursAgo * 60 * 60;
         const newTimestamp = Math.floor(Date.now() / 1000) - secondsAgo;
 

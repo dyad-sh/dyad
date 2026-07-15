@@ -7,6 +7,7 @@ import {
   type IpcContract,
 } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
+import { assertTrustedRenderer } from "../utils/renderer_security";
 
 type RegisteredHandler = (
   event: IpcMainInvokeEvent,
@@ -58,6 +59,12 @@ export function createTypedHandler<
   ipcMain?.handle(
     contract.channel,
     async (event: IpcMainInvokeEvent, rawInput: unknown) => {
+      try {
+        assertTrustedRenderer(event);
+      } catch (err) {
+        return createIpcErrorEnvelope(err);
+      }
+
       // Runtime validation of input
       const parsed = contract.input.safeParse(rawInput);
       if (!parsed.success) {
@@ -128,6 +135,12 @@ export function createLoggedTypedHandler(logger: {
     ipcMain?.handle(
       contract.channel,
       async (event: IpcMainInvokeEvent, rawInput: unknown) => {
+        try {
+          assertTrustedRenderer(event);
+        } catch (err) {
+          return createIpcErrorEnvelope(err);
+        }
+
         // Runtime validation of input
         const parsed = contract.input.safeParse(rawInput);
         if (!parsed.success) {

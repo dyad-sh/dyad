@@ -15,7 +15,15 @@ import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog"
 import { useMcp } from "@/hooks/useMcp";
 import type { McpToolConsent } from "@/ipc/types";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
+import type { ConnectFeedback } from "./PluginSummaryCard";
 import { usePluginConnect } from "./usePluginConnect";
+
+// Keyed on the full kind union so adding a feedback kind forces a
+// title here instead of silently reusing another kind's.
+const FEEDBACK_TITLES: Record<ConnectFeedback["kind"], string> = {
+  unauthorized: "Server requires authentication",
+  discovery_failed: "Server doesn't support OAuth",
+};
 
 export function PluginDetailPage({ serverId }: { serverId: number }) {
   const navigate = useNavigate();
@@ -150,11 +158,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {feedback && (
             <div className="mt-4">
               <Alert variant="destructive">
-                <AlertTitle>
-                  {feedback.kind === "unauthorized"
-                    ? "Server requires authentication"
-                    : "Server doesn't support OAuth"}
-                </AlertTitle>
+                <AlertTitle>{FEEDBACK_TITLES[feedback.kind]}</AlertTitle>
                 <AlertDescription className="gap-2">
                   <span>{feedback.message}</span>
                   {feedback.kind === "unauthorized" && (

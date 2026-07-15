@@ -380,6 +380,39 @@ describe("VersionPane", () => {
     });
   });
 
+  it("blocks another preview while checkout is starting", async () => {
+    let resolveCheckout!: () => void;
+    checkoutVersionMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveCheckout = resolve;
+      }),
+    );
+    const olderVersion = makeVersion(1);
+    const newerVersion = makeVersion(2);
+    versionsMock.push(olderVersion, newerVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: olderVersion.oid,
+      });
+    });
+    fireEvent.click(screen.getByTestId("version-row-1"));
+
+    expect(refetchBranchInfoMock).toHaveBeenCalledOnce();
+    expect(checkoutVersionMock).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveCheckout();
+    });
+  });
+
   it("offers to reopen version history when the return branch is unavailable", async () => {
     const version = makeVersion(1);
     versionsMock.push(version);

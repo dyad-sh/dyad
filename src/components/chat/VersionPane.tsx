@@ -359,6 +359,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const isVisibleRef = useRef(isVisible);
   const previewRequestIdRef = useRef(0);
   const isResolvingPreviewBranchRef = useRef(false);
+  const isPreviewCheckoutInProgressRef = useRef(false);
   isVisibleRef.current = isVisible;
   const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
     null,
@@ -583,7 +584,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   }
 
   const handleVersionClick = async (version: Version) => {
-    if (appId) {
+    if (appId && !isPreviewCheckoutInProgressRef.current) {
       const previousSelectedVersionId = selectedVersionId;
       const previewRequestId = previewRequestIdRef.current + 1;
       previewRequestIdRef.current = previewRequestId;
@@ -610,11 +611,14 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         );
         return;
       }
+      isPreviewCheckoutInProgressRef.current = true;
       try {
         await checkoutVersion({ appId, versionId: version.oid });
       } catch (error) {
         console.error("Could not checkout version, unselecting version", error);
         setSelectedVersionId(null);
+      } finally {
+        isPreviewCheckoutInProgressRef.current = false;
       }
       await refreshApp();
       if (version.dbTimestamp) {

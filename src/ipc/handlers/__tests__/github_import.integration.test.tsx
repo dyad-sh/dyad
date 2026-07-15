@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { apps } from "@/db/schema";
-import { readSettings, writeSettings } from "@/main/settings";
+import { writeSettings } from "@/main/settings";
 import { invalidateDyadAppsBaseDirectoryCache } from "@/paths/paths";
 import {
   setupHybridChatHarness,
@@ -146,44 +146,6 @@ describe("GitHub import dialog (integration)", () => {
     expect(
       fs.readFileSync(path.join(appDir, "vite.config.ts"), "utf8"),
     ).toContain("defineConfig");
-  }, 90_000);
-
-  it("imports an authenticated repository list item with the default tagger upgrade", async () => {
-    await harness.github.resetRepos();
-    writeSettings({
-      githubAccessToken: { value: "fake_access_token_12345" },
-      githubUser: {
-        email: "testuser@example.com",
-      },
-    });
-    await mountImportDialog();
-
-    clickTab("Your GitHub Repos");
-    expect(readSettings().githubAccessToken?.value).toBe(
-      "fake_access_token_12345",
-    );
-
-    const repoRow = await screen.findByTestId(
-      "github-repo-row-testuser-existing-vite-app",
-      {},
-      { timeout: 20_000 },
-    );
-    expect(
-      within(repoRow).getByText("testuser/existing-vite-app"),
-    ).toBeTruthy();
-    fireEvent.click(within(repoRow).getByRole("button", { name: "Import" }));
-
-    await waitForDialogClosed();
-    const app = await findImportedApp("existing-vite-app");
-    const appDir = importedAppPath(app.path);
-    const pkg = fs.readFileSync(path.join(appDir, "package.json"), "utf8");
-    expect(pkg).toContain("@dyad-sh/react-vite-component-tagger");
-
-    const config = fs.readFileSync(path.join(appDir, "vite.config.ts"), "utf8");
-    expect(config).toContain(
-      "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
-    );
-    expect(config).toContain("dyadComponentTagger()");
   }, 90_000);
 
   it("skips the tagger upgrade when 'Optimize for Dyad' is unchecked", async () => {

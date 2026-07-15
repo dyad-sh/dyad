@@ -142,7 +142,7 @@ export function ChatList({
     if (chatId === null) return;
 
     const frame = window.requestAnimationFrame(() => {
-      favoriteButtonRefs.current.get(chatId)?.focus();
+      favoriteButtonRefs.current.get(chatId)?.focus({ preventScroll: true });
       pendingFavoriteFocusChatId.current = null;
     });
     return () => window.cancelAnimationFrame(frame);
@@ -319,7 +319,9 @@ export function ChatList({
       if (restoreFocus) {
         pendingFavoriteFocusChatId.current = chatId;
         window.requestAnimationFrame(() => {
-          favoriteButtonRefs.current.get(chatId)?.focus();
+          favoriteButtonRefs.current
+            .get(chatId)
+            ?.focus({ preventScroll: true });
           pendingFavoriteFocusChatId.current = null;
         });
       }

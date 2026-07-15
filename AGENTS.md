@@ -135,6 +135,8 @@ Use unit testing for pure business logic and util functions.
 
 Target a Vitest file with `npm test -- path/to/file.test.ts`. Do not pass Jest-only flags such as `--runInBand`; Vitest will fail with `Unknown option '--runInBand'`.
 
+When adding another suite or prerequisite to the root `test` script, keep Vitest as the final shell command. `npm test -- <path>` appends its arguments only to the final command, so placing another runner last silently turns a targeted Vitest run into the full suite.
+
 Package-local Vitest suites may use their own config and not match the root `npm test -- path` include globs. For example, run `npm --prefix packages/ts-pg-schema-diff test` and `npm --prefix packages/ts-pg-schema-diff run typecheck` for `packages/ts-pg-schema-diff`.
 
 ### Vitest integration testing

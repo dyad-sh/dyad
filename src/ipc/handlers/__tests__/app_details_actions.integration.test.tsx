@@ -146,7 +146,10 @@ describe("app details actions (integration)", () => {
     fireEvent.click(copyButton);
 
     await waitFor(() => expect(dialog.isConnected).toBe(false), {
-      timeout: 20_000,
+      // The history-preserving copy shells out to Git. Under the full parallel
+      // integration suite on CI, process scheduling can take longer than the
+      // default interaction timeout even for this small fixture.
+      timeout: 45_000,
     });
     const copied = await waitFor(async () => {
       const row = await getAppByName(copiedName);
@@ -168,7 +171,7 @@ describe("app details actions (integration)", () => {
       expect(Number(location.search.id)).toBeGreaterThan(0);
     });
     await screen.findByText("Version 2");
-  }, 60_000);
+  }, 90_000);
 
   it("copies an app without history into a fresh one-commit repo", async () => {
     const source = await createFixtureApp("copy-without-history-source");

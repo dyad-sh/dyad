@@ -25,9 +25,13 @@ function readProcessTable(runSync) {
   });
 
   return String(result.stdout ?? "")
-    .split("\n")
+    .split(/\r?\n/)
     .map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/))
     .filter(Boolean);
+}
+
+function commandMatchesExecutable(command, executable) {
+  return command === executable || command.startsWith(`${executable} `);
 }
 
 export function findMacElectronPids({ processGroupId, runSync = spawnSync }) {
@@ -35,15 +39,21 @@ export function findMacElectronPids({ processGroupId, runSync = spawnSync }) {
     .filter(
       (match) =>
         Number(match[2]) === processGroupId &&
-        match[3].startsWith(`${electronExecutable} `),
+        commandMatchesExecutable(match[3], electronExecutable),
     )
     .map((match) => Number(match[1]));
 }
 
 export function findMacCrashpadPids({ runSync = spawnSync } = {}) {
-  return readProcessTable(runSync)
-    .filter((match) => match[3].startsWith(`${crashpadExecutable} `))
-    .map((match) => Number(match[1]));
+  return (
+    readProcessTable(runSync)
+      // Crashpad leaves Forge's process group, so the executable path is the
+      // only checkout-specific identity available. This intentionally cleans
+      // up every Crashpad process from this checkout, including concurrent
+      // development sessions.
+      .filter((match) => commandMatchesExecutable(match[3], crashpadExecutable))
+      .map((match) => Number(match[1]))
+  );
 }
 
 export function signalDetachedProcesses({
@@ -110,6 +120,9 @@ export function startDevelopmentSupervisor({
   spawnCleanupProcess = spawn,
   runSync = spawnSync,
   forceKillAfterMs = 1_000,
+  kill = process.kill.bind(process),
+  scheduleForceKill = setTimeout,
+  cancelForceKill = clearTimeout,
 } = {}) {
   const child = spawnProcess(
     parentProcess.execPath,
@@ -144,40 +157,56 @@ export function startDevelopmentSupervisor({
       });
     }
 
-    signalDevelopmentTree({ pid: child.pid, signal: "SIGTERM", platform });
-    signalDetachedProcesses({ pids: detachedPids, signal: "SIGTERM" });
-    forceKillTimer = setTimeout(() => {
-      signalDevelopmentTree({ pid: child.pid, signal: "SIGKILL", platform });
-      signalDetachedProcesses({ pids: detachedPids, signal: "SIGKILL" });
+    signalDevelopmentTree({
+      pid: child.pid,
+      signal: "SIGTERM",
+      platform,
+      kill,
+    });
+    signalDetachedProcesses({ pids: detachedPids, signal: "SIGTERM", kill });
+    forceKillTimer = scheduleForceKill(() => {
+      signalDevelopmentTree({
+        pid: child.pid,
+        signal: "SIGKILL",
+        platform,
+        kill,
+      });
+      signalDetachedProcesses({ pids: detachedPids, signal: "SIGKILL", kill });
       parentProcess.exitCode = exitStatus;
+      removeSignalHandlers();
     }, forceKillAfterMs);
   };
 
   const handleSigint = () => shutdown("SIGINT");
   const handleSigterm = () => shutdown("SIGTERM");
   const handleSighup = () => shutdown("SIGHUP");
+  const removeSignalHandlers = () => {
+    parentProcess.removeListener("SIGINT", handleSigint);
+    parentProcess.removeListener("SIGTERM", handleSigterm);
+    if (platform !== "win32") {
+      parentProcess.removeListener("SIGHUP", handleSighup);
+    }
+  };
   parentProcess.on("SIGINT", handleSigint);
   parentProcess.on("SIGTERM", handleSigterm);
   if (platform !== "win32") parentProcess.on("SIGHUP", handleSighup);
 
   child.once("error", (error) => {
-    clearTimeout(forceKillTimer);
+    cancelForceKill(forceKillTimer);
+    removeSignalHandlers();
     console.error("Failed to start Electron Forge:", error);
     parentProcess.exitCode = 1;
   });
 
   child.once("exit", (code, signal) => {
-    parentProcess.removeListener("SIGINT", handleSigint);
-    parentProcess.removeListener("SIGTERM", handleSigterm);
-    parentProcess.removeListener("SIGHUP", handleSighup);
-
     if (shutdownSignal) {
       // Forge exits promptly on SIGTERM, but Electron and app servers may not.
       // Keep the force-kill timer alive to finish the whole process group.
       return;
     }
 
-    clearTimeout(forceKillTimer);
+    cancelForceKill(forceKillTimer);
+    removeSignalHandlers();
     if (typeof code === "number") {
       parentProcess.exitCode = code;
     } else {

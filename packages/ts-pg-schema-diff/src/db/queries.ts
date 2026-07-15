@@ -116,6 +116,7 @@ WITH identity_col_seq AS (
     WHERE owner_attr.attidentity != ''
 )
 SELECT
+    a.attrelid::TEXT AS table_oid,
     a.attname::TEXT AS column_name,
     a.attnotnull AS is_not_null,
     a.atthasmissing AS has_missing_val_optimization,
@@ -143,7 +144,10 @@ SELECT
         END, ''
     )::TEXT AS generation_expression,
     (a.attgenerated = 's') AS is_generated,
-    pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type
+    pg_catalog.format_type(a.atttypid, a.atttypmod) AS column_type,
+    COALESCE(function_dependencies.schema_names, ARRAY[]::TEXT[]) AS dependent_func_schema_names,
+    COALESCE(function_dependencies.func_names, ARRAY[]::TEXT[]) AS dependent_func_names,
+    COALESCE(function_dependencies.identity_arguments, ARRAY[]::TEXT[]) AS dependent_func_identity_arguments
 FROM pg_catalog.pg_attribute AS a
 LEFT JOIN
     pg_catalog.pg_attrdef AS d
@@ -157,6 +161,22 @@ LEFT JOIN
     ON
         a.attrelid = identity_col_seq.owner_relid
         AND a.attnum = identity_col_seq.owner_attnum
+LEFT JOIN LATERAL (
+    SELECT
+        ARRAY_AGG(proc_namespace.nspname::TEXT ORDER BY pg_proc.oid) AS schema_names,
+        ARRAY_AGG(pg_proc.proname::TEXT ORDER BY pg_proc.oid) AS func_names,
+        ARRAY_AGG(pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) ORDER BY pg_proc.oid) AS identity_arguments
+    FROM pg_catalog.pg_depend AS depend
+    INNER JOIN pg_catalog.pg_proc AS pg_proc
+        ON depend.refclassid = 'pg_proc'::REGCLASS
+        AND depend.refobjid = pg_proc.oid
+    INNER JOIN pg_catalog.pg_namespace AS proc_namespace
+        ON pg_proc.pronamespace = proc_namespace.oid
+    WHERE
+        depend.classid = 'pg_attrdef'::REGCLASS
+        AND depend.objid = d.oid
+        AND depend.deptype = 'n'
+) AS function_dependencies ON TRUE
 WHERE
     a.attrelid = $1::OID
     AND a.attnum > 0
@@ -322,6 +342,11 @@ WHERE
 
 export const getDependsOnFunctionsSql = `
 SELECT
+    CASE
+        WHEN depend.classid = 'pg_constraint'::REGCLASS THEN 'pg_constraint'
+        ELSE 'pg_proc'
+    END AS dependent_class,
+    depend.objid::TEXT AS dependent_oid,
     pg_proc.proname::TEXT AS func_name,
     proc_namespace.nspname::TEXT AS func_schema_name,
     pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) AS func_identity_arguments
@@ -416,6 +441,7 @@ WITH roles AS (
     SELECT 0 AS oid, 'PUBLIC' AS rolname
 )
 SELECT
+    pol.oid::TEXT AS oid,
     pol.polname::TEXT AS policy_name,
     table_c.relname::TEXT AS owning_table_name,
     table_namespace.nspname::TEXT AS owning_table_schema_name,
@@ -438,11 +464,30 @@ SELECT
             AND d.refclassid = 'pg_class'::REGCLASS
             AND a.attrelid = table_c.oid
             AND NOT a.attisdropped
-    )::TEXT [] AS column_names
+    )::TEXT [] AS column_names,
+    COALESCE(function_dependencies.schema_names, ARRAY[]::TEXT[]) AS dependent_func_schema_names,
+    COALESCE(function_dependencies.func_names, ARRAY[]::TEXT[]) AS dependent_func_names,
+    COALESCE(function_dependencies.identity_arguments, ARRAY[]::TEXT[]) AS dependent_func_identity_arguments
 FROM pg_catalog.pg_policy AS pol
 INNER JOIN pg_catalog.pg_class AS table_c ON pol.polrelid = table_c.oid
 INNER JOIN pg_catalog.pg_namespace AS table_namespace
     ON table_c.relnamespace = table_namespace.oid
+LEFT JOIN LATERAL (
+    SELECT
+        ARRAY_AGG(proc_namespace.nspname::TEXT ORDER BY pg_proc.oid) AS schema_names,
+        ARRAY_AGG(pg_proc.proname::TEXT ORDER BY pg_proc.oid) AS func_names,
+        ARRAY_AGG(pg_catalog.pg_get_function_identity_arguments(pg_proc.oid) ORDER BY pg_proc.oid) AS identity_arguments
+    FROM pg_catalog.pg_depend AS depend
+    INNER JOIN pg_catalog.pg_proc AS pg_proc
+        ON depend.refclassid = 'pg_proc'::REGCLASS
+        AND depend.refobjid = pg_proc.oid
+    INNER JOIN pg_catalog.pg_namespace AS proc_namespace
+        ON pg_proc.pronamespace = proc_namespace.oid
+    WHERE
+        depend.classid = 'pg_policy'::REGCLASS
+        AND depend.objid = pol.oid
+        AND depend.deptype = 'n'
+) AS function_dependencies ON TRUE
 WHERE
     table_namespace.nspname NOT IN ('pg_catalog', 'information_schema')
     AND table_namespace.nspname !~ '^pg_toast'

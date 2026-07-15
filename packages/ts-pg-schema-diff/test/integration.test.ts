@@ -6,7 +6,13 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { generateSchemaDiff } from "../src/index.js";
+import {
+  buildSchemaSnapshotSql,
+  filterSchemaForTable,
+  generateSchemaDiff,
+  getSchemaFromSnapshot,
+  renderSchemaSql,
+} from "../src/index.js";
 import { getSchema } from "../src/db/introspect.js";
 import { schemaQualifiedName } from "../src/schema/identifiers.js";
 
@@ -4878,6 +4884,109 @@ describe("generateSchemaDiff against local PostgreSQL", () => {
         },
         parentIdx: schemaQualifiedName("public", "foobar_foo_id_key"),
       });
+    } finally {
+      await client.end();
+    }
+  }, 30_000);
+
+  it("reconstructs the same schema from one snapshot query", async () => {
+    const pg = requireHarness();
+    await createDatabase(pg, "single_query_snapshot_db");
+    await execSql(
+      pg.databaseUrl("single_query_snapshot_db"),
+      `
+        CREATE TYPE account_state AS ENUM ('active', 'disabled');
+        CREATE FUNCTION new_account_id() RETURNS bigint
+          LANGUAGE sql RETURN 42;
+        CREATE SCHEMA private_data;
+        CREATE FUNCTION private_data.can_read_account(account_id bigint) RETURNS boolean
+          LANGUAGE sql RETURN account_id > 0;
+        CREATE TABLE accounts (
+          id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+          state account_state NOT NULL,
+          balance integer NOT NULL CHECK (balance >= 0),
+          external_id bigint DEFAULT new_account_id()
+        );
+        CREATE INDEX accounts_state_idx ON accounts (state);
+        ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+        CREATE POLICY accounts_read ON accounts FOR SELECT
+          USING (private_data.can_read_account(id));
+        CREATE FUNCTION touch_account() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RETURN NEW;
+        END
+        $$;
+        CREATE TRIGGER accounts_touch BEFORE UPDATE ON accounts
+          FOR EACH ROW EXECUTE FUNCTION touch_account();
+        CREATE TABLE unrelated (id serial PRIMARY KEY);
+        CREATE FUNCTION unrelated_function() RETURNS integer
+          LANGUAGE sql RETURN 1;
+        CREATE TABLE private_data.secret_table (id integer PRIMARY KEY);
+      `,
+    );
+
+    const client = new Client({
+      connectionString: pg.databaseUrl("single_query_snapshot_db"),
+    });
+    await client.connect();
+    try {
+      const directSchema = await getSchema(client, {
+        includeSchemas: ["public"],
+      });
+      const result = await client.query(buildSchemaSnapshotSql());
+      const snapshotSchema = await getSchemaFromSnapshot(
+        result.rows[0]?.schema_snapshot,
+        { includeSchemas: ["public"] },
+      );
+
+      expect(snapshotSchema).toEqual(directSchema);
+
+      const scopedResult = await client.query(
+        buildSchemaSnapshotSql({
+          includeSchemas: ["public"],
+          tableName: "accounts",
+        }),
+      );
+      const scopedSchema = await getSchemaFromSnapshot(
+        scopedResult.rows[0]?.schema_snapshot,
+      );
+      const directUnfilteredSchema = await getSchema(client);
+      expect(
+        filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
+      ).toEqual(
+        filterSchemaForTable(directUnfilteredSchema, {
+          tableName: "accounts",
+        }),
+      );
+      expect(
+        filterSchemaForTable(scopedSchema, {
+          tableName: "accounts",
+        }).functions.map((fn) => fn.name.escapedName),
+      ).toEqual(
+        expect.arrayContaining([
+          '"new_account_id"()',
+          '"can_read_account"(account_id bigint)',
+        ]),
+      );
+      expect(
+        filterSchemaForTable(scopedSchema, {
+          tableName: "accounts",
+        }).functions.find(
+          (fn) =>
+            fn.name.escapedName === '"can_read_account"(account_id bigint)',
+        )?.name.schemaName,
+      ).toBe("private_data");
+
+      const renderedSql = renderSchemaSql(
+        filterSchemaForTable(scopedSchema, { tableName: "accounts" }),
+      );
+      expect(renderedSql).not.toContain("unrelated_id_seq");
+      await createDatabase(pg, "snapshot_render_replay_db");
+      await execSql(
+        pg.databaseUrl("snapshot_render_replay_db"),
+        "DROP SCHEMA public CASCADE;",
+      );
+      await execSql(pg.databaseUrl("snapshot_render_replay_db"), renderedSql);
     } finally {
       await client.end();
     }

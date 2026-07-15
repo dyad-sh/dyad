@@ -168,7 +168,9 @@ export function generateStatements(
     },
     {
       id: "table:add",
-      statements: orderedTableAdds.map(addTable).flat(),
+      statements: orderedTableAdds
+        .map((table) => addTable(table, options))
+        .flat(),
     },
     {
       id: "table:attach-partition",
@@ -568,8 +570,11 @@ function escapeStringLiteral(value: string): string {
   return value.replaceAll("'", "''");
 }
 
-function addTable(table: Table): readonly InternalStatement[] {
-  if (table.parentTable !== null) {
+function addTable(
+  table: Table,
+  options: GeneratePlanOptions,
+): readonly InternalStatement[] {
+  if (table.parentTable !== null && options.schemaRendering !== true) {
     assertSupportedPartition(table);
   }
   const columnDefs = table.columns

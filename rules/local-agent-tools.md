@@ -29,6 +29,16 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - SQL destructive-action classifiers that gate auto-approval must be conservative: incomplete/unparseable SQL, opaque dynamic execution (`DO`/`CALL`), and executing wrappers such as `EXPLAIN ANALYZE` should require consent unless the wrapped statement can be proven safe.
 - Treat prepared-statement execution as opaque for SQL auto-approval too: top-level `PREPARE` can hide the statement body and top-level `EXECUTE` runs a previously prepared statement, so both should require consent unless the classifier can prove the executed statement is safe.
 
+## Database schema tools
+
+- For local-agent database schema context, keep generic PostgreSQL schema modeling/rendering in `packages/ts-pg-schema-diff`; provider helpers should adapt Neon/Supabase into that shared `Schema` model instead of hand-rolling provider-specific JSON.
+- Supabase Management API `runQuery` accepts raw SQL only, not `pg`-style bind parameters. If adapting `client.query(sql, params)`, only inline controlled internal introspection params with SQL-literal escaping; never inline user-authored SQL.
+- Each Supabase Management API `runQuery` and Neon serverless SQL query is a separate HTTP request. Batch provider schema introspection into one set-based snapshot query, and apply schema/table filters inside that SQL so single-table reads do not serialize unrelated schemas.
+- Normalize an empty optional table name to `undefined` before snapshot scoping; provider tools historically treat an empty name as the all-tables request, not as a request for a table named `''`. Reject null bytes in values before embedding escaped SQL literals so invalid agent input fails clearly.
+- Single-table schema filtering must retain functions referenced by column defaults, generated expressions, RLS policies, triggers, and checks, including helpers outside the table's schema. Capture those dependencies from PostgreSQL catalogs, include them and their named schemas in snapshot scoping without pre-filtering their schemas, and sort retained functions/schemas deterministically so provider paths render identically.
+- Rendered schema DDL must be replayable: create helper schemas before functions, and defer function-dependent defaults, generated columns, policies, and checks until after function definitions but before indexes, foreign keys, and triggers that may reference deferred columns.
+- When filtering schema output to one table, retain unowned sequences because opaque defaults may reference them, but retain an owned sequence only when its owning table is also retained; otherwise replay emits `OWNED BY` for an omitted table.
+
 ## Stream retries
 
 - When extending `handleLocalAgentStream` retry behavior, do not only match transport errors like `"terminated"`. Providers can emit structured stream errors such as `{ type: "error", error: { type: "server_error", ... } }`, and those transient 5xx / rate-limit failures need explicit retry classification too.

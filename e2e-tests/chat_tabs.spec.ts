@@ -50,7 +50,16 @@ test("restores previously open tabs after reload", async ({
   );
   await electronApp.evaluate(async ({ BrowserWindow }, rendererIndexPath) => {
     const window = BrowserWindow.getAllWindows()[0];
-    await window.loadFile(rendererIndexPath);
+    try {
+      await window.loadFile(rendererIndexPath);
+    } catch (error) {
+      // TanStack Router restores the persisted /chat route while the renderer
+      // reload is still settling, so Electron can report the superseded index
+      // navigation as ERR_ABORTED even though the routed page loaded correctly.
+      if (!(error instanceof Error) || !error.message.includes("(-3)")) {
+        throw error;
+      }
+    }
   }, rendererIndexPath);
   await po.page.waitForLoadState("domcontentloaded");
 

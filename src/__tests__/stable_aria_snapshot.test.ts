@@ -28,6 +28,12 @@ describe("normalizeMessagesAriaSnapshot", () => {
     ).toBe(`- button "Script Call calculator_add through MCP [[duration]]"\n`);
   });
 
+  it("normalizes generated pnpm lockfile diff stats", () => {
+    expect(
+      normalizeMessagesAriaSnapshot(`- button "M pnpm-lock.yaml +557 -5"\n`),
+    ).toBe(`- button "M pnpm-lock.yaml [[diff-stats]]"\n`);
+  });
+
   it("elides nested button-card descendants", () => {
     expect(
       normalizeMessagesAriaSnapshot(`- 'button "math.ts src/utils/math.ts Edit Summary: Create math utilities"':

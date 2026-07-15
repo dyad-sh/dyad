@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
@@ -9,8 +10,16 @@ import {
 import { resolveAttachmentLogicalPath } from "@/ipc/utils/media_path_utils";
 import {
   AGENT_READ_FILE_TRUNCATION_NOTICE,
+  boundAgentReadFileContent,
+  readContainedTextFile,
   readTextFileLines,
 } from "@/ipc/utils/bounded_text_file";
+import { SANDBOX_READ_FILE_LIMIT_BYTES } from "@/ipc/utils/sandbox/limits";
+import {
+  isDotenvFilePath,
+  redactDotenvValues,
+  selectTextLineRange,
+} from "@/utils/dotenv_redaction";
 
 const readFileSchema = z
   .object({
@@ -126,6 +135,39 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const displayPath = args.app_name
       ? `${args.path} (in app: ${args.app_name})`
       : args.path;
+
+    let canonicalFilePath = fullFilePath;
+    try {
+      canonicalFilePath = await fs.realpath(fullFilePath);
+    } catch {
+      // The bounded reader below provides the user-facing filesystem error.
+    }
+    const shouldRedactDotenv =
+      isDotenvFilePath(args.path) || isDotenvFilePath(canonicalFilePath);
+
+    if (shouldRedactDotenv) {
+      const source = await readContainedTextFile({
+        rootPath: targetAppPath,
+        filePath: canonicalFilePath,
+        displayPath,
+        maxBytes: SANDBOX_READ_FILE_LIMIT_BYTES,
+        validateRealPath: (realPath, realRootPath) =>
+          assertDyadInternalAccessAllowed({
+            targetAppPath: realRootPath,
+            fullFilePath: realPath,
+            appName: args.app_name,
+          }),
+      });
+      const selected = selectTextLineRange(
+        redactDotenvValues(source),
+        args.start_line_one_indexed,
+        args.end_line_one_indexed_inclusive,
+      );
+      const bounded = boundAgentReadFileContent(selected);
+      return bounded.truncated
+        ? bounded.content + AGENT_READ_FILE_TRUNCATION_NOTICE
+        : bounded.content;
+    }
 
     const result = await readTextFileLines({
       rootPath: targetAppPath,

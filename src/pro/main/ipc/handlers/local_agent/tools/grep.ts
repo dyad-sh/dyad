@@ -16,6 +16,7 @@ import {
   resolveTargetAppPath,
 } from "./resolve_app_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { isDotenvFilePath } from "@/utils/dotenv_redaction";
 import log from "electron-log";
 
 const logger = log.scope("grep");
@@ -236,6 +237,9 @@ async function runRipgrep({
           }
 
           const normalizedPath = normalizeRipgrepMatchPath(matchPath);
+          if (isDotenvFilePath(normalizedPath)) {
+            continue;
+          }
 
           if (maxMatches !== undefined && results.length >= maxMatches) {
             stoppedEarly = true;

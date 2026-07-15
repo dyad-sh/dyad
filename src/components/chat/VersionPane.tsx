@@ -356,6 +356,10 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const { refetchBranchInfo } = useCurrentBranch(appId);
   const wasVisibleRef = useRef(false);
+  const isVisibleRef = useRef(isVisible);
+  const previewRequestIdRef = useRef(0);
+  const isResolvingPreviewBranchRef = useRef(false);
+  isVisibleRef.current = isVisible;
   const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
     null,
   );
@@ -492,6 +496,9 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
 
       // Reset when closing
       if (!isVisible && wasVisibleRef.current) {
+        previewRequestIdRef.current += 1;
+        const wasResolvingPreviewBranch = isResolvingPreviewBranchRef.current;
+        isResolvingPreviewBranchRef.current = false;
         flushPendingNoteSaves();
         setSearchQuery("");
         setShowFavoritesOnly(false);
@@ -499,6 +506,10 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         setAutoFocusNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
+          if (wasResolvingPreviewBranch) {
+            wasVisibleRef.current = isVisible;
+            return;
+          }
           const returnBranch = getReturnBranch();
           if (returnBranch) {
             await checkoutVersion({ appId, versionId: returnBranch });
@@ -542,6 +553,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     }
     previousAppIdRef.current = appId;
     returnBranchRef.current = null;
+    previewRequestIdRef.current += 1;
+    isResolvingPreviewBranchRef.current = false;
     flushPendingNoteSaves(false);
     setCachedVersions([]);
     setSearchQuery("");
@@ -552,6 +565,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
 
   useEffect(() => {
     return () => {
+      previewRequestIdRef.current += 1;
+      isVisibleRef.current = false;
       flushPendingNoteSaves(false);
     };
   }, [flushPendingNoteSaves]);
@@ -570,8 +585,19 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const handleVersionClick = async (version: Version) => {
     if (appId) {
       const previousSelectedVersionId = selectedVersionId;
+      const previewRequestId = previewRequestIdRef.current + 1;
+      previewRequestIdRef.current = previewRequestId;
+      isResolvingPreviewBranchRef.current = true;
       setSelectedVersionId(version.oid);
       const latestBranchResult = await refetchBranchInfo();
+      if (
+        previewRequestIdRef.current !== previewRequestId ||
+        !isVisibleRef.current ||
+        currentAppIdRef.current !== appId
+      ) {
+        return;
+      }
+      isResolvingPreviewBranchRef.current = false;
       const latestBranch = latestBranchResult.data?.branch;
       if (latestBranch && latestBranch !== "<no-branch>") {
         returnBranchRef.current = { appId, branch: latestBranch };

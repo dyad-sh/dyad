@@ -311,6 +311,75 @@ describe("VersionPane", () => {
     });
   });
 
+  it("cancels a pending version preview when version history closes", async () => {
+    let resolveBranchInfo!: (value: { data: { branch: string } }) => void;
+    refetchBranchInfoMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveBranchInfo = resolve;
+      }),
+    );
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />,
+      { wrapper: makeWrapper() },
+    );
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
+    );
+
+    await act(async () => {
+      resolveBranchInfo({ data: { branch: "feature/test" } });
+    });
+
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
+    expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older preview after another version is selected", async () => {
+    const branchResolvers: Array<
+      (value: { data: { branch: string } }) => void
+    > = [];
+    refetchBranchInfoMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          branchResolvers.push(resolve);
+        }),
+    );
+    const olderVersion = makeVersion(1);
+    const newerVersion = makeVersion(2);
+    versionsMock.push(olderVersion, newerVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    fireEvent.click(screen.getByTestId("version-row-1"));
+
+    await act(async () => {
+      branchResolvers[1]({ data: { branch: "feature/test" } });
+    });
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: newerVersion.oid,
+      });
+    });
+
+    await act(async () => {
+      branchResolvers[0]({ data: { branch: "feature/test" } });
+    });
+    expect(checkoutVersionMock).not.toHaveBeenCalledWith({
+      appId: 1,
+      versionId: olderVersion.oid,
+    });
+  });
+
   it("offers to reopen version history when the return branch is unavailable", async () => {
     const version = makeVersion(1);
     versionsMock.push(version);

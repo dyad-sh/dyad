@@ -833,6 +833,34 @@ describe("writeSettings", () => {
     );
   });
 
+  it("preserves the legacy Build-mode MCP setting across unrelated writes", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        providerSettings: {},
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedTemplateId: "react",
+        enableAutoUpdate: true,
+        releaseChannel: "stable",
+        enableMcpServersForBuildMode: true,
+      }),
+    );
+
+    writeSettings({ enableAutoUpdate: false });
+
+    const tempFileWrite = mockFs.writeFileSync.mock.calls.find(([filePath]) =>
+      String(filePath).startsWith(`${mockSettingsPath}.tmp-`),
+    );
+    expect(tempFileWrite).toBeDefined();
+    expect(JSON.parse(String(tempFileWrite?.[1]))).toMatchObject({
+      enableAutoUpdate: false,
+      enableMcpServersForBuildMode: true,
+    });
+  });
+
   it("throws a classified error when the settings file cannot be written", () => {
     mockFs.existsSync.mockReturnValue(false);
     mockFs.writeFileSync.mockImplementation(() => {

@@ -1,8 +1,13 @@
 import {
   withDatabaseClient,
   type DatabaseConnectionOptions,
+  type DatabaseClient,
 } from "./db/connect.js";
-import { getSchema } from "./db/introspect.js";
+import { getSchema, type GetSchemaOptions } from "./db/introspect.js";
+import {
+  buildSchemaSnapshotSql,
+  getSchemaFromSnapshot,
+} from "./db/snapshot.js";
 import {
   generatePlan,
   toSchemaDiffResult,
@@ -10,6 +15,14 @@ import {
 } from "./plan/generate.js";
 import type { SchemaDiffResult, SchemaDiffStatement } from "./plan/types.js";
 import { PgSchemaDiffError } from "./errors.js";
+import { emptySchema, type Schema } from "./schema/model.js";
+import {
+  filterSchemaForTable,
+  missingPublicTableComment,
+  renderSchemaSql,
+  type FilterSchemaForTableOptions,
+  type RenderSchemaSqlOptions,
+} from "./render/schemaSql.js";
 
 export {
   DuplicateIdentifierError,
@@ -28,9 +41,25 @@ export type GenerateSchemaDiffOptions = {
 };
 
 export type {
+  DatabaseClient,
   DatabaseConnectionOptions,
+  FilterSchemaForTableOptions,
+  GetSchemaOptions,
+  RenderSchemaSqlOptions,
+  Schema,
   SchemaDiffResult,
   SchemaDiffStatement,
+};
+
+export {
+  emptySchema,
+  filterSchemaForTable,
+  missingPublicTableComment,
+  buildSchemaSnapshotSql,
+  getSchema,
+  getSchemaFromSnapshot,
+  renderSchemaSql,
+  withDatabaseClient,
 };
 
 export async function generateSchemaDiff(

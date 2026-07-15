@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { ALLOWED_ANNOTATION_KEYS } from "./crash_telemetry_fields";
 
 // A small, symbol-free summary extracted from a minidump: enough to attribute a
 // native crash (which signal, which module faulted) without any memory contents,
@@ -18,6 +19,9 @@ export interface MinidumpSummary {
   faultingDebugFile?: string; // name keying the module's symbol file, e.g. "electron.exe.pdb"
   faultingDebugId?: string; // build fingerprint keying the module's symbol file
   ptype?: string; // crashing process type: "browser" (main) / "renderer" / "gpu-process" / …
+  // All Crashpad annotations: our crashReporter extra parameters and
+  // Chromium's own crash keys. Counts and lengths are capped.
+  annotations?: Record<string, string>;
 }
 
 // These values are fixed by the minidump file format. The signature and stream
@@ -113,8 +117,28 @@ const CV_SIG_ELF_BUILD_ID = 0x4270454c; // Crashpad's ELF build id record
 // (16) @20 | LOCATION_DESCRIPTOR simple_annotations (8) @36 | LOCATION_DESCRIPTOR
 // module_list (8) @44 | u32 reserved @52 | u64 address_mask @56.
 const CRASHPAD_MODULE_LIST_RVA_OFF = 48; // rva field of module_list (@44 + 4)
+const CRASHPAD_SIMPLE_ANNOTATIONS_RVA_OFF = 40; // rva field of simple_annotations (@36 + 4)
+
+// MinidumpModuleCrashpadInfo: u32 version @0 | LOCATION_DESCRIPTOR
+// list_annotations (8) @4 | LOCATION_DESCRIPTOR simple_annotations (8) @12
+// | LOCATION_DESCRIPTOR annotation_objects (8) @20.
+const MODULE_INFO_SIMPLE_RVA_OFF = 16; // rva field of simple_annotations (@12 + 4)
+const MODULE_INFO_OBJECTS_RVA_OFF = 24; // rva field of annotation_objects (@20 + 4)
 const CRASHPAD_ADDRESS_MASK_OFF = 56;
 const CRASHPAD_INFO_MIN_SIZE_FOR_MASK = 64; // through the end of address_mask
+
+// Crashpad annotation object type for plain string values.
+const ANNOTATION_TYPE_STRING = 1;
+
+// Caps so a corrupt dump cannot balloon the summary. Allowlisted keys are
+// exempt, so unknown keys cannot crowd them out; the true bound is the cap
+// plus the allowlist size.
+const MAX_ANNOTATIONS = 32;
+const MAX_ANNOTATION_KEY_LEN = 64;
+const MAX_ANNOTATION_VALUE_LEN = 512;
+// Bound on counts read from the dump, so a corrupt count cannot spin the
+// scan loops. Generous next to real dumps, which hold about 20 entries.
+const MAX_ANNOTATION_SCAN = 64;
 
 // On Linux, Crashpad stores the POSIX signal number in ExceptionCode.
 const SIGNAL_NAMES: Record<number, string> = {
@@ -321,6 +345,10 @@ export function parseMinidumpBuffer(
       }
     }
 
+    const annotations = crashpadInfoRva
+      ? parseAnnotations(view, buf, crashpadInfoRva)
+      : undefined;
+
     return {
       crashReason,
       exceptionCode,
@@ -329,9 +357,8 @@ export function parseMinidumpBuffer(
       faultingOffset,
       faultingDebugFile,
       faultingDebugId,
-      ptype: crashpadInfoRva
-        ? parsePtype(view, buf, crashpadInfoRva)
-        : undefined,
+      ptype: annotations?.ptype,
+      annotations,
     };
   } catch {
     return null;
@@ -445,57 +472,6 @@ function redactFaultAddress(
   return masked <= NULL_PAGE_LIMIT ? toHex(masked) : "non-null";
 }
 
-// Read the "ptype" Crashpad annotation (the crashing process type) from the
-// MinidumpCrashpadInfo stream. Nested structs we walk, with the byte offset of
-// the field we read from each:
-//
-//   MinidumpCrashpadInfo        ->  module_list rva          @ +48
-//   module_list                 ->  count, then 12-byte links
-//     link                      ->  module_info rva          @ +8
-//   MinidumpModuleCrashpadInfo  ->  annotation_objects rva   @ +24
-//   annotation_objects          ->  count, then 12-byte annotations
-//     annotation                ->  name rva @ +0, value rva @ +8
-//
-// name and value are length-prefixed UTF-8; return the value named "ptype".
-function parsePtype(
-  view: DataView,
-  buf: Buffer,
-  infoRva: number,
-): string | undefined {
-  try {
-    if (infoRva + CRASHPAD_MODULE_LIST_RVA_OFF + 4 > buf.length) {
-      return undefined;
-    }
-    const modListRva = view.getUint32(
-      infoRva + CRASHPAD_MODULE_LIST_RVA_OFF,
-      true,
-    );
-    if (modListRva === 0 || modListRva + 4 > buf.length) return undefined;
-    const moduleCount = view.getUint32(modListRva, true);
-    for (let i = 0; i < moduleCount; i++) {
-      const link = modListRva + 4 + i * 12;
-      if (link + 12 > buf.length) break;
-      const moduleInfoRva = view.getUint32(link + 8, true);
-      if (moduleInfoRva + 28 > buf.length) continue;
-      const objectsRva = view.getUint32(moduleInfoRva + 24, true);
-      if (objectsRva === 0 || objectsRva + 4 > buf.length) continue;
-      const objectCount = view.getUint32(objectsRva, true);
-      for (let j = 0; j < objectCount; j++) {
-        const obj = objectsRva + 4 + j * 12;
-        if (obj + 12 > buf.length) break;
-        if (
-          readLengthPrefixed(view, buf, view.getUint32(obj, true)) === "ptype"
-        ) {
-          return readLengthPrefixed(view, buf, view.getUint32(obj + 8, true));
-        }
-      }
-    }
-  } catch {
-    // best effort — ptype is optional context
-  }
-  return undefined;
-}
-
 // Read the address_mask from the MinidumpCrashpadInfo stream, used to strip
 // pointer-tag bits from addresses (arm64). Returns 0n when absent — older dumps
 // don't have the field, so only read it when the stream is long enough.
@@ -524,12 +500,19 @@ function applyAddressMask(pointer: bigint, mask: bigint): bigint {
 }
 
 // A u32 byte-length followed by UTF-8 bytes (MinidumpUTF8String / ByteArray).
-function readLengthPrefixed(view: DataView, buf: Buffer, rva: number): string {
+function readAnnotationString(
+  view: DataView,
+  buf: Buffer,
+  rva: number,
+): string {
   if (rva === 0 || rva + 4 > buf.length) return "";
   const len = view.getUint32(rva, true);
   const start = rva + 4;
   if (len <= 0 || start + len > buf.length) return "";
-  return buf.toString("utf8", start, start + len);
+  // Decode no more than the caps can keep (4 bytes per UTF-8 character at
+  // worst), so a corrupt length cannot decode megabytes just to be sliced.
+  const capped = Math.min(len, MAX_ANNOTATION_VALUE_LEN * 4);
+  return buf.toString("utf8", start, start + capped);
 }
 
 // Parse the module list stream into the base address, size, and name of each
@@ -658,4 +641,151 @@ function readMinidumpString(view: DataView, buf: Buffer, rva: number): string {
 function basename(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
   return i >= 0 ? p.slice(i + 1) : p;
+}
+
+// All Crashpad annotations in the dump: the process-level simple annotations
+// dictionary plus each module's string annotation objects. This is where our
+// crashReporter extra parameters and Chromium's crash keys live. Returns
+// undefined when the dump has none.
+function parseAnnotations(
+  view: DataView,
+  buf: Buffer,
+  infoRva: number,
+): Record<string, string> | undefined {
+  const annotations: Record<string, string> = {};
+  // Each source is best effort on its own: a throw in one still keeps
+  // whatever the other collects.
+  try {
+    // Module annotations first: they hold ptype, which the summary needs
+    // to attribute the crash. First writer wins in addAnnotation, so the
+    // process-level dictionary cannot overwrite them.
+    readModuleAnnotations(view, buf, infoRva, annotations);
+  } catch {
+    // keep whatever was collected
+  }
+  try {
+    readSimpleAnnotations(view, buf, infoRva, annotations);
+  } catch {
+    // keep whatever was collected
+  }
+  return Object.keys(annotations).length > 0 ? annotations : undefined;
+}
+
+// MinidumpSimpleStringDictionary: u32 count, then 8-byte entries of
+// { key rva @ +0, value rva @ +4 }, both length-prefixed UTF-8. Used for
+// the process-level dictionary and each module's simple annotations.
+function readSimpleDictionary(
+  view: DataView,
+  buf: Buffer,
+  dictRva: number,
+  out: Record<string, string>,
+): void {
+  if (dictRva === 0 || dictRva + 4 > buf.length) return;
+  const count = Math.min(view.getUint32(dictRva, true), MAX_ANNOTATION_SCAN);
+  for (let i = 0; i < count; i++) {
+    const entry = dictRva + 4 + i * 8;
+    if (entry + 8 > buf.length) break;
+    addAnnotation(
+      out,
+      readAnnotationString(view, buf, view.getUint32(entry, true)),
+      readAnnotationString(view, buf, view.getUint32(entry + 4, true)),
+    );
+  }
+}
+
+function readSimpleAnnotations(
+  view: DataView,
+  buf: Buffer,
+  infoRva: number,
+  out: Record<string, string>,
+): void {
+  if (infoRva + CRASHPAD_SIMPLE_ANNOTATIONS_RVA_OFF + 4 > buf.length) return;
+  readSimpleDictionary(
+    view,
+    buf,
+    view.getUint32(infoRva + CRASHPAD_SIMPLE_ANNOTATIONS_RVA_OFF, true),
+    out,
+  );
+}
+
+// Nested structs we walk, with the byte offset of the field we read from each:
+//
+//   MinidumpCrashpadInfo        ->  module_list rva          @ +48
+//   module_list                 ->  count, then 12-byte links
+//     link                      ->  module_info rva          @ +8
+//   MinidumpModuleCrashpadInfo  ->  simple_annotations rva   @ +16
+//                                   annotation_objects rva   @ +24
+//   annotation_objects          ->  count, then 12-byte annotations
+//     annotation                ->  name rva @ +0, u16 type @ +4, value rva @ +8
+//
+// Each module carries a simple annotations dictionary and typed annotation
+// objects; both are read. Only string-typed objects are collected; other
+// types hold binary data. The loops run to their bounded counts instead of
+// stopping at the cap, so a late ptype object is still found.
+function readModuleAnnotations(
+  view: DataView,
+  buf: Buffer,
+  infoRva: number,
+  out: Record<string, string>,
+): void {
+  if (infoRva + CRASHPAD_MODULE_LIST_RVA_OFF + 4 > buf.length) return;
+  const modListRva = view.getUint32(
+    infoRva + CRASHPAD_MODULE_LIST_RVA_OFF,
+    true,
+  );
+  if (modListRva === 0 || modListRva + 4 > buf.length) return;
+  const moduleCount = Math.min(
+    view.getUint32(modListRva, true),
+    MAX_ANNOTATION_SCAN,
+  );
+  for (let i = 0; i < moduleCount; i++) {
+    const link = modListRva + 4 + i * 12;
+    if (link + 12 > buf.length) break;
+    const moduleInfoRva = view.getUint32(link + 8, true);
+    if (moduleInfoRva + 28 > buf.length) continue;
+    readSimpleDictionary(
+      view,
+      buf,
+      view.getUint32(moduleInfoRva + MODULE_INFO_SIMPLE_RVA_OFF, true),
+      out,
+    );
+    const objectsRva = view.getUint32(
+      moduleInfoRva + MODULE_INFO_OBJECTS_RVA_OFF,
+      true,
+    );
+    if (objectsRva === 0 || objectsRva + 4 > buf.length) continue;
+    const objectCount = Math.min(
+      view.getUint32(objectsRva, true),
+      MAX_ANNOTATION_SCAN,
+    );
+    for (let j = 0; j < objectCount; j++) {
+      const obj = objectsRva + 4 + j * 12;
+      if (obj + 12 > buf.length) break;
+      if (view.getUint16(obj + 4, true) !== ANNOTATION_TYPE_STRING) continue;
+      addAnnotation(
+        out,
+        readAnnotationString(view, buf, view.getUint32(obj, true)),
+        readAnnotationString(view, buf, view.getUint32(obj + 8, true)),
+      );
+    }
+  }
+}
+
+function annotationsFull(out: Record<string, string>): boolean {
+  return Object.keys(out).length >= MAX_ANNOTATIONS;
+}
+
+function addAnnotation(
+  out: Record<string, string>,
+  key: string,
+  value: string,
+): void {
+  // Truncate before the checks so lookup and storage use the same key.
+  const k = key.slice(0, MAX_ANNOTATION_KEY_LEN);
+  // First writer wins, so the trusted source (module annotations, read
+  // first) cannot be overwritten by a later dictionary.
+  if (!k || Object.hasOwn(out, k)) return;
+  // Keys telemetry keeps (ptype among them) are never dropped by the cap.
+  if (annotationsFull(out) && !ALLOWED_ANNOTATION_KEYS.has(k)) return;
+  out[k] = value.slice(0, MAX_ANNOTATION_VALUE_LEN);
 }

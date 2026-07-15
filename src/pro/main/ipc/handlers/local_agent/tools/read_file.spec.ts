@@ -198,6 +198,96 @@ line 5`;
       expect(result).toBe("");
     });
 
+    it("redacts non-empty dotenv values while preserving empty values", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env.local"),
+        [
+          "API_KEY=sk-123",
+          "EMPTY=",
+          "SPACED_EMPTY=   ",
+          'QUOTED_EMPTY=""',
+          "export TOKEN = secret",
+          "# dotenv comment",
+        ].join("\n"),
+      );
+
+      const result = await readFileTool.execute(
+        { path: ".env.local" },
+        mockContext,
+      );
+
+      expect(result).toBe(
+        [
+          "API_KEY=[redacted]",
+          "EMPTY=",
+          "SPACED_EMPTY=   ",
+          'QUOTED_EMPTY=""',
+          "export TOKEN = [redacted]",
+          "# dotenv comment",
+        ].join("\n"),
+      );
+      expect(result).not.toContain("sk-123");
+      expect(result).not.toContain("secret");
+    });
+
+    it("redacts dotenv values in .envrc files", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".envrc"),
+        "export API_KEY=sk-123",
+      );
+
+      await expect(
+        readFileTool.execute({ path: ".envrc" }, mockContext),
+      ).resolves.toBe("export API_KEY=[redacted]");
+    });
+
+    it("sanitizes the full dotenv file before selecting a line range", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env"),
+        'SECRET="top\nc2VjcmV0=\nbottom"\nEMPTY=',
+      );
+
+      await expect(
+        readFileTool.execute(
+          {
+            path: ".env",
+            start_line_one_indexed: 2,
+            end_line_one_indexed_inclusive: 2,
+          },
+          mockContext,
+        ),
+      ).resolves.toBe("[redacted]");
+    });
+
+    it("keeps expanded dotenv redaction within the result byte limit", async () => {
+      await fs.promises.writeFile(
+        path.join(testDir, ".env"),
+        "x\n".repeat(AGENT_READ_FILE_RESULT_LIMIT_BYTES),
+      );
+
+      const result = await readFileTool.execute({ path: ".env" }, mockContext);
+
+      expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(
+        AGENT_READ_FILE_RESULT_LIMIT_BYTES,
+      );
+      expect(result.endsWith(AGENT_READ_FILE_TRUNCATION_NOTICE)).toBe(true);
+    });
+
+    it.runIf(process.platform !== "win32")(
+      "redacts dotenv files reached through symlink aliases",
+      async () => {
+        await fs.promises.writeFile(path.join(testDir, ".env"), "TOKEN=secret");
+        await fs.promises.symlink(
+          path.join(testDir, ".env"),
+          path.join(testDir, "config.txt"),
+        );
+
+        await expect(
+          readFileTool.execute({ path: "config.txt" }, mockContext),
+        ).resolves.toBe("TOKEN=[redacted]");
+      },
+    );
+
     it("throws error for non-existent file", async () => {
       await expect(
         readFileTool.execute({ path: "nope.txt" }, mockContext),

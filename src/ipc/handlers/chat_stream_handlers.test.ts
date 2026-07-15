@@ -11,7 +11,9 @@ import { processFullResponseActions } from "@/ipc/processors/response_processor"
 import {
   removeDyadTags,
   hasUnclosedDyadWrite,
+  processStreamChunks,
 } from "@/ipc/handlers/chat_stream_handlers";
+import type { AsyncIterableStream, TextStreamPart, ToolSet } from "ai";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/db";
@@ -105,6 +107,104 @@ vi.mock("@/db", () => ({
     })),
   },
 }));
+
+describe("processStreamChunks", () => {
+  it("replaces partial output with an inline warning for Fable refusals", async () => {
+    async function* refusalParts(): AsyncGenerator<TextStreamPart<ToolSet>> {
+      yield {
+        type: "text-delta",
+        id: "text-1",
+        text: "Partial response that must not be shown",
+      };
+      yield {
+        type: "finish",
+        finishReason: "content-filter",
+        rawFinishReason: "refusal",
+        totalUsage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 5,
+          outputTokenDetails: {
+            textTokens: 5,
+            reasoningTokens: 0,
+          },
+          totalTokens: 15,
+        },
+      };
+      yield {
+        type: "text-delta",
+        id: "text-after-finish",
+        text: "Spurious output after finish",
+      };
+    }
+
+    const updates: string[] = [];
+    const result = await processStreamChunks({
+      fullStream: refusalParts() as unknown as AsyncIterableStream<
+        TextStreamPart<ToolSet>
+      >,
+      fullResponse: "Existing response.\n",
+      abortController: new AbortController(),
+      chatId: 1,
+      processResponseChunkUpdate: async ({ fullResponse }) => {
+        updates.push(fullResponse);
+        return fullResponse;
+      },
+    });
+
+    expect(result.fullResponse).not.toContain("Partial response");
+    expect(result.fullResponse).not.toContain("Spurious output");
+    expect(result.fullResponse).toContain("Existing response.");
+    expect(result.fullResponse).toContain(
+      '<dyad-output type="warning" message="Model refused to respond for safety reasons">',
+    );
+    expect(result.incrementalResponse).toContain("<dyad-output");
+    expect(result.modelRefused).toBe(true);
+    expect(updates.at(-1)).toBe(result.fullResponse);
+  });
+
+  it("does not label other content filters as Fable refusals", async () => {
+    async function* filteredParts(): AsyncGenerator<TextStreamPart<ToolSet>> {
+      yield {
+        type: "finish",
+        finishReason: "content-filter",
+        rawFinishReason: "content_filter",
+        totalUsage: {
+          inputTokens: 10,
+          inputTokenDetails: {
+            noCacheTokens: 10,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokens: 0,
+          outputTokenDetails: {
+            textTokens: 0,
+            reasoningTokens: 0,
+          },
+          totalTokens: 10,
+        },
+      };
+    }
+
+    const result = await processStreamChunks({
+      fullStream: filteredParts() as unknown as AsyncIterableStream<
+        TextStreamPart<ToolSet>
+      >,
+      fullResponse: "Existing response.",
+      abortController: new AbortController(),
+      chatId: 1,
+      processResponseChunkUpdate: async ({ fullResponse }) => fullResponse,
+    });
+
+    expect(result.fullResponse).toBe("Existing response.");
+    expect(result.incrementalResponse).toBe("");
+    expect(result.modelRefused).toBe(false);
+  });
+});
 
 describe("getDyadAddDependencyTags", () => {
   it("should return an empty array when no dyad-add-dependency tags are found", () => {

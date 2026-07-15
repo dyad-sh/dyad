@@ -32,6 +32,7 @@ import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "@/ipc/contracts/core";
 import {
   VALID_INVOKE_CHANNELS,
   VALID_RECEIVE_CHANNELS,
+  VALID_SEND_CHANNELS,
 } from "@/ipc/preload/channels";
 import type { ElectronMockShared } from "./electron_mock";
 
@@ -153,6 +154,12 @@ export function installRendererIpcBridge(
       throw new Error(`Invalid channel: ${channel}`);
     }
   };
+  const assertValidSendChannel = (channel: string) => {
+    if (!validateChannels) return;
+    if (!(VALID_SEND_CHANNELS as readonly string[]).includes(channel)) {
+      throw new Error(`Invalid channel: ${channel}`);
+    }
+  };
   const isValidReceiveChannel = (channel: string): boolean =>
     !validateChannels ||
     (VALID_RECEIVE_CHANNELS as readonly string[]).includes(channel) ||
@@ -235,6 +242,19 @@ export function installRendererIpcBridge(
     },
   };
 
+  // The renderer's one-way `ipcRenderer.send`: fans out to the ipcMain.on
+  // listeners captured by the electron mock, matching preload's `send` ->
+  // main's `ipcMain.on`. Fire-and-forget, so there's no reply to await.
+  const sendToMain = (channel: string, ...args: unknown[]) => {
+    assertValidSendChannel(channel);
+    const clonedArgs = cloneAcrossBoundary(args, `send-to-main ${channel}`);
+    const subs = shared.ipcListeners?.get(channel);
+    if (!subs?.length) return;
+    for (const listener of Array.from(subs)) {
+      listener(fakeEvent, ...clonedArgs);
+    }
+  };
+
   const invokeRaw = (channel: string, ...args: unknown[]) => {
     assertValidInvokeChannel(channel);
     // ipcRenderer.invoke structured-clones args main-ward and the result
@@ -296,6 +316,7 @@ export function installRendererIpcBridge(
       ),
     invokeEnvelope: (channel: string, ...args: unknown[]) =>
       invokeRaw(channel, ...args),
+    send: (channel: string, ...args: unknown[]) => sendToMain(channel, ...args),
     on: (channel: string, listener: Listener) => {
       if (!isValidReceiveChannel(channel)) {
         // Same behavior as preload.ts's `on`.

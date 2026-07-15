@@ -42,6 +42,10 @@ export function sortByName<T extends SchemaObject>(
 function normalizeTable(table: Table): Table {
   return {
     ...table,
+    columns: table.columns.map((column) => ({
+      ...column,
+      dependsOnFunctions: sortQualifiedNames(column.dependsOnFunctions),
+    })),
     checkConstraints: sortByName(table.checkConstraints).map(
       normalizeCheckConstraint,
     ),
@@ -65,6 +69,7 @@ function normalizePolicy(policy: Policy): Policy {
     ...policy,
     appliesTo: sortedStrings(policy.appliesTo),
     columns: sortedStrings(policy.columns),
+    dependsOnFunctions: sortQualifiedNames(policy.dependsOnFunctions),
   };
 }
 

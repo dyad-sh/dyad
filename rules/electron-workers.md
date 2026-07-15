@@ -29,3 +29,9 @@ Read this when spawning `worker_threads` or `utilityProcess` children, moving he
 - Logged main-process RSS **includes** all worker_threads — they are threads, not processes. Renderer/GPU/utility processes are separate; enumerate them with `app.getAppMetrics()`.
 - On macOS, `os.totalmem() - os.freemem()` is misleading: `os.freemem()` counts only truly-free pages, so reclaimable file cache reads as "used" (a healthy 16 GB Mac can show ~85% "used" by this formula while `memory_pressure` reports the system 86% free). For real pressure signals use `vm_stat` (pageouts, compressed pages), `sysctl vm.swapusage`, and `memory_pressure`.
 - Two V8 string facts that change memory math: ASCII text is stored at 1 byte/char (not 2), and string concatenation builds lazy cons strings — a `` `${prefix} ${hugeString}` `` template is nearly free until something flattens it (e.g. `JSON.stringify`). Corollary: never re-materialize codebase-scale strings just to measure them — sum `content.length` values instead of `join(...)` followed by `.length`.
+
+## Development launcher cleanup
+
+- Treat Ctrl+C cleanup for `npm start` as development tooling; do not add signal-only shutdown behavior to packaged runtime paths. A POSIX supervisor should launch Electron Forge as a process-group leader and signal the negative group PID so Forge, Electron, renderer helpers, and preview servers are terminated together.
+- Keep SIGINT/SIGTERM/SIGHUP handlers installed until forced cleanup finishes. npm and the controlling PTY can deliver repeated signals; a one-shot handler lets a later signal terminate the supervisor before its fallback timer kills children that ignored SIGTERM.
+- Electron's macOS Crashpad handler leaves the Forge process group, and a killed Electron process can remain registered with LaunchServices. Clean up the checkout-specific Crashpad PID separately and notify `lsappinfo` of the Electron PID's exit so no helper or Dock entry remains.

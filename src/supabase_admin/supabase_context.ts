@@ -1,12 +1,19 @@
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
+import { renderTestDatabaseSchema } from "@/lib/test_database_schema";
 import { getSupabaseClient } from "./supabase_management_client";
 import {
   SUPABASE_SCHEMA_QUERY,
   SUPABASE_FUNCTIONS_QUERY,
-  buildSupabaseSchemaQuery,
 } from "./supabase_schema_query";
+import {
+  buildSchemaSnapshotSql,
+  filterSchemaForTable,
+  getSchemaFromSnapshot,
+  missingPublicTableComment,
+  renderSchemaSql,
+} from "ts-pg-schema-diff";
 
 async function getPublishableKey({
   projectId,
@@ -134,6 +141,29 @@ const TABLE_NAMES_QUERY = `
   ORDER BY table_name;
 `;
 
+function normalizeRunQueryRows(
+  result: unknown,
+): readonly Record<string, unknown>[] {
+  if (Array.isArray(result)) {
+    return result as readonly Record<string, unknown>[];
+  }
+  if (result && typeof result === "object") {
+    const maybeRows = (result as { data?: unknown; result?: unknown }).data;
+    if (Array.isArray(maybeRows)) {
+      return maybeRows as readonly Record<string, unknown>[];
+    }
+    const maybeResultRows = (result as { result?: unknown }).result;
+    if (Array.isArray(maybeResultRows)) {
+      return maybeResultRows as readonly Record<string, unknown>[];
+    }
+  }
+  const shape =
+    result !== null && typeof result === "object"
+      ? `object keys: ${Object.keys(result).join(", ") || "none"}`
+      : typeof result;
+  throw new Error(`Unexpected Supabase runQuery response shape (${shape})`);
+}
+
 /**
  * Get high-level Supabase project info: project ID, publishable key, secret names, and table names.
  * This is a lightweight call that doesn't fetch full schema details.
@@ -236,15 +266,51 @@ export async function getSupabaseTableSchema({
   tableName?: string;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return `[[TEST_TABLE_SCHEMA${tableName ? `:${tableName}` : ""}]]`;
+    return renderTestDatabaseSchema(tableName);
   }
 
-  const supabase = await getSupabaseClient({ organizationSlug });
-  const query = buildSupabaseSchemaQuery(tableName);
-  const schemaResult = await retryWithRateLimit(
-    () => supabase.runQuery(supabaseProjectId, query),
-    `Get table schema for ${supabaseProjectId}${tableName ? `:${tableName}` : ""}`,
-  );
-
-  return JSON.stringify(schemaResult);
+  try {
+    const supabase = await getSupabaseClient({ organizationSlug });
+    const snapshotResult = await retryWithRateLimit(
+      () =>
+        supabase.runQuery(
+          supabaseProjectId,
+          buildSchemaSnapshotSql({
+            includeSchemas: ["public"],
+            tableName,
+          }),
+        ),
+      `Get schema snapshot for ${supabaseProjectId}`,
+    );
+    const snapshotRows = normalizeRunQueryRows(snapshotResult);
+    if (snapshotRows.length === 0) {
+      throw new Error("Supabase schema snapshot query returned no rows");
+    }
+    const snapshot = snapshotRows[0]?.schema_snapshot;
+    if (snapshot === undefined) {
+      throw new Error(
+        "Supabase schema snapshot response is missing schema_snapshot",
+      );
+    }
+    const schema = await getSchemaFromSnapshot(snapshot);
+    if (!tableName && schema.tables.length === 0) {
+      return "-- No public tables found.";
+    }
+    const filteredSchema = tableName
+      ? filterSchemaForTable(schema, { tableName })
+      : schema;
+    return renderSchemaSql(filteredSchema, {
+      emptySchemaComment: tableName
+        ? missingPublicTableComment(tableName)
+        : "-- No public tables found.",
+    });
+  } catch (error) {
+    if (isDyadError(error)) {
+      throw error;
+    }
+    throw new DyadError(
+      `Failed to get table schema for Supabase project "${supabaseProjectId}": ${error instanceof Error ? error.message : String(error)}`,
+      DyadErrorKind.External,
+    );
+  }
 }

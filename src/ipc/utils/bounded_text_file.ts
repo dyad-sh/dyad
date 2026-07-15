@@ -34,6 +34,11 @@ interface ReadTextFileLinesParams extends OpenContainedFileParams {
   validateRealPath?: (realPath: string, realRootPath: string) => void;
 }
 
+interface ReadContainedTextFileParams extends OpenContainedFileParams {
+  maxBytes: number;
+  validateRealPath?: (realPath: string, realRootPath: string) => void;
+}
+
 export interface ReadTextFileLinesResult {
   content: string;
   truncated: boolean;
@@ -120,6 +125,68 @@ function decodeUtf8(bytes: Uint8Array, displayPath: string): string {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     throwBinaryFileError(displayPath);
+  }
+}
+
+export function boundAgentReadFileContent(content: string): {
+  content: string;
+  truncated: boolean;
+} {
+  const bytes = Buffer.from(content, "utf8");
+  if (bytes.length <= AGENT_READ_FILE_CONTENT_LIMIT_BYTES) {
+    return { content, truncated: false };
+  }
+
+  let end = AGENT_READ_FILE_CONTENT_LIMIT_BYTES;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) {
+    end -= 1;
+  }
+  return {
+    content: bytes.subarray(0, end).toString("utf8"),
+    truncated: true,
+  };
+}
+
+export async function readContainedTextFile({
+  rootPath,
+  filePath,
+  displayPath,
+  maxBytes,
+  validateRealPath,
+}: ReadContainedTextFileParams): Promise<string> {
+  const opened = await openContainedFile({ rootPath, filePath, displayPath });
+  try {
+    validateRealPath?.(opened.realPath, opened.realRootPath);
+    if (opened.size > maxBytes) {
+      throw new DyadError(
+        `File is too large to read safely: ${displayPath} (${opened.size} bytes; ${maxBytes} byte limit)`,
+        DyadErrorKind.Validation,
+      );
+    }
+
+    const buffer = Buffer.allocUnsafe(opened.size);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const { bytesRead } = await opened.handle.read(
+        buffer,
+        offset,
+        buffer.length - offset,
+        offset,
+      );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+
+    const finalStat = await opened.handle.stat();
+    if (finalStat.size !== opened.size) {
+      throw new DyadError(
+        `File changed while it was being read: ${displayPath}. Please try again.`,
+        DyadErrorKind.Conflict,
+      );
+    }
+    return decodeUtf8(buffer.subarray(0, offset), displayPath);
+  } finally {
+    await opened.handle.close();
   }
 }
 

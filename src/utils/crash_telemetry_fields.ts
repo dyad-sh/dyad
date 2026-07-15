@@ -37,6 +37,73 @@ export function crashPerformanceEventFields(
   };
 }
 
+// Only annotation keys known to hold diagnostic, non-sensitive values are
+// exported to telemetry, each by its exact name. Unknown keys, including
+// ones future Electron versions may add, are dropped and only counted.
+// The minidump parser also exempts these keys from its annotation cap.
+export const ALLOWED_ANNOTATION_KEYS = new Set([
+  // Our crashReporter globalExtra parameters.
+  "app_version",
+  "electron_version",
+  "chrome_version",
+  "os",
+  "arch",
+  // Electron's own crashReporter parameters.
+  "_productName",
+  "_companyName",
+  "_version",
+  // Crashpad and Electron process context.
+  "ptype",
+  "process_type",
+  "platform",
+  "plat",
+  "prod",
+  "ver",
+  "pid",
+  "osarch",
+  "lsb-release",
+  "service-name",
+  "chrome-trace-id",
+  "num-experiments",
+  // Memory and GPU state.
+  "oom-size",
+  "total-discardable-memory-allocated",
+  "gpu_webgl",
+  "gpu_compositing",
+  // V8 OOM and fatal error keys, from Electron's node_bindings.cc.
+  "electron.v8-oom.is_heap_oom",
+  "electron.v8-oom.location",
+  "electron.v8-oom.detail",
+  "electron.v8-oom.heap.used",
+  "electron.v8-oom.heap.total",
+  "electron.v8-oom.heap.limit",
+  "electron.v8-oom.heap.total_available",
+  "electron.v8-fatal.message",
+  "electron.v8-fatal.location",
+]);
+
+// Allowlisted crash annotations as flat telemetry fields, one property per
+// key, because PostHog cannot easily filter nested JSON. Keys are sanitized
+// to snake case. Dropped keys are reported only as a count.
+export function crashAnnotationEventFields(
+  annotations: Record<string, string>,
+): Record<string, string | number> {
+  const fields: Record<string, string | number> = {};
+  let dropped = 0;
+  for (const [key, value] of Object.entries(annotations)) {
+    if (!ALLOWED_ANNOTATION_KEYS.has(key)) {
+      dropped++;
+      continue;
+    }
+    const name = key.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    fields[`crash_annotation_${name}`] = value;
+  }
+  if (dropped > 0) {
+    fields.crash_annotations_dropped = dropped;
+  }
+  return fields;
+}
+
 function workingSetFields(
   prefix: string,
   sets: Record<string, number> | undefined,

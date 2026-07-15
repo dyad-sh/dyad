@@ -2,8 +2,16 @@ import { neon } from "@neondatabase/serverless";
 import log from "electron-log";
 import { getNeonClient } from "./neon_management_client";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { AppFrameworkType } from "@/lib/framework_constants";
+import { renderTestDatabaseSchema } from "@/lib/test_database_schema";
+import {
+  buildSchemaSnapshotSql,
+  filterSchemaForTable,
+  getSchemaFromSnapshot,
+  missingPublicTableComment,
+  renderSchemaSql,
+} from "ts-pg-schema-diff";
 
 const logger = log.scope("neon_context");
 
@@ -232,88 +240,6 @@ const TABLE_NAMES_QUERY = `
   ORDER BY table_name;
 `;
 
-const TABLE_SCHEMA_QUERY_ALL = `
-  SELECT
-    c.table_name,
-    c.column_name,
-    c.data_type,
-    c.is_nullable,
-    c.column_default,
-    c.character_maximum_length,
-    tc.constraint_type,
-    kcu.constraint_name
-  FROM information_schema.columns c
-  LEFT JOIN information_schema.key_column_usage kcu
-    ON c.table_schema = kcu.table_schema
-    AND c.table_name = kcu.table_name
-    AND c.column_name = kcu.column_name
-  LEFT JOIN information_schema.table_constraints tc
-    ON kcu.constraint_name = tc.constraint_name
-    AND kcu.table_schema = tc.table_schema
-  WHERE c.table_schema = 'public'
-  ORDER BY c.table_name, c.ordinal_position;
-`;
-
-const TABLE_SCHEMA_QUERY_ONE = `
-  SELECT
-    c.table_name,
-    c.column_name,
-    c.data_type,
-    c.is_nullable,
-    c.column_default,
-    c.character_maximum_length,
-    tc.constraint_type,
-    kcu.constraint_name
-  FROM information_schema.columns c
-  LEFT JOIN information_schema.key_column_usage kcu
-    ON c.table_schema = kcu.table_schema
-    AND c.table_name = kcu.table_name
-    AND c.column_name = kcu.column_name
-  LEFT JOIN information_schema.table_constraints tc
-    ON kcu.constraint_name = tc.constraint_name
-    AND kcu.table_schema = tc.table_schema
-  WHERE c.table_schema = 'public'
-    AND c.table_name = $1
-  ORDER BY c.ordinal_position;
-`;
-
-function buildTableSchemaQuery(tableName?: string): {
-  query: string;
-  params: string[];
-} {
-  if (!tableName) return { query: TABLE_SCHEMA_QUERY_ALL, params: [] };
-  return { query: TABLE_SCHEMA_QUERY_ONE, params: [tableName] };
-}
-
-const INDEXES_QUERY_ALL = `
-  SELECT
-    tablename AS table_name,
-    indexname AS index_name,
-    indexdef AS index_definition
-  FROM pg_indexes
-  WHERE schemaname = 'public'
-  ORDER BY tablename, indexname;
-`;
-
-const INDEXES_QUERY_ONE = `
-  SELECT
-    tablename AS table_name,
-    indexname AS index_name,
-    indexdef AS index_definition
-  FROM pg_indexes
-  WHERE schemaname = 'public'
-    AND tablename = $1
-  ORDER BY indexname;
-`;
-
-function buildIndexesQuery(tableName?: string): {
-  query: string;
-  params: string[];
-} {
-  if (!tableName) return { query: INDEXES_QUERY_ALL, params: [] };
-  return { query: INDEXES_QUERY_ONE, params: [tableName] };
-}
-
 // =============================================================================
 // Project Info
 // =============================================================================
@@ -412,31 +338,45 @@ export async function getNeonTableSchema({
   tableName?: string;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return `[[TEST_NEON_TABLE_SCHEMA${tableName ? `:${tableName}` : ""}]]`;
+    return renderTestDatabaseSchema(tableName);
   }
 
   try {
     const connectionUri = await getConnectionUri({ projectId, branchId });
     const sql = neon(connectionUri);
-
-    const { query: schemaQuery, params: schemaParams } =
-      buildTableSchemaQuery(tableName);
-    const schemaResult = await sql.query(schemaQuery, schemaParams);
-
-    const { query: indexesQuery, params: indexesParams } =
-      buildIndexesQuery(tableName);
-    const indexesResult = await sql.query(indexesQuery, indexesParams);
-
-    return JSON.stringify(
-      {
-        columns: schemaResult,
-        indexes: indexesResult,
-      },
-      null,
-      2,
+    const snapshotRows = await sql.query(
+      buildSchemaSnapshotSql({
+        includeSchemas: ["public"],
+        tableName,
+      }),
+      [],
     );
+    if (snapshotRows.length === 0) {
+      throw new Error("Neon schema snapshot query returned no rows");
+    }
+    const snapshot = snapshotRows[0]?.schema_snapshot;
+    if (snapshot === undefined) {
+      throw new Error(
+        "Neon schema snapshot response is missing schema_snapshot",
+      );
+    }
+    const schema = await getSchemaFromSnapshot(snapshot);
+    if (!tableName && schema.tables.length === 0) {
+      return "-- No public tables found.";
+    }
+    const filteredSchema = tableName
+      ? filterSchemaForTable(schema, { tableName })
+      : schema;
+    return renderSchemaSql(filteredSchema, {
+      emptySchemaComment: tableName
+        ? missingPublicTableComment(tableName)
+        : "-- No public tables found.",
+    });
   } catch (error) {
     logger.error("Error getting Neon table schema:", error);
+    if (isDyadError(error)) {
+      throw error;
+    }
     throw new DyadError(
       `Failed to get Neon table schema: ${error instanceof Error ? error.message : String(error)}`,
       DyadErrorKind.External,

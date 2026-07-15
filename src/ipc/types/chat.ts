@@ -74,16 +74,24 @@ export const ComponentSelectionSchema = z.object({
 export type ComponentSelection = z.infer<typeof ComponentSelectionSchema>;
 
 /**
+ * Shape of a serialized chat attachment, without the size-limit refinement.
+ * Use this for data that was already size-validated at the submission boundary
+ * (e.g. persisted queued prompts): re-running the size check on every
+ * round-trip wastes CPU, and tightening the limits later would retroactively
+ * reject stored data that was valid when written.
+ */
+export const ChatAttachmentShapeSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  data: z.string(), // Base64 encoded
+  attachmentType: z.enum(["upload-to-codebase", "chat-context"]),
+});
+
+/**
  * Schema for file attachment in chat (base64 encoded for IPC transfer).
  */
-export const ChatAttachmentSchema = z
-  .object({
-    name: z.string(),
-    type: z.string(),
-    data: z.string(), // Base64 encoded
-    attachmentType: z.enum(["upload-to-codebase", "chat-context"]),
-  })
-  .superRefine((attachment, context) => {
+export const ChatAttachmentSchema = ChatAttachmentShapeSchema.superRefine(
+  (attachment, context) => {
     const validation = validateSerializedChatAttachments([attachment]);
     if (!validation.ok) {
       context.addIssue({
@@ -92,7 +100,8 @@ export const ChatAttachmentSchema = z
         message: validation.message,
       });
     }
-  });
+  },
+);
 
 export type ChatAttachment = z.infer<typeof ChatAttachmentSchema>;
 

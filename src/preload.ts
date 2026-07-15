@@ -5,8 +5,10 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import {
   VALID_INVOKE_CHANNELS,
   VALID_RECEIVE_CHANNELS,
+  VALID_SEND_CHANNELS,
   type ValidInvokeChannel,
   type ValidReceiveChannel,
+  type ValidSendChannel,
 } from "./ipc/preload/channels";
 import { isIpcInvokeEnvelope, unwrapIpcEnvelope } from "./ipc/contracts/core";
 
@@ -49,6 +51,17 @@ contextBridge.exposeInMainWorld("electron", {
     ) => {
       if ((validInvokeChannels as readonly string[]).includes(channel)) {
         return ipcRenderer.invoke(channel, ...args);
+      }
+      throw new Error(`Invalid channel: ${channel}`);
+    },
+    // One-way, fire-and-forget renderer -> main. No response is returned, so
+    // this is safe to call while the frame is being torn down (e.g. from a
+    // `pagehide` handler on app quit), where a reply-expecting `invoke` would
+    // make the main process throw "Object has been destroyed".
+    send: (channel: ValidSendChannel | string, ...args: unknown[]) => {
+      if ((VALID_SEND_CHANNELS as readonly string[]).includes(channel)) {
+        ipcRenderer.send(channel, ...args);
+        return;
       }
       throw new Error(`Invalid channel: ${channel}`);
     },

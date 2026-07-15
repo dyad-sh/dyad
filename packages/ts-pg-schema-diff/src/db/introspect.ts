@@ -165,6 +165,7 @@ type SequenceRow = {
 };
 
 type PolicyRow = {
+  readonly oid: string;
   readonly policy_name: string;
   readonly owning_table_name: string;
   readonly owning_table_schema_name: string;
@@ -174,6 +175,9 @@ type PolicyRow = {
   readonly check_expression: string;
   readonly using_expression: string;
   readonly column_names: readonly string[] | null;
+  readonly dependent_func_schema_names: readonly string[];
+  readonly dependent_func_names: readonly string[];
+  readonly dependent_func_identity_arguments: readonly string[];
 };
 
 type ViewRow = {
@@ -215,6 +219,9 @@ type ColumnRow = {
   readonly generation_expression: string;
   readonly is_generated: boolean;
   readonly column_type: string;
+  readonly dependent_func_schema_names: readonly string[];
+  readonly dependent_func_names: readonly string[];
+  readonly dependent_func_identity_arguments: readonly string[];
 };
 
 type ServerVersionRow = {
@@ -434,6 +441,7 @@ async function fetchPolicies(
       checkExpression: row.check_expression,
       usingExpression: row.using_expression,
       columns: row.column_names ?? [],
+      dependsOnFunctions: buildFunctionDependencyNames(row),
     },
   }));
 }
@@ -801,7 +809,32 @@ function buildColumn(table: TableRow, row: ColumnRow): Column {
     hasMissingValOptimization: row.has_missing_val_optimization,
     size: row.column_size,
     identity,
+    dependsOnFunctions: buildFunctionDependencyNames(row),
   };
+}
+
+function buildFunctionDependencyNames(row: {
+  readonly dependent_func_schema_names: readonly string[];
+  readonly dependent_func_names: readonly string[];
+  readonly dependent_func_identity_arguments: readonly string[];
+}): readonly FunctionSchema["name"][] {
+  const { dependent_func_schema_names, dependent_func_names } = row;
+  const identityArguments = row.dependent_func_identity_arguments;
+  if (
+    dependent_func_schema_names.length !== dependent_func_names.length ||
+    dependent_func_names.length !== identityArguments.length
+  ) {
+    throw new PgSchemaDiffError(
+      "Database returned mismatched function dependency metadata",
+    );
+  }
+  return dependent_func_names.map((name, index) =>
+    procName(
+      dependent_func_schema_names[index]!,
+      name,
+      identityArguments[index]!,
+    ),
+  );
 }
 
 function buildIdentity(table: TableRow, row: ColumnRow): ColumnIdentity | null {

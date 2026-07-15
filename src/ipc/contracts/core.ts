@@ -32,6 +32,24 @@ export interface EventContract<
 }
 
 /**
+ * One-way IPC contract (renderer -> main), fire-and-forget with NO response.
+ *
+ * Unlike an invoke contract, the main process never replies. This matters for
+ * messages fired while the renderer frame is being torn down (e.g. on
+ * `pagehide` during app quit): a two-way `invoke` would leave the main process
+ * trying to post its reply back to an already-destroyed frame, which Electron
+ * surfaces as an unhandled "Object has been destroyed" error. A one-way send
+ * has no reply, so there is nothing to deliver back.
+ */
+export interface SendContract<
+  TChannel extends string,
+  TInput extends z.ZodType,
+> {
+  readonly channel: TChannel;
+  readonly input: TInput;
+}
+
+/**
  * Stream contract for invoke + multiple events pattern.
  * Used for streaming responses (e.g., chat streaming).
  */
@@ -85,6 +103,19 @@ export function defineEvent<
   payload: TPayload;
 }): EventContract<TChannel, TPayload> {
   return event;
+}
+
+/**
+ * Creates a typed one-way send contract definition (renderer -> main, no reply).
+ */
+export function defineSendContract<
+  TChannel extends string,
+  TInput extends z.ZodType,
+>(contract: {
+  channel: TChannel;
+  input: TInput;
+}): SendContract<TChannel, TInput> {
+  return contract;
 }
 
 /**
@@ -272,6 +303,40 @@ export function createClient<
       return isIpcInvokeEnvelope(response)
         ? unwrapIpcEnvelope(response)
         : response;
+    };
+  }
+  return client;
+}
+
+/** Type to convert send contracts object to fire-and-forget client methods */
+type SendClientFromContracts<
+  T extends Record<string, SendContract<string, z.ZodType>>,
+> = {
+  [K in keyof T]: (input: z.infer<T[K]["input"]>) => void;
+};
+
+/**
+ * Creates a typed one-way send client from a send-contracts object. Each method
+ * dispatches a fire-and-forget `ipcRenderer.send` and returns immediately —
+ * there is no response to await. Use for writes that must survive being fired
+ * during renderer teardown (see {@link SendContract}).
+ */
+export function createSendClient<
+  T extends Record<string, SendContract<string, z.ZodType>>,
+>(contracts: T): SendClientFromContracts<T> {
+  // Access ipcRenderer from the window.electron exposed by preload
+  const getIpcRenderer = () => (window as any).electron?.ipcRenderer;
+
+  const client = {} as SendClientFromContracts<T>;
+  for (const [methodName, contract] of Object.entries(contracts)) {
+    (client as any)[methodName] = (input: unknown) => {
+      const ipcRenderer = getIpcRenderer();
+      if (typeof ipcRenderer?.send !== "function") {
+        throw new Error(
+          `[${contract.channel}] IPC renderer send not available. Make sure this is called from the renderer process.`,
+        );
+      }
+      ipcRenderer.send(contract.channel, input);
     };
   }
   return client;
@@ -496,6 +561,16 @@ export function createStreamClient<
 export function getInvokeChannels<
   T extends Record<string, { channel: string }>,
 >(contracts: T): T[keyof T]["channel"][] {
+  return Object.values(contracts).map((c) => c.channel);
+}
+
+/**
+ * Extract all one-way send channels from a send-contracts object.
+ * Used for building the preload whitelist.
+ */
+export function getSendChannels<T extends Record<string, { channel: string }>>(
+  contracts: T,
+): T[keyof T]["channel"][] {
   return Object.values(contracts).map((c) => c.channel);
 }
 

@@ -82,7 +82,7 @@ export function ModifiedFilesCard({
   const actionsDisabled = isUndoLoading || isRetryLoading;
 
   const footer = (
-    <div className="px-3 py-2 border-t border-border/60 flex justify-end gap-2">
+    <div className="px-3 py-2 flex justify-end gap-2">
       <Button
         variant="outline"
         size="sm"
@@ -123,7 +123,7 @@ export function ModifiedFilesCard({
         className="rounded-xl border border-border/60 bg-[var(--background-lightest)] overflow-hidden"
       >
         {hasChanges && (
-          <div className="px-3 py-2 border-b border-border/60 text-sm font-medium">
+          <div className="px-3 py-2 text-sm font-medium">
             Modified files{" "}
             <span className="text-muted-foreground font-normal">
               ({changes.length})
@@ -131,7 +131,7 @@ export function ModifiedFilesCard({
           </div>
         )}
         {hasChanges && (
-          <div className="max-h-64 overflow-y-auto divide-y divide-border/60">
+          <div className="max-h-64 overflow-y-auto">
             {changes.map((file) => {
               const stats = statsByPath.get(file.path);
               const meta = STATUS_META[file.type];

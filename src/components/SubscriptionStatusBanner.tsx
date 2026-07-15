@@ -3,6 +3,8 @@ import { AlertTriangle, Clock3, Pause, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { usePostHog } from "posthog-js/react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ipc, type SubscriptionStatus } from "@/ipc/types";
 import { useSubscriptionStatus } from "@/hooks/useSubscriptionStatus";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -10,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const dismissedBillingAlertsAtom = atom<Set<string>>(new Set<string>());
+const shownBillingAlertsAtom = atom<Set<string>>(new Set<string>());
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 function alertFingerprint(status: SubscriptionStatus) {
@@ -26,14 +29,24 @@ export function SubscriptionStatusBanner() {
   const [dismissedAlerts, setDismissedAlerts] = useAtom(
     dismissedBillingAlertsAtom,
   );
-  const shownFingerprints = useRef(new Set<string>());
+  const [shownFingerprints, setShownFingerprints] = useAtom(
+    shownBillingAlertsAtom,
+  );
   const previousAlert = useRef<SubscriptionStatus | null>(null);
+  const openBillingAction = useMutation({
+    mutationFn: (url: string) => ipc.system.openBillingAction(url),
+    onError: () => toast.error(t("billingNudge.openActionError")),
+  });
 
   useEffect(() => {
     if (status?.alert) {
       const fingerprint = alertFingerprint(status);
-      if (!shownFingerprints.current.has(fingerprint)) {
-        shownFingerprints.current.add(fingerprint);
+      if (!shownFingerprints.has(fingerprint)) {
+        setShownFingerprints((current) => {
+          const next = new Set(current);
+          next.add(fingerprint);
+          return next;
+        });
         posthog.capture("billing_nudge_shown", {
           alert: status.alert,
           has_effective_at: status.effectiveAt !== null,
@@ -50,7 +63,7 @@ export function SubscriptionStatusBanner() {
       });
       previousAlert.current = null;
     }
-  }, [posthog, status]);
+  }, [posthog, setShownFingerprints, shownFingerprints, status]);
 
   if (!status?.alert) {
     return null;
@@ -80,11 +93,15 @@ export function SubscriptionStatusBanner() {
       : new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language).format(
           remainingCredits,
         );
+  const subscriptionEndingMessage =
+    daysUntilEnd === 0
+      ? t("billingNudge.subscriptionEndingToday")
+      : t("billingNudge.subscriptionEnding", { count: daysUntilEnd ?? 0 });
   const message = isPastDue
     ? t("billingNudge.paymentPastDue")
     : isEnding
       ? [
-          t("billingNudge.subscriptionEnding", { count: daysUntilEnd ?? 0 }),
+          subscriptionEndingMessage,
           remainingCredits === null
             ? null
             : t("billingNudge.creditsLost", {
@@ -135,12 +152,13 @@ export function SubscriptionStatusBanner() {
             size="sm"
             variant="default"
             className="h-8 shrink-0"
+            disabled={openBillingAction.isPending}
             onClick={() => {
               posthog.capture("billing_nudge_clicked", {
                 alert: status.alert,
                 has_effective_at: status.effectiveAt !== null,
               });
-              ipc.system.openBillingAction(status.actionUrl!);
+              openBillingAction.mutate(status.actionUrl!);
             }}
           >
             {actionLabel}

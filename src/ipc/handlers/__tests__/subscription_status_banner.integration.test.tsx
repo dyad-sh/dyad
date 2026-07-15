@@ -11,8 +11,10 @@ describe("subscription status banner (integration)", () => {
   let harness: HybridChatHarness;
   let server: Server;
   let receivedAuthorization: string | undefined;
+  let previousSubscriptionStatusUrl: string | undefined;
 
   beforeAll(async () => {
+    previousSubscriptionStatusUrl = process.env.DYAD_SUBSCRIPTION_STATUS_URL;
     server = createServer((request, response) => {
       receivedAuthorization = request.headers.authorization;
       response.writeHead(200, { "Content-Type": "application/json" });
@@ -52,6 +54,11 @@ describe("subscription status banner (integration)", () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+    if (previousSubscriptionStatusUrl === undefined) {
+      delete process.env.DYAD_SUBSCRIPTION_STATUS_URL;
+    } else {
+      process.env.DYAD_SUBSCRIPTION_STATUS_URL = previousSubscriptionStatusUrl;
+    }
   });
 
   it("renders Academy status through the real main-process IPC handler", async () => {

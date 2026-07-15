@@ -218,7 +218,6 @@ export function registerProHandlers() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
         },
       });
       if (!response.ok) {

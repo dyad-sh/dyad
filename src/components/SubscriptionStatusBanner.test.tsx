@@ -1,6 +1,7 @@
 import { createStore, Provider } from "jotai";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionStatus, UserBudgetInfo } from "@/ipc/types";
 import i18n from "@/i18n";
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   userBudget: null as UserBudgetInfo | null,
   openBillingAction: vi.fn(),
   capture: vi.fn(),
+  toastError: vi.fn(),
 }));
 
 vi.mock("@/hooks/useSubscriptionStatus", () => ({
@@ -27,23 +29,32 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("posthog-js/react", () => ({
   usePostHog: () => ({ capture: mocks.capture }),
 }));
+vi.mock("sonner", () => ({
+  toast: { error: mocks.toastError },
+}));
 
 import { SubscriptionStatusBanner } from "./SubscriptionStatusBanner";
 
-function renderBanner() {
-  const store = createStore();
+function renderBanner(store = createStore()) {
+  const queryClient = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  });
   const view = render(
-    <Provider store={store}>
-      <SubscriptionStatusBanner />
-    </Provider>,
+    <QueryClientProvider client={queryClient}>
+      <Provider store={store}>
+        <SubscriptionStatusBanner />
+      </Provider>
+    </QueryClientProvider>,
   );
   return {
     ...view,
     rerenderBanner: () =>
       view.rerender(
-        <Provider store={store}>
-          <SubscriptionStatusBanner />
-        </Provider>,
+        <QueryClientProvider client={queryClient}>
+          <Provider store={store}>
+            <SubscriptionStatusBanner />
+          </Provider>
+        </QueryClientProvider>,
       ),
   };
 }
@@ -60,7 +71,9 @@ describe("SubscriptionStatusBanner", () => {
       isTrial: false,
     };
     mocks.openBillingAction.mockReset();
+    mocks.openBillingAction.mockResolvedValue(undefined);
     mocks.capture.mockReset();
+    mocks.toastError.mockReset();
     vi.spyOn(Date, "now").mockReturnValue(
       new Date("2026-07-14T00:00:00.000Z").getTime(),
     );
@@ -124,6 +137,26 @@ describe("SubscriptionStatusBanner", () => {
     });
   });
 
+  it("surfaces a billing action failure", async () => {
+    mocks.status = {
+      alert: "subscription_paused",
+      effectiveAt: "2026-08-03T00:00:00.000Z",
+      actionUrl: "https://academy.dyad.sh/subscription",
+    };
+    mocks.openBillingAction.mockRejectedValue(new Error("open failed"));
+    renderBanner();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Resume subscription" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "Could not open Academy. Please try again.",
+      ),
+    );
+  });
+
   it("uses singular day and credit copy", () => {
     mocks.status = {
       alert: "subscription_ending",
@@ -140,6 +173,22 @@ describe("SubscriptionStatusBanner", () => {
     expect(
       screen.getByText(
         "Your Dyad Pro subscription ends in 1 day. You will lose 1 credit.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("uses today copy when the subscription end time has passed", () => {
+    mocks.status = {
+      alert: "subscription_ending",
+      effectiveAt: "2026-07-13T23:59:59.000Z",
+      actionUrl: "https://academy.dyad.sh/subscription",
+    };
+
+    renderBanner();
+
+    expect(
+      screen.getByText(
+        "Your Dyad Pro subscription ends today. You will lose 650 credits.",
       ),
     ).not.toBeNull();
   });
@@ -193,6 +242,24 @@ describe("SubscriptionStatusBanner", () => {
       alert: "payment_past_due",
       has_effective_at: false,
     });
+  });
+
+  it("deduplicates shown analytics across component remounts", () => {
+    mocks.status = {
+      alert: "subscription_paused",
+      effectiveAt: "2026-10-03T00:00:00.000Z",
+      actionUrl: "https://academy.dyad.sh/subscription",
+    };
+    const store = createStore();
+    const firstView = renderBanner(store);
+    firstView.unmount();
+    renderBanner(store);
+
+    expect(
+      mocks.capture.mock.calls.filter(
+        ([event]) => event === "billing_nudge_shown",
+      ),
+    ).toHaveLength(1);
   });
 
   it("does not report a resolution when status becomes unavailable", () => {

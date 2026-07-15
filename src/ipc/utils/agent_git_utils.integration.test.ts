@@ -172,6 +172,19 @@ describe("agent Git utilities", () => {
     expect(result.content).not.toContain(" base");
   });
 
+  it("preserves source and destination paths when rendering renames", async () => {
+    await git(repo, "mv", "file.txt", "renamed.txt");
+
+    const workingTreeDiff = await getAgentGitDiff({ path: repo });
+    expect(workingTreeDiff.content).toContain("rename from file.txt");
+    expect(workingTreeDiff.content).toContain("rename to renamed.txt");
+
+    await git(repo, "commit", "-m", "rename file");
+    const commit = await getAgentGitCommit({ path: repo, revision: "HEAD" });
+    expect(commit.content).toContain("rename from file.txt");
+    expect(commit.content).toContain("rename to renamed.txt");
+  });
+
   it("omits dotenv patch content", async () => {
     await fs.promises.writeFile(
       path.join(repo, ".env"),

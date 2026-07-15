@@ -1647,6 +1647,9 @@ export async function getAgentGitStatus({
     if (statusCode[1] !== ".") addStatusPath(unstaged, filePath);
   }
 
+  // Share one response budget across categories so the complete structured
+  // result stays bounded. The call order below intentionally prioritizes
+  // conflicts, then staged and unstaged changes, ahead of untracked files.
   let remainingPaths = AGENT_GIT_MAX_STATUS_PATHS;
   let remainingBytes = AGENT_GIT_STATUS_PATH_BUDGET_BYTES;
   let truncated = result.truncated;
@@ -1752,7 +1755,9 @@ async function renderSafeAgentDiff({
       sensitive.push(entry.paths.at(-1) ?? entry.paths[0]);
       continue;
     }
-    allowed.push(entry.paths.at(-1) ?? entry.paths[0]);
+    // Git needs both sides of a rename/copy pathspec to preserve its R/C
+    // classification when rendering the patch.
+    allowed.push(...entry.paths);
   }
 
   const uniquePaths = [...new Set(allowed)];

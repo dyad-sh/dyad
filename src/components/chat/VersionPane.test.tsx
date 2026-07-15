@@ -301,6 +301,12 @@ describe("VersionPane", () => {
 
     expect(store.get(selectedVersionIdAtom)).toBe(version.oid);
     expect(checkoutVersionMock).not.toHaveBeenCalled();
+    const restoreButton = screen.getByRole("button", {
+      name: "Restore to this version",
+    });
+    expect((restoreButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(restoreButton);
+    expect(revertVersionMock).not.toHaveBeenCalled();
 
     resolveBranchInfo({ data: { branch: "feature/test" } });
     await waitFor(() => {
@@ -337,6 +343,58 @@ describe("VersionPane", () => {
 
     expect(checkoutVersionMock).not.toHaveBeenCalled();
     expect(showErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse a return branch from an earlier pane session", async () => {
+    let resolveSecondBranchInfo!: (value: { data: { branch: string } }) => void;
+    refetchBranchInfoMock
+      .mockResolvedValueOnce({ data: { branch: "feature/first" } })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecondBranchInfo = resolve;
+        }),
+      );
+    const firstVersion = makeVersion(1);
+    const secondVersion = makeVersion(2);
+    versionsMock.push(firstVersion, secondVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />,
+      { wrapper: makeWrapper() },
+    );
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: firstVersion.oid,
+      });
+    });
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
+    );
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenLastCalledWith({
+        appId: 1,
+        versionId: "feature/first",
+      });
+    });
+
+    rerender(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
+    );
+
+    expect(checkoutVersionMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      resolveSecondBranchInfo({ data: { branch: "feature/second" } });
+    });
+    expect(checkoutVersionMock).toHaveBeenCalledTimes(2);
+    expect(checkoutVersionMock).not.toHaveBeenCalledWith({
+      appId: 1,
+      versionId: secondVersion.oid,
+    });
   });
 
   it("returns to the captured branch when closing during a later preview", async () => {
@@ -424,6 +482,39 @@ describe("VersionPane", () => {
       appId: 1,
       versionId: olderVersion.oid,
     });
+  });
+
+  it("clears an optimistic selection when a superseding preview fails", async () => {
+    const branchResolvers: Array<
+      (value: { data: { branch: string } }) => void
+    > = [];
+    refetchBranchInfoMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          branchResolvers.push(resolve);
+        }),
+    );
+    const olderVersion = makeVersion(1);
+    const newerVersion = makeVersion(2);
+    versionsMock.push(olderVersion, newerVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const store = createStore();
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(store),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    fireEvent.click(screen.getByTestId("version-row-1"));
+    await act(async () => {
+      branchResolvers[1]({ data: { branch: "<no-branch>" } });
+    });
+
+    expect(store.get(selectedVersionIdAtom)).toBeNull();
+    await act(async () => {
+      branchResolvers[0]({ data: { branch: "feature/test" } });
+    });
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
   });
 
   it("blocks another preview while checkout is starting", async () => {

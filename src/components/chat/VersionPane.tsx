@@ -88,6 +88,7 @@ interface VersionRowProps {
   searchQuery: string;
   selectedVersionId: string | null;
   isCheckingOutVersion: boolean;
+  isResolvingPreviewBranch: boolean;
   isRevertingVersion: boolean;
   showNoteEditor: boolean;
   shouldAutoFocusNote: boolean;
@@ -108,6 +109,7 @@ function VersionRow({
   searchQuery,
   selectedVersionId,
   isCheckingOutVersion,
+  isResolvingPreviewBranch,
   isRevertingVersion,
   showNoteEditor,
   shouldAutoFocusNote,
@@ -120,6 +122,8 @@ function VersionRow({
   onExpandNote,
   onRestoreVersion,
 }: VersionRowProps) {
+  const isRestoreDisabled =
+    isRevertingVersion || isCheckingOutVersion || isResolvingPreviewBranch;
   const trimmedSearchQuery = searchQuery.trim();
   const displayMessage =
     version.message &&
@@ -306,17 +310,19 @@ function VersionRow({
                   e.stopPropagation();
                   onRestoreVersion(version);
                 }}
-                disabled={isRevertingVersion}
+                disabled={isRestoreDisabled}
                 className={cn(
                   "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
                   selectedVersionId === version.oid && "visible",
-                  isRevertingVersion && "opacity-50 cursor-not-allowed",
+                  isRestoreDisabled && "opacity-50 cursor-not-allowed",
                 )}
                 aria-label="Restore to this version"
                 title={
                   isRevertingVersion
                     ? "Restoring to this version..."
-                    : "Restore to this version"
+                    : isCheckingOutVersion || isResolvingPreviewBranch
+                      ? "Preparing version preview..."
+                      : "Restore to this version"
                 }
               >
                 {isRevertingVersion ? (
@@ -360,6 +366,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const previewRequestIdRef = useRef(0);
   const isResolvingPreviewBranchRef = useRef(false);
   const isPreviewCheckoutInProgressRef = useRef(false);
+  const checkedOutVersionIdRef = useRef<string | null>(null);
   isVisibleRef.current = isVisible;
   const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
     null,
@@ -372,6 +379,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     [appId],
   );
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
+  const [isResolvingPreviewBranch, setIsResolvingPreviewBranch] =
+    useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [expandedNoteVersionIds, setExpandedNoteVersionIds] = useState<
@@ -489,6 +498,10 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     async function updatePaneState() {
       // When pane becomes visible after being closed
       if (isVisible && !wasVisibleRef.current) {
+        returnBranchRef.current = null;
+        checkedOutVersionIdRef.current = null;
+        isResolvingPreviewBranchRef.current = false;
+        setIsResolvingPreviewBranch(false);
         if (appId) {
           const result = await refreshVersions();
           setCachedVersions(result.data ?? liveVersionsRef.current);
@@ -500,6 +513,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         previewRequestIdRef.current += 1;
         const wasResolvingPreviewBranch = isResolvingPreviewBranchRef.current;
         isResolvingPreviewBranchRef.current = false;
+        setIsResolvingPreviewBranch(false);
         flushPendingNoteSaves();
         setSearchQuery("");
         setShowFavoritesOnly(false);
@@ -509,6 +523,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
           setSelectedVersionId(null);
           const returnBranch = getReturnBranch();
           if (wasResolvingPreviewBranch && !returnBranch) {
+            checkedOutVersionIdRef.current = null;
+            returnBranchRef.current = null;
             wasVisibleRef.current = isVisible;
             return;
           }
@@ -517,6 +533,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
             if (app?.neonProjectId) {
               await restartApp();
             }
+            checkedOutVersionIdRef.current = null;
+            returnBranchRef.current = null;
           } else {
             showError(
               "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
@@ -556,6 +574,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     returnBranchRef.current = null;
     previewRequestIdRef.current += 1;
     isResolvingPreviewBranchRef.current = false;
+    checkedOutVersionIdRef.current = null;
+    setIsResolvingPreviewBranch(false);
     flushPendingNoteSaves(false);
     setCachedVersions([]);
     setSearchQuery("");
@@ -585,10 +605,10 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
 
   const handleVersionClick = async (version: Version) => {
     if (appId && !isPreviewCheckoutInProgressRef.current) {
-      const previousSelectedVersionId = selectedVersionId;
       const previewRequestId = previewRequestIdRef.current + 1;
       previewRequestIdRef.current = previewRequestId;
       isResolvingPreviewBranchRef.current = true;
+      setIsResolvingPreviewBranch(true);
       setSelectedVersionId(version.oid);
       const latestBranchResult = await refetchBranchInfo();
       if (
@@ -599,13 +619,14 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         return;
       }
       isResolvingPreviewBranchRef.current = false;
+      setIsResolvingPreviewBranch(false);
       const latestBranch = latestBranchResult.data?.branch;
       if (latestBranch && latestBranch !== "<no-branch>") {
         returnBranchRef.current = { appId, branch: latestBranch };
       }
       const returnBranch = getReturnBranch();
       if (!returnBranch) {
-        setSelectedVersionId(previousSelectedVersionId);
+        setSelectedVersionId(checkedOutVersionIdRef.current);
         showError(
           "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
         );
@@ -614,9 +635,10 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       isPreviewCheckoutInProgressRef.current = true;
       try {
         await checkoutVersion({ appId, versionId: version.oid });
+        checkedOutVersionIdRef.current = version.oid;
       } catch (error) {
         console.error("Could not checkout version, unselecting version", error);
-        setSelectedVersionId(null);
+        setSelectedVersionId(checkedOutVersionIdRef.current);
       } finally {
         isPreviewCheckoutInProgressRef.current = false;
       }
@@ -769,11 +791,23 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   };
 
   const handleRestoreVersion = (version: Version) => {
+    if (
+      isResolvingPreviewBranchRef.current ||
+      isPreviewCheckoutInProgressRef.current
+    ) {
+      return;
+    }
+    previewRequestIdRef.current += 1;
+    isResolvingPreviewBranchRef.current = false;
+    setIsResolvingPreviewBranch(false);
+    const returnBranch = getReturnBranch();
     void (async () => {
       await revertVersion({
         versionId: version.oid,
-        targetBranchName: getReturnBranch() ?? undefined,
+        targetBranchName: returnBranch ?? undefined,
       });
+      checkedOutVersionIdRef.current = null;
+      returnBranchRef.current = null;
       setSelectedVersionId(null);
       // Close the pane after revert to force a refresh on next open
       onClose();
@@ -876,6 +910,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
                   searchQuery={searchQuery}
                   selectedVersionId={selectedVersionId}
                   isCheckingOutVersion={isCheckingOutVersion}
+                  isResolvingPreviewBranch={isResolvingPreviewBranch}
                   isRevertingVersion={isRevertingVersion}
                   showNoteEditor={
                     expandedNoteVersionIds.has(version.oid) || !!version.note

@@ -22,6 +22,11 @@ real browser/Electron behavior, native dialogs, screenshots/visual layout,
 Monaco or Lexical browser interactions, drag/click/focus behavior that
 happy-dom cannot model, or a full user journey across app shell navigation.
 
+Base UI dropdown actions have `role="menuitem"`, while
+`HybridChatHarness.clickMenuItem()` currently looks for `role="button"`. For
+dropdown tests, query the open menu with `within(...).getByRole("menuitem")`
+unless the harness helper has been expanded to support both roles.
+
 Default to the node chat-flow harness when assertions are about files, git, db
 rows, IPC events, or LLM request dumps. Use the renderer+IPC hybrid harness only
 when assertions are about rendered UI or a flow that must be driven through a

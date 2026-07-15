@@ -273,6 +273,17 @@ export const UpdateChatParamsSchema = z.object({
 
 export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;
 
+export const SetChatFavoriteParamsSchema = z.object({
+  chatId: z.number(),
+  isFavorite: z.boolean(),
+});
+
+export type SetChatFavoriteParams = z.infer<typeof SetChatFavoriteParamsSchema>;
+
+export const SetChatFavoriteResultSchema = z.object({
+  isFavorite: z.boolean(),
+});
+
 /**
  * Schema for token count params.
  */
@@ -320,6 +331,7 @@ export const chatContracts = {
         title: z.string().nullable(),
         createdAt: z.date(),
         chatMode: NullableChatModeSchema,
+        isFavorite: z.boolean(),
       }),
     ),
   }),
@@ -333,6 +345,7 @@ export const chatContracts = {
       title: z.string().nullable(),
       createdAt: z.date(),
       chatMode: NullableChatModeSchema,
+      isFavorite: z.boolean(),
     }),
   }),
 
@@ -352,6 +365,12 @@ export const chatContracts = {
     channel: "update-chat",
     input: UpdateChatParamsSchema,
     output: z.void(),
+  }),
+
+  setChatFavorite: defineContract({
+    channel: "set-chat-favorite",
+    input: SetChatFavoriteParamsSchema,
+    output: SetChatFavoriteResultSchema,
   }),
 
   deleteChat: defineContract({

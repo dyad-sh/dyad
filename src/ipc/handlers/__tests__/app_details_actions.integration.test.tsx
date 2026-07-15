@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 
 import { apps, chats } from "@/db/schema";
@@ -363,6 +363,95 @@ describe("app details actions (integration)", () => {
       where: eq(chats.appId, app.appId),
     });
     expect(appChats).toHaveLength(2);
+  }, 60_000);
+
+  it("favorites chats at the top of the chat list", async () => {
+    const app = await createFixtureApp("favorite-chats-app");
+    await harness.db
+      .update(chats)
+      .set({
+        title: "Selected chat",
+        createdAt: new Date("2025-01-03T00:00:00Z"),
+      })
+      .where(eq(chats.id, app.chatId));
+    const [olderChat] = await harness.db
+      .insert(chats)
+      .values({
+        appId: app.appId,
+        title: "Older chat",
+        createdAt: new Date("2025-01-01T00:00:00Z"),
+      })
+      .returning();
+
+    harness.mount({ appId: app.appId, chatId: app.chatId, withChatList: true });
+    expect(screen.queryByTestId("chat-group-favorites")).toBeNull();
+
+    const olderFavoriteButton = await screen.findByRole("button", {
+      name: "Add Older chat to favorites",
+    });
+    olderFavoriteButton.focus();
+    fireEvent.click(olderFavoriteButton, { detail: 0 });
+
+    const favoritesGroup = await screen.findByTestId("chat-group-favorites");
+    expect(within(favoritesGroup).getByText("Older chat")).toBeTruthy();
+    expect(screen.getAllByText("Older chat")).toHaveLength(1);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", {
+          name: "Remove Older chat from favorites",
+        }),
+      );
+    });
+    await waitFor(async () => {
+      const persisted = await harness.db.query.chats.findFirst({
+        where: eq(chats.id, olderChat.id),
+      });
+      expect(persisted?.isFavorite).toBe(true);
+    });
+
+    await harness.openPopover(
+      screen.getByRole("button", {
+        name: "Chat actions for Selected chat",
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("menu")).getByRole("menuitem", {
+        name: "Add to favorites",
+      }),
+    );
+
+    await waitFor(() => {
+      const favoriteRows = within(
+        screen.getByTestId("chat-group-favorites"),
+      ).getAllByTestId(/^chat-list-item-/);
+      expect(favoriteRows).toHaveLength(2);
+      expect(favoriteRows[0].textContent).toContain("Selected chat");
+      expect(favoriteRows[1].textContent).toContain("Older chat");
+    });
+    expect(Number(harness.currentLocation().search.id)).toBe(app.chatId);
+
+    await harness.openPopover(
+      screen.getByRole("button", {
+        name: "Chat actions for Selected chat",
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("menu")).getByRole("menuitem", {
+        name: "Remove from favorites",
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Remove Older chat from favorites",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-group-favorites")).toBeNull();
+      expect(
+        within(screen.getByTestId("chat-group-older")).getByText("Older chat"),
+      ).toBeTruthy();
+    });
   }, 60_000);
 
   it("switches apps through the app list", async () => {

@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `is_favorite` integer DEFAULT 0 NOT NULL;

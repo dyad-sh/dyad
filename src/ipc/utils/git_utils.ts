@@ -1889,6 +1889,7 @@ export async function getAgentGitLog({
       `--max-count=${maxCount}`,
       "--no-show-signature",
       "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%B%x1e",
+      "--end-of-options",
       oid,
       ...(normalizedPath ? ["--", normalizedPath] : []),
     ],
@@ -1922,7 +1923,7 @@ async function getAgentGitParent({
   oid: string;
 }): Promise<string | null> {
   const result = await execAgentGit(
-    ["rev-list", "--parents", "-n", "1", oid],
+    ["rev-list", "--parents", "-n", "1", "--end-of-options", oid],
     path,
   );
   assertAgentGitSuccess(result, "Failed to inspect commit parents");
@@ -1957,6 +1958,7 @@ export async function getAgentGitCommit({
       "-s",
       "--no-show-signature",
       "--format=commit %H%nAuthor: %an <%ae>%nDate: %aI%n%n%B",
+      "--end-of-options",
       oid,
     ],
     path,
@@ -1994,7 +1996,7 @@ async function getAgentGitTreeEntry({
   filePath: string;
 }): Promise<AgentGitTreeEntry> {
   const result = await execAgentGit(
-    ["ls-tree", "-z", oid, "--", filePath],
+    ["ls-tree", "-z", "--end-of-options", oid, "--", filePath],
     path,
   );
   assertAgentGitSuccess(result, "Failed to inspect historical Git path");

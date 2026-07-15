@@ -151,6 +151,10 @@ describe("local-agent Git tool definitions", () => {
       gitShowCommitTool.inputSchema.safeParse({ revision: "--help" }).success,
     ).toBe(false);
     expect(
+      gitShowCommitTool.inputSchema.safeParse({ revision: "HEAD\n--help" })
+        .success,
+    ).toBe(false);
+    expect(
       gitShowFileTool.inputSchema.safeParse({
         revision: "HEAD",
         path: "src/main.ts",

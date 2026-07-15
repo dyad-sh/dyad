@@ -22,9 +22,16 @@ const revisionSchema = z
   .string()
   .min(1)
   .max(256)
-  .refine((revision) => !revision.startsWith("-") && !revision.includes(".."), {
-    message: "Git options and revision ranges are not allowed",
-  })
+  .refine(
+    (revision) =>
+      !revision.startsWith("-") &&
+      !revision.includes("..") &&
+      !/[\0\r\n]/.test(revision),
+    {
+      message:
+        "Git options, revision ranges, and control characters are not allowed",
+    },
+  )
   .describe(
     "A commit hash, branch, or tag; Git options and ranges are rejected",
   );

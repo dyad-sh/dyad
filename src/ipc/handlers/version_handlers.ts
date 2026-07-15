@@ -41,6 +41,10 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
+import {
+  DIFF_BINARY_PLACEHOLDER,
+  DIFF_TOO_LARGE_PLACEHOLDER,
+} from "@/shared/diff_placeholders";
 
 const logger = log.scope("version_handlers");
 
@@ -58,11 +62,11 @@ function sanitizeDiffContent(content: string): string {
     content.length > MAX_DIFF_CONTENT_BYTES ||
     Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES
   ) {
-    return "<file too large to display>";
+    return DIFF_TOO_LARGE_PLACEHOLDER;
   }
   // A NUL byte is a strong signal the file is binary.
   if (/\u0000/.test(content)) {
-    return "<binary file not shown>";
+    return DIFF_BINARY_PLACEHOLDER;
   }
   return content;
 }

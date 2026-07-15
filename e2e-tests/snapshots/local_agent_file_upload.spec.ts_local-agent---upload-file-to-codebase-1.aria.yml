@@ -13,5 +13,7 @@
 - button "Copy"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
+- text: Modified files (1)
+- button "A assets/uploaded-file.png"
 - button "Undo"
 - button "Retry"

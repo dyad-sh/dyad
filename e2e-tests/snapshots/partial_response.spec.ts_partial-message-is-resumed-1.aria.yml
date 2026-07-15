@@ -10,5 +10,6 @@
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy"
 - text: "[[Version 3: files changed]]"
+- button "A src/new-file.ts +2"
 - button "Undo"
 - button "Retry"

@@ -20,5 +20,8 @@
 - button "Copy"
 - text: "[[Version 4: files changed]]"
 - button "Copy Request ID"
+- text: Modified files (2)
+- button "A src/lib/utils.test.ts +14"
+- button "M src/lib/utils.ts +8"
 - button "Undo"
 - button "Retry"

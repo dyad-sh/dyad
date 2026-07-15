@@ -104,8 +104,12 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
 
   await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
 
-  // Wait for the uploaded file card to render before snapshotting
-  await expect(po.page.getByText("file.png", { exact: true })).toBeVisible();
+  // Wait for the uploaded file card to render before snapshotting. Use .first()
+  // because the modified-files card at the bottom of the chat now also lists
+  // "file.png"; the attachment card is rendered above it, so it comes first.
+  await expect(
+    po.page.getByText("file.png", { exact: true }).first(),
+  ).toBeVisible();
 
   await po.snapshotServerDump("last-message", { name: "upload-to-codebase" });
   await po.snapshotMessages({ replaceDumpPath: true });

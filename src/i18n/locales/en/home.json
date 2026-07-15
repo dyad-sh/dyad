@@ -254,6 +254,7 @@
     "commitMessage": "Commit message",
     "commitMessagePlaceholder": "Enter commit message...",
     "filesToCommit": "Files to commit ({{count}})",
+    "closeVersionChanges": "Close diff and return to files",
     "sendToChat": "Send to chat",
     "systemMessages": "System Messages",
     "consoleFilters": {

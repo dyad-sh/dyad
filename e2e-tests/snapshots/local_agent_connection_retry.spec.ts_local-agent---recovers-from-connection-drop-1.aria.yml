@@ -11,5 +11,7 @@
 - button "Copy"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
+- text: Modified files (1)
+- button "A src/recovered.ts +1"
 - button "Undo"
 - button "Retry"

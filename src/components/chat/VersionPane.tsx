@@ -367,7 +367,6 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const isResolvingPreviewBranchRef = useRef(false);
   const isPreviewCheckoutInProgressRef = useRef(false);
   const checkedOutVersionIdRef = useRef<string | null>(null);
-  isVisibleRef.current = isVisible;
   const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
     null,
   );
@@ -485,6 +484,10 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   }, []);
 
   const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
+
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   const versionNumberByOid = useMemo(() => {
     const map = new Map<string, number>();
@@ -614,12 +617,34 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       isResolvingPreviewBranchRef.current = true;
       setIsResolvingPreviewBranch(true);
       setSelectedVersionId(version.oid);
-      const latestBranchResult = await refetchBranchInfo();
+      let latestBranchResult: Awaited<ReturnType<typeof refetchBranchInfo>>;
+      try {
+        latestBranchResult = await refetchBranchInfo();
+      } catch (error) {
+        if (!isCurrentPreviewRequest()) {
+          return;
+        }
+        console.error("Could not determine current branch", error);
+        isResolvingPreviewBranchRef.current = false;
+        setIsResolvingPreviewBranch(false);
+        setSelectedVersionId(checkedOutVersionIdRef.current);
+        showError(
+          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
+        );
+        return;
+      }
       if (!isCurrentPreviewRequest()) {
         return;
       }
       isResolvingPreviewBranchRef.current = false;
       setIsResolvingPreviewBranch(false);
+      if (latestBranchResult.isError) {
+        setSelectedVersionId(checkedOutVersionIdRef.current);
+        showError(
+          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
+        );
+        return;
+      }
       const latestBranch = latestBranchResult.data?.branch;
       if (latestBranch && latestBranch !== "<no-branch>") {
         returnBranchRef.current = { appId, branch: latestBranch };
@@ -641,11 +666,15 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         if (isCurrentPreviewRequest()) {
           setSelectedVersionId(checkedOutVersionIdRef.current);
         }
+        return;
       } finally {
         isPreviewCheckoutInProgressRef.current = false;
       }
+      if (!isCurrentPreviewRequest()) {
+        return;
+      }
       await refreshApp();
-      if (version.dbTimestamp) {
+      if (version.dbTimestamp && isCurrentPreviewRequest()) {
         await restartApp();
       }
     }

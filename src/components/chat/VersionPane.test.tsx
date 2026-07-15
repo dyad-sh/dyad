@@ -281,6 +281,62 @@ describe("VersionPane", () => {
     expect(checkoutVersionMock).not.toHaveBeenCalled();
   });
 
+  it("ignores cached branch data when the branch refetch reports an error", async () => {
+    refetchBranchInfoMock.mockResolvedValue({
+      data: { branch: "stale/branch" },
+      isError: true,
+    });
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const store = createStore();
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(store),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
+      );
+    });
+    expect(store.get(selectedVersionIdAtom)).toBeNull();
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
+  });
+
+  it("recovers when the branch refetch rejects", async () => {
+    refetchBranchInfoMock.mockRejectedValue(new Error("branch lookup failed"));
+    const version = makeVersion(1);
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const store = createStore();
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(store),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
+      );
+    });
+    expect(store.get(selectedVersionIdAtom)).toBeNull();
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
+    const restoreButton = screen.getByRole("button", {
+      name: "Restore to this version",
+    });
+    expect((restoreButton as HTMLButtonElement).disabled).toBe(false);
+    expect(restoreButton.getAttribute("title")).toBe("Restore to this version");
+    consoleErrorSpy.mockRestore();
+  });
+
   it("shows the selected version while resolving the return branch", async () => {
     let resolveBranchInfo!: (value: { data: { branch: string } }) => void;
     refetchBranchInfoMock.mockReturnValue(
@@ -548,6 +604,75 @@ describe("VersionPane", () => {
     await act(async () => {
       resolveCheckout();
     });
+  });
+
+  it("does not refresh the app after a preview checkout fails", async () => {
+    checkoutVersionMock.mockRejectedValue(new Error("checkout failed"));
+    const version = makeVersion(1);
+    version.dbTimestamp = "2026-07-15T00:00:00.000Z";
+    versionsMock.push(version);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: version.oid,
+      });
+    });
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    });
+
+    expect(refreshAppMock).not.toHaveBeenCalled();
+    expect(restartAppMock).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("does not restart the app for a stale preview", async () => {
+    let resolveFirstRefresh!: () => void;
+    refreshAppMock
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveFirstRefresh = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(undefined);
+    const firstVersion = makeVersion(1);
+    firstVersion.dbTimestamp = "2026-07-15T00:00:01.000Z";
+    const secondVersion = makeVersion(2);
+    versionsMock.push(firstVersion, secondVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    await waitFor(() => {
+      expect(refreshAppMock).toHaveBeenCalledOnce();
+    });
+
+    fireEvent.click(screen.getByTestId("version-row-1"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: secondVersion.oid,
+      });
+      expect(refreshAppMock).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveFirstRefresh();
+    });
+    expect(restartAppMock).not.toHaveBeenCalled();
   });
 
   it("ignores a preview checkout failure after version history closes", async () => {

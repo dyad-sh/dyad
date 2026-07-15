@@ -13,6 +13,9 @@ vi.mock("@/ipc/handlers/tests_handlers", () => ({
 vi.mock("@/ipc/utils/test_screenshot", () => ({
   readTestScreenshotDataUrl: vi.fn(),
 }));
+vi.mock("@/main/settings", () => ({
+  readSettings: vi.fn(() => ({})),
+}));
 
 import {
   runAppTestsWithIsolation,
@@ -21,6 +24,7 @@ import {
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
+import { readSettings } from "@/main/settings";
 import { runTestsTool } from "./run_tests";
 
 const runner = vi.mocked(runAppTestsWithIsolation);
@@ -28,6 +32,7 @@ const baseUrl = vi.mocked(getRunningTestBaseUrl);
 const screenshot = vi.mocked(readTestScreenshotDataUrl);
 const specLister = vi.mocked(listSpecFiles);
 const caseLister = vi.mocked(readSpecTestCases);
+const settingsReader = vi.mocked(readSettings);
 
 function makeCtx(): AgentContext {
   return {
@@ -117,6 +122,8 @@ describe("runTestsTool", () => {
     // the run proceed. Individual tests override this to exercise mismatches.
     specLister.mockResolvedValue(["tests/a.spec.ts"]);
     caseLister.mockResolvedValue([{ title: "does a thing", line: 3 }]);
+    // Default: headless + serial (the Tests panel's unset defaults).
+    settingsReader.mockReturnValue({} as ReturnType<typeof readSettings>);
   });
 
   it("is gated on testingEnabled", () => {
@@ -126,6 +133,40 @@ describe("runTestsTool", () => {
     expect(
       runTestsTool.isEnabled?.({ testingEnabled: false } as AgentContext),
     ).toBe(false);
+  });
+
+  it("defaults to headless + serial when no Tests-panel mode is set", async () => {
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, makeCtx());
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ headed: false, parallel: false }),
+    );
+  });
+
+  it("forwards the Tests-panel headed/parallel modes to the runner", async () => {
+    settingsReader.mockReturnValue({
+      testHeaded: true,
+      testParallel: true,
+    } as ReturnType<typeof readSettings>);
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, makeCtx());
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ headed: true, parallel: true }),
+    );
+  });
+
+  it("never parallelizes a single targeted test even when parallel is on", async () => {
+    settingsReader.mockReturnValue({
+      testParallel: true,
+    } as ReturnType<typeof readSettings>);
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      makeCtx(),
+    );
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ parallel: false }),
+    );
   });
 
   it("returns an infra message (uncounted) when the dev server isn't running", async () => {

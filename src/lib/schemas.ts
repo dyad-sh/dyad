@@ -404,6 +404,11 @@ const BaseUserSettingsFields = {
   // When enabled, newly created apps opt into the AI E2E testing feature by
   // default (their `testing_enabled` column is seeded to true at creation).
   enableTestingForNewApps: z.boolean().optional(),
+  // Test run modes chosen in the Tests panel. Persisted so both the panel's
+  // Run button and the agent's run_tests tool share the same headed/serial
+  // preference. Default (unset) is headless + serial.
+  testHeaded: z.boolean().optional(),
+  testParallel: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),
@@ -527,7 +532,7 @@ export function shouldShowPnpmMinimumReleaseAgeWarning(
 ): boolean {
   return Boolean(
     settings?.enablePnpmMinimumReleaseAgeWarning &&
-    !settings.hidePnpmMinimumReleaseAgeWarning,
+      !settings.hidePnpmMinimumReleaseAgeWarning,
   );
 }
 
@@ -589,16 +594,16 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
   }
   return Boolean(
     settings.supabase?.accessToken ||
-    (settings.supabase?.organizations &&
-      Object.keys(settings.supabase.organizations).length > 0),
+      (settings.supabase?.organizations &&
+        Object.keys(settings.supabase.organizations).length > 0),
   );
 }
 
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
   return Boolean(
     isDyadProEnabled(settings) &&
-    settings.enableProLazyEditsMode === true &&
-    settings.proLazyEditsMode === "v2",
+      settings.enableProLazyEditsMode === true &&
+      settings.proLazyEditsMode === "v2",
   );
 }
 

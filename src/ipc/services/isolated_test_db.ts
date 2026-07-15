@@ -233,8 +233,7 @@ export async function prepareIsolatedTestDatabase({
         reason: "Couldn't set up an isolated test database.",
       },
       infraError: {
-        message:
-          "Couldn't set up an isolated test database, so the run was stopped. Your real data was not touched.",
+        message: `Couldn't set up an isolated test database, so the run was stopped. Your real data was not touched. Reason: ${message}`,
       },
       teardown: NOOP_TEARDOWN,
     };
@@ -329,8 +328,7 @@ async function prepareSupabaseTestUserIsolation({
         reason: "Couldn't set up an isolated Supabase test user.",
       },
       infraError: {
-        message:
-          "Couldn't set up an isolated test user, so the run was stopped. Your real data was not touched.",
+        message: `Couldn't set up an isolated test user, so the run was stopped. Your real data was not touched. Reason: ${message}`,
       },
       teardown: NOOP_TEARDOWN,
     };
@@ -405,9 +403,15 @@ async function restartAppInPlace({
 }
 
 /**
- * Wait until the app's proxy URL is populated again and the server answers an
- * HTTP request. The proxy URL is set asynchronously once the dev server prints
- * its address, so we poll rather than assume it's immediately ready.
+ * Wait until the app's proxy URL is populated again and the dev server answers
+ * an HTTP request. The URLs are set asynchronously once the dev server prints
+ * its address, so we poll rather than assume they're immediately ready.
+ *
+ * Probe the original dev-server URL when available. The preview proxy buffers
+ * and rewrites HTML responses; that extra processing is irrelevant to server
+ * readiness and can make Node's fetch reject even after the upstream app has
+ * returned a successful response. We still require `proxyUrl` before returning
+ * because Playwright uses the proxy URL as its base URL.
  */
 async function waitForServerReady(
   appId: number,
@@ -415,26 +419,48 @@ async function waitForServerReady(
   expectedProcessId?: number,
 ): Promise<void> {
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
+  // Track why each poll fell short so a timeout can report the last-observed
+  // state instead of a bare "didn't come back online" with no cause.
+  let lastReason = "the dev server never started";
   while (Date.now() < deadline) {
     if (signal?.aborted) {
       throw new Error("Test run stopped.");
     }
     const appInfo = runningApps.get(appId);
-    if (
-      expectedProcessId !== undefined &&
-      appInfo?.processId !== expectedProcessId
-    ) {
+    if (!appInfo) {
+      // The process exited (or was never registered) — nothing is running.
+      lastReason = "the dev server process is no longer running";
       await delay(SERVER_READY_POLL_MS, signal);
       continue;
     }
-    const baseUrl = appInfo?.proxyUrl;
-    if (baseUrl && (await isResponding(baseUrl, signal))) {
+    if (
+      expectedProcessId !== undefined &&
+      appInfo.processId !== expectedProcessId
+    ) {
+      // A different process is registered than the one we just started —
+      // usually the dev server crashed and is mid-restart.
+      lastReason = "the dev server restarted unexpectedly while starting up";
+      await delay(SERVER_READY_POLL_MS, signal);
+      continue;
+    }
+    const baseUrl = appInfo.proxyUrl;
+    if (!baseUrl) {
+      // Process is up but hasn't printed its address yet.
+      lastReason =
+        "the dev server started but never reported a URL to connect to";
+      await delay(SERVER_READY_POLL_MS, signal);
+      continue;
+    }
+    const healthCheckUrl = appInfo.originalUrl ?? baseUrl;
+    if (await isResponding(healthCheckUrl, signal)) {
       return;
     }
+    lastReason = `the dev server at ${healthCheckUrl} isn't responding to requests`;
     await delay(SERVER_READY_POLL_MS, signal);
   }
+  const timeoutSeconds = Math.round(SERVER_READY_TIMEOUT_MS / 1000);
   throw new Error(
-    "The app didn't come back online with the isolated test database in time.",
+    `The app didn't come back online with the isolated test database within ${timeoutSeconds}s (${lastReason}). Check the app's terminal output for startup errors.`,
   );
 }
 

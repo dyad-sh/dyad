@@ -490,7 +490,7 @@ export function TestsPanel() {
   const jotaiStore = useStore();
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(selectedAppId);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const { runApp } = useRunApp();
   const { setTestingEnabled, isLoading: isTogglingTesting } =
     useSetTestingEnabled();
@@ -533,12 +533,14 @@ export function TestsPanel() {
   const hasSupabaseIsolation = hasSupabase && !!app?.supabaseOrganizationSlug;
 
   const [outputOpen, setOutputOpen] = useState(false);
+  // Headed/parallel are persisted in user settings (not local state) so the
+  // agent's run_tests tool honors the same choice the user makes here.
   // When enabled, runs open a visible browser window so the user can watch the
   // test drive the app, instead of running headless.
-  const [headed, setHeaded] = useState(false);
+  const headed = settings?.testHeaded ?? false;
   // When enabled, a file's independent tests run concurrently instead of
   // serially (Playwright `--fully-parallel` with multiple workers).
-  const [parallel, setParallel] = useState(false);
+  const parallel = settings?.testParallel ?? false;
 
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
@@ -931,7 +933,7 @@ export function TestsPanel() {
         )}
         {testingEnabled && specs.length > 0 && (
           <button
-            onClick={() => setParallel((v) => !v)}
+            onClick={() => updateSettings({ testParallel: !parallel })}
             disabled={isRunning}
             aria-pressed={parallel}
             title={
@@ -956,7 +958,7 @@ export function TestsPanel() {
         )}
         {testingEnabled && specs.length > 0 && (
           <button
-            onClick={() => setHeaded((v) => !v)}
+            onClick={() => updateSettings({ testHeaded: !headed })}
             disabled={isRunning}
             aria-pressed={headed}
             title={

@@ -14,6 +14,7 @@ import {
   readSpecTestCases,
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
+import { readSettings } from "@/main/settings";
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
 import {
@@ -238,12 +239,19 @@ async function runSpec(
   ctx.onXmlStream(
     `<dyad-status title="${escapeXmlAttr(`Running ${label}`)}"></dyad-status>`,
   );
+  // Honor the headed/parallel modes the user picked in the Tests panel (both
+  // persisted in user settings, default headless + serial). A single targeted
+  // test can't parallelize, so only opt into parallel for whole-file runs —
+  // mirrors the panel's `parallel && !isSingleTest` guard.
+  const settings = readSettings();
   return runAppTestsWithIsolation({
     event: ctx.event,
     appId: ctx.appId,
     testFile,
     testLine: target?.testLine,
     source: "agent",
+    headed: settings.testHeaded ?? false,
+    parallel: (settings.testParallel ?? false) && !target,
     externalSignal: ctx.abortSignal,
     timeoutMs: RUN_TIMEOUT_MS,
   });

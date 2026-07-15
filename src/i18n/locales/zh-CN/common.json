@@ -59,5 +59,14 @@
   "builtIn": "内置",
   "advanced": "高级",
   "required": "必填",
-  "optional": "可选"
+  "optional": "可选",
+  "billingNudge": {
+    "paymentPastDue": "我们无法续订您的 Dyad Pro 订阅。请更新付款方式以继续使用。",
+    "subscriptionEnding": "您的 Dyad Pro 订阅将于 {{date}} 到期。",
+    "subscriptionPaused": "您的 Dyad Pro 订阅已暂停。恢复订阅即可获得更多积分。",
+    "managePaymentMethods": "管理付款方式",
+    "manageSubscription": "管理订阅",
+    "resumeSubscription": "恢复订阅",
+    "dismiss": "关闭账单通知"
+  }
 }

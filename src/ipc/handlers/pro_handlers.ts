@@ -1,9 +1,15 @@
 import fetch from "node-fetch"; // Electron main process might need node-fetch
+import { shell } from "electron";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
 import { createLoggedTypedHandler } from "./base";
 import { readSettings } from "../../main/settings"; // Assuming settings are read this way
-import { UserBudgetInfo, UserBudgetInfoSchema } from "@/ipc/types";
+import {
+  SubscriptionStatusSchema,
+  systemContracts,
+  UserBudgetInfo,
+  UserBudgetInfoSchema,
+} from "@/ipc/types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { z } from "zod";
 import {
@@ -72,6 +78,32 @@ function getUserInfoUrl() {
     return process.env.DYAD_USER_INFO_URL;
   }
   return "https://api.dyad.sh/v1/user/info";
+}
+
+function getSubscriptionStatusUrl() {
+  return (
+    process.env.DYAD_SUBSCRIPTION_STATUS_URL ??
+    "https://academy.dyad.sh/api/desktop/subscription-status"
+  );
+}
+
+export function parseBillingActionUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new DyadError("Invalid billing action URL", DyadErrorKind.Validation);
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "academy.dyad.sh" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.port !== ""
+  ) {
+    throw new DyadError("Invalid billing action URL", DyadErrorKind.Validation);
+  }
+  return url.toString();
 }
 
 export function registerProHandlers() {
@@ -150,6 +182,45 @@ export function registerProHandlers() {
       logger.error(`Error fetching user budget: ${error.message}`, error);
       return null;
     }
+  });
+
+  typedHandle(systemContracts.getSubscriptionStatus, async () => {
+    const apiKey = readSettings().providerSettings?.auto?.apiKey?.value;
+    if (!apiKey) {
+      return null;
+    }
+    if (IS_TEST_BUILD && !process.env.DYAD_SUBSCRIPTION_STATUS_URL) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(getSubscriptionStatusUrl(), {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        logger.warn(
+          `Failed to fetch subscription status. Status: ${response.status}`,
+        );
+        return null;
+      }
+      return SubscriptionStatusSchema.parse(await response.json());
+    } catch (error) {
+      logger.error("Failed to fetch subscription status", error);
+      return null;
+    }
+  });
+
+  typedHandle(systemContracts.openBillingAction, async (_event, value) => {
+    const url = parseBillingActionUrl(value);
+    if (IS_TEST_BUILD) {
+      logger.debug("E2E test mode: skipped opening billing action URL", url);
+      return;
+    }
+    await shell.openExternal(url);
   });
 
   typedHandle(

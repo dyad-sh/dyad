@@ -59,5 +59,14 @@
   "builtIn": "Integrado",
   "advanced": "Avançado",
   "required": "Obrigatório",
-  "optional": "Opcional"
+  "optional": "Opcional",
+  "billingNudge": {
+    "paymentPastDue": "Não foi possível renovar sua assinatura do Dyad Pro. Atualize sua forma de pagamento para manter o acesso.",
+    "subscriptionEnding": "Sua assinatura do Dyad Pro termina em {{date}}.",
+    "subscriptionPaused": "Sua assinatura do Dyad Pro está pausada. Retome-a para receber créditos adicionais.",
+    "managePaymentMethods": "Gerenciar formas de pagamento",
+    "manageSubscription": "Gerenciar assinatura",
+    "resumeSubscription": "Retomar assinatura",
+    "dismiss": "Dispensar aviso de cobrança"
+  }
 }

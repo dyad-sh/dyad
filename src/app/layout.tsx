@@ -25,6 +25,7 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
+import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
@@ -135,11 +136,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <SidebarProvider defaultOpen={false}>
             <TitleBar />
             <AppSidebar />
-            <div
-              id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background"
-            >
-              {children}
+            <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
+              <SubscriptionStatusBanner />
+              <div
+                id="layout-main-content-container"
+                className="flex min-h-0 w-full flex-1 overflow-x-hidden"
+              >
+                {children}
+              </div>
             </div>
             <Toaster
               richColors

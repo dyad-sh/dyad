@@ -59,5 +59,14 @@
   "builtIn": "Built-in",
   "advanced": "Advanced",
   "required": "Required",
-  "optional": "Optional"
+  "optional": "Optional",
+  "billingNudge": {
+    "paymentPastDue": "We couldn’t renew your Dyad Pro subscription. Update your payment method to keep access.",
+    "subscriptionEnding": "Your Dyad Pro subscription ends on {{date}}.",
+    "subscriptionPaused": "Your Dyad Pro subscription is paused. Resume it to receive additional credits.",
+    "managePaymentMethods": "Manage payment methods",
+    "manageSubscription": "Manage subscription",
+    "resumeSubscription": "Resume subscription",
+    "dismiss": "Dismiss billing notice"
+  }
 }

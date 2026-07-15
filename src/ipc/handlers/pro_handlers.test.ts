@@ -15,9 +15,12 @@ const mocks = vi.hoisted(() => ({
   ipcHandlers: new Map<string, (event: unknown, input: unknown) => unknown>(),
   readSettings: vi.fn(),
   transcribeWithDyadEngine: vi.fn(),
+  fetch: vi.fn(),
+  openExternal: vi.fn(),
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
   },
 }));
@@ -33,7 +36,10 @@ vi.mock("electron", () => ({
       },
     ),
   },
+  shell: { openExternal: mocks.openExternal },
 }));
+
+vi.mock("node-fetch", () => ({ default: mocks.fetch }));
 
 vi.mock("electron-log", () => ({
   default: { scope: () => mocks.logger },
@@ -60,7 +66,8 @@ vi.mock("../utils/test_utils", () => ({
 }));
 
 const { getRegisteredHandlerForTesting } = await import("./base");
-const { registerProHandlers } = await import("./pro_handlers");
+const { parseBillingActionUrl, registerProHandlers } =
+  await import("./pro_handlers");
 
 configureTrustedRenderer({
   devServerUrl: "http://localhost:5173",
@@ -71,6 +78,10 @@ registerProHandlers();
 const transcribeAudio = getRegisteredHandlerForTesting(
   audioContracts.transcribeAudio.channel,
 );
+const getSubscriptionStatus = getRegisteredHandlerForTesting(
+  "get-subscription-status",
+);
+const openBillingAction = getRegisteredHandlerForTesting("open-billing-action");
 
 describe("pro audio transcription handler", () => {
   beforeEach(() => {
@@ -205,5 +216,99 @@ describe("pro audio transcription handler", () => {
     );
     expect(mocks.readSettings).not.toHaveBeenCalled();
     expect(mocks.transcribeWithDyadEngine).not.toHaveBeenCalled();
+  });
+});
+
+describe("subscription status handlers", () => {
+  beforeEach(() => {
+    process.env.DYAD_SUBSCRIPTION_STATUS_URL =
+      "https://academy.test/api/desktop/subscription-status";
+    mocks.fetch.mockReset();
+    mocks.openExternal.mockReset();
+    mocks.readSettings.mockReturnValue({
+      providerSettings: {
+        auto: { apiKey: { value: "stored-pro-key" } },
+      },
+    });
+  });
+
+  it("sends the stored bearer key and validates the response", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        alert: "subscription_ending",
+        effectiveAt: "2026-08-03T00:00:00.000Z",
+        actionUrl: "https://academy.dyad.sh/subscription?source=app",
+      }),
+    });
+
+    await expect(
+      getSubscriptionStatus({} as never, undefined),
+    ).resolves.toEqual({
+      alert: "subscription_ending",
+      effectiveAt: "2026-08-03T00:00:00.000Z",
+      actionUrl: "https://academy.dyad.sh/subscription?source=app",
+    });
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      "https://academy.test/api/desktop/subscription-status",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer stored-pro-key",
+        }),
+      }),
+    );
+  });
+
+  it("returns null without a configured key", async () => {
+    mocks.readSettings.mockReturnValue({ providerSettings: {} });
+    await expect(
+      getSubscriptionStatus({} as never, undefined),
+    ).resolves.toBeNull();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "unauthorized response",
+      response: { ok: false, status: 401 },
+    },
+    {
+      name: "malformed response",
+      response: {
+        ok: true,
+        json: vi.fn().mockResolvedValue({ alert: "expired" }),
+      },
+    },
+  ])("returns null for a $name", async ({ response }) => {
+    mocks.fetch.mockResolvedValue(response);
+    await expect(
+      getSubscriptionStatus({} as never, undefined),
+    ).resolves.toBeNull();
+  });
+
+  it("returns null for a network failure", async () => {
+    mocks.fetch.mockRejectedValue(new Error("offline"));
+    await expect(
+      getSubscriptionStatus({} as never, undefined),
+    ).resolves.toBeNull();
+  });
+
+  it.each([
+    "http://academy.dyad.sh/subscription",
+    "https://example.com/subscription",
+    "https://user:pass@academy.dyad.sh/subscription",
+    "https://academy.dyad.sh:8443/subscription",
+    "not a URL",
+  ])("rejects unsafe billing URL %s", (url) => {
+    expect(() => parseBillingActionUrl(url)).toThrow(
+      "Invalid billing action URL",
+    );
+  });
+
+  it("accepts and opens an Academy HTTPS billing URL", async () => {
+    const url = "https://academy.dyad.sh/subscription?source=app";
+    expect(parseBillingActionUrl(url)).toBe(url);
+    await expect(openBillingAction({} as never, url)).resolves.toBeUndefined();
+    expect(mocks.openExternal).not.toHaveBeenCalled();
   });
 });

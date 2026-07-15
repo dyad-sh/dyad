@@ -82,3 +82,8 @@ like `Failed to resolve ref 'main'` or a branch banner showing `master`, check
 the fixture repo's `git init` default branch. Either make production code use
 the current branch instead of assuming `main`, or force the fixture branch name
 in the test so local and CI exercise the same branch layout.
+
+For asynchronous Git actions driven through the renderer, file existence can
+change before the underlying Git subprocess finishes. Wait for the expected
+branch and a clean `git status --porcelain` before making follow-up mutations or
+ending the test.

@@ -39,29 +39,34 @@ test("signals the full POSIX development process group", () => {
 });
 
 test("finds Electron main processes in the development process group", () => {
-  const stdout = `
-  100  50 /repo/node
-  200  50 ${electronExecutable} .
-  201  50 ${repoRoot}/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper
-  300  99 ${electronExecutable} .
-`;
+  const stdout = [
+    "  100  50 /repo/node",
+    `  200  50 ${electronExecutable} .`,
+    `  202  50 ${electronExecutable}`,
+    `  201  50 ${repoRoot}/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper`,
+    `  300  99 ${electronExecutable} .`,
+  ].join("\r\n");
 
   assert.deepEqual(
     findMacElectronPids({
       processGroupId: 50,
       runSync: () => ({ stdout }),
     }),
-    [200],
+    [200, 202],
   );
 });
 
 test("finds detached Crashpad processes for this checkout", () => {
   const stdout = `
   200  50 ${crashpadExecutable} --database=dyad
+  201  50 ${crashpadExecutable}
   300  99 ${repoRoot}-zero/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Framework.framework/Helpers/chrome_crashpad_handler --database=dyad-zero
 `;
 
-  assert.deepEqual(findMacCrashpadPids({ runSync: () => ({ stdout }) }), [200]);
+  assert.deepEqual(
+    findMacCrashpadPids({ runSync: () => ({ stdout }) }),
+    [200, 201],
+  );
 });
 
 test("signals detached development processes individually", () => {
@@ -103,7 +108,7 @@ test("unregisters Electron apps from macOS LaunchServices", () => {
   ]);
 });
 
-test("repeated terminal signals cannot interrupt forced cleanup", async () => {
+test("repeated terminal signals cannot interrupt forced cleanup", () => {
   const parentProcess = new EventEmitter();
   parentProcess.execPath = process.execPath;
   parentProcess.env = {};
@@ -111,37 +116,39 @@ test("repeated terminal signals cannot interrupt forced cleanup", async () => {
   const child = new EventEmitter();
   child.pid = 4321;
   const spawnCalls = [];
-  const originalKill = process.kill;
   const killCalls = [];
-  process.kill = (...args) => {
-    killCalls.push(args);
-    return true;
-  };
+  let runForceKill;
+  startDevelopmentSupervisor({
+    parentProcess,
+    platform: "linux",
+    forceKillAfterMs: 1,
+    kill: (...args) => {
+      killCalls.push(args);
+      return true;
+    },
+    spawnProcess: (...args) => {
+      spawnCalls.push(args);
+      return child;
+    },
+    scheduleForceKill: (callback) => {
+      runForceKill = callback;
+      return 1;
+    },
+    cancelForceKill: () => {},
+  });
 
-  try {
-    startDevelopmentSupervisor({
-      parentProcess,
-      platform: "linux",
-      forceKillAfterMs: 1,
-      spawnProcess: (...args) => {
-        spawnCalls.push(args);
-        return child;
-      },
-    });
+  parentProcess.emit("SIGINT");
+  child.emit("exit", null, "SIGTERM");
+  assert.equal(parentProcess.listenerCount("SIGINT"), 1);
+  parentProcess.emit("SIGINT");
+  parentProcess.emit("SIGHUP");
+  runForceKill();
 
-    parentProcess.emit("SIGINT");
-    parentProcess.emit("SIGINT");
-    parentProcess.emit("SIGHUP");
-    child.emit("exit", null, "SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-
-    assert.equal(spawnCalls[0][2].detached, true);
-    assert.deepEqual(killCalls, [
-      [-4321, "SIGTERM"],
-      [-4321, "SIGKILL"],
-    ]);
-    assert.equal(parentProcess.exitCode, 130);
-  } finally {
-    process.kill = originalKill;
-  }
+  assert.equal(spawnCalls[0][2].detached, true);
+  assert.deepEqual(killCalls, [
+    [-4321, "SIGTERM"],
+    [-4321, "SIGKILL"],
+  ]);
+  assert.equal(parentProcess.exitCode, 130);
+  assert.equal(parentProcess.listenerCount("SIGINT"), 0);
 });

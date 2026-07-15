@@ -433,9 +433,12 @@ describe("cloud_sandbox_provider incremental sync", () => {
       appId: 1,
       changedPaths: ["first.ts"],
     });
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2_000 },
+    );
 
     queueCloudSandboxSnapshotSync({
       appId: 1,
@@ -443,9 +446,12 @@ describe("cloud_sandbox_provider incremental sync", () => {
     });
 
     resolveFirstUpload?.(makeUploadResponse());
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      },
+      { timeout: 2_000 },
+    );
 
     const [, secondInit] = fetchMock.mock.calls[1];
     const upload = await parseMultipartUpload(secondInit);
@@ -478,24 +484,30 @@ describe("cloud_sandbox_provider incremental sync", () => {
       changedPaths: ["src.ts"],
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    expect(syncUpdateListener).toHaveBeenCalledWith({
-      appId: 1,
-      errorMessage: "Cloud sandbox sync failed: network down",
-    });
+    await vi.waitFor(
+      () => {
+        expect(syncUpdateListener).toHaveBeenCalledWith({
+          appId: 1,
+          errorMessage: "Cloud sandbox sync failed: network down",
+        });
+      },
+      { timeout: 2_000 },
+    );
 
     queueCloudSandboxSnapshotSync({
       appId: 1,
       changedPaths: ["src.ts"],
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    expect(syncUpdateListener).toHaveBeenLastCalledWith({
-      appId: 1,
-      errorMessage: null,
-    });
+    await vi.waitFor(
+      () => {
+        expect(syncUpdateListener).toHaveBeenLastCalledWith({
+          appId: 1,
+          errorMessage: null,
+        });
+      },
+      { timeout: 2_000 },
+    );
   });
 });
 

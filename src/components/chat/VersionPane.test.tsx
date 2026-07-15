@@ -339,6 +339,52 @@ describe("VersionPane", () => {
     expect(showErrorMock).not.toHaveBeenCalled();
   });
 
+  it("returns to the captured branch when closing during a later preview", async () => {
+    let resolveSecondBranchInfo!: (value: { data: { branch: string } }) => void;
+    refetchBranchInfoMock
+      .mockResolvedValueOnce({ data: { branch: "feature/test" } })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecondBranchInfo = resolve;
+        }),
+      );
+    const firstVersion = makeVersion(1);
+    const secondVersion = makeVersion(2);
+    versionsMock.push(firstVersion, secondVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+    const { rerender } = render(
+      <VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />,
+      { wrapper: makeWrapper() },
+    );
+
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenCalledWith({
+        appId: 1,
+        versionId: firstVersion.oid,
+      });
+    });
+
+    fireEvent.click(screen.getByTestId("version-row-1"));
+    rerender(
+      <VersionPane isVisible={false} onClose={vi.fn()} onOpen={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(checkoutVersionMock).toHaveBeenLastCalledWith({
+        appId: 1,
+        versionId: "feature/test",
+      });
+    });
+    await act(async () => {
+      resolveSecondBranchInfo({ data: { branch: "feature/test" } });
+    });
+    expect(checkoutVersionMock).not.toHaveBeenCalledWith({
+      appId: 1,
+      versionId: secondVersion.oid,
+    });
+  });
+
   it("ignores an older preview after another version is selected", async () => {
     const branchResolvers: Array<
       (value: { data: { branch: string } }) => void

@@ -507,11 +507,11 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         setAutoFocusNoteVersionIds(new Set());
         if (selectedVersionId && appId) {
           setSelectedVersionId(null);
-          if (wasResolvingPreviewBranch) {
+          const returnBranch = getReturnBranch();
+          if (wasResolvingPreviewBranch && !returnBranch) {
             wasVisibleRef.current = isVisible;
             return;
           }
-          const returnBranch = getReturnBranch();
           if (returnBranch) {
             await checkoutVersion({ appId, versionId: returnBranch });
             if (app?.neonProjectId) {

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 import { chats } from "@/db/schema";
+import { ipc } from "@/ipc/types";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -49,6 +50,17 @@ describe("ChatList favorites (integration)", () => {
     });
     olderFavoriteButton.focus();
     const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
+    const setChatFavorite = ipc.chat.setChatFavorite.bind(ipc.chat);
+    let releaseMutation!: () => void;
+    const mutationGate = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    const mutationSpy = vi
+      .spyOn(ipc.chat, "setChatFavorite")
+      .mockImplementation(async (params) => {
+        await mutationGate;
+        return setChatFavorite(params);
+      });
     fireEvent.click(olderFavoriteButton, { detail: 0 });
 
     const favoritesGroup = await screen.findByTestId("chat-group-favorites");
@@ -60,9 +72,13 @@ describe("ChatList favorites (integration)", () => {
           name: "Remove Older chat from favorites",
         }),
       );
+      expect(document.activeElement?.getAttribute("aria-disabled")).toBe(
+        "true",
+      );
       expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
       expect(listContainer.scrollTop).toBe(120);
     });
+    releaseMutation();
     focusSpy.mockRestore();
     await waitFor(async () => {
       const persisted = await harness.db.query.chats.findFirst({
@@ -70,6 +86,7 @@ describe("ChatList favorites (integration)", () => {
       });
       expect(persisted?.isFavorite).toBe(true);
     });
+    mutationSpy.mockRestore();
 
     await harness.openPopover(
       screen.getByRole("button", {

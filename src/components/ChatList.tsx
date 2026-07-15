@@ -460,6 +460,7 @@ export function ChatList({
                                 type="button"
                                 className={cn(
                                   "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-[opacity,color] hover:bg-sidebar-accent hover:text-[#6c55dc] focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                                  "aria-disabled:pointer-events-none aria-disabled:cursor-wait aria-disabled:opacity-60",
                                   !chat.isFavorite &&
                                     !confirmedFavoriteChatIds.has(chat.id) &&
                                     "pointer-events-none opacity-0 group-hover/chat-row:pointer-events-auto group-hover/chat-row:opacity-100 group-focus-within/chat-row:pointer-events-auto group-focus-within/chat-row:opacity-100",
@@ -475,7 +476,9 @@ export function ChatList({
                                     restoreFocus: event.detail === 0,
                                   });
                                 }}
-                                disabled={pendingFavoriteChatIds.has(chat.id)}
+                                aria-disabled={pendingFavoriteChatIds.has(
+                                  chat.id,
+                                )}
                                 aria-label={t(
                                   chat.isFavorite
                                     ? "removeChatFromFavorites"

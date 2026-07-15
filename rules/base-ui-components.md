@@ -37,6 +37,13 @@ The `ContextMenu` in `src/components/ui/context-menu.tsx` uses Base UI's native 
 Guard `null` before parsing or casting values, especially when writing settings
 selectors.
 
+## Focus restoration while an action is pending
+
+Native `disabled` controls reject programmatic focus. When optimistic UI moves
+a control and focus must follow it while persistence is pending, keep it
+focusable with `aria-disabled`, guard repeat activation synchronously, and
+restore focus with `{ preventScroll: true }`.
+
 ## TooltipTrigger render prop
 
 `TooltipTrigger` from `@base-ui/react/tooltip` (wrapped in `src/components/ui/tooltip.tsx`) renders a `<button>` by default. Wrapping another button-like element (`<button>`, `<Button>`, `<DropdownMenuTrigger>`, `<PopoverTrigger>`, `<MiniSelectTrigger>`, `<ToggleGroupItem>`) inside it creates invalid nested `<button>` HTML. Use the `render` prop instead:

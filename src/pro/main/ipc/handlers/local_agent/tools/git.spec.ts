@@ -3,19 +3,59 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-const { mockDeploySupabaseFunction, mockRestoreAgentGitFile } = vi.hoisted(
-  () => ({
-    mockDeploySupabaseFunction: vi.fn(),
-    mockRestoreAgentGitFile: vi.fn(async () => ({
-      oid: "a".repeat(40),
-      mode: "100644",
-      path: "file.txt",
-    })),
-  }),
-);
+const {
+  mockDeploySupabaseFunction,
+  mockGetAgentGitCommit,
+  mockGetAgentGitDiff,
+  mockGetAgentGitFile,
+  mockGetAgentGitLog,
+  mockGetAgentGitStatus,
+  mockRestoreAgentGitFile,
+} = vi.hoisted(() => ({
+  mockDeploySupabaseFunction: vi.fn(),
+  mockGetAgentGitCommit: vi.fn(async () => ({
+    content:
+      "commit abc123\nAuthor: Test <test@example.com>\nDate: 2026-01-01\n\nImprove preview\n\ndiff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n-old\n+new",
+    truncated: false,
+  })),
+  mockGetAgentGitDiff: vi.fn(async () => ({
+    content:
+      "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n-old\n+new\n+another",
+    truncated: false,
+  })),
+  mockGetAgentGitFile: vi.fn(async () => ({
+    content: "line one\nline two\n",
+    truncated: false,
+  })),
+  mockGetAgentGitLog: vi.fn(async () => ({
+    content:
+      "commit abc123\nAuthor: Test <test@example.com>\nDate: 2026-01-01\n\nFirst\n\ncommit def456\nAuthor: Test <test@example.com>\nDate: 2025-12-31\n\nSecond",
+    truncated: false,
+  })),
+  mockGetAgentGitStatus: vi.fn(async () => ({
+    branch: "main",
+    head: "a".repeat(40),
+    detached: false,
+    staged: ["src/a.ts"],
+    unstaged: ["src/a.ts", "src/b.ts"],
+    untracked: ["src/new.ts"],
+    conflicted: [],
+    truncated: false,
+  })),
+  mockRestoreAgentGitFile: vi.fn(async () => ({
+    oid: "a".repeat(40),
+    mode: "100644",
+    path: "file.txt",
+  })),
+}));
 
 vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
+  getAgentGitCommit: mockGetAgentGitCommit,
+  getAgentGitDiff: mockGetAgentGitDiff,
+  getAgentGitFile: mockGetAgentGitFile,
+  getAgentGitLog: mockGetAgentGitLog,
+  getAgentGitStatus: mockGetAgentGitStatus,
   restoreAgentGitFile: mockRestoreAgentGitFile,
 }));
 
@@ -127,6 +167,7 @@ describe("local-agent Git tool definitions", () => {
       isSharedModulesChanged: false,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
+      onXmlComplete: vi.fn(),
     } as unknown as AgentContext;
     try {
       const result = await gitRestoreFileTool.execute(
@@ -141,6 +182,9 @@ describe("local-agent Git tool definitions", () => {
       expect(ctx.workspaceMutated).toBe(true);
       expect(mockRestoreAgentGitFile).toHaveBeenCalled();
       expect(mockDeploySupabaseFunction).not.toHaveBeenCalled();
+      expect(ctx.onXmlComplete).toHaveBeenCalledWith(
+        '<dyad-git operation="restore_file" revision="HEAD" path="supabase/functions/_private/file.ts" not_staged="true"></dyad-git>',
+      );
     } finally {
       await fs.promises.rm(appPath, { recursive: true, force: true });
     }
@@ -164,17 +208,75 @@ describe("local-agent Git tool definitions", () => {
     ).toBe(false);
   });
 
-  it("renders escaped, compact tool cards", () => {
+  it("renders an escaped pending preview but waits for execution to complete it", () => {
     expect(
       gitShowFileTool.buildXml!(
         {
           revision: "HEAD",
           path: 'src/a&b".ts',
         },
-        {} as never,
+        false,
       ),
     ).toBe(
-      '<dyad-git operation="show_file" revision="HEAD" path="src/a&amp;b&quot;.ts"></dyad-git>',
+      '<dyad-git operation="show_file" revision="HEAD" path="src/a&amp;b&quot;.ts">',
     );
+    expect(
+      gitShowFileTool.buildXml!(
+        { revision: "HEAD", path: "src/main.ts" },
+        true,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("treats a dot path as the whole app for diff, log, and show commit", () => {
+    expect(gitDiffTool.buildXml!({ path: "." }, false)).toBe(
+      '<dyad-git operation="diff" scope="all">',
+    );
+    expect(gitLogTool.buildXml!({ path: "." }, false)).toBe(
+      '<dyad-git operation="log" revision="HEAD" max_count="20">',
+    );
+    expect(
+      gitShowCommitTool.buildXml!({ revision: "HEAD", path: "." }, false),
+    ).toBe('<dyad-git operation="show_commit" revision="HEAD">');
+    expect(gitDiffTool.getConsentPreview?.({ path: "." })).toBe(
+      "Inspect all Git changes",
+    );
+    expect(gitLogTool.getConsentPreview?.({ path: "." })).toBe(
+      "Inspect Git history from HEAD",
+    );
+    expect(
+      gitShowCommitTool.getConsentPreview?.({ revision: "HEAD", path: "." }),
+    ).toBe("Inspect commit HEAD");
+  });
+
+  it("emits structured summaries and bounded detail after read tools succeed", async () => {
+    const ctx = {
+      appPath: "/tmp/app",
+      onXmlComplete: vi.fn(),
+    } as unknown as AgentContext;
+
+    await gitStatusTool.execute({}, ctx);
+    await gitDiffTool.execute({ scope: "all" }, ctx);
+    await gitLogTool.execute({ max_count: 2 }, ctx);
+    await gitShowCommitTool.execute({ revision: "HEAD" }, ctx);
+    await gitShowFileTool.execute(
+      {
+        revision: "HEAD",
+        path: "src/main.ts",
+        start_line_one_indexed: 4,
+        end_line_one_indexed_inclusive: 5,
+      },
+      ctx,
+    );
+
+    const xml = vi.mocked(ctx.onXmlComplete).mock.calls.map(([value]) => value);
+    expect(xml[0]).toContain('changed_count="2"');
+    expect(xml[0]).toContain('untracked_count="1"');
+    expect(xml[0]).toContain('detail_format="status"');
+    expect(xml[1]).toContain('file_count="1" additions="2" deletions="1"');
+    expect(xml[1]).toContain("diff --git a/a.ts b/a.ts");
+    expect(xml[2]).toContain('result_count="2"');
+    expect(xml[3]).toContain('subject="Improve preview"');
+    expect(xml[4]).toContain('start_line="4" end_line="5" line_count="2"');
   });
 });

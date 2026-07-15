@@ -527,14 +527,13 @@ function renderCustomTag(
         <DyadGit
           node={{
             properties: {
-              operation: attributes.operation || "",
-              revision: attributes.revision || "",
-              path: attributes.path || "",
-              scope: attributes.scope || "",
+              ...attributes,
               state: getState({ isStreaming, inProgress }),
             },
           }}
-        />
+        >
+          {content}
+        </DyadGit>
       );
     case "dyad-web-search":
       return (

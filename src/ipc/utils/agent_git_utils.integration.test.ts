@@ -85,6 +85,13 @@ describe("agent Git utilities", () => {
     const all = await getAgentGitDiff({ path: repo, scope: "all" });
     expect(all.content).toContain("+unstaged");
     expect(all.content).not.toContain("new.txt");
+
+    const allFromRootAlias = await getAgentGitDiff({
+      path: repo,
+      scope: "all",
+      filePath: ".",
+    });
+    expect(allFromRootAlias).toEqual(all);
   });
 
   it("reports detached HEAD and conflicted paths", async () => {
@@ -129,7 +136,7 @@ describe("agent Git utilities", () => {
     expect(status.truncated).toBe(true);
     expect(status.untracked.length).toBeLessThanOrEqual(500);
     expect(Buffer.byteLength(serialized, "utf8")).toBeLessThanOrEqual(
-      256 * 1024,
+      64 * 1024,
     );
     expect(status.untracked.every((file) => file.startsWith("many/"))).toBe(
       true,
@@ -196,6 +203,36 @@ describe("agent Git utilities", () => {
     expect(result.content).not.toContain("do-not-leak");
   });
 
+  it("includes pnpm workspace patches while omitting Dyad-internal patches", async () => {
+    await fs.promises.mkdir(path.join(repo, ".dyad"));
+    await fs.promises.writeFile(
+      path.join(repo, "pnpm-workspace.yaml"),
+      'packages:\n  - "app"\n',
+    );
+    await fs.promises.writeFile(
+      path.join(repo, ".dyad", "internal.json"),
+      '{"version":1}\n',
+    );
+    await git(repo, "add", "pnpm-workspace.yaml", ".dyad/internal.json");
+    await git(repo, "commit", "-m", "add workspace metadata");
+
+    await fs.promises.writeFile(
+      path.join(repo, "pnpm-workspace.yaml"),
+      'packages:\n  - "app"\n  - "packages/*"\n',
+    );
+    await fs.promises.writeFile(
+      path.join(repo, ".dyad", "internal.json"),
+      '{"version":2}\n',
+    );
+
+    const result = await getAgentGitDiff({ path: repo });
+
+    expect(result.content).toContain("pnpm-workspace.yaml");
+    expect(result.content).toContain('+  - "packages/*"');
+    expect(result.content).toContain("Diff omitted for sensitive");
+    expect(result.content).not.toContain('{"version":2}');
+  });
+
   it("reads logs, commit patches, and ranged historical files", async () => {
     await fs.promises.writeFile(
       path.join(repo, "file.txt"),
@@ -209,9 +246,23 @@ describe("agent Git utilities", () => {
     expect(log.content).toContain(`commit ${head}`);
     expect(log.content).toContain("update file");
 
+    const logFromRootAlias = await getAgentGitLog({
+      path: repo,
+      filePath: ".",
+      maxCount: 1,
+    });
+    expect(logFromRootAlias).toEqual(log);
+
     const commit = await getAgentGitCommit({ path: repo, revision: head });
     expect(commit.content).toContain(`commit ${head}`);
     expect(commit.content).toContain("+one");
+
+    const commitFromRootAlias = await getAgentGitCommit({
+      path: repo,
+      revision: head,
+      filePath: ".",
+    });
+    expect(commitFromRootAlias).toEqual(commit);
 
     const file = await getAgentGitFile({
       path: repo,
@@ -298,9 +349,7 @@ describe("agent Git utilities", () => {
       revision: "HEAD",
     });
     expect(result.truncated).toBe(true);
-    expect(result.content.match(/Output truncated at 256 KiB/g)).toHaveLength(
-      1,
-    );
+    expect(result.content.match(/Output truncated at 64 KiB/g)).toHaveLength(1);
   });
 
   it("redacts historical dotenv values and ignores replace refs", async () => {

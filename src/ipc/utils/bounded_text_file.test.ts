@@ -139,7 +139,7 @@ describe("bounded text file reads", () => {
 
     it("preserves UTF-8 characters split across stream chunks", async () => {
       const filePath = path.join(rootPath, "chunk-boundary.txt");
-      const content = `${"a".repeat(64 * 1024 - 1)}🙂\nlast line`;
+      const content = `${"a".repeat(32 * 1024 - 1)}🙂\nlast line`;
       await fs.writeFile(filePath, content);
 
       const result = await readTextFileLines({

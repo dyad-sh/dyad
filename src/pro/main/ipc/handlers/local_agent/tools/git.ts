@@ -16,7 +16,12 @@ import {
 } from "@/ipc/utils/git_utils";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
-import { AgentContext, escapeXmlAttr, ToolDefinition } from "./types";
+import {
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+  ToolDefinition,
+} from "./types";
 
 const revisionSchema = z
   .string()
@@ -42,29 +47,87 @@ const pathSchema = z
   .max(4096)
   .describe("A literal path relative to the app root");
 
+type GitXmlValue = string | number | boolean | null | undefined;
+
+interface GitXmlAttributes {
+  [key: string]: GitXmlValue;
+}
+
 function gitXml(
   operation: string,
-  args: {
-    revision?: string;
-    path?: string;
-    scope?: string;
-    maxCount?: number;
-  },
+  args: GitXmlAttributes,
+  options: { content?: string; complete?: boolean } = {},
 ): string {
   const attributes = [`operation="${escapeXmlAttr(operation)}"`];
-  if (args.revision) {
-    attributes.push(`revision="${escapeXmlAttr(args.revision)}"`);
+  for (const [key, value] of Object.entries(args)) {
+    if (value !== undefined && value !== null && value !== "") {
+      attributes.push(
+        `${key}="${escapeXmlAttr(typeof value === "string" ? value : String(value))}"`,
+      );
+    }
   }
-  if (args.path) {
-    attributes.push(`path="${escapeXmlAttr(args.path)}"`);
+  const openingTag = `<dyad-git ${attributes.join(" ")}>`;
+  if (options.complete === false) {
+    return openingTag;
   }
-  if (args.scope) {
-    attributes.push(`scope="${escapeXmlAttr(args.scope)}"`);
+  return `${openingTag}${options.content ? escapeXmlContent(options.content) : ""}</dyad-git>`;
+}
+
+function buildGitPreview(
+  operation: string,
+  args: GitXmlAttributes,
+  isComplete: boolean,
+): string | undefined {
+  return isComplete ? undefined : gitXml(operation, args, { complete: false });
+}
+
+function normalizeGitFilterPath(path: string | undefined): string | undefined {
+  return path === "." ? undefined : path;
+}
+
+function summarizeDiff(content: string): {
+  files: number;
+  additions: number;
+  deletions: number;
+} {
+  let files = 0;
+  let additions = 0;
+  let deletions = 0;
+  for (const line of content.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      files += 1;
+    } else if (line.startsWith("+") && !line.startsWith("+++")) {
+      additions += 1;
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      deletions += 1;
+    }
   }
-  if (args.maxCount != null) {
-    attributes.push(`max_count="${escapeXmlAttr(String(args.maxCount))}"`);
-  }
-  return `<dyad-git ${attributes.join(" ")}></dyad-git>`;
+  return { files, additions, deletions };
+}
+
+function countTextLines(content: string): number {
+  const withoutTrailingNewline = content.replace(/\r?\n$/, "");
+  return withoutTrailingNewline
+    ? withoutTrailingNewline.split(/\r?\n/).length
+    : 0;
+}
+
+function getCommitSubject(content: string): string | undefined {
+  const subject = content
+    .split("\n")
+    .map((line) => line.trim())
+    .find(
+      (line) =>
+        line &&
+        !line.startsWith("commit ") &&
+        !line.startsWith("Author:") &&
+        !line.startsWith("Date:") &&
+        !line.startsWith("diff --git ") &&
+        !line.startsWith("[") &&
+        !line.startsWith("---") &&
+        !line.startsWith("+++"),
+    );
+  return subject?.slice(0, 160);
 }
 
 const gitStatusSchema = z.object({});
@@ -75,9 +138,27 @@ export const gitStatusTool: ToolDefinition<z.infer<typeof gitStatusSchema>> = {
     "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, bounded staged, unstaged, untracked, and conflicted paths, and whether paths were truncated.",
   inputSchema: gitStatusSchema,
   defaultConsent: "always",
-  buildXml: () => gitXml("status", {}),
+  buildXml: (_args, isComplete) => buildGitPreview("status", {}, isComplete),
   execute: async (_args, ctx) => {
     const status = await getAgentGitStatus({ path: ctx.appPath });
+    ctx.onXmlComplete(
+      gitXml(
+        "status",
+        {
+          branch: status.branch,
+          head: status.head,
+          detached: status.detached,
+          staged_count: status.staged.length,
+          unstaged_count: status.unstaged.length,
+          changed_count: new Set([...status.staged, ...status.unstaged]).size,
+          untracked_count: status.untracked.length,
+          conflicted_count: status.conflicted.length,
+          truncated: status.truncated,
+          detail_format: "status",
+        },
+        { content: JSON.stringify(status) },
+      ),
+    );
     return JSON.stringify(status, null, 2);
   },
 };
@@ -105,21 +186,49 @@ export const gitDiffTool: ToolDefinition<z.infer<typeof gitDiffSchema>> = {
     "Show a bounded unified diff for tracked files in the current app. Untracked files are reported by git_status. Sensitive dotenv and Dyad-managed patches are omitted.",
   inputSchema: gitDiffSchema,
   defaultConsent: "always",
-  getConsentPreview: (args) =>
-    `Inspect ${args.scope ?? "all"} Git changes${args.path ? ` for ${args.path}` : ""}`,
-  buildXml: (args) =>
-    gitXml("diff", {
-      scope: args.scope ?? "all",
-      path: args.path,
-    }),
+  getConsentPreview: (args) => {
+    const filePath = normalizeGitFilterPath(args.path);
+    return `Inspect ${args.scope ?? "all"} Git changes${filePath ? ` for ${filePath}` : ""}`;
+  },
+  buildXml: (args, isComplete) => {
+    const filePath = normalizeGitFilterPath(args.path);
+    return buildGitPreview(
+      "diff",
+      {
+        scope: args.scope ?? "all",
+        path: filePath,
+        context_lines: args.context_lines,
+      },
+      isComplete,
+    );
+  },
   execute: async (args, ctx) => {
+    const filePath = normalizeGitFilterPath(args.path);
     const result = await getAgentGitDiff({
       path: ctx.appPath,
       scope: args.scope,
-      filePath: args.path,
+      filePath,
       contextLines: args.context_lines,
     });
-    return result.content || "No matching tracked changes.";
+    const content = result.content || "";
+    const summary = summarizeDiff(content);
+    ctx.onXmlComplete(
+      gitXml(
+        "diff",
+        {
+          scope: args.scope ?? "all",
+          path: filePath,
+          context_lines: args.context_lines ?? 3,
+          file_count: summary.files,
+          additions: summary.additions,
+          deletions: summary.deletions,
+          truncated: result.truncated,
+          detail_format: "diff",
+        },
+        { content },
+      ),
+    );
+    return content || "No matching tracked changes.";
   },
 };
 
@@ -141,22 +250,49 @@ export const gitLogTool: ToolDefinition<z.infer<typeof gitLogSchema>> = {
     "List recent commits in the current app, newest first, with canonical hashes, author details, timestamps, and messages. Optionally start at a revision or filter to a path.",
   inputSchema: gitLogSchema,
   defaultConsent: "always",
-  getConsentPreview: (args) =>
-    `Inspect Git history from ${args.revision ?? "HEAD"}${args.path ? ` for ${args.path}` : ""}`,
-  buildXml: (args) =>
-    gitXml("log", {
-      revision: args.revision ?? "HEAD",
-      path: args.path,
-      maxCount: args.max_count ?? 20,
-    }),
+  getConsentPreview: (args) => {
+    const filePath = normalizeGitFilterPath(args.path);
+    return `Inspect Git history from ${args.revision ?? "HEAD"}${filePath ? ` for ${filePath}` : ""}`;
+  },
+  buildXml: (args, isComplete) => {
+    const filePath = normalizeGitFilterPath(args.path);
+    return buildGitPreview(
+      "log",
+      {
+        revision: args.revision ?? "HEAD",
+        path: filePath,
+        max_count: args.max_count ?? 20,
+      },
+      isComplete,
+    );
+  },
   execute: async (args, ctx) => {
+    const filePath = normalizeGitFilterPath(args.path);
     const result = await getAgentGitLog({
       path: ctx.appPath,
       revision: args.revision,
       maxCount: args.max_count,
-      filePath: args.path,
+      filePath,
     });
-    return result.content || "No matching commits.";
+    const content = result.content || "";
+    const resultCount = content
+      .split("\n")
+      .filter((line) => line.startsWith("commit ")).length;
+    ctx.onXmlComplete(
+      gitXml(
+        "log",
+        {
+          revision: args.revision ?? "HEAD",
+          path: filePath,
+          max_count: args.max_count ?? 20,
+          result_count: resultCount,
+          truncated: result.truncated,
+          detail_format: "log",
+        },
+        { content },
+      ),
+    );
+    return content || "No matching commits.";
   },
 };
 
@@ -173,19 +309,46 @@ export const gitShowCommitTool: ToolDefinition<
     "Show metadata and a bounded first-parent patch for one commit in the current app. Optionally limit the patch to one path. Sensitive dotenv and Dyad-managed patches are omitted.",
   inputSchema: gitShowCommitSchema,
   defaultConsent: "always",
-  getConsentPreview: (args) =>
-    `Inspect commit ${args.revision}${args.path ? ` for ${args.path}` : ""}`,
-  buildXml: (args) =>
-    gitXml("show_commit", {
-      revision: args.revision,
-      path: args.path,
-    }),
+  getConsentPreview: (args) => {
+    const filePath = normalizeGitFilterPath(args.path);
+    return `Inspect commit ${args.revision}${filePath ? ` for ${filePath}` : ""}`;
+  },
+  buildXml: (args, isComplete) => {
+    const filePath = normalizeGitFilterPath(args.path);
+    return buildGitPreview(
+      "show_commit",
+      {
+        revision: args.revision,
+        path: filePath,
+      },
+      isComplete,
+    );
+  },
   execute: async (args, ctx) => {
+    console.log("git_show_commit", args);
+    const filePath = normalizeGitFilterPath(args.path);
     const result = await getAgentGitCommit({
       path: ctx.appPath,
       revision: args.revision,
-      filePath: args.path,
+      filePath,
     });
+    const summary = summarizeDiff(result.content);
+    ctx.onXmlComplete(
+      gitXml(
+        "show_commit",
+        {
+          revision: args.revision,
+          path: filePath,
+          subject: getCommitSubject(result.content),
+          file_count: summary.files,
+          additions: summary.additions,
+          deletions: summary.deletions,
+          truncated: result.truncated,
+          detail_format: "commit",
+        },
+        { content: result.content },
+      ),
+    );
     return result.content;
   },
 };
@@ -227,11 +390,17 @@ export const gitShowFileTool: ToolDefinition<
   inputSchema: gitShowFileSchema,
   defaultConsent: "always",
   getConsentPreview: (args) => `Read ${args.path} at ${args.revision}`,
-  buildXml: (args) =>
-    gitXml("show_file", {
-      revision: args.revision,
-      path: args.path,
-    }),
+  buildXml: (args, isComplete) =>
+    buildGitPreview(
+      "show_file",
+      {
+        revision: args.revision,
+        path: args.path,
+        start_line: args.start_line_one_indexed,
+        end_line: args.end_line_one_indexed_inclusive,
+      },
+      isComplete,
+    ),
   execute: async (args, ctx) => {
     const result = await getAgentGitFile({
       path: ctx.appPath,
@@ -240,6 +409,21 @@ export const gitShowFileTool: ToolDefinition<
       startLine: args.start_line_one_indexed,
       endLineInclusive: args.end_line_one_indexed_inclusive,
     });
+    ctx.onXmlComplete(
+      gitXml(
+        "show_file",
+        {
+          revision: args.revision,
+          path: args.path,
+          start_line: args.start_line_one_indexed,
+          end_line: args.end_line_one_indexed_inclusive,
+          line_count: countTextLines(result.content),
+          truncated: result.truncated,
+          detail_format: "file",
+        },
+        { content: result.content },
+      ),
+    );
     return result.content;
   },
 };
@@ -260,11 +444,15 @@ export const gitRestoreFileTool: ToolDefinition<
   modifiesState: true,
   getConsentPreview: (args) =>
     `Restore ${args.path} from ${args.revision} without staging it`,
-  buildXml: (args) =>
-    gitXml("restore_file", {
-      revision: args.revision,
-      path: args.path,
-    }),
+  buildXml: (args, isComplete) =>
+    buildGitPreview(
+      "restore_file",
+      {
+        revision: args.revision,
+        path: args.path,
+      },
+      isComplete,
+    ),
   execute: async (args, ctx: AgentContext) => {
     const operationPath = await assertMutationPathAllowed({
       appPath: ctx.appPath,
@@ -283,6 +471,13 @@ export const gitRestoreFileTool: ToolDefinition<
     ctx.workspaceMutated = true;
 
     const successMessage = `Restored ${operationPath} from ${args.revision} without changing the index.`;
+    ctx.onXmlComplete(
+      gitXml("restore_file", {
+        revision: args.revision,
+        path: operationPath,
+        not_staged: true,
+      }),
+    );
 
     if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;

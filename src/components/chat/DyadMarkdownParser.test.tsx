@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -81,13 +81,13 @@ describe("DyadMarkdownParser dyad-git", () => {
   });
 
   it.each([
-    ["status", "Status"],
-    ["diff", "Diff"],
-    ["log", "Log"],
-    ["show_commit", "Show commit"],
-    ["show_file", "Show file"],
-    ["restore_file", "Restore file"],
-  ])("renders the %s Git operation card", (operation, label) => {
+    ["status", "Checked project changes"],
+    ["diff", "Reviewed changes in src/main.ts"],
+    ["log", "Reviewed versions of src/main.ts"],
+    ["show_commit", "Inspected version abc123"],
+    ["show_file", "Read src/main.ts"],
+    ["restore_file", "Restored src/main.ts"],
+  ])("renders the %s Git operation as an activity row", (operation, label) => {
     render(
       <DyadMarkdownParser
         content={`<dyad-git operation="${operation}" revision="abc123" path="src/main.ts"></dyad-git>`}
@@ -95,8 +95,7 @@ describe("DyadMarkdownParser dyad-git", () => {
     );
 
     expect(screen.getByText(label)).toBeTruthy();
-    expect(screen.getByText("Revision: abc123")).toBeTruthy();
-    expect(screen.getByText("src/main.ts")).toBeTruthy();
+    expect(screen.queryByText("Git")).toBeNull();
   });
 
   it("renders a pending state while the Git tag streams", () => {
@@ -111,7 +110,38 @@ describe("DyadMarkdownParser dyad-git", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Inspecting...")).toBeTruthy();
+    expect(screen.getByText("Checking project changes")).toBeTruthy();
+    expect(screen.getByLabelText("In progress")).toBeTruthy();
+  });
+
+  it("shows a useful status summary and expands structured file details", () => {
+    const status = JSON.stringify({
+      branch: "main",
+      detached: false,
+      staged: ["src/App.tsx"],
+      unstaged: ["src/App.tsx", "src/index.css"],
+      untracked: ["src/new.ts"],
+      conflicted: [],
+    });
+    render(
+      <DyadMarkdownParser
+        content={`<dyad-git operation="status" branch="main" changed_count="2" untracked_count="1" conflicted_count="0" detail_format="status">${status}</dyad-git>`}
+      />,
+    );
+
+    expect(screen.getByText("2 changed · 1 new")).toBeTruthy();
+    const row = screen.getByRole("button", {
+      name: /checked project changes/i,
+    });
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(row);
+
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Branch main")).toBeTruthy();
+    expect(screen.getAllByText("src/App.tsx")).toHaveLength(2);
+    expect(screen.getByText("src/index.css")).toBeTruthy();
+    expect(screen.getByText("src/new.ts")).toBeTruthy();
   });
 });
 

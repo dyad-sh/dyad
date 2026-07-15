@@ -31,6 +31,10 @@ function isUserVisibleGitPath(filePath: string) {
   return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
 }
 
+function isAgentGitPatchVisiblePath(filePath: string) {
+  return isUserVisibleGitPath(filePath) || filePath === "pnpm-workspace.yaml";
+}
+
 /**
  * Returns a sanitized environment for git commands on Windows.
  * Filters out WSL-related PATH entries that can cause WSL interop issues.
@@ -1419,7 +1423,7 @@ const AGENT_GIT_STATUS_PATH_BUDGET_BYTES =
 // Keeps diff pathspec argv well under the ~32 KiB Windows command-line limit.
 const AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES = 24 * 1024;
 const AGENT_GIT_TRUNCATION_NOTICE =
-  "\n\n[Output truncated at 256 KiB. Narrow the request with a path, line range, or smaller commit count.]";
+  "\n\n[Output truncated at 64 KiB. Narrow the request with a path, line range, or smaller commit count.]";
 
 interface AgentGitExecutionResult extends IGitStringResult {
   truncated: boolean;
@@ -1554,6 +1558,17 @@ export function normalizeAgentGitPath(
     );
   }
   return relativePath;
+}
+
+function normalizeAgentGitFilterPath(
+  repoPath: string,
+  filePath: string | undefined,
+): string | undefined {
+  return filePath === "."
+    ? undefined
+    : filePath
+      ? normalizeAgentGitPath(repoPath, filePath)
+      : undefined;
 }
 
 export async function resolveAgentGitCommit({
@@ -1750,7 +1765,7 @@ async function renderSafeAgentDiff({
   for (const entry of discovery.entries) {
     if (
       entry.paths.some(isDotenvFilePath) ||
-      entry.paths.some((entryPath) => !isUserVisibleGitPath(entryPath))
+      entry.paths.some((entryPath) => !isAgentGitPatchVisiblePath(entryPath))
     ) {
       sensitive.push(entry.paths.at(-1) ?? entry.paths[0]);
       continue;
@@ -1832,9 +1847,7 @@ export async function getAgentGitDiff({
   filePath?: string;
   contextLines?: number;
 }): Promise<AgentGitTextResult> {
-  const normalizedPath = filePath
-    ? normalizeAgentGitPath(path, filePath)
-    : undefined;
+  const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
   const hasHead = await hasAgentGitHead(path);
   if (scope === "unstaged") {
     return renderSafeAgentDiff({
@@ -1897,9 +1910,7 @@ export async function getAgentGitLog({
   filePath?: string;
 }): Promise<AgentGitTextResult> {
   const oid = await resolveAgentGitCommit({ path, revision });
-  const normalizedPath = filePath
-    ? normalizeAgentGitPath(path, filePath)
-    : undefined;
+  const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
   const result = await execAgentGit(
     [
       "log",
@@ -1968,9 +1979,7 @@ export async function getAgentGitCommit({
   filePath?: string;
 }): Promise<AgentGitTextResult> {
   const oid = await resolveAgentGitCommit({ path, revision });
-  const normalizedPath = filePath
-    ? normalizeAgentGitPath(path, filePath)
-    : undefined;
+  const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
   const metadataResult = await execAgentGit(
     [
       "show",

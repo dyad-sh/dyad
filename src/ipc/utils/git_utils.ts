@@ -1721,7 +1721,6 @@ async function listAgentDiffEntries({
       "--no-ext-diff",
       "--no-textconv",
       ...comparisonArgs,
-      ...(filePath ? ["--", filePath] : []),
     ],
     path,
     { maxBuffer: 1024 * 1024, allowTruncation: true },
@@ -1743,7 +1742,16 @@ async function listAgentDiffEntries({
     }
     const paths = fields.slice(index, index + pathCount);
     index += pathCount;
-    entries.push({ status, paths: paths.map(normalizePath) });
+    const normalizedPaths = paths.map(normalizePath);
+    if (
+      !filePath ||
+      normalizedPaths.some(
+        (entryPath) =>
+          entryPath === filePath || entryPath.startsWith(`${filePath}/`),
+      )
+    ) {
+      entries.push({ status, paths: normalizedPaths });
+    }
   }
   return { entries, truncated: result.truncated || incomplete };
 }

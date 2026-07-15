@@ -185,11 +185,25 @@ describe("agent Git utilities", () => {
     const workingTreeDiff = await getAgentGitDiff({ path: repo });
     expect(workingTreeDiff.content).toContain("rename from file.txt");
     expect(workingTreeDiff.content).toContain("rename to renamed.txt");
+    for (const filePath of ["file.txt", "renamed.txt"]) {
+      const filtered = await getAgentGitDiff({ path: repo, filePath });
+      expect(filtered.content).toContain("rename from file.txt");
+      expect(filtered.content).toContain("rename to renamed.txt");
+    }
 
     await git(repo, "commit", "-m", "rename file");
     const commit = await getAgentGitCommit({ path: repo, revision: "HEAD" });
     expect(commit.content).toContain("rename from file.txt");
     expect(commit.content).toContain("rename to renamed.txt");
+    for (const filePath of ["file.txt", "renamed.txt"]) {
+      const filtered = await getAgentGitCommit({
+        path: repo,
+        revision: "HEAD",
+        filePath,
+      });
+      expect(filtered.content).toContain("rename from file.txt");
+      expect(filtered.content).toContain("rename to renamed.txt");
+    }
   });
 
   it("omits dotenv patch content", async () => {

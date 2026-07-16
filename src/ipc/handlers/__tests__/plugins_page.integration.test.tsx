@@ -152,6 +152,13 @@ describe("Plugins page (integration)", () => {
       { timeout: 20_000 },
     );
     expect(card.textContent).not.toMatch(/\d+ tools/);
+
+    // The detail page shows the failed-discovery message.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open testing-mcp-server" }),
+    );
+    const detail = await screen.findByTestId("plugin-detail");
+    await within(detail).findByText("Tool discovery failed.");
   }, 40_000);
 
   it("opens the detail page, changes a consent, and deletes the plugin", async () => {

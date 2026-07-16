@@ -30,6 +30,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const {
     servers,
     toolsByServer,
+    statusByServer,
     consentsMap,
     isLoading,
     toggleEnabled,
@@ -62,7 +63,10 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     return null;
   }
 
-  const tools = toolsByServer[s.id] || [];
+  // Only successful discovery lands in toolsByServer, so an absent
+  // entry means pending or failed, not an empty server.
+  const discoveredTools = toolsByServer[s.id];
+  const tools = discoveredTools ?? [];
   const feedback = feedbackFor(s);
 
   const onSetToolConsent = async (
@@ -264,7 +268,13 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               ))}
               {tools.length === 0 && (
                 <div className="text-xs text-muted-foreground">
-                  No tools discovered.
+                  {discoveredTools
+                    ? "No tools discovered."
+                    : statusByServer[s.id] === "unauthorized"
+                      ? "Tools will be listed once the server is connected."
+                      : statusByServer[s.id] === "error"
+                        ? "Tool discovery failed."
+                        : "Discovering tools…"}
                 </div>
               )}
             </div>

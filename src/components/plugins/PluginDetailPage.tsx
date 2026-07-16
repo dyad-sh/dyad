@@ -32,7 +32,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     toolsByServer,
     statusByServer,
     consentsMap,
-    isLoading,
+    isServersLoading,
     toggleEnabled,
     deleteServer,
     setToolConsent: updateToolConsent,
@@ -52,12 +52,15 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const s = servers.find((srv) => srv.id === serverId);
 
   // Unknown id (deleted elsewhere, bad deep link) lands back on the
-  // plugins list once the server query has resolved.
+  // plugins list once the server query has resolved. Gated on the
+  // servers query alone: it is a fast local read, while tool
+  // discovery can take seconds and has no bearing on whether the
+  // server exists.
   useEffect(() => {
-    if (!isLoading && !s) {
+    if (!isServersLoading && !s) {
       navigate({ to: "/plugins" });
     }
-  }, [isLoading, s, navigate]);
+  }, [isServersLoading, s, navigate]);
 
   if (!s) {
     return null;

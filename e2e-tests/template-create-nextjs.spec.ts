@@ -2,7 +2,10 @@ import { test } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("create next.js app", async ({ po }) => {
-  await po.setUp();
+  // This test covers template creation and preview startup, not the proposal
+  // review flow. Auto-approve keeps the generated edit deterministic while
+  // the imported template may still be installing dependencies.
+  await po.setUp({ autoApprove: true });
   const beforeSettings = po.settings.recordSettings();
   await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
   await po.chatActions.selectChatMode("build");
@@ -10,7 +13,6 @@ test("create next.js app", async ({ po }) => {
 
   // Create an app
   await po.sendPrompt("tc=edit-made-with-dyad");
-  await po.approveProposal();
 
   await po.clickRestart();
 

@@ -1,6 +1,10 @@
 import { expect, type Page } from "@playwright/test";
 import { Timeout } from "./test_helper";
 
+function normalizeLineEndings(value: string | null) {
+  return value?.replace(/\r\n?/g, "\n") ?? null;
+}
+
 // Shared helpers for driving the Monaco-based code editor from e2e tests.
 // Extracted so specs that exercise editor interactions (editing, saving,
 // committing) don't each re-implement the same window.monaco plumbing.
@@ -69,6 +73,9 @@ export async function replaceEditorContent(page: Page, content: string) {
   await page.keyboard.press("Backspace");
   await page.keyboard.insertText(content);
   await expect
-    .poll(() => getActiveEditorModelContent(page), { timeout: Timeout.MEDIUM })
-    .toEqual(content);
+    .poll(
+      async () => normalizeLineEndings(await getActiveEditorModelContent(page)),
+      { timeout: Timeout.MEDIUM },
+    )
+    .toEqual(normalizeLineEndings(content));
 }

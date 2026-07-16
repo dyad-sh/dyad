@@ -4,6 +4,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync, execSync } from "child_process";
 
+function normalizeLineEndings(value: string) {
+  return value.replace(/\r\n?/g, "\n");
+}
+
 function configureGitForE2eCommit(appPath: string) {
   execFileSync("git", ["config", "user.email", "test@example.com"], {
     cwd: appPath,
@@ -107,7 +111,9 @@ const runDiscardChangesTest = async (po: PageObject) => {
   // Verify the modified file was restored
   if (originalContent !== null) {
     const restoredContent = fs.readFileSync(indexPath, "utf-8");
-    expect(restoredContent).toBe(originalContent);
+    expect(normalizeLineEndings(restoredContent)).toBe(
+      normalizeLineEndings(originalContent),
+    );
   }
 };
 

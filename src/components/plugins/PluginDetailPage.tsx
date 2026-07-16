@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import type { McpToolConsent } from "@/ipc/types";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
@@ -62,6 +63,19 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   }, [isServersLoading, s, navigate]);
 
   if (!s) {
+    // A deep link or refresh reaches here before the servers query
+    // resolves; mirror the page layout instead of flashing blank.
+    if (isServersLoading) {
+      return (
+        <div className="w-full min-h-screen px-8 py-4">
+          <div className="max-w-5xl pb-12">
+            <Skeleton className="h-8 w-28 mb-4" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+        </div>
+      );
+    }
+    // Unknown id; the effect above is navigating back to the list.
     return null;
   }
 

@@ -35,6 +35,10 @@ export function usePluginConnect() {
     setConnectingServerId(serverId);
     try {
       await fn();
+    } catch {
+      // The mutations inside surface their own error toasts; catching
+      // here keeps an unexpected rejection from escaping into the
+      // fire-and-forget click handlers.
     } finally {
       setConnectingServerId(null);
     }

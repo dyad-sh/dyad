@@ -76,9 +76,9 @@ describe("chat_search_indexer", () => {
         'We chose magic links. <dyad-write path="src/a.ts">SECRET_BODY</dyad-write>',
     });
 
-    expect(getChatSearchPendingCountForApp(appId)).toBe(1);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(1);
     await drainChatSearchIndexOnce();
-    expect(getChatSearchPendingCountForApp(appId)).toBe(0);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(0);
 
     const rows = ftsRows();
     expect(rows).toHaveLength(1);
@@ -101,7 +101,7 @@ describe("chat_search_indexer", () => {
     harness.testDb.$client
       .prepare(`UPDATE messages SET content = ? WHERE id = ?`)
       .run("replacement words", messageId);
-    expect(getChatSearchPendingCountForApp(appId)).toBe(1);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(1);
     await drainChatSearchIndexOnce();
 
     expect(ftsRows()[0].body).toBe("replacement words");
@@ -163,7 +163,7 @@ describe("chat_search_indexer", () => {
     });
     await drainChatSearchIndexOnce();
     expect(ftsRows()).toHaveLength(0);
-    expect(getChatSearchPendingCountForApp(appId)).toBe(0);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(0);
   });
 
   it("schedules a full rebuild when the projection version changes", async () => {
@@ -171,7 +171,7 @@ describe("chat_search_indexer", () => {
     const chatId = harness.insertChat(appId);
     harness.insertMessage({ chatId, role: "user", content: "some words" });
     await drainChatSearchIndexOnce();
-    expect(getChatSearchPendingCountForApp(appId)).toBe(0);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(0);
 
     harness.testDb.$client
       .prepare(
@@ -181,7 +181,7 @@ describe("chat_search_indexer", () => {
     startChatSearchIndexer();
     stopChatSearchIndexer();
 
-    expect(getChatSearchPendingCountForApp(appId)).toBe(1);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(1);
     expect(
       harness.testDb.$client
         .prepare(
@@ -190,7 +190,7 @@ describe("chat_search_indexer", () => {
         .get(),
     ).not.toEqual({ value: "0" });
     await drainChatSearchIndexOnce();
-    expect(getChatSearchPendingCountForApp(appId)).toBe(0);
+    expect(getChatSearchPendingCountForApp(appId, 0)).toBe(0);
   });
 
   it("cleans up orphaned FTS rows at startup", async () => {

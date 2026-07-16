@@ -299,10 +299,20 @@ export const readChatTool: ToolDefinition<ReadChatArgs> = {
     let output = serialize();
     while (
       Buffer.byteLength(output, "utf8") > MAX_OUTPUT_BYTES &&
-      projected.length > 0
+      projected.length > 1
     ) {
-      projected.pop();
-      rows.pop();
+      // In around mode the target message must survive truncation: drop
+      // trailing context first, then leading context, never the target
+      // itself. (A single capped message always fits the budget.)
+      const lastIsTarget =
+        projected[projected.length - 1].message_id === args.around_message_id;
+      if (lastIsTarget) {
+        projected.shift();
+        rows.shift();
+      } else {
+        projected.pop();
+        rows.pop();
+      }
       outputTruncated = true;
       output = serialize();
     }

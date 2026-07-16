@@ -297,6 +297,32 @@ describe("readChatTool.execute", () => {
     expect(parsed.messages.length).toBeGreaterThan(0);
   });
 
+  it("keeps the around-target message when budget truncation drops context", async () => {
+    const appId = harness.insertApp();
+    const chatId = harness.insertChat(appId, "Bulky window");
+    // Multibyte content near the per-message cap so a default window
+    // (target + 3 before + 3 after) exceeds the 20KB byte budget.
+    const bulky = "字".repeat(2_300);
+    const ids: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      ids.push(
+        harness.insertMessage({
+          chatId,
+          role: "user",
+          content: `msg ${i} ${bulky}`,
+          createdAt: 40_000 + i,
+        }),
+      );
+    }
+    const targetId = ids[3];
+    const { parsed } = await run(
+      { chat_id: chatId, around_message_id: targetId },
+      { appId, chatId: chatId + 999 },
+    );
+    expect(parsed.output_truncated).toBe(true);
+    expect(parsed.messages.map((m: any) => m.message_id)).toContain(targetId);
+  });
+
   it("emits a completed XML card with the range", async () => {
     const { appId, chatId } = seedChat(3);
     const { ctx } = await run(

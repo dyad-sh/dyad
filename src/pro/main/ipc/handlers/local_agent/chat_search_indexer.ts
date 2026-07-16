@@ -96,9 +96,16 @@ export async function waitForChatSearchIndexingIdle(
 /**
  * Number of source rows for this app still waiting to be (re)indexed.
  * Dirty rows for already-deleted messages don't join and are excluded — the
- * delete triggers already removed their FTS rows.
+ * delete triggers already removed their FTS rows. `excludeChatId` skips the
+ * caller's own chat: during a turn the current chat's user message and
+ * streaming placeholder are always dirty (settle hasn't run yet), and since
+ * search excludes the current chat anyway, counting them would make
+ * search_chats report "indexing" on effectively every call.
  */
-export function getChatSearchPendingCountForApp(appId: number): number {
+export function getChatSearchPendingCountForApp(
+  appId: number,
+  excludeChatId: number,
+): number {
   const row = db.$client
     .prepare(
       `SELECT
@@ -106,14 +113,14 @@ export function getChatSearchPendingCountForApp(appId: number): number {
             FROM chat_search_dirty_messages dm
             JOIN messages m ON m.id = dm.message_id
             JOIN chats c ON c.id = m.chat_id
-           WHERE c.app_id = ?)
+           WHERE c.app_id = ? AND c.id != ?)
          +
          (SELECT COUNT(*)
             FROM chat_search_dirty_chats dc
             JOIN chats c2 ON c2.id = dc.chat_id
-           WHERE c2.app_id = ?) AS pending`,
+           WHERE c2.app_id = ? AND c2.id != ?) AS pending`,
     )
-    .get(appId, appId) as { pending: number };
+    .get(appId, excludeChatId, appId, excludeChatId) as { pending: number };
   return row.pending;
 }
 

@@ -287,6 +287,33 @@ describe("searchChatsTool.execute", () => {
     expect(parsed.index_status).toBe("indexing");
   });
 
+  it("reports ready when only the current chat has pending rows", async () => {
+    const appId = harness.insertApp();
+    const currentChat = harness.insertChat(appId, "Current");
+    const historical = harness.insertChat(appId, "History");
+    harness.insertMessage({
+      chatId: historical,
+      role: "user",
+      content: "beaver dam design",
+    });
+    await drainChatSearchIndexOnce();
+    // Mid-turn state: the current chat's user message and streaming
+    // placeholder are dirty, but everything searchable is indexed.
+    harness.insertMessage({
+      chatId: currentChat,
+      role: "user",
+      content: "new question",
+    });
+    harness.insertMessage({
+      chatId: currentChat,
+      role: "assistant",
+      content: "",
+    });
+    const { parsed } = await run("beaver", { appId, chatId: currentChat });
+    expect(parsed.index_status).toBe("ready");
+    expect(parsed.results).toHaveLength(1);
+  });
+
   it("returns empty results for punctuation-only queries without querying FTS", async () => {
     const appId = harness.insertApp();
     const currentChat = harness.insertChat(appId, "Current");

@@ -71,6 +71,8 @@ writeSettings({
 
 **Electron readiness:** `readSettings()` and `writeSettings()` may decrypt/encrypt secrets through Electron `safeStorage`, which throws `safeStorage cannot be used before app is ready` before `app.whenReady()`. Queue pre-ready entry points like deep links (`open-url`, `second-instance`) until the app/window is ready before calling OAuth/settings handlers.
 
+**Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
+
 ## Handler expectations
 
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.

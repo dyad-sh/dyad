@@ -42,10 +42,12 @@ export function usePluginConnect() {
     setConnectingServerId(serverId);
     try {
       await fn();
-    } catch {
+    } catch (err) {
       // The mutations inside surface their own error toasts; catching
       // here keeps an unexpected rejection from escaping into the
-      // fire-and-forget click handlers.
+      // fire-and-forget click handlers. Logged so a non-mutation
+      // failure is still visible when debugging.
+      console.error("Connect flow failed", err);
     } finally {
       setConnectingServerId(null);
     }

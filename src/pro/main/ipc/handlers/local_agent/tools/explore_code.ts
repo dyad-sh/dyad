@@ -87,24 +87,24 @@ export const exploreCodeTool: ToolDefinition<
   z.infer<typeof exploreCodeSchema>
 > = {
   name: "explore_code",
-  description: `Ask a code reconnaissance sub-agent to explore code included in a configured TypeScript project.
+  description: `Ask a code reconnaissance sub-agent to find and map relevant code when the relevant files are not reasonably clear from the available context.
 
-Use this when you need to understand how a TypeScript, TSX, JavaScript, or JSX feature, symbol, type, component, service, or flow is implemented across files. It returns a compact report: a Flow of file/line ranges with quoted evidence, optional Read targets and Search targets, a Confidence, and an Action. Treat a high- or medium-confidence report as the codebase map and follow its Action rather than rediscovering the code.
+If the relevant files or source ranges are already known or reasonably clear from the conversation, prior investigation, selected components, tool results, or other available context, use targeted grep/list_files/read_file calls instead. This tool returns a compact report: a Flow of file/line ranges with quoted evidence, optional Read targets and Search targets, a Confidence, and an Action.
 
-Set the intent argument to what you will do with the result: explain for "trace how", data-flow, request-flow, or "how is this computed/surfaced" questions; locate for finding the best files/symbols; edit or debug when you will read exact ranges before changing code or verifying behavior.
+Set the intent argument to what you will do with the result: explain to understand behavior; locate to find the best files or symbols; edit or debug when preparing to change, diagnose, or verify code.
 
-Follow the report's Action:
+Use the report's Action as the recommended next step:
 
 | Action | Do next | Do NOT |
 |--------|---------|--------|
-| answer_from_report | Answer or plan directly from the report. | Re-read discovery files, grep, or call explore_code again. |
-| read_targets | explain/locate: answer from the report, citing the listed targets as jump points. edit/debug: read only the listed tight ranges before changing or verifying code. | Read targets just to confirm the map for explain/locate (unless confidence is low or the user asked for edits/debugging/exact verification). |
-| targeted_gap_search | Run only the rendered Search targets with their exact terms/scopes, then answer from the report plus those results and name any remaining gap. | Invent broader searches, open arbitrary hits, or call explore_code again. |
+| answer_from_report | Answer or plan directly from the report when it contains enough detail. | Repeat the report's discovery work without a new question or unresolved detail. |
+| read_targets | Use the listed targets as jump points; read their tight ranges when exact implementation details, editing, debugging, or verification require it. | Start a broader investigation before using the report's focused targets. |
+| targeted_gap_search | Run the rendered Search targets, then continue with targeted exploration as needed to resolve the identified gap. | Restart the same broad discovery or ignore the report's suggested scope without reason. |
 | skip_explore_result | Proceed without the report; nothing relevant was found. | Treat it as a map. |
 
-If confidence is low, inspect the listed read/search targets before relying on the report. If an Action calls for Search targets but none are rendered, answer from the observed Flow and name the remaining gap. Do not call explore_code repeatedly for the same investigation after a high- or medium-confidence report.
+Treat the report as a starting map: build on its findings rather than repeating the same discovery work. Targeted grep/list_files/read_file calls are appropriate whenever needed to resolve gaps, inspect implementation details, follow newly discovered paths, debug behavior, or prepare an edit. If confidence is low, inspect the listed read/search targets before relying on the report. If an Action calls for Search targets but none are rendered, use the observed Flow and name the remaining gap.
 
-Only use this for files included in the app's TypeScript config. JavaScript and JSX require TypeScript config support such as allowJs. If the project does not have TypeScript installed and configured, use grep/list_files/read_file instead.`,
+The sub-agent can search and read files broadly. Its compiler-backed symbol and flow results cover files included in the app's TypeScript config; JavaScript and JSX need TypeScript config support such as allowJs.`,
   inputSchema: exploreCodeSchema,
   defaultConsent: "always",
   usesEngineEndpoint: true,

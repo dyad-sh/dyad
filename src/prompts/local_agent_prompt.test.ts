@@ -19,19 +19,20 @@ describe("local_agent_prompt", () => {
       codeExplorerAvailable: true,
     });
     expect(prompt).toMatchSnapshot();
-    expect(prompt).toContain("use `explore_code` first");
     expect(prompt).toContain(
-      "do not warm up with `list_files`, `grep`, or `read_file` before it",
+      "Use `explore_code` when the relevant files are not reasonably clear from the available context",
     );
     expect(prompt).toContain(
-      "Follow the report's Action exactly as documented in the `explore_code` tool",
+      "already known or reasonably clear from the conversation",
     );
     expect(prompt).toContain(
-      "do not call `explore_code` again for the same investigation",
+      "Treat the report as a starting map: build on its findings",
     );
     expect(prompt).toContain(
-      "When no authoritative explore_code report is available",
+      "Continue with targeted `grep`, `list_files`, or `read_file` calls whenever needed",
     );
+    expect(prompt).not.toContain("use `explore_code` first");
+    expect(prompt).not.toContain("do not warm up");
     expect(prompt).not.toContain("Use `grep` and `code_search`");
   });
 

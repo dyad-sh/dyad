@@ -15,6 +15,7 @@ export function PluginSummaryCard({
   server: s,
   toolCount,
   enabledToolCount,
+  discoveryFailed,
   feedback,
   isConnecting,
   connectDisabled,
@@ -25,6 +26,8 @@ export function PluginSummaryCard({
   server: McpServer;
   toolCount: number | null;
   enabledToolCount: number | null;
+  /** Discovery settled without a tool list (unreachable or unauthorized). */
+  discoveryFailed: boolean;
   feedback: ConnectFeedback | null;
   /** This card's own OAuth flow is in flight (drives the label). */
   isConnecting: boolean;
@@ -78,11 +81,13 @@ export function PluginSummaryCard({
         </div>
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-sm text-muted-foreground">
-            {toolCount === null
-              ? "— tools"
-              : enabledToolCount !== null && enabledToolCount < toolCount
+            {toolCount !== null
+              ? enabledToolCount !== null && enabledToolCount < toolCount
                 ? `${enabledToolCount} of ${toolCount} tools enabled`
-                : `${toolCount} tool${toolCount === 1 ? "" : "s"}`}
+                : `${toolCount} tool${toolCount === 1 ? "" : "s"}`
+              : discoveryFailed
+                ? "tools unavailable"
+                : "— tools"}
           </span>
           <div className="flex items-center gap-2">
             <div className="relative z-10 flex items-center gap-2">

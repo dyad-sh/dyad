@@ -144,9 +144,11 @@ describe("Plugins page (integration)", () => {
     await harness.setSwitch(enabledSwitch, true);
     await waitFor(
       () => {
-        expect(card.textContent).toContain("— tools");
+        expect(card.textContent).toContain("tools unavailable");
+        // The unreachable server contributes zero usable tools; the
+        // aggregate is not held on the discovery placeholder.
         expect(screen.getByTestId("plugins-stats").textContent).toBe(
-          "1 plugin · — tools enabled",
+          "1 plugin · 0 tools enabled",
         );
       },
       { timeout: 20_000 },

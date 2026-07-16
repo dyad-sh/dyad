@@ -22,6 +22,7 @@ export function PluginsList({
   const {
     servers,
     toolsByServer,
+    statusByServer,
     consentsMap,
     isServersLoading,
     toggleEnabled,
@@ -49,12 +50,18 @@ export function PluginsList({
         ).length
       : null;
 
+  // A settled status with no tool list means the listing failed
+  // (unreachable or unauthorized), as opposed to still pending.
+  const discoveryFailedFor = (serverId: number): boolean =>
+    !toolsByServer[serverId] && !!statusByServer[serverId];
+
   return (
     <div className="space-y-6">
       {showPlaintextBanner && <OauthPlaintextStorageAlert />}
       <PluginsStats
         servers={servers}
         toolsByServer={toolsByServer}
+        statusByServer={statusByServer}
         consentsMap={consentsMap}
         isLoading={isServersLoading}
       />
@@ -77,6 +84,7 @@ export function PluginsList({
               server={s}
               toolCount={toolCountFor(s.id)}
               enabledToolCount={enabledToolCountFor(s.id)}
+              discoveryFailed={discoveryFailedFor(s.id)}
               feedback={feedbackFor(s)}
               isConnecting={connectingServerId === s.id}
               connectDisabled={connectingServerId !== null}

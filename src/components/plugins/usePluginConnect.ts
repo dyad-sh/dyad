@@ -45,7 +45,6 @@ export function usePluginConnect() {
         callbackPort: opts?.callbackPort,
       });
       if (result.success) {
-        setConnectFeedback(null);
         showSuccess("OAuth connection successful");
         return;
       }

@@ -108,7 +108,10 @@ export function PluginSummaryCard({
                 onCheckedChange={() => onToggleEnabled(s.id, !!s.enabled)}
               />
             </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            <ChevronRight
+              aria-hidden="true"
+              className="w-4 h-4 text-muted-foreground shrink-0"
+            />
           </div>
         </div>
       </CardHeader>

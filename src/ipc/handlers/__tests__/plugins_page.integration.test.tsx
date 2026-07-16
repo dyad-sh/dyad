@@ -141,6 +141,13 @@ describe("Plugins page (integration)", () => {
     await stop();
     const enabledSwitch = within(card).getByRole("switch");
     await harness.setSwitch(enabledSwitch, false);
+    // Disabled plugins are named in the stats row so the plugin and
+    // tool counts visibly cover different scopes.
+    await waitFor(() => {
+      expect(screen.getByTestId("plugins-stats").textContent).toBe(
+        "1 plugin (1 disabled) · 0 tools enabled",
+      );
+    });
     await harness.setSwitch(enabledSwitch, true);
     await waitFor(
       () => {

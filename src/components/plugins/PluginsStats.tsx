@@ -39,9 +39,13 @@ export function PluginsStats({
       ).length,
     0,
   );
+  // The tool count only covers enabled plugins; naming the disabled
+  // count explains the gap between the two numbers.
+  const disabledCount = servers.length - enabled.length;
   return (
     <div className="text-sm text-muted-foreground" data-testid="plugins-stats">
-      {servers.length} plugin{servers.length === 1 ? "" : "s"} ·{" "}
+      {servers.length} plugin{servers.length === 1 ? "" : "s"}
+      {disabledCount > 0 ? ` (${disabledCount} disabled)` : ""} ·{" "}
       {discovering
         ? "— tools"
         : `${toolCount} tool${toolCount === 1 ? "" : "s"}`}{" "}

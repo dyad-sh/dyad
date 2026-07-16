@@ -17,7 +17,10 @@ export function stripDynamic(text: string): string {
       .replace(/\d{4}-\d{2}-\d{2}[T ][\d:.]+Z?/g, "<ts>")
       .replace(/\b\d+(?:\.\d+)?\s?ms\b/gi, "<dur>")
       .replace(/\b\d+(?:\.\d+)?\s?s\b/gi, "<dur>")
-      .replace(/:\d{2,5}\b/g, ":<port>")
+      .replace(
+        /\b(https?:\/\/(?:\[[^\]]+\]|[^/\s:]+)):\d{2,5}\b/gi,
+        "$1:<port>",
+      )
       // UUIDs before the contiguous-hex rule: their 4-char middle segments are
       // too short for it, so a generated id would otherwise change the
       // signature on every run and defeat no-progress detection.
@@ -52,6 +55,10 @@ export function isFailingStatus(status: string): boolean {
   return status === "failed" || status === "inconclusive";
 }
 
+function isSkippedVerdict(v: { status: string; error?: string }): boolean {
+  return v.status === "inconclusive" && !v.error;
+}
+
 /**
  * Build a stable signature of a run's failures: one sorted entry per failing
  * test (or file) as `file :: title :: first-error-line`, dynamic bits stripped.
@@ -64,11 +71,11 @@ export function normalizeFailureSignature(results: TestResult[]): string {
   for (const r of results) {
     if (r.tests && r.tests.length > 0) {
       for (const t of r.tests) {
-        if (isFailingStatus(t.status)) {
+        if (isFailingStatus(t.status) && !isSkippedVerdict(t)) {
           entries.push(`${r.file} :: ${t.title} :: ${firstErrorLine(t.error)}`);
         }
       }
-    } else if (isFailingStatus(r.status)) {
+    } else if (isFailingStatus(r.status) && !isSkippedVerdict(r)) {
       entries.push(`${r.file} :: <file> :: ${firstErrorLine(r.error)}`);
     }
   }

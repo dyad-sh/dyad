@@ -576,7 +576,11 @@ export function buildAgentToolSet(
           // Only completed mutations unblock run_tests. Failed tool calls are
           // still present in fileEditTracker for retry/fallback telemetry, but
           // must not masquerade as a code change.
-          trackAppMutation(ctx, tool.name);
+          trackAppMutation(
+            ctx,
+            tool.name,
+            tool.shouldTrackMutation?.(processedArgs, result, ctx) ?? true,
+          );
 
           return convertToolResultForAiSdk(result);
         } catch (error) {

@@ -419,10 +419,10 @@ export async function runAppTestsCore({
           },
         };
       }
-      // A grep that matched no title at runtime: hand back an empty result so
-      // the caller can report "no runnable test" (not an infra dead-end) and
-      // list the titles that exist. The agent tool pre-validates the pattern,
-      // so this is the rare case where a title only exists behind a describe.
+      // A grep that matched no runnable test at runtime: hand back an empty
+      // result so the caller can report "no runnable test" rather than an
+      // infra dead-end. Playwright owns grep matching because it uses full
+      // hierarchical titles.
       return { appId, results: [] };
     }
     return {
@@ -579,6 +579,7 @@ export async function runAppTestsWithIsolation({
       state: "started",
       testFile: normalizedTestFile ?? undefined,
       testLine,
+      grep,
     });
 
     // Hold the per-app lock across the whole isolation lifecycle (prepare →
@@ -686,8 +687,9 @@ export async function runAppTestsWithIsolation({
       state: "finished",
       testFile: normalizedTestFile ?? undefined,
       testLine,
-      results: finalResult.results,
-      infraError: finalResult.infraError,
+      grep,
+      results: source === "agent" ? finalResult.results : undefined,
+      infraError: source === "agent" ? finalResult.infraError : undefined,
       isolation: finalResult.isolation,
     });
     // A teardown failure must not skip the cleanup below — leaving the

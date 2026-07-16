@@ -4,16 +4,21 @@ import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  setTestRunStateForAppAtom,
+  testRunOutputByAppIdAtom,
   testRunStateByAppIdAtom,
   testSpecsByAppIdAtom,
 } from "@/atoms/testRuntimeAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
 
-const { runStateListeners, listAppTestsMock } = vi.hoisted(() => ({
-  runStateListeners: new Set<(payload: unknown) => void>(),
-  listAppTestsMock: vi.fn(),
-}));
+const { outputListeners, runStateListeners, listAppTestsMock } = vi.hoisted(
+  () => ({
+    outputListeners: new Set<(payload: unknown) => void>(),
+    runStateListeners: new Set<(payload: unknown) => void>(),
+    listAppTestsMock: vi.fn(),
+  }),
+);
 
 vi.mock("@/ipc/types", () => ({
   ipc: {
@@ -22,6 +27,10 @@ vi.mock("@/ipc/types", () => ({
     },
     events: {
       tests: {
+        onOutput: (listener: (payload: unknown) => void) => {
+          outputListeners.add(listener);
+          return () => outputListeners.delete(listener);
+        },
         onRunState: (listener: (payload: unknown) => void) => {
           runStateListeners.add(listener);
           return () => runStateListeners.delete(listener);
@@ -30,6 +39,12 @@ vi.mock("@/ipc/types", () => ({
     },
   },
 }));
+
+function emitOutput(payload: unknown) {
+  for (const listener of outputListeners) {
+    listener(payload);
+  }
+}
 
 function emitRunState(payload: unknown) {
   for (const listener of runStateListeners) {
@@ -57,6 +72,7 @@ function makeWrapper() {
 
 describe("useTestRunEvents", () => {
   beforeEach(() => {
+    outputListeners.clear();
     runStateListeners.clear();
     listAppTestsMock.mockReset();
     listAppTestsMock.mockResolvedValue({ specs: [] });
@@ -71,6 +87,28 @@ describe("useTestRunEvents", () => {
     });
 
     expect(store.get(testRunStateByAppIdAtom).has(1)).toBe(false);
+  });
+
+  it("stores streamed output at root scope", async () => {
+    vi.useFakeTimers();
+    try {
+      const { store, Wrapper } = makeWrapper();
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+      act(() => {
+        emitRunState({ appId: 1, source: "agent", state: "started" });
+        emitOutput({ appId: 1, chunk: "setup\n", phase: "setup" });
+        emitOutput({ appId: 1, chunk: "running\n", phase: "running" });
+        vi.advanceTimersByTime(100);
+      });
+
+      expect(store.get(testRunOutputByAppIdAtom).get(1)).toBe(
+        "setup\nrunning\n",
+      );
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("running");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("marks the app running on an agent 'started' event", () => {
@@ -208,13 +246,67 @@ describe("useTestRunEvents", () => {
     expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
   });
 
+  it("does not let an older agent refresh finish a newer panel run", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    let resolveRefresh!: (value: { specs: [] }) => void;
+    listAppTestsMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        testFile: "tests/old.spec.ts",
+      });
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "finished",
+        testFile: "tests/old.spec.ts",
+        results: [{ file: "tests/old.spec.ts", status: "passed" }],
+      });
+      emitRunState({
+        appId: 1,
+        source: "panel",
+        state: "started",
+        testFile: "tests/new.spec.ts",
+      });
+      store.set(setTestRunStateForAppAtom, {
+        appId: 1,
+        update: {
+          phase: "running",
+          runningFiles: ["tests/new.spec.ts"],
+          runningTests: [],
+          results: {},
+        },
+      });
+    });
+
+    await act(async () => {
+      resolveRefresh({ specs: [] });
+      await Promise.resolve();
+    });
+
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.phase).toBe("running");
+    expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
+    expect(state.results["tests/old.spec.ts"]).toBeUndefined();
+  });
+
   it("unsubscribes on unmount", () => {
     const { Wrapper } = makeWrapper();
     const { unmount } = renderHook(() => useTestRunEvents(), {
       wrapper: Wrapper,
     });
+    expect(outputListeners.size).toBe(1);
     expect(runStateListeners.size).toBe(1);
     unmount();
+    expect(outputListeners.size).toBe(0);
     expect(runStateListeners.size).toBe(0);
   });
 });

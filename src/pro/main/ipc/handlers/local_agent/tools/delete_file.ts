@@ -42,18 +42,23 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       return `<dyad-delete path="${escapeXmlAttr(args.path)}"></dyad-delete>`;
     },
 
+    shouldTrackMutation: (_args, result) =>
+      result.startsWith("Successfully deleted") ||
+      result.startsWith("File deleted,"),
+
     execute: async (args, ctx: AgentContext) => {
       const { relativePath: operationPath, fullPath: fullFilePath } =
         await prepareDeletePath(ctx.appPath, args.path);
 
-      // Track if this is a shared module
-      if (isSharedServerModule(operationPath)) {
-        ctx.isSharedModulesChanged = true;
-        ctx.sharedServerModulePaths.push(operationPath);
-      }
-
       const currentStat = lstatIfExists(fullFilePath);
+      const didDelete = currentStat !== null;
       if (currentStat) {
+        // Track if this is a shared module
+        if (isSharedServerModule(operationPath)) {
+          ctx.isSharedModulesChanged = true;
+          ctx.sharedServerModulePaths.push(operationPath);
+        }
+
         if (currentStat.isDirectory()) {
           fs.rmdirSync(fullFilePath, { recursive: true });
         } else {
@@ -84,11 +89,15 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
         logger.warn(`File to delete does not exist: ${fullFilePath}`);
       }
 
-      queueCloudSandboxSnapshotSync({
-        appId: ctx.appId,
-        deletedPaths: [operationPath],
-      });
+      if (didDelete) {
+        queueCloudSandboxSnapshotSync({
+          appId: ctx.appId,
+          deletedPaths: [operationPath],
+        });
+      }
 
-      return `Successfully deleted ${args.path}`;
+      return didDelete
+        ? `Successfully deleted ${args.path}`
+        : `File ${args.path} did not exist, so nothing was deleted.`;
     },
   };

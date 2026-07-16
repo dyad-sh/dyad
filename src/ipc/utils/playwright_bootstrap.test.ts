@@ -131,6 +131,45 @@ describe("ensurePlaywrightBootstrap", () => {
       `playwright test --config ${DYAD_CONFIG_FILENAME}`,
     );
   });
+
+  it("migrates the old Dyad-generated bare test script", async () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: true,
+    });
+    fs.writeFileSync(
+      path.join(appPath, "package.json"),
+      JSON.stringify({ name: "app", scripts: { test: "playwright test" } }),
+    );
+
+    await ensurePlaywrightBootstrap({ appPath });
+
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(appPath, "package.json"), "utf8"),
+    );
+    expect(pkg.scripts.test).toBe(
+      `playwright test --config ${DYAD_CONFIG_FILENAME}`,
+    );
+  });
+
+  it("preserves user-authored test scripts", async () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: true,
+    });
+    const script = "playwright test --project chromium";
+    fs.writeFileSync(
+      path.join(appPath, "package.json"),
+      JSON.stringify({ name: "app", scripts: { test: script } }),
+    );
+
+    await ensurePlaywrightBootstrap({ appPath });
+
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(appPath, "package.json"), "utf8"),
+    );
+    expect(pkg.scripts.test).toBe(script);
+  });
 });
 
 describe("detectSystemBrowserChannel", () => {

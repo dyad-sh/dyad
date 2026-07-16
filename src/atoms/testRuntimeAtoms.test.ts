@@ -99,7 +99,7 @@ describe("test runtime atoms", () => {
         results: [{ file: "a.spec.ts", status: "passed" }],
         isolation: { mode: "neon-branch" },
       },
-      isSingleTest: false,
+      isPartialRun: false,
     });
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.phase).toBe("idle");
@@ -118,7 +118,7 @@ describe("test runtime atoms", () => {
         results: [],
         infraError: { message: "bootstrap failed" },
       },
-      isSingleTest: false,
+      isPartialRun: false,
     });
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.phase).toBe("idle");
@@ -126,5 +126,67 @@ describe("test runtime atoms", () => {
       message: "bootstrap failed",
       kind: "infra",
     });
+  });
+
+  it("merges grep-targeted run results instead of replacing the whole file", () => {
+    const store = createStore();
+    store.set(setTestSpecsForAppAtom, {
+      appId: 1,
+      specs: [
+        {
+          file: "tests/a.spec.ts",
+          tests: [
+            { title: "passes", line: 3 },
+            { title: "fails", line: 8 },
+          ],
+        },
+      ],
+    });
+    store.set(setTestRunStateForAppAtom, {
+      appId: 1,
+      update: {
+        phase: "idle",
+        runningFiles: [],
+        results: {
+          "tests/a.spec.ts": {
+            file: "tests/a.spec.ts",
+            status: "failed",
+            tests: [
+              { title: "passes", line: 3, status: "passed" },
+              { title: "fails", line: 8, status: "failed" },
+            ],
+          },
+        },
+      },
+    });
+
+    store.set(applyTestRunStartedAtom, {
+      appId: 1,
+      testFile: "tests/a.spec.ts",
+      grep: "fails",
+    });
+    store.set(applyTestRunFinishedAtom, {
+      appId: 1,
+      res: {
+        appId: 1,
+        results: [
+          {
+            file: "tests/a.spec.ts",
+            status: "passed",
+            tests: [{ title: "fails", line: 8, status: "passed" }],
+          },
+        ],
+      },
+      isPartialRun: true,
+    });
+
+    const result = store.get(testRunStateByAppIdAtom).get(1)?.results[
+      "tests/a.spec.ts"
+    ];
+    expect(result?.status).toBe("passed");
+    expect(result?.tests).toEqual([
+      { title: "passes", line: 3, status: "passed" },
+      { title: "fails", line: 8, status: "passed" },
+    ]);
   });
 });

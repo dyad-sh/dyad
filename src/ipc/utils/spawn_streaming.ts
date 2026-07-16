@@ -13,11 +13,8 @@ const logger = log.scope("spawn_streaming");
  */
 const MAX_BUFFERED_OUTPUT = 256_000;
 const FORCE_KILL_GRACE_MS = 5_000;
-// Reject every character cmd.exe can treat specially, including quotes and
-// parentheses. A double/single quote can break out of Node's arg quoting under
-// `shell: true`, and `()` are grouping operators — omitting them would leave a
-// defense-in-depth hole for any future caller that forwards untrusted input.
-const WINDOWS_SHELL_META_RE = /[&|<>^%!()"'`;\r\n]/;
+const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
+const WINDOWS_CMD_NEEDS_QUOTING_PATTERN = /[\s"&|<>^%!()]/u;
 
 /** Append `chunk` to `buffer`, keeping only the last MAX_BUFFERED_OUTPUT chars. */
 function appendCapped(buffer: string, chunk: string): string {
@@ -27,15 +24,41 @@ function appendCapped(buffer: string, chunk: string): string {
     : next;
 }
 
-function assertWindowsShellSafe(command: string, args: string[]): void {
-  if (process.platform !== "win32") return;
-  for (const value of [command, ...args]) {
-    if (WINDOWS_SHELL_META_RE.test(value)) {
-      throw new Error(
-        `Unsafe shell metacharacter in command argument: ${value}`,
-      );
-    }
+function resolveWindowsExecutableName(command: string): string {
+  return command.includes(".") ? command : `${command}.cmd`;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  if (value !== "" && !WINDOWS_CMD_NEEDS_QUOTING_PATTERN.test(value)) {
+    return value;
   }
+  return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
+}
+
+export function buildSpawnStreamingInvocation(
+  command: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  comSpec = process.env.ComSpec ?? "cmd.exe",
+): { command: string; args: string[] } {
+  if (platform !== "win32") {
+    return { command, args };
+  }
+
+  const resolvedCommand = resolveWindowsExecutableName(command);
+  if (WINDOWS_BATCH_COMMAND_PATTERN.test(resolvedCommand)) {
+    return {
+      command: comSpec,
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        [resolvedCommand, ...args].map(quoteWindowsCmdArg).join(" "),
+      ],
+    };
+  }
+
+  return { command: resolvedCommand, args };
 }
 
 export interface SpawnStreamingResult {
@@ -61,12 +84,10 @@ export interface SpawnStreamingResult {
  * The `onProcess` hook hands the spawned child to the caller so it can be
  * tracked (e.g. for an external Stop button) in addition to the signal.
  *
- * SECURITY (Windows): on Windows this spawns with `shell: true` so `.cmd`
- * shims like `npm`/`npx` resolve. Node passes the args array through the shim
- * but certain metacharacters can still be interpreted by `cmd.exe`. Callers
- * MUST NOT pass unvalidated/user-controlled strings in `command` or `args`;
- * validate or sanitize them first (existing callers pass only fixed commands
- * and validated paths).
+ * SECURITY (Windows): `.cmd` shims like `npm`/`npx` are launched through an
+ * explicit `cmd.exe /d /s /c` invocation with each arg quoted as needed. This
+ * preserves valid arguments such as Playwright grep regexes containing `()` or
+ * `|` without handing an unquoted command string to the shell.
  */
 export async function spawnStreaming({
   command,
@@ -108,8 +129,10 @@ export async function spawnStreaming({
       return;
     }
 
-    logger.info(`Running (streaming): ${command} ${args.join(" ")}`);
-    assertWindowsShellSafe(command, args);
+    const invocation = buildSpawnStreamingInvocation(command, args);
+    logger.info(
+      `Running (streaming): ${invocation.command} ${invocation.args.join(" ")}`,
+    );
 
     // Pass a copy of the environment rather than the live global object to
     // avoid concurrent mutation side effects.
@@ -120,17 +143,17 @@ export async function spawnStreaming({
       spawnEnv = { ...process.env };
     }
 
-    // Never run through a shell on Unix: a shell would parse metacharacters in
-    // arguments (e.g. a test path containing `$(...)` or backticks), enabling
-    // command injection. Windows needs a shell to resolve `.cmd` shims like
-    // `npm`/`npx`, and passes args via the safe array form.
+    // Never ask Node to spawn through a shell: a shell would parse
+    // metacharacters in arguments (e.g. a test path containing `$(...)` or
+    // backticks), enabling command injection. Windows `.cmd` shims are handled
+    // by buildSpawnStreamingInvocation above.
     // stdin is 'ignore', not 'pipe': an open, never-written stdin pipe lets a
     // child (notably `npm install`) block forever if it ever tries to prompt —
     // e.g. a registry auth prompt or an ERESOLVE confirmation. Giving it EOF
     // makes those reads fail fast instead of hanging the whole flow.
-    const child = spawn(command, args, {
+    const child = spawn(invocation.command, invocation.args, {
       cwd,
-      shell: process.platform === "win32",
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       env: spawnEnv,
     });

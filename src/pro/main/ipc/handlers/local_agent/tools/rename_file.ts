@@ -38,6 +38,10 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       return `<dyad-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></dyad-rename>`;
     },
 
+    shouldTrackMutation: (_args, result) =>
+      result.startsWith("Successfully renamed") ||
+      result.startsWith("File renamed,"),
+
     execute: async (args, ctx: AgentContext) => {
       const fromOperationPath = await assertMutationPathAllowed({
         appPath: ctx.appPath,
@@ -51,26 +55,29 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       });
       const fromFullPath = safeJoin(ctx.appPath, fromOperationPath);
       const toFullPath = safeJoin(ctx.appPath, toOperationPath);
+      const didRename =
+        path.normalize(fromFullPath) !== path.normalize(toFullPath) &&
+        fs.existsSync(fromFullPath);
 
-      // Track if this involves shared modules
-      if (
-        isSharedServerModule(fromOperationPath) ||
-        isSharedServerModule(toOperationPath)
-      ) {
-        ctx.isSharedModulesChanged = true;
-        if (isSharedServerModule(fromOperationPath)) {
-          ctx.sharedServerModulePaths.push(fromOperationPath);
+      if (didRename) {
+        // Track if this involves shared modules
+        if (
+          isSharedServerModule(fromOperationPath) ||
+          isSharedServerModule(toOperationPath)
+        ) {
+          ctx.isSharedModulesChanged = true;
+          if (isSharedServerModule(fromOperationPath)) {
+            ctx.sharedServerModulePaths.push(fromOperationPath);
+          }
+          if (isSharedServerModule(toOperationPath)) {
+            ctx.sharedServerModulePaths.push(toOperationPath);
+          }
         }
-        if (isSharedServerModule(toOperationPath)) {
-          ctx.sharedServerModulePaths.push(toOperationPath);
-        }
-      }
 
-      // Ensure target directory exists
-      const dirPath = path.dirname(toFullPath);
-      fs.mkdirSync(dirPath, { recursive: true });
+        // Ensure target directory exists
+        const dirPath = path.dirname(toFullPath);
+        fs.mkdirSync(dirPath, { recursive: true });
 
-      if (fs.existsSync(fromFullPath)) {
         fs.renameSync(fromFullPath, toFullPath);
         logger.log(
           `Successfully renamed file: ${fromFullPath} -> ${toFullPath}`,
@@ -132,12 +139,16 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         logger.warn(`Source file for rename does not exist: ${fromFullPath}`);
       }
 
-      queueCloudSandboxSnapshotSync({
-        appId: ctx.appId,
-        changedPaths: [toOperationPath],
-        deletedPaths: [fromOperationPath],
-      });
+      if (didRename) {
+        queueCloudSandboxSnapshotSync({
+          appId: ctx.appId,
+          changedPaths: [toOperationPath],
+          deletedPaths: [fromOperationPath],
+        });
+      }
 
-      return `Successfully renamed ${args.from} to ${args.to}`;
+      return didRename
+        ? `Successfully renamed ${args.from} to ${args.to}`
+        : `Source file ${args.from} did not exist or already matched ${args.to}, so nothing was renamed.`;
     },
   };

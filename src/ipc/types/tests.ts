@@ -231,6 +231,8 @@ export const TestsRunStatePayloadSchema = z.object({
   testFile: z.string().optional(),
   /** With testFile: only the test at this 1-based line was run. */
   testLine: z.number().optional(),
+  /** With testFile: regex passed to Playwright's --grep for a partial run. */
+  grep: z.string().optional(),
   /** Present only on "finished". */
   results: z.array(TestResultSchema).optional(),
   infraError: z.object({ message: z.string() }).optional(),

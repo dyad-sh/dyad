@@ -6,7 +6,7 @@ import {
   buildSingleTestFileResult,
   reconcileResultFile,
   testKey,
-} from "@/components/preview_panel/testResultUtils";
+} from "@/lib/testResultUtils";
 
 /**
  * Result-state taxonomy for a single test (see plan's "Result-State Model").
@@ -178,9 +178,17 @@ export const applyTestRunStartedAtom = atom(
       appId,
       testFile,
       testLine,
-    }: { appId: number; testFile?: string; testLine?: number },
+      grep,
+      startedAt,
+    }: {
+      appId: number;
+      testFile?: string;
+      testLine?: number;
+      grep?: string;
+      startedAt?: number;
+    },
   ) => {
-    const isSingleTest = testFile != null && testLine != null;
+    const isPartialRun = testFile != null && (testLine != null || !!grep);
     const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
     const targetFiles = testFile ? [testFile] : specs.map((s) => s.file);
     set(clearTestRunOutputForAppAtom, appId);
@@ -190,11 +198,15 @@ export const applyTestRunStartedAtom = atom(
         ...prev,
         phase: "running",
         runningFiles: targetFiles,
-        runningTests: isSingleTest ? [testKey(testFile, testLine)] : [],
+        runningTests:
+          testFile != null && testLine != null
+            ? [testKey(testFile, testLine)]
+            : [],
         // For a single-test run, keep the file's existing results (siblings
-        // keep their status; we merge the one test back in afterward). For a
-        // file/all run, clear the targeted files.
-        results: isSingleTest
+        // keep their status; we merge the one test back in afterward). Grep
+        // runs are also partial because they return only the matched tests.
+        // For a file/all run, clear the targeted files.
+        results: isPartialRun
           ? prev.results
           : Object.fromEntries(
               Object.entries(prev.results).filter(
@@ -203,7 +215,7 @@ export const applyTestRunStartedAtom = atom(
             ),
         runError: undefined,
         isolation: undefined,
-        startedAt: Date.now(),
+        startedAt: startedAt ?? Date.now(),
       }),
     });
   },
@@ -221,8 +233,14 @@ export const applyTestRunFinishedAtom = atom(
     {
       appId,
       res,
-      isSingleTest,
-    }: { appId: number; res: RunAppTestsResult; isSingleTest: boolean },
+      isPartialRun,
+      expectedStartedAt,
+    }: {
+      appId: number;
+      res: RunAppTestsResult;
+      isPartialRun: boolean;
+      expectedStartedAt?: number;
+    },
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
     // may not match the glob-relative paths in our spec list (e.g. missing
@@ -234,11 +252,17 @@ export const applyTestRunFinishedAtom = atom(
     set(setTestRunStateForAppAtom, {
       appId,
       update: (prev) => {
+        if (
+          expectedStartedAt !== undefined &&
+          prev.startedAt !== expectedStartedAt
+        ) {
+          return prev;
+        }
         const nextResults = { ...prev.results };
         for (const r of res.results) {
           const key = reconcileResultFile(r.file, specFiles);
           const mapped = { ...r, file: key };
-          if (isSingleTest) {
+          if (isPartialRun) {
             nextResults[key] = buildSingleTestFileResult({
               file: key,
               knownTests: specsByFile.get(key)?.tests ?? [],

@@ -19,6 +19,7 @@ import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
 import {
   MAX_ATTEMPTS,
+  MAX_RUNS_PER_TURN,
   MAX_ERROR_CHARS,
   RUN_TIMEOUT_MS,
   Classification,
@@ -45,7 +46,7 @@ const runTestsSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      "Regex matched against test() titles to run just a subset, e.g. 'check out' or 'user can (sign up|log in)' — same as Playwright's --grep. Omit by default to run the whole file; only pass it to iterate on one slow/failing test (or a few related ones). Read the spec first so the pattern matches real titles; if it matches nothing, the tool runs nothing and lists the titles that exist.",
+      "Regex passed to Playwright's --grep to run just a subset, e.g. 'check out' or 'user can (sign up|log in)'. Playwright matches against the full hierarchical title (describe blocks plus test title). Omit by default to run the whole file; only pass it to iterate on one slow/failing test or a few related ones.",
     ),
   flakeCheck: z
     .boolean()
@@ -87,21 +88,57 @@ async function resolveSpecPath(
   return { error: body };
 }
 
+function caseTargetKey(
+  testFile: string,
+  test: { title: string; line?: number },
+) {
+  return test.line != null
+    ? `${testFile}:${test.line}`
+    : `${testFile}::${test.title}`;
+}
+
+function targetKeyFromKnownCases(
+  testFile: string,
+  grep: string,
+  cases: { title: string; line?: number }[],
+): string | null {
+  let regex: RegExp;
+  try {
+    regex = new RegExp(grep);
+  } catch {
+    return null;
+  }
+  const matchingKeys = cases
+    .filter((c) => regex.test(c.title))
+    .map((c) => caseTargetKey(testFile, c))
+    .sort();
+  return matchingKeys.length > 0 ? matchingKeys.join("\n") : null;
+}
+
+function targetKeyFromRunResult(
+  testFile: string,
+  res: RunAppTestsResult,
+): string | null {
+  const matchingKeys = res.results
+    .flatMap((r) => r.tests ?? [])
+    .map((t) => caseTargetKey(testFile, t))
+    .sort();
+  return matchingKeys.length > 0 ? matchingKeys.join("\n") : null;
+}
+
 /**
- * Validate the `grep` regex and confirm it matches at least one `test()` title
- * in the spec before running — a typo'd pattern is answered with the titles
- * that exist instead of an opaque "No tests found" from Playwright. A pattern
- * that matches several titles is fine (narrowing to a subset is the point of
- * grep); only an invalid regex or a zero-match pattern is refused.
+ * Validate the `grep` regex. We deliberately do NOT reject zero static matches:
+ * Playwright applies --grep to the full hierarchical title (describe blocks
+ * plus test title), while our lightweight parser only knows leaf test() names.
  */
 async function validateGrep(
   ctx: AgentContext,
   testFile: string,
   grep: string,
-): Promise<{ ok: true } | { error: string }> {
-  let regex: RegExp;
+): Promise<{ ok: true; targetKey: string | null } | { error: string }> {
+  let _regex: RegExp;
   try {
-    regex = new RegExp(grep);
+    _regex = new RegExp(grep);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const body = `\`${grep}\` isn't a valid regular expression (${message}), so I did NOT start a run — this did NOT count as a fix attempt.\n\nPass a valid regex for \`grep\` (it's matched against test titles, like Playwright's --grep), or omit it to run the whole file.`;
@@ -110,19 +147,10 @@ async function validateGrep(
   }
 
   const cases = await readSpecTestCases(ctx.appPath, testFile);
-  // A file we couldn't statically parse yields no cases but is still runnable —
-  // don't block a grep run just because the parser found no titles. If titles
-  // exist, at least one must match, matching Playwright's own grep semantics.
-  if (cases.length === 0 || cases.some((c) => regex.test(c.title))) {
-    return { ok: true };
-  }
-
-  const titleList = `Tests that exist in \`${testFile}\`:\n${cases
-    .map((c) => `- "${c.title}"`)
-    .join("\n")}`;
-  const body = `No test in \`${testFile}\` has a title matching \`${grep}\`, so I did NOT start a run — this did NOT count as a fix attempt.\n\n${titleList}\n\nCall run_tests again with a \`grep\` pattern that matches one of the titles above, or omit \`grep\` to run the whole file.`;
-  completeWarning(ctx, `No test matches /${grep}/`, body);
-  return { error: body };
+  return {
+    ok: true,
+    targetKey: targetKeyFromKnownCases(testFile, grep, cases),
+  };
 }
 
 /** Refuse without running once the per-spec fix-attempt cap is hit. */
@@ -137,6 +165,14 @@ function guardAttemptLimit(
   return body;
 }
 
+/** Refuse before starting more actual Playwright runs than one turn should own. */
+function guardTurnRunLimit(ctx: AgentContext): string | null {
+  if ((ctx.testRunCount ?? 0) < MAX_RUNS_PER_TURN) return null;
+  const body = `Turn-level test run limit reached: you have already started ${MAX_RUNS_PER_TURN} Playwright runs this turn. Stop now and summarize what passed, what still fails, and what you recommend next.`;
+  completeWarning(ctx, "Test run limit reached", body);
+  return body;
+}
+
 /** Tests need the dev server; being down does not count as an attempt. */
 function guardDevServerRunning(ctx: AgentContext): string | null {
   if (getRunningTestBaseUrl(ctx.appId)) return null;
@@ -146,7 +182,7 @@ function guardDevServerRunning(ctx: AgentContext): string | null {
   return body;
 }
 
-/** Key for `passedAtEditCount`: the run's grep pattern, or "" = whole file. */
+/** Key for `passedAtEditCount`: canonical selected tests, or "" = whole file. */
 const WHOLE_FILE = "";
 
 /**
@@ -163,6 +199,7 @@ function guardAlreadyPassed(
   args: RunTestsArgs,
   state: TestRunAttemptState,
   currentEditCount: number,
+  runTargetKey: string,
 ): string | null {
   // flakeCheck bypasses this guard only while the spec's one free flake rerun
   // is unspent. Once used, a green spec can't be rerun by re-sending the flag —
@@ -172,7 +209,7 @@ function guardAlreadyPassed(
   if (flakeRerunAvailable || !state.passedAtEditCount) return null;
   const passed = state.passedAtEditCount;
   const wholeFilePassed = passed[WHOLE_FILE] === currentEditCount;
-  const targetPassed = passed[args.grep ?? WHOLE_FILE] === currentEditCount;
+  const targetPassed = passed[runTargetKey] === currentEditCount;
   if (!wholeFilePassed && !targetPassed) return null;
 
   const what = wholeFilePassed
@@ -198,13 +235,14 @@ function guardChangedSinceLastRun(
   args: RunTestsArgs,
   state: TestRunAttemptState,
   currentEditCount: number,
+  runTargetKey: string,
 ): string | null {
   if (
     (args.flakeCheck && !state.flakeCheckUsed) ||
     state.attempts === 0 ||
     state.fileEditCountAtLastRun === undefined ||
     currentEditCount !== state.fileEditCountAtLastRun ||
-    args.grep !== state.lastRunGrep
+    runTargetKey !== state.lastRunTargetKey
   ) {
     return null;
   }
@@ -286,9 +324,19 @@ function reportPassed(params: {
   outcome: Classification;
   res: RunAppTestsResult;
   currentEditCount: number;
+  runTargetKey: string;
   grep?: string;
 }): string {
-  const { ctx, testFile, state, outcome, res, currentEditCount, grep } = params;
+  const {
+    ctx,
+    testFile,
+    state,
+    outcome,
+    res,
+    currentEditCount,
+    runTargetKey,
+    grep,
+  } = params;
   // Only a WHOLE-FILE pass grants a fresh fix budget — everything in the spec
   // is green, so prior attempts are moot. A grep-narrowed pass proves only that
   // subset and must NOT reset the counter: otherwise alternating a known-green
@@ -300,10 +348,13 @@ function reportPassed(params: {
     delete state.lastFailureSignature;
   }
   delete state.fileEditCountAtLastRun;
-  delete state.lastRunGrep;
+  delete state.lastRunTargetKey;
+  const passedTargetKey = grep
+    ? (targetKeyFromRunResult(testFile, res) ?? runTargetKey)
+    : WHOLE_FILE;
   state.passedAtEditCount = {
     ...state.passedAtEditCount,
-    [grep ?? WHOLE_FILE]: currentEditCount,
+    [passedTargetKey]: currentEditCount,
   };
   const skippedNote =
     outcome.skipped > 0 ? `, ${outcome.skipped} deliberately skipped` : "";
@@ -365,6 +416,7 @@ async function reportFailure(params: {
   outcome: Classification;
   isFreeFlakeRun: boolean;
   currentEditCount: number;
+  runTargetKey: string;
 }): Promise<string> {
   const { ctx, key, testFile, grep, state, res, outcome, isFreeFlakeRun } =
     params;
@@ -378,7 +430,7 @@ async function reportFailure(params: {
   }
   state.lastFailureSignature = signature;
   state.fileEditCountAtLastRun = params.currentEditCount;
-  state.lastRunGrep = grep;
+  state.lastRunTargetKey = params.runTargetKey;
   const remaining = Math.max(0, MAX_ATTEMPTS - state.attempts);
 
   const artifactLines = await attachFailureArtifacts(ctx, res.results);
@@ -429,7 +481,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 - Pass \`testFile\` (e.g. "tests/checkout.spec.ts") to run one spec — it's required, so always target the single spec you're working on. Use the exact path of a spec that exists under tests/ (the one you just wrote/edited) — don't guess. If the path doesn't match a real spec, the tool won't run anything and will reply with the list of specs that DO exist, so you can retry with a correct path.
 - Unless you just wrote or edited the spec this turn, READ it with read_file before running it — you need its current content to know the test() titles (for grep) and to interpret failures against what the test actually does.
 - By default the whole file runs, so a pass means every test in the spec passes.
-- Run the whole file by default. Only add \`grep\` (a regex matched against test() titles, same as Playwright's --grep) when you have a specific reason to narrow the run — e.g. one test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
+- Run the whole file by default. Only add \`grep\` (a regex passed to Playwright's --grep, matched against full hierarchical test titles) when you have a specific reason to narrow the run — e.g. one test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no runnable test, the tool reports that nothing executed.
 - Requires the app's dev server to be running (the user starts it with the Run button in the preview panel).
 - On failure you get the error text plus the paths of Playwright's artifacts (error-context.md page snapshot, screenshot) — read error-context.md with read_file to see the page state, then fix and rerun.
 - You get ${MAX_ATTEMPTS} fix attempts per spec per turn. When the limit is reached, stop and summarize the situation for the user.
@@ -461,22 +513,31 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
     // Mutation count, not just file edits: a fix made via delete_file,
     // add_dependency, execute_sql, etc. must also unblock the guards below.
     const currentEditCount = ctx.mutationCount ?? 0;
-    const blocked =
-      guardAttemptLimit(ctx, key, state) ??
-      guardDevServerRunning(ctx) ??
-      guardAlreadyPassed(ctx, args, state, currentEditCount) ??
-      guardChangedSinceLastRun(ctx, args, state, currentEditCount);
-    if (blocked) return blocked;
-
+    let runTargetKey = WHOLE_FILE;
     if (args.grep) {
       const validated = await validateGrep(ctx, testFile, args.grep);
       if ("error" in validated) return validated.error;
+      runTargetKey = validated.targetKey ?? `grep:${args.grep}`;
     }
+    const blocked =
+      guardAttemptLimit(ctx, key, state) ??
+      guardTurnRunLimit(ctx) ??
+      guardDevServerRunning(ctx) ??
+      guardAlreadyPassed(ctx, args, state, currentEditCount, runTargetKey) ??
+      guardChangedSinceLastRun(
+        ctx,
+        args,
+        state,
+        currentEditCount,
+        runTargetKey,
+      );
+    if (blocked) return blocked;
 
     const isFreeFlakeRun = consumeFreeFlakeCheck(args, state);
 
     let res: RunAppTestsResult;
     try {
+      ctx.testRunCount = (ctx.testRunCount ?? 0) + 1;
       res = await runSpec(ctx, testFile, args.grep);
     } catch (error) {
       // An unexpected throw (isolation setup, database access, teardown) must
@@ -517,6 +578,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
           outcome,
           res,
           currentEditCount,
+          runTargetKey,
           grep: args.grep,
         });
       case "failed":
@@ -530,6 +592,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
           outcome,
           isFreeFlakeRun,
           currentEditCount,
+          runTargetKey,
         });
     }
   },

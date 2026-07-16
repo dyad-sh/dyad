@@ -114,7 +114,7 @@ describe("executeSqlTool", () => {
   });
 
   it("skips Supabase migration files for non-schema SQL", async () => {
-    await executeSqlTool.execute(
+    const result = await executeSqlTool.execute(
       {
         query: "SELECT * FROM users;",
         description: "lookup users",
@@ -132,5 +132,13 @@ describe("executeSqlTool", () => {
       organizationSlug: null,
     });
     expect(mocks.writeMigrationFileMock).not.toHaveBeenCalled();
+    expect(result).toBe("Successfully executed SQL query.\n\nSQL result:\n[]");
+    expect(
+      executeSqlTool.shouldTrackMutation?.(
+        { query: "SELECT * FROM users;" },
+        result,
+        {} as any,
+      ),
+    ).toBe(false);
   });
 });

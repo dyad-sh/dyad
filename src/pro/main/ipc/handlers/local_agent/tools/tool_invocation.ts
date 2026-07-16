@@ -54,7 +54,14 @@ export function trackFileEditTool(
  * edits and other app-mutating tools both feed this signal so `run_tests` only
  * accepts a rerun after a mutation actually completed.
  */
-export function trackAppMutation(ctx: AgentContext, toolName: string): void {
+export function trackAppMutation(
+  ctx: AgentContext,
+  toolName: string,
+  didMutate = true,
+): void {
+  if (!didMutate) {
+    return;
+  }
   if (
     !FILE_EDIT_TOOLS.has(toolName as FileEditToolName) &&
     !APP_MUTATING_TOOLS.has(toolName)

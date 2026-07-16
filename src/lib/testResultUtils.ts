@@ -1,5 +1,10 @@
-import type { RuntimeTestResult, TestStatus } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult, TestResult } from "@/ipc/types";
+
+type RuntimeTestResult = Omit<TestResult, "status"> & {
+  status: TestResult["status"] | "partial";
+};
+
+type TestStatus = RuntimeTestResult["status"] | "running" | "not-run";
 
 /**
  * Maps a Playwright-reported spec path onto a key from our spec list. The
@@ -55,9 +60,8 @@ export function findCaseResult(
 }
 
 /**
- * Merge per-test results from a single-test run back into a file's existing
- * results, replacing the matched test and keeping the rest. Used so running one
- * test doesn't wipe the statuses of its siblings.
+ * Merge per-test results from a single-test or grep-targeted run back into a
+ * file's existing results, replacing matched tests and keeping the rest.
  */
 export function mergeCaseResults(
   existing: TestCaseResult[] | undefined,

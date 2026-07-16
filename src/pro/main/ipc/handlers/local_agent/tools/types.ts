@@ -203,6 +203,11 @@ export interface AgentContext {
    * resets each turn.
    */
   testRunAttempts: Map<string, TestRunAttemptState>;
+  /**
+   * Actual Playwright runs started by `run_tests` during this turn, across all
+   * specs. Preflight/dev-server refusals do not increment this.
+   */
+  testRunCount?: number;
 }
 
 /** Per-spec fix-loop state for the `run_tests` tool, tracked across one turn. */
@@ -214,18 +219,18 @@ export interface TestRunAttemptState {
   /** `AgentContext.mutationCount` at the last run, for the require-a-change guard. */
   fileEditCountAtLastRun?: number;
   /**
-   * The `grep` pattern of the last run (undefined = whole file). Changing what's
+   * Canonical key for the tests targeted by the last run. Changing what's
    * targeted is itself a meaningful change, so the require-a-change guard
    * doesn't block e.g. widening from a subset to the whole file after a fix.
    */
-  lastRunGrep?: string;
+  lastRunTargetKey?: string;
   /** Whether the one free `flakeCheck` rerun has been used for this spec. */
   flakeCheckUsed?: boolean;
   /**
    * `AgentContext.mutationCount` at the time each target last PASSED, keyed by
-   * grep pattern ("" = whole file). Rerunning a target that already passed with
-   * no file changes since is refused — some models otherwise loop re-running
-   * already-green tests.
+   * canonical target ("" = whole file). Rerunning a target that already passed
+   * with no file changes since is refused — some models otherwise loop
+   * re-running already-green tests.
    */
   passedAtEditCount?: Record<string, number>;
 }
@@ -266,9 +271,7 @@ export type UserMessageContentPart =
   | { type: "text"; text: string }
   | { type: "image-url"; url: string };
 
-/**
- * Tool result can be a simple string or a structured result with content parts
- */
+/** Tool result text returned to the model. */
 export type ToolResult = string;
 
 // ============================================================================
@@ -314,6 +317,16 @@ export interface ToolDefinition<T = any> {
    * renderer-safe; it is sent over IPC.
    */
   getConsentMetadata?: (args: T) => SqlConsentMetadata | null | undefined;
+
+  /**
+   * For state-modifying tools, returns whether a successful execution actually
+   * changed app state. Defaults to true for backwards compatibility.
+   */
+  shouldTrackMutation?: (
+    args: T,
+    result: ToolResult,
+    ctx: AgentContext,
+  ) => boolean;
 
   /**
    * Build XML from parsed partial args.

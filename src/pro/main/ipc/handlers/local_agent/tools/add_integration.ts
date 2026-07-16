@@ -29,6 +29,9 @@ export const addIntegrationTool: ToolDefinition<
 
   getConsentPreview: () => "Add database integration",
 
+  shouldTrackMutation: (_args, result) =>
+    !result.startsWith("The user dismissed the integration setup"),
+
   buildXml: (args, _isComplete) => {
     if (args.provider && args.provider !== "none") {
       return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;

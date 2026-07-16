@@ -70,18 +70,35 @@ export async function readTestScreenshotDataUrl(
   if (firstSegment !== "test-results") {
     return null;
   }
+  let handle: fs.promises.FileHandle | undefined;
   try {
-    const { size } = await fs.promises.stat(realPath);
+    const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+    handle = await fs.promises.open(realPath, fs.constants.O_RDONLY | noFollow);
+    const stats = await handle.stat();
+    if (!stats.isFile()) {
+      return null;
+    }
+    const { size } = stats;
     if (size > MAX_SCREENSHOT_BYTES) {
       logger.warn(
         `Screenshot ${realPath} is ${size} bytes (limit ${MAX_SCREENSHOT_BYTES}); skipping`,
       );
       return null;
     }
-    const base64 = await fs.promises.readFile(realPath, { encoding: "base64" });
-    return `data:image/png;base64,${base64}`;
+    const buf = await handle.readFile();
+    if (buf.length > MAX_SCREENSHOT_BYTES) {
+      logger.warn(
+        `Screenshot ${realPath} is ${buf.length} bytes after read (limit ${MAX_SCREENSHOT_BYTES}); skipping`,
+      );
+      return null;
+    }
+    return `data:image/png;base64,${buf.toString("base64")}`;
   } catch (error) {
     logger.warn(`Failed to read screenshot ${realPath}: ${error}`);
     return null;
+  } finally {
+    await handle?.close().catch((error) => {
+      logger.warn(`Failed to close screenshot ${realPath}: ${error}`);
+    });
   }
 }

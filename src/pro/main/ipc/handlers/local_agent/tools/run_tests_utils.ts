@@ -8,6 +8,8 @@ export { isFailingStatus };
 
 /** Fix attempts allowed per spec per turn before the tool refuses to rerun. */
 export const MAX_ATTEMPTS = 4;
+/** Actual Playwright runs allowed in one agent turn across all specs. */
+export const MAX_RUNS_PER_TURN = 10;
 /** Hard wall-clock cap so one run can't stall the whole agent turn. */
 export const RUN_TIMEOUT_MS = 10 * 60_000;
 /** Cap on the error text echoed back to the model (matches askAiToFix). */

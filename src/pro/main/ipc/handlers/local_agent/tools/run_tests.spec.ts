@@ -254,6 +254,25 @@ describe("runTestsTool", () => {
     expect(runner).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses differently-spelled grep patterns that target the same passed test", async () => {
+    caseLister.mockResolvedValue([{ title: "does a thing", line: 3 }]);
+    runner.mockResolvedValue(passedResult);
+    const ctx = makeCtx();
+    await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", grep: "does.*thing" },
+      ctx,
+    );
+    runner.mockClear();
+
+    const rerun = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
+      ctx,
+    );
+
+    expect(runner).not.toHaveBeenCalled();
+    expect(rerun).toContain("/does a thing/ already passed");
+  });
+
   it("allows rerunning a passed target after a file edit or with flakeCheck", async () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
@@ -396,6 +415,17 @@ describe("runTestsTool", () => {
     expect(out).toContain("Attempt limit reached");
   });
 
+  it("refuses without running once the turn-level run cap is reached", async () => {
+    const ctx = makeCtx();
+    ctx.testRunCount = 10;
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts" },
+      ctx,
+    );
+    expect(runner).not.toHaveBeenCalled();
+    expect(out).toContain("Turn-level test run limit reached");
+  });
+
   it("treats a whole-run infra error (no report) as uncounted", async () => {
     runner.mockResolvedValue(infraResult);
     const ctx = makeCtx();
@@ -518,24 +548,22 @@ describe("runTestsTool", () => {
     expect(out).toContain("matching /user can/ passed");
   });
 
-  it("pre-flights a grep matching no title: doesn't run, returns the real titles", async () => {
+  it("lets Playwright handle grep patterns that don't match parsed leaf titles", async () => {
     caseLister.mockResolvedValue([
       { title: "does a thing", line: 3 },
       { title: "user can sign up", line: 12 },
     ]);
+    runner.mockResolvedValue({ appId: 1, results: [] });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
       { testFile: "tests/a.spec.ts", grep: "user signs up" },
       ctx,
     );
-    expect(runner).not.toHaveBeenCalled();
-    expect(out).toContain(
-      "No test in `tests/a.spec.ts` has a title matching `user signs up`",
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ grep: "user signs up" }),
     );
-    expect(out).toContain('"does a thing"');
-    expect(out).toContain('"user can sign up"');
+    expect(out).toContain("executed nothing");
     expect(out).toContain("did NOT count");
-    expect(emittedXml(ctx)).toContain("No test matches /user signs up/");
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts ?? 0).toBe(0);
   });
 

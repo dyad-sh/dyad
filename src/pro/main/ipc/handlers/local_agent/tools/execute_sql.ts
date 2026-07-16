@@ -15,6 +15,31 @@ import {
   doesSqlMutateSchema,
 } from "@/lib/sqlSchemaMutation";
 
+function stripSqlComments(sql: string): string {
+  return sql
+    .replace(/--.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim();
+}
+
+function doesSqlLikelyMutateState(sql: string): boolean {
+  if (doesSqlMutateSchema(sql) || doesSqlDeleteData(sql)) {
+    return true;
+  }
+  const firstStatement = stripSqlComments(sql).split(";")[0]?.trim() ?? "";
+  if (/^with\b/i.test(firstStatement)) {
+    return /\b(insert|update|delete|merge)\b/i.test(firstStatement);
+  }
+  const explained = firstStatement.match(/^explain(?:\s+analyze)?\s+(.+)$/i);
+  if (explained) {
+    return doesSqlLikelyMutateState(explained[1]);
+  }
+  // Treat clearly read-only statements as no-ops for run_tests gating. Unknown
+  // SQL is counted conservatively because function calls and procedural blocks
+  // can mutate data even when static analysis cannot prove it.
+  return !/^(?:select|show|describe|desc)\b/i.test(firstStatement);
+}
+
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
   description: z.string().optional().describe("Brief description of the query"),
@@ -38,6 +63,8 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       sqlMutatesSchema: doesSqlMutateSchema(args.query),
       sqlDeletesData: doesSqlDeleteData(args.query),
     }),
+
+    shouldTrackMutation: (args) => doesSqlLikelyMutateState(args.query),
 
     buildXml: (args, isComplete) => {
       if (args.query == undefined) return undefined;

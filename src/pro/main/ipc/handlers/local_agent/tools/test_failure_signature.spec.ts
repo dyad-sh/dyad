@@ -8,12 +8,21 @@ import {
 describe("stripDynamic", () => {
   it("removes durations, ports, hex ids, and timestamps", () => {
     const a = stripDynamic(
-      "timeout of 5000ms at http://localhost:52344 run 9f8a1c2b3d4e at 2026-07-09T12:00:00Z",
+      "timeout of 5000ms at http://localhost:52344/home run 9f8a1c2b3d4e at 2026-07-09T12:00:00Z",
     );
     const b = stripDynamic(
-      "timeout of 3000ms at http://localhost:41022 run 0011aabbccdd at 2026-07-10T09:30:15Z",
+      "timeout of 3000ms at http://localhost:41022/home run 0011aabbccdd at 2026-07-10T09:30:15Z",
     );
     expect(a).toBe(b);
+  });
+
+  it("preserves source locations while normalizing URL ports", () => {
+    expect(stripDynamic("at tests/a.spec.ts:123:45")).toContain(
+      "tests/a.spec.ts:123:45",
+    );
+    expect(stripDynamic("page http://127.0.0.1:5173")).toContain(
+      "http://127.0.0.1:<port>",
+    );
   });
 
   it("strips ANSI color codes", () => {
@@ -37,10 +46,16 @@ describe("normalizeFailureSignature", () => {
 
   it("is stable across runs that differ only in dynamic values", () => {
     const run1 = [
-      failing("logs in", "expected visible, waited 5000ms on :3000"),
+      failing(
+        "logs in",
+        "expected visible, waited 5000ms on http://localhost:3000",
+      ),
     ];
     const run2 = [
-      failing("logs in", "expected visible, waited 8000ms on :4100"),
+      failing(
+        "logs in",
+        "expected visible, waited 8000ms on http://localhost:4100",
+      ),
     ];
     expect(normalizeFailureSignature(run1)).toBe(
       normalizeFailureSignature(run2),
@@ -86,5 +101,18 @@ describe("normalizeFailureSignature", () => {
     };
     expect(normalizeFailureSignature([result])).toContain("fails");
     expect(normalizeFailureSignature([result])).not.toContain("passes");
+  });
+
+  it("ignores skipped/errorless inconclusive tests", () => {
+    const result: TestResult = {
+      file: "tests/a.spec.ts",
+      status: "inconclusive",
+      tests: [
+        { title: "skipped", status: "inconclusive" },
+        { title: "breaks", status: "failed", error: "boom" },
+      ],
+    };
+    expect(normalizeFailureSignature([result])).toContain("breaks");
+    expect(normalizeFailureSignature([result])).not.toContain("skipped");
   });
 });

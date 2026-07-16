@@ -23,7 +23,6 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
 import {
-  appendTestRunOutputAtom,
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
   currentTestRunOutputAtom,
@@ -46,14 +45,7 @@ import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showInfo } from "@/lib/toast";
-import { findCaseResult, statusLabel, testKey } from "./testResultUtils";
-
-/**
- * How long streamed output chunks are buffered before one batched atom write.
- * The chattiest window (npm install / browser download progress) can emit many
- * chunks per frame; flushing on a cadence keeps that to ~10 renders/second.
- */
-const OUTPUT_FLUSH_INTERVAL_MS = 100;
+import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
 
 function StatusIcon({ status }: { status: TestStatus }) {
   switch (status) {
@@ -483,7 +475,6 @@ export function TestsPanel() {
   const appUrl = useAtomValue(currentAppUrlAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
-  const appendOutput = useSetAtom(appendTestRunOutputAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
   // long after the chunks arrive; subscribing would re-render the whole panel
   // on every flush and defeat the point of the separate output atom).
@@ -517,6 +508,13 @@ export function TestsPanel() {
       }
     | null
   >(null);
+  const lastAgentModeActionRef = useRef<"generate" | "fix">("generate");
+
+  useEffect(() => {
+    if (agentModeDialog) {
+      lastAgentModeActionRef.current = agentModeDialog.action;
+    }
+  }, [agentModeDialog]);
 
   // Per-app opt-in gate. Running tests can mutate the app's real data, so every
   // run/generate control stays hidden behind the opt-in screen until the user
@@ -579,80 +577,32 @@ export function TestsPanel() {
     specs.length > 0 &&
     !!app?.neonProjectId &&
     (settings?.runtimeMode2 ?? "host") === "host";
-  const pendingOutputRef = useRef(new Map<number, string>());
-  const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const flushPendingOutput = useCallback(
-    (appId?: number) => {
-      const pending = pendingOutputRef.current;
-      const entries =
-        appId === undefined
-          ? Array.from(pending.entries())
-          : pending.has(appId)
-            ? [[appId, pending.get(appId)!] as const]
-            : [];
-      for (const [pendingAppId, chunk] of entries) {
-        appendOutput({ appId: pendingAppId, chunk });
-        pending.delete(pendingAppId);
-      }
-      if (pending.size === 0 && outputFlushTimerRef.current) {
-        clearTimeout(outputFlushTimerRef.current);
-        outputFlushTimerRef.current = null;
-      }
-    },
-    [appendOutput],
-  );
-
-  // Subscribe to streamed run output. Chunks are buffered and flushed as one
-  // batched atom write per interval — an atom write per chunk would re-render
-  // every subscriber per chunk during the chattiest window.
-  useEffect(() => {
-    // All test activity lives behind the opt-in gate; don't register the IPC
-    // listener (or accumulate output) for apps that haven't enabled testing.
-    if (!testingEnabled) return;
-    const unsubscribe = ipc.events.tests.onOutput((payload) => {
-      const pending = pendingOutputRef.current;
-      pending.set(
-        payload.appId,
-        (pending.get(payload.appId) ?? "") + payload.chunk,
-      );
-      outputFlushTimerRef.current ??= setTimeout(() => {
-        outputFlushTimerRef.current = null;
-        flushPendingOutput();
-      }, OUTPUT_FLUSH_INTERVAL_MS);
-      // Phase transitions are rare (setup → running); returning the previous
-      // state on no-change makes this write a no-op for subscribers.
-      setRunState({
-        appId: payload.appId,
-        update: (prev) =>
-          prev.phase === "idle" || prev.phase === payload.phase
-            ? prev
-            : { ...prev, phase: payload.phase },
-      });
-    });
-    return () => {
-      unsubscribe();
-      if (outputFlushTimerRef.current) {
-        clearTimeout(outputFlushTimerRef.current);
-        outputFlushTimerRef.current = null;
-      }
-      flushPendingOutput();
-    };
-  }, [setRunState, flushPendingOutput, testingEnabled]);
 
   // Pop the output drawer when a run starts for the app being viewed. Keyed
   // off the global atom's phase transition — not the raw IPC event — so it
   // fires for panel-initiated and agent-initiated runs alike (the latter are
-  // consumed globally by useTestRunEvents), and an agent run on ANOTHER app
-  // never rearranges this one's view.
-  const prevPhaseRef = useRef(runState.phase);
+  // consumed globally by useTestRunEvents). Opening on first mount makes an
+  // already-running visible app transparent; app switches only update the
+  // baseline, so another app's existing run doesn't rearrange this view.
+  const prevRunRef = useRef<{
+    appId: number | null;
+    phase: (typeof runState)["phase"];
+  } | null>(null);
   useEffect(() => {
-    if (prevPhaseRef.current === "idle" && runState.phase !== "idle") {
+    const prev = prevRunRef.current;
+    if (prev === null) {
+      if (selectedAppId !== null && runState.phase !== "idle") {
+        setOutputOpen(true);
+      }
+    } else if (
+      prev.appId === selectedAppId &&
+      prev.phase === "idle" &&
+      runState.phase !== "idle"
+    ) {
       setOutputOpen(true);
     }
-    prevPhaseRef.current = runState.phase;
-  }, [runState.phase]);
+    prevRunRef.current = { appId: selectedAppId, phase: runState.phase };
+  }, [selectedAppId, runState.phase]);
 
   // Run-state transitions shared with the root-level agent-run subscriber
   // (useTestRunEvents), so panel- and agent-initiated runs show the same
@@ -665,9 +615,9 @@ export function TestsPanel() {
       if (selectedAppId == null) return;
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
+      const startedAt = Date.now();
 
-      flushPendingOutput(appId);
-      applyRunStarted({ appId, testFile: file, testLine: line });
+      applyRunStarted({ appId, testFile: file, testLine: line, startedAt });
 
       try {
         const res = await ipc.tests.runAppTests({
@@ -679,26 +629,33 @@ export function TestsPanel() {
           // file/all runs.
           parallel: parallel && !isSingleTest,
         });
-        applyRunFinished({ appId, res, isSingleTest });
+        applyRunFinished({
+          appId,
+          res,
+          isPartialRun: isSingleTest,
+          expectedStartedAt: startedAt,
+        });
       } catch (err) {
         setRunState({
           appId,
-          update: (prev) => ({
-            ...prev,
-            phase: "idle",
-            runningFiles: [],
-            runningTests: [],
-            runError: {
-              message: err instanceof Error ? err.message : String(err),
-              kind: "unknown",
-            },
-          }),
+          update: (prev) =>
+            prev.startedAt === startedAt
+              ? {
+                  ...prev,
+                  phase: "idle",
+                  runningFiles: [],
+                  runningTests: [],
+                  runError: {
+                    message: err instanceof Error ? err.message : String(err),
+                    kind: "unknown",
+                  },
+                }
+              : prev,
         });
       }
     },
     [
       selectedAppId,
-      flushPendingOutput,
       applyRunStarted,
       applyRunFinished,
       setRunState,
@@ -1232,7 +1189,7 @@ export function TestsPanel() {
         onOpenChange={(open) => {
           if (!open) setAgentModeDialog(null);
         }}
-        action={agentModeDialog?.action ?? "generate"}
+        action={agentModeDialog?.action ?? lastAgentModeActionRef.current}
         onContinue={() => {
           if (agentModeDialog?.action === "fix") {
             const { file, error, testTitle, screenshotPath } =

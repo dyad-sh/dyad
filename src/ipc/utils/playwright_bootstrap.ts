@@ -372,6 +372,12 @@ function ensureTestScript(appPath: string): void {
       pkg.scripts.test = `playwright test --config ${DYAD_CONFIG_FILENAME}`;
       fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
       logger.info("Added test script to package.json");
+    } else if (pkg.scripts.test === "playwright test") {
+      // Migrate the old Dyad-generated bare script. Preserve any user-authored
+      // script with flags, env vars, or extra commands.
+      pkg.scripts.test = `playwright test --config ${DYAD_CONFIG_FILENAME}`;
+      fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+      logger.info("Updated Dyad test script to use explicit config");
     }
   } catch (err) {
     logger.warn(`Failed to update package.json test script: ${err}`);

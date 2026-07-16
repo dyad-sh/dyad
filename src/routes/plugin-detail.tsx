@@ -6,6 +6,9 @@ export const pluginDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plugins/$serverId",
   params: {
+    // A non-numeric id parses to NaN, which matches no server and
+    // lands back on the plugins list via the detail page's unknown-id
+    // redirect, the same handling as a stale link to a deleted server.
     parse: (params: { serverId: string }) => ({
       serverId: Number(params.serverId),
     }),

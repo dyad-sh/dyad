@@ -406,6 +406,9 @@ export const mcpServers = sqliteTable("mcp_servers", {
   // redirect URI that includes the port, so it must stay stable for
   // those rows. Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
   oauthCallbackPort: integer("oauth_callback_port"),
+  // Slug of the curated catalog entry this server was added from.
+  // Null for manually configured servers.
+  catalogSlug: text("catalog_slug"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

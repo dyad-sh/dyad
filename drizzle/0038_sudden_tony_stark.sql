@@ -1,0 +1,1 @@
+ALTER TABLE `mcp_servers` ADD `catalog_slug` text;

@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -51,6 +51,12 @@ export function PluginSummaryCard({
       <CardHeader className="p-4">
         <CardTitle className="text-lg font-medium mb-1 flex items-center gap-2 min-w-0">
           <span className="truncate">{s.name}</span>
+          {s.catalogSlug && (
+            <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100 inline-flex items-center gap-1 shrink-0">
+              <Sparkles className="w-3 h-3" />
+              Catalog
+            </span>
+          )}
           {feedback ? (
             <span className="text-xs font-medium px-2 py-1 rounded-full text-red-600 bg-red-50 border border-red-500/50 dark:bg-red-900/30 dark:text-red-300 shrink-0">
               {feedback.kind === "unauthorized"

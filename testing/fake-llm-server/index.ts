@@ -262,6 +262,52 @@ export function createFakeLlmApp(getPort: () => number) {
     });
   });
 
+  app.get("/api/mcp-catalog", (req, res) => {
+    res.json({
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      servers: [
+        {
+          slug: "e2e-oauth",
+          name: "E2E OAuth Server",
+          description: "Fake OAuth-protected MCP server",
+          category: "Testing",
+          transport: "http",
+          url: "http://localhost:4010/mcp",
+          oauth: "required",
+        },
+        {
+          slug: "e2e-open",
+          name: "E2E Open Server",
+          description: "Fake MCP server without auth",
+          category: "Testing",
+          transport: "http",
+          url: "http://localhost:3002/mcp",
+          oauth: "none",
+        },
+        {
+          slug: "e2e-headers",
+          name: "E2E Header Server",
+          description: "Sends a static header",
+          category: "Other Tools",
+          transport: "http",
+          url: "http://localhost:3002/mcp",
+          oauth: "none",
+          headers: { "X-Test-Header": "dyad-e2e" },
+        },
+        // The desktop client must drop these two: an entry kind it
+        // doesn't support yet and a malformed one.
+        {
+          slug: "e2e-stdio",
+          name: "E2E Stdio Server",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "fake-mcp@1.0.0"],
+        },
+        { slug: "e2e-broken" },
+      ],
+    });
+  });
+
   app.get("/api/language-model-catalog", (req, res) => {
     res.json({
       version: "e2e-test-catalog-v1",

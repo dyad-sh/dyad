@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { getRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
@@ -89,6 +90,7 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
     // `oauthStateHasTokens` checks for a real access token.
     oauthConnected: oauthStateHasTokens(dbServer.oauthState),
     oauthCallbackPort: dbServer.oauthCallbackPort,
+    catalogSlug: dbServer.catalogSlug,
     createdAt: dbServer.createdAt,
     updatedAt: dbServer.updatedAt,
   };
@@ -99,6 +101,47 @@ export function registerMcpHandlers() {
   createTypedHandler(mcpContracts.listServers, async () => {
     const servers = await db.select().from(mcpServers);
     return servers.map(toMcpServer);
+  });
+
+  createTypedHandler(mcpContracts.listCatalog, async () => {
+    const entries = await getRemoteMcpCatalog();
+    const servers = await db.select().from(mcpServers);
+    const addedSlugs = servers
+      .map((s) => s.catalogSlug)
+      .filter((slug): slug is string => slug !== null);
+    return { entries, addedSlugs };
+  });
+
+  createTypedHandler(mcpContracts.addFromCatalog, async (_, { slug }) => {
+    const entries = await getRemoteMcpCatalog();
+    const entry = entries.find((e) => e.slug === slug);
+    if (!entry) {
+      throw new Error(`Unknown catalog entry: ${slug}`);
+    }
+
+    // Adding the same entry twice returns the existing server.
+    const existing = await db
+      .select()
+      .from(mcpServers)
+      .where(eq(mcpServers.catalogSlug, slug));
+    if (existing.length > 0) {
+      return toMcpServer(existing[0]);
+    }
+
+    const [created] = await db
+      .insert(mcpServers)
+      .values({
+        name: entry.name,
+        transport: "http",
+        url: entry.url,
+        headersJson: entry.headers ?? null,
+        enabled: true,
+        oauthEnabled: entry.oauth !== "none",
+        oauthScope: entry.oauthScope ?? null,
+        catalogSlug: entry.slug,
+      })
+      .returning();
+    return toMcpServer(created);
   });
 
   createTypedHandler(mcpContracts.createServer, async (_, params) => {

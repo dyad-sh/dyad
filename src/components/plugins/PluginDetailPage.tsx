@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -115,6 +115,12 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
                 <span className="truncate">{s.name}</span>
+                {s.catalogSlug && (
+                  <span className="text-xs font-medium px-2 py-1 rounded-full bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100 inline-flex items-center gap-1 shrink-0">
+                    <Sparkles className="w-3 h-3" />
+                    Catalog
+                  </span>
+                )}
                 {s.oauthEnabled && (
                   <span
                     className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${

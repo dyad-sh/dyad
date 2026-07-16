@@ -35,13 +35,19 @@ export class Plugins {
     });
   }
 
-  // Scoped to the detail page so the assertion can't pass on a tool
-  // that belongs to a different server.
-  async waitForTool(serverName: string, toolName: string) {
-    await this.openPluginDetail(serverName);
+  // Assert a tool on an already-open detail page, scoped so the
+  // assertion can't pass on a tool that belongs to a different server.
+  async waitForToolInDetail(toolName: string) {
     const detail = this.page.getByTestId("plugin-detail");
     await expect(detail.getByText(toolName, { exact: true })).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
+  }
+
+  // Navigate from the plugins list into the server's detail page and
+  // assert the tool there.
+  async waitForTool(serverName: string, toolName: string) {
+    await this.openPluginDetail(serverName);
+    await this.waitForToolInDetail(toolName);
   }
 }

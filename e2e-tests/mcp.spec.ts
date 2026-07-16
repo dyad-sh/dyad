@@ -38,16 +38,16 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
     .fill(testMcpServerPath);
   await po.plugins.submitAddPluginDialog();
 
-  const pluginCard = po.page
-    .getByTestId("plugin-card")
-    .filter({ hasText: "testing-mcp-server" });
-  await pluginCard
+  // Environment variables are edited on the plugin's detail page.
+  await po.plugins.openPluginDetail("testing-mcp-server");
+  const detail = po.page.getByTestId("plugin-detail");
+  await detail
     .getByRole("button", { name: "Add Environment Variable" })
     .click();
-  await pluginCard.getByRole("textbox", { name: "Key" }).fill("testKey1");
-  await pluginCard.getByRole("textbox", { name: "Value" }).fill("testValue1");
-  await pluginCard.getByRole("button", { name: "Save" }).click();
-  await po.plugins.waitForTool("testing-mcp-server", "calculator_add");
+  await detail.getByRole("textbox", { name: "Key" }).fill("testKey1");
+  await detail.getByRole("textbox", { name: "Value" }).fill("testValue1");
+  await detail.getByRole("button", { name: "Save" }).click();
+  await po.plugins.waitForToolInDetail("calculator_add");
 
   await po.navigation.goToAppsTab();
   await po.chatActions.selectChatMode("local-agent");
@@ -111,16 +111,14 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await po.page.getByRole("switch", { name: "Use OAuth" }).click();
     await po.plugins.submitAddPluginDialog();
 
-    const pluginCard = po.page
-      .getByTestId("plugin-card")
-      .filter({ hasText: "testing-mcp-server" });
-    await pluginCard.getByRole("button", { name: "Add Header" }).click();
-    await pluginCard
-      .getByRole("textbox", { name: "Key" })
-      .fill("Authorization");
-    await pluginCard.getByRole("textbox", { name: "Value" }).fill("testValue1");
-    await pluginCard.getByRole("button", { name: "Save" }).click();
-    await po.plugins.waitForTool("testing-mcp-server", "calculator_add");
+    // Headers are edited on the plugin's detail page.
+    await po.plugins.openPluginDetail("testing-mcp-server");
+    const detail = po.page.getByTestId("plugin-detail");
+    await detail.getByRole("button", { name: "Add Header" }).click();
+    await detail.getByRole("textbox", { name: "Key" }).fill("Authorization");
+    await detail.getByRole("textbox", { name: "Value" }).fill("testValue1");
+    await detail.getByRole("button", { name: "Save" }).click();
+    await po.plugins.waitForToolInDetail("calculator_add");
 
     await po.navigation.goToAppsTab();
     await po.chatActions.selectChatMode("local-agent");

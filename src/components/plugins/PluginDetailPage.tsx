@@ -118,10 +118,14 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {s.oauthEnabled && !s.oauthConnected && (
+                // Only one OAuth flow can run at a time (shared
+                // connect slot), so Connect is blocked while any
+                // server is connecting; the label only spins for this
+                // server's own flow.
                 <Button
                   variant="default"
                   onClick={() => onConnect(s.id)}
-                  disabled={connectingServerId === s.id}
+                  disabled={connectingServerId !== null}
                 >
                   {connectingServerId === s.id ? "Connecting…" : "Connect"}
                 </Button>

@@ -17,6 +17,7 @@ export function PluginSummaryCard({
   enabledToolCount,
   feedback,
   isConnecting,
+  connectDisabled,
   onConnect,
   onToggleEnabled,
   onOpen,
@@ -25,7 +26,13 @@ export function PluginSummaryCard({
   toolCount: number | null;
   enabledToolCount: number | null;
   feedback: ConnectFeedback | null;
+  /** This card's own OAuth flow is in flight (drives the label). */
   isConnecting: boolean;
+  /**
+   * Any server's OAuth flow is in flight. Connects share a single
+   * slot, so starting a second flow is blocked, not just this card's.
+   */
+  connectDisabled: boolean;
   onConnect: (serverId: number) => void;
   onToggleEnabled: (serverId: number, currentEnabled: boolean) => void;
   onOpen: (serverId: number) => void;
@@ -83,7 +90,7 @@ export function PluginSummaryCard({
                 <Button
                   size="sm"
                   onClick={() => onConnect(s.id)}
-                  disabled={isConnecting}
+                  disabled={connectDisabled}
                 >
                   {isConnecting ? "Connecting…" : "Connect"}
                 </Button>

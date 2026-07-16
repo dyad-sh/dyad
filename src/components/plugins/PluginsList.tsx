@@ -79,6 +79,7 @@ export function PluginsList({
               enabledToolCount={enabledToolCountFor(s.id)}
               feedback={feedbackFor(s)}
               isConnecting={connectingServerId === s.id}
+              connectDisabled={connectingServerId !== null}
               onConnect={onConnect}
               onToggleEnabled={toggleEnabled}
               onOpen={(serverId) =>

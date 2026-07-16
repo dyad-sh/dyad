@@ -119,7 +119,7 @@ describe("Plugins page (integration)", () => {
   }, 40_000);
 
   it("shows a placeholder count when tool discovery fails", async () => {
-    const { stop } = await harness.mcp.addHttpServer();
+    const { server, stop } = await harness.mcp.addHttpServer();
     harness.mountSurface({ route: "/plugins" });
 
     const card = await screen.findByTestId("plugin-card");
@@ -130,9 +130,14 @@ describe("Plugins page (integration)", () => {
       { timeout: 20_000 },
     );
 
-    // Kill the server, then force a re-listing through the enabled
-    // toggle (each update invalidates the tools query). The failed
-    // listing must fall back to the placeholder, not report "0 tools".
+    // Close the cached client before killing the server: a live
+    // keep-alive socket reset by the dying server surfaces as an
+    // unhandled ECONNRESET rejection (flaky on Windows). Then force a
+    // re-listing through the enabled toggle (each update invalidates
+    // the tools query). The failed listing must fall back to the
+    // placeholder, not report "0 tools".
+    const { mcpManager } = await import("@/ipc/utils/mcp_manager");
+    await mcpManager.dispose(server.id);
     await stop();
     const enabledSwitch = within(card).getByRole("switch");
     await harness.setSwitch(enabledSwitch, false);

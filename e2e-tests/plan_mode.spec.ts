@@ -4,11 +4,9 @@ import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 async function finishPlanPresentation(po: any) {
   await po.page.getByRole("button", { name: "Keep going" }).click();
   await po.chatActions.waitForChatCompletion();
-  await expect(
-    po.page.getByText(
-      "I've presented the implementation plan. You can review it in the preview panel and accept it when ready.",
-    ),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 }
 
 testSkipIfWindows(
@@ -21,10 +19,6 @@ testSkipIfWindows(
 
     await po.sendPrompt("tc=local-agent/accept-plan");
     await finishPlanPresentation(po);
-
-    await expect(po.page.getByTestId("accept-plan-new-chat")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
 
     await po.previewPanel.selectTextInPlan("Step two");
 

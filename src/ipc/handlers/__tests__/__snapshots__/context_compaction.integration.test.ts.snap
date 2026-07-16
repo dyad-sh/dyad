@@ -15,7 +15,7 @@ message: [{"type":"tool_result","tool_use_id":"[[TOOL_CALL_0]]","content":"File 
 
 ===
 role: assistant
-message: [{"type":"text","text":"END OF COMPACTED TURN."}]
+message: [{"type":"text","text":"END OF COMPACTED TURN."},{"type":"text","text":"<dyad-git-context source_commit=\\"[[GIT_COMMIT]]\\" no_commit=\\"true\\"></dyad-git-context>"}]
 
 ===
 role: user
@@ -33,7 +33,7 @@ message: [{"type":"text","text":"tc=local-agent/simple-response"}]
 
 ===
 role: assistant
-message: [{"type":"text","text":"Hello! I understand your request. This is a simple response from the Basic Agent mode."}]
+message: [{"type":"text","text":"Hello! I understand your request. This is a simple response from the Basic Agent mode."},{"type":"text","text":"<dyad-git-context source_commit=\\"[[GIT_COMMIT]]\\" no_commit=\\"true\\"></dyad-git-context>"}]
 
 ===
 role: user

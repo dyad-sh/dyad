@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import { streamText } from "ai";
+import { streamText, type ModelMessage } from "ai";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -365,10 +365,15 @@ describe("buildChatMessageHistory Git context", () => {
     ]);
 
     expect(history).toEqual([
-      { role: "assistant", content: "Implemented the change." },
       {
         role: "assistant",
-        content: '<dyad-git-context commit="final-hash"></dyad-git-context>',
+        content: [
+          { type: "text", text: "Implemented the change." },
+          {
+            type: "text",
+            text: '<dyad-git-context commit="final-hash"></dyad-git-context>',
+          },
+        ],
       },
     ]);
   });
@@ -387,11 +392,18 @@ describe("buildChatMessageHistory Git context", () => {
       },
     ]);
 
-    expect(history.at(-1)).toEqual({
-      role: "assistant",
-      content:
-        '<dyad-git-context source_commit="starting-hash" no_commit="true"></dyad-git-context>',
-    });
+    expect(history).toEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "No commit was created." },
+          {
+            type: "text",
+            text: '<dyad-git-context source_commit="starting-hash" no_commit="true"></dyad-git-context>',
+          },
+        ],
+      },
+    ]);
   });
 
   it("omits Git context when the assistant message has no commit hashes", () => {
@@ -413,7 +425,7 @@ describe("buildChatMessageHistory Git context", () => {
     ]);
   });
 
-  it("places the annotation after a reconstructed tool transcript", () => {
+  it("adds the annotation to the final assistant message in a reconstructed tool transcript", () => {
     const aiMessagesJson: AiMessagesJsonV6 = {
       sdkVersion: "ai@v6",
       messages: [
@@ -439,7 +451,11 @@ describe("buildChatMessageHistory Git context", () => {
             },
           ],
         },
-        { role: "assistant", content: "The tree is clean." },
+        {
+          role: "assistant",
+          content: "The tree is clean.",
+          providerOptions: { test: { marker: true } },
+        },
       ],
     };
     const original = structuredClone(aiMessagesJson);
@@ -460,6 +476,67 @@ describe("buildChatMessageHistory Git context", () => {
       "assistant",
       "tool",
       "assistant",
+    ]);
+    expect(history.at(-1)).toEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "The tree is clean." },
+        {
+          type: "text",
+          text: '<dyad-git-context commit="commit-after-tools"></dyad-git-context>',
+        },
+      ],
+      providerOptions: { test: { marker: true } },
+    });
+    expect(aiMessagesJson).toEqual(original);
+  });
+
+  it("uses a separate assistant message when a tool result ends the transcript", () => {
+    const aiMessagesJson: AiMessagesJsonV6 = {
+      sdkVersion: "ai@v6",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "git_status",
+              input: {},
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "git_status",
+              output: { type: "text", value: "clean" },
+            },
+          ],
+        },
+      ],
+    };
+    const original = structuredClone(aiMessagesJson);
+
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "",
+        aiMessagesJson,
+        sourceCommitHash: null,
+        commitHash: "commit-after-tools",
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history.map((message) => message.role)).toEqual([
+      "assistant",
+      "tool",
       "assistant",
     ]);
     expect(history.at(-1)).toEqual({
@@ -468,6 +545,33 @@ describe("buildChatMessageHistory Git context", () => {
         '<dyad-git-context commit="commit-after-tools"></dyad-git-context>',
     });
     expect(aiMessagesJson).toEqual(original);
+  });
+
+  it("uses a separate assistant message for malformed legacy content", () => {
+    const aiMessagesJson = [
+      { role: "assistant", content: null },
+    ] as unknown as ModelMessage[];
+
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Legacy response",
+        aiMessagesJson,
+        sourceCommitHash: null,
+        commitHash: "legacy-commit",
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history).toEqual([
+      { role: "assistant", content: null },
+      {
+        role: "assistant",
+        content: '<dyad-git-context commit="legacy-commit"></dyad-git-context>',
+      },
+    ]);
   });
 });
 

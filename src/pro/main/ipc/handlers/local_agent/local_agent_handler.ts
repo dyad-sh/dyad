@@ -199,6 +199,33 @@ function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
 }
 
+function appendGitContext(
+  parsed: ModelMessage[],
+  annotation: string,
+): ModelMessage[] {
+  const finalMessage = parsed.at(-1);
+  if (finalMessage?.role !== "assistant") {
+    return [...parsed, { role: "assistant", content: annotation }];
+  }
+
+  if (
+    typeof finalMessage.content !== "string" &&
+    !Array.isArray(finalMessage.content)
+  ) {
+    return [...parsed, { role: "assistant", content: annotation }];
+  }
+
+  const content =
+    typeof finalMessage.content === "string"
+      ? [
+          { type: "text" as const, text: finalMessage.content },
+          { type: "text" as const, text: annotation },
+        ]
+      : [...finalMessage.content, { type: "text" as const, text: annotation }];
+
+  return [...parsed.slice(0, -1), { ...finalMessage, content }];
+}
+
 export function buildChatMessageHistory(
   chatMessages: Array<
     DbMessageForParsing & {
@@ -267,9 +294,7 @@ export function buildChatMessageHistory(
       : msg.sourceCommitHash
         ? `<dyad-git-context source_commit="${escapeXmlAttr(msg.sourceCommitHash)}" no_commit="true"></dyad-git-context>`
         : null;
-    return annotation
-      ? [...parsed, { role: "assistant" as const, content: annotation }]
-      : parsed;
+    return annotation ? appendGitContext(parsed, annotation) : parsed;
   });
 }
 

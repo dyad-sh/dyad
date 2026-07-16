@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
 import log from "electron-log/main";
+import { buildWindowsCommandInvocation } from "./windows_command";
 
 const logger = log.scope("spawn_streaming");
 
@@ -13,8 +14,6 @@ const logger = log.scope("spawn_streaming");
  */
 const MAX_BUFFERED_OUTPUT = 256_000;
 const FORCE_KILL_GRACE_MS = 5_000;
-const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
-const WINDOWS_CMD_NEEDS_QUOTING_PATTERN = /[\s"&|<>^%!()]/u;
 
 /** Append `chunk` to `buffer`, keeping only the last MAX_BUFFERED_OUTPUT chars. */
 function appendCapped(buffer: string, chunk: string): string {
@@ -24,41 +23,13 @@ function appendCapped(buffer: string, chunk: string): string {
     : next;
 }
 
-function resolveWindowsExecutableName(command: string): string {
-  return command.includes(".") ? command : `${command}.cmd`;
-}
-
-function quoteWindowsCmdArg(value: string): string {
-  if (value !== "" && !WINDOWS_CMD_NEEDS_QUOTING_PATTERN.test(value)) {
-    return value;
-  }
-  return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
-}
-
 export function buildSpawnStreamingInvocation(
   command: string,
   args: string[],
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec ?? "cmd.exe",
 ): { command: string; args: string[] } {
-  if (platform !== "win32") {
-    return { command, args };
-  }
-
-  const resolvedCommand = resolveWindowsExecutableName(command);
-  if (WINDOWS_BATCH_COMMAND_PATTERN.test(resolvedCommand)) {
-    return {
-      command: comSpec,
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        [resolvedCommand, ...args].map(quoteWindowsCmdArg).join(" "),
-      ],
-    };
-  }
-
-  return { command: resolvedCommand, args };
+  return buildWindowsCommandInvocation(command, args, platform, comSpec);
 }
 
 export interface SpawnStreamingResult {

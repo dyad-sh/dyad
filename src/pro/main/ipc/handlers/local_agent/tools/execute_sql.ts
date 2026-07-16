@@ -22,22 +22,118 @@ function stripSqlComments(sql: string): string {
     .trim();
 }
 
-function doesSqlLikelyMutateState(sql: string): boolean {
-  if (doesSqlMutateSchema(sql) || doesSqlDeleteData(sql)) {
-    return true;
+/**
+ * Identifiers that may precede a `(` in a read-only `select` without implying a
+ * function call that could mutate: SQL keywords (`where (a or b)`, `in (...)`)
+ * plus well-known read-only builtins. Anything else — e.g. `SELECT seed()` —
+ * may be a user-defined function that writes.
+ */
+const SELECT_SAFE_IDENTIFIERS = new Set([
+  // Keywords that are followed by a parenthesized expression, not a call.
+  "all",
+  "and",
+  "any",
+  "as",
+  "by",
+  "case",
+  "exists",
+  "from",
+  "group",
+  "having",
+  "in",
+  "join",
+  "not",
+  "on",
+  "or",
+  "order",
+  "over",
+  "partition",
+  "select",
+  "then",
+  "union",
+  "using",
+  "values",
+  "when",
+  "where",
+  // Read-only builtins.
+  "abs",
+  "avg",
+  "cast",
+  "ceil",
+  "coalesce",
+  "concat",
+  "count",
+  "current_date",
+  "current_setting",
+  "current_timestamp",
+  "date_trunc",
+  "extract",
+  "floor",
+  "greatest",
+  "json_agg",
+  "jsonb_agg",
+  "least",
+  "length",
+  "lower",
+  "max",
+  "min",
+  "now",
+  "nullif",
+  "round",
+  "sum",
+  "to_char",
+  "trim",
+  "upper",
+  "version",
+]);
+
+/**
+ * True when a `select` calls anything other than a known read-only builtin.
+ * `SELECT seed_demo_data()` really does mutate, and treating it as a no-op
+ * would leave run_tests refusing the verifying rerun.
+ */
+function doesSelectCallUnknownFunction(statement: string): boolean {
+  for (const [, name] of statement.matchAll(/\b([a-z_][a-z0-9_]*)\s*\(/gi)) {
+    if (!SELECT_SAFE_IDENTIFIERS.has(name.toLowerCase())) {
+      return true;
+    }
   }
-  const firstStatement = stripSqlComments(sql).split(";")[0]?.trim() ?? "";
-  if (/^with\b/i.test(firstStatement)) {
-    return /\b(insert|update|delete|merge)\b/i.test(firstStatement);
+  return false;
+}
+
+function doesStatementLikelyMutateState(statement: string): boolean {
+  if (/^with\b/i.test(statement)) {
+    return /\b(insert|update|delete|merge)\b/i.test(statement);
   }
-  const explained = firstStatement.match(/^explain(?:\s+analyze)?\s+(.+)$/i);
+  const explained = statement.match(/^explain(?:\s+analyze)?\s+(.+)$/i);
   if (explained) {
-    return doesSqlLikelyMutateState(explained[1]);
+    return doesStatementLikelyMutateState(explained[1].trim());
   }
   // Treat clearly read-only statements as no-ops for run_tests gating. Unknown
   // SQL is counted conservatively because function calls and procedural blocks
   // can mutate data even when static analysis cannot prove it.
-  return !/^(?:select|show|describe|desc)\b/i.test(firstStatement);
+  if (!/^(?:select|show|describe|desc)\b/i.test(statement)) {
+    return true;
+  }
+  return (
+    /^select\b/i.test(statement) && doesSelectCallUnknownFunction(statement)
+  );
+}
+
+/**
+ * Inspect EVERY statement, not just the first: `SELECT 1; UPDATE users ...`
+ * mutates, and classifying the whole call by its leading `SELECT` would leave
+ * run_tests refusing the next run with "no changes since last run".
+ */
+function doesSqlLikelyMutateState(sql: string): boolean {
+  if (doesSqlMutateSchema(sql) || doesSqlDeleteData(sql)) {
+    return true;
+  }
+  return stripSqlComments(sql)
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .some(doesStatementLikelyMutateState);
 }
 
 const executeSqlSchema = z.object({

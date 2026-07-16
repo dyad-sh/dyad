@@ -152,6 +152,31 @@ describe("ensurePlaywrightBootstrap", () => {
     );
   });
 
+  it("leaves a bare test script alone when the app owns a playwright.config", async () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      executableExists: true,
+    });
+    fs.writeFileSync(
+      path.join(appPath, "package.json"),
+      JSON.stringify({ name: "app", scripts: { test: "playwright test" } }),
+    );
+    // With a config of their own, `playwright test` is the user's script
+    // targeting the user's config — repointing it would bypass their projects
+    // and global setup, and break `npm test` outside Dyad.
+    fs.writeFileSync(
+      path.join(appPath, "playwright.config.ts"),
+      'import { defineConfig } from "@playwright/test";\nexport default defineConfig({});\n',
+    );
+
+    await ensurePlaywrightBootstrap({ appPath });
+
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(appPath, "package.json"), "utf8"),
+    );
+    expect(pkg.scripts.test).toBe("playwright test");
+  });
+
   it("preserves user-authored test scripts", async () => {
     const { appPath } = makeAppWithBrowserMarker({
       packageVersion: "1.2.3",

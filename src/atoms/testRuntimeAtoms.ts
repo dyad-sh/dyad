@@ -169,6 +169,34 @@ export const setTestRunStateForAppAtom = atom(
  * effects (e.g. popping the output drawer) stay in the panel, keyed off the
  * resulting phase transition.
  */
+/**
+ * Test keys a `--grep` run will actually execute, so only those show a spinner
+ * and the siblings Playwright will skip keep the status they already had.
+ *
+ * Returns null when the subset can't be determined — an invalid regex, or a
+ * pattern that matched nothing here because Playwright greps the FULL
+ * hierarchical title (describe blocks included) while the spec list only knows
+ * leaf `test()` names. Callers fall back to spinning the whole file, which is
+ * the honest answer when we don't know the subset.
+ */
+function grepMatchedTestKeys(
+  grep: string,
+  specs: TestSpec[],
+  testFile: string,
+): string[] | null {
+  let regex: RegExp;
+  try {
+    regex = new RegExp(grep);
+  } catch {
+    return null;
+  }
+  const cases = specs.find((s) => s.file === testFile)?.tests ?? [];
+  const matched = cases
+    .filter((c) => regex.test(c.title))
+    .map((c) => testKey(testFile, c.line));
+  return matched.length > 0 ? matched : null;
+}
+
 export const applyTestRunStartedAtom = atom(
   null,
   (
@@ -191,6 +219,10 @@ export const applyTestRunStartedAtom = atom(
     const isPartialRun = testFile != null && (testLine != null || !!grep);
     const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
     const targetFiles = testFile ? [testFile] : specs.map((s) => s.file);
+    const grepMatchedTests =
+      testFile != null && testLine == null && grep
+        ? grepMatchedTestKeys(grep, specs, testFile)
+        : null;
     set(clearTestRunOutputForAppAtom, appId);
     set(setTestRunStateForAppAtom, {
       appId,
@@ -201,7 +233,7 @@ export const applyTestRunStartedAtom = atom(
         runningTests:
           testFile != null && testLine != null
             ? [testKey(testFile, testLine)]
-            : [],
+            : (grepMatchedTests ?? []),
         // For a single-test run, keep the file's existing results (siblings
         // keep their status; we merge the one test back in afterward). Grep
         // runs are also partial because they return only the matched tests.

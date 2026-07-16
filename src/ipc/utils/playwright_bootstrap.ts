@@ -372,9 +372,18 @@ function ensureTestScript(appPath: string): void {
       pkg.scripts.test = `playwright test --config ${DYAD_CONFIG_FILENAME}`;
       fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
       logger.info("Added test script to package.json");
-    } else if (pkg.scripts.test === "playwright test") {
-      // Migrate the old Dyad-generated bare script. Preserve any user-authored
-      // script with flags, env vars, or extra commands.
+    } else if (
+      pkg.scripts.test === "playwright test" &&
+      !fs.existsSync(path.join(appPath, "playwright.config.ts")) &&
+      !fs.existsSync(path.join(appPath, "playwright.config.js"))
+    ) {
+      // Migrate the old Dyad-generated bare script, but only when the app has
+      // no Playwright config of its own. A bare `playwright test` alongside a
+      // user-authored playwright.config.ts is the user's script targeting the
+      // user's config — repointing it at ours would bypass their projects and
+      // global setup, and break `npm test` outside Dyad. With no config of
+      // their own, the bare script can only be Dyad's older template output.
+      // (Scripts with flags, env vars, or extra commands are never touched.)
       pkg.scripts.test = `playwright test --config ${DYAD_CONFIG_FILENAME}`;
       fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
       logger.info("Updated Dyad test script to use explicit config");

@@ -85,11 +85,25 @@ export async function readTestScreenshotDataUrl(
       );
       return null;
     }
-    const buf = await handle.readFile();
-    if (buf.length > MAX_SCREENSHOT_BYTES) {
-      logger.warn(
-        `Screenshot ${realPath} is ${buf.length} bytes after read (limit ${MAX_SCREENSHOT_BYTES}); skipping`,
+    // Read at most the size we just validated, rather than readFile()'s
+    // read-then-check: a file still growing after the stat would otherwise
+    // allocate an unbounded buffer before the limit could reject it.
+    const buf = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      const { bytesRead } = await handle.read(
+        buf,
+        offset,
+        size - offset,
+        offset,
       );
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    // A screenshot that changed mid-read is a partially-written artifact; a
+    // truncated PNG is worth less to the model than an honest "no screenshot".
+    if (offset !== size || (await handle.stat()).size !== size) {
+      logger.warn(`Screenshot ${realPath} changed while being read; skipping`);
       return null;
     }
     return `data:image/png;base64,${buf.toString("base64")}`;

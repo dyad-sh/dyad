@@ -79,10 +79,17 @@ export function useTestRunEvents() {
       // state on no-change makes this write a no-op for subscribers.
       setRunState({
         appId: payload.appId,
-        update: (prev) =>
-          prev.phase === "idle" || prev.phase === payload.phase
+        update: (prev) => {
+          // Never go backward: the "started" event advances the state to
+          // "running", but setup-phase output (bootstrap, isolated-database
+          // prep) can still arrive afterward and would flash the label back.
+          if (prev.phase === "running" && payload.phase === "setup") {
+            return prev;
+          }
+          return prev.phase === "idle" || prev.phase === payload.phase
             ? prev
-            : { ...prev, phase: payload.phase },
+            : { ...prev, phase: payload.phase };
+        },
       });
     });
 

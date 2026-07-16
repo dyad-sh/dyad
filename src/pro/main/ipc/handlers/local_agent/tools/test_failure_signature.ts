@@ -21,6 +21,14 @@ export function stripDynamic(text: string): string {
         /\b(https?:\/\/(?:\[[^\]]+\]|[^/\s:]+)):\d{2,5}\b/gi,
         "$1:<port>",
       )
+      // Bare `host:port` (no scheme) churns the signature the same way. Match
+      // only real host forms — a blanket `:\d+` rule would also eat the
+      // line:column numbers in `foo.spec.ts:12:5` stack frames, which are
+      // exactly the stable part a signature needs.
+      .replace(
+        /\b(localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]):\d{2,5}\b/gi,
+        "$1:<port>",
+      )
       // UUIDs before the contiguous-hex rule: their 4-char middle segments are
       // too short for it, so a generated id would otherwise change the
       // signature on every run and defeat no-progress detection.

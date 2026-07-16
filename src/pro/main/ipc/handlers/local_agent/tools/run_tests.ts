@@ -349,12 +349,19 @@ function reportPassed(params: {
   }
   delete state.fileEditCountAtLastRun;
   delete state.lastRunTargetKey;
-  const passedTargetKey = grep
-    ? (targetKeyFromRunResult(testFile, res) ?? runTargetKey)
-    : WHOLE_FILE;
+  // Record BOTH keys for a grep pass. When the pattern matched through a
+  // describe title, our leaf-title parser can't canonicalize it, so preflight
+  // computes the raw `grep:<pattern>` key while the report yields joined
+  // `file:line` keys. Storing only the latter would make the next identical
+  // call miss this pass and rerun the same green tests.
+  const passedTargetKeys = grep
+    ? [
+        ...new Set([targetKeyFromRunResult(testFile, res), runTargetKey]),
+      ].filter((k): k is string => k != null)
+    : [WHOLE_FILE];
   state.passedAtEditCount = {
     ...state.passedAtEditCount,
-    [passedTargetKey]: currentEditCount,
+    ...Object.fromEntries(passedTargetKeys.map((k) => [k, currentEditCount])),
   };
   const skippedNote =
     outcome.skipped > 0 ? `, ${outcome.skipped} deliberately skipped` : "";

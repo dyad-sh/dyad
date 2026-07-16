@@ -25,6 +25,21 @@ describe("stripDynamic", () => {
     );
   });
 
+  it("normalizes bare host:port too, without eating line:column", () => {
+    // A schemeless `localhost:PORT` would otherwise churn the signature every
+    // run and defeat the no-progress guard.
+    expect(stripDynamic("connect ECONNREFUSED localhost:52344")).toBe(
+      stripDynamic("connect ECONNREFUSED localhost:41022"),
+    );
+    expect(stripDynamic("connect ECONNREFUSED 127.0.0.1:52344")).toContain(
+      "127.0.0.1:<port>",
+    );
+    // The line:column of a stack frame is the stable part — keep it.
+    expect(stripDynamic("at tests/a.spec.ts:123:45")).toContain(
+      "tests/a.spec.ts:123:45",
+    );
+  });
+
   it("strips ANSI color codes", () => {
     expect(stripDynamic("[31mError[0m: boom")).toBe("Error: boom");
   });

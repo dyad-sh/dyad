@@ -142,3 +142,31 @@ describe("executeSqlTool", () => {
     ).toBe(false);
   });
 });
+
+describe("executeSqlTool.shouldTrackMutation", () => {
+  const tracks = (query: string) =>
+    executeSqlTool.shouldTrackMutation?.({ query }, "", {} as any);
+
+  it("counts a mutation in any statement, not just the first", () => {
+    // A miss here leaves run_tests refusing the verifying rerun with
+    // "no changes since last run" after a real fix.
+    expect(tracks("SELECT 1; UPDATE users SET name = 'x';")).toBe(true);
+    expect(tracks("SELECT 1; INSERT INTO users (id) VALUES (1);")).toBe(true);
+    expect(tracks("SELECT id FROM users; SELECT count(*) FROM orders;")).toBe(
+      false,
+    );
+  });
+
+  it("counts a SELECT that calls an unknown function", () => {
+    expect(tracks("SELECT seed_demo_data();")).toBe(true);
+    expect(tracks("SELECT count(*) FROM users WHERE (active OR admin);")).toBe(
+      false,
+    );
+    expect(tracks("SELECT max(id), now() FROM users;")).toBe(false);
+  });
+
+  it("still treats plain reads as no-ops", () => {
+    expect(tracks("SELECT * FROM users;")).toBe(false);
+    expect(tracks("SHOW search_path;")).toBe(false);
+  });
+});

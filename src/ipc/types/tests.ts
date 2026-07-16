@@ -21,8 +21,14 @@ export const TEST_SPEC_EXTENSIONS = ["ts", "tsx", "js", "jsx"] as const;
 /** Regex alternation fragment ("ts|tsx|js|jsx") for building spec-path regexes. */
 export const TEST_SPEC_EXT_ALTERNATION = TEST_SPEC_EXTENSIONS.join("|");
 
-/** Glob matching every E2E spec under an app's `tests/` folder. */
-export const TEST_SPEC_GLOB = `tests/**/*.spec.{${TEST_SPEC_EXTENSIONS.join(",")}}`;
+/** Directory, relative to an app root, where Dyad-managed E2E specs live. */
+export const TEST_SPEC_DIR = "e2e-tests";
+
+/** Legacy Dyad-managed E2E spec directory, used only for one-time migration. */
+export const LEGACY_TEST_SPEC_DIR = "tests";
+
+/** Glob matching every E2E spec under an app's `e2e-tests/` folder. */
+export const TEST_SPEC_GLOB = `${TEST_SPEC_DIR}/**/*.spec.{${TEST_SPEC_EXTENSIONS.join(",")}}`;
 
 /** Matches a filename with a spec extension (any directory). */
 export const SPEC_FILE_RE = new RegExp(
@@ -47,7 +53,7 @@ export const TestCaseSchema = z.object({
 export type TestCase = z.infer<typeof TestCaseSchema>;
 
 export const TestSpecSchema = z.object({
-  /** Path relative to the app root, e.g. "tests/signup.spec.ts". */
+  /** Path relative to the app root, e.g. "e2e-tests/signup.spec.ts". */
   file: z.string(),
   /**
    * Individual test cases found in the file (best-effort static parse). Empty

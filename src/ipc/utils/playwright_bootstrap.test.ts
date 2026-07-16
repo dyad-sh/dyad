@@ -74,6 +74,7 @@ describe("buildPlaywrightConfig", () => {
 
   it("wires baseURL from env and the json reporter output path", () => {
     const config = buildPlaywrightConfig(null);
+    expect(config).toContain('testDir: "./e2e-tests"');
     expect(config).toContain(`process.env.${TEST_BASE_URL_ENV}`);
     expect(config).toContain(TEST_RESULTS_JSON);
     // baseURL points at the running proxy, never a webServer config block.

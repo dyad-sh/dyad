@@ -10,6 +10,8 @@ import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
 import {
+  LEGACY_TEST_SPEC_DIR,
+  TEST_SPEC_DIR,
   TEST_SPEC_EXT_ALTERNATION,
   TEST_SPEC_GLOB,
   testsContracts,
@@ -48,7 +50,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("tests_handlers");
 
 // A test file must look like the spec paths `listAppTests` produces: relative,
-// under `tests/`, ending in a spec extension, with no traversal or leading
+// under `e2e-tests/`, ending in a spec extension, with no traversal or leading
 // dash. This stops a compromised renderer from passing a flag-like value
 // (e.g. `--config=…`) that Playwright would interpret as a CLI option. The
 // allowed characters must cover everything the listing glob can surface
@@ -56,8 +58,11 @@ const logger = log.scope("tests_handlers");
 // no `..`, no segment starting with `-`, and no backslash, colon (reserved for
 // the `file:line` selector), or control characters.
 const TEST_FILE_PATTERN = new RegExp(
-  `^tests/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
+  `^${TEST_SPEC_DIR}/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
 );
+
+const LEGACY_TEST_SPEC_GLOB = `${LEGACY_TEST_SPEC_DIR}/**/*.spec.ts`;
+const PLAYWRIGHT_TEST_IMPORT = "@playwright/test";
 
 export function normalizeRunTestFile(testFile: string): string | null {
   const normalized = path.posix.normalize(testFile.replace(/\\/g, "/"));
@@ -68,13 +73,137 @@ function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
 }
 
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readFileOrNull(filePath: string): Promise<string | null> {
+  try {
+    return await fs.promises.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function listLegacyPlaywrightSpecs(
+  appPath: string,
+): Promise<{ file: string; content: string }[]> {
+  const legacyFiles = await glob(LEGACY_TEST_SPEC_GLOB, {
+    cwd: appPath,
+    nodir: true,
+    posix: true,
+  });
+  const playwrightSpecs: { file: string; content: string }[] = [];
+  for (const file of legacyFiles) {
+    const content = await readFileOrNull(path.join(appPath, file));
+    if (content?.includes(PLAYWRIGHT_TEST_IMPORT)) {
+      playwrightSpecs.push({ file, content });
+    }
+  }
+  return playwrightSpecs;
+}
+
+function specsReferenceFixtures(specs: { content: string }[]): boolean {
+  return specs.some(
+    ({ content }) =>
+      content.includes("./fixtures/") ||
+      content.includes("../fixtures/") ||
+      content.includes("/fixtures/") ||
+      content.includes(`${LEGACY_TEST_SPEC_DIR}/fixtures/`),
+  );
+}
+
+async function moveLegacyDyadTestFile(
+  appPath: string,
+  legacyFile: string,
+): Promise<void> {
+  const relativeToLegacyDir = legacyFile.slice(
+    `${LEGACY_TEST_SPEC_DIR}/`.length,
+  );
+  const nextFile = path.join(appPath, TEST_SPEC_DIR, relativeToLegacyDir);
+  await fs.promises.mkdir(path.dirname(nextFile), { recursive: true });
+  await fs.promises.rename(path.join(appPath, legacyFile), nextFile);
+}
+
+async function removeEmptyLegacyTestDirs(appPath: string): Promise<void> {
+  const legacyDir = path.join(appPath, LEGACY_TEST_SPEC_DIR);
+  const dirs = await glob(`${LEGACY_TEST_SPEC_DIR}/**`, {
+    cwd: appPath,
+    nodir: false,
+    posix: true,
+  });
+  for (const dir of dirs.sort((a, b) => b.length - a.length)) {
+    try {
+      await fs.promises.rmdir(path.join(appPath, dir));
+    } catch {
+      // Keep non-empty directories, e.g. a user's unit-test suite.
+    }
+  }
+  try {
+    await fs.promises.rmdir(legacyDir);
+  } catch {
+    // Keep non-empty legacy tests/ for user-owned files.
+  }
+}
+
 /**
- * The relative paths of every spec under the app's `tests/` folder, sorted.
+ * Migrate early Dyad-generated E2E tests from `tests/` to `e2e-tests/`.
+ *
+ * Legacy Dyad tests were generated as TypeScript Playwright specs. We move
+ * `.spec.ts` files that import Playwright plus fixtures they import, leaving
+ * unrelated files in `tests/` untouched.
+ */
+export async function migrateLegacyDyadTestsDir(
+  appPath: string,
+): Promise<void> {
+  if (await pathExists(path.join(appPath, TEST_SPEC_DIR))) {
+    return;
+  }
+  if (!(await pathExists(path.join(appPath, LEGACY_TEST_SPEC_DIR)))) {
+    return;
+  }
+
+  const legacySpecs = await listLegacyPlaywrightSpecs(appPath);
+  if (legacySpecs.length === 0) {
+    return;
+  }
+
+  const legacyFixtures = specsReferenceFixtures(legacySpecs)
+    ? await glob(`${LEGACY_TEST_SPEC_DIR}/fixtures/**`, {
+        cwd: appPath,
+        nodir: true,
+        posix: true,
+      })
+    : [];
+  const legacyFiles = Array.from(
+    new Set([...legacySpecs.map(({ file }) => file), ...legacyFixtures]),
+  );
+  if (legacyFiles.length === 0) {
+    return;
+  }
+
+  for (const legacyFile of legacyFiles) {
+    await moveLegacyDyadTestFile(appPath, legacyFile);
+  }
+  await removeEmptyLegacyTestDirs(appPath);
+  logger.info(
+    `Migrated ${legacyFiles.length} legacy Dyad E2E test file(s) from ${LEGACY_TEST_SPEC_DIR}/ to ${TEST_SPEC_DIR}/`,
+  );
+}
+
+/**
+ * The relative paths of every spec under the app's `e2e-tests/` folder, sorted.
  * Shared by the Tests panel listing and the agent's run_tests tool (so a
  * mistyped target can be answered with the paths that actually exist).
  */
 export async function listSpecFiles(appPath: string): Promise<string[]> {
-  const testsDir = path.join(appPath, "tests");
+  await migrateLegacyDyadTestsDir(appPath);
+  const testsDir = path.join(appPath, TEST_SPEC_DIR);
   if (!fs.existsSync(testsDir)) {
     return [];
   }
@@ -227,6 +356,8 @@ export async function runAppTestsCore({
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
   const appPath = getDyadAppPath(app.path);
+  await migrateLegacyDyadTestsDir(appPath);
+
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
   const normalizedTestFile =
@@ -301,9 +432,9 @@ export async function runAppTestsCore({
     args.push(target);
   } else {
     // Existing user configs can point at a different testDir. Dyad's panel only
-    // lists specs under tests/, so an all-run must target that directory
+    // lists specs under e2e-tests/, so an all-run must target that directory
     // explicitly instead of executing every spec the user's config knows about.
-    args.push("tests/");
+    args.push(`${TEST_SPEC_DIR}/`);
   }
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
@@ -516,6 +647,10 @@ export async function runAppTestsWithIsolation({
   source,
   externalSignal,
 }: RunTestsWithIsolationOptions): Promise<RunAppTestsResult> {
+  const app = await getApp(appId);
+  const appPath = getDyadAppPath(app.path);
+  await migrateLegacyDyadTestsDir(appPath);
+
   const normalizedTestFile =
     testFile === undefined ? undefined : normalizeRunTestFile(testFile);
 

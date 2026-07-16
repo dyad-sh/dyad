@@ -276,7 +276,7 @@ export const applyTestRunFinishedAtom = atom(
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
     // may not match the glob-relative paths in our spec list (e.g. missing
-    // the "tests/" prefix). Reconcile each result back onto a known spec
+    // the "e2e-tests/" prefix). Reconcile each result back onto a known spec
     // key so rows actually pick up their status.
     const appSpecs = get(testSpecsByAppIdAtom).get(appId) ?? [];
     const specFiles = appSpecs.map((s) => s.file);

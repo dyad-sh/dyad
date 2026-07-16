@@ -269,6 +269,8 @@ testSkipIfWindows(
         "OAuth connection failed. This server doesn't support OAuth.",
       );
 
+      // The full alert with the retry action lives on the detail page.
+      await po.plugins.openPluginDetail("testing-mcp-server");
       await expect(
         po.page.getByText("Server doesn't support OAuth", { exact: true }),
       ).toBeVisible({ timeout: 15_000 });
@@ -374,6 +376,8 @@ testSkipIfWindows(
         "Server connection failed. This server requires authentication. Try enabling OAuth.",
       );
 
+      // The full alert with the retry action lives on the detail page.
+      await po.plugins.openPluginDetail("testing-mcp-server");
       await expect(
         po.page.getByText("Server requires authentication", { exact: true }),
       ).toBeVisible({ timeout: 15_000 });

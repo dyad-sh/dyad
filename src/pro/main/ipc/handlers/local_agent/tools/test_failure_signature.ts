@@ -24,9 +24,12 @@ export function stripDynamic(text: string): string {
       // Bare `host:port` (no scheme) churns the signature the same way. Match
       // only real host forms — a blanket `:\d+` rule would also eat the
       // line:column numbers in `foo.spec.ts:12:5` stack frames, which are
-      // exactly the stable part a signature needs.
+      // exactly the stable part a signature needs. A leading lookbehind rather
+      // than `\b`, which would never match a bracketed IPv6 host: `\b` before
+      // `[` needs a word char right before the bracket, but error output has a
+      // space (or nothing) there.
       .replace(
-        /\b(localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:]+\]):\d{2,5}\b/gi,
+        /(?<![\w.])(localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+\]):\d{2,5}\b/gi,
         "$1:<port>",
       )
       // UUIDs before the contiguous-hex rule: their 4-char middle segments are

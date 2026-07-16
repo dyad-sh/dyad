@@ -1,5 +1,9 @@
 const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
 const WINDOWS_CMD_NEEDS_QUOTING_PATTERN = /[\s"&|<>^%!()]/u;
+// `%` and newlines survive quoting: `cmd.exe` expands `%VAR%` and treats CR/LF
+// as command separators even inside double quotes, and neither has a
+// command-line escape (`%%` only works inside a batch file).
+const WINDOWS_CMD_UNQUOTABLE_PATTERN = /[%\r\n]/u;
 
 /**
  * On Windows, a bare command name like `npm` is really the `npm.cmd` shim.
@@ -20,11 +24,17 @@ export function resolveWindowsExecutableName(
  * the outer quotes of the command string, so simple args stay unquoted while
  * empty or shell-significant values are quoted with `"` doubled.
  *
- * Note: `%` is quoted but cannot be escaped — `cmd.exe` has no command-line
- * escape for it (`%%` only works inside a batch file), so `%VAR%` in an
- * argument may still expand. Callers must not pass untrusted `%`-bearing text.
+ * Throws on `%` and CR/LF, which quoting cannot contain: `%VAR%` would still
+ * expand and a newline would still separate commands. Rejecting them keeps a
+ * value that can't be passed through faithfully from being silently rewritten
+ * into a different — possibly injected — command.
  */
 export function quoteWindowsCmdArg(value: string): string {
+  if (WINDOWS_CMD_UNQUOTABLE_PATTERN.test(value)) {
+    throw new Error(
+      `Cannot pass argument through cmd.exe: '%' and newlines are not escapable in a command string. Received: ${JSON.stringify(value)}`,
+    );
+  }
   if (value !== "" && !WINDOWS_CMD_NEEDS_QUOTING_PATTERN.test(value)) {
     return value;
   }
@@ -38,6 +48,9 @@ export function quoteWindowsCmdArg(value: string): string {
  * preserves valid arguments (e.g. a Playwright grep regex containing `()` or
  * `|`) without handing an unquoted command string to a shell. Non-Windows
  * platforms and real executables pass through unchanged.
+ *
+ * Throws on the batch path for arguments containing `%` or newlines — see
+ * `quoteWindowsCmdArg`.
  *
  * Single source of truth for both spawn (`spawn_streaming`) and node-pty
  * (`socket_firewall`) callers so quoting/security fixes apply to both.

@@ -42,7 +42,7 @@ describe("test runtime atoms", () => {
     expect(store.get(currentTestRunStateAtom).phase).toBe("idle");
   });
 
-  it("applyTestRunStartedAtom marks the app running and clears its output", () => {
+  it("applyTestRunStartedAtom marks the app setting up and clears its output", () => {
     const store = createStore();
     store.set(setTestSpecsForAppAtom, {
       appId: 1,
@@ -56,7 +56,7 @@ describe("test runtime atoms", () => {
     // Whole-suite run (no file): every spec is running.
     store.set(applyTestRunStartedAtom, { appId: 1 });
     let state = store.get(testRunStateByAppIdAtom).get(1)!;
-    expect(state.phase).toBe("running");
+    expect(state.phase).toBe("setup");
     expect(state.runningFiles).toEqual(["tests/a.spec.ts", "tests/b.spec.ts"]);
     expect(store.get(testRunOutputByAppIdAtom).get(1)).toBeUndefined();
 

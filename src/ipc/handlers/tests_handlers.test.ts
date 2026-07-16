@@ -76,6 +76,30 @@ describe("tests handlers spec paths", () => {
     ]);
   });
 
+  it("shares one migration between concurrent callers", async () => {
+    const appDir = await makeAppDir();
+    await writeFile(
+      appDir,
+      "tests/home.spec.ts",
+      'import { test } from "@playwright/test";',
+    );
+
+    // The Tests panel lists and runs back to back. Racing renames must not
+    // fail the loser — both callers should see the migrated tree.
+    await expect(
+      Promise.all([
+        listSpecFiles(appDir),
+        listSpecFiles(appDir),
+        migrateLegacyDyadTestsDir(appDir),
+      ]),
+    ).resolves.toEqual([
+      ["e2e-tests/home.spec.ts"],
+      ["e2e-tests/home.spec.ts"],
+      undefined,
+    ]);
+    expect(await exists(appDir, "tests/home.spec.ts")).toBe(false);
+  });
+
   it("does not migrate an existing user-owned tests directory without Playwright specs", async () => {
     const appDir = await makeAppDir();
     await writeFile(appDir, "tests/home.spec.ts", "test('home', () => {});");

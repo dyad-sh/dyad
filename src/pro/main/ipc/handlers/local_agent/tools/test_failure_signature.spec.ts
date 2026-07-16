@@ -40,6 +40,19 @@ describe("stripDynamic", () => {
     );
   });
 
+  it("normalizes bracketed IPv6 hosts, which a leading \\b would never match", () => {
+    expect(stripDynamic("connect ECONNREFUSED [::1]:52344")).toBe(
+      stripDynamic("connect ECONNREFUSED [::1]:41022"),
+    );
+    expect(stripDynamic("connect ECONNREFUSED [::1]:52344")).toContain(
+      "[::1]:<port>",
+    );
+    // IPv4-mapped form, as Node prints it for a dual-stack listener.
+    expect(
+      stripDynamic("connect ECONNREFUSED [::ffff:127.0.0.1]:52344"),
+    ).toContain("[::ffff:127.0.0.1]:<port>");
+  });
+
   it("strips ANSI color codes", () => {
     expect(stripDynamic("[31mError[0m: boom")).toBe("Error: boom");
   });

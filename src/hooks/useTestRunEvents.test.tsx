@@ -111,7 +111,7 @@ describe("useTestRunEvents", () => {
     }
   });
 
-  it("marks the app running on an agent 'started' event", () => {
+  it("marks the app setting up on an agent 'started' event", () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
@@ -125,8 +125,39 @@ describe("useTestRunEvents", () => {
     });
 
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
-    expect(state.phase).toBe("running");
+    expect(state.phase).toBe("setup");
     expect(state.runningFiles).toEqual(["tests/home.spec.ts"]);
+  });
+
+  it("keeps the setup phase for setup output, then advances on running output", () => {
+    vi.useFakeTimers();
+    try {
+      const { store, Wrapper } = makeWrapper();
+      renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+      act(() => {
+        emitRunState({ appId: 1, source: "agent", state: "started" });
+        emitOutput({ appId: 1, chunk: "installing\n", phase: "setup" });
+        vi.advanceTimersByTime(100);
+      });
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("setup");
+
+      act(() => {
+        emitOutput({ appId: 1, chunk: "Running 1 test\n", phase: "running" });
+        vi.advanceTimersByTime(100);
+      });
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("running");
+
+      // Teardown streams setup-phase output after the tests ran; the label
+      // must not flash back to "Setting up testing…".
+      act(() => {
+        emitOutput({ appId: 1, chunk: "cleaning up\n", phase: "setup" });
+        vi.advanceTimersByTime(100);
+      });
+      expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("running");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refreshes the spec list before reconciling a finished run, so a spec written this turn shows its result", async () => {
@@ -242,7 +273,7 @@ describe("useTestRunEvents", () => {
     });
 
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
-    expect(state.phase).toBe("running");
+    expect(state.phase).toBe("setup");
     expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
   });
 

@@ -7,11 +7,19 @@ import {
   applyTestRunStartedAtom,
   setTestRunStateForAppAtom,
   setTestSpecsForAppAtom,
+  type TestRunPhase,
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
+
+/** Phases a run advances through, in order. See the `onOutput` handler below. */
+const PHASE_ORDER: Record<TestRunPhase, number> = {
+  idle: 0,
+  setup: 1,
+  running: 2,
+};
 
 /**
  * Root-level subscriber for test-run lifecycle/output events. Registered once
@@ -79,17 +87,15 @@ export function useTestRunEvents() {
       // state on no-change makes this write a no-op for subscribers.
       setRunState({
         appId: payload.appId,
-        update: (prev) => {
-          // Never go backward: the "started" event advances the state to
-          // "running", but setup-phase output (bootstrap, isolated-database
-          // prep) can still arrive afterward and would flash the label back.
-          if (prev.phase === "running" && payload.phase === "setup") {
-            return prev;
-          }
-          return prev.phase === "idle" || prev.phase === payload.phase
+        update: (prev) =>
+          // A run only ever moves forward through the phases. Teardown emits
+          // setup-phase output after the tests have run, which would otherwise
+          // flash the label back to "Setting up testing…". `idle` means no run
+          // is active, so late output from a finished run is ignored entirely.
+          prev.phase === "idle" ||
+          PHASE_ORDER[payload.phase] <= PHASE_ORDER[prev.phase]
             ? prev
-            : { ...prev, phase: payload.phase };
-        },
+            : { ...prev, phase: payload.phase },
       });
     });
 

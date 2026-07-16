@@ -79,6 +79,17 @@ export const TEST_BASE_URL_ENV = "DYAD_TEST_BASE_URL";
  */
 export const DYAD_CONFIG_FILENAME = "playwright-dyad.config.ts";
 
+// Every config filename Playwright auto-resolves — an app with any of these
+// owns its own config, so its bare `playwright test` script is not ours.
+const PLAYWRIGHT_CONFIG_FILENAMES = [
+  "playwright.config.ts",
+  "playwright.config.js",
+  "playwright.config.mjs",
+  "playwright.config.cjs",
+  "playwright.config.mts",
+  "playwright.config.cts",
+];
+
 const GITIGNORE_ENTRIES = [
   "/test-results/",
   "/playwright-report/",
@@ -375,8 +386,9 @@ function ensureTestScript(appPath: string): void {
       logger.info("Added test script to package.json");
     } else if (
       pkg.scripts.test === "playwright test" &&
-      !fs.existsSync(path.join(appPath, "playwright.config.ts")) &&
-      !fs.existsSync(path.join(appPath, "playwright.config.js"))
+      !PLAYWRIGHT_CONFIG_FILENAMES.some((name) =>
+        fs.existsSync(path.join(appPath, name)),
+      )
     ) {
       // Migrate the old Dyad-generated bare script, but only when the app has
       // no Playwright config of its own. A bare `playwright test` alongside a

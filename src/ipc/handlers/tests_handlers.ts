@@ -45,7 +45,7 @@ import {
 } from "../services/isolated_test_db";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
 import { readSettings } from "@/main/settings";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
 const logger = log.scope("tests_handlers");
 
@@ -127,7 +127,15 @@ async function moveLegacyDyadTestFile(
   );
   const nextFile = path.join(appPath, TEST_SPEC_DIR, relativeToLegacyDir);
   await fs.promises.mkdir(path.dirname(nextFile), { recursive: true });
-  await fs.promises.rename(path.join(appPath, legacyFile), nextFile);
+  try {
+    await fs.promises.rename(path.join(appPath, legacyFile), nextFile);
+  } catch (error) {
+    // A vanished source means the file already moved (an interleaved run, or a
+    // user moving it by hand). The destination is what we wanted either way.
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      throw error;
+    }
+  }
 }
 
 async function removeEmptyLegacyTestDirs(appPath: string): Promise<void> {
@@ -151,16 +159,36 @@ async function removeEmptyLegacyTestDirs(appPath: string): Promise<void> {
   }
 }
 
+// In-flight migrations, keyed by app path. Listing tests and starting a run
+// both migrate first, and the Tests panel does them back to back — without
+// this, two concurrent callers would each glob the legacy dir and race their
+// renames, failing the loser instead of returning tests or starting the run.
+const migrationsInFlight = new Map<string, Promise<void>>();
+
 /**
  * Migrate early Dyad-generated E2E tests from `tests/` to `e2e-tests/`.
  *
  * Legacy Dyad tests were generated as TypeScript Playwright specs. We move
  * `.spec.ts` files that import Playwright plus fixtures they import, leaving
  * unrelated files in `tests/` untouched.
+ *
+ * Concurrent calls for the same app share one migration.
  */
 export async function migrateLegacyDyadTestsDir(
   appPath: string,
 ): Promise<void> {
+  const inFlight = migrationsInFlight.get(appPath);
+  if (inFlight) {
+    return inFlight;
+  }
+  const migration = runLegacyDyadTestsMigration(appPath).finally(() => {
+    migrationsInFlight.delete(appPath);
+  });
+  migrationsInFlight.set(appPath, migration);
+  return migration;
+}
+
+async function runLegacyDyadTestsMigration(appPath: string): Promise<void> {
   if (await pathExists(path.join(appPath, TEST_SPEC_DIR))) {
     return;
   }
@@ -811,7 +839,14 @@ export async function runAppTestsWithIsolation({
         message: error instanceof Error ? error.message : String(error),
       },
     };
-    throw error;
+    // Anything reaching here is a test-infrastructure failure (isolation setup,
+    // teardown, spawn), not a product exception — classify it so telemetry
+    // routes it by kind instead of counting it as unclassified.
+    throw isDyadError(error)
+      ? error
+      : new DyadError(finalResult.infraError!.message, DyadErrorKind.Internal, {
+          cause: error,
+        });
   } finally {
     if (externalSignal) {
       externalSignal.removeEventListener("abort", onExternalAbort);

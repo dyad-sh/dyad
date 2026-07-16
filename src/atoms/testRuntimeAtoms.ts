@@ -228,7 +228,10 @@ export const applyTestRunStartedAtom = atom(
       appId,
       update: (prev) => ({
         ...prev,
-        phase: "running",
+        // A run starts in setup: isolation prep and the Playwright bootstrap
+        // both run before the first test does. Setup-phase output keeps it
+        // here; the first running-phase output advances it.
+        phase: "setup",
         runningFiles: targetFiles,
         runningTests:
           testFile != null && testLine != null

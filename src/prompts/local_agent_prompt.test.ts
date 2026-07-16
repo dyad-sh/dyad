@@ -12,6 +12,13 @@ describe("local_agent_prompt", () => {
     const prompt = constructLocalAgentPrompt(undefined);
     expect(prompt).toMatchSnapshot();
     expectGitContextGuidance(prompt);
+    expect(prompt).toContain(
+      "Use `grep` and `code_search` when the relevant files are not reasonably clear",
+    );
+    expect(prompt).not.toContain("search tools extensively");
+    expect(prompt).toContain(
+      "Add targeted runtime logs only when runtime evidence is needed",
+    );
   });
 
   it("agent mode system prompt with code explorer available", () => {

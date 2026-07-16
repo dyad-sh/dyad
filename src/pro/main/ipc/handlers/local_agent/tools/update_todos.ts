@@ -45,9 +45,9 @@ Skip for:
 2. Trivial tasks with no organizational benefit
 3. Tasks completable in < 3 trivial steps
 4. Purely conversational/informational requests
-5. Todo items should NOT include operational actions done in service of higher-level tasks.
+5. Avoid low-level operational actions that merely support a higher-level task, unless they are an explicit user deliverable or a meaningful investigation or verification phase.
 
-NEVER INCLUDE THESE IN TODOS: linting; testing; searching or examining the codebase.
+Routine linting, testing, searching, or code examination should not become standalone todos when they merely support a higher-level task. Include testing or investigation when the user explicitly requested it or when it is necessary to describe a meaningful phase or outcome.
 
 ### Examples
 

@@ -42,7 +42,7 @@ describe("classifyMcpToolConsent", () => {
     expect(d.decision).toBe("allow");
     expect(d.reason).toBe("safe read");
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { name: "dyad/auto-approver", provider: "openai" },
+      { name: "gpt-5.4-mini", provider: "openai" },
       baseInput.settings,
     );
   });

@@ -153,7 +153,7 @@ describe("runExploreCodeSubagent", () => {
     });
 
     expect(mocks.getModelClient).toHaveBeenCalledWith(
-      { provider: "openai", name: "dyad/explorer" },
+      { provider: "openai", name: "gpt-5.6-luna" },
       mocks.readSettings.mock.results[0].value,
     );
     const options = vi.mocked(streamText).mock.calls[0][0] as any;

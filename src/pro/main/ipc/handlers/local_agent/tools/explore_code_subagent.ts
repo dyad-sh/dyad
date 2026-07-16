@@ -60,7 +60,7 @@ import { formatExploreProgressLog } from "./explore_code_subagent_progress";
 
 const logger = log.scope("explore_code_subagent");
 
-const SUBAGENT_MODEL = { provider: "openai", name: "dyad/explorer" } as const;
+const SUBAGENT_MODEL = { provider: "openai", name: "gpt-5.6-luna" } as const;
 // Max model turns in the agent loop. Each step may issue several parallel tool
 // calls, so this is distinct from the read-only tool-call budget below.
 const SUBAGENT_MAX_STEPS = 12;

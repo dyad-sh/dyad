@@ -368,7 +368,7 @@ describe("agent Git utilities", () => {
   });
 
   it("rejects invalid revisions and missing paths while treating pathspecs literally", async () => {
-    const literalName = ":(glob)literal.txt";
+    const literalName = "literal[1].txt";
     await fs.promises.writeFile(path.join(repo, literalName), "literal\n");
     await git(repo, "--literal-pathspecs", "add", "--", literalName);
     await git(repo, "commit", "-m", "literal path");
@@ -504,7 +504,7 @@ describe("agent Git utilities", () => {
     await fs.promises.chmod(executablePath, 0o644);
     await fs.promises.writeFile(binaryPath, Buffer.from([9, 9]));
 
-    await restoreAgentGitFile({
+    const restoredExecutable = await restoreAgentGitFile({
       path: repo,
       revision: source,
       filePath: "script.sh",
@@ -515,7 +515,10 @@ describe("agent Git utilities", () => {
       filePath: "asset.bin",
     });
 
-    expect((await fs.promises.stat(executablePath)).mode & 0o111).not.toBe(0);
+    expect(restoredExecutable.mode).toBe("100755");
+    if (process.platform !== "win32") {
+      expect((await fs.promises.stat(executablePath)).mode & 0o111).not.toBe(0);
+    }
     await expect(fs.promises.readFile(binaryPath)).resolves.toEqual(
       Buffer.from([0, 1, 2, 255]),
     );

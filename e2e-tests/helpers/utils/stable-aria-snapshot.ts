@@ -76,6 +76,10 @@ function formatButtonLine({
 }) {
   name = name.replace(/\b\d+ms\b/g, "[[duration]]");
   name = name.replace(/\s+log Copy .+$/g, "");
+  name = name.replace(
+    /^(M pnpm-lock\.yaml) \+\d+(?: -\d+)?$/,
+    "$1 [[diff-stats]]",
+  );
 
   if (name.includes(":") || name.includes("'")) {
     return `${indent}- 'button "${name.replace(/'/g, "''")}"${state}'`;

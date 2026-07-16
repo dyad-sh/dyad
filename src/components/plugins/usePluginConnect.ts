@@ -28,48 +28,61 @@ export function usePluginConnect() {
 
   const callbackPort = useOauthCallbackPort();
 
-  const runAutoConnect = async (
+  // Sole owner of the shared connect slot: claims it for the duration
+  // of `fn`. Buttons that start a connect flow disable while the slot
+  // is held, so only one flow can run at a time.
+  const withConnectSlot = async (serverId: number, fn: () => Promise<void>) => {
+    setConnectingServerId(serverId);
+    try {
+      await fn();
+    } finally {
+      setConnectingServerId(null);
+    }
+  };
+
+  // The OAuth flow itself; callers hold the connect slot.
+  const autoConnect = async (
     serverId: number,
     opts?: { showToast?: boolean; callbackPort?: number },
   ) => {
     // Clear any prior feedback so a stale "discovery_failed" alert
     // can't sit next to a fresh error toast on the retry path.
     setConnectFeedback(null);
-    setConnectingServerId(serverId);
-    try {
-      // No port means the flow uses the server's saved port, which
-      // matches its registered redirect URI. Callers pass the probed
-      // port only for rows with none saved yet.
-      const result = await startOAuth({
+    // No port means the flow uses the server's saved port, which
+    // matches its registered redirect URI. Callers pass the probed
+    // port only for rows with none saved yet.
+    const result = await startOAuth({
+      serverId,
+      callbackPort: opts?.callbackPort,
+    });
+    if (result.success) {
+      showSuccess("OAuth connection successful");
+      return;
+    }
+    const message = result.error ?? "OAuth flow failed";
+    if (result.errorKind === "discovery_failed") {
+      setConnectFeedback({
         serverId,
-        callbackPort: opts?.callbackPort,
+        kind: "discovery_failed",
+        message,
       });
-      if (result.success) {
-        showSuccess("OAuth connection successful");
-        return;
+      // Toast only on the initial post-registration attempt so the
+      // failure is visible even when the new row is scrolled out of
+      // view. Manual retries show the inline panel in place.
+      if (opts?.showToast) {
+        showError(
+          "OAuth connection failed. This server doesn't support OAuth.",
+        );
       }
-      const message = result.error ?? "OAuth flow failed";
-      if (result.errorKind === "discovery_failed") {
-        setConnectFeedback({
-          serverId,
-          kind: "discovery_failed",
-          message,
-        });
-        // Toast only on the initial post-registration attempt so the
-        // failure is visible even when the new row is scrolled out of
-        // view. Manual retries show the inline panel in place.
-        if (opts?.showToast) {
-          showError(
-            "OAuth connection failed. This server doesn't support OAuth.",
-          );
-        }
-      } else {
-        showError(message);
-      }
-    } finally {
-      setConnectingServerId(null);
+    } else {
+      showError(message);
     }
   };
+
+  const runAutoConnect = async (
+    serverId: number,
+    opts?: { showToast?: boolean; callbackPort?: number },
+  ) => withConnectSlot(serverId, () => autoConnect(serverId, opts));
 
   const runProbe = async (serverId: number, opts?: { showToast?: boolean }) => {
     try {
@@ -116,37 +129,28 @@ export function usePluginConnect() {
     await runAutoConnect(serverId);
   };
 
-  // Both retry handlers claim the connecting slot before the settings
-  // update. The update awaits query invalidation, which can take
-  // seconds, and a second click in that window would start a duplicate
-  // OAuth flow or probe. `isUpdatingServer` can't guard this: it comes
-  // from the caller's own useMcp() mutation instance, not the one used
-  // here.
-  const onEnableOAuthAndRetry = async (serverId: number) => {
-    setConnectingServerId(serverId);
-    try {
+  // The retry handlers' slot claim covers the settings update as well
+  // as the connect attempt: the update awaits query invalidation,
+  // which can take seconds, and a second click in that window would
+  // start a duplicate OAuth flow or probe. `isUpdatingServer` can't
+  // guard this; mutation state is local to each useMcp() instance.
+  const onEnableOAuthAndRetry = async (serverId: number) =>
+    withConnectSlot(serverId, async () => {
       await updateServer({ id: serverId, oauthEnabled: true });
       setConnectFeedback(null);
       // Just enabled, so no saved port yet -- use the probed one.
-      await runAutoConnect(serverId, {
+      await autoConnect(serverId, {
         callbackPort:
           typeof callbackPort === "number" ? callbackPort : undefined,
       });
-    } finally {
-      setConnectingServerId(null);
-    }
-  };
+    });
 
-  const onDisableOAuthAndRetry = async (serverId: number) => {
-    setConnectingServerId(serverId);
-    try {
+  const onDisableOAuthAndRetry = async (serverId: number) =>
+    withConnectSlot(serverId, async () => {
       await updateServer({ id: serverId, oauthEnabled: false });
       setConnectFeedback(null);
       await runProbe(serverId);
-    } finally {
-      setConnectingServerId(null);
-    }
-  };
+    });
 
   const onDisconnect = async (serverId: number) => {
     setDisconnectingServerId(serverId);

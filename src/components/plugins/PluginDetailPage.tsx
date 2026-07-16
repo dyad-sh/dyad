@@ -204,7 +204,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 id={s.id}
                 json={s.envJson}
                 disabled={!s.enabled}
-                isSaving={!!isUpdatingServer}
+                isSaving={isUpdatingServer}
                 onSave={async (pairs) => {
                   await updateServer({
                     id: s.id,
@@ -221,7 +221,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                 id={s.id}
                 json={s.headersJson}
                 disabled={!s.enabled}
-                isSaving={!!isUpdatingServer}
+                isSaving={isUpdatingServer}
                 itemLabel="Header"
                 onSave={async (pairs) => {
                   await updateServer({

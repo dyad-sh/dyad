@@ -361,7 +361,7 @@ When writing an end-to-end (e2e) test for a feature or flow, write a Playwright 
 ${emitInstruction}
 - Make sure \`@playwright/test\` is installed as a dev dependency. If it isn't already in \`package.json\`, install it (Playwright is required to run the test).
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
-- Do NOT create or edit \`playwright.config.ts\` (or \`.js\`). Dyad generates and owns this file: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. A hand-written config that hardcodes \`baseURL\` (e.g. \`http://127.0.0.1:8080\`) makes the tests hit the wrong server and get overwritten anyway. Just write specs under \`tests/\`.
+- Do NOT create or edit \`playwright-dyad.config.ts\`. Dyad generates and owns that file, and every test run uses it: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. You do NOT need to write a Playwright config at all — just write specs under \`tests/\`.
 - Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
 - Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
 - Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.
@@ -409,11 +409,11 @@ const AGENT_RUN_TESTS_GUIDANCE = `## Running tests and fixing failures
 
 After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
 
-Run the whole file by default. Only narrow the run with \`testName\` (the exact \`test()\` title, e.g. \`run_tests({ testFile: "tests/signup.spec.ts", testName: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A targeted pass only verifies that one test, not the rest of the file. If the title doesn't match, the tool runs nothing and replies with the titles that DO exist.
+Run the whole file by default. Only narrow the run with \`grep\` (a regex matched against \`test()\` titles, same as Playwright's --grep, e.g. \`run_tests({ testFile: "tests/signup.spec.ts", grep: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
 
 Use the EXACT path of a spec that exists under tests/ — don't guess it. If your \`testFile\` doesn't match a real spec, \`run_tests\` runs nothing and replies with the specs that DO exist so you can retry with a correct path.
 
-Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by its exact title and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
+Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
 
 The tool needs the app's dev server to be running; if it reports the app isn't running, ask the user to start it with the Run button in the preview panel.
 

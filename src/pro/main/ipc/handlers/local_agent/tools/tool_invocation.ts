@@ -24,9 +24,9 @@ const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
 const APP_MUTATING_TOOLS: Set<string> = new Set(APP_MUTATING_TOOL_NAMES);
 
 /**
- * Track file edit tool usage for telemetry and for the mutation count that
- * feeds `run_tests`' require-a-change guards. Also called by the sandbox
- * write_file host bridge, so sandbox-script writes count as changes too.
+ * Track file edit tool usage for retry/fallback telemetry. This intentionally
+ * records attempts before execution, including failures; successful mutation
+ * counting is separate in `trackAppMutation`.
  */
 export function trackFileEditTool(
   ctx: AgentContext,
@@ -47,18 +47,18 @@ export function trackFileEditTool(
     };
   }
   ctx.fileEditTracker[filePath][toolName as FileEditToolName]++;
-  ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
 }
 
 /**
- * Count non-file-edit tools that still change the app or its data
- * (delete/rename/copy, dependency installs, SQL, integrations, image
- * generation), so a `run_tests` rerun after one of them isn't refused as
- * "you haven't made any changes". File-edit tools are counted inside
- * `trackFileEditTool`.
+ * Count a successfully completed tool that changes the app or its data. File
+ * edits and other app-mutating tools both feed this signal so `run_tests` only
+ * accepts a rerun after a mutation actually completed.
  */
 export function trackAppMutation(ctx: AgentContext, toolName: string): void {
-  if (!APP_MUTATING_TOOLS.has(toolName)) {
+  if (
+    !FILE_EDIT_TOOLS.has(toolName as FileEditToolName) &&
+    !APP_MUTATING_TOOLS.has(toolName)
+  ) {
     return;
   }
   ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;

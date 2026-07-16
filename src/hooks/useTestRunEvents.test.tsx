@@ -8,6 +8,7 @@ import {
   testSpecsByAppIdAtom,
 } from "@/atoms/testRuntimeAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
+import { queryKeys } from "@/lib/queryKeys";
 
 const { runStateListeners, listAppTestsMock } = vi.hoisted(() => ({
   runStateListeners: new Set<(payload: unknown) => void>(),
@@ -39,10 +40,11 @@ function emitRunState(payload: unknown) {
 function makeWrapper() {
   const store = createStore();
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
   });
   return {
     store,
+    queryClient,
     Wrapper({ children }: PropsWithChildren) {
       return (
         <QueryClientProvider client={queryClient}>
@@ -90,7 +92,7 @@ describe("useTestRunEvents", () => {
   });
 
   it("refreshes the spec list before reconciling a finished run, so a spec written this turn shows its result", async () => {
-    const { store, Wrapper } = makeWrapper();
+    const { store, queryClient, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
 
     // The spec atom is empty (the spec was written by the agent this same
@@ -99,6 +101,9 @@ describe("useTestRunEvents", () => {
     listAppTestsMock.mockResolvedValue({
       specs: [{ file: "tests/home.spec.ts", tests: [] }],
     });
+    // Reproduce the production cache window. The subscriber must still hit IPC
+    // instead of reusing this fresh, now-stale list.
+    queryClient.setQueryData(queryKeys.tests.list({ appId: 1 }), { specs: [] });
 
     act(() => {
       emitRunState({
@@ -119,7 +124,11 @@ describe("useTestRunEvents", () => {
     });
 
     await waitFor(() => {
-      expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
+      expect(listAppTestsMock).toHaveBeenCalledWith({ appId: 1 });
+      expect(
+        store.get(testRunStateByAppIdAtom).get(1)?.results["tests/home.spec.ts"]
+          ?.status,
+      ).toBe("passed");
     });
     const state = store.get(testRunStateByAppIdAtom).get(1)!;
     expect(state.results["tests/home.spec.ts"]?.status).toBe("passed");
@@ -153,6 +162,50 @@ describe("useTestRunEvents", () => {
     await waitFor(() => {
       expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
     });
+  });
+
+  it("finishes immediately and does not let an older refresh finish a newer run", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    let resolveRefresh!: (value: { specs: [] }) => void;
+    listAppTestsMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        testFile: "tests/old.spec.ts",
+      });
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "finished",
+        testFile: "tests/old.spec.ts",
+        results: [{ file: "tests/old.spec.ts", status: "passed" }],
+      });
+    });
+
+    expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("idle");
+
+    await act(async () => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        testFile: "tests/new.spec.ts",
+      });
+      resolveRefresh({ specs: [] });
+      await Promise.resolve();
+    });
+
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.phase).toBe("running");
+    expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
   });
 
   it("unsubscribes on unmount", () => {

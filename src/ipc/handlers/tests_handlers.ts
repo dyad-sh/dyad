@@ -26,6 +26,7 @@ import { safeSend } from "../utils/safe_sender";
 import { spawnStreaming } from "../utils/spawn_streaming";
 import {
   ensurePlaywrightBootstrap,
+  DYAD_CONFIG_FILENAME,
   TEST_BASE_URL_ENV,
   TEST_RESULTS_JSON,
 } from "../utils/playwright_bootstrap";
@@ -168,9 +169,15 @@ export interface RunAppTestsCoreOptions {
   testFile?: string;
   /**
    * When set (with testFile), runs only the test at this 1-based line via
-   * Playwright's `file:line` selector.
+   * Playwright's `file:line` selector. Used by the Tests panel's per-test Run.
    */
   testLine?: number;
+  /**
+   * When set (with testFile), narrows the run to the tests whose title matches
+   * this regex via Playwright's `-g`/`--grep`. Used by the agent's run_tests
+   * tool to target a subset by name. Mutually exclusive with testLine.
+   */
+  grep?: string;
   /**
    * When true, runs the browser in headed mode (a visible window). Defaults to
    * headless.
@@ -210,6 +217,7 @@ export async function runAppTestsCore({
   appId,
   testFile,
   testLine,
+  grep,
   headed,
   parallel,
   signal,
@@ -279,7 +287,12 @@ export async function runAppTestsCore({
   // interpreted as a shell command. A line suffix (`file:line`) targets a
   // single test; the line is validated to be a positive integer at the IPC
   // boundary, so it can't smuggle a flag.
-  const args = ["playwright", "test"];
+  // Always select Dyad's config by name. Playwright auto-resolves
+  // `playwright.config.ts` — the app's own file, which may not exist, may
+  // hardcode a baseURL, or may point at a different testDir. Ours is the only
+  // one that honors DYAD_TEST_BASE_URL, so it's passed explicitly rather than
+  // Dyad taking over the canonical config name.
+  const args = ["playwright", "test", "--config", DYAD_CONFIG_FILENAME];
   if (normalizedTestFile) {
     const target =
       testLine && Number.isInteger(testLine) && testLine > 0
@@ -291,6 +304,12 @@ export async function runAppTestsCore({
     // lists specs under tests/, so an all-run must target that directory
     // explicitly instead of executing every spec the user's config knows about.
     args.push("tests/");
+  }
+  // `-g <regex>` narrows the run to the tests whose title matches (same as the
+  // Playwright CLI). Passed as a separate array arg, never a shell string, so
+  // the pattern can't be interpreted as a shell command or smuggle a flag.
+  if (grep) {
+    args.push("-g", grep);
   }
   args.push("--reporter=list,json");
   // baseURL is passed via the DYAD_TEST_BASE_URL env var, not a CLI flag —
@@ -400,6 +419,10 @@ export async function runAppTestsCore({
           },
         };
       }
+      // A grep that matched no title at runtime: hand back an empty result so
+      // the caller can report "no runnable test" (not an infra dead-end) and
+      // list the titles that exist. The agent tool pre-validates the pattern,
+      // so this is the rare case where a title only exists behind a describe.
       return { appId, results: [] };
     }
     return {
@@ -457,6 +480,8 @@ export interface RunTestsWithIsolationOptions {
   appId: number;
   testFile?: string;
   testLine?: number;
+  /** Regex passed to Playwright's `-g` to narrow the run (agent run_tests). */
+  grep?: string;
   headed?: boolean;
   parallel?: boolean;
   timeoutMs?: number;
@@ -484,6 +509,7 @@ export async function runAppTestsWithIsolation({
   appId,
   testFile,
   testLine,
+  grep,
   headed,
   parallel,
   timeoutMs,
@@ -613,6 +639,7 @@ export async function runAppTestsWithIsolation({
           appId,
           testFile: normalizedTestFile ?? undefined,
           testLine,
+          grep,
           headed,
           parallel,
           signal: controller.signal,
@@ -698,7 +725,9 @@ export function registerTestsHandlers() {
     async (_event, params) => {
       const app = await getApp(params.appId);
       const appPath = getDyadAppPath(app.path);
-      return { dataUrl: readTestScreenshotDataUrl(appPath, params.path) };
+      return {
+        dataUrl: await readTestScreenshotDataUrl(appPath, params.path),
+      };
     },
   );
 

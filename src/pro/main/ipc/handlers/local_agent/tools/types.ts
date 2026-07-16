@@ -42,8 +42,8 @@ export interface FileEditTracker {
 /**
  * Tools beyond write_file/search_replace whose invocation still changes the
  * app or its data, so a `run_tests` rerun after one of them is meaningful.
- * Feeds `AgentContext.mutationCount` (file-edit tools are counted there via
- * `trackFileEditTool`, which the sandbox write_file host bridge also calls).
+ * Feeds `AgentContext.mutationCount` after successful execution (including
+ * sandbox write_file host calls).
  * Turn-scoped bookkeeping tools (update_todos, plan/blueprint tools) and
  * run_tests itself are deliberately excluded — they can't change a test's
  * outcome.
@@ -93,9 +93,9 @@ export interface AgentContext {
   /** True after a tool has successfully changed workspace contents this turn. */
   workspaceMutated?: boolean;
   /**
-   * Turn-scoped count of tool invocations that could change the app or its
-   * data: file edits (via `trackFileEditTool`, including sandbox write_file
-   * host calls) plus the tools in `APP_MUTATING_TOOL_NAMES`. This is the
+   * Turn-scoped count of successfully completed tool invocations that change
+   * the app or its data: file edits (including sandbox write_file host calls)
+   * plus the tools in `APP_MUTATING_TOOL_NAMES`. This is the
    * signal for `run_tests`' require-a-change guards, which must see fixes made
    * through ANY mutating tool — not just write_file/search_replace.
    */
@@ -214,17 +214,17 @@ export interface TestRunAttemptState {
   /** `AgentContext.mutationCount` at the last run, for the require-a-change guard. */
   fileEditCountAtLastRun?: number;
   /**
-   * The `testName` of the last run (undefined = whole file). Changing what's
+   * The `grep` pattern of the last run (undefined = whole file). Changing what's
    * targeted is itself a meaningful change, so the require-a-change guard
-   * doesn't block e.g. widening from one test to the whole file after a fix.
+   * doesn't block e.g. widening from a subset to the whole file after a fix.
    */
-  lastRunTestName?: string;
+  lastRunGrep?: string;
   /** Whether the one free `flakeCheck` rerun has been used for this spec. */
   flakeCheckUsed?: boolean;
   /**
-   * `AgentContext.mutationCount` at the time each target last PASSED, keyed by testName
-   * ("" = whole file). Rerunning a target that already passed with no file
-   * changes since is refused — some models otherwise loop re-running
+   * `AgentContext.mutationCount` at the time each target last PASSED, keyed by
+   * grep pattern ("" = whole file). Rerunning a target that already passed with
+   * no file changes since is refused — some models otherwise loop re-running
    * already-green tests.
    */
   passedAtEditCount?: Record<string, number>;

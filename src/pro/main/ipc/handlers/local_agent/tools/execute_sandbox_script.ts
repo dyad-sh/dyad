@@ -26,6 +26,7 @@ import {
   assertAppBlueprintApproved,
   getToolConsent,
   requireToolConsentOrThrow,
+  trackAppMutation,
   trackFileEditTool,
 } from "./tool_invocation";
 import {
@@ -481,6 +482,7 @@ function buildWriteFileCapability(ctx: AgentContext) {
 
     trackFileEditTool(ctx, writeFileTool.name, args);
     const result = await writeFileTool.execute(args, ctx);
+    trackAppMutation(ctx, writeFileTool.name);
     const xml = writeFileTool.buildXml?.(args, true);
     if (xml) {
       ctx.onXmlComplete(xml);

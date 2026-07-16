@@ -571,12 +571,12 @@ export function buildAgentToolSet(
           // Track file edit tool usage before execution to capture all attempts
           // (including failures) for retry/fallback telemetry
           trackFileEditTool(ctx, tool.name, processedArgs);
-          // Other app-mutating tools count toward the change signal run_tests'
-          // guards read, so a fix made via e.g. add_dependency or delete_file
-          // unblocks a rerun just like a file edit does.
-          trackAppMutation(ctx, tool.name);
-
           const result = await tool.execute(processedArgs, ctx);
+
+          // Only completed mutations unblock run_tests. Failed tool calls are
+          // still present in fileEditTracker for retry/fallback telemetry, but
+          // must not masquerade as a code change.
+          trackAppMutation(ctx, tool.name);
 
           return convertToolResultForAiSdk(result);
         } catch (error) {

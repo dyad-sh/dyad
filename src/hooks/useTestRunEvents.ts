@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,15 +25,21 @@ export function useTestRunEvents() {
   const applyFinished = useSetAtom(applyTestRunFinishedAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const queryClient = useQueryClient();
+  const runGenerationByAppId = useRef(new Map<number, number>());
 
   useEffect(() => {
     const unsubscribe = ipc.events.tests.onRunState((payload) => {
       if (payload.source === "panel") return;
       const { appId, testFile, testLine } = payload;
       if (payload.state === "started") {
+        runGenerationByAppId.current.set(
+          appId,
+          (runGenerationByAppId.current.get(appId) ?? 0) + 1,
+        );
         applyStarted({ appId, testFile, testLine });
         return;
       }
+      const runGeneration = runGenerationByAppId.current.get(appId) ?? 0;
       const finish = () =>
         applyFinished({
           appId,
@@ -45,21 +51,30 @@ export function useTestRunEvents() {
           },
           isSingleTest: testFile != null && testLine != null,
         });
+      // Do not leave the finished run's spinner/Stop state waiting on disk I/O.
+      // The initial merge may use a stale spec list, but the forced refresh
+      // below reconciles the same results again once newly-written specs exist.
+      finish();
       // The agent may have written the spec it just ran in this same turn, so
-      // the cached spec list may not contain it yet. Refresh the list BEFORE
-      // merging results — otherwise the new spec's result reconciles against a
-      // stale list, lands under an unmatched key, and its row never shows an
-      // outcome. fetchQuery also primes the panel's specs query cache.
-      void queryClient
-        .fetchQuery({
-          queryKey: queryKeys.tests.list({ appId }),
-          queryFn: () => ipc.tests.listAppTests({ appId }),
+      // the cached spec list may not contain it yet. Read through IPC directly:
+      // fetchQuery can reuse either the production client's fresh 60-second
+      // cache or an in-flight request that started before the spec was written.
+      void ipc.tests
+        .listAppTests({ appId })
+        .then((data) => {
+          // A newer run may have started while the refresh was in flight. Its
+          // running state and results must never be overwritten by this older
+          // run's delayed reconciliation.
+          if (runGenerationByAppId.current.get(appId) !== runGeneration) {
+            return;
+          }
+          queryClient.setQueryData(queryKeys.tests.list({ appId }), data);
+          setSpecs({ appId, specs: data.specs });
+          finish();
         })
-        .then((data) => setSpecs({ appId, specs: data.specs }))
-        // On a fetch failure, still finish the run against the cached list —
-        // a possibly-unreconciled result beats a stranded "running" state.
-        .catch(() => {})
-        .finally(finish);
+        // The run already finished against the cached list above. A failed
+        // refresh only means its result may remain unreconciled until later.
+        .catch(() => {});
     });
     return unsubscribe;
   }, [applyStarted, applyFinished, setSpecs, queryClient]);

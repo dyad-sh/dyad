@@ -238,6 +238,7 @@ describe("executeSandboxScriptTool", () => {
         write_file: 1,
         search_replace: 0,
       });
+      expect(ctx.mutationCount).toBe(1);
       expect(writeSpy).toHaveBeenCalledWith(
         {
           path: "src/out.txt",
@@ -249,6 +250,28 @@ describe("executeSandboxScriptTool", () => {
       expect(ctx.onXmlComplete).toHaveBeenCalledWith(
         expect.stringContaining('<dyad-write path="src/out.txt"'),
       );
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("does not count a failed direct mutation as a successful change", async () => {
+    const ctx = createWritableSandboxContext();
+    const writeSpy = vi
+      .spyOn(writeFileTool, "execute")
+      .mockRejectedValue(new Error("write failed"));
+    try {
+      const toolSet = buildAgentToolSet(ctx, { enableAppBlueprint: false });
+
+      await expect(
+        toolSet.write_file.execute({ path: "src/out.txt", content: "hello" }),
+      ).rejects.toThrow("write failed");
+
+      expect(ctx.fileEditTracker["src/out.txt"]).toEqual({
+        write_file: 1,
+        search_replace: 0,
+      });
+      expect(ctx.mutationCount).toBeUndefined();
     } finally {
       writeSpy.mockRestore();
     }

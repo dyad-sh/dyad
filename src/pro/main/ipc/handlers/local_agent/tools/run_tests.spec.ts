@@ -117,7 +117,7 @@ describe("runTestsTool", () => {
     specLister.mockReset();
     caseLister.mockReset();
     baseUrl.mockReturnValue("http://localhost:3000");
-    screenshot.mockReturnValue(null);
+    screenshot.mockResolvedValue(null);
     // The spec the tests target exists on disk, so pre-flight resolution lets
     // the run proceed. Individual tests override this to exercise mismatches.
     specLister.mockResolvedValue(["tests/a.spec.ts"]);
@@ -155,13 +155,13 @@ describe("runTestsTool", () => {
     );
   });
 
-  it("never parallelizes a single targeted test even when parallel is on", async () => {
+  it("never parallelizes a grep-narrowed run even when parallel is on", async () => {
     settingsReader.mockReturnValue({
       testParallel: true,
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
       makeCtx(),
     );
     expect(runner).toHaveBeenCalledWith(
@@ -207,7 +207,7 @@ describe("runTestsTool", () => {
       ctx,
     );
     const targeted = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
@@ -228,25 +228,25 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
     await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "test A" },
+      { testFile: "tests/a.spec.ts", grep: "test A" },
       ctx,
     );
     await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "test B" },
+      { testFile: "tests/a.spec.ts", grep: "test B" },
       ctx,
     );
     runner.mockClear();
     const rerunA = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "test A" },
+      { testFile: "tests/a.spec.ts", grep: "test A" },
       ctx,
     );
     const rerunB = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "test B" },
+      { testFile: "tests/a.spec.ts", grep: "test B" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
-    expect(rerunA).toContain('"test A" already passed');
-    expect(rerunB).toContain('"test B" already passed');
+    expect(rerunA).toContain("/test A/ already passed");
+    expect(rerunB).toContain("/test B/ already passed");
     expect(rerunA).toContain("Do NOT run it again");
     // A targeted pass no longer requires re-running the whole file, but it's
     // still allowed if the agent wants to verify the rest of the spec.
@@ -277,7 +277,7 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(
       failResult("boom", "/app/test-results/a/test-failed-1.png"),
     );
-    screenshot.mockReturnValue("data:image/png;base64,ABC");
+    screenshot.mockResolvedValue("data:image/png;base64,ABC");
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
       { testFile: "tests/a.spec.ts" },
@@ -476,7 +476,7 @@ describe("runTestsTool", () => {
     expect(out).toContain("All runnable tests passed");
   });
 
-  it("targets a single test by name via its resolved file:line", async () => {
+  it("narrows the run to a subset via grep (never a line target)", async () => {
     caseLister.mockResolvedValue([
       { title: "does a thing", line: 3 },
       { title: "does another thing", line: 12 },
@@ -484,79 +484,82 @@ describe("runTestsTool", () => {
     runner.mockResolvedValue(passedResult);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does another thing" },
+      { testFile: "tests/a.spec.ts", grep: "does another thing" },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
     expect(runner.mock.calls[0][0]).toMatchObject({
       testFile: "tests/a.spec.ts",
-      testLine: 12,
+      grep: "does another thing",
     });
-    // A targeted pass must not read as a whole-file pass.
-    expect(out).toContain('"does another thing" passed');
-    expect(out).toContain("Only that test ran");
+    // The agent targets by pattern, never by line.
+    expect(runner.mock.calls[0][0].testLine).toBeUndefined();
+    // A narrowed pass must not read as a whole-file pass.
+    expect(out).toContain("matching /does another thing/ passed");
+    expect(out).toContain("Only that subset ran");
   });
 
-  it("pre-flights an unknown test name: doesn't run, returns the real titles", async () => {
+  it("allows a grep that matches several tests", async () => {
+    // Unlike exact-title targeting, a pattern is meant to match a group — a
+    // multi-match run is legitimate, not ambiguous.
+    caseLister.mockResolvedValue([
+      { title: "user can sign up", line: 3 },
+      { title: "user can log in", line: 12 },
+      { title: "guest sees a paywall", line: 20 },
+    ]);
+    runner.mockResolvedValue(passedResult);
+    const ctx = makeCtx();
+    const out = await runTestsTool.execute(
+      { testFile: "tests/a.spec.ts", grep: "user can" },
+      ctx,
+    );
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner.mock.calls[0][0]).toMatchObject({ grep: "user can" });
+    expect(out).toContain("matching /user can/ passed");
+  });
+
+  it("pre-flights a grep matching no title: doesn't run, returns the real titles", async () => {
     caseLister.mockResolvedValue([
       { title: "does a thing", line: 3 },
       { title: "user can sign up", line: 12 },
     ]);
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "user signs up" },
+      { testFile: "tests/a.spec.ts", grep: "user signs up" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
-    expect(out).toContain("No test in `tests/a.spec.ts` is titled");
+    expect(out).toContain(
+      "No test in `tests/a.spec.ts` has a title matching `user signs up`",
+    );
     expect(out).toContain('"does a thing"');
     expect(out).toContain('"user can sign up"');
     expect(out).toContain("did NOT count");
-    expect(emittedXml(ctx)).toContain(
-      "No test matches &quot;user signs up&quot;",
-    );
+    expect(emittedXml(ctx)).toContain("No test matches /user signs up/");
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts ?? 0).toBe(0);
   });
 
-  it("suggests the closest title on a near-miss test name", async () => {
-    caseLister.mockResolvedValue([
-      { title: "user can sign up with email", line: 3 },
-    ]);
+  it("refuses an invalid grep regex without running", async () => {
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "user can sign up" },
+      { testFile: "tests/a.spec.ts", grep: "user can (sign up" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
-    expect(out).toContain("Closest match by title");
-    expect(out).toContain('"user can sign up with email"');
-  });
-
-  it("refuses an ambiguous test name (duplicate titles) without running", async () => {
-    caseLister.mockResolvedValue([
-      { title: "does a thing", line: 3 },
-      { title: "does a thing", line: 20 },
-    ]);
-    const ctx = makeCtx();
-    const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
-      ctx,
-    );
-    expect(runner).not.toHaveBeenCalled();
-    expect(out).toContain("matches 2 test() calls");
+    expect(out).toContain("isn't a valid regular expression");
     expect(out).toContain("did NOT count");
-    expect(emittedXml(ctx)).toContain("Ambiguous test name");
+    expect(emittedXml(ctx)).toContain("Invalid grep pattern");
   });
 
   it("lets a target change bypass the require-a-change guard", async () => {
-    // Whole-file run fails; without any edit, narrowing to one test by name is
+    // Whole-file run fails; without any edit, narrowing to a subset with grep is
     // a different run and must not be blocked as a pointless rerun.
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
     await runTestsTool.execute({ testFile: "tests/a.spec.ts" }, ctx);
     runner.mockClear();
     const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
       ctx,
     );
     expect(runner).toHaveBeenCalledTimes(1);
@@ -564,20 +567,20 @@ describe("runTestsTool", () => {
     // But rerunning the SAME target without an edit is still blocked.
     runner.mockClear();
     const blocked = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
       ctx,
     );
     expect(runner).not.toHaveBeenCalled();
     expect(blocked).toContain("haven't made any changes");
   });
 
-  it("explains a targeted test that executed nothing as skipped (uncounted)", async () => {
-    // The name resolved (so the test exists) but Playwright ran nothing — the
-    // test is test.skip/test.fixme.
+  it("explains a grep-narrowed run that executed nothing as skipped (uncounted)", async () => {
+    // The pattern matched a test (so it exists) but Playwright ran nothing —
+    // the test is test.skip/test.fixme.
     runner.mockResolvedValue({ appId: 1, results: [] });
     const ctx = makeCtx();
     const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
       ctx,
     );
     expect(out).toContain("executed nothing");
@@ -635,9 +638,9 @@ describe("runTestsTool", () => {
     expect(out.length).toBeLessThan(longError.length);
   });
 
-  it("keeps the fix budget after a targeted pass (no attempt laundering)", async () => {
-    // Only a whole-file pass resets the counter. If a targeted pass did too,
-    // alternating a known-green target with a failing one would launder
+  it("keeps the fix budget after a grep-narrowed pass (no attempt laundering)", async () => {
+    // Only a whole-file pass resets the counter. If a narrowed pass did too,
+    // alternating a known-green pattern with a failing one would launder
     // unlimited attempts past the per-spec cap.
     runner.mockResolvedValue(failResult("boom"));
     const ctx = makeCtx();
@@ -646,10 +649,10 @@ describe("runTestsTool", () => {
     addEdit(ctx, "tests/a.spec.ts");
     runner.mockResolvedValue(passedResult);
     const out = await runTestsTool.execute(
-      { testFile: "tests/a.spec.ts", testName: "does a thing" },
+      { testFile: "tests/a.spec.ts", grep: "does a thing" },
       ctx,
     );
-    expect(out).toContain('"does a thing" passed');
+    expect(out).toContain("matching /does a thing/ passed");
     expect(ctx.testRunAttempts.get("tests/a.spec.ts")?.attempts).toBe(1);
   });
 

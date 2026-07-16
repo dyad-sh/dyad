@@ -168,12 +168,30 @@ export function truncateError(error: string): string {
     : trimmed;
 }
 
+/**
+ * Describe how the run was isolated, for the agent (and, via the tool reply,
+ * the user). Only `neon-branch` is a genuine throwaway copy, so it's the only
+ * mode that may claim real data was untouched. A `supabase-test-user` run
+ * executes against the app's REAL project — Row-Level Security is the only
+ * thing scoping it — so it states what we did (tested with a test user) rather
+ * than promising what didn't happen. `reason` (tables without RLS, RLS Dyad
+ * couldn't verify, or why isolation was skipped) is appended rather than
+ * dropped: it's precisely the case where a blanket safety claim would be false.
+ *
+ * The `mode` enum must never reach the text: this string is both the tool
+ * result AND the body of the <dyad-status> card the user reads in chat, so it
+ * says what happened in plain words instead of naming an internal identifier.
+ */
 export function isolationLine(res: RunAppTestsResult): string {
-  const mode = res.isolation?.mode ?? "none";
-  if (mode === "none") {
-    return "Database isolation: none (tests ran against the app's current database).";
-  }
-  return `Database isolation: ${mode} (your real data was not touched).`;
+  const isolation = res.isolation;
+  const mode = isolation?.mode ?? "none";
+  const summary =
+    mode === "neon-branch"
+      ? "Tests ran against a temporary copy of the database — your real data was not touched."
+      : mode === "supabase-test-user"
+        ? "The app was tested using a temporary test user."
+        : "Tests ran against the app's current database.";
+  return isolation?.reason ? `${summary} ${isolation.reason}` : summary;
 }
 
 export function completeWarning(

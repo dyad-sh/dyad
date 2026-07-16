@@ -21,6 +21,10 @@ const fsPromises = fs.promises;
 
 const logger = log.scope("supabase_management_client");
 
+// Supabase can briefly reject a newly issued OAuth token while it propagates
+// to the Management API. Keep this retry window short and limited to 401s.
+const ORGANIZATION_AUTH_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000] as const;
+
 // ─────────────────────────────────────────────────────────────────────
 // Interfaces for file collection and caching
 // ─────────────────────────────────────────────────────────────────────
@@ -378,19 +382,34 @@ export async function getSupabaseClientForOrganization(
 export async function listSupabaseOrganizations(
   accessToken: string,
 ): Promise<SupabaseOrganizationDetails[]> {
-  const response = await fetchWithRetry(
-    "https://api.supabase.com/v1/organizations",
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetchWithRetry(
+      "https://api.supabase.com/v1/organizations",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    },
-    "List Supabase organizations",
-  );
+      "List Supabase organizations",
+    );
 
-  if (response.status !== 200) {
+    if (response.status === 200) {
+      const organizations: SupabaseOrganizationDetails[] =
+        await response.json();
+      return organizations;
+    }
+
     const errorText = await response.text();
+    const retryDelay = ORGANIZATION_AUTH_RETRY_DELAYS_MS[attempt];
+    if (response.status === 401 && retryDelay !== undefined) {
+      logger.warn(
+        `Supabase organizations request was unauthorized; retrying in ${retryDelay}ms (attempt ${attempt + 2}/${ORGANIZATION_AUTH_RETRY_DELAYS_MS.length + 1})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      continue;
+    }
+
     logger.error(
       `Failed to fetch organizations (${response.status}): ${errorText}`,
     );
@@ -399,9 +418,6 @@ export async function listSupabaseOrganizations(
       response,
     );
   }
-
-  const organizations: SupabaseOrganizationDetails[] = await response.json();
-  return organizations;
 }
 
 export interface SupabaseOrganizationMember {

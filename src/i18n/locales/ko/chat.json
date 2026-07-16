@@ -105,6 +105,21 @@
   "approve": "승인",
   "reject": "거부",
   "noChanges": "변경 사항 없음",
+  "searchChatsTool": {
+    "badge": "채팅 검색",
+    "searching": "채팅 기록 검색 중...",
+    "didNotFinish": "완료되지 않음",
+    "stillIndexing": "색인 업데이트 중",
+    "chatCount_one": "채팅 {{count}}개",
+    "chatCount_other": "채팅 {{count}}개"
+  },
+  "readChatTool": {
+    "badge": "채팅 기록",
+    "reading": "채팅 읽는 중...",
+    "didNotFinish": "완료되지 않음",
+    "chatNumber": "채팅 #{{chatId}}",
+    "messagesRange": "메시지 {{range}}"
+  },
   "git": {
     "checkingChanges": "프로젝트 변경 사항 확인 중",
     "checkedChanges": "프로젝트 변경 사항 확인 완료",

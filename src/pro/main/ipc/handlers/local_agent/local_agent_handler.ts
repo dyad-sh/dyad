@@ -23,6 +23,7 @@ import {
   clearPendingMcpConsentsForChat,
 } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
+import { scheduleChatSearchIndexing } from "./chat_search_indexer";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { sanitizeMcpToolResult } from "@/ipc/utils/mcp_result_sanitizer";
 
@@ -1753,6 +1754,10 @@ export async function handleLocalAgentStream(
       .update(messages)
       .set({ approvalState: "approved" })
       .where(eq(messages.id, placeholderMessageId));
+
+    // The turn's messages have settled; index them for chat search so they
+    // are normally searchable by the next turn.
+    scheduleChatSearchIndexing();
 
     // Send telemetry for files with multiple edit tool types
     for (const [filePath, counts] of Object.entries(fileEditTracker)) {

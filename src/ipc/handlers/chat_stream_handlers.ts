@@ -19,6 +19,7 @@ import {
 
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
+import { scheduleChatSearchIndexing } from "../../pro/main/ipc/handlers/local_agent/chat_search_indexer";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
 import {
@@ -2098,6 +2099,8 @@ This conversation includes one or more image attachments. When the user uploads 
               content: appendCancelledResponseNotice(partialResponse),
             })
             .where(eq(messages.id, placeholderAssistantMessage.id));
+          // Settled (cancelled): index this turn's messages for chat search
+          scheduleChatSearchIndexing();
         } catch (error) {
           logger.error(
             `Error saving cancelled response for chat ${req.chatId}:`,
@@ -2125,6 +2128,8 @@ This conversation includes one or more image attachments. When the user uploads 
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
+        // Settled: index this turn's messages for chat search
+        scheduleChatSearchIndexing();
         const latestSettings = readSettings();
         const shouldAutoApply =
           latestSettings.autoApproveChanges && selectedChatMode !== "ask";

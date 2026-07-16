@@ -105,6 +105,21 @@
   "approve": "Approve",
   "reject": "Reject",
   "noChanges": "No changes",
+  "searchChatsTool": {
+    "badge": "CHAT SEARCH",
+    "searching": "Searching chat history...",
+    "didNotFinish": "Did not finish",
+    "stillIndexing": "index still updating",
+    "chatCount_one": "{{count}} chat",
+    "chatCount_other": "{{count}} chats"
+  },
+  "readChatTool": {
+    "badge": "CHAT HISTORY",
+    "reading": "Reading chat...",
+    "didNotFinish": "Did not finish",
+    "chatNumber": "Chat #{{chatId}}",
+    "messagesRange": "messages {{range}}"
+  },
   "git": {
     "checkingChanges": "Checking project changes",
     "checkedChanges": "Checked project changes",

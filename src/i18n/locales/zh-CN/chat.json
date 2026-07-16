@@ -105,6 +105,21 @@
   "approve": "批准",
   "reject": "拒绝",
   "noChanges": "无更改",
+  "searchChatsTool": {
+    "badge": "聊天搜索",
+    "searching": "正在搜索聊天记录...",
+    "didNotFinish": "未完成",
+    "stillIndexing": "索引仍在更新",
+    "chatCount_one": "{{count}} 个聊天",
+    "chatCount_other": "{{count}} 个聊天"
+  },
+  "readChatTool": {
+    "badge": "聊天记录",
+    "reading": "正在读取聊天...",
+    "didNotFinish": "未完成",
+    "chatNumber": "聊天 #{{chatId}}",
+    "messagesRange": "消息 {{range}}"
+  },
   "git": {
     "checkingChanges": "正在检查项目更改",
     "checkedChanges": "已检查项目更改",

@@ -77,6 +77,8 @@ const DYAD_CUSTOM_TAG_NAMES = [
   // run_tests tools), but historical chats still contain it and must render as
   // a file-write card rather than raw markup.
   "dyad-generate-test",
+  "dyad-search-chats",
+  "dyad-read-chat",
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);
 

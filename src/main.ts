@@ -79,6 +79,10 @@ import {
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import {
+  startChatSearchIndexer,
+  stopChatSearchIndexer,
+} from "./pro/main/ipc/handlers/local_agent/chat_search_indexer";
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
 import fs from "fs";
@@ -363,6 +367,10 @@ export async function onReady() {
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
+
+  // Start the chat-search FTS index maintenance (backfill runs in the
+  // background; never blocks startup)
+  startChatSearchIndexer();
 
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
@@ -1244,6 +1252,9 @@ app.on("will-quit", () => {
 
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();
+
+  // Stop the chat-search index maintenance timers
+  stopChatSearchIndexer();
 });
 
 app.on("activate", () => {

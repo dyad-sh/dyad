@@ -115,6 +115,16 @@ line 5`;
       expect(readFileTool.defaultConsent).toBe("always");
     });
 
+    it("recommends batching only concretely useful reads", () => {
+      expect(readFileTool.description).toContain(
+        "when several files are concretely likely to be useful",
+      );
+      expect(readFileTool.description).toContain(
+        "Avoid speculative reads without a clear connection to the task",
+      );
+      expect(readFileTool.description).not.toContain("always better");
+    });
+
     it("requires path", () => {
       const schema = readFileTool.inputSchema;
       expect(() => schema.parse({})).toThrow();

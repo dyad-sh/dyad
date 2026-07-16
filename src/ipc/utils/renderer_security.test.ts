@@ -68,4 +68,13 @@ describe("packaged renderer route coverage", () => {
       expect(isTrustedRendererUrl(`file://${routePath}`), routePath).toBe(true);
     }
   });
+
+  it("trusts plugin detail routes with numeric ids only", () => {
+    configureTrustedRenderer({ packagedRendererUrl: PACKAGED_RENDERER_URL });
+
+    expect(isTrustedRendererUrl("file:///plugins/1")).toBe(true);
+    expect(isTrustedRendererUrl("file:///plugins/42/")).toBe(true);
+    expect(isTrustedRendererUrl("file:///plugins/abc")).toBe(false);
+    expect(isTrustedRendererUrl("file:///plugins/1/extra")).toBe(false);
+  });
 });

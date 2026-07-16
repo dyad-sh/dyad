@@ -71,7 +71,9 @@ function isPackagedRendererRoutePath(
       : routePath;
   return (
     PACKAGED_RENDERER_STATIC_PATHS.has(normalizedPath) ||
-    /^\/providers\/[^/]+$/.test(normalizedPath)
+    /^\/providers\/[^/]+$/.test(normalizedPath) ||
+    // Plugin detail pages use numeric server ids.
+    /^\/plugins\/\d+$/.test(normalizedPath)
   );
 }
 

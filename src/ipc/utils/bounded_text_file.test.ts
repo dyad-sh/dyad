@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  AGENT_READ_FILE_RESULT_LIMIT_BYTES,
   APP_FILE_EDITOR_LIMIT_BYTES,
   readAppFileForEditor,
   readTextFileLines,
@@ -24,6 +25,10 @@ describe("bounded text file reads", () => {
       fs.rm(rootPath, { recursive: true, force: true }),
       fs.rm(outsidePath, { recursive: true, force: true }),
     ]);
+  });
+
+  it("keeps the local-agent read result budget at 256 KiB", () => {
+    expect(AGENT_READ_FILE_RESULT_LIMIT_BYTES).toBe(256 * 1024);
   });
 
   describe("readAppFileForEditor", () => {
@@ -139,7 +144,7 @@ describe("bounded text file reads", () => {
 
     it("preserves UTF-8 characters split across stream chunks", async () => {
       const filePath = path.join(rootPath, "chunk-boundary.txt");
-      const content = `${"a".repeat(64 * 1024 - 1)}🙂\nlast line`;
+      const content = `${"a".repeat(32 * 1024 - 1)}🙂\nlast line`;
       await fs.writeFile(filePath, content);
 
       const result = await readTextFileLines({

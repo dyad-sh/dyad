@@ -62,6 +62,45 @@ export function normalizeMcpCallIds(dump: any): void {
   visit(dump, () => {});
 }
 
+/**
+ * Git commit IDs depend on commit metadata and are intentionally included in
+ * replay annotations. Snapshot their presence and shape without pinning the
+ * repository-specific hash.
+ */
+export function normalizeGitContextHashes(dump: any): void {
+  const scrub = (value: string): string =>
+    value.replace(/<dyad-git-context\b[^>]*>/g, (tag) =>
+      tag.replace(
+        /\b(commit|source_commit)="[0-9a-f]{40,64}"/gi,
+        '$1="[[GIT_COMMIT]]"',
+      ),
+    );
+
+  const visit = (value: unknown, set: (next: unknown) => void): void => {
+    if (typeof value === "string") {
+      set(scrub(value));
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) =>
+        visit(item, (next) => {
+          value[index] = next;
+        }),
+      );
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const key of Object.keys(value)) {
+        visit((value as any)[key], (next) => {
+          (value as any)[key] = next;
+        });
+      }
+    }
+  };
+
+  visit(dump, () => {});
+}
+
 export function normalizeToolCallIds(dump: any): void {
   const oldToNewId: Record<string, string> = {};
   let toolCallIndex = 0;

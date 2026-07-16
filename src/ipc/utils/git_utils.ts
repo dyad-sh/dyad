@@ -1,6 +1,7 @@
 import { getGitAuthor } from "./git_author";
 import {
   exec,
+  ExecError,
   type IGitStringExecutionOptions,
   type IGitStringResult,
 } from "dugite";
@@ -15,10 +16,19 @@ import { ensureLibcurlShimOnLinux } from "./linux_libcurl_shim";
 import { getPathEnvKey } from "./path_env";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  isDotenvFilePath,
+  redactDotenvValues,
+  selectTextLineRange,
+} from "@/utils/dotenv_redaction";
 const logger = log.scope("git_utils");
 
 function isUserVisibleGitPath(filePath: string) {
   return !filePath.startsWith(".dyad/") && filePath !== "pnpm-workspace.yaml";
+}
+
+function isAgentGitPatchVisiblePath(filePath: string) {
+  return isUserVisibleGitPath(filePath) || filePath === "pnpm-workspace.yaml";
 }
 
 /**
@@ -144,6 +154,9 @@ import type {
   GitMergeParams,
   GitCreateBranchParams,
   GitDeleteBranchParams,
+  AgentGitDiffScope,
+  AgentGitStatus,
+  AgentGitTextResult,
   GitChangedFile,
   GitChangedFileType,
   GitListChangedFilesParams,
@@ -1395,6 +1408,829 @@ export async function gitLogNative(
   }
 
   return entries;
+}
+
+const AGENT_GIT_RESULT_LIMIT_BYTES = 64 * 1024;
+const AGENT_GIT_EXEC_BUFFER_BYTES = AGENT_GIT_RESULT_LIMIT_BYTES * 2;
+const AGENT_GIT_SOURCE_FILE_LIMIT_BYTES = 20 * 1024 * 1024;
+const AGENT_GIT_MAX_DIFF_PATHS = 500;
+const AGENT_GIT_MAX_STATUS_PATHS = 500;
+const AGENT_GIT_STATUS_PATH_BUDGET_BYTES = AGENT_GIT_RESULT_LIMIT_BYTES - 4096;
+// Keeps diff pathspec argv well under the ~32 KiB Windows command-line limit.
+const AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES = 24 * 1024;
+const AGENT_GIT_TRUNCATION_NOTICE =
+  "\n\n[Output truncated at 64 KiB. Narrow the request with a path, line range, or smaller commit count.]";
+
+interface AgentGitExecutionResult extends IGitStringResult {
+  truncated: boolean;
+}
+
+function agentGitEnvironment(): Record<string, string> {
+  return {
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_PAGER: "cat",
+    GIT_TERMINAL_PROMPT: "0",
+  };
+}
+
+async function execAgentGit(
+  args: string[],
+  repoPath: string,
+  options: {
+    maxBuffer?: number;
+    readOnly?: boolean;
+    encoding?: BufferEncoding;
+    stdin?: string | Buffer;
+    allowTruncation?: boolean;
+  } = {},
+): Promise<AgentGitExecutionResult> {
+  const globalArgs = [
+    "--no-pager",
+    "--no-replace-objects",
+    "--literal-pathspecs",
+    ...(options.readOnly === false ? [] : ["--no-optional-locks"]),
+    "-c",
+    "core.fsmonitor=false",
+    ...args,
+  ];
+  try {
+    const result = await execGit(globalArgs, repoPath, {
+      encoding: options.encoding,
+      env: agentGitEnvironment(),
+      maxBuffer: options.maxBuffer ?? AGENT_GIT_EXEC_BUFFER_BYTES,
+      stdin: options.stdin,
+    });
+    return { ...result, truncated: false };
+  } catch (error) {
+    if (
+      error instanceof ExecError &&
+      error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" &&
+      error.message.includes("stdout maxBuffer") &&
+      options.allowTruncation === true
+    ) {
+      return {
+        stdout: String(error.stdout),
+        stderr: String(error.stderr),
+        exitCode: 0,
+        truncated: true,
+      };
+    }
+    throw error;
+  }
+}
+
+function agentGitErrorDetails(result: IGitStringResult): string {
+  return result.stderr.trim() || result.stdout.trim() || "Unknown Git error";
+}
+
+function assertAgentGitSuccess(
+  result: IGitStringResult,
+  message: string,
+  kind: DyadErrorKind = DyadErrorKind.Conflict,
+): void {
+  if (result.exitCode !== 0) {
+    throw new DyadError(`${message}: ${agentGitErrorDetails(result)}`, kind);
+  }
+}
+
+function boundAgentGitContent(
+  content: string,
+  alreadyTruncated = false,
+): AgentGitTextResult {
+  const hadTruncationNotice = content.endsWith(AGENT_GIT_TRUNCATION_NOTICE);
+  const unannotatedContent = hadTruncationNotice
+    ? content.slice(0, -AGENT_GIT_TRUNCATION_NOTICE.length)
+    : content;
+  const contentLimitBytes =
+    AGENT_GIT_RESULT_LIMIT_BYTES -
+    Buffer.byteLength(AGENT_GIT_TRUNCATION_NOTICE, "utf8");
+  const bytes = Buffer.from(unannotatedContent, "utf8");
+  let end = Math.min(bytes.length, contentLimitBytes);
+  while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) {
+    end -= 1;
+  }
+  const boundedContent = bytes.subarray(0, end).toString("utf8");
+  const boundedTruncated = bytes.length > contentLimitBytes;
+  const truncated = alreadyTruncated || hadTruncationNotice || boundedTruncated;
+  return {
+    content: boundedContent + (truncated ? AGENT_GIT_TRUNCATION_NOTICE : ""),
+    truncated,
+  };
+}
+
+function assertAgentGitRevisionInput(revision: string): void {
+  if (
+    revision.length === 0 ||
+    revision.length > 256 ||
+    revision.startsWith("-") ||
+    revision.includes("..") ||
+    /[\0\r\n]/.test(revision)
+  ) {
+    throw new DyadError(
+      `Invalid Git revision: ${JSON.stringify(revision)}`,
+      DyadErrorKind.Validation,
+    );
+  }
+}
+
+export function normalizeAgentGitPath(
+  repoPath: string,
+  filePath: string,
+): string {
+  if (
+    filePath.length === 0 ||
+    filePath.length > 4096 ||
+    /[\0\r\n]/.test(filePath) ||
+    /(^|[\\/])\.\.([\\/]|$)/.test(filePath)
+  ) {
+    throw new DyadError(
+      `Invalid Git path: ${JSON.stringify(filePath)}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const fullPath = safeJoin(repoPath, filePath);
+  const relativePath = normalizePath(
+    pathModule.relative(
+      pathModule.resolve(repoPath),
+      pathModule.resolve(fullPath),
+    ),
+  ).replace(/^\.\//, "");
+  if (!relativePath || relativePath === ".") {
+    throw new DyadError(
+      "A file or directory path inside the app is required",
+      DyadErrorKind.Validation,
+    );
+  }
+  return relativePath;
+}
+
+function normalizeAgentGitFilterPath(
+  repoPath: string,
+  filePath: string | undefined,
+): string | undefined {
+  return filePath === "."
+    ? undefined
+    : filePath
+      ? normalizeAgentGitPath(repoPath, filePath)
+      : undefined;
+}
+
+export async function resolveAgentGitCommit({
+  path,
+  revision,
+}: GitBaseParams & { revision: string }): Promise<string> {
+  assertAgentGitRevisionInput(revision);
+  const result = await execAgentGit(
+    ["rev-parse", "--verify", "--end-of-options", `${revision}^{commit}`],
+    path,
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Git revision not found: ${revision}`,
+      DyadErrorKind.NotFound,
+    );
+  }
+  const oid = result.stdout.trim();
+  if (!/^[0-9a-f]{40,64}$/i.test(oid)) {
+    throw new DyadError(
+      `Git returned an invalid commit ID for revision: ${revision}`,
+      DyadErrorKind.External,
+    );
+  }
+  return oid;
+}
+
+function addStatusPath(target: Set<string>, filePath: string): void {
+  const normalized = normalizePath(filePath);
+  if (isUserVisibleGitPath(normalized)) {
+    target.add(normalized);
+  }
+}
+
+export async function getAgentGitStatus({
+  path,
+}: GitBaseParams): Promise<AgentGitStatus> {
+  const result = await execAgentGit(
+    ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
+    path,
+    { allowTruncation: true },
+  );
+  assertAgentGitSuccess(result, "Failed to inspect Git status");
+
+  let branch: string | null = null;
+  let head: string | null = null;
+  let detached = false;
+  const staged = new Set<string>();
+  const unstaged = new Set<string>();
+  const untracked = new Set<string>();
+  const conflicted = new Set<string>();
+  const rawRecords = result.stdout.split("\0");
+  if (result.truncated && !result.stdout.endsWith("\0")) {
+    rawRecords.pop();
+  }
+  const records = rawRecords.filter(Boolean);
+
+  for (let index = 0; index < records.length; index++) {
+    const record = records[index];
+    if (record.startsWith("# branch.oid ")) {
+      const value = record.slice("# branch.oid ".length);
+      head = value === "(initial)" ? null : value;
+      continue;
+    }
+    if (record.startsWith("# branch.head ")) {
+      const value = record.slice("# branch.head ".length);
+      detached = value === "(detached)";
+      branch = detached ? null : value;
+      continue;
+    }
+    if (record.startsWith("? ")) {
+      addStatusPath(untracked, record.slice(2));
+      continue;
+    }
+    if (record.startsWith("u ")) {
+      addStatusPath(conflicted, record.split(" ").slice(10).join(" "));
+      continue;
+    }
+    if (!record.startsWith("1 ") && !record.startsWith("2 ")) {
+      continue;
+    }
+
+    const fields = record.split(" ");
+    const isRename = record.startsWith("2 ");
+    const statusCode = fields[1] ?? "..";
+    const filePath = fields.slice(isRename ? 9 : 8).join(" ");
+    if (isRename) {
+      index += 1; // The following NUL field is the original path.
+    }
+    if (statusCode[0] !== ".") addStatusPath(staged, filePath);
+    if (statusCode[1] !== ".") addStatusPath(unstaged, filePath);
+  }
+
+  // Share one response budget across categories so the complete structured
+  // result stays bounded. The call order below intentionally prioritizes
+  // conflicts, then staged and unstaged changes, ahead of untracked files.
+  let remainingPaths = AGENT_GIT_MAX_STATUS_PATHS;
+  let remainingBytes = AGENT_GIT_STATUS_PATH_BUDGET_BYTES;
+  let truncated = result.truncated;
+  const sortedAndBounded = (values: Set<string>) => {
+    const output: string[] = [];
+    const sorted = [...values].sort();
+    for (const value of sorted) {
+      const pathBytes = Buffer.byteLength(JSON.stringify(value), "utf8") + 2;
+      if (remainingPaths === 0 || pathBytes > remainingBytes) {
+        truncated = true;
+        continue;
+      }
+      output.push(value);
+      remainingPaths -= 1;
+      remainingBytes -= pathBytes;
+    }
+    return output;
+  };
+  return {
+    branch,
+    head,
+    detached,
+    conflicted: sortedAndBounded(conflicted),
+    staged: sortedAndBounded(staged),
+    unstaged: sortedAndBounded(unstaged),
+    untracked: sortedAndBounded(untracked),
+    truncated,
+  };
+}
+
+interface DiffEntry {
+  status: string;
+  paths: string[];
+}
+
+async function listAgentDiffEntries({
+  path,
+  comparisonArgs,
+  filePath,
+}: {
+  path: string;
+  comparisonArgs: string[];
+  filePath?: string;
+}): Promise<{ entries: DiffEntry[]; truncated: boolean }> {
+  const result = await execAgentGit(
+    [
+      "diff",
+      "--name-status",
+      "-z",
+      "--no-ext-diff",
+      "--no-textconv",
+      ...comparisonArgs,
+    ],
+    path,
+    { maxBuffer: 1024 * 1024, allowTruncation: true },
+  );
+  assertAgentGitSuccess(result, "Failed to list changed Git paths");
+  const rawFields = result.stdout.split("\0");
+  if (result.truncated && !result.stdout.endsWith("\0")) {
+    rawFields.pop();
+  }
+  const fields = rawFields.filter(Boolean);
+  const entries: DiffEntry[] = [];
+  let incomplete = false;
+  for (let index = 0; index < fields.length; ) {
+    const status = fields[index++];
+    const pathCount = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
+    if (fields.length - index < pathCount) {
+      incomplete = true;
+      break;
+    }
+    const paths = fields.slice(index, index + pathCount);
+    index += pathCount;
+    const normalizedPaths = paths.map(normalizePath);
+    if (
+      !filePath ||
+      normalizedPaths.some(
+        (entryPath) =>
+          entryPath === filePath || entryPath.startsWith(`${filePath}/`),
+      )
+    ) {
+      entries.push({ status, paths: normalizedPaths });
+    }
+  }
+  return { entries, truncated: result.truncated || incomplete };
+}
+
+async function renderSafeAgentDiff({
+  path,
+  comparisonArgs,
+  filePath,
+  contextLines,
+}: {
+  path: string;
+  comparisonArgs: string[];
+  filePath?: string;
+  contextLines: number;
+}): Promise<AgentGitTextResult> {
+  const discovery = await listAgentDiffEntries({
+    path,
+    comparisonArgs,
+    filePath,
+  });
+  const sensitive: string[] = [];
+  const allowedPathGroups: string[][] = [];
+  for (const entry of discovery.entries) {
+    if (
+      entry.paths.some(isDotenvFilePath) ||
+      entry.paths.some((entryPath) => !isAgentGitPatchVisiblePath(entryPath))
+    ) {
+      sensitive.push(entry.paths.at(-1) ?? entry.paths[0]);
+      continue;
+    }
+    // Git needs both sides of a rename/copy pathspec to preserve its R/C
+    // classification when rendering the patch.
+    allowedPathGroups.push(entry.paths);
+  }
+
+  const uniquePaths = new Set(allowedPathGroups.flat());
+  const uniqueAllowed: string[] = [];
+  const includedPaths = new Set<string>();
+  let remainingArgvBytes = AGENT_GIT_DIFF_PATH_ARGV_BUDGET_BYTES;
+  for (const pathGroup of allowedPathGroups) {
+    const newPaths = [
+      ...new Set(
+        pathGroup.filter((entryPath) => !includedPaths.has(entryPath)),
+      ),
+    ];
+    const groupBytes = newPaths.reduce(
+      (total, entryPath) => total + Buffer.byteLength(entryPath, "utf8") + 1,
+      0,
+    );
+    if (
+      uniqueAllowed.length + newPaths.length > AGENT_GIT_MAX_DIFF_PATHS ||
+      groupBytes > remainingArgvBytes
+    ) {
+      continue;
+    }
+    uniqueAllowed.push(...newPaths);
+    for (const entryPath of newPaths) includedPaths.add(entryPath);
+    remainingArgvBytes -= groupBytes;
+  }
+  const omittedByCount =
+    discovery.truncated || uniquePaths.size > uniqueAllowed.length;
+  let patch = "";
+  let truncated = omittedByCount;
+  if (uniqueAllowed.length > 0) {
+    const result = await execAgentGit(
+      [
+        "diff",
+        `--unified=${contextLines}`,
+        "--no-ext-diff",
+        "--no-textconv",
+        ...comparisonArgs,
+        "--",
+        ...uniqueAllowed,
+      ],
+      path,
+      { allowTruncation: true },
+    );
+    assertAgentGitSuccess(result, "Failed to render Git diff");
+    patch = result.stdout;
+    truncated ||= result.truncated;
+  }
+
+  const notices: string[] = [];
+  if (sensitive.length > 0) {
+    notices.push(
+      `[Diff omitted for sensitive or Dyad-managed paths: ${[...new Set(sensitive)].join(", ")}]`,
+    );
+  }
+  if (omittedByCount) {
+    notices.push(
+      `[Changed-path discovery was truncated or limited to ${AGENT_GIT_MAX_DIFF_PATHS} paths. Narrow the request with path.]`,
+    );
+  }
+  return boundAgentGitContent(
+    [notices.join("\n"), patch].filter(Boolean).join("\n\n"),
+    truncated,
+  );
+}
+
+async function hasAgentGitHead(path: string): Promise<boolean> {
+  const result = await execAgentGit(
+    ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+    path,
+  );
+  return result.exitCode === 0;
+}
+
+export async function getAgentGitDiff({
+  path,
+  scope = "all",
+  filePath,
+  contextLines = 3,
+}: GitBaseParams & {
+  scope?: AgentGitDiffScope;
+  filePath?: string;
+  contextLines?: number;
+}): Promise<AgentGitTextResult> {
+  const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
+  const hasHead = await hasAgentGitHead(path);
+  if (scope === "unstaged") {
+    return renderSafeAgentDiff({
+      path,
+      comparisonArgs: [],
+      filePath: normalizedPath,
+      contextLines,
+    });
+  }
+  if (scope === "staged") {
+    return renderSafeAgentDiff({
+      path,
+      comparisonArgs: ["--cached"],
+      filePath: normalizedPath,
+      contextLines,
+    });
+  }
+  if (hasHead) {
+    return renderSafeAgentDiff({
+      path,
+      comparisonArgs: ["HEAD"],
+      filePath: normalizedPath,
+      contextLines,
+    });
+  }
+
+  const [stagedResult, unstagedResult] = await Promise.all([
+    renderSafeAgentDiff({
+      path,
+      comparisonArgs: ["--cached"],
+      filePath: normalizedPath,
+      contextLines,
+    }),
+    renderSafeAgentDiff({
+      path,
+      comparisonArgs: [],
+      filePath: normalizedPath,
+      contextLines,
+    }),
+  ]);
+  return boundAgentGitContent(
+    [
+      stagedResult.content ? `## Staged\n\n${stagedResult.content}` : "",
+      unstagedResult.content ? `## Unstaged\n\n${unstagedResult.content}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    stagedResult.truncated || unstagedResult.truncated,
+  );
+}
+
+export async function getAgentGitLog({
+  path,
+  revision = "HEAD",
+  maxCount = 20,
+  filePath,
+}: GitBaseParams & {
+  revision?: string;
+  maxCount?: number;
+  filePath?: string;
+}): Promise<AgentGitTextResult> {
+  const oid = await resolveAgentGitCommit({ path, revision });
+  const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
+  const result = await execAgentGit(
+    [
+      "log",
+      `--max-count=${maxCount}`,
+      "--no-show-signature",
+      // NUL-terminated records: git forbids NUL in commit messages, while
+      // %x1e could legally appear inside %B and split a commit in two.
+      "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%B%x00",
+      "--end-of-options",
+      oid,
+      ...(normalizedPath ? ["--", normalizedPath] : []),
+    ],
+    path,
+    { allowTruncation: true },
+  );
+  assertAgentGitSuccess(result, "Failed to read Git log");
+  const rawRecords = result.stdout.split("\0");
+  if (result.truncated && !result.stdout.endsWith("\0")) {
+    rawRecords.pop();
+  }
+  const commits = rawRecords
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const [hash, authorName, authorEmail, authoredAt, ...messageParts] =
+        chunk.split("\x1f");
+      return [
+        `commit ${hash}`,
+        `Author: ${authorName} <${authorEmail}>`,
+        `Date: ${authoredAt}`,
+        "",
+        messageParts.join("\x1f").trim(),
+      ].join("\n");
+    });
+  return boundAgentGitContent(commits.join("\n\n"), result.truncated);
+}
+
+async function getAgentGitParent({
+  path,
+  oid,
+}: {
+  path: string;
+  oid: string;
+}): Promise<string | null> {
+  const result = await execAgentGit(
+    ["rev-list", "--parents", "-n", "1", "--end-of-options", oid],
+    path,
+  );
+  assertAgentGitSuccess(result, "Failed to inspect commit parents");
+  return result.stdout.trim().split(/\s+/)[1] ?? null;
+}
+
+async function getAgentGitEmptyTree(path: string): Promise<string> {
+  const result = await execAgentGit(
+    ["hash-object", "-t", "tree", "--stdin"],
+    path,
+    { stdin: "" },
+  );
+  assertAgentGitSuccess(result, "Failed to calculate the empty Git tree");
+  return result.stdout.trim();
+}
+
+export async function getAgentGitCommit({
+  path,
+  revision,
+  filePath,
+}: GitBaseParams & {
+  revision: string;
+  filePath?: string;
+}): Promise<AgentGitTextResult & { patch: string }> {
+  const oid = await resolveAgentGitCommit({ path, revision });
+  const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
+  const metadataResult = await execAgentGit(
+    [
+      "show",
+      "-s",
+      "--no-show-signature",
+      "--format=commit %H%nAuthor: %an <%ae>%nDate: %aI%n%n%B",
+      "--end-of-options",
+      oid,
+    ],
+    path,
+    { allowTruncation: true },
+  );
+  assertAgentGitSuccess(metadataResult, "Failed to read Git commit metadata");
+  const parent = await getAgentGitParent({ path, oid });
+  const base = parent ?? (await getAgentGitEmptyTree(path));
+  const diff = await renderSafeAgentDiff({
+    path,
+    comparisonArgs: [base, oid],
+    filePath: normalizedPath,
+    contextLines: 3,
+  });
+  return {
+    ...boundAgentGitContent(
+      [metadataResult.stdout.trim(), diff.content].filter(Boolean).join("\n\n"),
+      metadataResult.truncated || diff.truncated,
+    ),
+    patch: diff.content,
+  };
+}
+
+interface AgentGitTreeEntry {
+  mode: string;
+  type: string;
+  oid: string;
+  path: string;
+}
+
+async function getAgentGitTreeEntry({
+  path,
+  oid,
+  filePath,
+}: {
+  path: string;
+  oid: string;
+  filePath: string;
+}): Promise<AgentGitTreeEntry> {
+  const result = await execAgentGit(
+    ["ls-tree", "-z", "--end-of-options", oid, "--", filePath],
+    path,
+  );
+  assertAgentGitSuccess(result, "Failed to inspect historical Git path");
+  const record = result.stdout.split("\0").find(Boolean);
+  if (!record) {
+    throw new DyadError(
+      `File does not exist at commit ${oid}: ${filePath}`,
+      DyadErrorKind.NotFound,
+    );
+  }
+  const match = /^(\d+) ([^ ]+) ([0-9a-f]+)\t([\s\S]+)$/.exec(record);
+  if (!match || normalizePath(match[4]) !== filePath) {
+    throw new DyadError(
+      `Historical Git path is not an exact file match: ${filePath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  return { mode: match[1], type: match[2], oid: match[3], path: match[4] };
+}
+
+function decodeAgentGitText(bytes: Buffer, displayPath: string): string {
+  if (bytes.includes(0)) {
+    throw new DyadError(
+      `Cannot display binary file from Git history: ${displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new DyadError(
+      `Cannot display non-UTF-8 file from Git history: ${displayPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+}
+
+export async function getAgentGitFile({
+  path,
+  revision,
+  filePath,
+  startLine,
+  endLineInclusive,
+}: GitBaseParams & {
+  revision: string;
+  filePath: string;
+  startLine?: number;
+  endLineInclusive?: number;
+}): Promise<AgentGitTextResult> {
+  const oid = await resolveAgentGitCommit({ path, revision });
+  const normalizedPath = normalizeAgentGitPath(path, filePath);
+  const entry = await getAgentGitTreeEntry({
+    path,
+    oid,
+    filePath: normalizedPath,
+  });
+  if (entry.type !== "blob") {
+    throw new DyadError(
+      `Historical Git path is not a file: ${normalizedPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path);
+  assertAgentGitSuccess(sizeResult, "Failed to inspect historical file size");
+  const size = Number(sizeResult.stdout.trim());
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new DyadError(
+      `Git returned an invalid size for historical file: ${normalizedPath}`,
+      DyadErrorKind.External,
+    );
+  }
+  if (size > AGENT_GIT_SOURCE_FILE_LIMIT_BYTES) {
+    throw new DyadError(
+      `Historical file is too large to read safely: ${normalizedPath} (${size} bytes; ${AGENT_GIT_SOURCE_FILE_LIMIT_BYTES} byte limit)`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const contentResult = await execAgentGit(
+    ["cat-file", "blob", entry.oid],
+    path,
+    {
+      encoding: "latin1",
+      maxBuffer: AGENT_GIT_SOURCE_FILE_LIMIT_BYTES + 1024,
+    },
+  );
+  assertAgentGitSuccess(contentResult, "Failed to read historical Git file");
+  let content = decodeAgentGitText(
+    Buffer.from(contentResult.stdout, "latin1"),
+    normalizedPath,
+  );
+  if (isDotenvFilePath(normalizedPath)) {
+    content = redactDotenvValues(content);
+  }
+  const selected = selectTextLineRange(content, startLine, endLineInclusive);
+  return boundAgentGitContent(selected, contentResult.truncated);
+}
+
+export async function restoreAgentGitFile({
+  path,
+  revision,
+  filePath,
+}: GitBaseParams & {
+  revision: string;
+  filePath: string;
+}): Promise<{ oid: string; mode: string; path: string }> {
+  const oid = await resolveAgentGitCommit({ path, revision });
+  const normalizedPath = normalizeAgentGitPath(path, filePath);
+  const entry = await getAgentGitTreeEntry({
+    path,
+    oid,
+    filePath: normalizedPath,
+  });
+  if (
+    entry.type !== "blob" ||
+    (entry.mode !== "100644" && entry.mode !== "100755")
+  ) {
+    throw new DyadError(
+      `Only regular files can be restored: ${normalizedPath}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path);
+  assertAgentGitSuccess(sizeResult, "Failed to inspect historical file size");
+  const size = Number(sizeResult.stdout.trim());
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new DyadError(
+      `Git returned an invalid size for historical file: ${normalizedPath}`,
+      DyadErrorKind.External,
+    );
+  }
+  if (size > AGENT_GIT_SOURCE_FILE_LIMIT_BYTES) {
+    throw new DyadError(
+      `Historical file is too large to restore safely: ${normalizedPath} (${size} bytes; ${AGENT_GIT_SOURCE_FILE_LIMIT_BYTES} byte limit)`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const contentResult = await execAgentGit(
+    ["cat-file", "blob", entry.oid],
+    path,
+    {
+      encoding: "latin1",
+      maxBuffer: AGENT_GIT_SOURCE_FILE_LIMIT_BYTES + 1024,
+    },
+  );
+  assertAgentGitSuccess(contentResult, `Failed to read ${normalizedPath}`);
+  const destination = safeJoin(path, normalizedPath);
+  const parent = pathModule.dirname(destination);
+  await fsPromises.mkdir(parent, { recursive: true });
+  const temporaryDirectory = await fsPromises.mkdtemp(
+    pathModule.join(parent, ".dyad-git-restore-"),
+  );
+  const temporaryFile = pathModule.join(temporaryDirectory, "file");
+  try {
+    await fsPromises.writeFile(
+      temporaryFile,
+      Buffer.from(contentResult.stdout, "latin1"),
+      { mode: entry.mode === "100755" ? 0o755 : 0o644 },
+    );
+    await fsPromises.chmod(
+      temporaryFile,
+      entry.mode === "100755" ? 0o755 : 0o644,
+    );
+    const existing = await fsPromises.lstat(destination).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    });
+    if (existing?.isDirectory()) {
+      throw new DyadError(
+        `Cannot restore a file over a directory: ${normalizedPath}`,
+        DyadErrorKind.Validation,
+      );
+    }
+    await fsPromises.rm(destination, { force: true });
+    await fsPromises.rename(temporaryFile, destination);
+  } finally {
+    await fsPromises.rm(temporaryDirectory, { recursive: true, force: true });
+  }
+  return { oid, mode: entry.mode, path: normalizedPath };
 }
 
 export async function gitFetch({

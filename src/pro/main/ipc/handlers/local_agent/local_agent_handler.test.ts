@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import { streamText } from "ai";
+import { streamText, type ModelMessage } from "ai";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -50,6 +50,8 @@ function buildTestChat(
       role: "user" | "assistant";
       content: string;
       aiMessagesJson?: unknown;
+      sourceCommitHash?: string | null;
+      commitHash?: string | null;
       isCompactionSummary?: boolean | null;
       createdAt?: Date;
     }>;
@@ -326,7 +328,10 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 // Import the function under test AFTER mocks are set up
 // ============================================================================
 
-import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
+import {
+  buildChatMessageHistory,
+  handleLocalAgentStream,
+} from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { buildAgentToolSet } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 import {
@@ -334,12 +339,242 @@ import {
   deployAllFunctionsIfNeeded,
 } from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
+import type { AiMessagesJsonV6 } from "@/db/schema";
 
 // ============================================================================
 // Tests
 // ============================================================================
 
 const dyadRequestId = "test-request-id";
+
+describe("buildChatMessageHistory Git context", () => {
+  const createdAt = new Date("2025-01-01");
+
+  it("annotates an assistant message with its final commit hash", () => {
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Implemented the change.",
+        aiMessagesJson: null,
+        sourceCommitHash: "source-hash",
+        commitHash: "final-hash",
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history).toEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Implemented the change." },
+          {
+            type: "text",
+            text: '<dyad-git-context commit="final-hash"></dyad-git-context>',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to the source commit when no final commit exists", () => {
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "No commit was created.",
+        aiMessagesJson: null,
+        sourceCommitHash: "starting-hash",
+        commitHash: null,
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history).toEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "No commit was created." },
+          {
+            type: "text",
+            text: '<dyad-git-context source_commit="starting-hash" no_commit="true"></dyad-git-context>',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("omits Git context when the assistant message has no commit hashes", () => {
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Read-only answer.",
+        aiMessagesJson: null,
+        sourceCommitHash: null,
+        commitHash: null,
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history).toEqual([
+      { role: "assistant", content: "Read-only answer." },
+    ]);
+  });
+
+  it("adds the annotation to the final assistant message in a reconstructed tool transcript", () => {
+    const aiMessagesJson: AiMessagesJsonV6 = {
+      sdkVersion: "ai@v6",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "git_status",
+              input: {},
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "git_status",
+              output: { type: "text", value: "clean" },
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          content: "The tree is clean.",
+          providerOptions: { test: { marker: true } },
+        },
+      ],
+    };
+    const original = structuredClone(aiMessagesJson);
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "The tree is clean.",
+        aiMessagesJson,
+        sourceCommitHash: null,
+        commitHash: "commit-after-tools",
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history.map((message) => message.role)).toEqual([
+      "assistant",
+      "tool",
+      "assistant",
+    ]);
+    expect(history.at(-1)).toEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "The tree is clean." },
+        {
+          type: "text",
+          text: '<dyad-git-context commit="commit-after-tools"></dyad-git-context>',
+        },
+      ],
+      providerOptions: { test: { marker: true } },
+    });
+    expect(aiMessagesJson).toEqual(original);
+  });
+
+  it("uses a separate assistant message when a tool result ends the transcript", () => {
+    const aiMessagesJson: AiMessagesJsonV6 = {
+      sdkVersion: "ai@v6",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "git_status",
+              input: {},
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "git_status",
+              output: { type: "text", value: "clean" },
+            },
+          ],
+        },
+      ],
+    };
+    const original = structuredClone(aiMessagesJson);
+
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "",
+        aiMessagesJson,
+        sourceCommitHash: null,
+        commitHash: "commit-after-tools",
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history.map((message) => message.role)).toEqual([
+      "assistant",
+      "tool",
+      "assistant",
+    ]);
+    expect(history.at(-1)).toEqual({
+      role: "assistant",
+      content:
+        '<dyad-git-context commit="commit-after-tools"></dyad-git-context>',
+    });
+    expect(aiMessagesJson).toEqual(original);
+  });
+
+  it("uses a separate assistant message for malformed legacy content", () => {
+    const aiMessagesJson = [
+      { role: "assistant", content: null },
+    ] as unknown as ModelMessage[];
+
+    const history = buildChatMessageHistory([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Legacy response",
+        aiMessagesJson,
+        sourceCommitHash: null,
+        commitHash: "legacy-commit",
+        isCompactionSummary: false,
+        createdAt,
+      },
+    ]);
+
+    expect(history).toEqual([
+      { role: "assistant", content: null },
+      {
+        role: "assistant",
+        content: '<dyad-git-context commit="legacy-commit"></dyad-git-context>',
+      },
+    ]);
+  });
+});
+
 describe("handleLocalAgentStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -567,6 +802,38 @@ describe("handleLocalAgentStream", () => {
       ).toMatchObject({
         updatedFiles: false,
       });
+    });
+
+    it("reports updated files when a successful workspace mutation precedes a refusal", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockImplementationOnce((ctx) => {
+        ctx.workspaceMutated = true;
+        return {};
+      });
+      mockStreamResult = createFakeStream([
+        {
+          type: "finish",
+          finishReason: "content-filter",
+          rawFinishReason: "refusal",
+        },
+      ]);
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(
+        getMessagesByChannel("chat:response:end")[0].args[0],
+      ).toMatchObject({ updatedFiles: true });
     });
 
     it("includes warning messages in the error payload when a tool fails after warning", async () => {

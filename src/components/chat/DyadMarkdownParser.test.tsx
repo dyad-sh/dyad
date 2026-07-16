@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as parserModule from "@/lib/streamingMessageParser";
@@ -6,6 +7,7 @@ import type {
   Block as ParserBlock,
   ParserState,
 } from "@/lib/streamingMessageParser";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 // Track every render of the inner ReactMarkdown component keyed by the
 // content string it received. The DyadMarkdownParser wraps ReactMarkdown
@@ -70,6 +72,89 @@ describe("DyadMarkdownParser dyad-command", () => {
       screen.getByRole("button", { name: /add typescript/i }),
     ).toBeTruthy();
     expect(screen.queryByText(/Unsupported:/)).toBeNull();
+  });
+});
+
+describe("DyadMarkdownParser dyad-git", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it.each([
+    ["status", "Checked project changes"],
+    ["diff", "Reviewed changes in src/main.ts"],
+    ["log", "Reviewed versions of src/main.ts"],
+    ["show_commit", "Inspected version abc123"],
+    ["show_file", "Read src/main.ts"],
+    ["restore_file", "Restored src/main.ts"],
+  ])("renders the %s Git operation as an activity row", (operation, label) => {
+    render(
+      <DyadMarkdownParser
+        content={`<dyad-git operation="${operation}" revision="abc123" path="src/main.ts"></dyad-git>`}
+      />,
+    );
+
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(screen.queryByText("Git")).toBeNull();
+  });
+
+  it("renders a pending state while the Git tag streams", () => {
+    const store = createStore();
+    store.set(selectedChatIdAtom, 1);
+    store.set(isStreamingByIdAtom, new Map([[1, true]]));
+    render(
+      <Provider store={store}>
+        <DyadMarkdownParser
+          content={'<dyad-git operation="status" state="pending">'}
+        />
+      </Provider>,
+    );
+
+    expect(screen.getByText("Checking project changes")).toBeTruthy();
+    expect(screen.getByLabelText("In progress")).toBeTruthy();
+  });
+
+  it("shows a useful status summary and expands structured file details", () => {
+    const status = JSON.stringify({
+      branch: "main",
+      detached: false,
+      staged: ["src/App.tsx"],
+      unstaged: ["src/App.tsx", "src/index.css"],
+      untracked: ["src/new.ts"],
+      conflicted: [],
+    });
+    render(
+      <DyadMarkdownParser
+        content={`<dyad-git operation="status" branch="main" changed_count="2" untracked_count="1" conflicted_count="0" detail_format="status">${status}</dyad-git>`}
+      />,
+    );
+
+    expect(screen.getByText("2 changed · 1 new")).toBeTruthy();
+    const row = screen.getByRole("button", {
+      name: /checked project changes/i,
+    });
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(row);
+
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Branch main")).toBeTruthy();
+    expect(screen.getAllByText("src/App.tsx")).toHaveLength(2);
+    expect(screen.getByText("src/index.css")).toBeTruthy();
+    expect(screen.getByText("src/new.ts")).toBeTruthy();
+  });
+
+  it("does not render malformed status detail as structured content", () => {
+    render(
+      <DyadMarkdownParser
+        content={
+          '<dyad-git operation="status" detail_format="status">{"branch":"main","detached":false,"staged":[{}],"unstaged":[],"untracked":[],"conflicted":[]}</dyad-git>'
+        }
+      />,
+    );
+
+    expect(screen.getByText("Checked project changes")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
 

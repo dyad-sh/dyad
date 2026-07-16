@@ -199,7 +199,34 @@ function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
 }
 
-function buildChatMessageHistory(
+function appendGitContext(
+  parsed: ModelMessage[],
+  annotation: string,
+): ModelMessage[] {
+  const finalMessage = parsed.at(-1);
+  if (finalMessage?.role !== "assistant") {
+    return [...parsed, { role: "assistant", content: annotation }];
+  }
+
+  if (
+    typeof finalMessage.content !== "string" &&
+    !Array.isArray(finalMessage.content)
+  ) {
+    return [...parsed, { role: "assistant", content: annotation }];
+  }
+
+  const content =
+    typeof finalMessage.content === "string"
+      ? [
+          { type: "text" as const, text: finalMessage.content },
+          { type: "text" as const, text: annotation },
+        ]
+      : [...finalMessage.content, { type: "text" as const, text: annotation }];
+
+  return [...parsed.slice(0, -1), { ...finalMessage, content }];
+}
+
+export function buildChatMessageHistory(
   chatMessages: Array<
     DbMessageForParsing & {
       isCompactionSummary: boolean | null;
@@ -257,7 +284,18 @@ function buildChatMessageHistory(
     .filter((msg) => !excludedIds?.has(msg.id))
     .filter((msg) => msg.content || msg.aiMessagesJson);
 
-  return filtered.flatMap((msg) => parseAiMessagesJson(msg));
+  return filtered.flatMap((msg) => {
+    const parsed = parseAiMessagesJson(msg);
+    if (msg.role !== "assistant") {
+      return parsed;
+    }
+    const annotation = msg.commitHash
+      ? `<dyad-git-context commit="${escapeXmlAttr(msg.commitHash)}"></dyad-git-context>`
+      : msg.sourceCommitHash
+        ? `<dyad-git-context source_commit="${escapeXmlAttr(msg.sourceCommitHash)}" no_commit="true"></dyad-git-context>`
+        : null;
+    return annotation ? appendGitContext(parsed, annotation) : parsed;
+  });
 }
 
 /**
@@ -1724,7 +1762,10 @@ export async function handleLocalAgentStream(
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
       updatedFiles:
-        !readOnly && (!modelRefused || Object.keys(fileEditTracker).length > 0),
+        !readOnly &&
+        (!modelRefused ||
+          Object.keys(fileEditTracker).length > 0 ||
+          ctx.workspaceMutated === true),
       chatSummary: ctx.chatSummary,
       warningMessages:
         warningMessages.length > 0 ? [...new Set(warningMessages)] : undefined,

@@ -6,6 +6,7 @@ export {
   normalizeItemReferences,
   normalizeToolCallIds,
   normalizeMcpCallIds,
+  normalizeGitContextHashes,
   normalizeVersionedFiles,
   normalizePath,
 } from "./normalization";

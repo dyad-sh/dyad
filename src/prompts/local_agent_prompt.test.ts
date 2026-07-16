@@ -2,9 +2,16 @@ import { describe, it, expect } from "vitest";
 import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 
 describe("local_agent_prompt", () => {
+  const expectGitContextGuidance = (prompt: string) => {
+    expect(prompt).toContain("<git_context>");
+    expect(prompt).toContain("<dyad-git-context>");
+    expect(prompt).toContain('source_commit="..." no_commit="true"');
+  };
+
   it("agent mode system prompt", () => {
     const prompt = constructLocalAgentPrompt(undefined);
     expect(prompt).toMatchSnapshot();
+    expectGitContextGuidance(prompt);
   });
 
   it("agent mode system prompt with code explorer available", () => {
@@ -63,6 +70,7 @@ describe("local_agent_prompt", () => {
     expect(prompt).toMatchSnapshot();
     expect(prompt).toContain("<app_blueprint>");
     expect(prompt).toContain("App Blueprint (new apps only)");
+    expectGitContextGuidance(prompt);
   });
 
   it("basic agent mode system prompt (vite framework includes Nitro nudge)", () => {
@@ -103,6 +111,7 @@ describe("local_agent_prompt", () => {
       readOnly: true,
     });
     expect(prompt).toMatchSnapshot();
+    expectGitContextGuidance(prompt);
   });
 
   it("agent mode system prompt with app blueprint disabled", () => {

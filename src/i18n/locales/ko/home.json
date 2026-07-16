@@ -639,7 +639,6 @@
       "chooseProvider": "데이터베이스 공급자 선택",
       "configureInPanelTitle": "설정 패널에서 마무리하기",
       "configureInPanelDescription": "오른쪽 패널에서 {{provider}} 설정을 완료한 후 여기로 돌아오세요.",
-      "experimental": "실험적",
       "providers": {
         "supabase": {
           "name": "Supabase",

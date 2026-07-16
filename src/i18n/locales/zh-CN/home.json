@@ -629,7 +629,6 @@
       "chooseProvider": "选择数据库提供商",
       "configureInPanelTitle": "在配置面板中完成设置",
       "configureInPanelDescription": "在右侧面板中完成 {{provider}} 设置，然后返回此处。",
-      "experimental": "实验性",
       "providers": {
         "supabase": {
           "name": "Supabase",

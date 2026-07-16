@@ -498,6 +498,7 @@ describe("agent Git utilities", () => {
     await fs.promises.chmod(executablePath, 0o755);
     await fs.promises.writeFile(binaryPath, Buffer.from([0, 1, 2, 255]));
     await git(repo, "add", "script.sh", "asset.bin");
+    await git(repo, "update-index", "--chmod=+x", "script.sh");
     await git(repo, "commit", "-m", "add executable and binary");
     const source = await git(repo, "rev-parse", "HEAD");
     await fs.promises.writeFile(executablePath, "changed\n", { mode: 0o644 });

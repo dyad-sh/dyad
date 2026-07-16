@@ -91,8 +91,9 @@ in the test so local and CI exercise the same branch layout.
 Keep Git integration fixtures portable across CI platforms: Windows rejects
 filenames containing characters such as `:`, and its filesystems do not expose
 POSIX executable bits. Use cross-platform pathspec metacharacters such as `[]`
-and assert Git's `100755` tree mode on every platform, reserving `stat().mode`
-permission assertions for non-Windows runs.
+and force executable fixtures into the index with
+`git update-index --chmod=+x <path>` before asserting Git's `100755` tree mode;
+reserve `stat().mode` permission assertions for non-Windows runs.
 
 For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected

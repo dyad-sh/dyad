@@ -4,7 +4,14 @@ import type { McpServer } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { useOauthCallbackPort } from "./AddPluginDialog";
-import type { ConnectFeedback } from "./PluginSummaryCard";
+
+// Produced by feedbackFor below; the summary card and detail page
+// render it as a badge or alert.
+export type ConnectFeedback = {
+  serverId: number;
+  kind: "discovery_failed" | "unauthorized";
+  message: string;
+};
 
 // Connect state survives navigation between the plugins list and a
 // plugin detail page, so a failure raised on one is visible on the

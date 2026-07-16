@@ -4,12 +4,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { McpServer } from "@/ipc/types";
-
-export type ConnectFeedback = {
-  serverId: number;
-  kind: "discovery_failed" | "unauthorized";
-  message: string;
-};
+import type { ConnectFeedback } from "./usePluginConnect";
 
 export function PluginSummaryCard({
   server: s,

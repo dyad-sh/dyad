@@ -15,8 +15,7 @@ import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog"
 import { useMcp } from "@/hooks/useMcp";
 import type { McpToolConsent } from "@/ipc/types";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
-import type { ConnectFeedback } from "./PluginSummaryCard";
-import { usePluginConnect } from "./usePluginConnect";
+import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
 
 // Keyed on the full kind union so adding a feedback kind forces a
 // title here instead of silently reusing another kind's.

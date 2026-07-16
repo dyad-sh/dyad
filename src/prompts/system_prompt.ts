@@ -638,8 +638,8 @@ export const constructSystemPrompt = ({
   /** If false, omit the app blueprint block from the local-agent prompt. */
   enableAppBlueprint?: boolean;
   /**
-   * If true, the local-agent prompt should prefer the compiler-backed
-   * TypeScript exploration tool over code_search for broad codebase discovery.
+   * If true, the local-agent prompt can use Code Explorer when the relevant
+   * files are not already known or reasonably clear from available context.
    */
   codeExplorerAvailable?: boolean;
   /**

@@ -44,6 +44,18 @@ describe("exploreCodeTool", () => {
     expect(exploreCodeTool.usesEngineEndpoint).toBe(true);
   });
 
+  it("recommends exploration when relevant files are not reasonably clear", () => {
+    expect(exploreCodeTool.description).toContain(
+      "when the relevant files are not reasonably clear from the available context",
+    );
+    expect(exploreCodeTool.description).toContain(
+      "already known or reasonably clear from the conversation",
+    );
+    expect(exploreCodeTool.description).toContain(
+      "Targeted grep/list_files/read_file calls are appropriate whenever needed",
+    );
+  });
+
   it("runs the sub-agent on every call (no report cache)", async () => {
     const appPath = await fs.mkdtemp(path.join(os.tmpdir(), "explore-"));
     await fs.mkdir(path.join(appPath, "src"), { recursive: true });

@@ -119,9 +119,6 @@ line 5`;
       expect(readFileTool.description).toContain(
         "when several files are concretely likely to be useful",
       );
-      expect(readFileTool.description).toContain(
-        "Avoid speculative reads without a clear connection to the task",
-      );
       expect(readFileTool.description).not.toContain("always better");
     });
 

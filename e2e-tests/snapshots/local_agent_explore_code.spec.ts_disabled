@@ -201,7 +201,7 @@
       },
       {
         "name": "read_file",
-        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n\n- Batch independent file reads when several files are concretely likely to be useful. Avoid speculative reads without a clear connection to the task.",
+        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n\n- Batch independent file reads when several files are concretely likely to be useful.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

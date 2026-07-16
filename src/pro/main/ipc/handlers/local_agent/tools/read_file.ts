@@ -67,7 +67,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   name: "read_file",
   description: `Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.
 
-- Batch independent file reads when several files are concretely likely to be useful. Avoid speculative reads without a clear connection to the task.`,
+- Batch independent file reads when several files are concretely likely to be useful.`,
   inputSchema: readFileSchema,
   defaultConsent: "always",
 

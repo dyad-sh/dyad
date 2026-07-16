@@ -1,5 +1,6 @@
 import React from "react";
 import { useSettings } from "@/hooks/useSettings";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -70,33 +71,26 @@ export const MaxToolCallStepsSelector: React.FC = () => {
     options[0];
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-4">
-        <label
-          htmlFor="max-tool-call-steps"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
-        >
-          {t("ai.maxToolCallSteps")}
-        </label>
-        <Select
-          value={currentValue}
-          onValueChange={(v) => v && handleValueChange(v)}
-        >
-          <SelectTrigger className="w-[180px]" id="max-tool-call-steps">
-            <SelectValue placeholder={t("ai.selectMaxToolCallSteps")} />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        {currentOption.description}
-      </div>
-    </div>
+    <SettingField
+      htmlFor="max-tool-call-steps"
+      label={t("ai.maxToolCallSteps")}
+      description={currentOption.description}
+    >
+      <Select
+        value={currentValue}
+        onValueChange={(v) => v && handleValueChange(v)}
+      >
+        <SelectTrigger className="w-full sm:w-[240px]" id="max-tool-call-steps">
+          <SelectValue placeholder={t("ai.selectMaxToolCallSteps")} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingField>
   );
 };

@@ -76,30 +76,22 @@ export function ProviderSettingsGrid() {
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <h2 className="text-lg font-medium mb-6">
-          {t("settings:ai.providers")}
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Card key={i} className="border-border">
-              <CardHeader className="p-4">
-                <Skeleton className="h-6 w-3/4 mb-2" />
-                <Skeleton className="h-4 w-1/2" />
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Card key={i} className="border-border shadow-none">
+            <CardHeader className="p-4">
+              <Skeleton className="h-6 w-3/4 mb-2" />
+              <Skeleton className="h-4 w-1/2" />
+            </CardHeader>
+          </Card>
+        ))}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
-        <h2 className="text-lg font-medium mb-6">
-          {t("settings:ai.providers")}
-        </h2>
+      <div>
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>{t("common:error")}</AlertTitle>
@@ -112,8 +104,7 @@ export function ProviderSettingsGrid() {
   }
 
   return (
-    <div className="p-6">
-      <h2 className="text-lg font-medium mb-6">{t("settings:ai.providers")}</h2>
+    <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {providers
           ?.filter((p) => p.type !== "local")
@@ -123,7 +114,7 @@ export function ProviderSettingsGrid() {
             return (
               <Card
                 key={provider.id}
-                className="relative transition-all hover:shadow-md border-border"
+                className="relative border-border shadow-none transition-colors hover:border-primary/40 hover:bg-muted/30"
               >
                 <CardHeader
                   className="p-4 cursor-pointer"
@@ -175,19 +166,20 @@ export function ProviderSettingsGrid() {
                   <CardTitle className="text-lg font-medium mb-2">
                     {provider.name}
                     {isProviderSetup(provider.id) ? (
-                      <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        <span className="size-1.5 rounded-full bg-emerald-500" />
                         {t("common:ready")}
                       </span>
                     ) : (
-                      <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
+                      <span className="ml-2 rounded-full border border-border/70 bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                         {t("common:needsSetup")}
                       </span>
                     )}
                   </CardTitle>
                   <CardDescription>
                     {provider.hasFreeTier && (
-                      <span className="text-blue-600 mt-2 dark:text-blue-400 text-sm font-medium bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full inline-flex items-center">
-                        <GiftIcon className="w-4 h-4 mr-1" />
+                      <span className="mt-2 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">
+                        <GiftIcon className="mr-1 h-3.5 w-3.5" />
                         {t("settings:ai.freeTierAvailable")}
                       </span>
                     )}
@@ -199,7 +191,7 @@ export function ProviderSettingsGrid() {
 
         {/* Add custom provider button */}
         <Card
-          className="cursor-pointer transition-all hover:shadow-md border-border border-dashed hover:border-primary/70"
+          className="cursor-pointer border-border border-dashed shadow-none transition-colors hover:border-primary/70 hover:bg-muted/30"
           onClick={() => setIsDialogOpen(true)}
         >
           <CardHeader className="p-4 flex flex-col items-center justify-center h-full">

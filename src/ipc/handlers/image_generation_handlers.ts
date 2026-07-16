@@ -81,7 +81,7 @@ export function registerImageGenerationHandlers() {
           },
           body: JSON.stringify({
             prompt: fullPrompt,
-            model: "gpt-image-1.5",
+            model: "dyad/image-gen",
           }),
           signal: controller.signal,
         });

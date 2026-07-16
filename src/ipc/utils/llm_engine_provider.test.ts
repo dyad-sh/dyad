@@ -6,7 +6,10 @@ import type {
 } from "@ai-sdk/provider";
 
 import type { UserSettings } from "../../lib/schemas";
-import { createDyadEngine } from "./llm_engine_provider";
+import {
+  createDyadEngine,
+  transcribeWithDyadEngine,
+} from "./llm_engine_provider";
 
 describe("createDyadEngine", () => {
   test("uses Anthropic messages API for Anthropic engine models", async () => {
@@ -212,5 +215,34 @@ describe("createDyadEngine", () => {
       "X-Dyad-Request-Id": "visible-turn-1:attempt-1",
       "X-Dyad-Free-Quota-Key": "visible-turn-1",
     });
+  });
+});
+
+describe("transcribeWithDyadEngine", () => {
+  test("uses the Dyad transcription model alias", async () => {
+    let request: { input: RequestInfo | URL; init?: RequestInit } | undefined;
+
+    const text = await transcribeWithDyadEngine(
+      Buffer.from("audio"),
+      "recording.webm",
+      "request-1",
+      {
+        apiKey: "dyad-pro-key",
+        baseURL: "https://engine.example.test/v1",
+        dyadOptions: {},
+        settings: {} as UserSettings,
+        fetch: async (input, init) => {
+          request = { input, init };
+          return Response.json({ text: "transcribed" });
+        },
+      },
+    );
+
+    expect(text).toBe("transcribed");
+    expect(String(request?.input)).toBe(
+      "https://engine.example.test/v1/audio/transcriptions",
+    );
+    const formData = request?.init?.body as FormData;
+    expect(formData.get("model")).toBe("dyad/transcribe");
   });
 });

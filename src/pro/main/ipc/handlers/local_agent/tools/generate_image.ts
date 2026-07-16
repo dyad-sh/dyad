@@ -55,7 +55,7 @@ async function callGenerateImage(
     method: "POST",
     body: JSON.stringify({
       prompt,
-      model: "gpt-image-1.5",
+      model: "dyad/image-gen",
     }),
   });
 

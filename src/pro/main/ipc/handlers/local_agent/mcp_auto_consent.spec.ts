@@ -41,6 +41,10 @@ describe("classifyMcpToolConsent", () => {
     const d = await classifyMcpToolConsent(baseInput);
     expect(d.decision).toBe("allow");
     expect(d.reason).toBe("safe read");
+    expect(mocks.getModelClient).toHaveBeenCalledWith(
+      { name: "dyad/auto-approver", provider: "openai" },
+      baseInput.settings,
+    );
   });
 
   it("parses a decision wrapped in prose/code fences", async () => {

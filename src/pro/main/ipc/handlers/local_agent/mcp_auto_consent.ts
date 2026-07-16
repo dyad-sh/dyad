@@ -14,11 +14,9 @@ import {
 
 const logger = log.scope("mcp-auto-consent");
 
-// Fixed, cheap classifier model routed through the Dyad Pro engine gateway.
-// Mirrors SUBAGENT_MODEL in explore_code_subagent.ts (same subsystem). Swap here
-// only; a mid-size model is deliberate for a security judgment, not the smallest.
+// Fixed classifier model routed through the Dyad Pro engine gateway.
 const MCP_CONSENT_MODEL: LargeLanguageModel = {
-  name: "gpt-5.4-mini",
+  name: "dyad/auto-approver",
   provider: "openai",
 };
 

@@ -381,7 +381,7 @@ export async function transcribeWithDyadEngine(
   );
   const blob = new Blob([audioBytes], { type: mimeType });
   formData.append("file", blob, filename);
-  formData.append("model", "gpt-4o-mini-transcribe");
+  formData.append("model", "dyad/transcribe");
 
   const fetchFn = options.fetch || getTestFetchOption().fetch || fetch;
   const response = await fetchFn(`${baseURL}/audio/transcriptions`, {

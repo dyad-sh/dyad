@@ -263,6 +263,9 @@ export function createFakeLlmApp(getPort: () => number) {
   });
 
   app.get("/api/mcp-catalog", (req, res) => {
+    // The URLs below hardcode the ports that mcp_catalog.spec.ts spawns
+    // its fake MCP servers on (4010 for OAuth, 3002 for http). Keep them
+    // in sync with that spec.
     res.json({
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       servers: [

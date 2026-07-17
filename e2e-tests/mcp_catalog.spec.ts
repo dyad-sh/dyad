@@ -22,10 +22,23 @@ function waitForReady(
       clearTimeout(timeout);
       reject(err);
     });
+    // Fail fast if the process dies before it is ready, instead of
+    // hanging until the timeout with a generic message.
+    child.on("exit", (code, signal) => {
+      clearTimeout(timeout);
+      reject(
+        new Error(
+          `${label} exited before ready (code=${code} signal=${signal})`,
+        ),
+      );
+    });
   });
 }
 
 async function stop(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
   child.kill();
   await new Promise<void>((resolve) => {
     child.on("exit", () => resolve());

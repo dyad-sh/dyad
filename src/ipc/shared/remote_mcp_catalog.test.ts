@@ -136,4 +136,23 @@ describe("remote_mcp_catalog", () => {
       vi.useRealTimers();
     }
   });
+
+  it("does not pin an empty result to the server expiry", async () => {
+    vi.useFakeTimers();
+    try {
+      const farFuture = new Date(
+        Date.now() + 365 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      // A 200 with no servers is cached with the short failure TTL, not
+      // the hour the server asked for, so a transient bad response
+      // refetches within a minute.
+      mockCatalogResponse([], { expiresAt: farFuture });
+      await getRemoteMcpCatalog();
+      vi.advanceTimersByTime(60 * 1000);
+      await getRemoteMcpCatalog();
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

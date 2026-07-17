@@ -96,7 +96,15 @@ export async function getRemoteMcpCatalog(): Promise<McpCatalogEntry[]> {
     catalogFetchPromise = (async () => {
       try {
         const { entries, expiresAt } = await fetchRemoteMcpCatalog();
-        catalogCache = { entries, expiresAt };
+        // Honor the server expiry only when at least one entry
+        // survived. An empty result (200 with no servers, or every
+        // entry dropped by parsing) is treated like a failure so a
+        // transient bad response isn't pinned for the full TTL.
+        catalogCache = {
+          entries,
+          expiresAt:
+            entries.length > 0 ? expiresAt : Date.now() + FAILURE_CACHE_TTL_MS,
+        };
         return entries;
       } catch (error) {
         logger.warn("Failed to fetch MCP catalog", error);

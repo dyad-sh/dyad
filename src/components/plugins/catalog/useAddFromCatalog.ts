@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { McpCatalogEntry } from "@/ipc/shared/remote_mcp_catalog";
+import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showSuccess } from "@/lib/toast";

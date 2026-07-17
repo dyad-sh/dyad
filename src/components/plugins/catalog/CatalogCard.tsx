@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import type { McpCatalogEntry } from "@/ipc/shared/remote_mcp_catalog";
+import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 
 export function CatalogCard({
   entry,

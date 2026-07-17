@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpCatalogEntrySchema } from "../shared/remote_mcp_catalog";
+import { McpCatalogEntrySchema } from "./mcp_catalog";
 import {
   defineContract,
   defineEvent,

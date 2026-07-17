@@ -1,5 +1,9 @@
 import log from "electron-log";
 import { z } from "zod";
+import {
+  McpCatalogEntrySchema,
+  type McpCatalogEntry,
+} from "@/ipc/types/mcp_catalog";
 
 const logger = log.scope("remote_mcp_catalog");
 
@@ -19,30 +23,6 @@ function getRemoteMcpCatalogUrl() {
 
   return "https://api.dyad.sh/v1/mcp-catalog";
 }
-
-// Only http entries are supported. The transport literal makes any
-// other transport fail per-entry validation and drop out, so the
-// catalog can serve entry kinds this client doesn't know about yet.
-export const McpCatalogEntrySchema = z.object({
-  slug: z
-    .string()
-    .min(1)
-    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  category: z.string().optional(),
-  transport: z.literal("http"),
-  url: z
-    .string()
-    .url()
-    // Case-insensitive so mixed-case schemes like HTTPS:// pass too.
-    .refine((u) => /^https?:\/\//i.test(u), "URL must be http(s)"),
-  oauth: z.enum(["required", "optional", "none"]),
-  oauthScope: z.string().optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-});
-
-export type McpCatalogEntry = z.infer<typeof McpCatalogEntrySchema>;
 
 // The envelope is parsed strictly but entries are validated one by
 // one: a single bad entry drops out instead of taking down the whole

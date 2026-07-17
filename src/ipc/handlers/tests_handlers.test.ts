@@ -32,6 +32,10 @@ async function exists(root: string, relativePath: string) {
   }
 }
 
+async function readFile(root: string, relativePath: string) {
+  return fs.readFile(path.join(root, relativePath), "utf8");
+}
+
 describe("tests handlers spec paths", () => {
   afterEach(async () => {
     await Promise.all(
@@ -121,6 +125,29 @@ describe("tests handlers spec paths", () => {
       "e2e-tests/legacy.spec.ts",
       "e2e-tests/new.spec.ts",
     ]);
+  });
+
+  it("preserves both specs when a migration destination already exists", async () => {
+    const appDir = await makeAppDir();
+    await writeFile(
+      appDir,
+      "tests/home.spec.ts",
+      'import { test } from "@playwright/test";\n// legacy',
+    );
+    await writeFile(
+      appDir,
+      "e2e-tests/home.spec.ts",
+      'import { test } from "@playwright/test";\n// current',
+    );
+
+    await migrateLegacyDyadTestsDir(appDir);
+
+    await expect(readFile(appDir, "tests/home.spec.ts")).resolves.toContain(
+      "// legacy",
+    );
+    await expect(readFile(appDir, "e2e-tests/home.spec.ts")).resolves.toContain(
+      "// current",
+    );
   });
 
   it("does not migrate an existing user-owned tests directory without Playwright specs", async () => {

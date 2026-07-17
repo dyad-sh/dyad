@@ -605,6 +605,25 @@ describe("runTestsTool", () => {
     }
   });
 
+  it("refuses grep patterns containing newlines on Windows", async () => {
+    const platformSpy = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("win32");
+    try {
+      const ctx = makeCtx();
+      const out = await runTestsTool.execute(
+        { testFile: "e2e-tests/a.spec.ts", grep: "first\r\nsecond" },
+        ctx,
+      );
+      expect(runner).not.toHaveBeenCalled();
+      expect(out).toContain("cmd.exe treats them as command separators");
+      expect(out).toContain("did NOT count");
+      expect(emittedXml(ctx)).toContain("Unsupported Windows grep pattern");
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
   it("lets a target change bypass the require-a-change guard", async () => {
     // Whole-file run fails; without any edit, narrowing to a subset with grep is
     // a different run and must not be blocked as a pointless rerun.

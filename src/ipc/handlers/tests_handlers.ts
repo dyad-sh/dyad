@@ -121,21 +121,50 @@ function specsReferenceFixtures(specs: { content: string }[]): boolean {
 async function moveLegacyDyadTestFile(
   appPath: string,
   legacyFile: string,
-): Promise<void> {
+): Promise<boolean> {
   const relativeToLegacyDir = legacyFile.slice(
     `${LEGACY_TEST_SPEC_DIR}/`.length,
   );
+  const sourceFile = path.join(appPath, legacyFile);
   const nextFile = path.join(appPath, TEST_SPEC_DIR, relativeToLegacyDir);
   await fs.promises.mkdir(path.dirname(nextFile), { recursive: true });
   try {
-    await fs.promises.rename(path.join(appPath, legacyFile), nextFile);
+    // COPYFILE_EXCL is the portable no-clobber primitive. rename() replaces an
+    // existing destination on some platforms, which could silently destroy a
+    // newer spec when both legacy and current test paths exist.
+    await fs.promises.copyFile(
+      sourceFile,
+      nextFile,
+      fs.constants.COPYFILE_EXCL,
+    );
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "EEXIST") {
+      logger.warn(
+        `Skipped migrating ${legacyFile}: ${path.relative(appPath, nextFile)} already exists`,
+      );
+      return false;
+    }
     // A vanished source means the file already moved (an interleaved run, or a
     // user moving it by hand). The destination is what we wanted either way.
+    if (code === "ENOENT") return false;
+    throw error;
+  }
+
+  try {
+    await fs.promises.unlink(sourceFile);
+  } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      throw error;
+      // The destination is already a complete copy. Preserve both rather than
+      // risk data loss; a later migration will see the collision and skip it.
+      logger.warn(
+        `Copied but could not remove legacy test ${legacyFile}`,
+        error,
+      );
+      return false;
     }
   }
+  return true;
 }
 
 async function removeEmptyLegacyTestDirs(appPath: string): Promise<void> {
@@ -212,13 +241,18 @@ async function runLegacyDyadTestsMigration(appPath: string): Promise<void> {
     return;
   }
 
-  for (const legacyFile of legacyFiles) {
-    await moveLegacyDyadTestFile(appPath, legacyFile);
-  }
-  await removeEmptyLegacyTestDirs(appPath);
-  logger.info(
-    `Migrated ${legacyFiles.length} legacy Dyad E2E test file(s) from ${LEGACY_TEST_SPEC_DIR}/ to ${TEST_SPEC_DIR}/`,
+  const moved = await Promise.all(
+    legacyFiles.map((legacyFile) =>
+      moveLegacyDyadTestFile(appPath, legacyFile),
+    ),
   );
+  await removeEmptyLegacyTestDirs(appPath);
+  const movedCount = moved.filter(Boolean).length;
+  if (movedCount > 0) {
+    logger.info(
+      `Migrated ${movedCount} legacy Dyad E2E test file(s) from ${LEGACY_TEST_SPEC_DIR}/ to ${TEST_SPEC_DIR}/`,
+    );
+  }
 }
 
 /**
@@ -672,10 +706,6 @@ export async function runAppTestsWithIsolation({
   source,
   externalSignal,
 }: RunTestsWithIsolationOptions): Promise<RunAppTestsResult> {
-  const app = await getApp(appId);
-  const appPath = getDyadAppPath(app.path);
-  await migrateLegacyDyadTestsDir(appPath);
-
   const normalizedTestFile =
     testFile === undefined ? undefined : normalizeRunTestFile(testFile);
 
@@ -728,6 +758,14 @@ export async function runAppTestsWithIsolation({
     if (prior) {
       await prior.done.catch(() => {});
     }
+
+    // Database lookup and migration intentionally happen only after this run
+    // registered above. Keeping every await behind registration ensures a
+    // rapid second invocation chains behind this run instead of racing its
+    // isolation setup and env-file swap.
+    const app = await getApp(appId);
+    const appPath = getDyadAppPath(app.path);
+    await migrateLegacyDyadTestsDir(appPath);
 
     // Emit "started" only after the prior lifecycle has fully drained: the
     // prior run's `finally` emits its "finished" event during teardown, and

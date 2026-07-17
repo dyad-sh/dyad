@@ -145,6 +145,11 @@ async function validateGrep(
     completeWarning(ctx, "Unsupported Windows grep pattern", body);
     return { error: body };
   }
+  if (process.platform === "win32" && /[\r\n]/.test(grep)) {
+    const body = `Newline characters can't be used in a grep pattern on Windows because cmd.exe treats them as command separators. I did NOT start a run, and this did NOT count as a fix attempt.\n\nUse a single-line pattern, or omit \`grep\` to run the whole file.`;
+    completeWarning(ctx, "Unsupported Windows grep pattern", body);
+    return { error: body };
+  }
 
   let _regex: RegExp;
   try {

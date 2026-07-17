@@ -26,6 +26,10 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
 
   getConsentPreview: (args) => `Copy ${args.from} to ${args.to}`,
 
+  shouldTrackMutation: (_args, result) =>
+    result.startsWith("Successfully copied") ||
+    result.startsWith("File copied,"),
+
   buildXml: (args, _isComplete) => {
     if (!args.from || !args.to) return undefined;
     return `<dyad-copy from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}" description="${escapeXmlAttr(args.description ?? "")}"></dyad-copy>`;

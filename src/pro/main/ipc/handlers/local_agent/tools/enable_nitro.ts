@@ -46,6 +46,9 @@ export const enableNitroTool: ToolDefinition<
 
   getConsentPreview: (args) => `Add Nitro server layer (${args.reason})`,
 
+  shouldTrackMutation: (_args, result) =>
+    result.startsWith("Nitro server layer added"),
+
   buildXml: () => `<dyad-enable-nitro></dyad-enable-nitro>`,
 
   execute: async (_args, ctx: AgentContext) => {

@@ -82,6 +82,53 @@ describe("buildSingleTestFileResult", () => {
     expect(result.status).toBe("partial");
     expect(result.tests).toHaveLength(1);
   });
+
+  it("replaces an unambiguous same-title result when its line moves", () => {
+    const result = buildSingleTestFileResult({
+      file,
+      knownTests: [{ title: "signs in", line: 14 }],
+      previous: resultFor("signs in", 10, "failed"),
+      incoming: resultFor("signs in", 14, "passed"),
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.tests).toEqual([
+      expect.objectContaining({
+        title: "signs in",
+        line: 14,
+        status: "passed",
+      }),
+    ]);
+  });
+
+  it("keeps duplicate titles distinct when one line changes", () => {
+    const previous: TestResult = {
+      file,
+      status: "failed",
+      tests: [
+        { title: "saves settings", line: 10, status: "failed" },
+        { title: "saves settings", line: 20, status: "passed" },
+      ],
+    };
+    const result = buildSingleTestFileResult({
+      file,
+      knownTests: [
+        { title: "saves settings", line: 12 },
+        { title: "saves settings", line: 20 },
+      ],
+      previous,
+      incoming: resultFor("saves settings", 12, "passed"),
+    });
+
+    expect(result.tests).toHaveLength(3);
+    expect(result.tests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ line: 10, status: "failed" }),
+        expect.objectContaining({ line: 12, status: "passed" }),
+        expect.objectContaining({ line: 20, status: "passed" }),
+      ]),
+    );
+  });
 });
 
 describe("reconcileResultFile", () => {

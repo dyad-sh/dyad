@@ -72,6 +72,25 @@ export function trackAppMutation(
 }
 
 /**
+ * Decide whether a completed tool result represents an app mutation. Tools in
+ * APP_MUTATING_TOOL_NAMES must opt in with a result-aware predicate so a
+ * handled failure/no-op string cannot accidentally unblock run_tests. The two
+ * file-edit tools keep their historical success-after-return default; errors
+ * from them throw before this function runs.
+ */
+export function shouldTrackToolMutation<T>(
+  tool: ToolDefinition<T>,
+  args: T,
+  result: string,
+  ctx: AgentContext,
+): boolean {
+  if (tool.shouldTrackMutation) {
+    return tool.shouldTrackMutation(args, result, ctx);
+  }
+  return !APP_MUTATING_TOOLS.has(tool.name);
+}
+
+/**
  * Effective consent for a tool: the stored per-tool setting, falling back to
  * the tool's declared default. Matches `getAgentToolConsent` in
  * `tool_definitions.ts`, but takes the tool object so it stays usable from

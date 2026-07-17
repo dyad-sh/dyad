@@ -320,7 +320,9 @@ export interface ToolDefinition<T = any> {
 
   /**
    * For state-modifying tools, returns whether a successful execution actually
-   * changed app state. Defaults to true for backwards compatibility.
+   * changed app state. Required for tools in APP_MUTATING_TOOL_NAMES so handled
+   * failures and no-op results do not unblock run_tests. File-edit tools that
+   * return successfully default to true.
    */
   shouldTrackMutation?: (
     args: T,

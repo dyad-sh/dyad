@@ -61,6 +61,7 @@ import {
 import {
   assertAppBlueprintApproved,
   requireToolConsentOrThrow,
+  shouldTrackToolMutation,
   trackAppMutation,
   trackFileEditTool,
 } from "./tools/tool_invocation";
@@ -579,7 +580,7 @@ export function buildAgentToolSet(
           trackAppMutation(
             ctx,
             tool.name,
-            tool.shouldTrackMutation?.(processedArgs, result, ctx) ?? true,
+            shouldTrackToolMutation(tool, processedArgs, result, ctx),
           );
 
           return convertToolResultForAiSdk(result);

@@ -69,9 +69,26 @@ export function mergeCaseResults(
 ): TestCaseResult[] {
   const merged = [...(existing ?? [])];
   for (const inc of incoming) {
-    const idx = merged.findIndex((t) =>
+    let idx = merged.findIndex((t) =>
       sameTestCaseByLineOrTitleFallback(t, inc),
     );
+    if (idx < 0) {
+      const existingTitleMatches = merged
+        .map((test, index) => ({ test, index }))
+        .filter(({ test }) => test.title === inc.title);
+      const incomingTitleMatches = incoming.filter(
+        (test) => test.title === inc.title,
+      );
+      // A test's line can move after the agent edits the spec. Replace the old
+      // result by title only when that identity is unambiguous on both sides;
+      // duplicate test titles must remain distinct by line.
+      if (
+        existingTitleMatches.length === 1 &&
+        incomingTitleMatches.length === 1
+      ) {
+        idx = existingTitleMatches[0].index;
+      }
+    }
     if (idx >= 0) merged[idx] = inc;
     else merged.push(inc);
   }

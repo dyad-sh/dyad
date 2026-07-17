@@ -24,6 +24,9 @@ export const addDependencyTool: ToolDefinition<
 
   getConsentPreview: (args) => `Install ${args.packages.join(", ")}`,
 
+  shouldTrackMutation: (_args, result) =>
+    result.startsWith("Successfully installed"),
+
   buildXml: (args, _isComplete) => {
     if (!args.packages || args.packages.length === 0) return undefined;
     return `<dyad-add-dependency packages="${escapeXmlAttr(args.packages.join(" "))}"></dyad-add-dependency>`;

@@ -277,6 +277,55 @@ describe("useTestRunEvents", () => {
     expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
   });
 
+  it("does not let a deferred refresh overwrite state with a newer start timestamp", async () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+    let resolveRefresh!: (value: { specs: [] }) => void;
+    listAppTestsMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        testFile: "tests/old.spec.ts",
+      });
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "finished",
+        testFile: "tests/old.spec.ts",
+        results: [{ file: "tests/old.spec.ts", status: "passed" }],
+      });
+    });
+
+    const oldStartedAt = store.get(testRunStateByAppIdAtom).get(1)!.startedAt!;
+    act(() => {
+      store.set(setTestRunStateForAppAtom, {
+        appId: 1,
+        update: (prev) => ({
+          ...prev,
+          phase: "running",
+          runningFiles: ["tests/new.spec.ts"],
+          startedAt: oldStartedAt + 1,
+        }),
+      });
+    });
+
+    await act(async () => {
+      resolveRefresh({ specs: [] });
+      await Promise.resolve();
+    });
+
+    const state = store.get(testRunStateByAppIdAtom).get(1)!;
+    expect(state.phase).toBe("running");
+    expect(state.runningFiles).toEqual(["tests/new.spec.ts"]);
+  });
+
   it("does not let an older agent refresh finish a newer panel run", async () => {
     const { store, Wrapper } = makeWrapper();
     renderHook(() => useTestRunEvents(), { wrapper: Wrapper });

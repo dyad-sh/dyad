@@ -140,6 +140,12 @@ async function validateGrep(
   testFile: string,
   grep: string,
 ): Promise<{ ok: true; targetKey: string | null } | { error: string }> {
+  if (process.platform === "win32" && grep.includes("%")) {
+    const body = `\`${grep}\` can't be used as a grep pattern on Windows because cmd.exe expands \`%\` characters. I did NOT start a run, and this did NOT count as a fix attempt.\n\nUse a pattern without \`%\`, or omit \`grep\` to run the whole file.`;
+    completeWarning(ctx, "Unsupported Windows grep pattern", body);
+    return { error: body };
+  }
+
   let _regex: RegExp;
   try {
     _regex = new RegExp(grep);

@@ -189,9 +189,6 @@ export async function migrateLegacyDyadTestsDir(
 }
 
 async function runLegacyDyadTestsMigration(appPath: string): Promise<void> {
-  if (await pathExists(path.join(appPath, TEST_SPEC_DIR))) {
-    return;
-  }
   if (!(await pathExists(path.join(appPath, LEGACY_TEST_SPEC_DIR)))) {
     return;
   }

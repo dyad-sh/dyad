@@ -100,6 +100,29 @@ describe("tests handlers spec paths", () => {
     expect(await exists(appDir, "tests/home.spec.ts")).toBe(false);
   });
 
+  it("migrates legacy specs when e2e-tests already exists", async () => {
+    const appDir = await makeAppDir();
+    await writeFile(
+      appDir,
+      "tests/legacy.spec.ts",
+      'import { test } from "@playwright/test";',
+    );
+    await writeFile(
+      appDir,
+      "e2e-tests/new.spec.ts",
+      'import { test } from "@playwright/test";',
+    );
+
+    await migrateLegacyDyadTestsDir(appDir);
+
+    expect(await exists(appDir, "tests/legacy.spec.ts")).toBe(false);
+    expect(await exists(appDir, "e2e-tests/legacy.spec.ts")).toBe(true);
+    await expect(listSpecFiles(appDir)).resolves.toEqual([
+      "e2e-tests/legacy.spec.ts",
+      "e2e-tests/new.spec.ts",
+    ]);
+  });
+
   it("does not migrate an existing user-owned tests directory without Playwright specs", async () => {
     const appDir = await makeAppDir();
     await writeFile(appDir, "tests/home.spec.ts", "test('home', () => {});");

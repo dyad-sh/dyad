@@ -66,7 +66,10 @@ export function isFailingStatus(status: string): boolean {
   return status === "failed" || status === "inconclusive";
 }
 
-function isSkippedVerdict(v: { status: string; error?: string }): boolean {
+export function isSkippedVerdict(v: {
+  status: string;
+  error?: string;
+}): boolean {
   return v.status === "inconclusive" && !v.error;
 }
 

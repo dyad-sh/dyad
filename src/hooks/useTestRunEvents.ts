@@ -39,7 +39,10 @@ export function useTestRunEvents() {
   const queryClient = useQueryClient();
   const runGenerationByAppId = useRef(new Map<number, number>());
   const activeRunByAppId = useRef(
-    new Map<number, { generation: number; source: "panel" | "agent" }>(),
+    new Map<
+      number,
+      { generation: number; source: "panel" | "agent"; startedAt: number }
+    >(),
   );
   const pendingOutputRef = useRef(new Map<number, string>());
   const outputFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -103,14 +106,22 @@ export function useTestRunEvents() {
       const { appId, testFile, testLine } = payload;
       if (payload.state === "started") {
         const generation = (runGenerationByAppId.current.get(appId) ?? 0) + 1;
+        const startedAt = Date.now();
         runGenerationByAppId.current.set(appId, generation);
         activeRunByAppId.current.set(appId, {
           generation,
           source: payload.source,
+          startedAt,
         });
         discardPendingOutput(appId);
         if (payload.source === "agent") {
-          applyStarted({ appId, testFile, testLine, grep: payload.grep });
+          applyStarted({
+            appId,
+            testFile,
+            testLine,
+            grep: payload.grep,
+            startedAt,
+          });
         }
         return;
       }
@@ -122,6 +133,7 @@ export function useTestRunEvents() {
         return;
       }
       const runGeneration = activeRun.generation;
+      const runStartedAt = activeRun.startedAt;
       const finish = () =>
         applyFinished({
           appId,
@@ -133,6 +145,7 @@ export function useTestRunEvents() {
           },
           isPartialRun:
             testFile != null && (testLine != null || !!payload.grep),
+          expectedStartedAt: runStartedAt,
         });
       // Do not leave the finished run's spinner/Stop state waiting on disk I/O.
       // The initial merge may use a stale spec list, but the forced refresh

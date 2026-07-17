@@ -1,7 +1,7 @@
 import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { PLAYWRIGHT_REPORT_ERROR_FILE } from "@/ipc/utils/playwright_report";
 import { normalizeRunTestFile } from "@/ipc/handlers/tests_handlers";
-import { isFailingStatus } from "./test_failure_signature";
+import { isFailingStatus, isSkippedVerdict } from "./test_failure_signature";
 import { AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 
 export { isFailingStatus };
@@ -34,15 +34,6 @@ export interface Classification {
    */
   allInconclusive: boolean;
   message?: string;
-}
-
-/**
- * Skipped tests (`test.skip`/`test.fixme`) surface in the report as
- * "inconclusive" verdicts WITHOUT an error; a real selector/timeout failure
- * always carries one.
- */
-function isSkippedVerdict(v: { status: TestResult["status"]; error?: string }) {
-  return v.status === "inconclusive" && !v.error;
 }
 
 export function classify(res: RunAppTestsResult): Classification {

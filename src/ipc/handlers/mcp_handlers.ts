@@ -119,7 +119,10 @@ export function registerMcpHandlers() {
       throw new Error(`Unknown catalog entry: ${slug}`);
     }
 
-    // Adding the same entry twice returns the existing server.
+    // Adding the same entry twice returns the existing server. The
+    // unique index on catalog_slug makes this safe against concurrent
+    // adds: onConflictDoNothing skips the duplicate insert, and we read
+    // the winning row back.
     const existing = await db
       .select()
       .from(mcpServers)
@@ -140,7 +143,15 @@ export function registerMcpHandlers() {
         oauthScope: entry.oauthScope ?? null,
         catalogSlug: entry.slug,
       })
+      .onConflictDoNothing({ target: mcpServers.catalogSlug })
       .returning();
+    if (!created) {
+      const [row] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.catalogSlug, slug));
+      return toMcpServer(row);
+    }
     return toMcpServer(created);
   });
 

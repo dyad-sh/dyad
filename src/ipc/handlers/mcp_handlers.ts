@@ -2,7 +2,7 @@ import log from "electron-log";
 import { getRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
@@ -105,9 +105,12 @@ export function registerMcpHandlers() {
 
   createTypedHandler(mcpContracts.listCatalog, async () => {
     const entries = await getRemoteMcpCatalog();
-    const servers = await db.select().from(mcpServers);
-    const addedSlugs = servers
-      .map((s) => s.catalogSlug)
+    const rows = await db
+      .select({ catalogSlug: mcpServers.catalogSlug })
+      .from(mcpServers)
+      .where(isNotNull(mcpServers.catalogSlug));
+    const addedSlugs = rows
+      .map((r) => r.catalogSlug)
       .filter((slug): slug is string => slug !== null);
     return { entries, addedSlugs };
   });

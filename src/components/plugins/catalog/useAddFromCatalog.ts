@@ -3,11 +3,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { McpCatalogEntry } from "@/ipc/shared/remote_mcp_catalog";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
-import { showError, showInfo, showSuccess } from "@/lib/toast";
+import { showSuccess } from "@/lib/toast";
+import { useOauthCallbackPort } from "../AddPluginDialog";
+import { usePluginConnect } from "../usePluginConnect";
 
 export function useAddFromCatalog() {
   const queryClient = useQueryClient();
   const [addingSlug, setAddingSlug] = useState<string | null>(null);
+  const callbackPort = useOauthCallbackPort();
+  const { onServerCreated } = usePluginConnect();
 
   const mutation = useMutation({
     mutationFn: async (entry: McpCatalogEntry) => {
@@ -26,27 +30,6 @@ export function useAddFromCatalog() {
     meta: { showErrorToast: true },
   });
 
-  // OAuth connection runs after the plugin is already added. It is not
-  // awaited by the add flow: the user may abandon the browser step, and
-  // the connection status (and retry) lives on the configured plugin's
-  // own card. Tools are re-fetched afterward because the first fetch
-  // ran before authentication and cached an empty list.
-  const connectOAuth = async (serverId: number, name: string) => {
-    showInfo(`Connecting OAuth for "${name}"…`);
-    const result = await ipc.mcp.startOAuth({ serverId });
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcp.toolsByServer.all,
-      }),
-    ]);
-    if (result.success) {
-      showSuccess(`Connected "${name}"`);
-    } else {
-      showError(result.error ?? "OAuth connection failed");
-    }
-  };
-
   const addFromCatalog = async (entry: McpCatalogEntry) => {
     if (addingSlug) return;
     setAddingSlug(entry.slug);
@@ -62,10 +45,18 @@ export function useAddFromCatalog() {
       setAddingSlug(null);
     }
     if (!created) return;
-    if (entry.oauth === "none") {
-      showSuccess(`Added "${created.name}"`);
-    } else {
-      void connectOAuth(created.id, created.name);
+    showSuccess(`Added "${created.name}"`);
+
+    // Only required-OAuth servers connect automatically. Optional ones
+    // work anonymously and offer Connect on their card. The connect
+    // runs through the shared flow so it holds the connect slot (no
+    // competing flow) and reuses the probed callback port; it is not
+    // awaited so an abandoned browser step can't wedge the add.
+    if (entry.oauth === "required") {
+      void onServerCreated(created, {
+        wantsOAuth: true,
+        callbackPort: typeof callbackPort === "number" ? callbackPort : null,
+      });
     }
   };
 

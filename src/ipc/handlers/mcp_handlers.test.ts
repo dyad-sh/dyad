@@ -81,38 +81,45 @@ vi.mock("@/db", () => ({
       from: () => {
         const all = [...dbStore.values()];
         return Object.assign(Promise.resolve(all), {
-          where: (cond: { value: unknown }) =>
-            Promise.resolve(all.filter((r) => r.catalogSlug === cond.value)),
+          where: (cond: { value?: unknown; notNull?: boolean }) =>
+            Promise.resolve(
+              cond.notNull
+                ? all.filter((r) => r.catalogSlug !== null)
+                : all.filter((r) => r.catalogSlug === cond.value),
+            ),
         });
       },
     })),
     insert: vi.fn(() => ({
-      values: (values: Record<string, unknown>) => ({
-        returning: () => {
-          lastInsertPayload = values;
-          // Hand back a synthetic row that looks like what drizzle
-          // would: input values + a numeric id + timestamps. The
-          // handler runs `toMcpServer` on this, so all schema-
-          // required fields must be present.
-          const synthetic: Row = {
-            id: 1000,
-            name: String(values.name ?? "synthetic"),
-            transport: String(values.transport ?? "http"),
-            command: (values.command as string | null) ?? null,
-            args: values.args ?? null,
-            envJson: values.envJson ?? null,
-            headersJson: values.headersJson ?? null,
-            url: (values.url as string | null) ?? null,
-            enabled: Boolean(values.enabled),
-            oauthEnabled: Boolean(values.oauthEnabled),
-            oauthState: (values.oauthState as string | null) ?? null,
-            catalogSlug: (values.catalogSlug as string | null) ?? null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
-          return Promise.resolve([synthetic]);
-        },
-      }),
+      values: (values: Record<string, unknown>) => {
+        const build = () => ({
+          returning: () => {
+            lastInsertPayload = values;
+            // Hand back a synthetic row that looks like what drizzle
+            // would: input values + a numeric id + timestamps. The
+            // handler runs `toMcpServer` on this, so all schema-
+            // required fields must be present.
+            const synthetic: Row = {
+              id: 1000,
+              name: String(values.name ?? "synthetic"),
+              transport: String(values.transport ?? "http"),
+              command: (values.command as string | null) ?? null,
+              args: values.args ?? null,
+              envJson: values.envJson ?? null,
+              headersJson: values.headersJson ?? null,
+              url: (values.url as string | null) ?? null,
+              enabled: Boolean(values.enabled),
+              oauthEnabled: Boolean(values.oauthEnabled),
+              oauthState: (values.oauthState as string | null) ?? null,
+              catalogSlug: (values.catalogSlug as string | null) ?? null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+            return Promise.resolve([synthetic]);
+          },
+        });
+        return { ...build(), onConflictDoNothing: () => build() };
+      },
     })),
   },
 }));
@@ -126,6 +133,7 @@ vi.mock("drizzle-orm", () => ({
     lastUpdateTargetId = value;
     return { _col, value };
   },
+  isNotNull: (_col: unknown) => ({ notNull: true }),
 }));
 
 let catalogEntries: unknown[] = [];

@@ -41,9 +41,7 @@ describe("remote_mcp_catalog", () => {
   });
 
   it("accepts a mixed-case http(s) scheme", async () => {
-    mockCatalogResponse([
-      { ...VALID_ENTRY, url: "HTTPS://mcp.figma.com/mcp" },
-    ]);
+    mockCatalogResponse([{ ...VALID_ENTRY, url: "HTTPS://mcp.figma.com/mcp" }]);
     const entries = await getRemoteMcpCatalog();
     expect(entries).toHaveLength(1);
   });

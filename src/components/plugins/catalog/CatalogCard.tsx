@@ -3,6 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 
+// The schema already validates url, but parse defensively so one bad
+// entry can't throw during render and take down the whole section.
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 export function CatalogCard({
   entry,
   isAdded,
@@ -32,7 +42,7 @@ export function CatalogCard({
         )}
         <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground truncate">
-            {new URL(entry.url).hostname}
+            {hostnameOf(entry.url)}
           </span>
           {isAdded ? (
             <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 shrink-0">

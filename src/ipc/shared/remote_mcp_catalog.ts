@@ -35,7 +35,8 @@ export const McpCatalogEntrySchema = z.object({
   url: z
     .string()
     .url()
-    .refine((u) => /^https?:\/\//.test(u), "URL must be http(s)"),
+    // Case-insensitive so mixed-case schemes like HTTPS:// pass too.
+    .refine((u) => /^https?:\/\//i.test(u), "URL must be http(s)"),
   oauth: z.enum(["required", "optional", "none"]),
   oauthScope: z.string().optional(),
   headers: z.record(z.string(), z.string()).optional(),

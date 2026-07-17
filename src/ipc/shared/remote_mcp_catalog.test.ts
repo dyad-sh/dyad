@@ -40,6 +40,14 @@ describe("remote_mcp_catalog", () => {
     expect(entries[0].slug).toBe("figma");
   });
 
+  it("accepts a mixed-case http(s) scheme", async () => {
+    mockCatalogResponse([
+      { ...VALID_ENTRY, url: "HTTPS://mcp.figma.com/mcp" },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries).toHaveLength(1);
+  });
+
   it("drops a malformed entry without losing the rest", async () => {
     mockCatalogResponse([
       { slug: "broken" }, // missing everything else

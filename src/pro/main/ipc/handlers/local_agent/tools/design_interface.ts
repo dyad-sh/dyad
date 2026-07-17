@@ -55,21 +55,30 @@ Do NOT create the Stage or Layer, do NOT call layer.draw(), do NOT reference the
 x/y are absolute pixels from the top-left of the canvas; keep shapes within the width/height bounds. Konva.Circle is center-anchored (x/y is its center). Konva.Line takes a flat points array [x1,y1,x2,y2,…] in absolute canvas coordinates.
 </coordinates>
 
+<fonts>
+Set fontFamily to a font from the brief, spelled EXACTLY as the brief has it (e.g. "Inter Variable", "Instrument Serif"). Canvas text silently falls back to a default face for any unrecognized name, which ruins the screen — there is no error, it just looks wrong. Never invent a font name and never drop the "Variable" suffix.
+</fonts>
+
 <guidelines>
-- Use real, specific copy — never lorem ipsum or "Button 1". Write the actual product copy.
-- Establish clear hierarchy: header/nav, primary content, and an obvious primary action.
-- Reuse the brief's palette and fonts consistently. Set fontFamily to a web font from the brief.
-- Give elements breathing room; think in a grid; avoid unintended overlaps.
+- Real, specific copy only — never lorem ipsum, "Button 1", or "Your headline here". Write what this product would actually ship.
+- Build a real type scale. Display type at 56-120px against body at 15-16px; a screen where everything sits between 18px and 36px has no hierarchy. Always set lineHeight explicitly: 0.95-1.1 for display (Konva's default is much too loose and is the most common thing that makes a mockup look wrong), 1.5-1.6 for body.
+- Constrain body text to a 480-680px width. Full-bleed paragraphs look unedited.
+- 8pt grid. Generous page margins: 64-96px desktop, 20-24px mobile.
+- Apply the accent color to the primary action and almost nothing else. Neutrals should carry the screen.
+- Favor asymmetry and real negative space over a centered stack with everything filled in.
 - Buttons: a filled Konva.Rect (with cornerRadius) plus a centered Konva.Text on top (align "center", verticalAlign "middle", width/height matching the rect).
-- Media: draw a placeholder — a dashed Konva.Rect plus a short centered label (e.g. "▦  Hero photo").
+- Media: a solid or subtly-tinted Konva.Rect in a palette neutral, with an optional quiet caption beside it. Do NOT use a dashed border with a centered image glyph — that reads as a wireframe, not a design.
+- Icons: you cannot draw real ones. Unicode/emoji glyphs (▦ ★ ✓ → ⚡ 🔍) render inconsistently and are the loudest tell of generated design — do not put one on every card, nav item, or list row. Budget roughly two per screen. Prefer real geometry (Konva.Line for an arrow or chevron, Konva.Circle for a bullet or avatar) and prefer typography and space over symbols.
 </guidelines>
 
 <example>
+Note what this example does: one 104px display line against 16px body (a ~6:1 scale), tight lineHeight on the display, an off-center editorial split rather than a centered stack, a solid neutral for the photo rather than a dashed wireframe box, a square-edged black CTA as a deliberate choice, and zero decorative glyphs.
+
 {
   "name": "Landing page",
-  "width": 1440, "height": 1024, "background": "#FFFDF9",
-  "notes": "Editorial hero with a warm photo and a single clear CTA.",
-  "code": "layer.add(new Konva.Rect({ x: 0, y: 0, width: width, height: 72, fill: '#FFFFFF' }));\nlayer.add(new Konva.Text({ x: 48, y: 24, text: 'FreshBite', fontSize: 22, fontFamily: 'Poppins', fontStyle: 'bold', fill: '#E85D04' }));\nlayer.add(new Konva.Text({ x: 48, y: 220, width: 620, text: 'Fresh, fast, unforgettable.', fontSize: 56, fontFamily: 'Poppins', fontStyle: 'bold', fill: '#1B1B1B', lineHeight: 1.1 }));\nlayer.add(new Konva.Text({ x: 48, y: 320, width: 560, text: 'Order your favorite dishes in a few taps.', fontSize: 20, fontFamily: 'Inter', fill: '#5A5A5A' }));\nconst cta = new Konva.Group();\ncta.add(new Konva.Rect({ x: 48, y: 400, width: 200, height: 56, fill: '#E85D04', cornerRadius: 12 }));\ncta.add(new Konva.Text({ x: 48, y: 400, width: 200, height: 56, text: 'Start an order', fontSize: 16, fontFamily: 'Inter', fontStyle: 'bold', fill: '#FFFFFF', align: 'center', verticalAlign: 'middle' }));\nlayer.add(cta);\nlayer.add(new Konva.Rect({ x: 760, y: 140, width: 632, height: 740, cornerRadius: 24, fill: '#EEF0F3', stroke: '#C3C8D0', strokeWidth: 1.5, dash: [8, 6] }));\nlayer.add(new Konva.Text({ x: 760, y: 140, width: 632, height: 740, text: '▦  Hero photo', fontSize: 16, fontFamily: 'Inter', fill: '#6B7280', align: 'center', verticalAlign: 'middle' }));"
+  "width": 1440, "height": 1024, "background": "#FAF8F5",
+  "notes": "Thesis: a restaurant that behaves like a print cookbook — enormous light serif, oceans of margin, one photo doing all the work. The CTA is hard-edged black so it reads as a stamp, not a web button.",
+  "code": "layer.add(new Konva.Text({ x: 96, y: 48, text: 'FRESHBITE', fontSize: 12, fontFamily: 'Inter Variable', fontStyle: '500', fill: '#1B1B1B', letterSpacing: 3 }));\n['Menu', 'Hours', 'Book a table'].forEach((label, i) => {\n  layer.add(new Konva.Text({ x: 1080 + i * 110, y: 48, text: label, fontSize: 13, fontFamily: 'Inter Variable', fill: '#6B6560' }));\n});\nlayer.add(new Konva.Line({ points: [96, 88, 1344, 88], stroke: '#E5DFD6', strokeWidth: 1 }));\nlayer.add(new Konva.Text({ x: 96, y: 216, width: 600, text: 'Braised four hours. Eaten in twenty minutes.', fontSize: 104, fontFamily: 'Instrument Serif', fill: '#1B1B1B', lineHeight: 0.95 }));\nlayer.add(new Konva.Text({ x: 96, y: 560, width: 480, text: 'A short menu that changes when the market does. We cook one thing properly rather than forty things quickly.', fontSize: 16, fontFamily: 'Inter Variable', fill: '#6B6560', lineHeight: 1.6 }));\nconst cta = new Konva.Group();\ncta.add(new Konva.Rect({ x: 96, y: 680, width: 208, height: 56, fill: '#1B1B1B', cornerRadius: 0 }));\ncta.add(new Konva.Text({ x: 96, y: 680, width: 208, height: 56, text: 'Book a table', fontSize: 14, fontFamily: 'Inter Variable', fontStyle: '500', fill: '#FAF8F5', align: 'center', verticalAlign: 'middle', letterSpacing: 1 }));\nlayer.add(cta);\nlayer.add(new Konva.Rect({ x: 768, y: 216, width: 576, height: 720, fill: '#E5DFD6' }));\nlayer.add(new Konva.Text({ x: 768, y: 952, text: 'Short rib, Tuesday service', fontSize: 12, fontFamily: 'Inter Variable', fill: '#9A938B' }));"
 }
 </example>`;
 

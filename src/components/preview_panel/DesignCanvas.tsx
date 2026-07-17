@@ -6,6 +6,7 @@ import { Maximize2, Palette, X, ZoomIn, ZoomOut } from "lucide-react";
 import { designStateAtom } from "@/atoms/designAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import type { DesignBriefData, DesignInterfaceData } from "@/ipc/types/design";
+import { loadDesignFonts } from "./designFonts";
 
 // Widest a rendered frame is shown at inline; larger canvases scale down to fit.
 const MAX_FRAME_WIDTH = 900;
@@ -159,6 +160,14 @@ function MockupStage({
     }
     layer.draw();
 
+    // The first draw above can land before the mockup's fonts finish loading,
+    // in which case canvas silently substitutes a default face. Redraw once
+    // they're ready (no-op on the common path, where they're already cached).
+    let cancelled = false;
+    loadDesignFonts().then(() => {
+      if (!cancelled) layer.draw();
+    });
+
     const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
       // Ctrl/Cmd + wheel zooms; a plain wheel keeps scrolling the page.
       if (!e.evt.ctrlKey && !e.evt.metaKey) return;
@@ -173,6 +182,7 @@ function MockupStage({
     stageRef.current = stage;
     setZoom(1);
     return () => {
+      cancelled = true;
       stage.destroy();
       stageRef.current = null;
     };

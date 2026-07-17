@@ -30,13 +30,13 @@ const writeDesignBriefSchema = z.object({
   design_direction: z
     .string()
     .describe(
-      "1-2 sentences describing the visual mood and rationale, informed by the industry and audience",
+      "1-2 sentences stating the design THESIS: a specific position, ideally with a named influence. Not 'modern and clean' — a sentence that could describe any product is not a direction.",
     ),
   palette: DesignPaletteSchema.describe(
-    "The app's color system as hex codes. Choose colors with strong contrast and a coherent mood.",
+    "The app's color system as hex codes. Mostly neutrals, with ONE accent that lands on the primary action and little else.",
   ),
   typography: DesignTypographySchema.describe(
-    "Heading and body fonts. Use widely-available web fonts (e.g. Inter, Poppins, Georgia).",
+    "Heading and body fonts, chosen from the allowed set to serve the thesis. These are the only fonts that will render.",
   ),
   interfaces: z
     .array(InterfaceSummarySchema)
@@ -56,21 +56,24 @@ Call this ONCE, after you've gathered enough context (via planning_questionnaire
 </when_to_use>
 
 <guidelines>
-- palette: primary, secondary, accent, background, surface, and text are required (muted optional). Use hex codes with good contrast in mind.
-- typography: pick a heading font and a body font that fit the design direction; only real, browser-renderable fonts.
+- design_direction: state a THESIS, not a mood board. It should name a specific position and ideally a real influence ("the density of a Bloomberg terminal", "Swiss editorial, like a Müller-Brockmann poster", "the warmth of a 70s cookbook"). "Modern, clean and user-friendly" describes nothing and commits to nothing — if the sentence could describe any product, it is not a direction.
+- palette: primary, secondary, accent, background, surface, and text are required (muted optional). Hex codes. Build it mostly from neutrals — near-blacks and off-whites — with ONE accent that earns its place and lands on the primary action. Pure #FFFFFF/#000000 are usually the lazy pick; a warm or cool off-tint (#FAF8F5, #0E0E10) reads as considered. Avoid purple-to-blue gradients; they are the house style of generated design.
+- typography: heading and body fonts must come from the enum — those are the only fonts that will render, and the mockups spell them exactly as given here. Pick a pairing that serves the thesis rather than the safest option: Inter/Inter is right for a dense data tool and wasted on a fashion brand.
 - interfaces: list the screens in the order you'll design them. Give each a short name and a one-line purpose.
 </guidelines>
 
 <example>
+Note that the direction commits to a specific idea, the palette is four neutrals plus one accent, and the fonts were chosen because a light display serif is what "print cookbook" means.
+
 {
   "app_name": "FreshBite",
   "user_prompt": "A restaurant website with online ordering",
-  "design_direction": "Warm and appetizing with a modern, editorial feel and generous food photography.",
+  "design_direction": "A restaurant that behaves like a print cookbook: enormous light serif, oceans of margin, one photograph doing all the work. Ordering is treated as a quiet transaction at the end, not a storefront.",
   "palette": {
-    "primary": "#E85D04", "secondary": "#6A040F", "accent": "#FFBA08",
-    "background": "#FFFDF9", "surface": "#FFFFFF", "text": "#1B1B1B", "muted": "#8A8A8A"
+    "primary": "#1B1B1B", "secondary": "#6B6560", "accent": "#C2410C",
+    "background": "#FAF8F5", "surface": "#F1EDE7", "text": "#1B1B1B", "muted": "#9A938B"
   },
-  "typography": { "headingFont": "Poppins", "bodyFont": "Inter", "baseSize": 16 },
+  "typography": { "headingFont": "Instrument Serif", "bodyFont": "Inter Variable", "baseSize": 16 },
   "interfaces": [
     { "name": "Landing page", "purpose": "Sell the vibe and push visitors to start an order" },
     { "name": "Menu", "purpose": "Browse dishes and add items to the cart" },

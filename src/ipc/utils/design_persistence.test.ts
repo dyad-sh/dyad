@@ -8,10 +8,7 @@ import {
   saveDesignBrief,
   saveDesignInterface,
 } from "./design_persistence";
-import type {
-  DesignBriefData,
-  DesignInterfaceData,
-} from "@/ipc/types/design";
+import type { DesignBriefData, DesignInterfaceData } from "@/ipc/types/design";
 
 // electron-log pulls in electron; stub it so the module loads under vitest.
 vi.mock("electron-log", () => ({
@@ -30,7 +27,7 @@ const brief: DesignBriefData = {
     surface: "#FFFFFF",
     text: "#1B1B1B",
   },
-  typography: { headingFont: "Poppins", bodyFont: "Inter" },
+  typography: { headingFont: "Instrument Serif", bodyFont: "Inter Variable" },
   interfaces: [{ id: "screen_1", name: "Landing page" }],
 };
 
@@ -41,7 +38,7 @@ function iface(id: string, name: string): DesignInterfaceData {
     width: 1440,
     height: 1024,
     background: "#FFFDF9",
-    nodes: [{ id: "n1", type: "text", x: 10, y: 10, text: name }],
+    code: `layer.add(new Konva.Text({ x: 10, y: 10, text: ${JSON.stringify(name)} }));`,
   };
 }
 
@@ -49,7 +46,9 @@ let appPath: string;
 const chatId = 42;
 
 beforeEach(async () => {
-  appPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), "design-persist-"));
+  appPath = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "design-persist-"),
+  );
 });
 
 afterEach(async () => {

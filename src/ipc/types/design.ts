@@ -5,6 +5,7 @@ import {
   createClient,
   createEventClient,
 } from "../contracts/core";
+import { DESIGN_FONTS } from "./design_fonts";
 
 // =============================================================================
 // Design Mode Schemas
@@ -31,9 +32,17 @@ export const DesignPaletteSchema = z.object({
 
 export type DesignPalette = z.infer<typeof DesignPaletteSchema>;
 
+/**
+ * Only fonts the app bundles can be used — Konva rasterizes to canvas, which
+ * falls back silently to a default face for anything not loaded in the
+ * document. An enum (not a free string) is what makes that impossible to get
+ * wrong. See `design_fonts.ts`.
+ */
+export const DesignFontSchema = z.enum(DESIGN_FONTS);
+
 export const DesignTypographySchema = z.object({
-  headingFont: z.string(),
-  bodyFont: z.string(),
+  headingFont: DesignFontSchema,
+  bodyFont: DesignFontSchema,
   /** Base body font size in px (e.g. 16). */
   baseSize: z.number().positive().optional(),
 });

@@ -1,5 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/* Design-mode mockup fonts.
+ *
+ * Konva draws text to a canvas, which falls back to a default face if the
+ * family isn't loaded in the document — so design mode can only offer fonts
+ * that are bundled here. This roster is mirrored in
+ * `src/ipc/types/design_fonts.ts`, which is what constrains the model's
+ * choice; the two must stay in sync. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/playfair-display";
+@import "@fontsource-variable/fraunces";
+@import "@fontsource/instrument-serif";
+@import "@fontsource-variable/jetbrains-mono";
+
 @plugin "@tailwindcss/typography";
 
 /* Load Geist Font */

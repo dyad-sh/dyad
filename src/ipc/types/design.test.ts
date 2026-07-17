@@ -58,14 +58,18 @@ describe("DesignBriefDataSchema", () => {
         surface: "#FFFFFF",
         text: "#1B1B1B",
       },
-      typography: { headingFont: "Poppins", bodyFont: "Inter", baseSize: 16 },
+      typography: {
+        headingFont: "Instrument Serif",
+        bodyFont: "Inter Variable",
+        baseSize: 16,
+      },
       interfaces: [
         { id: "s1", name: "Landing page", purpose: "Sell the vibe" },
         { id: "s2", name: "Menu" },
       ],
     });
     expect(brief.interfaces).toHaveLength(2);
-    expect(brief.typography.headingFont).toBe("Poppins");
+    expect(brief.typography.headingFont).toBe("Instrument Serif");
   });
 });
 

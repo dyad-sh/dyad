@@ -156,6 +156,12 @@ export function registerMcpHandlers() {
         .select()
         .from(mcpServers)
         .where(eq(mcpServers.catalogSlug, slug));
+      if (!row) {
+        throw new DyadError(
+          `Unknown catalog entry: ${slug}`,
+          DyadErrorKind.NotFound,
+        );
+      }
       return toMcpServer(row);
     }
     return toMcpServer(created);

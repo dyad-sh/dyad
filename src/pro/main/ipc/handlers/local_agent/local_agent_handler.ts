@@ -58,6 +58,7 @@ import {
 import {
   questionnaireResolver,
   integrationResolver,
+  designOptionsResolver,
 } from "./userInputResolvers";
 import {
   deployAllFunctionsIfNeeded,
@@ -1199,6 +1200,7 @@ export async function handleLocalAgentStream(
                 clearPendingMcpConsentsForChat(req.chatId);
                 questionnaireResolver.abortChat(req.chatId);
                 integrationResolver.abortChat(req.chatId);
+                designOptionsResolver.abortChat(req.chatId);
                 deleteAppBlueprintForChat(req.chatId);
                 break;
               }
@@ -1674,6 +1676,7 @@ export async function handleLocalAgentStream(
     clearPendingMcpConsentsForChat(req.chatId);
     questionnaireResolver.abortChat(req.chatId);
     integrationResolver.abortChat(req.chatId);
+    designOptionsResolver.abortChat(req.chatId);
     // Only drop the app blueprint itself on explicit cancellation — a transient
     // stream error should leave the plan around so the user can retry from
     // the same approval state instead of losing their edits.

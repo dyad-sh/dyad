@@ -8,6 +8,7 @@ import {
   DesignBriefDataSchema,
   DesignPaletteSchema,
   DesignTypographySchema,
+  DesignPlatformSchema,
 } from "@/ipc/types/design";
 
 const logger = log.scope("write_design_brief");
@@ -45,6 +46,17 @@ const writeDesignBriefSchema = z.object({
     .describe(
       "The screens you will design next, in order. Choose the right number (typically 2-5); every screen should earn its place.",
     ),
+  corner_radius: z
+    .number()
+    .min(0)
+    .max(200)
+    .optional()
+    .describe(
+      "Corner radius in px for buttons/cards, from the shape the user chose in propose_design_options. Pass it through unchanged.",
+    ),
+  platform: DesignPlatformSchema.optional().describe(
+    "The platform the user chose in propose_design_options. Drives the mockup frame size.",
+  ),
 });
 
 const DESCRIPTION = `Commit to the app's global design system before generating any screens.
@@ -117,6 +129,8 @@ export const writeDesignBriefTool: ToolDefinition<
       palette: args.palette,
       typography: args.typography,
       interfaces,
+      cornerRadius: args.corner_radius,
+      platform: args.platform,
     });
 
     safeSend(ctx.event.sender, "design:brief-update", {
@@ -135,10 +149,22 @@ export const writeDesignBriefTool: ToolDefinition<
       )
       .join("\n");
 
+    const frame =
+      data.platform === "mobile"
+        ? "390×844 (mobile)"
+        : data.platform === "both"
+          ? "1440×1024 for desktop screens and 390×844 for mobile screens"
+          : "1440×1024 (desktop)";
+
     return `Design brief saved for "${data.appName}".
 
 Palette: primary ${data.palette.primary}, background ${data.palette.background}, text ${data.palette.text}.
-Typography: ${data.typography.headingFont} / ${data.typography.bodyFont}.
+Typography: ${data.typography.headingFont} (headings) / ${data.typography.bodyFont} (body).${
+      data.cornerRadius !== undefined
+        ? `\nCorner radius: ${data.cornerRadius}px — use this for every button and card.`
+        : ""
+    }
+Frame size: ${frame}.
 
 Now design each of these ${interfaces.length} interface(s), in order, by calling design_interface once per screen:
 ${screenList}`;

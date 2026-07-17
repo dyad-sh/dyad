@@ -1,9 +1,61 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   DesignBriefDataSchema,
   DesignInterfaceDataSchema,
   DesignPaletteSchema,
 } from "./design";
+import { DESIGN_FONTS, DESIGN_FONT_NOTES } from "./design_fonts";
+
+// Mockups are drawn to a canvas, which silently substitutes a default face for
+// any font not loaded in the document — a broken font produces an ugly screen,
+// never an error. So the roster and the stylesheet drifting apart is a failure
+// nobody would notice at runtime. Pin them together here instead.
+describe("design font roster", () => {
+  const globalsCss = fs.readFileSync(
+    path.join(__dirname, "../../styles/globals.css"),
+    "utf-8",
+  );
+
+  it.each(DESIGN_FONTS)("%s is imported by globals.css", (font) => {
+    // "Inter Variable" -> @fontsource-variable/inter
+    // "Instrument Serif" -> @fontsource/instrument-serif
+    const isVariable = font.endsWith(" Variable");
+    const slug = font
+      .replace(/ Variable$/, "")
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+    const pkg = isVariable
+      ? `@fontsource-variable/${slug}`
+      : `@fontsource/${slug}`;
+    // Geist is bundled via hand-written @font-face rules rather than fontsource.
+    const expected = font === "Geist" ? 'font-family: "Geist"' : pkg;
+    expect(globalsCss).toContain(expected);
+  });
+
+  it("documents every font, so the prompt can explain the choice", () => {
+    for (const font of DESIGN_FONTS) {
+      expect(DESIGN_FONT_NOTES[font], `missing note for ${font}`).toBeTruthy();
+    }
+    expect(Object.keys(DESIGN_FONT_NOTES).sort()).toEqual(
+      [...DESIGN_FONTS].sort(),
+    );
+  });
+
+  it("ships every font rather than trusting the OS to have it", () => {
+    // Georgia lived here until a render check caught it falling back on Linux.
+    // A system font is only "safe" on the platforms that happen to install it.
+    const systemFonts = [
+      "Georgia",
+      "Arial",
+      "Helvetica",
+      "Times New Roman",
+      "system-ui",
+    ];
+    expect(DESIGN_FONTS.filter((f) => systemFonts.includes(f))).toEqual([]);
+  });
+});
 
 describe("DesignPaletteSchema", () => {
   it("accepts 3- and 6-digit hex colors", () => {

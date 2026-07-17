@@ -7,6 +7,12 @@
  * `src/styles/globals.css`; the design tools constrain the model to this list
  * via `DesignFontSchema`. Adding a font means doing BOTH: install the
  * @fontsource package + @import it in globals.css, then add it here.
+ *
+ * Every entry must be BUNDLED — no system fonts. Georgia was on this list until
+ * a render check caught it falling back on Linux, where it isn't installed:
+ * "safe web font" means safe on Windows and macOS only, and we ship an Electron
+ * app on all three. A font we don't ship is a font that silently degrades for
+ * someone.
  */
 export const DESIGN_FONTS = [
   "Inter Variable",
@@ -16,8 +22,8 @@ export const DESIGN_FONTS = [
   "Fraunces Variable",
   "Instrument Serif",
   "JetBrains Mono Variable",
+  "Source Serif 4 Variable",
   "Geist",
-  "Georgia",
 ] as const;
 
 export type DesignFont = (typeof DESIGN_FONTS)[number];
@@ -42,7 +48,7 @@ export const DESIGN_FONT_NOTES: Record<DesignFont, string> = {
     "Elegant light display serif. Understated and expensive-looking at very large sizes.",
   "JetBrains Mono Variable":
     "Monospace. Developer tools, data, terminals, or as a deliberate accent for eyebrows/metadata.",
+  "Source Serif 4 Variable":
+    "Readable body serif. Long-form reading, journalism, book-like text — the one serif here meant for paragraphs rather than headlines.",
   Geist: "Clean modern sans. A slightly warmer alternative to Inter.",
-  Georgia:
-    "Classic readable serif. Long-form reading, journalism, book-like body text.",
 };

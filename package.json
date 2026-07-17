@@ -76,6 +76,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/playfair-display": "^5.2.8",
+    "@fontsource-variable/source-serif-4": "^5.2.9",
     "@fontsource-variable/space-grotesk": "^5.2.10",
     "@fontsource/instrument-serif": "^5.2.8",
     "@lexical/react": "^0.33.1",

@@ -9,6 +9,7 @@ import {
   designEventClient,
   type DesignBriefUpdatePayload,
   type DesignInterfaceUpdatePayload,
+  type DesignOptionsRequestPayload,
 } from "@/ipc/types/design";
 
 /**
@@ -35,12 +36,32 @@ export function useDesignEvents() {
       setPreviewMode("design");
     };
 
+    // The agent is blocked awaiting a choice, so surface the panel immediately.
+    const unsubscribeOptions = designEventClient.onOptionsRequest(
+      (payload: DesignOptionsRequestPayload) => {
+        setDesignState((prev) => {
+          const nextOptions = new Map(prev.pendingOptionsByChatId);
+          nextOptions.set(payload.chatId, payload.data);
+          return { ...prev, pendingOptionsByChatId: nextOptions };
+        });
+        showDesignPreview();
+      },
+    );
+
     const unsubscribeBrief = designEventClient.onBriefUpdate(
       (payload: DesignBriefUpdatePayload) => {
         setDesignState((prev) => {
           const nextBriefs = new Map(prev.briefByChatId);
           nextBriefs.set(payload.chatId, payload.data);
-          return { ...prev, briefByChatId: nextBriefs };
+          // A brief means the options step is settled — retire the picker even
+          // if the agent skipped it, so it can't linger above the mockups.
+          const nextOptions = new Map(prev.pendingOptionsByChatId);
+          nextOptions.delete(payload.chatId);
+          return {
+            ...prev,
+            briefByChatId: nextBriefs,
+            pendingOptionsByChatId: nextOptions,
+          };
         });
         showDesignPreview();
       },
@@ -62,6 +83,7 @@ export function useDesignEvents() {
     );
 
     return () => {
+      unsubscribeOptions();
       unsubscribeBrief();
       unsubscribeInterface();
     };

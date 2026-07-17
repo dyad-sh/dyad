@@ -43,6 +43,7 @@ import { getMcpToolSchemaTool } from "./tools/get_mcp_tool_schema";
 import { writeAppBlueprintTool } from "./tools/write_app_blueprint";
 import { writeDesignBriefTool } from "./tools/write_design_brief";
 import { designInterfaceTool } from "./tools/design_interface";
+import { proposeDesignOptionsTool } from "./tools/propose_design_options";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -116,6 +117,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   // App blueprint tools
   writeAppBlueprintTool,
   // Design mode tools
+  proposeDesignOptionsTool,
   writeDesignBriefTool,
   designInterfaceTool,
 ];
@@ -430,6 +432,7 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
  * mode). They emit design brief / interface state and modify no files.
  */
 const DESIGN_MODE_ONLY_TOOLS = new Set([
+  "propose_design_options",
   "write_design_brief",
   "design_interface",
 ]);

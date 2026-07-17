@@ -8,6 +8,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
 import { designContracts } from "../types/design";
 import { loadDesignState } from "../utils/design_persistence";
+import { designOptionsResolver } from "@/pro/main/ipc/handlers/local_agent/userInputResolvers";
 
 const logger = log.scope("design_handlers");
 
@@ -31,4 +32,24 @@ export function registerDesignHandlers() {
     );
     return state;
   });
+
+  // Unblock the `propose_design_options` tool call that is awaiting the user's
+  // choice. A null selection means they dismissed the step.
+  createTypedHandler(
+    designContracts.respondToDesignOptions,
+    async (_, params) => {
+      const resolved = designOptionsResolver.resolve(
+        params.requestId,
+        params.selection,
+      );
+      if (!resolved) {
+        // The agent stream was cancelled (or timed out) before the user picked;
+        // there's nothing left to unblock, so drop it rather than throwing at
+        // the renderer.
+        logger.warn(
+          `No pending design options request for ${params.requestId}; ignoring response.`,
+        );
+      }
+    },
+  );
 }

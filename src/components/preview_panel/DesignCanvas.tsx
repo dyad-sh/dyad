@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import Konva from "konva";
 import { Maximize2, Palette, X, ZoomIn, ZoomOut } from "lucide-react";
 import { designStateAtom } from "@/atoms/designAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import type { DesignBriefData, DesignInterfaceData } from "@/ipc/types/design";
 import { loadDesignFonts } from "./designFonts";
+import { DesignOptionsPicker } from "./DesignOptionsPicker";
 
 // Widest a rendered frame is shown at inline; larger canvases scale down to fit.
 const MAX_FRAME_WIDTH = 900;
@@ -431,18 +432,32 @@ function DesignBriefHeader({ brief }: { brief: DesignBriefData }) {
 
 export function DesignCanvas() {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const designState = useAtomValue(designStateAtom);
+  const [designState, setDesignState] = useAtom(designStateAtom);
 
   const brief = selectedChatId
     ? designState.briefByChatId.get(selectedChatId)
     : undefined;
+  const pendingOptions = selectedChatId
+    ? designState.pendingOptionsByChatId.get(selectedChatId)
+    : undefined;
+
+  const clearPendingOptions = useCallback(
+    (chatId: number) => {
+      setDesignState((prev) => {
+        const next = new Map(prev.pendingOptionsByChatId);
+        next.delete(chatId);
+        return { ...prev, pendingOptionsByChatId: next };
+      });
+    },
+    [setDesignState],
+  );
   const interfaces = useMemo(() => {
     if (!selectedChatId) return [];
     const map = designState.interfacesByChatId.get(selectedChatId);
     return map ? Array.from(map.values()) : [];
   }, [designState, selectedChatId]);
 
-  if (!brief && interfaces.length === 0) {
+  if (!brief && interfaces.length === 0 && !pendingOptions) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
         <Palette size={32} className="text-muted-foreground" />
@@ -457,6 +472,14 @@ export function DesignCanvas() {
 
   return (
     <div className="h-full overflow-y-auto p-4" data-testid="design-canvas">
+      {pendingOptions && selectedChatId && (
+        <DesignOptionsPicker
+          key={pendingOptions.requestId}
+          chatId={selectedChatId}
+          data={pendingOptions}
+          onResolved={clearPendingOptions}
+        />
+      )}
       {brief && <DesignBriefHeader brief={brief} />}
       {interfaces.map((data) => (
         <InterfaceFrame key={data.id} data={data} />

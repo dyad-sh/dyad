@@ -117,6 +117,15 @@ export function registerMcpHandlers() {
 
   createTypedHandler(mcpContracts.addFromCatalog, async (_, { slug }) => {
     const entries = await getRemoteMcpCatalog();
+    // The user reached this from a populated catalog, so an empty list
+    // here means the fetch failed rather than the slug being unknown.
+    // Surface that as a connectivity problem instead of a not-found.
+    if (entries.length === 0) {
+      throw new DyadError(
+        "Could not reach the plugin catalog. Please check your connection and try again.",
+        DyadErrorKind.Precondition,
+      );
+    }
     const entry = entries.find((e) => e.slug === slug);
     if (!entry) {
       throw new DyadError(

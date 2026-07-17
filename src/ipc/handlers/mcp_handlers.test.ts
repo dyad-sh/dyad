@@ -381,4 +381,14 @@ describe("mcp catalog handlers", () => {
       invoke("mcp:add-from-catalog", { slug: "not-in-catalog" }),
     ).rejects.toThrow(/Unknown catalog entry/);
   });
+
+  it("reports a connectivity error when the catalog is unreachable", async () => {
+    // Transient failure after the user already saw a populated catalog:
+    // the fetch now returns []. The add should read as a connectivity
+    // problem, not an unknown slug.
+    catalogEntries = [];
+    await expect(
+      invoke("mcp:add-from-catalog", { slug: "figma" }),
+    ).rejects.toThrow(/Could not reach the plugin catalog/);
+  });
 });

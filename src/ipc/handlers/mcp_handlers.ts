@@ -104,11 +104,14 @@ export function registerMcpHandlers() {
   });
 
   createTypedHandler(mcpContracts.listCatalog, async () => {
-    const entries = await getRemoteMcpCatalog();
-    const rows = await db
-      .select({ catalogSlug: mcpServers.catalogSlug })
-      .from(mcpServers)
-      .where(isNotNull(mcpServers.catalogSlug));
+    // The catalog fetch and the added-slugs read are independent.
+    const [entries, rows] = await Promise.all([
+      getRemoteMcpCatalog(),
+      db
+        .select({ catalogSlug: mcpServers.catalogSlug })
+        .from(mcpServers)
+        .where(isNotNull(mcpServers.catalogSlug)),
+    ]);
     const addedSlugs = rows
       .map((r) => r.catalogSlug)
       .filter((slug): slug is string => slug !== null);

@@ -23,7 +23,7 @@ const disconnectingServerIdAtom = atom<number | null>(null);
 // Shared OAuth connect/probe handling for the plugins list and the
 // plugin detail page.
 export function usePluginConnect() {
-  const { statusByServer, updateServer, startOAuth, disconnectOAuth } =
+  const { servers, statusByServer, updateServer, startOAuth, disconnectOAuth } =
     useMcp();
   const [connectingServerId, setConnectingServerId] = useAtom(
     connectingServerIdAtom,
@@ -139,7 +139,19 @@ export function usePluginConnect() {
   };
 
   const onConnect = async (serverId: number) => {
-    await runAutoConnect(serverId);
+    const server = servers.find((s) => s.id === serverId);
+    // Catalog rows are added without a saved callback port, so a
+    // Connect from the card would fall back to the default port and
+    // fail if it's occupied. Use the probed port for rows with none
+    // saved; rows with a saved port keep it so it matches their
+    // registered redirect URI.
+    const usesProbedPort =
+      server != null &&
+      server.oauthCallbackPort == null &&
+      typeof callbackPort === "number";
+    await runAutoConnect(serverId, {
+      callbackPort: usesProbedPort ? callbackPort : undefined,
+    });
   };
 
   // The retry handlers' slot claim covers the settings update as well

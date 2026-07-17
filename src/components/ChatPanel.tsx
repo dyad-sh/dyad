@@ -164,10 +164,18 @@ export function ChatPanel({
     isAtBottomRef.current = true;
     setShowScrollButton(false);
 
-    // Wait for messages to render before scrolling. If they haven't loaded yet,
-    // leave the request pending so this effect re-runs (and scrolls) once they
-    // do, rather than clearing it here and never scrolling.
+    // Wait for messages to render before scrolling. If the chat is loaded and
+    // empty, there is nothing to scroll to, so clear the request instead of
+    // leaving stale per-chat state behind.
     if (messages.length === 0) {
+      setScrollToBottomRequestedChatIds((prev) => {
+        if (!prev.has(chatId)) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(chatId);
+        return next;
+      });
       return;
     }
 

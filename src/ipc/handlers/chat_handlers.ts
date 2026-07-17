@@ -5,6 +5,9 @@ import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getDyadAppPath } from "../../paths/paths";
+import { getCurrentCommitHash } from "../utils/git_utils";
+import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
 import { normalizeStoredChatMode } from "./chat_mode_resolution";
@@ -120,7 +123,16 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.deleteChat, async (_, chatId) => {
-    await db.delete(chats).where(eq(chats.id, chatId));
+    const chat = await db.query.chats.findFirst({
+      columns: { appId: true },
+      where: eq(chats.id, chatId),
+    });
+    if (!chat) {
+      return;
+    }
+    await withLock(chat.appId, async () => {
+      await db.delete(chats).where(eq(chats.id, chatId));
+    });
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
@@ -153,7 +165,16 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {
-    await db.delete(messages).where(eq(messages.chatId, chatId));
+    const chat = await db.query.chats.findFirst({
+      columns: { appId: true },
+      where: eq(chats.id, chatId),
+    });
+    if (!chat) {
+      return;
+    }
+    await withLock(chat.appId, async () => {
+      await db.delete(messages).where(eq(messages.chatId, chatId));
+    });
   });
 
   createTypedHandler(chatContracts.searchChats, async (_, params) => {

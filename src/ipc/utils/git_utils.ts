@@ -31,6 +31,64 @@ function isAgentGitPatchVisiblePath(filePath: string) {
   return isUserVisibleGitPath(filePath) || filePath === "pnpm-workspace.yaml";
 }
 
+function unquotePorcelainPath(filePath: string): string {
+  if (!(filePath.startsWith('"') && filePath.endsWith('"'))) {
+    return filePath;
+  }
+  return filePath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+function splitQuotedPorcelainRename(filePath: string): [string, string] | null {
+  if (!filePath.startsWith('"')) {
+    return null;
+  }
+
+  let escaped = false;
+  for (let index = 1; index < filePath.length; index++) {
+    const char = filePath[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      const separator = " -> ";
+      if (!filePath.startsWith(separator, index + 1)) {
+        return null;
+      }
+      const oldPath = filePath.slice(0, index + 1);
+      const newPath = filePath.slice(index + 1 + separator.length);
+      return [unquotePorcelainPath(oldPath), unquotePorcelainPath(newPath)];
+    }
+  }
+
+  return null;
+}
+
+function getPorcelainPaths(line: string): string[] {
+  const statusCode = line.substring(0, 2);
+  const filePath = line.slice(3).trim();
+  if (!statusCode.includes("R")) {
+    return [unquotePorcelainPath(filePath)];
+  }
+
+  const quotedRename = splitQuotedPorcelainRename(filePath);
+  if (quotedRename) {
+    return quotedRename;
+  }
+
+  const renameIndex = filePath.indexOf(" -> ");
+  return renameIndex === -1
+    ? [unquotePorcelainPath(filePath)]
+    : [
+        unquotePorcelainPath(filePath.slice(0, renameIndex)),
+        unquotePorcelainPath(filePath.slice(renameIndex + 4)),
+      ];
+}
+
 /**
  * Returns a sanitized environment for git commands on Windows.
  * Filters out WSL-related PATH entries that can cause WSL interop issues.
@@ -487,13 +545,7 @@ export async function gitStageToRevert({
     // count as a user-visible change, otherwise the following `reset --hard`
     // would silently destroy the destination file. Mirrors the rename
     // handling in `getGitUncommittedFilesWithStatus`.
-    .flatMap((line) => {
-      const filePath = line.slice(3).trim();
-      const renameIndex = filePath.indexOf(" -> ");
-      return renameIndex === -1
-        ? [filePath]
-        : [filePath.slice(0, renameIndex), filePath.slice(renameIndex + 4)];
-    })
+    .flatMap(getPorcelainPaths)
     .filter(isUserVisibleGitPath);
   if (userVisibleChanges.length > 0) {
     throw new DyadError(

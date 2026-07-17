@@ -97,6 +97,10 @@ function getDatabaseRestoreWarning(error: unknown): string {
   )}`;
 }
 
+function appendWarning(existing: string, addition: string): string {
+  return existing ? `${existing}\n${addition}` : addition;
+}
+
 async function syncCloudSandboxSnapshotBestEffort(appId: number) {
   try {
     await syncCloudSandboxSnapshot({ appId });
@@ -288,9 +292,14 @@ async function revertCodebaseToVersion({
     const preservedFiles = await getGitUncommittedFilesWithStatus({
       path: appPath,
     });
+    const preservedUserVisibleFiles = preservedFiles
+      .map((f) => `${f.status} ${f.path}`)
+      .join(", ");
     logger.log(
-      `Preserving ${preservedFiles.length} uncommitted file(s) in a checkpoint commit before restoring app ${appId}: ` +
-        preservedFiles.map((f) => `${f.status} ${f.path}`).join(", "),
+      `Preserving dirty tree in a checkpoint commit before restoring app ${appId}. ` +
+        `User-visible uncommitted file(s): ${preservedFiles.length}` +
+        (preservedUserVisibleFiles ? ` (${preservedUserVisibleFiles})` : "") +
+        ". Dyad-managed runtime files may also be included in the checkpoint.",
     );
     await gitAddAll({ path: appPath });
     await gitCommit({
@@ -418,11 +427,13 @@ async function revertCodebaseToVersion({
         "Error switching Postgres to the development branch after revert:",
         getNeonErrorMessage(error),
       );
-      warningMessage +=
+      warningMessage = appendWarning(
+        warningMessage,
         "Restored your code to this version, but could not switch the app's " +
-        `database connection back to the development branch: ${getNeonErrorMessage(
-          error,
-        )}. Please check your app's database connection before relying on its data.`;
+          `database connection back to the development branch: ${getNeonErrorMessage(
+            error,
+          )}. Please check your app's database connection before relying on its data.`,
+      );
     }
   }
   // Re-deploy all Supabase edge functions after reverting
@@ -440,7 +451,10 @@ async function revertCodebaseToVersion({
       });
 
       if (deployErrors.length > 0) {
-        warningMessage += `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
+        warningMessage = appendWarning(
+          warningMessage,
+          `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`,
+        );
         logger.warn(warningMessage);
         // Note: We don't fail the revert operation if function deployment fails
         // The code has been successfully reverted, but functions may be out of sync
@@ -450,7 +464,10 @@ async function revertCodebaseToVersion({
         );
       }
     } catch (error) {
-      warningMessage += `Error re-deploying Supabase edge functions after revert: ${error}`;
+      warningMessage = appendWarning(
+        warningMessage,
+        `Error re-deploying Supabase edge functions after revert: ${error}`,
+      );
       logger.warn(warningMessage);
       // Continue with the revert operation even if function deployment fails
     }
@@ -729,48 +746,6 @@ export function registerVersionHandlers() {
     versionContracts.restoreToMessageVersion,
     async (event, params) => {
       const { appId, chatId, messageId, restoreCodebase = true } = params;
-      let preserveDirtyTree = false;
-
-      if (restoreCodebase) {
-        // Validate the relationship before cancelling anything. The full chat
-        // is loaded again under the lock so the restore still operates on a
-        // consistent snapshot after all stream handlers have unwound.
-        const requestedChat = await db.query.chats.findFirst({
-          columns: { appId: true },
-          where: eq(chats.id, chatId),
-        });
-        if (!requestedChat) {
-          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
-        }
-        if (requestedChat.appId !== appId) {
-          throw new DyadError(
-            "Chat does not belong to this app",
-            DyadErrorKind.Validation,
-          );
-        }
-
-        // Validate the target message exists before cancelling anything.
-        // Cancelling active streams aborts the user's in-flight generations, so
-        // a stale or invalid request (a message that no longer exists) must not
-        // trigger that destructive side effect for a restore that cannot
-        // succeed. The full message list is still re-loaded under the lock below
-        // to resolve the exact version to restore to.
-        const targetMessage = await db.query.messages.findFirst({
-          columns: { id: true },
-          where: and(eq(messages.id, messageId), eq(messages.chatId, chatId)),
-        });
-        if (!targetMessage) {
-          throw new DyadError("Message not found", DyadErrorKind.NotFound);
-        }
-
-        // Cancellation must happen before taking the app lock. Awaiting a
-        // stream while holding the lock could deadlock once stream writes also
-        // participate in app-scoped coordination.
-        preserveDirtyTree = await cancelActiveStreamsForApp(
-          appId,
-          event.sender,
-        );
-      }
 
       return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
@@ -809,6 +784,14 @@ export function registerVersionHandlers() {
         if (targetIndex === -1) {
           throw new DyadError("Message not found", DyadErrorKind.NotFound);
         }
+
+        // Validate the target from the app-locked snapshot before cancelling
+        // anything. Chat/message deletion endpoints also take this lock, so a
+        // request that cannot succeed cannot become stale and abort unrelated
+        // in-flight generations between validation and cancellation.
+        const preserveDirtyTree = restoreCodebase
+          ? await cancelActiveStreamsForApp(appId, event.sender)
+          : false;
 
         const messagesBefore = chat.messages
           .slice(0, targetIndex)
@@ -966,6 +949,10 @@ export function registerVersionHandlers() {
           : never = true;
         void _assertAllMessageColumnsHandled;
 
+        const messagesBeforeInInsertOrder = [...messagesBefore].sort(
+          (a, b) => a.id - b.id,
+        );
+
         // Create the new chat pointing at that version and copy over the earlier
         // messages atomically. We insert directly (instead of using the
         // createChat handler) so `initialCommitHash` is the intended version
@@ -988,8 +975,11 @@ export function registerVersionHandlers() {
             .get();
 
           // Copy all messages that came before the target message into the new
-          // chat, preserving their fields and ordering.
-          if (messagesBefore.length > 0) {
+          // chat, preserving display ordering via `createdAt` while inserting
+          // in original ID order. Compaction summaries are deliberately
+          // backdated for display but must keep their identity boundary after
+          // the user turn that triggered them.
+          if (messagesBeforeInInsertOrder.length > 0) {
             tx.insert(messages)
               .values(
                 // IMPORTANT: keep this field list in sync with the `messages`
@@ -998,7 +988,7 @@ export function registerVersionHandlers() {
                 // omit them, like `usingFreeAgentModeQuota` below) when the
                 // schema changes. The `_assertAllMessageColumnsHandled` guard
                 // above enforces this classification at compile time.
-                messagesBefore.map((m) => ({
+                messagesBeforeInInsertOrder.map((m) => ({
                   chatId: createdChat.id,
                   role: m.role,
                   content: m.content,

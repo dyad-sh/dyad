@@ -171,6 +171,37 @@ describe("context compaction (integration)", () => {
     );
     expect(dump.text).not.toContain("tc=local-agent/compaction-trigger");
     expect(dump.text).toMatchSnapshot("compaction-post-summary-transcript");
+
+    const postCompactionMessages = await loadChatMessages(harness.chatId);
+    const laterPrompt = postCompactionMessages.find(
+      (message) => message.role === "user" && message.content === "[dump] hi",
+    );
+    expect(laterPrompt).toBeDefined();
+
+    const laterRestoreResult = await ipc.version.restoreToMessageVersion({
+      appId: harness.appId,
+      chatId: harness.chatId,
+      messageId: laterPrompt!.id,
+      restoreCodebase: false,
+    });
+    expect(laterRestoreResult).toHaveProperty("newChatId");
+    const laterRestoredMessages = await loadChatMessages(
+      "newChatId" in laterRestoreResult ? laterRestoreResult.newChatId : -1,
+    );
+    const copiedTrigger = laterRestoredMessages.find(
+      (message) =>
+        message.role === "user" &&
+        message.content === "tc=local-agent/simple-response",
+    );
+    const copiedSummary = laterRestoredMessages.find(
+      (message) => message.isCompactionSummary,
+    );
+    expect(copiedTrigger).toBeDefined();
+    expect(copiedSummary).toBeDefined();
+    expect(copiedSummary!.id).toBeGreaterThan(copiedTrigger!.id);
+    expect(copiedSummary!.createdAt.getTime()).toBeLessThan(
+      copiedTrigger!.createdAt.getTime(),
+    );
   }, 60_000);
 
   it("compaction can run mid-turn", async () => {

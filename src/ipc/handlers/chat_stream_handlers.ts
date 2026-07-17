@@ -383,6 +383,7 @@ export function registerChatStreamHandlers() {
     req: ChatStreamParams,
   ) => {
     let attachmentPaths: string[] = [];
+    const abortController = new AbortController();
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -405,8 +406,6 @@ export function registerChatStreamHandlers() {
       req = parsedRequest.data;
 
       let dyadRequestId: string | undefined;
-      // Create an AbortController for this stream
-      const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
 
       // Notify renderer that stream is starting

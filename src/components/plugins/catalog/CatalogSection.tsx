@@ -13,7 +13,11 @@ export function CatalogSection() {
   const catalogQuery = useQuery({
     queryKey: queryKeys.mcp.catalog,
     queryFn: () => ipc.mcp.listCatalog(),
-    staleTime: 60 * 60 * 1000,
+    // Cache a populated catalog for an hour, but expire an empty result
+    // quickly so a transient fetch failure doesn't hide the section
+    // until the next remount.
+    staleTime: (query) =>
+      query.state.data?.entries.length ? 60 * 60 * 1000 : 30 * 1000,
     refetchOnWindowFocus: false,
   });
 

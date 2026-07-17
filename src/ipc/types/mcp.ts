@@ -224,7 +224,7 @@ export const mcpContracts = {
     // Slug only: the main process resolves it against the fetched
     // catalog, so the renderer can't inject arbitrary server configs
     // through this channel.
-    input: z.object({ slug: z.string() }),
+    input: z.object({ slug: z.string().min(1) }),
     output: McpServerSchema,
   }),
 

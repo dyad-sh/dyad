@@ -133,13 +133,15 @@ const STATIC_SERVER_PORT = 47003;
 const REFRESH_SERVER_PORT = 47004;
 const CONFIDENTIAL_SERVER_PORT = 47005;
 const SCOPE_SERVER_PORT = 47006;
-// Fixed, deterministic callback port ranges per describe block so the
-// suite repeats identically across runs.
-const DCR_CALLBACK_PORT_BASE = 53700;
-const STATIC_CALLBACK_PORT_BASE = 53800;
-const REFRESH_CALLBACK_PORT_BASE = 53900;
-const CONFIDENTIAL_CALLBACK_PORT_BASE = 54000;
-const SCOPE_CALLBACK_PORT_BASE = 54100;
+// Fixed, deterministic callback port ranges per describe block so the suite
+// repeats identically across runs. Keep these below Windows' default dynamic
+// port range (49152-65535), where an outbound connection can otherwise claim
+// the callback port before the loopback listener binds.
+const DCR_CALLBACK_PORT_BASE = 47100;
+const STATIC_CALLBACK_PORT_BASE = 47200;
+const REFRESH_CALLBACK_PORT_BASE = 47300;
+const CONFIDENTIAL_CALLBACK_PORT_BASE = 47400;
+const SCOPE_CALLBACK_PORT_BASE = 47500;
 
 async function waitForReady(baseUrl: string, attempts = 40): Promise<void> {
   for (let i = 0; i < attempts; i++) {
@@ -243,7 +245,7 @@ describe("OAuth integration: DCR mode against fake server", () => {
 
     const result = await runOAuthFlow({ serverId, callbackPort });
 
-    expect(result.success).toBe(true);
+    expect(result.success, result.error ?? undefined).toBe(true);
     expect(result.error).toBeNull();
     // oauthStateHasTokens flipping to true is what drives the
     // "OAuth: connected" UI badge -- the bug we fixed earlier.
@@ -501,7 +503,7 @@ describe("OAuth integration: scope passthrough against fake server", () => {
     // Success here is load-bearing: the fake's /authorize 400s when
     // the required scope is missing, so reaching tokens means we
     // actually sent `scope=read` in the URL.
-    expect(result.success).toBe(true);
+    expect(result.success, result.error ?? undefined).toBe(true);
     expect(rowIsConnected(serverId)).toBe(true);
     const authorizeCall = vi.mocked(shell.openExternal).mock.calls[0]?.[0];
     expect(authorizeCall).toContain(`scope=${REQUIRED_SCOPE}`);

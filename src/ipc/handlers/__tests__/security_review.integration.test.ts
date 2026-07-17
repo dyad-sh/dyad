@@ -38,6 +38,8 @@ import { messages as messagesTable, security_fix_chats } from "@/db/schema";
 import type { SecurityFinding } from "@/ipc/types/security";
 import { and, asc, desc, eq } from "drizzle-orm";
 
+const STREAM_TIMEOUT_MS = 40_000;
+
 describe("security review (integration)", () => {
   let harness: HybridChatHarness;
   let findings: SecurityFinding[] = [];
@@ -90,7 +92,10 @@ describe("security review (integration)", () => {
 
     // Type + send "/security-review" through the real UI. Baseline-aware wait:
     // the beforeAll turn already emitted a chat:response:end.
-    const reviewEnd = harness.waitForNextStreamEnd(reviewChatId);
+    const reviewEnd = harness.waitForNextStreamEnd(
+      reviewChatId,
+      STREAM_TIMEOUT_MS,
+    );
     const { send } = await harness.typeInChat("/security-review", {
       chatId: reviewChatId,
     });
@@ -104,7 +109,7 @@ describe("security review (integration)", () => {
         expect(
           screen.getByText(/OK, let's review the security\./),
         ).toBeTruthy(),
-      { timeout: 20_000 },
+      { timeout: STREAM_TIMEOUT_MS },
     );
     await waitFor(
       () => {
@@ -115,7 +120,7 @@ describe("security review (integration)", () => {
           screen.getAllByText(/SQL Injection in User Lookup/).length,
         ).toBeGreaterThan(0);
       },
-      { timeout: 20_000 },
+      { timeout: STREAM_TIMEOUT_MS },
     );
     await reviewEnd;
     expect(
@@ -155,7 +160,7 @@ describe("security review (integration)", () => {
       expect(finding.description).toBeTruthy();
     }
     findings = review.findings;
-  }, 60_000);
+  }, 90_000);
 
   it("fix issue: streams the fix prompt in a new chat and commits the change", async () => {
     expect(findings.length).toBeGreaterThan(0);
@@ -176,7 +181,7 @@ ${finding.description}`;
       { timeout: 15_000 },
     );
 
-    const fixEnd = harness.waitForNextStreamEnd(fixChatId);
+    const fixEnd = harness.waitForNextStreamEnd(fixChatId, STREAM_TIMEOUT_MS);
     const { send } = await harness.typeInChat(prompt, { chatId: fixChatId });
     send();
 
@@ -190,7 +195,7 @@ ${finding.description}`;
       { timeout: 15_000 },
     );
     await waitFor(() => expect(screen.getByText(/EOM/)).toBeTruthy(), {
-      timeout: 20_000,
+      timeout: STREAM_TIMEOUT_MS,
     });
     await fixEnd;
 
@@ -207,7 +212,7 @@ ${finding.description}`;
     expect(harness.appFileExists("file1.txt")).toBe(true);
     expect(harness.gitLog().length).toBeGreaterThan(commitsBefore);
     await harness.bridge.settleInFlight();
-  }, 60_000);
+  }, 90_000);
 
   it("fixes all issues, shows the bulk fix, and re-runs it in the same chat", async () => {
     expect(findings.length).toBeGreaterThanOrEqual(2);
@@ -263,7 +268,7 @@ ${finding.description}`;
       bulkFixChatId = bulkFix.fixChatId;
     });
     expect(bulkFixChatId).toBeDefined();
-    await harness.waitForStreamEnd(bulkFixChatId);
+    await harness.waitForStreamEnd(bulkFixChatId, STREAM_TIMEOUT_MS);
 
     await waitFor(() => {
       expect(
@@ -304,7 +309,10 @@ ${finding.description}`;
       { cwd: harness.appDir },
     );
 
-    const rerunEnd = harness.waitForNextStreamEnd(bulkFixChatId);
+    const rerunEnd = harness.waitForNextStreamEnd(
+      bulkFixChatId,
+      STREAM_TIMEOUT_MS,
+    );
     const moreActions = screen.getByRole("button", {
       name: "More fix actions for all issues",
     });
@@ -335,7 +343,7 @@ ${finding.description}`;
       .from(security_fix_chats)
       .where(eq(security_fix_chats.fixChatId, bulkFixChatId!));
     expect(matchingFixChats).toHaveLength(1);
-  }, 60_000);
+  }, 120_000);
 
   it("edit and use knowledge: SECURITY_RULES.md is added to the review context", async () => {
     // The e2e edits the rules via the dialog; the saved file lands in the app
@@ -352,7 +360,10 @@ ${finding.description}`;
       { timeout: 15_000 },
     );
 
-    const reviewEnd = harness.waitForNextStreamEnd(reviewChatId);
+    const reviewEnd = harness.waitForNextStreamEnd(
+      reviewChatId,
+      STREAM_TIMEOUT_MS,
+    );
     const { send } = await harness.typeInChat("/security-review", {
       chatId: reviewChatId,
     });
@@ -382,5 +393,5 @@ ${finding.description}`;
       "# Project-specific security rules:",
     );
     expect(systemMessage.content).toContain("rules123");
-  }, 60_000);
+  }, 90_000);
 });

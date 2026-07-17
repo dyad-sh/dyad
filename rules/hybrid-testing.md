@@ -88,6 +88,15 @@ the fixture repo's `git init` default branch. Either make production code use
 the current branch instead of assuming `main`, or force the fixture branch name
 in the test so local and CI exercise the same branch layout.
 
+For integration tests that bind fixed callback ports on Windows, keep the ports
+below the default dynamic range (`49152-65535`); an outbound connection can
+otherwise claim the test's port before its loopback listener binds.
+
+Renderer harness stream waits default to 20 seconds, which can be too short on
+loaded Windows runners. Pass an explicit CI-grade timeout to
+`waitForNextStreamEnd`/`waitForStreamEnd` and raise the enclosing test timeout
+when the assertion is specifically waiting for a legitimate stream to finish.
+
 Keep Git integration fixtures portable across CI platforms: Windows rejects
 filenames containing characters such as `:`, and its filesystems do not expose
 POSIX executable bits. Use cross-platform pathspec metacharacters such as `[]`

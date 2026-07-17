@@ -116,7 +116,10 @@ export function registerMcpHandlers() {
     const entries = await getRemoteMcpCatalog();
     const entry = entries.find((e) => e.slug === slug);
     if (!entry) {
-      throw new Error(`Unknown catalog entry: ${slug}`);
+      throw new DyadError(
+        `Unknown catalog entry: ${slug}`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     // Adding the same entry twice returns the existing server. The

@@ -5,6 +5,7 @@ const logger = log.scope("remote_mcp_catalog");
 
 const REMOTE_MCP_CATALOG_TIMEOUT_MS = 5_000;
 const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
+const MAX_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 30 * 1000;
 
 function getRemoteMcpCatalogUrl() {
@@ -31,7 +32,10 @@ export const McpCatalogEntrySchema = z.object({
   description: z.string().optional(),
   category: z.string().optional(),
   transport: z.literal("http"),
-  url: z.string().url(),
+  url: z
+    .string()
+    .url()
+    .refine((u) => /^https?:\/\//.test(u), "URL must be http(s)"),
   oauth: z.enum(["required", "optional", "none"]),
   oauthScope: z.string().optional(),
   headers: z.record(z.string(), z.string()).optional(),
@@ -89,8 +93,10 @@ async function fetchRemoteMcpCatalog(): Promise<{
   const parsed = McpCatalogResponseSchema.parse(await response.json());
   return {
     entries: parseEntries(parsed.servers),
+    // Cap a server-supplied expiry so a bad value can't pin stale data
+    // for the whole process lifetime.
     expiresAt: parsed.expiresAt
-      ? Date.parse(parsed.expiresAt)
+      ? Math.min(Date.parse(parsed.expiresAt), Date.now() + MAX_CACHE_TTL_MS)
       : Date.now() + DEFAULT_CACHE_TTL_MS,
   };
 }

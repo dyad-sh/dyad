@@ -103,4 +103,31 @@ describe("remote_mcp_catalog", () => {
     await getRemoteMcpCatalog();
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
+
+  it("drops entries whose URL is not http(s)", async () => {
+    mockCatalogResponse([
+      { ...VALID_ENTRY, slug: "ftp-server", url: "ftp://example.com/mcp" },
+      VALID_ENTRY,
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["figma"]);
+  });
+
+  it("caps a far-future server expiry to the max TTL", async () => {
+    vi.useFakeTimers();
+    try {
+      const farFuture = new Date(
+        Date.now() + 365 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      mockCatalogResponse([VALID_ENTRY], { expiresAt: farFuture });
+      await getRemoteMcpCatalog();
+      // Past the 24h cap the cache is stale and refetches, even though
+      // the server asked for a year.
+      vi.advanceTimersByTime(25 * 60 * 60 * 1000);
+      await getRemoteMcpCatalog();
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

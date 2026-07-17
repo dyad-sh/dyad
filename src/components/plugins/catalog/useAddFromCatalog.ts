@@ -4,13 +4,11 @@ import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showSuccess } from "@/lib/toast";
-import { useOauthCallbackPort } from "../AddPluginDialog";
 import { usePluginConnect } from "../usePluginConnect";
 
 export function useAddFromCatalog() {
   const queryClient = useQueryClient();
   const [addingSlug, setAddingSlug] = useState<string | null>(null);
-  const callbackPort = useOauthCallbackPort();
   const { onServerCreated } = usePluginConnect();
 
   const mutation = useMutation({
@@ -53,10 +51,7 @@ export function useAddFromCatalog() {
     // competing flow) and reuses the probed callback port; it is not
     // awaited so an abandoned browser step can't wedge the add.
     if (entry.oauth === "required") {
-      void onServerCreated(created, {
-        wantsOAuth: true,
-        callbackPort: typeof callbackPort === "number" ? callbackPort : null,
-      });
+      void onServerCreated(created, { wantsOAuth: true });
     }
   };
 

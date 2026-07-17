@@ -122,16 +122,17 @@ export function usePluginConnect() {
 
   const onServerCreated = async (
     created: McpServer,
-    opts: { wantsOAuth: boolean; callbackPort: number | null },
+    opts: { wantsOAuth: boolean },
   ) => {
     if (opts.wantsOAuth) {
       // Bridge the gap until the new row arrives in `serversQuery`
-      // and shows its own "Connecting…" state.
+      // and shows its own "Connecting…" state. A freshly created row
+      // has no saved port yet, so use the probed one.
       showInfo(`Connecting OAuth for "${created.name}"…`);
       await runAutoConnect(created.id, {
         showToast: true,
         callbackPort:
-          typeof opts.callbackPort === "number" ? opts.callbackPort : undefined,
+          typeof callbackPort === "number" ? callbackPort : undefined,
       });
     } else {
       await runProbe(created.id, { showToast: true });

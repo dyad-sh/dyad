@@ -71,7 +71,7 @@ export function AddPluginDialog({
   // OAuth flow (or a probe) and surface feedback on the new card.
   onServerCreated: (
     created: McpServer,
-    opts: { wantsOAuth: boolean; callbackPort: number | null },
+    opts: { wantsOAuth: boolean },
   ) => Promise<void>;
 }) {
   const { createServer } = useMcp();
@@ -186,10 +186,7 @@ export function AddPluginDialog({
     onOpenChange(false);
 
     if (transport === "http" && created) {
-      await onServerCreated(created, {
-        wantsOAuth,
-        callbackPort: typeof callbackPort === "number" ? callbackPort : null,
-      });
+      await onServerCreated(created, { wantsOAuth });
     } else if (created) {
       // http servers get feedback from the OAuth/probe flow above.
       showSuccess(`Added "${created.name}"`);

@@ -130,15 +130,21 @@ async function verifyReleaseAssets() {
       process.exit(1);
     }
 
-    // Check for unexpected assets (optional warning)
+    // Extra assets are not covered by provenance and would make downstream
+    // trusted-release verification reject the release.
     const unexpectedAssets = actualAssets.filter(
       (actual) => !expectedAssets.includes(actual),
     );
 
     if (unexpectedAssets.length > 0) {
-      console.warn("⚠️  Unexpected assets found:");
-      unexpectedAssets.forEach((asset) => console.warn(`  - ${asset}`));
-      console.warn("");
+      console.error("❌ VERIFICATION FAILED!");
+      console.error("📦 Unexpected assets:");
+      unexpectedAssets.forEach((asset) => console.error(`  - ${asset}`));
+      console.error("");
+      console.error(
+        "Remove stale assets from the draft and rerun the release.",
+      );
+      process.exit(1);
     }
 
     console.log("✅ VERIFICATION PASSED!");

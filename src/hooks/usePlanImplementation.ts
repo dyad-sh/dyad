@@ -9,6 +9,7 @@ import {
   streamingPreviewByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
+import { ensureController } from "@/chat_stream/registry";
 import { useSettings } from "./useSettings";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
@@ -185,6 +186,11 @@ export function usePlanImplementation() {
                 "[CHAT] Plan onEnd",
                 store,
               );
+              // This stream ran OUTSIDE the chat stream machine, so the
+              // machine never emits its own queue dispatch for it. Poke it
+              // now that the projection is cleared so prompts queued during
+              // this stream drain (no-op when the queue is empty or paused).
+              ensureController(chatId).send({ type: "queue-poked" });
             },
             onError: ({ error }) => {
               console.error("Plan implementation stream error:", error);
@@ -205,6 +211,9 @@ export function usePlanImplementation() {
                 "[CHAT] Plan onError",
                 store,
               );
+              // See onEnd: drain prompts queued during this non-machine
+              // stream.
+              ensureController(chatId).send({ type: "queue-poked" });
             },
           },
         );

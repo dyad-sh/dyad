@@ -391,11 +391,18 @@ export const productionChatStreamCommands: ChatStreamCommands = {
 
   enqueueMessage({ chatId, request }) {
     const { store } = deps();
+    // Preserve the FULL original request so the queued dispatch replays it
+    // verbatim (redo/appId/requestedChatMode included). `onSettled` is
+    // deliberately NOT carried: queue items can be edited or deleted before
+    // they run, which would strand the callback forever.
     const newItem: QueuedMessageItem = {
       id: crypto.randomUUID(),
       prompt: request.prompt,
       attachments: request.attachments,
       selectedComponents: request.selectedComponents,
+      redo: request.redo,
+      appId: request.appId,
+      requestedChatMode: request.requestedChatMode,
     };
     store.set(queuedMessagesByIdAtom, (prev) => {
       const next = new Map(prev);
@@ -403,7 +410,13 @@ export const productionChatStreamCommands: ChatStreamCommands = {
       next.set(chatId, [...existing, newItem]);
       return next;
     });
-    request.onSettled?.({ success: true, queued: true });
+    // `success` means "the stream ran to completion", which has NOT happened
+    // for a queued submission — callers key completion-only side effects off
+    // it (PlanPanel clears annotations, DyadStepLimit clears the pause
+    // latch). Report success: false (like the legacy drop path did) so those
+    // side effects don't fire early; `queued: true` distinguishes "accepted
+    // into the queue" from a rejected submission.
+    request.onSettled?.({ success: false, queued: true });
   },
 
   requestAbort({ chatId }) {
@@ -499,7 +512,6 @@ export const productionChatStreamCommands: ChatStreamCommands = {
         showWarningMessage(warningMessage, targetAppId);
       }
 
-      queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
       queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
       queryClient.invalidateQueries({
         queryKey: queryKeys.freeAgentQuota.status,
@@ -522,26 +534,32 @@ export const productionChatStreamCommands: ChatStreamCommands = {
             queryKeys.chats.detail({ chatId }),
             latestChat,
           );
-          // No is-streaming re-check needed here: the machine is in
-          // `finalizing` for this chat, so a racing new stream cannot start
-          // until this command completes (submits are queued instead).
-          store.set(chatMessagesByIdAtom, (prev) => {
-            const currentMessages = prev.get(chatId);
-            if (!currentMessages) {
+          // Racing-stream guard (from #3324): the machine serializes its OWN
+          // streams (submits during finalizing are queued), but non-machine
+          // streams (plan implementation, merge-conflict resolution) write
+          // the projection directly and may have started while getChat was
+          // in flight. Skip just the merge (the remaining invalidations and
+          // settlement still run) rather than clobber their in-progress
+          // placeholder messages.
+          if (!(store.get(isStreamingByIdAtom).get(chatId) ?? false)) {
+            store.set(chatMessagesByIdAtom, (prev) => {
+              const currentMessages = prev.get(chatId);
+              if (!currentMessages) {
+                const next = new Map(prev);
+                next.set(chatId, latestChat.messages);
+                return next;
+              }
+              if (currentMessages.length > latestChat.messages.length)
+                return prev;
+              const merged = mergeResyncMessages(
+                latestChat.messages,
+                currentMessages,
+              );
               const next = new Map(prev);
-              next.set(chatId, latestChat.messages);
+              next.set(chatId, merged);
               return next;
-            }
-            if (currentMessages.length > latestChat.messages.length)
-              return prev;
-            const merged = mergeResyncMessages(
-              latestChat.messages,
-              currentMessages,
-            );
-            const next = new Map(prev);
-            next.set(chatId, merged);
-            return next;
-          });
+            });
+          }
         } catch (error) {
           console.warn(
             `[CHAT] Failed to refresh latest chat for ${chatId}:`,
@@ -606,6 +624,15 @@ export const productionChatStreamCommands: ChatStreamCommands = {
   dispatchNextQueued({ chatId, emit }) {
     const { store, queryClient, getPosthog } = deps();
     if (store.get(queuePausedByIdAtom).get(chatId) ?? false) return;
+    // Never dequeue while a stream is active for this chat (per-chat guard,
+    // matching the legacy useQueueProcessor behavior from #2931). The
+    // machine's own streams can't be active at any dispatch site (dispatch
+    // fires from terminal states, where the projection is already false), so
+    // this specifically guards against NON-machine streams (plan
+    // implementation, merge-conflict resolution) that write the projection
+    // directly. Their terminal handlers poke the machine, so a skipped
+    // dispatch is retried when they finish.
+    if (store.get(isStreamingByIdAtom).get(chatId) ?? false) return;
 
     // Pop the first message atomically.
     let messageToSend: QueuedMessageItem | undefined;
@@ -635,10 +662,18 @@ export const productionChatStreamCommands: ChatStreamCommands = {
       request: {
         prompt: messageToSend.prompt,
         chatId,
-        redo: false,
+        redo: messageToSend.redo ?? false,
+        appId: messageToSend.appId,
         attachments: messageToSend.attachments,
         selectedComponents: messageToSend.selectedComponents,
-        requestedChatMode: chatMode,
+        // Preserve the original request's mode when it carried one
+        // (including the explicit `null` = "let main resolve it"); fall back
+        // to the cached per-chat mode for items queued without a mode (the
+        // manual ChatInput queue path), matching legacy dispatch.
+        requestedChatMode:
+          messageToSend.requestedChatMode !== undefined
+            ? messageToSend.requestedChatMode
+            : chatMode,
       },
     });
   },

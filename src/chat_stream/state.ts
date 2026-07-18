@@ -15,12 +15,20 @@ import type {
 
 /** Result reported back to the caller that submitted a stream request. */
 export interface StreamSettledResult {
+  /**
+   * True only when the stream ran to successful completion. Queued
+   * submissions settle immediately with `success: false, queued: true` —
+   * callers key completion-only side effects off `success`, and the queued
+   * message has not run yet.
+   */
   success: boolean;
   pausedByStepLimit?: boolean;
   /**
-   * True when the submission was accepted but placed on the prompt queue
+   * True when the submission was accepted and placed on the prompt queue
    * (because a stream was already active for this chat) instead of being
-   * streamed immediately.
+   * streamed immediately. The queued message will run later; its `onSettled`
+   * is not carried through the queue (items can be edited or deleted before
+   * they run).
    */
   queued?: boolean;
 }

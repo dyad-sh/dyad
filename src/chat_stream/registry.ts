@@ -8,16 +8,20 @@ import {
  * Module-scope registry of per-chat stream controllers.
  *
  * Controllers are created lazily on first use and disposed once they are
- * idle, quiescent (no pending commands), and unobserved — the machine's
- * generation counter restarts for a fresh controller, which is safe because
- * an idle controller has released its IPC stream entry.
+ * terminal (idle or errored), quiescent (no pending commands), and
+ * unobserved — the machine's generation counter restarts for a fresh
+ * controller, which is safe because a terminal controller has released its
+ * IPC stream entry (so no stale events can reach a new generation). The
+ * error itself lives on in `chatErrorByIdAtom`, and a fresh controller
+ * behaves identically to an errored one for both submit and queue pokes.
  */
 const controllers = new Map<number, ChatStreamController>();
 
 function maybeDispose(controller: ChatStreamController): void {
+  const snapshotType = controller.getSnapshot().type;
   if (
     controllers.get(controller.chatId) === controller &&
-    controller.getSnapshot().type === "idle" &&
+    (snapshotType === "idle" || snapshotType === "errored") &&
     controller.isSettled() &&
     !controller.hasSubscribers()
   ) {

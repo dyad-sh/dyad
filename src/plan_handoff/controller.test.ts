@@ -44,8 +44,10 @@ interface FakeRunnerOptions {
 function createFakeRunner(options: FakeRunnerOptions = {}) {
   const executed: HandoffCommand["type"][] = [];
   const log: string[] = [];
-  const streamIdle = deferred();
   let streamBusy = options.streamBusy ?? false;
+  // Mirrors the production adapter: a busy stream registers a pending watcher
+  // (keyed by chatId) that fires later; unwatch-stream-idle disposes it.
+  const pendingWatchers = new Map<number, () => void>();
 
   const run: HandoffCommandRunner = async (command, emit) => {
     log.push(`start:${command.type}`);
@@ -73,9 +75,15 @@ function createFakeRunner(options: FakeRunnerOptions = {}) {
         break;
       case "watch-stream-idle":
         if (streamBusy) {
-          await streamIdle.promise;
+          pendingWatchers.set(command.chatId, () =>
+            emit({ type: "STREAM_BECAME_IDLE", chatId: command.chatId }),
+          );
+        } else {
+          emit({ type: "STREAM_BECAME_IDLE", chatId: command.chatId });
         }
-        emit({ type: "STREAM_BECAME_IDLE", chatId: command.chatId });
+        break;
+      case "unwatch-stream-idle":
+        pendingWatchers.delete(command.chatId);
         break;
       case "start-implementation":
         emit({ type: "IMPLEMENTATION_STARTED" });
@@ -90,9 +98,14 @@ function createFakeRunner(options: FakeRunnerOptions = {}) {
     run,
     executed,
     log,
+    pendingWatchers,
     releaseStreamIdle: () => {
       streamBusy = false;
-      streamIdle.resolve();
+      const fire = [...pendingWatchers.values()];
+      pendingWatchers.clear();
+      for (const emitIdle of fire) {
+        emitIdle();
+      }
     },
     count: (type: HandoffCommand["type"]) =>
       executed.filter((t) => t === type).length,
@@ -112,9 +125,7 @@ describe("plan handoff controller", () => {
     expect(runner.executed).toEqual([
       "mark-plan-accepted",
       "cancel-stream",
-      "show-transitioning",
       "wait",
-      "hide-transitioning",
       "set-preview-mode",
       "persist-plan",
       "create-chat",
@@ -139,6 +150,34 @@ describe("plan handoff controller", () => {
     await flush();
 
     expect(controller.getSnapshot()).toEqual({ type: "idle" });
+    expect(runner.count("start-implementation")).toBe(1);
+  });
+
+  it("supersedes a stalled awaiting-stream-idle on re-accept, disposing the watcher", async () => {
+    const runner = createFakeRunner({ streamBusy: true });
+    const controller = createHandoffController(runner.run);
+
+    controller.send(ACCEPT);
+    await flush();
+    expect(controller.getSnapshot().type).toBe("awaiting-stream-idle");
+    expect(runner.pendingWatchers.size).toBe(1);
+
+    // Stream never goes idle; the user accepts the plan again. The stuck
+    // watcher is disposed and a full fresh handoff runs.
+    controller.send({ ...ACCEPT, acceptInNewChat: false });
+    await flush();
+
+    expect(runner.count("unwatch-stream-idle")).toBe(1);
+    expect(runner.count("mark-plan-accepted")).toBe(2);
+    expect(controller.getSnapshot().type).toBe("awaiting-stream-idle");
+    // Only the new handoff's watcher remains.
+    expect(runner.pendingWatchers.size).toBe(1);
+
+    runner.releaseStreamIdle();
+    await flush();
+
+    expect(controller.getSnapshot()).toEqual({ type: "idle" });
+    // The superseded handoff never fires; the new one fires exactly once.
     expect(runner.count("start-implementation")).toBe(1);
   });
 
@@ -176,12 +215,12 @@ describe("plan handoff controller", () => {
 
     // Wait command in flight: the machine sits in `transitioning`.
     expect(controller.getSnapshot().type).toBe("transitioning");
-    expect(runner.count("hide-transitioning")).toBe(0);
+    expect(runner.count("persist-plan")).toBe(0);
 
     gate.resolve();
     await flush();
 
-    expect(runner.count("hide-transitioning")).toBe(1);
+    expect(runner.count("persist-plan")).toBe(1);
     expect(controller.getSnapshot()).toEqual({ type: "idle" });
   });
 

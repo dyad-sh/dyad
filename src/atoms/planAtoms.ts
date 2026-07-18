@@ -7,16 +7,17 @@ export interface PlanData {
   summary?: string;
 }
 
+// The transient "transitioning" display state is not tracked here: it is the
+// plan-handoff machine's `transitioning` state (src/plan_handoff/), read via
+// usePlanHandoffState.
 export interface PlanState {
   plansByChatId: Map<number, PlanData>;
   acceptedChatIds: Set<number>;
-  transitioningChatIds: Set<number>;
 }
 
 export const planStateAtom = atom<PlanState>({
   plansByChatId: new Map(),
   acceptedChatIds: new Set<number>(),
-  transitioningChatIds: new Set<number>(),
 });
 
 // Records, per plan chatId, whether the user chose to implement in a brand-new

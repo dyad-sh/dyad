@@ -5,12 +5,17 @@ import type {
   HandoffEvent,
   HandoffSession,
   HandoffState,
+  PersistedHandoffSession,
+  ReadyHandoffSession,
 } from "./state";
 import { TRANSITION_DISPLAY_MS, transition } from "./transition";
 
 const session: HandoffSession = { chatId: 1, appId: 10, acceptInNewChat: true };
-const persistedSession: HandoffSession = { ...session, planSlug: "slug" };
-const readySession: HandoffSession = {
+const persistedSession: PersistedHandoffSession = {
+  ...session,
+  planSlug: "slug",
+};
+const readySession: ReadyHandoffSession = {
   ...persistedSession,
   implementationChatId: 2,
 };
@@ -63,7 +68,9 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function sessionOf(state: HandoffState): HandoffSession | undefined {
+function sessionOf(
+  state: HandoffState,
+): (HandoffSession & Partial<ReadyHandoffSession>) | undefined {
   return state.type === "idle" ? undefined : state.session;
 }
 
@@ -139,13 +146,15 @@ describe("plan handoff transition — totality over state × event", () => {
         const result = transition(state, event);
         const before = sessionOf(state);
         const after = sessionOf(result.state);
-        // A session may be replaced by a fresh accept (idle/failed), but an
-        // in-flight session's chatId never changes.
+        // A session may be replaced by a fresh accept (from idle/failed, or
+        // superseding a stalled awaiting-stream-idle), but an in-flight
+        // session's chatId never changes otherwise.
         if (
           before &&
           after &&
           state.type !== "idle" &&
-          state.type !== "failed"
+          state.type !== "failed" &&
+          event.type !== "PLAN_ACCEPTED"
         ) {
           expect(after.chatId).toBe(before.chatId);
           if (before.implementationChatId !== undefined) {
@@ -202,9 +211,7 @@ describe("plan handoff transition — scenarios", () => {
     expect(commands.map((c) => c.type)).toEqual([
       "mark-plan-accepted",
       "cancel-stream",
-      "show-transitioning",
       "wait",
-      "hide-transitioning",
       "set-preview-mode",
       "persist-plan",
       "create-chat",
@@ -251,11 +258,16 @@ describe("plan handoff transition — scenarios", () => {
     });
   });
 
-  it("ignores a second PLAN_ACCEPTED at every point mid-saga", () => {
+  it("ignores a second PLAN_ACCEPTED in every bounded pipeline state", () => {
     for (let cut = 1; cut < NEW_CHAT_HAPPY_PATH.length; cut++) {
       let state: HandoffState = { type: "idle" };
       for (const event of NEW_CHAT_HAPPY_PATH.slice(0, cut)) {
         state = transition(state, event).state;
+      }
+      if (state.type === "awaiting-stream-idle") {
+        // Unbounded wait on an external condition: a fresh accept supersedes
+        // it instead (covered by the dedicated test below).
+        continue;
       }
       const result = transition(state, {
         type: "PLAN_ACCEPTED",
@@ -266,6 +278,33 @@ describe("plan handoff transition — scenarios", () => {
       expect(result.state).toBe(state);
       expect(result.commands).toEqual([]);
     }
+  });
+
+  it("lets a fresh PLAN_ACCEPTED supersede a stalled awaiting-stream-idle, disposing the watcher", () => {
+    const state: HandoffState = {
+      type: "awaiting-stream-idle",
+      session: readySession,
+    };
+    const result = transition(state, {
+      type: "PLAN_ACCEPTED",
+      chatId: 1,
+      appId: 10,
+      acceptInNewChat: false,
+    });
+    expect(result.state).toMatchObject({
+      type: "cancelling-stream",
+      session: { chatId: 1, appId: 10, acceptInNewChat: false },
+    });
+    // The stuck watcher is disposed before the new handoff starts.
+    expect(result.commands.map((c) => c.type)).toEqual([
+      "unwatch-stream-idle",
+      "mark-plan-accepted",
+      "cancel-stream",
+    ]);
+    expect(result.commands[0]).toEqual({
+      type: "unwatch-stream-idle",
+      chatId: readySession.implementationChatId,
+    });
   });
 
   it("ignores STREAM_BECAME_IDLE for other chats while awaiting idle", () => {

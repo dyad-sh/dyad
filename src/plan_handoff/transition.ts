@@ -2,6 +2,8 @@ import type {
   HandoffEvent,
   HandoffSession,
   HandoffState,
+  PersistedHandoffSession,
+  ReadyHandoffSession,
   TransitionResult,
 } from "./state";
 
@@ -69,10 +71,7 @@ export function transition(
         case "STREAM_CANCEL_FINISHED":
           return {
             state: { type: "transitioning", session: state.session },
-            commands: [
-              { type: "show-transitioning", chatId: state.session.chatId },
-              { type: "wait", ms: TRANSITION_DISPLAY_MS },
-            ],
+            commands: [{ type: "wait", ms: TRANSITION_DISPLAY_MS }],
           };
         default:
           return ignore(state);
@@ -85,7 +84,6 @@ export function transition(
           return {
             state: { type: "persisting", session: state.session },
             commands: [
-              { type: "hide-transitioning", chatId: state.session.chatId },
               // Legacy behavior: the preview switches back even when the
               // plan data turns out to be missing right after.
               { type: "set-preview-mode", mode: "preview" },
@@ -104,7 +102,7 @@ export function transition(
     case "persisting": {
       switch (event.type) {
         case "PLAN_PERSISTED": {
-          const session: HandoffSession = {
+          const session: PersistedHandoffSession = {
             ...state.session,
             planSlug: event.planSlug,
           };
@@ -152,7 +150,7 @@ export function transition(
     case "preparing-chat": {
       switch (event.type) {
         case "CHAT_READY": {
-          const session: HandoffSession = {
+          const session: ReadyHandoffSession = {
             ...state.session,
             implementationChatId: event.implementationChatId,
           };
@@ -212,9 +210,26 @@ export function transition(
               {
                 type: "start-implementation",
                 chatId: event.chatId,
-                // planSlug is always set by the time we leave `persisting`.
-                planSlug: state.session.planSlug ?? "",
+                planSlug: state.session.planSlug,
               },
+            ],
+          };
+        }
+        case "PLAN_ACCEPTED": {
+          // Unlike the bounded pipeline states above (which always settle on
+          // their own), this state waits on an external condition that may
+          // never arrive (stuck stream, deleted chat). A fresh accept
+          // supersedes the stalled wait: dispose the idle watcher and restart
+          // the handoff so the machine cannot be wedged forever.
+          const fresh = startHandoff(event);
+          return {
+            state: fresh.state,
+            commands: [
+              {
+                type: "unwatch-stream-idle",
+                chatId: state.session.implementationChatId,
+              },
+              ...fresh.commands,
             ],
           };
         }

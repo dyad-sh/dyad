@@ -11,15 +11,26 @@
 /**
  * Data captured for one accepted plan. `chatId` is the chat the plan was
  * accepted in and is immutable for the lifetime of the session.
- * `implementationChatId` is set exactly once (when the target chat is ready)
- * and equals `chatId` for the continue-in-current-chat path.
  */
 export interface HandoffSession {
   readonly chatId: number;
   readonly appId: number;
   readonly acceptInNewChat: boolean;
-  readonly planSlug?: string;
-  readonly implementationChatId?: number;
+}
+
+/** Session after the plan has been written to `.dyad/plans/`. */
+export interface PersistedHandoffSession extends HandoffSession {
+  readonly planSlug: string;
+}
+
+/**
+ * Session once the implementation chat exists. `implementationChatId` is set
+ * exactly once and equals `chatId` for the continue-in-current-chat path.
+ * States that start the implementation carry this type, so an absent
+ * `planSlug`/`implementationChatId` is unrepresentable there.
+ */
+export interface ReadyHandoffSession extends PersistedHandoffSession {
+  readonly implementationChatId: number;
 }
 
 /** Why a handoff landed in the `failed` state. */
@@ -38,14 +49,17 @@ export type HandoffState =
   /** Persisting the plan to `.dyad/plans/`. */
   | { readonly type: "persisting"; readonly session: HandoffSession }
   /** Creating the new implementation chat, or switching the current one to Agent mode. */
-  | { readonly type: "preparing-chat"; readonly session: HandoffSession }
+  | {
+      readonly type: "preparing-chat";
+      readonly session: PersistedHandoffSession;
+    }
   /** Waiting for the implementation chat's stream to be idle before sending. */
   | {
       readonly type: "awaiting-stream-idle";
-      readonly session: HandoffSession;
+      readonly session: ReadyHandoffSession;
     }
   /** Starting the implementation stream. */
-  | { readonly type: "implementing"; readonly session: HandoffSession }
+  | { readonly type: "implementing"; readonly session: ReadyHandoffSession }
   /**
    * Terminal error state. Matches the legacy saga's behavior: the flow stops,
    * the failure is reported (toast or console), and the user may accept the
@@ -94,10 +108,6 @@ export type HandoffCommand =
   | { readonly type: "mark-plan-accepted"; readonly chatId: number }
   /** Cancel the in-flight stream for the chat. Emits STREAM_CANCEL_FINISHED. */
   | { readonly type: "cancel-stream"; readonly chatId: number }
-  /** Add the chat to `planStateAtom.transitioningChatIds`. */
-  | { readonly type: "show-transitioning"; readonly chatId: number }
-  /** Remove the chat from `planStateAtom.transitioningChatIds`. */
-  | { readonly type: "hide-transitioning"; readonly chatId: number }
   /** Wait `ms`, then emit TRANSITION_DISPLAY_DONE. The controller holds no timers. */
   | { readonly type: "wait"; readonly ms: number }
   /** Switch the preview panel back to app preview. */
@@ -124,10 +134,14 @@ export type HandoffCommand =
   /** Invalidate the chat list queries so the sidebar/mode selector refresh. */
   | { readonly type: "refresh-chat-list" }
   /**
-   * Emit STREAM_BECAME_IDLE(chatId) once the chat's stream is idle
-   * (immediately if it already is).
+   * Start (or replace) a watcher that emits STREAM_BECAME_IDLE(chatId) once
+   * the chat's stream is idle — immediately if it already is. Non-blocking:
+   * the watcher lives outside the command queue and disposes itself when it
+   * fires; `unwatch-stream-idle` disposes it without firing.
    */
   | { readonly type: "watch-stream-idle"; readonly chatId: number }
+  /** Dispose the idle watcher for the chat, if any, without emitting. */
+  | { readonly type: "unwatch-stream-idle"; readonly chatId: number }
   /** Start the `/implement-plan=` stream. Emits IMPLEMENTATION_STARTED. */
   | {
       readonly type: "start-implementation";

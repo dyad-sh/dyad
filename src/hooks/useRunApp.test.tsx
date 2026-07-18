@@ -537,6 +537,119 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
+  it("keeps a restart's loading state when a cached proxy line arrives, then applies the buffered URL", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    let finishRestartApp: () => void = () => {};
+    restartAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRestartApp = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(
+      () => {
+        useAppOutputSubscription();
+        return useRunApp();
+      },
+      { wrapper: Wrapper },
+    );
+
+    let restartPromise = Promise.resolve();
+    await act(async () => {
+      restartPromise = result.current.restartApp();
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+    const tokenBefore = store.get(currentPreviewReloadTokenAtom);
+
+    // A cached proxy line (re-emitted for an already-running app before the
+    // restart) arrives while the restart IPC is still in flight.
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "stdout",
+          appId: 1,
+          message:
+            "[dyad-proxy-server]started=[http://localhost:42101] original=[http://localhost:32101] mode=[host]",
+        });
+      }
+    });
+
+    // It must NOT clear the restart's loading state or apply the URL yet.
+    expect(result.current.loading).toBe(true);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
+    expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+
+    await act(async () => {
+      finishRestartApp();
+      await restartPromise;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(store.get(currentAppUrlAtom)).toEqual({
+      appUrl: "http://localhost:42101",
+      appId: 1,
+      originalUrl: "http://localhost:32101",
+      mode: "host",
+    });
+    expect(store.get(currentPreviewReloadTokenAtom)).toBeGreaterThan(
+      tokenBefore,
+    );
+
+    unmount();
+  });
+
+  it("ignores a superseded run's late resolution after a restart begins", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    let finishRunApp: () => void = () => {};
+    runAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRunApp = resolve;
+      }),
+    );
+    let finishRestartApp: () => void = () => {};
+    restartAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRestartApp = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(() => useRunApp(), {
+      wrapper: Wrapper,
+    });
+
+    let runPromise = Promise.resolve();
+    await act(async () => {
+      runPromise = result.current.runApp(1);
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+
+    let restartPromise = Promise.resolve();
+    await act(async () => {
+      restartPromise = result.current.restartApp();
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+
+    // The first run's IPC promise settles late: previously its `finally`
+    // cleared the restart's fresh loading state (last writer wins).
+    await act(async () => {
+      finishRunApp();
+      await runPromise;
+    });
+    expect(result.current.loading).toBe(true);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
+
+    await act(async () => {
+      finishRestartApp();
+      await restartPromise;
+    });
+    expect(result.current.loading).toBe(false);
+
+    unmount();
+  });
+
   it("keeps pnpm rebuild loading scoped to the rebuilt app", async () => {
     const { store, Wrapper } = makeWrapper(1);
     let finishRestartApp: () => void = () => {};

@@ -16,14 +16,25 @@ import {
 
 const controllers = new Map<number, VersionPreviewController>();
 const registryListeners = new Set<() => void>();
+/**
+ * Bumped each time an app's controller transitions into (or re-surfaces
+ * within) recovery-required. Lets the recovery snapshot distinguish "the
+ * recovery set actually changed / must re-surface" from unrelated
+ * controller activity, so subscribers are not re-rendered and toasts are
+ * not re-issued for no reason.
+ */
+const recoveryNonceByAppId = new Map<number, number>();
 
 let runtime: VersionPreviewRuntime | null = null;
 let recoveryCache: VersionPreviewRecoveryEntry[] | null = null;
+let lastRecoveryEntries: VersionPreviewRecoveryEntry[] = [];
 
 export interface VersionPreviewRecoveryEntry {
   appId: number;
   error: PreviewError;
   retry: () => void;
+  /** Increments on entry into recovery and on deliberate re-surfacing. */
+  resurfaceNonce: number;
 }
 
 /**
@@ -57,13 +68,25 @@ export function ensureVersionPreviewController(
         "Version preview runtime is not initialized. Call initVersionPreviewRuntime first.",
       );
     }
-    controller = new VersionPreviewController(appId, runtime);
-    controllers.set(appId, controller);
-    controller.subscribe(notifyRegistry);
-    // Deliberately no notifyRegistry() here: creation happens during React
-    // render (useVersionPreview), a fresh controller is always closed so the
-    // recovery snapshot is unchanged, and notifying would schedule updates
-    // on other components mid-render.
+    const created = new VersionPreviewController(appId, runtime);
+    controller = created;
+    controllers.set(appId, created);
+    created.subscribe(() => {
+      // Every state change lands here (including the identity-only refresh
+      // recovery-required emits for OPEN); a recovery-required snapshot
+      // bumps the nonce so the recovery entries visibly change.
+      if (created.getSnapshot().type === "recovery-required") {
+        recoveryNonceByAppId.set(
+          appId,
+          (recoveryNonceByAppId.get(appId) ?? 0) + 1,
+        );
+      }
+      notifyRegistry();
+    });
+    // Deliberately no notifyRegistry() here: creation happens in event
+    // handlers via send(), but must stay silent so it is also safe from a
+    // render if a caller ever moves it there; a fresh controller is always
+    // closed so the recovery snapshot is unchanged.
   }
   return controller;
 }
@@ -99,15 +122,30 @@ export function subscribeVersionPreviewRegistry(
 
 const EMPTY_RECOVERY_ENTRIES: VersionPreviewRecoveryEntry[] = [];
 
+function sameRecoveryEntries(
+  a: VersionPreviewRecoveryEntry[],
+  b: VersionPreviewRecoveryEntry[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (entry, index) =>
+        entry.appId === b[index].appId &&
+        entry.error.message === b[index].error.message &&
+        entry.resurfaceNonce === b[index].resurfaceNonce,
+    )
+  );
+}
+
 /**
- * All sessions currently stuck in recovery-required, across apps. Cached so
- * useSyncExternalStore sees a stable reference between changes; the empty
- * case is a shared singleton so state changes with no recoveries never
- * force subscribers to re-render.
+ * All sessions currently stuck in recovery-required, across apps. The
+ * returned reference only changes when the recovery set itself changes
+ * (membership, error, or a deliberate re-surface), so unrelated controller
+ * activity never re-renders subscribers or re-issues toasts.
  */
 export function getVersionPreviewRecoveryEntries(): VersionPreviewRecoveryEntry[] {
   if (recoveryCache === null) {
-    recoveryCache = [...controllers.values()].flatMap((controller) => {
+    const rebuilt = [...controllers.values()].flatMap((controller) => {
       const snapshot = controller.getSnapshot();
       if (snapshot.type !== "recovery-required") {
         return [];
@@ -117,12 +155,18 @@ export function getVersionPreviewRecoveryEntries(): VersionPreviewRecoveryEntry[
           appId: controller.appId,
           error: snapshot.error,
           retry: () => controller.send({ type: "RETRY_RETURN" }),
+          resurfaceNonce: recoveryNonceByAppId.get(controller.appId) ?? 0,
         },
       ];
     });
-    if (recoveryCache.length === 0) {
+    if (rebuilt.length === 0) {
       recoveryCache = EMPTY_RECOVERY_ENTRIES;
+    } else if (sameRecoveryEntries(rebuilt, lastRecoveryEntries)) {
+      recoveryCache = lastRecoveryEntries;
+    } else {
+      recoveryCache = rebuilt;
     }
+    lastRecoveryEntries = recoveryCache;
   }
   return recoveryCache;
 }
@@ -131,6 +175,8 @@ export function getVersionPreviewRecoveryEntries(): VersionPreviewRecoveryEntry[
 export function resetVersionPreviewForTests(): void {
   controllers.clear();
   registryListeners.clear();
+  recoveryNonceByAppId.clear();
   runtime = null;
   recoveryCache = null;
+  lastRecoveryEntries = [];
 }

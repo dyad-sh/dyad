@@ -302,6 +302,26 @@ describe("registry", () => {
     expect(getVersionPreviewRecoveryEntries()).toBe(before);
   });
 
+  it("keeps a non-empty recovery snapshot stable across unrelated activity", async () => {
+    const fake = makeFakeRuntime();
+    initVersionPreviewRuntime(fake.runtime);
+    const controller = ensureVersionPreviewController(APP_ID);
+    await driveToPreviewing(controller, fake);
+    controller.send({ type: "CLOSE" });
+    fake.last("return").deferred.reject(new Error("return failed"));
+    await flush();
+
+    const entries = getVersionPreviewRecoveryEntries();
+    expect(entries).toHaveLength(1);
+
+    // A different app's controller doing unrelated work must not produce a
+    // new recovery snapshot reference (no re-render, no re-issued toast).
+    const other = ensureVersionPreviewController(2);
+    other.send({ type: "OPEN", appId: 2 });
+    other.send({ type: "CLOSE" });
+    expect(getVersionPreviewRecoveryEntries()).toBe(entries);
+  });
+
   it("re-notifies subscribers when OPEN hits a recovery-required session", async () => {
     const fake = makeFakeRuntime();
     initVersionPreviewRuntime(fake.runtime);

@@ -368,7 +368,8 @@ describe("agent Git utilities", () => {
   });
 
   it("rejects invalid revisions and missing paths while treating pathspecs literally", async () => {
-    const literalName = "literal[1].txt";
+    const literalName =
+      process.platform === "win32" ? "literal[1].txt" : ":(glob)literal.txt";
     await fs.promises.writeFile(path.join(repo, literalName), "literal\n");
     await git(repo, "--literal-pathspecs", "add", "--", literalName);
     await git(repo, "commit", "-m", "literal path");

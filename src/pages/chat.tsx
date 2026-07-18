@@ -14,7 +14,6 @@ import { isPreviewOpenAtom, isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { usePlanImplementation } from "@/hooks/usePlanImplementation";
 import { ipc } from "@/ipc/types";
 
 const DEFAULT_CHAT_PANEL_SIZE = 50;
@@ -43,9 +42,6 @@ export default function ChatPage() {
   useEffect(() => {
     setSelectedChatId(chatId ?? null);
   }, [chatId, setSelectedChatId]);
-
-  // Handle plan implementation when a plan is accepted
-  usePlanImplementation();
 
   useEffect(() => {
     if (chatId || loading) {

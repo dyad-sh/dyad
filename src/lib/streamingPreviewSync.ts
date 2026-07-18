@@ -15,7 +15,7 @@ type SetPreviewAtom = (update: SetStateAction<PreviewMap>) => void;
  * keep their `Object.is` short-circuit on no-op chunks.
  *
  * Used by every `ipc.chatStream.start` consumer (useStreamChat,
- * usePlanImplementation, useResolveMergeConflictsWithAI). Without this
+ * the plan-handoff commands, useResolveMergeConflictsWithAI). Without this
  * helper, tool-XML preview streaming would only surface in the
  * useStreamChat flow.
  */

@@ -1,50 +1,28 @@
-import { useEffect, useRef } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
-import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queryKeys";
-import {
-  planStateAtom,
-  pendingPlanImplementationAtom,
-  pendingQuestionnaireAtom,
-  planAcceptInNewChatByChatIdAtom,
-} from "@/atoms/planAtoms";
+import { useEffect } from "react";
+import { useSetAtom } from "jotai";
+import { planStateAtom, pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import {
   planEventClient,
-  planClient,
   type PlanUpdatePayload,
   type PlanExitPayload,
   type PlanQuestionnairePayload,
 } from "@/ipc/types/plan";
-import { ipc } from "@/ipc/types";
-import { showError } from "@/lib/toast";
+import { usePlanHandoff } from "@/plan_handoff/usePlanHandoff";
 
 /**
  * Hook to handle plan mode IPC events.
  * Should be called at the app root level to listen for plan events.
+ *
+ * `plan:update` and `plan:questionnaire` are handled inline; `plan:exit`
+ * (accept plan → implement) is delegated to the plan-handoff state machine
+ * in `src/plan_handoff/`.
  */
 export function usePlanEvents() {
   const setPlanState = useSetAtom(planStateAtom);
-  const planState = useAtomValue(planStateAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setPendingPlanImplementation = useSetAtom(
-    pendingPlanImplementationAtom,
-  );
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const acceptInNewChatByChatId = useAtomValue(planAcceptInNewChatByChatIdAtom);
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  // Use refs for values accessed in event handlers to avoid stale closures
-  const planStateRef = useRef(planState);
-  const acceptInNewChatByChatIdRef = useRef(acceptInNewChatByChatId);
-
-  // Keep refs up to date
-  planStateRef.current = planState;
-  acceptInNewChatByChatIdRef.current = acceptInNewChatByChatId;
+  const { acceptPlan } = usePlanHandoff();
 
   useEffect(() => {
     // Handle plan updates
@@ -69,128 +47,14 @@ export function usePlanEvents() {
       },
     );
 
-    // Handle plan exit (transition to implementation)
+    // Handle plan exit (transition to implementation): feed the state machine.
     const unsubscribeExit = planEventClient.onExit(
-      async (payload: PlanExitPayload) => {
-        // Mark this chat's plan as accepted
-        setPlanState((prev) => {
-          const nextAccepted = new Set(prev.acceptedChatIds);
-          nextAccepted.add(payload.chatId);
-          return {
-            ...prev,
-            acceptedChatIds: nextAccepted,
-          };
-        });
-
-        // Immediately cancel the current stream so we can start the plan implementation
-        try {
-          await ipc.chat.cancelStream(payload.chatId);
-        } catch (error) {
-          console.error("Failed to cancel stream:", error);
-        }
-
-        // Show transitioning state while we prepare the implementation
-        setPlanState((prev) => {
-          const nextTransitioning = new Set(prev.transitioningChatIds);
-          nextTransitioning.add(payload.chatId);
-          return { ...prev, transitioningChatIds: nextTransitioning };
-        });
-
-        // Pause so the user can see the "Plan accepted" confirmation
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-
-        // Clear transitioning state
-        setPlanState((prev) => {
-          const nextTransitioning = new Set(prev.transitioningChatIds);
-          nextTransitioning.delete(payload.chatId);
-          return { ...prev, transitioningChatIds: nextTransitioning };
-        });
-
-        // Read latest values from refs to avoid stale closure
-        const currentState = planStateRef.current;
-        const planData = currentState.plansByChatId.get(payload.chatId);
-
-        // Switch preview back to preview mode
-        setPreviewMode("preview");
-
-        // Create a new chat for implementation and navigate to it
-        if (!planData) {
-          console.error("Failed to start implementation: missing plan data", {
-            hasContent: !!planData,
-          });
-          return;
-        }
-
-        // Always persist the plan to .dyad/plans/
-        let planSlug: string;
-        try {
-          planSlug = await planClient.createPlan({
-            appId: payload.appId,
-            chatId: payload.chatId,
-            title: planData.title,
-            summary: planData.summary,
-            content: planData.content,
-          });
-        } catch {
-          showError("Failed to save plan. Please try again.");
-          return;
-        }
-
-        // The user chooses at accept time whether to implement in a fresh chat
-        // or continue in the current one. Default to a new chat when unknown.
-        // The choice stays recorded so DyadExitPlan can word its confirmation
-        // message correctly.
-        const useNewChat =
-          acceptInNewChatByChatIdRef.current.get(payload.chatId) ?? true;
-
-        try {
-          let implementationChatId = payload.chatId;
-
-          if (useNewChat) {
-            const newChatId = await ipc.chat.createChat({
-              appId: payload.appId,
-              initialChatMode: "local-agent",
-            });
-
-            // Navigate to the new chat
-            setSelectedChatId(newChatId);
-            navigate({
-              to: "/chat",
-              search: { id: newChatId, appId: payload.appId },
-            });
-            implementationChatId = newChatId;
-          } else {
-            // Continue in the same chat: switch its stored mode to Agent so the
-            // implementation turn (and the input UI) runs in Agent mode rather
-            // than re-entering planning.
-            await ipc.chat.updateChat({
-              chatId: payload.chatId,
-              chatMode: "local-agent",
-            });
-          }
-
-          // Refresh the chat list (and chat detail) so the sidebar and the
-          // input's mode selector reflect the change.
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.chats.all,
-          });
-
-          // Queue the plan for implementation in the target chat
-          setPendingPlanImplementation({
-            chatId: implementationChatId,
-            title: planData.title,
-            planSlug,
-          });
-        } catch (error) {
-          console.error("Failed to start plan implementation:", error);
-        }
+      (payload: PlanExitPayload) => {
+        acceptPlan(payload);
       },
     );
 
-    // Handle questionnaire events (part of the planning flow)
-
     // Handle questionnaire events - set pending questionnaire for in-app display
-
     const unsubscribeQuestionnaire = planEventClient.onQuestionnaire(
       (payload: PlanQuestionnairePayload) => {
         setPendingQuestionnaire((prev) => {
@@ -206,14 +70,5 @@ export function usePlanEvents() {
       unsubscribeExit();
       unsubscribeQuestionnaire();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    setPlanState,
-    setPreviewMode,
-    setPendingPlanImplementation,
-    setPendingQuestionnaire,
-    setSelectedChatId,
-    navigate,
-    queryClient,
-  ]);
+  }, [setPlanState, setPreviewMode, setPendingQuestionnaire, acceptPlan]);
 }

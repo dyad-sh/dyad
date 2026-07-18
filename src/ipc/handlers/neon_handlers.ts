@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
+import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import {
   getCachedEmailPasswordConfig,
   getNeonClient,
@@ -950,11 +951,15 @@ export function registerNeonHandlers() {
   );
 
   testOnlyHandle("neon:fake-connect", async (event) => {
-    // Call handleNeonOAuthReturn with fake data
-    handleNeonOAuthReturn({
-      token: "fake-neon-access-token",
-      refreshToken: "fake-neon-refresh-token",
-      expiresIn: 3600, // 1 hour
+    // Call handleNeonOAuthReturn with fake data, running it through the
+    // connection flow machine so an active flow (started by the connector's
+    // Connect click) advances just like a real dyad://neon-oauth-return.
+    await runOAuthReturnExchange("neon", () => {
+      handleNeonOAuthReturn({
+        token: "fake-neon-access-token",
+        refreshToken: "fake-neon-refresh-token",
+        expiresIn: 3600, // 1 hour
+      });
     });
     logger.info("Called handleNeonOAuthReturn with fake data during testing.");
 

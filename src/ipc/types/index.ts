@@ -30,7 +30,11 @@ export { settingsContracts } from "./settings";
 export { appContracts } from "./app";
 export { chatContracts, chatStreamContract } from "./chat";
 export { agentContracts, agentEvents } from "./agent";
-export { githubContracts, gitContracts, githubEvents } from "./github";
+export { githubContracts, gitContracts } from "./github";
+export {
+  connectionFlowContracts,
+  connectionFlowEvents,
+} from "./connection_flow";
 export { mcpContracts, mcpEvents } from "./mcp";
 export { vercelContracts } from "./vercel";
 export { supabaseContracts } from "./supabase";
@@ -68,7 +72,11 @@ export { settingsClient } from "./settings";
 export { appClient } from "./app";
 export { chatClient, chatStreamClient } from "./chat";
 export { agentClient, agentEventClient } from "./agent";
-export { githubClient, gitClient, githubEventClient } from "./github";
+export { githubClient, gitClient } from "./github";
+export {
+  connectionFlowClient,
+  connectionFlowEventClient,
+} from "./connection_flow";
 export { mcpClient, mcpEventClient } from "./mcp";
 export { vercelClient } from "./vercel";
 export { supabaseClient } from "./supabase";
@@ -415,7 +423,11 @@ import { settingsClient } from "./settings";
 import { appClient } from "./app";
 import { chatClient, chatStreamClient } from "./chat";
 import { agentClient, agentEventClient } from "./agent";
-import { githubClient, gitClient, githubEventClient } from "./github";
+import { githubClient, gitClient } from "./github";
+import {
+  connectionFlowClient,
+  connectionFlowEventClient,
+} from "./connection_flow";
 import { mcpClient, mcpEventClient } from "./mcp";
 import { vercelClient } from "./vercel";
 import { supabaseClient } from "./supabase";
@@ -479,6 +491,7 @@ export const ipc = {
   // Integrations
   github: githubClient,
   git: gitClient,
+  connectionFlow: connectionFlowClient,
   mcp: mcpClient,
   vercel: vercelClient,
   supabase: supabaseClient,
@@ -514,7 +527,7 @@ export const ipc = {
   // Event clients for main->renderer pub/sub
   events: {
     agent: agentEventClient,
-    github: githubEventClient,
+    connectionFlow: connectionFlowEventClient,
     mcp: mcpEventClient,
     system: systemEventClient,
     misc: miscEventClient,

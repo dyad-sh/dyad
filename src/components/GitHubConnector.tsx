@@ -36,6 +36,14 @@ import { useGithubSyncState } from "@/atoms/githubSyncAtoms";
 import { slugifyAppPath } from "@/shared/slugify";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import {
+  acknowledgeConnectionFlow,
+  cancelConnectionFlow,
+  reportConnectionFlowResourcesLoaded,
+  startConnectionFlow,
+  useConnectionFlow,
+  useUnsolicitedConnectionReturn,
+} from "@/hooks/useConnectionFlow";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -679,16 +687,41 @@ export function UnconnectedGitHubConnector({
   const [isExpanded, setIsExpanded] = useState(expanded || false);
 
   // --- GitHub Device Flow State ---
-  const [githubUserCode, setGithubUserCode] = useState<string | null>(null);
-  const [githubVerificationUri, setGithubVerificationUri] = useState<
-    string | null
-  >(null);
-  const [githubError, setGithubError] = useState<string | null>(null);
-  const [isConnectingToGithub, setIsConnectingToGithub] = useState(false);
-  const [githubStatusMessage, setGithubStatusMessage] = useState<string | null>(
-    null,
-  );
+  // The flow itself lives in the main process (flowId-correlated state
+  // machine); this component only projects it. Unmounting and remounting
+  // re-projects the current flow, so a device poll that succeeds while this
+  // component is unmounted is still reflected in the UI.
+  const { flowState: githubFlowState, isFlowActive: isConnectingToGithub } =
+    useConnectionFlow("github");
   const [codeCopied, setCodeCopied] = useState(false);
+
+  const githubUserCode =
+    githubFlowState.status === "awaiting-return"
+      ? (githubFlowState.userCode ?? null)
+      : null;
+  const githubVerificationUri =
+    githubFlowState.status === "awaiting-return"
+      ? (githubFlowState.verificationUri ?? null)
+      : null;
+  const githubError =
+    githubFlowState.status === "failed"
+      ? (githubFlowState.message ?? "An unknown error occurred.")
+      : null;
+  const githubStatusMessage = (() => {
+    switch (githubFlowState.status) {
+      case "starting":
+        return "Requesting device code from GitHub...";
+      case "awaiting-return":
+        return "Please authorize in your browser.";
+      case "exchanging-token":
+      case "loading-resources":
+        return "Connecting to GitHub...";
+      case "connected":
+        return "Successfully connected to GitHub!";
+      default:
+        return null;
+    }
+  })();
 
   // --- Repo Setup State ---
   const [repoSetupMode, setRepoSetupMode] = useState<"create" | "existing">(
@@ -724,75 +757,39 @@ export function UnconnectedGitHubConnector({
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleConnectToGithub = async () => {
-    setIsConnectingToGithub(true);
-    setGithubError(null);
-    setGithubUserCode(null);
-    setGithubVerificationUri(null);
-    setGithubStatusMessage("Requesting device code from GitHub...");
-
-    // Send IPC message to main process to start the flow
-    ipc.github.startFlow({ appId });
+    // Starting is a no-op while a flow is already active (double-click).
+    await startConnectionFlow("github", { appId });
   };
 
+  const refreshSettingsRef = useRef(refreshSettings);
+  refreshSettingsRef.current = refreshSettings;
+
   useEffect(() => {
-    const cleanupFunctions: (() => void)[] = [];
-
-    // Listener for updates (user code, verification uri, status messages)
-    const removeUpdateListener = ipc.events.github.onFlowUpdate((data) => {
-      if (data.userCode) {
-        setGithubUserCode(data.userCode);
-      }
-      if (data.verificationUri) {
-        setGithubVerificationUri(data.verificationUri);
-      }
-      if (data.message) {
-        setGithubStatusMessage(data.message);
-      }
-
-      setGithubError(null); // Clear previous errors on new update
-      if (!data.userCode && !data.verificationUri && data.message) {
-        // Likely just a status message, keep connecting state
-        setIsConnectingToGithub(true);
-      }
-      if (data.userCode && data.verificationUri) {
-        setIsConnectingToGithub(true); // Still connecting until success/error
-      }
-    });
-    cleanupFunctions.push(removeUpdateListener);
-
-    // Listener for success
-    const removeSuccessListener = ipc.events.github.onFlowSuccess(() => {
-      setGithubStatusMessage("Successfully connected to GitHub!");
-      setGithubUserCode(null); // Clear user-facing info
-      setGithubVerificationUri(null);
-      setGithubError(null);
-      setIsConnectingToGithub(false);
-      refreshSettings();
+    const flow = githubFlowState;
+    if (flow.status === "loading-resources") {
+      // The access token has been written; refresh settings (which flips
+      // this component to the repo-setup UI) and report completion.
+      void (async () => {
+        try {
+          await refreshSettingsRef.current();
+        } finally {
+          await reportConnectionFlowResourcesLoaded("github", flow.flowId);
+        }
+      })();
+    } else if (flow.status === "connected") {
       setIsExpanded(true);
-    });
-    cleanupFunctions.push(removeSuccessListener);
+    } else if (flow.status === "cancelled") {
+      void acknowledgeConnectionFlow("github", flow.flowId);
+    }
+    // `failed` is deliberately not acknowledged: the error stays visible
+    // until the user retries (starting a new flow is allowed from `failed`).
+  }, [githubFlowState]);
 
-    // Listener for errors
-    const removeErrorListener = ipc.events.github.onFlowError((data) => {
-      setGithubError(data.error || "An unknown error occurred.");
-      setGithubStatusMessage(null);
-      setGithubUserCode(null);
-      setGithubVerificationUri(null);
-      setIsConnectingToGithub(false);
-    });
-    cleanupFunctions.push(removeErrorListener);
-
-    // Cleanup function to remove all listeners when component unmounts or appId changes
-    return () => {
-      cleanupFunctions.forEach((cleanup) => cleanup());
-      // Reset state when appId changes or component unmounts
-      setGithubUserCode(null);
-      setGithubVerificationUri(null);
-      setGithubError(null);
-      setIsConnectingToGithub(false);
-      setGithubStatusMessage(null);
-    };
-  }, []); // Re-run effect if appId changes
+  // A token that was written with no active flow (e.g. the user cancelled
+  // while GitHub was already authorizing): refresh so the UI reflects it.
+  useUnsolicitedConnectionReturn("github", () => {
+    void refreshSettingsRef.current();
+  });
 
   // Load available repos when GitHub is connected
   useEffect(() => {
@@ -1029,6 +1026,18 @@ export function UnconnectedGitHubConnector({
               <p className="text-sm text-gray-600 dark:text-gray-300">
                 {githubStatusMessage}
               </p>
+            )}
+            {isConnectingToGithub && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  void cancelConnectionFlow("github");
+                }}
+              >
+                Cancel
+              </Button>
             )}
           </div>
         )}

@@ -1,4 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  acknowledgeConnectionFlow,
+  cancelConnectionFlow,
+  reportConnectionFlowResourcesLoaded,
+  startConnectionFlow,
+  useConnectionFlow,
+  useUnsolicitedConnectionReturn,
+} from "@/hooks/useConnectionFlow";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +32,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { Switch } from "@/components/ui/switch";
 import {
   ExternalLink,
@@ -56,7 +63,6 @@ export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
   const { settings, refreshSettings, updateSettings } = useSettings();
   const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
-  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const queryClient = useQueryClient();
   const { isDarkMode } = useTheme();
 
@@ -70,14 +76,12 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
   const [isUpdatingEmailVerification, setIsUpdatingEmailVerification] =
     useState(false);
-  const [isOpeningOauth, setIsOpeningOauth] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDisconnectingAccount, setIsDisconnectingAccount] = useState(false);
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const [removeFromVercel, setRemoveFromVercel] = useState(true);
   const [isDisconnectAccountDialogOpen, setIsDisconnectAccountDialogOpen] =
     useState(false);
-  const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formatToastError = (error: unknown) => getErrorMessage(error);
   const projectDateFormatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -98,51 +102,70 @@ export function NeonConnector({ appId }: { appId: number }) {
     refetchProjects,
   } = useNeon(appId);
 
-  useEffect(() => {
-    const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "neon-oauth-return") {
-        if (oauthTimeoutRef.current) {
-          clearTimeout(oauthTimeoutRef.current);
-          oauthTimeoutRef.current = null;
-        }
-        setIsOpeningOauth(false);
-        await refreshSettings();
-        await refetchProjects();
-        await refreshApp();
-        toast.success(t("integrations.neon.connectedSuccess"));
-        clearLastDeepLink();
-      }
-    };
-    handleDeepLink();
-  }, [lastDeepLink?.timestamp]);
+  // The connection flow lives in the main process; this component only
+  // projects it. Timeouts, double-start protection and OAuth-return
+  // correlation are all handled by the flowId-keyed state machine.
+  const { flowState, isFlowActive } = useConnectionFlow("neon");
+
+  const refreshAfterConnectRef = useRef<() => Promise<void>>(async () => {});
+  refreshAfterConnectRef.current = async () => {
+    await refreshSettings();
+    await refetchProjects();
+    await refreshApp();
+  };
 
   useEffect(() => {
-    return () => {
-      if (oauthTimeoutRef.current) {
-        clearTimeout(oauthTimeoutRef.current);
-        oauthTimeoutRef.current = null;
+    const flow = flowState;
+    if (flow.status === "loading-resources") {
+      void (async () => {
+        try {
+          await refreshAfterConnectRef.current();
+        } finally {
+          await reportConnectionFlowResourcesLoaded("neon", flow.flowId);
+        }
+      })();
+    } else if (flow.status === "connected") {
+      toast.success(t("integrations.neon.connectedSuccess"));
+      void acknowledgeConnectionFlow("neon", flow.flowId);
+    } else if (flow.status === "failed") {
+      if (flow.reason === "timeout") {
+        toast.warning(t("integrations.neon.signInTimedOut"));
+      } else if (flow.reason !== "user_cancelled") {
+        toast.error(flow.message ?? t("integrations.neon.connectFailed"));
       }
-    };
-  }, []);
+      void acknowledgeConnectionFlow("neon", flow.flowId);
+    } else if (flow.status === "cancelled") {
+      void acknowledgeConnectionFlow("neon", flow.flowId);
+    }
+  }, [flowState, t]);
+
+  // A dyad://neon-oauth-return processed with no active flow (cold start,
+  // app restarted mid-flow, or a return that arrived after the flow timed
+  // out): tokens are already stored, just refresh what we show.
+  useUnsolicitedConnectionReturn("neon", () => {
+    void refreshAfterConnectRef.current();
+  });
 
   const handleConnect = async () => {
     try {
-      setIsOpeningOauth(true);
-      if (settings?.isTestMode) {
-        await ipc.neon.fakeConnect();
-      } else {
-        await ipc.system.openExternalUrl(
-          "https://oauth.dyad.sh/api/integrations/neon/login",
-        );
+      // Starting is a no-op while a flow is already active (double-click).
+      const { started, flowId } = await startConnectionFlow("neon");
+      if (!started) {
+        return;
       }
-      // Reset after 20s if the OAuth return never arrives
-      oauthTimeoutRef.current = setTimeout(() => {
-        setIsOpeningOauth(false);
-        oauthTimeoutRef.current = null;
-        toast.warning(t("integrations.neon.signInTimedOut"));
-      }, 20_000);
+      try {
+        if (settings?.isTestMode) {
+          await ipc.neon.fakeConnect();
+        } else {
+          await ipc.system.openExternalUrl(
+            "https://oauth.dyad.sh/api/integrations/neon/login",
+          );
+        }
+      } catch (error) {
+        await cancelConnectionFlow("neon", flowId);
+        throw error;
+      }
     } catch (error) {
-      setIsOpeningOauth(false);
       toast.error(formatToastError(error));
     }
   };
@@ -843,12 +866,12 @@ export function NeonConnector({ appId }: { appId: number }) {
         <Button
           variant="outline"
           onClick={handleConnect}
-          disabled={isOpeningOauth}
+          disabled={isFlowActive}
           className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           data-testid="connect-neon-button"
           aria-label={t("integrations.neon.connectTo") + " Neon"}
         >
-          {isOpeningOauth ? (
+          {isFlowActive ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               <span>{t("integrations.neon.completingSignIn")}</span>

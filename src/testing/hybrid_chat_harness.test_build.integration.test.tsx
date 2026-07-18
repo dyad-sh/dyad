@@ -5,6 +5,11 @@ import { ipc } from "@/ipc/types";
 import { setupHybridChatHarness } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 
+type FlowStatePayload = {
+  provider?: string;
+  state?: { status?: string; userCode?: string };
+};
+
 describe("hybrid chat harness testBuild mode", () => {
   it("routes GitHub device flow through the harness fake server", async () => {
     const harness = await setupHybridChatHarness({
@@ -17,25 +22,44 @@ describe("hybrid chat harness testBuild mode", () => {
       harness.mountSurface({ route: "/app-details" });
       await screen.findByTestId("app-details-page");
 
-      await ipc.github.startFlow({ appId: harness.appId });
+      const { started } = await ipc.connectionFlow.start({
+        provider: "github",
+        appId: harness.appId,
+      });
+      expect(started).toBe(true);
 
       const update = await harness.waitForEvent(
-        "github:flow-update",
-        (payload) =>
-          typeof payload === "object" &&
-          payload !== null &&
-          (payload as { userCode?: unknown }).userCode === "FAKE-CODE",
+        "connection-flow:state-changed",
+        (payload) => {
+          const data = payload as FlowStatePayload;
+          return (
+            data?.provider === "github" &&
+            data?.state?.status === "awaiting-return" &&
+            data?.state?.userCode === "FAKE-CODE"
+          );
+        },
       );
       expect(update.payload).toMatchObject({
-        userCode: "FAKE-CODE",
+        provider: "github",
+        state: { status: "awaiting-return", userCode: "FAKE-CODE" },
       });
 
+      // The fake server authorizes immediately; once the poll succeeds the
+      // access token is written and the flow advances past exchanging-token.
       await waitFor(
         () =>
           expect(
-            harness.bridge.sentEvents.some(
-              (event) => event.channel === "github:flow-success",
-            ),
+            harness.bridge.sentEvents.some((event) => {
+              if (event.channel !== "connection-flow:state-changed") {
+                return false;
+              }
+              const data = event.args[0] as FlowStatePayload;
+              return (
+                data?.provider === "github" &&
+                (data?.state?.status === "loading-resources" ||
+                  data?.state?.status === "connected")
+              );
+            }),
           ).toBe(true),
         { timeout: 15_000 },
       );

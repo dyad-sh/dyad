@@ -49,6 +49,7 @@ import { reconcileOrphanTestBranches } from "./ipc/utils/neon_test_branch";
 import { reconcileOrphanTestUsers } from "./ipc/utils/supabase_test_user";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
+import { runOAuthReturnExchange } from "./ipc/handlers/connection_flow_handlers";
 import {
   AddMcpServerConfigSchema,
   AddMcpServerPayload,
@@ -1055,7 +1056,14 @@ async function handleDeepLinkReturn(url: string) {
       return;
     }
     try {
-      handleNeonOAuthReturn({ token, refreshToken, expiresIn });
+      // Runs the token write through the connection flow machine: an active
+      // flow advances (awaiting-return -> exchanging-token -> ...), while a
+      // return with no matching flow (cold start, restart mid-flow, or a
+      // return that lost the race against a timeout) still stores tokens and
+      // is broadcast as unsolicited so the renderer refreshes.
+      await runOAuthReturnExchange("neon", () => {
+        handleNeonOAuthReturn({ token, refreshToken, expiresIn });
+      });
     } catch (error) {
       showDeepLinkSettingsError("save Neon credentials", error);
       return;
@@ -1078,7 +1086,11 @@ async function handleDeepLinkReturn(url: string) {
       return;
     }
     try {
-      await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+      // See the neon-oauth-return branch above for why the token write is
+      // wrapped by the connection flow machine.
+      await runOAuthReturnExchange("supabase", async () => {
+        await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+      });
     } catch (error) {
       showDeepLinkSettingsError("save Supabase credentials", error);
       return;

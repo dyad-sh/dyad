@@ -50,7 +50,7 @@ export function useAddFromCatalog() {
     // runs through the shared flow so it holds the connect slot (no
     // competing flow) and reuses the probed callback port; it is not
     // awaited so an abandoned browser step can't wedge the add.
-    if (entry.oauth === "required") {
+    if (entry.oauth?.required) {
       void onServerCreated(created, { wantsOAuth: true });
     }
   };

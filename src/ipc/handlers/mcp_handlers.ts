@@ -157,8 +157,8 @@ export function registerMcpHandlers() {
         url: entry.url,
         headersJson: entry.headers ?? null,
         enabled: true,
-        oauthEnabled: entry.oauth !== "none",
-        oauthScope: entry.oauthScope ?? null,
+        oauthEnabled: entry.oauth != null,
+        oauthScope: entry.oauth?.scope ?? null,
         catalogSlug: entry.slug,
       })
       .onConflictDoNothing({ target: mcpServers.catalogSlug })

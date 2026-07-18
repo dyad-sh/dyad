@@ -61,7 +61,6 @@ describe("Plugins catalog (integration)", () => {
               category: "Testing",
               transport: "http",
               url: `http://localhost:${mcpPort}/mcp`,
-              oauth: "none",
             },
           ],
         }),

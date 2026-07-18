@@ -21,8 +21,14 @@ export const McpCatalogEntrySchema = z.object({
     .url()
     // Case-insensitive so mixed-case schemes like HTTPS:// pass too.
     .refine((u) => /^https?:\/\//i.test(u), "URL must be http(s)"),
-  oauth: z.enum(["required", "optional", "none"]),
-  oauthScope: z.string().optional(),
+  // Absent means no OAuth. When present, `required` distinguishes a
+  // must-connect server from one that also works anonymously.
+  oauth: z
+    .object({
+      required: z.boolean(),
+      scope: z.string().min(1).optional(),
+    })
+    .optional(),
   headers: z.record(z.string(), z.string()).optional(),
 });
 

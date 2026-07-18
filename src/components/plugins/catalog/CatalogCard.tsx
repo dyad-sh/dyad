@@ -29,7 +29,7 @@ export function CatalogCard({
       <CardHeader className="p-4">
         <CardTitle className="text-base font-medium mb-1 flex items-center gap-2 min-w-0">
           <span className="truncate">{entry.name}</span>
-          {entry.oauth !== "none" && (
+          {entry.oauth != null && (
             <span className="text-xs font-normal text-muted-foreground shrink-0">
               OAuth
             </span>

@@ -276,7 +276,7 @@ export function createFakeLlmApp(getPort: () => number) {
           category: "Testing",
           transport: "http",
           url: "http://localhost:4010/mcp",
-          oauth: "required",
+          oauth: { required: true },
         },
         {
           slug: "e2e-open",
@@ -285,7 +285,6 @@ export function createFakeLlmApp(getPort: () => number) {
           category: "Testing",
           transport: "http",
           url: "http://localhost:3002/mcp",
-          oauth: "none",
         },
         {
           slug: "e2e-headers",
@@ -294,7 +293,6 @@ export function createFakeLlmApp(getPort: () => number) {
           category: "Other Tools",
           transport: "http",
           url: "http://localhost:3002/mcp",
-          oauth: "none",
           headers: { "X-Test-Header": "dyad-e2e" },
         },
         // The desktop client must drop these two: an entry kind it

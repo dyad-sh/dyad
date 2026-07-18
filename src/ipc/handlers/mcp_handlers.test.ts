@@ -314,14 +314,13 @@ describe("mcp catalog handlers", () => {
     name: "Figma",
     transport: "http",
     url: "https://mcp.figma.com/mcp",
-    oauth: "required",
+    oauth: { required: true },
   };
   const CONTEXT7 = {
     slug: "context7",
     name: "Context7",
     transport: "http",
     url: "https://mcp.context7.com/mcp",
-    oauth: "none",
     headers: { "X-Test": "1" },
   };
 

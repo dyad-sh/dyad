@@ -9,7 +9,7 @@ const VALID_ENTRY = {
   name: "Figma",
   transport: "http",
   url: "https://mcp.figma.com/mcp",
-  oauth: "required",
+  oauth: { required: true },
 };
 
 function mockCatalogResponse(servers: unknown[], extra?: object) {

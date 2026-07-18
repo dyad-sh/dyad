@@ -150,4 +150,69 @@ describe("Plugins catalog (integration)", () => {
       within(readdable).getByRole("button", { name: "Add" });
     });
   }, 40_000);
+
+  it("features flagged entries at the top and still lists them by category", async () => {
+    // A catalog with one featured and one plain entry, served from a
+    // separate endpoint just for this test.
+    const featuredServer = http.createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          servers: [
+            {
+              slug: "integration-featured",
+              name: "Integration Featured Server",
+              category: "Testing",
+              transport: "http",
+              url: `http://localhost:${mcpPort}/mcp`,
+              featured: true,
+            },
+            {
+              slug: "integration-plain",
+              name: "Integration Plain Server",
+              category: "Testing",
+              transport: "http",
+              url: `http://localhost:${mcpPort}/mcp`,
+            },
+          ],
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      featuredServer.listen(0, "127.0.0.1", resolve),
+    );
+    const previousUrl = process.env.DYAD_MCP_CATALOG_URL;
+    try {
+      const address = featuredServer.address();
+      if (typeof address === "object" && address) {
+        process.env.DYAD_MCP_CATALOG_URL = `http://127.0.0.1:${address.port}/`;
+      }
+      clearMcpCatalogCacheForTests();
+
+      // Scope to this mount's tree; earlier tests leave their DOM behind.
+      const view = harness.mountSurface({ route: "/plugins" });
+      const scope = within(view.container);
+
+      // The featured entry appears in the Featured section; the plain one
+      // does not.
+      const featuredSection = await scope.findByTestId("catalog-featured");
+      within(featuredSection).getByText("Integration Featured Server");
+      expect(
+        within(featuredSection).queryByText("Integration Plain Server"),
+      ).toBeNull();
+
+      // The featured entry is still listed under its category, so it
+      // renders twice; the plain entry only once.
+      await waitFor(() => {
+        expect(scope.getAllByText("Integration Featured Server")).toHaveLength(
+          2,
+        );
+      });
+      expect(scope.getAllByText("Integration Plain Server")).toHaveLength(1);
+    } finally {
+      process.env.DYAD_MCP_CATALOG_URL = previousUrl;
+      featuredServer.close();
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
 });

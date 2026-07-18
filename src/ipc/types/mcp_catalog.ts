@@ -15,6 +15,8 @@ export const McpCatalogEntrySchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   category: z.string().optional(),
+  // Surfaced in a Featured section as well as its category.
+  featured: z.boolean().optional(),
   transport: z.literal("http"),
   url: z
     .string()

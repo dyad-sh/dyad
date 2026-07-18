@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -36,6 +37,13 @@ export function CatalogSection() {
       ),
     );
   }, [entries, search]);
+
+  // Featured entries are highlighted at the top and still listed in
+  // their own category below.
+  const featured = useMemo(
+    () => filtered.filter((e) => e.featured),
+    [filtered],
+  );
 
   const byCategory = useMemo(() => {
     const groups = new Map<string, typeof filtered>();
@@ -76,6 +84,25 @@ export function CatalogSection() {
       {filtered.length === 0 && (
         <div className="text-sm text-muted-foreground">
           No catalog entries match your search.
+        </div>
+      )}
+      {featured.length > 0 && (
+        <div className="mb-6" data-testid="catalog-featured">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+            <Star className="w-3.5 h-3.5" />
+            Featured
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {featured.map((entry) => (
+              <CatalogCard
+                key={entry.slug}
+                entry={entry}
+                isAdded={addedSlugs.has(entry.slug)}
+                isAdding={addingSlug === entry.slug}
+                onAdd={addFromCatalog}
+              />
+            ))}
+          </div>
         </div>
       )}
       {byCategory.map(([category, group]) => (

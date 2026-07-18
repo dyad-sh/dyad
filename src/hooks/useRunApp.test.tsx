@@ -19,6 +19,10 @@ import {
   useRebuildAppAfterPnpmInstall,
   useRunApp,
 } from "@/hooks/useRunApp";
+import {
+  disposeAppRunController,
+  getAppRunController,
+} from "@/app_run/registry";
 
 const {
   addLogMock,
@@ -648,6 +652,40 @@ describe("useAppOutputSubscription", () => {
     expect(result.current.loading).toBe(false);
 
     unmount();
+  });
+
+  it("settles stopApp and clears loading when the stop IPC throws synchronously", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    stopAppMock.mockImplementationOnce(() => {
+      throw new Error("ipc channel broken");
+    });
+
+    const { result, unmount } = renderHook(() => useRunApp(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      // Must resolve (not hang) even though stopApp threw synchronously.
+      await result.current.stopApp(1);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
+    expect(store.get(currentPreviewErrorAtom)).toEqual({
+      message: "ipc channel broken",
+      source: "dyad-app",
+    });
+
+    unmount();
+  });
+
+  it("disposes a deleted app's controller from the registry", () => {
+    const { store } = makeWrapper(1);
+    const controller = getAppRunController(store, 1);
+    expect(getAppRunController(store, 1)).toBe(controller);
+
+    disposeAppRunController(store, 1);
+    expect(getAppRunController(store, 1)).not.toBe(controller);
   });
 
   it("keeps pnpm rebuild loading scoped to the rebuilt app", async () => {

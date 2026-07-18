@@ -4,11 +4,12 @@ import {
   sanitizeAppFolderNameInput,
   slugifyAppFolderName,
 } from "@/shared/app_names";
-import { useSetAtom } from "jotai";
+import { useSetAtom, useStore } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
+import { disposeAppRunController } from "@/app_run/registry";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
@@ -127,6 +128,7 @@ export default function AppDetailsPage() {
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
+  const jotaiStore = useStore();
 
   const trimmedNewCopyAppName = newCopyAppName.trim();
   const debouncedNewCopyAppName = useDebounce(trimmedNewCopyAppName, 150);
@@ -197,6 +199,7 @@ export default function AppDetailsPage() {
       setIsDeleteDialogOpen(false);
       versionPreviewManager.disposeApp(appId);
       clearPreviewRuntimeForApp(appId);
+      disposeAppRunController(jotaiStore, appId);
       setSelectedAppId(null);
       setSelectedChatId(null);
       await refreshApps();

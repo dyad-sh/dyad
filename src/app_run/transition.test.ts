@@ -458,6 +458,30 @@ describe("transition scenarios", () => {
     ]);
   });
 
+  it("lands in ready with the buffered URL when the IPC fails after the proxy reported ready", () => {
+    // e.g. a cloud restart where the proxy came up but a later step in the
+    // restart IPC failed: the app is verifiably serving, so show it (with
+    // the error surfaced) instead of blanking a working preview.
+    const restarting: RunState = {
+      type: "starting",
+      appId: APP_ID,
+      runId: CURRENT_RUN_ID,
+      operation: "restart",
+      startedAt: 100,
+      pendingUrl: makeUrl(3),
+    };
+    const result = transition(restarting, {
+      type: "RUN_IPC_FAILED",
+      runId: CURRENT_RUN_ID,
+      error: { message: "boom" },
+    });
+    expect(result.state).toMatchObject({ type: "ready", url: makeUrl(3) });
+    expect(result.commands).toEqual([
+      { type: "setError", appId: APP_ID, error: { message: "boom" } },
+      { type: "applyUrl", appId: APP_ID, url: makeUrl(3) },
+    ]);
+  });
+
   it("does not bump the reload token when a plain run settles without a URL", () => {
     const resolved = transition(startingRun, {
       type: "RUN_IPC_RESOLVED",

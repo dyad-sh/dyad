@@ -125,7 +125,7 @@ export function createIpcRunCommandExecutor(
             });
       // Deliberately not awaited: settlement is reported as an event so the
       // controller's command queue never blocks behind a slow spawn.
-      ipcCall.then(
+      Promise.resolve(ipcCall).then(
         () => emit({ type: "RUN_IPC_RESOLVED", runId }),
         (error) => {
           console.error(
@@ -149,17 +149,29 @@ export function createIpcRunCommandExecutor(
           await executeStart(command, emit);
           return;
         case "stop":
-          ipc.app.stopApp({ appId: command.appId }).then(
-            () => emit({ type: "STOP_IPC_RESOLVED", runId: command.runId }),
-            (error) => {
-              console.error(`Error stopping app ${command.appId}:`, error);
-              emit({
-                type: "STOP_IPC_FAILED",
-                runId: command.runId,
-                error: toRunErrorInfo(error),
-              });
-            },
-          );
+          // Mirrors executeStart: a synchronous throw from the IPC surface
+          // must still settle the operation, otherwise the machine would be
+          // stuck in `stopping` with an unresolved dispatch promise.
+          try {
+            Promise.resolve(ipc.app.stopApp({ appId: command.appId })).then(
+              () => emit({ type: "STOP_IPC_RESOLVED", runId: command.runId }),
+              (error) => {
+                console.error(`Error stopping app ${command.appId}:`, error);
+                emit({
+                  type: "STOP_IPC_FAILED",
+                  runId: command.runId,
+                  error: toRunErrorInfo(error),
+                });
+              },
+            );
+          } catch (error) {
+            console.error(`Error stopping app ${command.appId}:`, error);
+            emit({
+              type: "STOP_IPC_FAILED",
+              runId: command.runId,
+              error: toRunErrorInfo(error),
+            });
+          }
           return;
         case "applyUrl":
           applyUrl(command);

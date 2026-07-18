@@ -64,6 +64,8 @@ export class AppRunController {
   private readonly waiters = new Map<number, () => void>();
   private queue: Promise<void> = Promise.resolve();
   private pendingBatches = 0;
+  private processing = false;
+  private readonly pendingEvents: RunEvent[] = [];
 
   constructor(private readonly options: AppRunControllerOptions) {}
 
@@ -110,7 +112,33 @@ export class AppRunController {
     this.process({ ...input, appId: this.options.appId });
   }
 
+  /**
+   * Re-entrancy guard: a listener/onStateChange callback (or a command
+   * emitting a completion synchronously) may call send()/dispatch() while an
+   * event is being processed. Buffering keeps event handling strictly
+   * sequential so an inner event's commands can never be enqueued before the
+   * outer event's commands.
+   */
   private process(event: RunEvent): void {
+    this.pendingEvents.push(event);
+    if (this.processing) {
+      return;
+    }
+    this.processing = true;
+    try {
+      for (
+        let next = this.pendingEvents.shift();
+        next !== undefined;
+        next = this.pendingEvents.shift()
+      ) {
+        this.processOne(next);
+      }
+    } finally {
+      this.processing = false;
+    }
+  }
+
+  private processOne(event: RunEvent): void {
     if (RUN_ID_TAGGED_EVENTS.has(event.type) && "runId" in event) {
       // Settle the dispatch promise even for superseded operations…
       const resolve = this.waiters.get(event.runId);
@@ -127,14 +155,16 @@ export class AppRunController {
     const result = transition(this.state, event);
     const changed = result.state !== this.state;
     this.state = result.state;
+    // Enqueue commands before notifying listeners so a listener reacting to
+    // the new state cannot get its own commands ahead of this event's.
+    if (result.commands.length > 0) {
+      this.enqueue(result.commands);
+    }
     if (changed) {
       this.options.onStateChange?.(this.state);
       for (const listener of [...this.listeners]) {
         listener();
       }
-    }
-    if (result.commands.length > 0) {
-      this.enqueue(result.commands);
     }
   }
 

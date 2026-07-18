@@ -303,6 +303,63 @@ describe("AppRunController", () => {
     expect(published.map((state) => state.type)).toEqual(["starting", "ready"]);
   });
 
+  it("keeps command order when a listener re-entrantly dispatches", async () => {
+    const executed: string[] = [];
+    const executor: RunCommandExecutor = {
+      async execute(command) {
+        executed.push(command.type);
+      },
+    };
+    const controller = new AppRunController({ appId: APP_ID, executor });
+
+    const seen: string[] = [];
+    let reacted = false;
+    controller.subscribe(() => {
+      const state = controller.getSnapshot();
+      seen.push(state.type);
+      // A listener reacting to `starting` by synchronously dispatching a
+      // stop. Its commands must land AFTER the outer event's commands.
+      if (state.type === "starting" && !reacted) {
+        reacted = true;
+        void controller.dispatch({ type: "STOP", startedAt: 150 });
+      }
+    });
+
+    void controller.dispatch({ type: "START", startedAt: 100 });
+    await flushMicrotasks();
+
+    expect(seen).toEqual(["starting", "stopping"]);
+    expect(executed).toEqual(["start", "stop"]);
+    expect(controller.getSnapshot()).toMatchObject({ type: "stopping" });
+  });
+
+  it("keeps command order when onStateChange re-entrantly sends", async () => {
+    const executed: string[] = [];
+    const executor: RunCommandExecutor = {
+      async execute(command) {
+        executed.push(command.type);
+      },
+    };
+    let reacted = false;
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      onStateChange: (state) => {
+        if (state.type === "ready" && !reacted) {
+          reacted = true;
+          controller.send({ type: "MANUAL_RELOAD" });
+        }
+      },
+    });
+
+    // idle -> ready via proxy line; onStateChange immediately requests a
+    // manual reload. applyUrl (outer) must execute before reload (inner).
+    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
+    await flushMicrotasks();
+
+    expect(executed).toEqual(["applyUrl", "reload"]);
+  });
+
   it("supports unsubscribe", () => {
     const executor = createFakeExecutor();
     const controller = new AppRunController({ appId: APP_ID, executor });

@@ -40,3 +40,15 @@ export function getAppRunController(
   }
   return controller;
 }
+
+/**
+ * Drop the controller for a deleted app so the registry doesn't accumulate
+ * controllers forever. A stray late event for the app would lazily create a
+ * fresh idle controller, which is harmless.
+ */
+export function disposeAppRunController(
+  store: JotaiStore,
+  appId: number,
+): void {
+  controllersByStore.get(store)?.delete(appId);
+}

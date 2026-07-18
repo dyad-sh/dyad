@@ -554,7 +554,9 @@
       "branchNotFound": "Rama no encontrada",
       "branchSelected": "Rama seleccionada",
       "failedSetBranch": "Error al establecer la rama: {{error}}",
-      "failedDisconnectProject": "Error al desconectar el proyecto de la aplicación"
+      "failedDisconnectProject": "Error al desconectar el proyecto de la aplicación",
+      "signInTimedOut": "El inicio de sesión expiró — inténtalo de nuevo o revisa tu navegador",
+      "connectFailed": "Error al conectar con Supabase"
     },
     "neon": {
       "title": "Integración con Neon",
@@ -610,7 +612,8 @@
       "signInTimedOut": "El inicio de sesión expiró — inténtalo de nuevo o revisa tu navegador",
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar Cuenta de Neon",
-      "disconnectAccountConfirmation": "¿Estás seguro de que quieres desconectar tu cuenta de Neon? Necesitarás volver a autenticarte a través de OAuth para reconectarte."
+      "disconnectAccountConfirmation": "¿Estás seguro de que quieres desconectar tu cuenta de Neon? Necesitarás volver a autenticarte a través de OAuth para reconectarte.",
+      "connectFailed": "Error al conectar con Neon"
     },
     "db": {
       "projectInfo": "Información del Proyecto {{provider}}",

@@ -32,6 +32,12 @@ const unsolicitedReturnListeners = new Set<{
   handler: () => void;
 }>();
 
+// An unsolicited return that arrived while no connector for the provider was
+// mounted is remembered here and consumed by the next connector that mounts
+// (mirroring the old lastDeepLink/clearLastDeepLink semantics), so the
+// connection-state refresh is never lost.
+const pendingUnsolicitedReturns = new Set<ConnectionFlowProvider>();
+
 // Providers that already received a pushed state; the initial getStates()
 // fetch must not clobber fresher event-driven state with a stale snapshot.
 const pushedProviders = new Set<ConnectionFlowProvider>();
@@ -57,10 +63,15 @@ function ensureIpcSubscription(): void {
   });
 
   ipc.events.connectionFlow.onUnsolicitedReturn(({ provider }) => {
+    let delivered = false;
     for (const entry of unsolicitedReturnListeners) {
       if (entry.provider === provider) {
         entry.handler();
+        delivered = true;
       }
+    }
+    if (!delivered) {
+      pendingUnsolicitedReturns.add(provider);
     }
   });
 
@@ -170,6 +181,10 @@ export function useUnsolicitedConnectionReturn(
     ensureIpcSubscription();
     const entry = { provider, handler: () => handlerRef.current() };
     unsolicitedReturnListeners.add(entry);
+    // Deliver a return that arrived while no connector was mounted.
+    if (pendingUnsolicitedReturns.delete(provider)) {
+      entry.handler();
+    }
     return () => {
       unsolicitedReturnListeners.delete(entry);
     };

@@ -32,11 +32,14 @@ export const DEFAULT_FLOW_TIMEOUTS_MS: Record<
   ConnectionFlowProvider,
   number | null
 > = {
-  // Matches the previous renderer-side Neon timer; Supabase historically had
-  // no timeout at all (a closed browser left it silently stuck) and now
-  // shares the same one.
-  neon: 20_000,
-  supabase: 20_000,
+  // Generous: users routinely take well over the old renderer-side 20s to
+  // finish a real browser sign-in (the 20s timer produced spurious "timed
+  // out" toasts). Supabase historically had no timeout at all (a closed
+  // browser left it silently stuck) and now shares the same one. A return
+  // that arrives after the timeout still stores tokens via the unsolicited
+  // path.
+  neon: 5 * 60_000,
+  supabase: 5 * 60_000,
   github: null,
 };
 
@@ -207,10 +210,27 @@ export function createConnectionFlowRegistry(
    * it, the flow advances to `exchanging-token` and is claimed; otherwise
    * the return is unsolicited (no pending flow, or the flow already timed
    * out/was cancelled) and the machine is left untouched.
+   *
+   * When the caller knows which flow produced the return (`expectedFlowId`
+   * — e.g. the GitHub device poll chain carries the flowId it was started
+   * for), a mismatch with the currently awaiting flow means the return is
+   * stale (the user has since started a newer flow) and it is routed to the
+   * unsolicited path instead of claiming — and advancing — the newer flow.
    */
-  function claimReturn(provider: ConnectionFlowProvider): ClaimReturnResult {
+  function claimReturn(
+    provider: ConnectionFlowProvider,
+    expectedFlowId?: string,
+  ): ClaimReturnResult {
     const current = getState(provider);
     if (current.status !== "awaiting-return") {
+      return { claimed: false };
+    }
+    if (expectedFlowId !== undefined && current.flowId !== expectedFlowId) {
+      onIgnoredEvent?.(
+        provider,
+        { type: "return-received", flowId: expectedFlowId },
+        "flow-id-mismatch",
+      );
       return { claimed: false };
     }
     const claimed = dispatch(provider, {

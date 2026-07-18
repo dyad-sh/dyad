@@ -252,7 +252,7 @@ export function registerSupabaseHandlers() {
       // Run the write through the connection flow machine so an active flow
       // (started by the connector's Connect click) advances just like a real
       // dyad://supabase-oauth-return deep link would.
-      await runOAuthReturnExchange("supabase", () => {
+      const outcome = await runOAuthReturnExchange("supabase", () => {
         const settings = readSettings();
         const existingOrgs = settings.supabase?.organizations ?? {};
         writeSettings({
@@ -274,6 +274,9 @@ export function registerSupabaseHandlers() {
           },
         });
       });
+      if (!outcome.ok && !outcome.claimed) {
+        throw outcome.error;
+      }
       logger.info(
         `Stored fake Supabase credentials for organization ${fakeOrgId} for app ${appId} during testing.`,
       );

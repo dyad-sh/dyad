@@ -550,7 +550,9 @@
       "branchNotFound": "Branch não encontrada",
       "branchSelected": "Branch selecionada",
       "failedSetBranch": "Falha ao definir branch: {{error}}",
-      "failedDisconnectProject": "Falha ao desconectar projeto do app"
+      "failedDisconnectProject": "Falha ao desconectar projeto do app",
+      "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
+      "connectFailed": "Falha ao conectar ao Supabase"
     },
     "neon": {
       "title": "Integração com Neon",
@@ -607,7 +609,8 @@
       "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar conta Neon",
-      "disconnectAccountConfirmation": "Tem certeza de que deseja desconectar sua conta Neon? Você precisará autenticar novamente via OAuth para reconectar."
+      "disconnectAccountConfirmation": "Tem certeza de que deseja desconectar sua conta Neon? Você precisará autenticar novamente via OAuth para reconectar.",
+      "connectFailed": "Falha ao conectar ao Neon"
     },
     "db": {
       "projectInfo": "{{provider}} Informações do Projeto",

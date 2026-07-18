@@ -778,6 +778,11 @@ export function UnconnectedGitHubConnector({
       })();
     } else if (flow.status === "connected") {
       setIsExpanded(true);
+      // Reset the registry to idle: by now settings carry the token (the
+      // loading-resources refresh ran first), so the UI has switched to the
+      // repo-setup view and nothing renders from the flow state anymore.
+      // Without this, a stale `connected` would linger in the registry.
+      void acknowledgeConnectionFlow("github", flow.flowId);
     } else if (flow.status === "cancelled") {
       void acknowledgeConnectionFlow("github", flow.flowId);
     }

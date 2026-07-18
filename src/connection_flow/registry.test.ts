@@ -184,6 +184,62 @@ describe("timeout vs return race", () => {
   });
 });
 
+describe("claim correlation (expectedFlowId)", () => {
+  it("a stale poll result cannot claim or advance a newer flow", () => {
+    const { registry, unsolicited } = setup();
+    // Flow A starts polling, then the user cancels and retries.
+    const flowA = registry.start("github");
+    registry.markPrepared("github", flowA.flowId, { userCode: "AAAA" });
+    registry.cancel("github", flowA.flowId);
+    registry.acknowledge("github", flowA.flowId);
+
+    const flowB = registry.start("github");
+    registry.markPrepared("github", flowB.flowId, { userCode: "BBBB" });
+
+    // Flow A's in-flight poll comes back with a token. It carries flow A's
+    // flowId, so it must NOT claim flow B — it lands as unsolicited.
+    const claim = registry.claimReturn("github", flowA.flowId);
+    expect(claim.claimed).toBe(false);
+    registry.notifyUnsolicitedReturn("github");
+
+    expect(unsolicited).toEqual(["github"]);
+    // Flow B is untouched and still waiting for ITS return.
+    expect(registry.getState("github")).toMatchObject({
+      status: "awaiting-return",
+      flowId: flowB.flowId,
+      userCode: "BBBB",
+    });
+  });
+
+  it("a matching expectedFlowId claims normally", () => {
+    const { registry } = setup();
+    const { flowId } = registry.start("github");
+    registry.markPrepared("github", flowId);
+
+    const claim = registry.claimReturn("github", flowId);
+    expect(claim).toEqual({ claimed: true, flowId });
+    expect(registry.getState("github").status).toBe("exchanging-token");
+  });
+
+  it("reports the mismatch to onIgnoredEvent for observability", () => {
+    const onIgnoredEvent = vi.fn();
+    const { registry } = setup({ onIgnoredEvent });
+    const { flowId } = registry.start("github");
+    registry.markPrepared("github", flowId);
+
+    registry.claimReturn("github", "some-older-flow");
+    expect(onIgnoredEvent).toHaveBeenCalledWith(
+      "github",
+      expect.objectContaining({
+        type: "return-received",
+        flowId: "some-older-flow",
+      }),
+      "flow-id-mismatch",
+    );
+    expect(registry.getState("github").status).toBe("awaiting-return");
+  });
+});
+
 describe("unsolicited returns", () => {
   it("a return with no flow at all is unsolicited and leaves state untouched", () => {
     const { registry, unsolicited, stateChanges } = setup();

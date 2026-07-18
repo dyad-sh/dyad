@@ -109,6 +109,10 @@ export const connectionFlowRegistry = createConnectionFlowRegistry({
   },
 });
 
+export type OAuthReturnExchangeOutcome =
+  | { ok: true; claimed: boolean }
+  | { ok: false; claimed: boolean; error: unknown };
+
 /**
  * Wraps a provider's OAuth-return token write so the flow machine observes
  * it: claims the active flow (if any), runs the token write, and advances or
@@ -117,17 +121,44 @@ export const connectionFlowRegistry = createConnectionFlowRegistry({
  * write; the renderer is then told to refresh connection state without
  * transitioning any flow.
  *
- * Rethrows the token write's error after recording the failure so callers
- * keep their existing error handling (dialogs).
+ * `expectedFlowId` correlates the return with the flow that produced it.
+ * The GitHub device poll chain carries the flowId it was started for and
+ * MUST pass it, so a stale poll result can never claim (and advance) a
+ * newer flow.
+ *
+ * The Supabase/Neon deep-link returns cannot pass it: the dyad.sh OAuth
+ * proxy's login endpoints take no client-supplied state parameter, so the
+ * dyad://…-oauth-return URL carries only tokens — there is nothing to
+ * round-trip a flowId in. The closest safe correlation holds structurally
+ * instead: the registry keeps at most one flow per provider and `start` is
+ * a no-op while one is active, so the awaiting flow a return claims is
+ * always the *newest* flow for that provider (an older flow must have
+ * reached a terminal state before a new one could start, and terminal flows
+ * can never be claimed). A stale browser tab completing after a retry can
+ * therefore only be attributed to the newest awaiting flow — which is
+ * benign for these providers, because the login URL carries no per-flow
+ * parameters either: every return is the same account-level token grant the
+ * awaiting flow is waiting for.
+ *
+ * Failures are recorded on the claimed flow (surfaced by the renderer as a
+ * flow-failure toast) and reported in the returned outcome instead of being
+ * rethrown, so callers can avoid double-surfacing the same error.
  */
 export async function runOAuthReturnExchange(
   provider: ConnectionFlowProvider,
   exchange: () => void | Promise<void>,
   {
     failureReason = "token_invalid",
-  }: { failureReason?: ConnectionFlowFailureReason } = {},
-): Promise<void> {
-  const claim: ClaimReturnResult = connectionFlowRegistry.claimReturn(provider);
+    expectedFlowId,
+  }: {
+    failureReason?: ConnectionFlowFailureReason;
+    expectedFlowId?: string;
+  } = {},
+): Promise<OAuthReturnExchangeOutcome> {
+  const claim: ClaimReturnResult = connectionFlowRegistry.claimReturn(
+    provider,
+    expectedFlowId,
+  );
   try {
     await exchange();
   } catch (error) {
@@ -139,13 +170,14 @@ export async function runOAuthReturnExchange(
         error instanceof Error ? error.message : String(error),
       );
     }
-    throw error;
+    return { ok: false, claimed: claim.claimed, error };
   }
   if (claim.claimed) {
     connectionFlowRegistry.completeTokenExchange(provider, claim.flowId);
   } else {
     connectionFlowRegistry.notifyUnsolicitedReturn(provider);
   }
+  return { ok: true, claimed: claim.claimed };
 }
 
 // -----------------------------------------------------------------------------

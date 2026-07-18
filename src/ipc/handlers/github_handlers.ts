@@ -329,13 +329,28 @@ async function pollForAccessToken(flowId: string) {
       // The token is always written, even if the flow was cancelled while
       // this request was in flight — GitHub already authorized us, and
       // dropping the token would leave the account half-connected.
-      await runOAuthReturnExchange("github", () => {
-        writeSettings({
-          githubAccessToken: {
-            value: data.access_token!,
-          },
-        });
-      });
+      // `expectedFlowId` correlates the write with THIS poll chain's flow:
+      // if the user cancelled and started a newer flow while this request
+      // was in flight, the stale result lands as unsolicited instead of
+      // advancing the newer flow.
+      const outcome = await runOAuthReturnExchange(
+        "github",
+        () => {
+          writeSettings({
+            githubAccessToken: {
+              value: data.access_token!,
+            },
+          });
+        },
+        { expectedFlowId: flowId },
+      );
+      if (!outcome.ok) {
+        // A claimed failure was already recorded on the flow; rethrow only
+        // unclaimed failures so the generic network-error handling applies.
+        if (!outcome.claimed) {
+          throw outcome.error;
+        }
+      }
       cleanupDeviceFlow(flowId);
       return;
     } else if (data.error) {

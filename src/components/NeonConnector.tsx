@@ -141,9 +141,14 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   // A dyad://neon-oauth-return processed with no active flow (cold start,
   // app restarted mid-flow, or a return that arrived after the flow timed
-  // out): tokens are already stored, just refresh what we show.
+  // out): tokens are already stored — refresh what we show and confirm the
+  // (late but real) success, matching the pre-machine behavior where every
+  // processed return toasted success.
   useUnsolicitedConnectionReturn("neon", () => {
-    void refreshAfterConnectRef.current();
+    void (async () => {
+      await refreshAfterConnectRef.current();
+      toast.success(t("integrations.neon.connectedSuccess"));
+    })();
   });
 
   const handleConnect = async () => {

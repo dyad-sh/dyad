@@ -5,6 +5,7 @@ import {
   pendingToolConsentsAtom,
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
+import { notifyStreamRegistered } from "@/chat_stream/registry";
 import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
 import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import { ipc as defaultIpc, type TelemetryEventPayload } from "@/ipc/types";
@@ -62,6 +63,10 @@ export function registerRendererIpcListeners({
         next.delete(chatId);
         return next;
       });
+      // Registration confirmation for the chat stream machine: main has
+      // registered the AbortController for this chat's stream (drives the
+      // starting -> streaming transition and cancel reconciliation).
+      notifyStreamRegistered(chatId);
     }),
   );
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { createStore, useStore } from "jotai";
 import { ipc, type AppOutput } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
@@ -23,6 +24,82 @@ import {
 import { useSettings } from "./useSettings";
 
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
+
+type JotaiStore = ReturnType<typeof createStore>;
+
+/**
+ * Restarts an app by explicit id, writing preview runtime state through the
+ * given Jotai store. Shared by useRunApp (bound to the selected app) and the
+ * version preview command adapter (bound to a session's captured app).
+ * Errors are reported into preview state; this function never throws.
+ */
+export async function restartAppWithStore(
+  store: JotaiStore,
+  appId: number,
+  {
+    removeNodeModules = false,
+    recreateSandbox = false,
+  }: { removeNodeModules?: boolean; recreateSandbox?: boolean } = {},
+): Promise<void> {
+  const startedAt = Date.now();
+  store.set(setPreviewRunStateForAppAtom, {
+    appId,
+    state: { operation: "restart", startedAt },
+  });
+  store.set(setPreviewAppExitForAppAtom, { appId, exit: null });
+  store.set(clearPackageManagerWarningForAppAtom, appId);
+  try {
+    console.debug(
+      "Restarting app",
+      appId,
+      recreateSandbox ? "with sandbox recreation" : "",
+      removeNodeModules ? "with node_modules cleanup" : "",
+    );
+
+    store.set(setAppUrlForAppAtom, {
+      appId,
+      appUrl: { appUrl: null, appId: null, originalUrl: null, mode: null },
+    });
+
+    store.set(previewCurrentUrlAtom, (prev) => {
+      const next = new Map(prev);
+      next.delete(appId);
+      return next;
+    });
+
+    await ipc.misc.clearLogs({ appId });
+    store.set(setConsoleEntriesForAppAtom, { appId, entries: [] });
+
+    const logEntry = {
+      level: "info" as const,
+      type: "server" as const,
+      message: "Restarting app...",
+      appId,
+      timestamp: startedAt,
+    };
+
+    ipc.misc.addLog(logEntry);
+    store.set(appendConsoleEntriesForAppAtom, { appId, entries: [logEntry] });
+
+    await ipc.app.restartApp({ appId, removeNodeModules, recreateSandbox });
+    store.set(setPreviewErrorForAppAtom, { appId, error: undefined });
+  } catch (error) {
+    console.error(`Error restarting app ${appId}:`, error);
+    store.set(setPreviewErrorForAppAtom, {
+      appId,
+      error:
+        error instanceof Error
+          ? { message: error.message, source: "dyad-app" }
+          : {
+              message: error?.toString() || "Unknown error",
+              source: "dyad-app",
+            },
+    });
+  } finally {
+    store.set(bumpPreviewReloadTokenForAppAtom, appId);
+    store.set(setPreviewRunStateForAppAtom, { appId, state: undefined });
+  }
+}
 
 export function useRebuildAppAfterPnpmInstall() {
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
@@ -348,12 +425,11 @@ export function useAppOutputSubscription() {
 }
 
 export function useRunApp() {
+  const store = useStore();
   const loading = useAtomValue(currentPreviewLoadingAtom);
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
-  const setConsoleEntries = useSetAtom(setConsoleEntriesForAppAtom);
   const setAppUrl = useSetAtom(setAppUrlForAppAtom);
   const bumpPreviewReloadToken = useSetAtom(bumpPreviewReloadTokenForAppAtom);
-  const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
   const setPreviewRunState = useSetAtom(setPreviewRunStateForAppAtom);
   const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
   const appId = useAtomValue(selectedAppIdAtom);
@@ -463,81 +539,12 @@ export function useRunApp() {
       if (targetAppId === null) {
         return;
       }
-      const startedAt = Date.now();
-      setPreviewRunState({
-        appId: targetAppId,
-        state: { operation: "restart", startedAt },
+      await restartAppWithStore(store, targetAppId, {
+        removeNodeModules,
+        recreateSandbox,
       });
-      setPreviewAppExit({ appId: targetAppId, exit: null });
-      clearPackageManagerWarning(targetAppId);
-      try {
-        console.debug(
-          "Restarting app",
-          targetAppId,
-          recreateSandbox ? "with sandbox recreation" : "",
-          removeNodeModules ? "with node_modules cleanup" : "",
-        );
-
-        setAppUrl({
-          appId: targetAppId,
-          appUrl: { appUrl: null, appId: null, originalUrl: null, mode: null },
-        });
-
-        setPreservedUrls((prev) => {
-          const next = new Map(prev);
-          next.delete(targetAppId);
-          return next;
-        });
-
-        await ipc.misc.clearLogs({ appId: targetAppId });
-        setConsoleEntries({ appId: targetAppId, entries: [] });
-
-        const logEntry = {
-          level: "info" as const,
-          type: "server" as const,
-          message: "Restarting app...",
-          appId: targetAppId,
-          timestamp: startedAt,
-        };
-
-        ipc.misc.addLog(logEntry);
-        appendConsoleEntries({ appId: targetAppId, entries: [logEntry] });
-
-        await ipc.app.restartApp({
-          appId: targetAppId,
-          removeNodeModules,
-          recreateSandbox,
-        });
-        setPreviewError({ appId: targetAppId, error: undefined });
-      } catch (error) {
-        console.error(`Error restarting app ${targetAppId}:`, error);
-        setPreviewError({
-          appId: targetAppId,
-          error:
-            error instanceof Error
-              ? { message: error.message, source: "dyad-app" }
-              : {
-                  message: error?.toString() || "Unknown error",
-                  source: "dyad-app",
-                },
-        });
-      } finally {
-        bumpPreviewReloadToken(targetAppId);
-        setPreviewRunState({ appId: targetAppId, state: undefined });
-      }
     },
-    [
-      appId,
-      appendConsoleEntries,
-      bumpPreviewReloadToken,
-      setAppUrl,
-      setConsoleEntries,
-      setPreservedUrls,
-      setPreviewAppExit,
-      setPreviewError,
-      setPreviewRunState,
-      clearPackageManagerWarning,
-    ],
+    [appId, store],
   );
 
   const refreshAppIframe = useCallback(async () => {

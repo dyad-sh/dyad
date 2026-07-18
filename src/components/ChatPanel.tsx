@@ -41,6 +41,8 @@ import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { isPaneVisibleState } from "@/version_preview/state";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
@@ -82,7 +84,11 @@ export function ChatPanel({
   const { apps } = useLoadApps();
   const currentApp = apps.find((app) => app.id === selectedAppId);
   const reducedMotion = useReducedMotionPref();
-  const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
+  // Pane visibility derives from the version preview machine; open/close are
+  // events, so hiding the pane can never skip repository recovery.
+  const { state: versionPreviewState, send: sendVersionPreview } =
+    useVersionPreview(selectedAppId);
+  const isVersionPaneOpen = isPaneVisibleState(versionPreviewState);
   const [terminalFitSignal, setTerminalFitSignal] = useState(0);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
@@ -388,7 +394,13 @@ export function ChatPanel({
         isVersionPaneOpen={isVersionPaneOpen}
         isPreviewOpen={isPreviewOpen}
         onTogglePreview={onTogglePreview}
-        onVersionClick={() => setIsVersionPaneOpen(!isVersionPaneOpen)}
+        onVersionClick={() => {
+          if (isVersionPaneOpen) {
+            sendVersionPreview({ type: "CLOSE" });
+          } else if (selectedAppId !== null) {
+            sendVersionPreview({ type: "OPEN", appId: selectedAppId });
+          }
+        }}
       />
       <div className="flex flex-1 overflow-hidden">
         {!isVersionPaneOpen && (
@@ -450,11 +462,7 @@ export function ChatPanel({
             </AnimatePresence>
           </div>
         )}
-        <VersionPane
-          isVisible={isVersionPaneOpen}
-          onClose={() => setIsVersionPaneOpen(false)}
-          onOpen={() => setIsVersionPaneOpen(true)}
-        />
+        <VersionPane />
       </div>
       <AnimatePresence initial={false}>
         {showTerminalDrawer && (

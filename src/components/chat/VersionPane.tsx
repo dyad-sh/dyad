@@ -1,4 +1,4 @@
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import {
   selectedAppIdAtom,
   selectedVersionIdAtom,
@@ -21,9 +21,6 @@ import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
-import { useLoadApp } from "@/hooks/useLoadApp";
-import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -32,8 +29,11 @@ import {
 } from "@/components/ui/tooltip";
 import { Virtuoso } from "react-virtuoso";
 
-import { useRunApp } from "@/hooks/useRunApp";
-import { showError } from "@/lib/toast";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import {
+  diffVersionIdForState,
+  isPaneVisibleState,
+} from "@/version_preview/state";
 
 function HighlightMatch({
   text,
@@ -54,12 +54,6 @@ function HighlightMatch({
       {text.slice(index + query.length)}
     </>
   );
-}
-
-interface VersionPaneProps {
-  isVisible: boolean;
-  onClose: () => void;
-  onOpen: () => void;
 }
 
 type SaveVersionNote = (
@@ -159,13 +153,6 @@ function VersionRow({
           "opacity-50 cursor-not-allowed",
       )}
       onClick={() => {
-        // Block the preview click while a cross-instance version mutation is
-        // pending. Otherwise a click during a restore-to-message cancellation
-        // window (`isAnyVersionMutationPending`) could detach HEAD via
-        // `checkoutVersion` between the restore's phase-1 branch preflight and
-        // its phase-3 revert, turning the restore into a detached-HEAD failure.
-        // `isResolvingPreviewBranch` is deliberately NOT gated here so a user
-        // can still supersede an in-flight preview with another version.
         if (!isCheckingOutVersion && !isAnyVersionMutationPending) {
           onVersionClick(version);
         }
@@ -356,51 +343,55 @@ function VersionRow({
   );
 }
 
-export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
+export function VersionPane() {
   const appId = useAtomValue(selectedAppIdAtom);
   const currentAppIdRef = useRef(appId);
   const previousAppIdRef = useRef(appId);
   currentAppIdRef.current = appId;
-  const { refreshApp, app } = useLoadApp(appId);
-  const { restartApp } = useRunApp();
   const {
     versions: liveVersions,
     refreshVersions,
-    revertVersion,
-    isRevertingVersion,
     setVersionFavorite,
     setVersionNote,
     isAnyVersionMutationPending,
   } = useVersions(appId);
 
-  const [selectedVersionId, setSelectedVersionId] = useAtom(
-    selectedVersionIdAtom,
-  );
+  // Repository state lives in the version preview machine; this component
+  // only renders it and sends events.
+  const { state: previewState, send } = useVersionPreview(appId);
+  const isVisible = isPaneVisibleState(previewState);
+  const isResolvingPreviewBranch = previewState.type === "resolving-origin";
+  const isCheckingOutVersion = previewState.type === "checking-out";
+  const isRevertingVersion = previewState.type === "restoring";
+  const selectedVersionId = diffVersionIdForState(previewState);
+
+  // Presentation-only: which version diff CodeView displays. Never used to
+  // decide Git transitions (see plans/version-preview-state-machine.md).
+  const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
   const setSelectedVersionReturnBranch = useSetAtom(
     selectedVersionReturnBranchAtom,
   );
-  const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
-  const { refetchBranchInfo } = useCurrentBranch(appId);
-  const wasVisibleRef = useRef(false);
-  const isVisibleRef = useRef(isVisible);
-  const previewRequestIdRef = useRef(0);
-  const isResolvingPreviewBranchRef = useRef(false);
-  const isPreviewCheckoutInProgressRef = useRef(false);
-  const activePreviewCheckoutPromiseRef = useRef<Promise<void> | null>(null);
-  const checkedOutVersionIdRef = useRef<string | null>(null);
-  const returnBranchRef = useRef<{ appId: number; branch: string } | null>(
-    null,
-  );
-  const getReturnBranch = useCallback(
-    () =>
-      returnBranchRef.current?.appId === appId
-        ? returnBranchRef.current.branch
-        : null,
-    [appId],
-  );
+  const previousPreviewStateTypeRef = useRef(previewState.type);
+  useEffect(() => {
+    const previousType = previousPreviewStateTypeRef.current;
+    previousPreviewStateTypeRef.current = previewState.type;
+    if (previewState.type !== "closed") {
+      setSelectedVersionId(diffVersionIdForState(previewState));
+    } else if (previousType !== "closed") {
+      setSelectedVersionId(null);
+    }
+  }, [previewState, setSelectedVersionId]);
+
+  useEffect(() => {
+    const returnBranch =
+      previewState.type !== "closed" &&
+      previewState.session.checkedOutVersionId !== null
+        ? previewState.session.originBranch
+        : null;
+    setSelectedVersionReturnBranch(returnBranch);
+  }, [previewState, setSelectedVersionReturnBranch]);
+
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
-  const [isResolvingPreviewBranch, setIsResolvingPreviewBranch] =
-    useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [expandedNoteVersionIds, setExpandedNoteVersionIds] = useState<
@@ -506,10 +497,6 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
 
   const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
 
-  useEffect(() => {
-    isVisibleRef.current = isVisible;
-  }, [isVisible]);
-
   const versionNumberByOid = useMemo(() => {
     const map = new Map<string, number>();
     for (let index = 0; index < versions.length; index++) {
@@ -518,126 +505,47 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     return map;
   }, [versions]);
 
+  // Pane-local UI state follows visibility transitions. Repository recovery
+  // does NOT: the machine handles close/return independently of this effect.
+  const wasVisibleRef = useRef(false);
   useEffect(() => {
-    async function updatePaneState() {
-      // When pane becomes visible after being closed
-      if (isVisible && !wasVisibleRef.current) {
-        returnBranchRef.current = null;
-        setSelectedVersionReturnBranch(null);
-        checkedOutVersionIdRef.current = null;
-        isResolvingPreviewBranchRef.current = false;
-        setIsResolvingPreviewBranch(false);
-        if (appId) {
-          const result = await refreshVersions();
+    const wasVisible = wasVisibleRef.current;
+    wasVisibleRef.current = isVisible;
+
+    if (isVisible && !wasVisible) {
+      if (appId) {
+        void refreshVersions().then((result) => {
           setCachedVersions(result.data ?? liveVersionsRef.current);
-        }
+        });
       }
-
-      // Reset when closing
-      if (!isVisible && wasVisibleRef.current) {
-        previewRequestIdRef.current += 1;
-        const wasResolvingPreviewBranch = isResolvingPreviewBranchRef.current;
-        isResolvingPreviewBranchRef.current = false;
-        setIsResolvingPreviewBranch(false);
-        flushPendingNoteSaves();
-        setSearchQuery("");
-        setShowFavoritesOnly(false);
-        setExpandedNoteVersionIds(new Set());
-        setAutoFocusNoteVersionIds(new Set());
-        if (selectedVersionId && appId) {
-          setSelectedVersionId(null);
-          const returnBranch = getReturnBranch();
-          if (wasResolvingPreviewBranch && !returnBranch) {
-            checkedOutVersionIdRef.current = null;
-            returnBranchRef.current = null;
-            setSelectedVersionReturnBranch(null);
-            wasVisibleRef.current = isVisible;
-            return;
-          }
-          if (returnBranch) {
-            const activePreviewCheckout =
-              activePreviewCheckoutPromiseRef.current;
-            if (activePreviewCheckout) {
-              await activePreviewCheckout;
-            }
-            let returnedToBranch = false;
-            try {
-              await checkoutVersion({ appId, versionId: returnBranch });
-              returnedToBranch = true;
-            } catch (error) {
-              console.error("Could not return to branch", error);
-              showError(
-                "Unable to return to the branch that was active before previewing this version. Reopen Version History to try again.",
-                {
-                  action: {
-                    label: "Reopen Version History",
-                    onClick: onOpen,
-                  },
-                },
-              );
-            } finally {
-              checkedOutVersionIdRef.current = null;
-              returnBranchRef.current = null;
-              setSelectedVersionReturnBranch(null);
-            }
-            if (returnedToBranch && app?.neonProjectId) {
-              await restartApp();
-            }
-          } else {
-            showError(
-              "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
-              {
-                action: {
-                  label: "Reopen Version History",
-                  onClick: onOpen,
-                },
-              },
-            );
-          }
-        }
-      }
-
-      wasVisibleRef.current = isVisible;
+      return;
     }
-    updatePaneState();
-  }, [
-    isVisible,
-    selectedVersionId,
-    setSelectedVersionId,
-    appId,
-    app?.neonProjectId,
-    checkoutVersion,
-    flushPendingNoteSaves,
-    getReturnBranch,
-    onOpen,
-    refreshVersions,
-    restartApp,
-    setSelectedVersionReturnBranch,
-  ]);
+
+    if (!isVisible && wasVisible) {
+      flushPendingNoteSaves();
+      setSearchQuery("");
+      setShowFavoritesOnly(false);
+      setExpandedNoteVersionIds(new Set());
+      setAutoFocusNoteVersionIds(new Set());
+      setCachedVersions([]);
+    }
+  }, [isVisible, appId, refreshVersions, flushPendingNoteSaves]);
 
   useEffect(() => {
     if (previousAppIdRef.current === appId) {
       return;
     }
     previousAppIdRef.current = appId;
-    returnBranchRef.current = null;
-    previewRequestIdRef.current += 1;
-    isResolvingPreviewBranchRef.current = false;
-    checkedOutVersionIdRef.current = null;
-    setIsResolvingPreviewBranch(false);
     flushPendingNoteSaves(false);
     setCachedVersions([]);
     setSearchQuery("");
     setShowFavoritesOnly(false);
     setExpandedNoteVersionIds(new Set());
     setAutoFocusNoteVersionIds(new Set());
-    setSelectedVersionReturnBranch(null);
-  }, [appId, flushPendingNoteSaves, setSelectedVersionReturnBranch]);
+  }, [appId, flushPendingNoteSaves]);
 
   useEffect(() => {
     return () => {
-      previewRequestIdRef.current += 1;
-      isVisibleRef.current = false;
       flushPendingNoteSaves(false);
     };
   }, [flushPendingNoteSaves]);
@@ -653,101 +561,20 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     return null;
   }
 
-  const handleVersionClick = async (version: Version) => {
-    if (appId && !isPreviewCheckoutInProgressRef.current) {
-      const previewRequestId = previewRequestIdRef.current + 1;
-      previewRequestIdRef.current = previewRequestId;
-      const isCurrentPreviewRequest = () =>
-        previewRequestIdRef.current === previewRequestId &&
-        isVisibleRef.current &&
-        currentAppIdRef.current === appId;
-      isResolvingPreviewBranchRef.current = true;
-      setIsResolvingPreviewBranch(true);
-      setSelectedVersionId(version.oid);
-      let latestBranchResult: Awaited<ReturnType<typeof refetchBranchInfo>>;
-      try {
-        latestBranchResult = await refetchBranchInfo();
-      } catch (error) {
-        if (!isCurrentPreviewRequest()) {
-          return;
-        }
-        console.error("Could not determine current branch", error);
-        isResolvingPreviewBranchRef.current = false;
-        setIsResolvingPreviewBranch(false);
-        setSelectedVersionId(checkedOutVersionIdRef.current);
-        showError(
-          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
-        );
-        return;
-      }
-      if (!isCurrentPreviewRequest()) {
-        return;
-      }
-      isResolvingPreviewBranchRef.current = false;
-      setIsResolvingPreviewBranch(false);
-      if (latestBranchResult.isError) {
-        setSelectedVersionId(checkedOutVersionIdRef.current);
-        showError(
-          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
-        );
-        return;
-      }
-      const latestBranch = latestBranchResult.data?.branch;
-      if (latestBranch && latestBranch !== "<no-branch>") {
-        returnBranchRef.current = { appId, branch: latestBranch };
-        setSelectedVersionReturnBranch(latestBranch);
-      }
-      const returnBranch = getReturnBranch();
-      if (!returnBranch) {
-        setSelectedVersionId(checkedOutVersionIdRef.current);
-        showError(
-          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
-        );
-        return;
-      }
-      isPreviewCheckoutInProgressRef.current = true;
-      const previewCheckoutPromise = checkoutVersion({
-        appId,
-        versionId: version.oid,
-      });
-      const previewCheckoutSettledPromise = previewCheckoutPromise.then(
-        () => undefined,
-        () => undefined,
-      );
-      activePreviewCheckoutPromiseRef.current = previewCheckoutSettledPromise;
-      try {
-        await previewCheckoutPromise;
-        checkedOutVersionIdRef.current = version.oid;
-      } catch (error) {
-        console.error("Could not checkout version, unselecting version", error);
-        if (isCurrentPreviewRequest()) {
-          setSelectedVersionId(checkedOutVersionIdRef.current);
-          // A failed first preview never detached the repository, so no return
-          // branch should remain globally visible to restore-to-message. Keep
-          // it only when another historical preview is still active.
-          if (checkedOutVersionIdRef.current === null) {
-            returnBranchRef.current = null;
-            setSelectedVersionReturnBranch(null);
-          }
-        }
-        return;
-      } finally {
-        isPreviewCheckoutInProgressRef.current = false;
-        if (
-          activePreviewCheckoutPromiseRef.current ===
-          previewCheckoutSettledPromise
-        ) {
-          activePreviewCheckoutPromiseRef.current = null;
-        }
-      }
-      if (!isCurrentPreviewRequest()) {
-        return;
-      }
-      await refreshApp();
-      if (version.dbTimestamp && isCurrentPreviewRequest()) {
-        await restartApp();
-      }
-    }
+  const handleVersionClick = (version: Version) => {
+    send({
+      type: "SELECT_VERSION",
+      versionId: version.oid,
+      hasDbSnapshot: !!version.dbTimestamp,
+    });
+  };
+
+  const handleRestoreVersion = (version: Version) => {
+    send({
+      type: "RESTORE",
+      versionId: version.oid,
+      hasDbSnapshot: !!version.dbTimestamp,
+    });
   };
 
   const favoriteFilteredVersions = showFavoritesOnly
@@ -891,41 +718,13 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     });
   };
 
-  const handleRestoreVersion = (version: Version) => {
-    if (
-      isResolvingPreviewBranchRef.current ||
-      isPreviewCheckoutInProgressRef.current
-    ) {
-      return;
-    }
-    previewRequestIdRef.current += 1;
-    isResolvingPreviewBranchRef.current = false;
-    setIsResolvingPreviewBranch(false);
-    const returnBranch = getReturnBranch();
-    void (async () => {
-      await revertVersion({
-        versionId: version.oid,
-        targetBranchName: returnBranch ?? undefined,
-      });
-      checkedOutVersionIdRef.current = null;
-      returnBranchRef.current = null;
-      setSelectedVersionReturnBranch(null);
-      setSelectedVersionId(null);
-      // Close the pane after revert to force a refresh on next open
-      onClose();
-      if (version.dbTimestamp) {
-        await restartApp();
-      }
-    })();
-  };
-
   return (
     <div className="h-full border-t border-2 border-border w-full flex flex-col">
       <div className="p-2 border-b border-border flex items-center justify-between">
         <h2 className="text-base font-medium pl-2">Version History</h2>
         <div className="flex items-center gap-2">
           <button
-            onClick={onClose}
+            onClick={() => send({ type: "CLOSE" })}
             className="p-1 hover:bg-(--background-lightest) rounded-md  "
             aria-label="Close version pane"
           >
@@ -1020,9 +819,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
                   }
                   shouldAutoFocusNote={autoFocusNoteVersionIds.has(version.oid)}
                   versionNumberByOid={versionNumberByOid}
-                  onVersionClick={(clickedVersion) => {
-                    void handleVersionClick(clickedVersion);
-                  }}
+                  onVersionClick={handleVersionClick}
                   onToggleFavorite={handleToggleFavorite}
                   onNoteFocus={handleNoteFocus}
                   onNoteChange={handleNoteChange}

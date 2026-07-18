@@ -20,6 +20,7 @@ import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
+import { useVersionPreviewGlobalBridge } from "@/hooks/useVersionPreview";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -49,6 +50,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   // Consume agent test-run lifecycle events at the root so the terminal
   // "finished" event is never dropped by a TestsPanel unmount mid-run.
   useTestRunEvents();
+
+  // Drain version preview sessions on app switch and surface recovery
+  // toasts, independent of which pane is mounted.
+  useVersionPreviewGlobalBridge();
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();

@@ -36,6 +36,13 @@ Deviations made during implementation, with reasons:
 6. **`resolving-origin` is defensive about unreachable shapes**: if it ever
    held a checkout, close/failure paths return or fall back to previewing
    instead of abandoning the checkout. Reachable sessions never hit this.
+7. **Post-review hardening** (from the multi-agent deep review): a failed
+   first checkout releases `originBranch` so a retry re-captures the live
+   branch (preserving b249bb40's capture-immediately-before-checkout
+   guarantee); `OPEN` during `recovery-required` re-notifies subscribers so
+   a dismissed recovery toast re-surfaces; controller creation no longer
+   notifies registry subscribers (it happens during React render), and the
+   empty recovery snapshot is a stable singleton.
 
 ## Decision record
 
@@ -131,7 +138,10 @@ React lifecycle timing:
 
 1. `originBranch` is captured immediately before the first historical
    checkout.
-2. Once captured, `originBranch` is immutable for the lifetime of the session.
+2. Once captured, `originBranch` is immutable while the session owns or is
+   pursuing a historical checkout. It is released only when the session falls
+   back to `browsing` having never checked out, so the next selection
+   re-captures the live branch (which may have changed externally).
 3. The session retains its original `appId`; it never substitutes the
    currently selected app.
 4. `checkedOutVersionId` is machine-owned repository state. It is never
@@ -273,7 +283,8 @@ States not listed for an event ignore it. "record intent" means the session's
 | `returning`         | `RETURN_FAILED`            | `recovery-required` (full session + error retained)                                                                                      | —                                         |
 | `returning`         | `CLOSE` / `APP_CHANGED`    | `returning` (already exiting; update intent)                                                                                             | —                                         |
 | `recovery-required` | `RETRY_RETURN`             | `returning`                                                                                                                              | `return`                                  |
-| `recovery-required` | `OPEN` / `SELECT_VERSION`  | ignored — recovery must resolve first                                                                                                    | —                                         |
+| `recovery-required` | `OPEN`                     | stays in recovery (fresh snapshot) — re-notifies subscribers so a dismissed recovery toast re-surfaces                                   | —                                         |
+| `recovery-required` | `SELECT_VERSION`           | ignored — recovery must resolve first                                                                                                    | —                                         |
 
 Two rows deserve emphasis because they encode current bugs:
 

@@ -60,7 +60,10 @@ export function ensureVersionPreviewController(
     controller = new VersionPreviewController(appId, runtime);
     controllers.set(appId, controller);
     controller.subscribe(notifyRegistry);
-    notifyRegistry();
+    // Deliberately no notifyRegistry() here: creation happens during React
+    // render (useVersionPreview), a fresh controller is always closed so the
+    // recovery snapshot is unchanged, and notifying would schedule updates
+    // on other components mid-render.
   }
   return controller;
 }
@@ -94,9 +97,13 @@ export function subscribeVersionPreviewRegistry(
   };
 }
 
+const EMPTY_RECOVERY_ENTRIES: VersionPreviewRecoveryEntry[] = [];
+
 /**
  * All sessions currently stuck in recovery-required, across apps. Cached so
- * useSyncExternalStore sees a stable reference between changes.
+ * useSyncExternalStore sees a stable reference between changes; the empty
+ * case is a shared singleton so state changes with no recoveries never
+ * force subscribers to re-render.
  */
 export function getVersionPreviewRecoveryEntries(): VersionPreviewRecoveryEntry[] {
   if (recoveryCache === null) {
@@ -113,6 +120,9 @@ export function getVersionPreviewRecoveryEntries(): VersionPreviewRecoveryEntry[
         },
       ];
     });
+    if (recoveryCache.length === 0) {
+      recoveryCache = EMPTY_RECOVERY_ENTRIES;
+    }
   }
   return recoveryCache;
 }

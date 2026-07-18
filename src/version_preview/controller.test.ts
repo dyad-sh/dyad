@@ -279,6 +279,49 @@ describe("registry", () => {
     expect(ensureVersionPreviewController(2)).not.toBe(a);
   });
 
+  it("does not notify registry subscribers when a controller is created", () => {
+    // Creation happens during React render; notifying would schedule
+    // updates on other components mid-render.
+    const fake = makeFakeRuntime();
+    initVersionPreviewRuntime(fake.runtime);
+    const listener = vi.fn();
+    subscribeVersionPreviewRegistry(listener);
+    ensureVersionPreviewController(1);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("keeps a stable empty recovery snapshot across unrelated state changes", async () => {
+    const fake = makeFakeRuntime();
+    initVersionPreviewRuntime(fake.runtime);
+    const controller = ensureVersionPreviewController(APP_ID);
+    const before = getVersionPreviewRecoveryEntries();
+
+    await driveToPreviewing(controller, fake);
+    // Transitions occurred but nothing is in recovery: same array reference,
+    // so useSyncExternalStore subscribers do not re-render.
+    expect(getVersionPreviewRecoveryEntries()).toBe(before);
+  });
+
+  it("re-notifies subscribers when OPEN hits a recovery-required session", async () => {
+    const fake = makeFakeRuntime();
+    initVersionPreviewRuntime(fake.runtime);
+    const controller = ensureVersionPreviewController(APP_ID);
+    await driveToPreviewing(controller, fake);
+    controller.send({ type: "CLOSE" });
+    fake.last("return").deferred.reject(new Error("return failed"));
+    await flush();
+    expect(controller.getSnapshot().type).toBe("recovery-required");
+
+    const entriesBefore = getVersionPreviewRecoveryEntries();
+    const listener = vi.fn();
+    subscribeVersionPreviewRegistry(listener);
+    controller.send({ type: "OPEN", appId: APP_ID });
+    // A dismissed recovery toast re-surfaces because the snapshot is fresh.
+    expect(listener).toHaveBeenCalled();
+    expect(getVersionPreviewRecoveryEntries()).not.toBe(entriesBefore);
+    expect(getVersionPreviewRecoveryEntries()).toHaveLength(1);
+  });
+
   it("drains the previous app's session on app switch", async () => {
     const fake = makeFakeRuntime();
     initVersionPreviewRuntime(fake.runtime);

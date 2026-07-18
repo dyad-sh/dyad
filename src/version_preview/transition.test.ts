@@ -124,13 +124,20 @@ function assertInvariants(
   const next = result.state;
   const label = `${prev.type} + ${event.type} -> ${next.type}`;
 
-  // Invariant 2: originBranch is immutable once captured.
+  // Invariant 2: originBranch is immutable while the session owns or is
+  // pursuing a checkout. It is released (nulled) only when the session
+  // falls back to browsing having never checked out, so the next selection
+  // re-captures the live branch.
   if (
     prev.type !== "closed" &&
     next.type !== "closed" &&
     prev.session.originBranch !== null
   ) {
-    expect(next.session.originBranch, label).toBe(prev.session.originBranch);
+    if (next.type === "browsing" && next.session.checkedOutVersionId === null) {
+      expect(next.session.originBranch, label).toBeNull();
+    } else {
+      expect(next.session.originBranch, label).toBe(prev.session.originBranch);
+    }
   }
 
   // Invariant 3: the session never changes apps mid-flight.
@@ -336,6 +343,31 @@ describe("preview lifecycle", () => {
     if (state.type !== "browsing") return;
     expect(state.session.targetVersionId).toBeNull();
     expect(state.session.checkedOutVersionId).toBeNull();
+    // The never-checked-out session releases its captured branch...
+    expect(state.session.originBranch).toBeNull();
+  });
+
+  it("re-captures the live branch on retry after a failed first checkout", () => {
+    const afterFailure = run([
+      OPEN,
+      SELECT_V1,
+      RESOLVED,
+      { type: "CHECKOUT_FAILED", error: { message: "nope" } },
+    ]);
+
+    // ...so a retry resolves the branch again and captures the fresh value
+    // (the live branch may have changed externally since the first attempt).
+    const retried = run(
+      [SELECT_V1, { type: "ORIGIN_RESOLVED", branch: "feature/moved" }],
+      afterFailure.state,
+    );
+    expect(retried.commands).toContainEqual({
+      type: "resolve-origin",
+      appId: APP_ID,
+    });
+    expect(retried.state.type).toBe("checking-out");
+    if (retried.state.type !== "checking-out") return;
+    expect(retried.state.session.originBranch).toBe("feature/moved");
   });
 });
 
@@ -549,16 +581,27 @@ describe("return failure and recovery", () => {
     expect(succeeded.state.type).toBe("closed");
   });
 
-  it("ignores OPEN and SELECT_VERSION while recovery is pending", () => {
+  it("ignores SELECT_VERSION while recovery is pending", () => {
     const recovery = run([
       ...toReturning,
       { type: "RETURN_FAILED", error: { message: "return failed" } },
     ]);
-    for (const event of [OPEN, SELECT_V1]) {
-      const result = step(recovery.state, event);
-      expect(result.state).toBe(recovery.state);
-      expect(result.commands).toEqual([]);
-    }
+    const result = step(recovery.state, SELECT_V1);
+    expect(result.state).toBe(recovery.state);
+    expect(result.commands).toEqual([]);
+  });
+
+  it("re-surfaces recovery (fresh snapshot, no commands) when OPEN arrives", () => {
+    const recovery = run([
+      ...toReturning,
+      { type: "RETURN_FAILED", error: { message: "return failed" } },
+    ]);
+    const result = step(recovery.state, OPEN);
+    // Equal content but a new reference, so subscribers are re-notified and
+    // a dismissed recovery toast reappears.
+    expect(result.state).not.toBe(recovery.state);
+    expect(result.state).toEqual(recovery.state);
+    expect(result.commands).toEqual([]);
   });
 });
 

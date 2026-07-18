@@ -164,7 +164,12 @@ export function transition(
         return {
           state: hasCheckout
             ? { type: "previewing", session }
-            : { type: "browsing", session },
+            : {
+                type: "browsing",
+                // A session that never checked out releases its captured
+                // branch so the next selection re-captures the live one.
+                session: { ...session, originBranch: null },
+              },
           commands: [
             { type: "notify-error", message: BRANCH_UNAVAILABLE_MESSAGE },
           ],
@@ -207,7 +212,14 @@ export function transition(
         };
         return settleWithExitIntent(session, (s) =>
           s.checkedOutVersionId === null
-            ? { type: "browsing", session: s }
+            ? // The session never owned a checkout: release the captured
+              // branch so a later selection re-captures the live branch
+              // (preserves b249bb40's capture-immediately-before-checkout
+              // guarantee even if the branch changed externally meanwhile).
+              {
+                type: "browsing",
+                session: { ...s, originBranch: null },
+              }
             : { type: "previewing", session: s },
         );
       }
@@ -341,8 +353,14 @@ export function transition(
           commands: [returnCommand(state.session)],
         };
       }
-      // OPEN and SELECT_VERSION are deliberately ignored: recovery must
-      // resolve before a new session can start for this app.
+      if (event.type === "OPEN") {
+        // Recovery must resolve before a new session can start, but an OPEN
+        // attempt returns a fresh (equal) state object so subscribers are
+        // re-notified and the recovery toast re-surfaces even if the user
+        // dismissed it.
+        return { state: { ...state }, commands: [] };
+      }
+      // SELECT_VERSION and completion events are deliberately ignored.
       return ignore(state);
     }
   }

@@ -3,7 +3,7 @@
 # Need to write to repo contents to upload the app to GitHub Release
 # See: https://www.electronforge.io/config/publishers/github#authentication
 permissions:
-  contents: write
+  contents: read
 
 name: Release app
 on:
@@ -17,6 +17,8 @@ jobs:
   prepare-release:
     name: Prepare Release Tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       tag: ${{ steps.prepare.outputs.tag }}
       version: ${{ steps.prepare.outputs.version }}
@@ -38,6 +40,10 @@ jobs:
   build:
     needs: prepare-release
     environment: release
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     strategy:
       # Continue building other platforms even if one fails
       fail-fast: false
@@ -153,6 +159,17 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           WINDOWS_SIGN: ${{ contains(matrix.os.name, 'windows') && 'true' || '' }}
 
+      - name: Generate release provenance manifest
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: node scripts/generate-release-provenance.js "out/release-provenance-${{ matrix.os.name }}.json" "${{ matrix.os.name }}" out/make
+
+      - name: Attest release provenance manifest
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: out/release-provenance-${{ matrix.os.name }}.json
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
@@ -162,8 +179,10 @@ jobs:
 
   publish:
     name: Publish Release
-    needs: build
+    needs: [prepare-release, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Github checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -193,6 +212,12 @@ jobs:
         env:
           DEBUG: "@electron/*,electron-forge:*"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload provenance manifests to draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" out/release-provenance-*.json --clobber
 
   verify-assets:
     name: Verify Release Assets

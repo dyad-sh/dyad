@@ -97,6 +97,10 @@ async function verifyReleaseAssets() {
       `dyad_${normalizeVersionForPlatform(version, "deb")}_amd64.deb`,
       `dyad_${version}_x86_64.AppImage`,
       "RELEASES",
+      "release-provenance-linux.json",
+      "release-provenance-macos-intel.json",
+      "release-provenance-macos.json",
+      "release-provenance-windows.json",
     ];
 
     console.log("📋 Expected assets:");

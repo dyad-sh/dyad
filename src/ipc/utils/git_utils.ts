@@ -31,11 +31,61 @@ function isAgentGitPatchVisiblePath(filePath: string) {
   return isUserVisibleGitPath(filePath) || filePath === "pnpm-workspace.yaml";
 }
 
+// Single-character C-style escapes emitted by git's `quote_c_style` (see
+// git's quote.c). Everything else is either a literal byte or an octal escape.
+const PORCELAIN_C_ESCAPES: Record<string, number> = {
+  a: 0x07,
+  b: 0x08,
+  t: 0x09,
+  n: 0x0a,
+  v: 0x0b,
+  f: 0x0c,
+  r: 0x0d,
+  '"': 0x22,
+  "\\": 0x5c,
+};
+
+// Git quotes paths in `--porcelain`/`status` output whenever they contain
+// non-ASCII bytes or control characters (the default `core.quotePath=true`
+// behavior). Bytes >= 0x80 and control characters are emitted as `\NNN` octal
+// escapes, so a UTF-8 name like `café.txt` becomes `"caf\303\251.txt"`. The
+// previous implementation only unescaped `\"` and `\\`, leaving those octal
+// sequences intact, so consumers couldn't use the returned path to locate the
+// file and `.dyad/` filtering could misclassify non-ASCII paths. Decode the
+// full C-style quoting into raw bytes and re-interpret them as UTF-8.
 function unquotePorcelainPath(filePath: string): string {
   if (!(filePath.startsWith('"') && filePath.endsWith('"'))) {
     return filePath;
   }
-  return filePath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  const inner = filePath.slice(1, -1);
+  const bytes: number[] = [];
+  for (let index = 0; index < inner.length; index++) {
+    const char = inner[index];
+    if (char !== "\\") {
+      // Push the (already-decoded) character's UTF-8 bytes so it round-trips
+      // through the TextDecoder below alongside any octal-escaped bytes.
+      for (const byte of Buffer.from(char, "utf8")) {
+        bytes.push(byte);
+      }
+      continue;
+    }
+    const next = inner[index + 1];
+    if (next !== undefined && next in PORCELAIN_C_ESCAPES) {
+      bytes.push(PORCELAIN_C_ESCAPES[next]);
+      index += 1;
+      continue;
+    }
+    // Octal escape: `\NNN` with 1-3 octal digits (git always emits 3).
+    const octal = /^[0-7]{1,3}/.exec(inner.slice(index + 1, index + 4));
+    if (octal) {
+      bytes.push(parseInt(octal[0], 8) & 0xff);
+      index += octal[0].length;
+      continue;
+    }
+    // Unrecognized escape: keep the backslash literally rather than dropping it.
+    bytes.push(0x5c);
+  }
+  return Buffer.from(bytes).toString("utf8");
 }
 
 function splitQuotedPorcelainRename(filePath: string): [string, string] | null {
@@ -672,12 +722,17 @@ export async function getGitUncommittedFiles({
       DyadErrorKind.Conflict,
     );
   }
-  return result.stdout
-    .toString()
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => line.slice(3).trim())
-    .filter(isUserVisibleGitPath);
+  return (
+    result.stdout
+      .toString()
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      // Decode git's C-style path quoting (including `\NNN` octal escapes for
+      // non-ASCII/control bytes) and expand rename entries into both sides, so
+      // non-ASCII paths are returned verbatim and `.dyad/` filtering matches.
+      .flatMap(getPorcelainPaths)
+      .filter(isUserVisibleGitPath)
+  );
 }
 
 function countLines(content: string): number {

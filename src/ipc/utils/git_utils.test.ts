@@ -299,6 +299,26 @@ describe("countChangedLines", () => {
       deletions: 0,
     });
   });
+
+  it("decodes git's octal-escaped non-ASCII paths in native git status", async () => {
+    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+
+    await runGit(repoDir, ["init"]);
+    await fs.promises.mkdir(path.join(repoDir, ".dyad"), { recursive: true });
+    // Git quotes these non-ASCII names with `\NNN` octal escapes in porcelain
+    // output; both must be decoded back to their real UTF-8 paths so the
+    // user-visible file is reported and the `.dyad/` one is still filtered out.
+    await fs.promises.writeFile(path.join(repoDir, "café.txt"), "user change");
+    await fs.promises.writeFile(
+      path.join(repoDir, ".dyad", "naïve.png"),
+      "generated",
+    );
+
+    await expect(getGitUncommittedFiles({ path: repoDir })).resolves.toEqual([
+      "café.txt",
+    ]);
+  });
 });
 
 describe("gitStageToRevert", () => {

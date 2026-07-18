@@ -11,6 +11,7 @@ import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
 import { normalizeStoredChatMode } from "./chat_mode_resolution";
+import { cancelActiveStreamsForChat } from "./chat_stream_handlers";
 import {
   rendererMessageColumns,
   toRendererMessage,
@@ -122,7 +123,7 @@ export function registerChatHandlers() {
     })) satisfies ChatSummary[];
   });
 
-  createTypedHandler(chatContracts.deleteChat, async (_, chatId) => {
+  createTypedHandler(chatContracts.deleteChat, async (event, chatId) => {
     const chat = await db.query.chats.findFirst({
       columns: { appId: true },
       where: eq(chats.id, chatId),
@@ -130,6 +131,12 @@ export function registerChatHandlers() {
     if (!chat) {
       return;
     }
+    // Cancel any in-flight stream for this chat BEFORE taking the app lock and
+    // deleting rows, otherwise a still-running generation could re-insert
+    // messages after the delete and resurrect the chat. Cancellation must run
+    // outside the lock because the aborted stream may take the same app lock for
+    // its own writes (e.g. copy_file).
+    await cancelActiveStreamsForChat(chatId, event.sender);
     await withLock(chat.appId, async () => {
       await db.delete(chats).where(eq(chats.id, chatId));
     });
@@ -164,7 +171,7 @@ export function registerChatHandlers() {
     return updated[0];
   });
 
-  createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {
+  createTypedHandler(chatContracts.deleteMessages, async (event, chatId) => {
     const chat = await db.query.chats.findFirst({
       columns: { appId: true },
       where: eq(chats.id, chatId),
@@ -172,6 +179,12 @@ export function registerChatHandlers() {
     if (!chat) {
       return;
     }
+    // Cancel any in-flight stream for this chat BEFORE taking the app lock and
+    // clearing messages, otherwise a still-running generation could insert new
+    // messages after the delete and leave the chat non-empty. Cancellation must
+    // run outside the lock because the aborted stream may take the same app lock
+    // for its own writes (e.g. copy_file).
+    await cancelActiveStreamsForChat(chatId, event.sender);
     await withLock(chat.appId, async () => {
       await db.delete(messages).where(eq(messages.chatId, chatId));
     });

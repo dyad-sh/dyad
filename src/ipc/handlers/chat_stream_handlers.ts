@@ -213,6 +213,22 @@ async function cancelTrackedStreams(
 }
 
 /**
+ * Abort an in-flight stream for a single chat and wait until its handler has
+ * stopped writing. Deletion handlers call this before taking the app lock (and
+ * before deleting rows) so an in-flight generation can't re-insert messages
+ * into a chat that was just cleared or removed. Like
+ * {@link cancelActiveStreamsForApp}, it must run outside the app lock: the
+ * aborted handler can take the same lock for its own writes, so awaiting its
+ * completion while holding the lock would deadlock.
+ */
+export async function cancelActiveStreamsForChat(
+  chatId: number,
+  sender: WebContents,
+): Promise<boolean> {
+  return cancelTrackedStreams([chatId], sender);
+}
+
+/**
  * Abort every in-flight stream whose chat belongs to an app and wait until all
  * of their handlers have stopped writing. Version handlers call this before
  * taking the app lock so cancellation cannot deadlock behind a stream write.

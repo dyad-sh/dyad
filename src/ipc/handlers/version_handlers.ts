@@ -747,7 +747,12 @@ export function registerVersionHandlers() {
     async (event, params) => {
       const { appId, chatId, messageId, restoreCodebase = true } = params;
 
-      return withLock(appId, async () => {
+      // Phase 1: validate the request and resolve the restore target under the
+      // app lock WITHOUT cancelling any streams. Chat/message deletion endpoints
+      // take this same lock, so the snapshot we validate against stays
+      // consistent, and bailing out here for an invalid request never aborts
+      // unrelated in-flight generations for a restore that cannot succeed.
+      const prepared = await withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -784,14 +789,6 @@ export function registerVersionHandlers() {
         if (targetIndex === -1) {
           throw new DyadError("Message not found", DyadErrorKind.NotFound);
         }
-
-        // Validate the target from the app-locked snapshot before cancelling
-        // anything. Chat/message deletion endpoints also take this lock, so a
-        // request that cannot succeed cannot become stale and abort unrelated
-        // in-flight generations between validation and cancellation.
-        const preserveDirtyTree = restoreCodebase
-          ? await cancelActiveStreamsForApp(appId, event.sender)
-          : false;
 
         const messagesBefore = chat.messages
           .slice(0, targetIndex)
@@ -836,31 +833,23 @@ export function registerVersionHandlers() {
           targetCommitHash = chat.initialCommitHash ?? null;
         }
 
-        // When the user chose to also restore the codebase, we need a concrete
-        // version to revert to. Revert the codebase first: if this throws (e.g.
-        // a Git or Neon error), we bail out before touching the database so we
-        // don't leave an orphaned, partially-created chat behind. A
-        // `warningMessage` still means the codebase was reverted (only a
-        // secondary step failed), so we go on to create the new chat in that
-        // case. When the user only forks the chat, we skip the revert entirely.
-        let successMessage = "Forked the chat into a new chat.";
-        let warningMessage = "";
-
         if (restoreCodebase) {
           if (!targetCommitHash) {
             // No version could be determined, so we don't create a new chat.
             // Omit `newChatId` so the renderer stays on the current chat instead
             // of "navigating" to the same one (which would look like a no-op).
             return {
+              status: "warn" as const,
               warningMessage:
                 "Could not determine a version to restore to for this message.",
             };
           }
           // The hash was resolved from stored DB fields, so a garbage-collected
           // or stale value would otherwise surface as an opaque git error from
-          // `gitStageToRevert`. Validate it exists first (mirroring the
-          // `revertVersion` flow) and return a user-friendly warning instead of
-          // creating the forked chat if it doesn't.
+          // `gitStageToRevert`. Validate it exists before cancelling any streams
+          // (mirroring the `revertVersion` flow) so an invalid target returns a
+          // user-friendly warning instead of aborting in-flight generations for
+          // a restore that cannot proceed.
           try {
             await assertVersionExists({
               appPath,
@@ -872,12 +861,62 @@ export function registerVersionHandlers() {
               error.kind === DyadErrorKind.NotFound
             ) {
               return {
+                status: "warn" as const,
                 warningMessage:
                   "Could not restore the codebase because the target version no longer exists in the repository.",
               };
             }
             throw error;
           }
+        }
+
+        return {
+          status: "ready" as const,
+          app,
+          appPath,
+          chat,
+          messagesBefore,
+          targetCommitHash,
+        };
+      });
+
+      // A validated request that cannot proceed returns a warning without ever
+      // cancelling streams (see phase 1 above).
+      if (prepared.status === "warn") {
+        return { warningMessage: prepared.warningMessage };
+      }
+      const { app, appPath, chat, messagesBefore, targetCommitHash } = prepared;
+
+      // Phase 2: cancel in-flight streams for this app OUTSIDE the lock. The
+      // cancellation helper aborts each stream and then awaits its handler
+      // unwinding, and those handlers can take the same app lock for their own
+      // writes (e.g. the copy_file tool). Awaiting stream completion while
+      // holding the app lock would deadlock, so cancellation must run before we
+      // re-acquire it — this matches the lock ordering documented on
+      // `cancelActiveStreamsForApp`.
+      const preserveDirtyTree = restoreCodebase
+        ? await cancelActiveStreamsForApp(appId, event.sender)
+        : false;
+
+      // Phase 3: perform the codebase revert and create the forked chat under
+      // the lock. Holding it across the whole mutation serializes the revert
+      // against other version/deletion operations, and any post-cancel write
+      // that takes the app lock (copy_file) is ordered after this revert instead
+      // of racing it. `gitStageToRevert` additionally refuses to run — or
+      // commits a recoverable checkpoint when preserving an interrupted turn —
+      // if the work tree is dirty, so a stray write can't be silently clobbered.
+      return withLock(appId, async () => {
+        // When the user chose to also restore the codebase, we need a concrete
+        // version to revert to. Revert the codebase first: if this throws (e.g.
+        // a Git or Neon error), we bail out before touching the database so we
+        // don't leave an orphaned, partially-created chat behind. A
+        // `warningMessage` still means the codebase was reverted (only a
+        // secondary step failed), so we go on to create the new chat in that
+        // case. When the user only forks the chat, we skip the revert entirely.
+        let successMessage = "Forked the chat into a new chat.";
+        let warningMessage = "";
+
+        if (restoreCodebase && targetCommitHash) {
           const result = await revertCodebaseToVersion({
             appId,
             app,

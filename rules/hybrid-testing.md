@@ -80,10 +80,10 @@ loaded Windows CI runners. Keep the large fixture when it proves bounded-memory
 behavior; raising that individual test's timeout is preferable to weakening the
 streaming regression coverage or raising the timeout suite-wide.
 
-If a hybrid suite fails before test logic with
-`better_sqlite3.node was compiled against a different Node.js version` and a
-`NODE_MODULE_VERSION` mismatch, run `npm rebuild better-sqlite3` in the worktree
-before debugging the suite.
+If the unsandboxed rerun reaches the harness but fails loading
+`better-sqlite3` with a `NODE_MODULE_VERSION` mismatch, follow the
+`npm rebuild better-sqlite3` recovery in `rules/native-modules.md` (single
+source of truth for native-module rebuild guidance) before debugging tests.
 
 When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 `process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block

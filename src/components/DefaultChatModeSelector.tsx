@@ -83,7 +83,11 @@ export function DefaultChatModeSelector() {
         value={effectiveDefault}
         onValueChange={(v) => v && handleDefaultChatModeChange(v)}
       >
-        <SelectTrigger className="w-full sm:w-[240px]" id="default-chat-mode">
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="default-chat-mode"
+          aria-describedby="default-chat-mode-description"
+        >
           <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
         </SelectTrigger>
         <SelectContent>

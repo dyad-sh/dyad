@@ -58,7 +58,11 @@ export function ReleaseChannelSelector() {
         value={settings.releaseChannel}
         onValueChange={(v) => v && handleReleaseChannelChange(v)}
       >
-        <SelectTrigger className="w-full sm:w-[240px]" id="release-channel">
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="release-channel"
+          aria-describedby="release-channel-description"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

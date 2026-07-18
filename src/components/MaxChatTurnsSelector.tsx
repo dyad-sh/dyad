@@ -80,7 +80,11 @@ export const MaxChatTurnsSelector: React.FC = () => {
         value={currentValue}
         onValueChange={(v) => v && handleValueChange(v)}
       >
-        <SelectTrigger className="w-full sm:w-[240px]" id="max-chat-turns">
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="max-chat-turns"
+          aria-describedby="max-chat-turns-description"
+        >
           <SelectValue placeholder={t("ai.selectMaxChatTurns")} />
         </SelectTrigger>
         <SelectContent>

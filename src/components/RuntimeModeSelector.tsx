@@ -93,7 +93,11 @@ export function RuntimeModeSelector() {
           value={settings.runtimeMode2 ?? "host"}
           onValueChange={(v) => v && handleRuntimeModeChange(v)}
         >
-          <SelectTrigger className="w-full sm:w-[240px]" id="runtime-mode">
+          <SelectTrigger
+            className="w-full sm:w-[240px]"
+            id="runtime-mode"
+            aria-describedby="runtime-mode-description"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -81,9 +81,7 @@ function SettingsSection({
         >
           {title}
         </h2>
-        {description && (
-          <p className={cn("mt-1.5", hint)}>{description}</p>
-        )}
+        {description && <p className={cn("mt-1.5", hint)}>{description}</p>}
       </div>
       <div className="min-w-0 space-y-6">{children}</div>
     </section>

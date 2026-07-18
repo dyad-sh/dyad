@@ -31,7 +31,10 @@ export function SettingField({
           {label}
         </Label>
         {description && (
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
+          <p
+            id={htmlFor ? `${htmlFor}-description` : undefined}
+            className="text-[13px] leading-relaxed text-muted-foreground"
+          >
             {description}
           </p>
         )}

@@ -40,7 +40,11 @@ export const ThinkingBudgetSelector: React.FC = () => {
         value={currentValue}
         onValueChange={(v) => v && handleValueChange(v)}
       >
-        <SelectTrigger className="w-full sm:w-[240px]" id="thinking-budget">
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="thinking-budget"
+          aria-describedby="thinking-budget-description"
+        >
           <SelectValue placeholder={t("ai.selectThinkingBudget")} />
         </SelectTrigger>
         <SelectContent>

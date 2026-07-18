@@ -49,7 +49,11 @@ export function ZoomSelector() {
           updateSettings({ zoomLevel: value as ZoomLevel })
         }
       >
-        <SelectTrigger id="zoom-level" className="w-full sm:w-[240px]">
+        <SelectTrigger
+          id="zoom-level"
+          className="w-full sm:w-[240px]"
+          aria-describedby="zoom-level-description"
+        >
           <SelectValue placeholder={t("general.selectZoom")} />
         </SelectTrigger>
         <SelectContent>

@@ -80,7 +80,11 @@ export const MaxToolCallStepsSelector: React.FC = () => {
         value={currentValue}
         onValueChange={(v) => v && handleValueChange(v)}
       >
-        <SelectTrigger className="w-full sm:w-[240px]" id="max-tool-call-steps">
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="max-tool-call-steps"
+          aria-describedby="max-tool-call-steps-description"
+        >
           <SelectValue placeholder={t("ai.selectMaxToolCallSteps")} />
         </SelectTrigger>
         <SelectContent>

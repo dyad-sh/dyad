@@ -58,7 +58,11 @@ export function LanguageSelector() {
       description={t("general.languageDescription")}
     >
       <Select value={currentLanguage} onValueChange={handleChange}>
-        <SelectTrigger id="language" className="w-full sm:w-[240px]">
+        <SelectTrigger
+          id="language"
+          className="w-full sm:w-[240px]"
+          aria-describedby="language-description"
+        >
           <SelectValue placeholder="Select language" />
         </SelectTrigger>
         <SelectContent>

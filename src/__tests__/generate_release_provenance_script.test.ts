@@ -38,16 +38,16 @@ describe("release provenance generator", () => {
 
     expect(collectReleaseArtifacts(directory)).toEqual([
       {
-        name: "dyad.zip",
-        sha256:
-          "4a70fe9aa6436e02c2dea340fbd1e352e4ef2d8ce6ca52ad25d4b95471fc8bf2",
-        size: 3,
-      },
-      {
         name: "RELEASES",
         sha256:
           "05b3abf2579a5eb66403cd78be557fd860633a1fe2103c7642030defe32c657f",
         size: 8,
+      },
+      {
+        name: "dyad.zip",
+        sha256:
+          "4a70fe9aa6436e02c2dea340fbd1e352e4ef2d8ce6ca52ad25d4b95471fc8bf2",
+        size: 3,
       },
     ]);
   });

@@ -32,7 +32,24 @@ function listFilesRecursively(directory) {
 
 function hashFile(filePath) {
   const hash = crypto.createHash("sha256");
-  hash.update(fs.readFileSync(filePath));
+  const fileDescriptor = fs.openSync(filePath, "r");
+  const buffer = Buffer.alloc(1024 * 1024);
+  try {
+    let bytesRead;
+    while (
+      (bytesRead = fs.readSync(
+        fileDescriptor,
+        buffer,
+        0,
+        buffer.length,
+        null,
+      )) > 0
+    ) {
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    fs.closeSync(fileDescriptor);
+  }
   return hash.digest("hex");
 }
 
@@ -44,7 +61,7 @@ function collectReleaseArtifacts(outputDirectory) {
       sha256: hashFile(filePath),
       size: fs.statSync(filePath).size,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
   const duplicateNames = artifacts
     .filter((artifact, index) =>
@@ -112,7 +129,8 @@ function createReleaseProvenance({
 }
 
 function main() {
-  const [outputPath, platform, outputDirectory = "out"] = process.argv.slice(2);
+  const [outputPath, platform, outputDirectory = "out/make"] =
+    process.argv.slice(2);
   if (!outputPath || !platform) {
     throw new Error(
       "Usage: generate-release-provenance.js <output-path> <platform> [artifact-directory]",

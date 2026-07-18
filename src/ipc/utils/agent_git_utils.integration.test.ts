@@ -28,6 +28,12 @@ import {
 } from "./git_utils";
 
 const execFileAsync = promisify(execFile);
+const TEMP_DIR_REMOVE_OPTIONS = {
+  recursive: true,
+  force: true,
+  maxRetries: 10,
+  retryDelay: 100,
+} as const;
 
 async function git(repo: string, ...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: repo });
@@ -49,7 +55,7 @@ describe("agent Git utilities", () => {
   });
 
   afterEach(async () => {
-    await fs.promises.rm(repo, { recursive: true, force: true });
+    await fs.promises.rm(repo, TEMP_DIR_REMOVE_OPTIONS);
   });
 
   it("reports structured status and each diff scope", async () => {
@@ -634,7 +640,7 @@ describe("agent Git utilities", () => {
         }),
       ).rejects.toThrow("Only regular files can be restored");
     } finally {
-      await fs.promises.rm(moduleRepo, { recursive: true, force: true });
+      await fs.promises.rm(moduleRepo, TEMP_DIR_REMOVE_OPTIONS);
     }
   });
 

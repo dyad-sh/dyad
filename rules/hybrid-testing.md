@@ -104,6 +104,10 @@ and force executable fixtures into the index with
 `git update-index --chmod=+x <path>` before asserting Git's `100755` tree mode;
 reserve `stat().mode` permission assertions for non-Windows runs.
 
+Windows can transiently return `EBUSY` while removing large temporary Git
+fixtures after the Git process exits. Use recursive `fs.rm` cleanup with bounded
+`maxRetries` and `retryDelay` instead of failing immediately on a short-lived lock.
+
 For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or

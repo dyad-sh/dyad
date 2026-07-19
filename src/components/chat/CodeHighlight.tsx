@@ -120,9 +120,7 @@ export const CodeHighlight = memo(
               type="button"
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
-              <span className="ml-1">
-                {copied ? t("copied") : t("copy")}
-              </span>
+              <span className="ml-1">{copied ? t("copied") : t("copy")}</span>
             </button>
           </div>
         )}

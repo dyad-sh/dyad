@@ -8,6 +8,7 @@ import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import type { GenerateImageResponse } from "@/ipc/types";
 import { getDefaultStore } from "jotai";
 import { imageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
+import { useTranslation } from "react-i18next";
 
 const GENERATING_TOAST_ID = "image-gen-progress";
 const SUCCESS_TOAST_ID = "image-gen-success";
@@ -51,6 +52,7 @@ export function ImageGeneratingToast({
   pendingCount: number;
   toastId: string | number;
 }) {
+  const { t } = useTranslation("home");
   return (
     <div className="relative overflow-visible bg-background border border-border rounded-xl shadow-lg min-w-[340px] max-w-[420px] p-3">
       <DismissButton toastId={toastId} />
@@ -59,8 +61,8 @@ export function ImageGeneratingToast({
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground">
             {pendingCount > 1
-              ? `Generating ${pendingCount} images…`
-              : "Generating image…"}
+              ? t("imageGeneration.generatingCount", { count: pendingCount })
+              : t("imageGeneration.generatingOne")}
           </p>
         </div>
       </div>
@@ -75,6 +77,7 @@ export function ImageSuccessToast({
   result: GenerateImageResponse;
   toastId: string | number;
 }) {
+  const { t } = useTranslation("home");
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const imageUrl = buildDyadMediaUrl(result.appPath, result.fileName);
 
@@ -88,9 +91,11 @@ export function ImageSuccessToast({
         <div className="flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">Image ready</p>
+            <p className="text-sm font-medium text-foreground">
+              {t("imageGeneration.imageReady")}
+            </p>
             <p className="text-xs text-muted-foreground truncate">
-              Saved to {result.appName}
+              {t("imageGeneration.savedTo")} {result.appName}
             </p>
           </div>
           <Button
@@ -102,7 +107,7 @@ export function ImageSuccessToast({
               setIsLightboxOpen(true);
             }}
           >
-            Open image
+            {t("imageGeneration.openImage")}
           </Button>
         </div>
       </div>
@@ -110,7 +115,7 @@ export function ImageSuccessToast({
         createPortal(
           <ImageLightbox
             imageUrl={imageUrl}
-            alt="Generated image"
+            alt={t("imageGeneration.generatedImage")}
             filePath={result.filePath}
             onClose={() => {
               setIsLightboxOpen(false);

@@ -4,8 +4,10 @@ import { CustomThemeDialog } from "@/components/CustomThemeDialog";
 import { Button } from "@/components/ui/button";
 import { Plus, Palette } from "lucide-react";
 import { LibraryCard } from "@/components/LibraryCard";
+import { useTranslation } from "react-i18next";
 
 export default function ThemesPage() {
+  const { t } = useTranslation(["home", "common"]);
   const { customThemes, isLoading } = useCustomThemes();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -15,22 +17,20 @@ export default function ThemesPage() {
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="flex items-center text-2xl font-bold sm:text-3xl">
             <Palette className="mr-2 h-7 w-7 sm:h-8 sm:w-8" />
-            Themes
+            {t("themes.title")}
           </h1>
           <Button
             className="w-full sm:w-auto"
             onClick={() => setCreateDialogOpen(true)}
           >
-            <Plus className="mr-2 h-4 w-4" /> New Theme
+            <Plus className="mr-2 h-4 w-4" /> {t("themes.new")}
           </Button>
         </div>
 
         {isLoading ? (
-          <div>Loading...</div>
+          <div>{t("common:loading")}</div>
         ) : customThemes.length === 0 ? (
-          <div className="text-muted-foreground">
-            No custom themes yet. Create one to get started.
-          </div>
+          <div className="text-muted-foreground">{t("themes.noCustom")}</div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {customThemes.map((theme) => (

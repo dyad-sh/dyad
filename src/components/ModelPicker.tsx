@@ -51,6 +51,8 @@ import {
 } from "@/lib/freeProModel";
 import { useRouterState } from "@tanstack/react-router";
 import { useChatMode } from "@/hooks/useChatMode";
+import { useTranslation } from "react-i18next";
+import { formatTime } from "@/i18n/format";
 
 const SCROLL_AREA_CLASS = "max-h-100 overflow-y-auto scrollbar-on-hover";
 
@@ -99,6 +101,7 @@ function tierFor(dollarSigns: number | undefined): Tier {
 }
 
 export function ModelPicker() {
+  const { t, i18n } = useTranslation(["settings", "common", "chat"]);
   const { settings, updateSettings, loading: settingsLoading } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
@@ -420,18 +423,21 @@ export function ModelPicker() {
         !dyadProEnabled &&
         isProviderSetup("openrouter"));
     const freeProResetTimeLabel = freeModelQuota.resetTime
-      ? new Intl.DateTimeFormat(undefined, {
+      ? formatTime(new Date(freeModelQuota.resetTime), i18n.language, {
           hour: "numeric",
           minute: "2-digit",
           timeZoneName: "short",
-        }).format(new Date(freeModelQuota.resetTime))
+        })
       : null;
     const freeProQuotaLabel =
       freeModelQuota.isLoading && !freeModelQuota.quotaStatus
-        ? "Loading"
+        ? t("ai.loading")
         : freeModelQuota.error
-          ? "Unavailable"
-          : `${freeModelQuota.messagesRemaining}/${freeModelQuota.messagesLimit} left`;
+          ? t("ai.unavailable")
+          : t("ai.quotaRemaining", {
+              remaining: freeModelQuota.messagesRemaining,
+              limit: freeModelQuota.messagesLimit,
+            });
 
     const item = (
       <DropdownMenuItem
@@ -440,8 +446,14 @@ export function ModelPicker() {
         aria-label={
           isLocked
             ? isFreeProviderRow
-              ? `${model.displayName} — requires an API key from ${getProviderDisplayName(providerId)}`
-              : `${model.displayName} — requires Dyad Pro or an API key from ${getProviderDisplayName(providerId)}`
+              ? t("ai.requiresApiKey", {
+                  model: model.displayName,
+                  provider: getProviderDisplayName(providerId),
+                })
+              : t("ai.requiresProOrApiKey", {
+                  model: model.displayName,
+                  provider: getProviderDisplayName(providerId),
+                })
             : undefined
         }
         disabled={isFreeProRow && freeModelQuota.isQuotaExceeded}
@@ -507,7 +519,7 @@ export function ModelPicker() {
                 )}
                 title={
                   freeProResetTimeLabel
-                    ? `Resets at ${freeProResetTimeLabel}`
+                    ? t("ai.resetsAt", { time: freeProResetTimeLabel })
                     : undefined
                 }
               >
@@ -524,13 +536,12 @@ export function ModelPicker() {
                         "bg-amber-500/15 text-amber-700 dark:text-amber-300",
                       )}
                     >
-                      Data sharing
+                      {t("ai.dataSharing")}
                     </span>
                   }
                 />
                 <TooltipContent side="right" align="start">
-                  Data may be shared with the AI provider and used for training
-                  models.
+                  {t("ai.dataSharingDescription")}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -577,21 +588,29 @@ export function ModelPicker() {
               <span>{providerDisplayName}</span>
               {provider?.type === "cloud" &&
                 !provider?.secondary &&
-                dyadProEnabled && <span className={PRO_PILL_CLASS}>Pro</span>}
+                dyadProEnabled && (
+                  <span className={PRO_PILL_CLASS}>{t("common:pro")}</span>
+                )}
               {provider?.type === "custom" && (
                 <span className={cn(PILL_CLASS, "bg-amber-500 text-white")}>
-                  Custom
+                  {t("common:custom")}
                 </span>
               )}
             </div>
             <span className="text-xs text-muted-foreground">
-              {visibleModels.length} models
+              {visibleModels.length === 1
+                ? t("chat:modelPicker.modelCount_one", {
+                    count: visibleModels.length,
+                  })
+                : t("chat:modelPicker.modelCount_other", {
+                    count: visibleModels.length,
+                  })}
             </span>
           </div>
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent className={cn("w-64", SCROLL_AREA_CLASS)}>
           <DropdownMenuLabel>
-            {providerDisplayName + " Models"}
+            {t("ai.providerModels", { provider: providerDisplayName })}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {visibleModels.map((model) =>
@@ -614,7 +633,7 @@ export function ModelPicker() {
             {modelDisplayName === "Auto" && (
               <>
                 <span className="text-xs text-muted-foreground/70">
-                  Model:
+                  {t("ai.modelLabel")}
                 </span>{" "}
               </>
             )}
@@ -627,7 +646,7 @@ export function ModelPicker() {
             <>
               <div className="px-2 py-3 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50">
                 <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-2">
-                  Upgrade from Dyad Pro trial to unlock more models.
+                  {t("ai.trialUpgradeDescription")}
                 </p>
                 <Button
                   variant="outline"
@@ -640,7 +659,7 @@ export function ModelPicker() {
                     setOpen(false);
                   }}
                 >
-                  Upgrade to Dyad Pro
+                  {t("ai.upgradeToDyadPro")}
                 </Button>
               </div>
               <DropdownMenuSeparator />
@@ -653,12 +672,12 @@ export function ModelPicker() {
                 }}
               >
                 <div className="flex justify-between items-center w-full gap-2">
-                  <span className="text-[13px]">Auto</span>
+                  <span className="text-[13px]">{t("ai.auto")}</span>
                   <span className="flex items-center gap-1.5">
                     <span
                       className={cn(PILL_CLASS, "bg-primary/10 text-primary")}
                     >
-                      Trial
+                      {t("ai.trial")}
                     </span>
                     <CheckIcon className="size-3.5 text-primary shrink-0" />
                   </span>
@@ -671,12 +690,12 @@ export function ModelPicker() {
           {!isTrial &&
             (loading ? (
               <div className="text-xs text-center py-2 text-muted-foreground">
-                Loading models...
+                {t("ai.loadingModels")}
               </div>
             ) : !modelsByProviders ||
               Object.keys(modelsByProviders).length === 0 ? (
               <div className="text-xs text-center py-2 text-muted-foreground">
-                No cloud models available
+                {t("ai.noCloudModels")}
               </div>
             ) : (
               /* Cloud models loaded */
@@ -725,14 +744,22 @@ export function ModelPicker() {
                         className="flex items-center gap-1.5 px-2 pt-1.5 pb-1"
                       >
                         <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground shrink-0">
-                          {tier.label}
+                          {tier.label === "Premium"
+                            ? t("ai.tierPremium")
+                            : tier.label === "Standard"
+                              ? t("ai.tierStandard")
+                              : t("ai.tierValue")}
                         </span>
                         <span
                           aria-hidden="true"
                           className="size-[3px] rounded-full bg-muted-foreground/50 shrink-0"
                         />
                         <span className="text-[11px] text-muted-foreground/85 truncate">
-                          {tier.caption}
+                          {tier.caption === "Strongest and most expensive"
+                            ? t("ai.tierPremiumDescription")
+                            : tier.caption === "Balanced quality and cost"
+                              ? t("ai.tierStandardDescription")
+                              : t("ai.tierValueDescription")}
                         </span>
                       </div>,
                     );
@@ -747,12 +774,14 @@ export function ModelPicker() {
                     <DropdownMenuSeparator />
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger className="w-full font-normal">
-                        <span>More models</span>
+                        <span>{t("ai.moreModels")}</span>
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent
                         className={cn("w-64", SCROLL_AREA_CLASS)}
                       >
-                        <DropdownMenuLabel>More models</DropdownMenuLabel>
+                        <DropdownMenuLabel>
+                          {t("ai.moreModels")}
+                        </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {groupedProviders.map(([providerId, models]) =>
                           renderProviderSubmenu(providerId, models),
@@ -771,7 +800,7 @@ export function ModelPicker() {
               {/* Local Models Parent SubMenu */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="w-full font-normal">
-                  <span>Local models</span>
+                  <span>{t("ai.localModels")}</span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent className="w-64">
                   {/* Ollama Models SubMenu */}
@@ -784,19 +813,25 @@ export function ModelPicker() {
                         <span>Ollama</span>
                         {ollamaLoading ? (
                           <span className="text-xs text-muted-foreground">
-                            Loading...
+                            {t("ai.loading")}
                           </span>
                         ) : ollamaError ? (
                           <span className="text-xs text-red-500">
-                            Error loading
+                            {t("ai.errorLoading")}
                           </span>
                         ) : !hasOllamaModels ? (
                           <span className="text-xs text-muted-foreground">
-                            None available
+                            {t("ai.noneAvailable")}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">
-                            {ollamaModels.length} models
+                            {ollamaModels.length === 1
+                              ? t("chat:modelPicker.modelCount_one", {
+                                  count: ollamaModels.length,
+                                })
+                              : t("chat:modelPicker.modelCount_other", {
+                                  count: ollamaModels.length,
+                                })}
                           </span>
                         )}
                       </div>
@@ -804,28 +839,34 @@ export function ModelPicker() {
                     <DropdownMenuSubContent
                       className={cn("w-64", SCROLL_AREA_CLASS)}
                     >
-                      <DropdownMenuLabel>Ollama Models</DropdownMenuLabel>
+                      <DropdownMenuLabel>
+                        {t("ai.providerModels", { provider: "Ollama" })}
+                      </DropdownMenuLabel>
                       <DropdownMenuSeparator />
 
                       {ollamaLoading && ollamaModels.length === 0 ? ( // Show loading only if no models are loaded yet
                         <div className="text-xs text-center py-2 text-muted-foreground">
-                          Loading models...
+                          {t("ai.loadingModels")}
                         </div>
                       ) : ollamaError ? (
                         <div className="px-2 py-1.5 text-sm text-red-600">
                           <div className="flex flex-col">
-                            <span>Error loading models</span>
+                            <span>{t("ai.errorLoadingModels")}</span>
                             <span className="text-xs text-muted-foreground">
-                              Is Ollama running?
+                              {t("ai.isProviderRunning", {
+                                provider: "Ollama",
+                              })}
                             </span>
                           </div>
                         </div>
                       ) : !hasOllamaModels ? (
                         <div className="px-2 py-1.5 text-sm">
                           <div className="flex flex-col">
-                            <span>No local models found</span>
+                            <span>{t("ai.noLocalModels")}</span>
                             <span className="text-xs text-muted-foreground">
-                              Ensure Ollama is running and models are pulled.
+                              {t("ai.ensureModelsLoaded", {
+                                provider: "Ollama",
+                              })}
                             </span>
                           </div>
                         </div>
@@ -881,19 +922,25 @@ export function ModelPicker() {
                         <span>LM Studio</span>
                         {lmStudioLoading ? (
                           <span className="text-xs text-muted-foreground">
-                            Loading...
+                            {t("ai.loading")}
                           </span>
                         ) : lmStudioError ? (
                           <span className="text-xs text-red-500">
-                            Error loading
+                            {t("ai.errorLoading")}
                           </span>
                         ) : !hasLMStudioModels ? (
                           <span className="text-xs text-muted-foreground">
-                            None available
+                            {t("ai.noneAvailable")}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">
-                            {lmStudioModels.length} models
+                            {lmStudioModels.length === 1
+                              ? t("chat:modelPicker.modelCount_one", {
+                                  count: lmStudioModels.length,
+                                })
+                              : t("chat:modelPicker.modelCount_other", {
+                                  count: lmStudioModels.length,
+                                })}
                           </span>
                         )}
                       </div>
@@ -901,17 +948,19 @@ export function ModelPicker() {
                     <DropdownMenuSubContent
                       className={cn("w-64", SCROLL_AREA_CLASS)}
                     >
-                      <DropdownMenuLabel>LM Studio Models</DropdownMenuLabel>
+                      <DropdownMenuLabel>
+                        {t("ai.providerModels", { provider: "LM Studio" })}
+                      </DropdownMenuLabel>
                       <DropdownMenuSeparator />
 
                       {lmStudioLoading && lmStudioModels.length === 0 ? ( // Show loading only if no models are loaded yet
                         <div className="text-xs text-center py-2 text-muted-foreground">
-                          Loading models...
+                          {t("ai.loadingModels")}
                         </div>
                       ) : lmStudioError ? (
                         <div className="px-2 py-1.5 text-sm text-red-600">
                           <div className="flex flex-col">
-                            <span>Error loading models</span>
+                            <span>{t("ai.errorLoadingModels")}</span>
                             <span className="text-xs text-muted-foreground">
                               {lmStudioError.message}{" "}
                               {/* Display specific error */}
@@ -921,9 +970,11 @@ export function ModelPicker() {
                       ) : !hasLMStudioModels ? (
                         <div className="px-2 py-1.5 text-sm">
                           <div className="flex flex-col">
-                            <span>No loaded models found</span>
+                            <span>{t("ai.noLoadedModels")}</span>
                             <span className="text-xs text-muted-foreground">
-                              Ensure LM Studio is running and models are loaded.
+                              {t("ai.ensureModelsLoaded", {
+                                provider: "LM Studio",
+                              })}
                             </span>
                           </div>
                         </div>
@@ -985,7 +1036,7 @@ export function ModelPicker() {
                 <div className="flex items-center gap-2 w-full">
                   <SparklesIcon className="size-3.5 text-indigo-600 dark:text-indigo-300 shrink-0" />
                   <span className="text-[13px] font-medium text-indigo-700 dark:text-indigo-300">
-                    Unlock all models with Dyad Pro
+                    {t("ai.unlockAllModels")}
                   </span>
                 </div>
               </DropdownMenuItem>
@@ -1013,32 +1064,38 @@ export function ModelPicker() {
             <>
               <DialogHeader>
                 <DialogTitle>
-                  Use {unlockTarget?.model.displayName} with your own{" "}
-                  {unlockTargetProviderName} API key
+                  {t("ai.useModelWithOwnKey", {
+                    model: unlockTarget?.model.displayName,
+                    provider: unlockTargetProviderName,
+                  })}
                 </DialogTitle>
                 <DialogDescription>
-                  Free models run through your own {unlockTargetProviderName}{" "}
-                  account. Add an API key in provider settings to use this
-                  model.
+                  {t("ai.freeModelOwnAccount", {
+                    provider: unlockTargetProviderName,
+                  })}
                 </DialogDescription>
               </DialogHeader>
               <Button
                 className="cursor-pointer w-full"
                 onClick={handleUnlockDialogOwnKeyClick}
               >
-                Add {unlockTargetProviderName} API key
+                {t("ai.addProviderApiKey", {
+                  provider: unlockTargetProviderName,
+                })}
               </Button>
             </>
           ) : (
             <>
               <DialogHeader>
                 <DialogTitle>
-                  Unlock {unlockTarget?.model.displayName} with Dyad Pro
+                  {t("ai.unlockModelWithPro", {
+                    model: unlockTarget?.model.displayName,
+                  })}
                 </DialogTitle>
                 <DialogDescription>
-                  Dyad Pro gives you {unlockTarget?.model.displayName} and every
-                  other leading AI model with one subscription — no API keys
-                  needed.
+                  {t("ai.proModelAccessDescription", {
+                    model: unlockTarget?.model.displayName,
+                  })}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-3">
@@ -1046,14 +1103,16 @@ export function ModelPicker() {
                   className="cursor-pointer w-full"
                   onClick={handleUnlockDialogUpgradeClick}
                 >
-                  Get Dyad Pro
+                  {t("ai.getDyadPro")}
                 </Button>
                 <button
                   type="button"
                   className="cursor-pointer text-sm text-primary hover:underline underline-offset-4"
                   onClick={handleUnlockDialogOwnKeyClick}
                 >
-                  Or use your own {unlockTargetProviderName} API key
+                  {t("ai.useOwnProviderApiKey", {
+                    provider: unlockTargetProviderName,
+                  })}
                 </button>
               </div>
             </>

@@ -58,10 +58,7 @@ const TYPE_LABELS: Record<string, { color: string }> = {
   },
 };
 
-function visualTypeLabel(
-  t: TFunction<"chat">,
-  type: string,
-) {
+function visualTypeLabel(t: TFunction<"chat">, type: string) {
   switch (type) {
     case "logo":
       return t("visualTypes.logo");

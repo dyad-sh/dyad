@@ -1,9 +1,11 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/hooks/useSettings";
+import { useTranslation } from "react-i18next";
 
 export function AutoApproveSqlSwitch() {
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
   const isEnabled = !!settings?.autoApproveNonSchemaSql;
 
   return (
@@ -11,7 +13,7 @@ export function AutoApproveSqlSwitch() {
       <div className="flex items-center space-x-2">
         <Switch
           id="enable-auto-approve-non-schema-sql"
-          aria-label="Skip consent for non-schema SQL"
+          aria-label={t("workflow.autoApproveNonSchemaSql")}
           checked={isEnabled}
           onCheckedChange={(checked) => {
             updateSettings({
@@ -20,12 +22,11 @@ export function AutoApproveSqlSwitch() {
           }}
         />
         <Label htmlFor="enable-auto-approve-non-schema-sql">
-          Skip consent for non-schema SQL
+          {t("workflow.autoApproveNonSchemaSql")}
         </Label>
       </div>
       <div className="text-sm text-gray-500 dark:text-gray-400">
-        In Agent mode, skip the consent prompt when running SQL that does not
-        change the database schema. Schema changes still require approval.
+        {t("workflow.autoApproveNonSchemaSqlDescription")}
       </div>
     </div>
   );

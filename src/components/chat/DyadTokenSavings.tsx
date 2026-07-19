@@ -32,7 +32,7 @@ export const DyadTokenSavings: React.FC<DyadTokenSavingsProps> = ({
       <TooltipContent side="top" align="center">
         <div className="text-left">
           {t("savedTokens", {
-            count: Math.round(tokensSaved).toLocaleString(),
+            value: Math.round(tokensSaved).toLocaleString(),
           })}
         </div>
       </TooltipContent>

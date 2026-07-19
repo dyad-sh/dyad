@@ -33,30 +33,37 @@ import { useIntegrationContinue } from "@/hooks/useIntegrationContinue";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
 
-const AppCommandsTitle = () => (
-  <div className="flex items-center gap-2">
-    <Terminal size={18} className="text-muted-foreground" />
-    <span className="text-lg font-semibold">App Commands</span>
-    <Tooltip>
-      <TooltipTrigger>
-        <HelpCircle size={16} className="text-muted-foreground cursor-help" />
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>
-          Configure custom install and start commands for your app.
-          <br />
-          Leave empty to use the default pnpm commands.
-        </p>
-      </TooltipContent>
-    </Tooltip>
-  </div>
-);
+const AppCommandsTitle = () => {
+  const { t } = useTranslation("home");
+
+  return (
+    <div className="flex items-center gap-2">
+      <Terminal size={18} className="text-muted-foreground" />
+      <span className="text-lg font-semibold">
+        {t("preview.configurePanel.appCommands")}
+      </span>
+      <Tooltip>
+        <TooltipTrigger>
+          <HelpCircle size={16} className="text-muted-foreground cursor-help" />
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>
+            {t("preview.configurePanel.appCommandsDescription")}
+            <br />
+            {t("preview.configurePanel.appCommandsDefaultDescription")}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+};
 
 const AppCommandsSection = ({
   selectedAppId,
 }: {
   selectedAppId: number | null;
 }) => {
+  const { t } = useTranslation("home");
   const queryClient = useQueryClient();
   const [installCommand, setInstallCommand] = useState("");
   const [startCommand, setStartCommand] = useState("");
@@ -100,11 +107,11 @@ const AppCommandsSection = ({
       queryClient.invalidateQueries({
         queryKey: queryKeys.apps.detail({ appId: selectedAppId }),
       });
-      showSuccess("App commands saved");
+      showSuccess(t("preview.configurePanel.commandsSaved"));
       setIsEditing(false);
     },
     onError: (error) => {
-      showError(`Failed to save app commands: ${error}`);
+      showError(t("preview.configurePanel.failedSaveCommands", { error }));
     },
   });
 
@@ -144,7 +151,7 @@ const AppCommandsSection = ({
         <CardContent>
           <div className="text-center py-4">
             <div className="text-sm text-muted-foreground">
-              Loading app commands...
+              {t("preview.configurePanel.loadingCommands")}
             </div>
           </div>
         </CardContent>
@@ -168,29 +175,37 @@ const AppCommandsSection = ({
         {isEditing ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="install-command">Install Command</Label>
+              <Label htmlFor="install-command">
+                {t("preview.configurePanel.installCommand")}
+              </Label>
               <Input
                 id="install-command"
                 data-testid="install-command-input"
-                placeholder="pnpm install"
+                placeholder={t(
+                  "preview.configurePanel.installCommandPlaceholder",
+                )}
                 value={installCommand}
                 onChange={(e) => setInstallCommand(e.target.value)}
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="start-command">Start Command</Label>
+              <Label htmlFor="start-command">
+                {t("preview.configurePanel.startCommand")}
+              </Label>
               <Input
                 id="start-command"
                 data-testid="start-command-input"
-                placeholder="pnpm dev"
+                placeholder={t(
+                  "preview.configurePanel.startCommandPlaceholder",
+                )}
                 value={startCommand}
                 onChange={(e) => setStartCommand(e.target.value)}
               />
             </div>
             {!commandsValid && (
               <p className="text-sm text-red-500">
-                Both commands are required when customizing.
+                {t("preview.configurePanel.commandsRequired")}
               </p>
             )}
             <div className="flex gap-2">
@@ -201,7 +216,9 @@ const AppCommandsSection = ({
                 disabled={updateCommandsMutation.isPending || !commandsValid}
               >
                 <Save size={14} />
-                {updateCommandsMutation.isPending ? "Saving..." : "Save"}
+                {updateCommandsMutation.isPending
+                  ? t("preview.configurePanel.saving")
+                  : t("preview.configurePanel.save")}
               </Button>
               <Button
                 data-testid="cancel-edit-app-commands"
@@ -210,7 +227,7 @@ const AppCommandsSection = ({
                 size="sm"
               >
                 <X size={14} />
-                Cancel
+                {t("preview.configurePanel.cancel")}
               </Button>
             </div>
           </div>
@@ -220,7 +237,7 @@ const AppCommandsSection = ({
               <div className="space-y-2">
                 <div>
                   <span className="text-xs text-muted-foreground">
-                    Install Command
+                    {t("preview.configurePanel.installCommand")}
                   </span>
                   <p
                     data-testid="current-install-command"
@@ -231,7 +248,7 @@ const AppCommandsSection = ({
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground">
-                    Start Command
+                    {t("preview.configurePanel.startCommand")}
                   </span>
                   <p
                     data-testid="current-start-command"
@@ -250,7 +267,7 @@ const AppCommandsSection = ({
                 size="sm"
               >
                 <Edit2 size={14} />
-                Edit
+                {t("preview.configurePanel.edit")}
               </Button>
               <Button
                 data-testid="clear-app-commands"
@@ -260,14 +277,14 @@ const AppCommandsSection = ({
                 disabled={updateCommandsMutation.isPending}
               >
                 <Trash2 size={14} />
-                Clear
+                {t("preview.configurePanel.clear")}
               </Button>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Using default install and start commands
+              {t("preview.configurePanel.usingDefaults")}
             </p>
             <Button
               data-testid="configure-app-commands"
@@ -276,7 +293,7 @@ const AppCommandsSection = ({
               className="w-full"
             >
               <Plus size={14} />
-              Configure Custom Commands
+              {t("preview.configurePanel.configureCustomCommands")}
             </Button>
           </div>
         )}
@@ -285,24 +302,28 @@ const AppCommandsSection = ({
   );
 };
 
-const EnvironmentVariablesTitle = () => (
-  <div className="flex items-center gap-2">
-    <span className="text-lg font-semibold">Environment Variables</span>
-    <span className="text-sm text-muted-foreground font-normal">Local</span>
-    <Tooltip>
-      <TooltipTrigger>
-        <HelpCircle size={16} className="text-muted-foreground cursor-help" />
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>
-          To modify environment variables for Supabase or production,
-          <br />
-          access your hosting provider's console and update them there.
-        </p>
-      </TooltipContent>
-    </Tooltip>
-  </div>
-);
+const EnvironmentVariablesTitle = () => {
+  const { t } = useTranslation("home");
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-lg font-semibold">
+        {t("preview.configurePanel.environmentVariables")}
+      </span>
+      <span className="text-sm text-muted-foreground font-normal">
+        {t("preview.configurePanel.local")}
+      </span>
+      <Tooltip>
+        <TooltipTrigger>
+          <HelpCircle size={16} className="text-muted-foreground cursor-help" />
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{t("preview.configurePanel.environmentVariablesDescription")}</p>
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+};
 
 const IntegrationSection = () => {
   const { t } = useTranslation("home");
@@ -394,6 +415,7 @@ const IntegrationSection = () => {
 };
 
 export const ConfigurePanel = () => {
+  const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const queryClient = useQueryClient();
 
@@ -432,22 +454,22 @@ export const ConfigurePanel = () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId: selectedAppId }),
       });
-      showSuccess("Environment variables saved");
+      showSuccess(t("preview.configurePanel.variablesSaved"));
     },
     onError: (error) => {
-      showError(`Failed to save environment variables: ${error}`);
+      showError(t("preview.configurePanel.failedSaveVariables", { error }));
     },
   });
 
   const handleAdd = useCallback(() => {
     if (!newKey.trim() || !newValue.trim()) {
-      showError("Both key and value are required");
+      showError(t("preview.configurePanel.keyAndValueRequired"));
       return;
     }
 
     // Check for duplicate keys
     if (envVars.some((envVar) => envVar.key === newKey.trim())) {
-      showError("Environment variable with this key already exists");
+      showError(t("preview.configurePanel.keyAlreadyExists"));
       return;
     }
 
@@ -459,7 +481,7 @@ export const ConfigurePanel = () => {
     setNewKey("");
     setNewValue("");
     setIsAddingNew(false);
-  }, [newKey, newValue, envVars, saveEnvVarsMutation]);
+  }, [newKey, newValue, envVars, saveEnvVarsMutation, t]);
 
   const handleEdit = useCallback((envVar: { key: string; value: string }) => {
     setEditingKey(envVar.key);
@@ -469,7 +491,7 @@ export const ConfigurePanel = () => {
 
   const handleSaveEdit = useCallback(() => {
     if (!editingKeyValue.trim() || !editingValue.trim()) {
-      showError("Both key and value are required");
+      showError(t("preview.configurePanel.keyAndValueRequired"));
       return;
     }
 
@@ -480,7 +502,7 @@ export const ConfigurePanel = () => {
           envVar.key === editingKeyValue.trim() && envVar.key !== editingKey,
       )
     ) {
-      showError("Environment variable with this key already exists");
+      showError(t("preview.configurePanel.keyAlreadyExists"));
       return;
     }
 
@@ -493,7 +515,14 @@ export const ConfigurePanel = () => {
     setEditingKey(null);
     setEditingKeyValue("");
     setEditingValue("");
-  }, [editingKey, editingKeyValue, editingValue, envVars, saveEnvVarsMutation]);
+  }, [
+    editingKey,
+    editingKeyValue,
+    editingValue,
+    envVars,
+    saveEnvVarsMutation,
+    t,
+  ]);
 
   const handleCancelEdit = useCallback(() => {
     setEditingKey(null);
@@ -519,19 +548,21 @@ export const ConfigurePanel = () => {
   const envVarsCardContent = isLoading ? (
     <div className="text-center py-8">
       <div className="text-sm text-muted-foreground">
-        Loading environment variables...
+        {t("preview.configurePanel.loadingVariables")}
       </div>
     </div>
   ) : error ? (
     <div className="text-center py-8">
       <div className="text-sm text-red-500">
-        Error loading environment variables: {error.message}
+        {t("preview.configurePanel.errorLoadingVariables", {
+          error: error.message,
+        })}
       </div>
     </div>
   ) : !selectedAppId ? (
     <div className="text-center py-8">
       <div className="text-sm text-muted-foreground">
-        Select an app to manage environment variables
+        {t("preview.configurePanel.selectAppToManageVariables")}
       </div>
     </div>
   ) : null;
@@ -570,20 +601,24 @@ export const ConfigurePanel = () => {
           {isAddingNew ? (
             <div className="space-y-3 p-3 border rounded-md bg-muted/50">
               <div className="space-y-2">
-                <Label htmlFor="new-key">Key</Label>
+                <Label htmlFor="new-key">
+                  {t("preview.configurePanel.key")}
+                </Label>
                 <Input
                   id="new-key"
-                  placeholder="e.g., API_URL"
+                  placeholder={t("preview.configurePanel.keyPlaceholder")}
                   value={newKey}
                   onChange={(e) => setNewKey(e.target.value)}
                   autoFocus
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-value">Value</Label>
+                <Label htmlFor="new-value">
+                  {t("preview.configurePanel.value")}
+                </Label>
                 <Input
                   id="new-value"
-                  placeholder="e.g., https://api.example.com"
+                  placeholder={t("preview.configurePanel.valuePlaceholder")}
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
                 />
@@ -595,11 +630,13 @@ export const ConfigurePanel = () => {
                   disabled={saveEnvVarsMutation.isPending}
                 >
                   <Save size={14} />
-                  {saveEnvVarsMutation.isPending ? "Saving..." : "Save"}
+                  {saveEnvVarsMutation.isPending
+                    ? t("preview.configurePanel.saving")
+                    : t("preview.configurePanel.save")}
                 </Button>
                 <Button onClick={handleCancelAdd} variant="outline" size="sm">
                   <X size={14} />
-                  Cancel
+                  {t("preview.configurePanel.cancel")}
                 </Button>
               </div>
             </div>
@@ -610,7 +647,7 @@ export const ConfigurePanel = () => {
               className="w-full"
             >
               <Plus size={14} />
-              Add Environment Variable
+              {t("preview.configurePanel.addEnvironmentVariable")}
             </Button>
           )}
 
@@ -618,7 +655,7 @@ export const ConfigurePanel = () => {
           <div className="space-y-2">
             {envVars.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
-                No environment variables configured
+                {t("preview.configurePanel.noEnvironmentVariables")}
               </p>
             ) : (
               envVars.map((envVar) => (
@@ -632,13 +669,13 @@ export const ConfigurePanel = () => {
                         <Input
                           value={editingKeyValue}
                           onChange={(e) => setEditingKeyValue(e.target.value)}
-                          placeholder="Key"
+                          placeholder={t("preview.configurePanel.key")}
                           className="h-8"
                         />
                         <Input
                           value={editingValue}
                           onChange={(e) => setEditingValue(e.target.value)}
-                          placeholder="Value"
+                          placeholder={t("preview.configurePanel.value")}
                           className="h-8"
                         />
                       </div>
@@ -714,7 +751,7 @@ export const ConfigurePanel = () => {
                 }
               }}
             >
-              <span>More app settings</span>
+              <span>{t("preview.configurePanel.moreAppSettings")}</span>
               <ArrowRight size={16} />
             </Button>
           </div>

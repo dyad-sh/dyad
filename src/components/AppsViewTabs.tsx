@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export type AppsView = "apps" | "collections";
 
@@ -7,16 +8,17 @@ interface AppsViewTabsProps {
   onChange: (value: AppsView) => void;
 }
 
-const TABS: { key: AppsView; label: string }[] = [
-  { key: "apps", label: "Apps" },
-  { key: "collections", label: "Collections" },
+const TABS: { key: AppsView; labelKey: "apps" | "collections" }[] = [
+  { key: "apps", labelKey: "apps" },
+  { key: "collections", labelKey: "collections" },
 ];
 
 export function AppsViewTabs({ value, onChange }: AppsViewTabsProps) {
+  const { t } = useTranslation("common");
   return (
     <div
       role="tablist"
-      aria-label="Apps view"
+      aria-label={t("appsView")}
       className="flex items-center gap-2"
       data-testid="apps-view-tabs"
     >
@@ -38,7 +40,7 @@ export function AppsViewTabs({ value, onChange }: AppsViewTabsProps) {
                 : "bg-(--background-lighter) text-foreground border-border hover:border-primary/40",
             )}
           >
-            {tab.label}
+            {t(tab.labelKey)}
           </button>
         );
       })}

@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { McpServer } from "@/ipc/types";
 import type { ConnectFeedback } from "./usePluginConnect";
+import { useTranslation } from "react-i18next";
 
 export function PluginSummaryCard({
   server: s,
@@ -35,6 +36,8 @@ export function PluginSummaryCard({
   onToggleEnabled: (serverId: number, currentEnabled: boolean) => void;
   onOpen: (serverId: number) => void;
 }) {
+  const { t } = useTranslation("home");
+
   return (
     <Card
       data-testid="plugin-card"
@@ -44,7 +47,7 @@ export function PluginSummaryCard({
           page while Connect and the switch stay independent controls. */}
       <button
         type="button"
-        aria-label={`Open ${s.name}`}
+        aria-label={`${t("plugins.open")} ${s.name}`}
         className="absolute inset-0 cursor-pointer rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => onOpen(s.id)}
       />
@@ -54,8 +57,8 @@ export function PluginSummaryCard({
           {feedback ? (
             <span className="text-xs font-medium px-2 py-1 rounded-full text-red-600 bg-red-50 border border-red-500/50 dark:bg-red-900/30 dark:text-red-300 shrink-0">
               {feedback.kind === "unauthorized"
-                ? "Needs auth"
-                : "Connection error"}
+                ? t("plugins.needsAuth")
+                : t("plugins.connectionError")}
             </span>
           ) : s.oauthEnabled ? (
             <span
@@ -65,7 +68,10 @@ export function PluginSummaryCard({
                   : "text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50"
               }`}
             >
-              OAuth: {s.oauthConnected ? "connected" : "not connected"}
+              {t("plugins.oauthLabel")}:{" "}
+              {s.oauthConnected
+                ? t("plugins.connected")
+                : t("plugins.notConnected")}
             </span>
           ) : null}
         </CardTitle>
@@ -78,11 +84,14 @@ export function PluginSummaryCard({
           <span className="text-sm text-muted-foreground">
             {toolCount !== null
               ? enabledToolCount !== null && enabledToolCount < toolCount
-                ? `${enabledToolCount} of ${toolCount} tools enabled`
-                : `${toolCount} tool${toolCount === 1 ? "" : "s"}`
+                ? t("plugins.toolsEnabled", {
+                    enabled: enabledToolCount,
+                    total: toolCount,
+                  })
+                : t("plugins.toolCount", { count: toolCount })
               : discoveryFailed
-                ? "tools unavailable"
-                : "— tools"}
+                ? t("plugins.toolsUnavailable")
+                : t("plugins.statsToolsPending")}
           </span>
           <div className="flex items-center gap-2">
             <div className="relative z-10 flex items-center gap-2">
@@ -92,18 +101,20 @@ export function PluginSummaryCard({
                   onClick={() => onConnect(s.id)}
                   disabled={connectDisabled}
                 >
-                  {isConnecting ? "Connecting…" : "Connect"}
+                  {isConnecting
+                    ? t("plugins.connecting")
+                    : t("plugins.connect")}
                 </Button>
               )}
               <Label
                 htmlFor={`plugin-enabled-${s.id}`}
                 className="text-xs text-muted-foreground font-normal"
               >
-                Enabled
+                {t("plugins.enabled")}
               </Label>
               <Switch
                 id={`plugin-enabled-${s.id}`}
-                aria-label={`Enabled toggle for ${s.name}`}
+                aria-label={t("plugins.enabledToggle", { name: s.name })}
                 checked={!!s.enabled}
                 onCheckedChange={() => onToggleEnabled(s.id, !!s.enabled)}
               />

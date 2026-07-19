@@ -16,6 +16,7 @@ import { useAppCollections } from "@/hooks/useAppCollections";
 import { buildCollectionNameByAppId } from "@/lib/appCollections";
 import type { ListedApp } from "@/ipc/types/app";
 import type { AppCollection } from "@/hooks/useAppCollections";
+import { useTranslation } from "react-i18next";
 
 interface AddAppsToCollectionDialogProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function AddAppsToCollectionDialog({
   allApps,
   collections,
 }: AddAppsToCollectionDialogProps) {
+  const { t } = useTranslation(["home", "common"]);
   const { assignApps } = useAppCollections();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,7 +77,10 @@ export function AddAppsToCollectionDialog({
         appIds: Array.from(selected),
       });
       showSuccess(
-        `Added ${selected.size} app${selected.size === 1 ? "" : "s"} to "${collection.name}"`,
+        t("collections.appsAdded", {
+          count: selected.size,
+          collectionName: collection.name,
+        }),
       );
       onOpenChange(false);
     } catch (error) {
@@ -94,16 +99,17 @@ export function AddAppsToCollectionDialog({
     >
       <DialogContent className="max-w-md p-4">
         <DialogHeader className="pb-2">
-          <DialogTitle>Add apps to "{collection.name}"</DialogTitle>
+          <DialogTitle>
+            {t("collections.addAppsTitle", { collectionName: collection.name })}
+          </DialogTitle>
           <DialogDescription className="text-xs">
-            Select apps to add. Apps already in another collection will be
-            moved.
+            {t("collections.addAppsDescription")}
           </DialogDescription>
         </DialogHeader>
 
         <Input
           type="text"
-          placeholder="Search apps..."
+          placeholder={t("common:searchAppsPlaceholder")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="bg-(--background-lighter)"
@@ -117,8 +123,8 @@ export function AddAppsToCollectionDialog({
           {availableApps.length === 0 ? (
             <div className="p-3 text-center text-xs text-muted-foreground">
               {allApps.length === collection.appIds.length
-                ? "All apps are already in this collection."
-                : "No apps match your search."}
+                ? t("collections.allAppsInCollection")
+                : t("collections.noAppsMatchSearch")}
             </div>
           ) : (
             availableApps.map((app) => {
@@ -137,7 +143,9 @@ export function AddAppsToCollectionDialog({
                   <span className="flex-1 truncate text-sm">{app.name}</span>
                   {inOther && (
                     <span className="text-[10px] text-muted-foreground italic shrink-0">
-                      in "{inOther}"
+                      {t("collections.inCollection", {
+                        collectionName: inOther,
+                      })}
                     </span>
                   )}
                 </label>
@@ -153,7 +161,7 @@ export function AddAppsToCollectionDialog({
             disabled={isSubmitting}
             size="sm"
           >
-            Cancel
+            {t("common:cancel")}
           </Button>
           <Button
             onClick={handleConfirm}
@@ -165,10 +173,10 @@ export function AddAppsToCollectionDialog({
             {isSubmitting ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Adding...
+                {t("common:adding")}
               </>
             ) : (
-              `Add ${selected.size} app${selected.size === 1 ? "" : "s"}`
+              t("collections.addAppsCount", { count: selected.size })
             )}
           </Button>
         </DialogFooter>

@@ -1,23 +1,40 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { BookOpen, Palette, FileText, Image } from "lucide-react";
 
 type LibrarySection = {
   id: string;
-  label: string;
+  labelKey: "all" | "themes" | "prompts" | "media";
   to: string;
   icon: React.ComponentType<{ className?: string }>;
 };
 
 const LIBRARY_SECTIONS: LibrarySection[] = [
-  { id: "all", label: "All", to: "/library", icon: BookOpen },
-  { id: "themes", label: "Themes", to: "/library/themes", icon: Palette },
-  { id: "prompts", label: "Prompts", to: "/library/prompts", icon: FileText },
-  { id: "media", label: "Media", to: "/library/media", icon: Image },
+  { id: "all", labelKey: "all", to: "/library", icon: BookOpen },
+  {
+    id: "themes",
+    labelKey: "themes",
+    to: "/library/themes",
+    icon: Palette,
+  },
+  {
+    id: "prompts",
+    labelKey: "prompts",
+    to: "/library/prompts",
+    icon: FileText,
+  },
+  {
+    id: "media",
+    labelKey: "media",
+    to: "/library/media",
+    icon: Image,
+  },
 ];
 
 export function LibraryList({ show }: { show: boolean }) {
+  const { t } = useTranslation("home");
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
 
@@ -28,7 +45,9 @@ export function LibraryList({ show }: { show: boolean }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-shrink-0 p-4">
-        <h2 className="text-lg font-semibold tracking-tight">Library</h2>
+        <h2 className="text-lg font-semibold tracking-tight">
+          {t("library.title")}
+        </h2>
       </div>
       <ScrollArea className="flex-grow">
         <div className="space-y-1 p-4 pt-0">
@@ -54,7 +73,7 @@ export function LibraryList({ show }: { show: boolean }) {
                 )}
               >
                 <section.icon className="h-4 w-4" />
-                {section.label}
+                {t(`library.${section.labelKey}`)}
               </Link>
             );
           })}

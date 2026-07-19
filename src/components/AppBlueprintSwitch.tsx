@@ -11,7 +11,7 @@ export function AppBlueprintSwitch() {
     <div className="flex items-center space-x-2">
       <Switch
         id="app-blueprint"
-        aria-label="App Blueprint"
+        aria-label={t("workflow.appBlueprint")}
         checked={enabled}
         onCheckedChange={() => {
           updateSettings({ enableAppBlueprint: !enabled });

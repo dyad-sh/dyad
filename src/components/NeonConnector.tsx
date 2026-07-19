@@ -40,6 +40,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { isNeonSupportedFramework } from "@/lib/framework_constants";
 import { getErrorMessage } from "@/lib/errors";
+import { formatDateOnly } from "@/i18n/format";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,7 +54,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export function NeonConnector({ appId }: { appId: number }) {
-  const { t } = useTranslation("home");
+  const { t, i18n } = useTranslation("home");
   const { settings, refreshSettings, updateSettings } = useSettings();
   const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
@@ -79,9 +80,9 @@ export function NeonConnector({ appId }: { appId: number }) {
     useState(false);
   const oauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formatToastError = (error: unknown) => getErrorMessage(error);
-  const projectDateFormatter = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  });
+  const projectDateFormatter = {
+    format: (date: Date) => formatDateOnly(date, i18n.language),
+  };
 
   const {
     isConnected,
@@ -512,7 +513,11 @@ export function NeonConnector({ appId }: { appId: number }) {
                               variant={getBranchBadgeVariant(branch.type)}
                               className="text-xs"
                             >
-                              {t(`integrations.neon.${branch.type}`)}
+                              {branch.type === "production"
+                                ? t("integrations.neon.production")
+                                : branch.type === "development"
+                                  ? t("integrations.neon.development")
+                                  : t("integrations.neon.preview")}
                             </Badge>
                           </span>
                         </SelectItem>
@@ -733,7 +738,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                     setCreateProjectError(null);
                   }
                 }}
-                placeholder="my-app-db"
+                placeholder={t("integrations.neon.projectNamePlaceholder")}
                 autoFocus
                 disabled={isCreating}
                 onKeyDown={(e) => {
@@ -846,7 +851,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           disabled={isOpeningOauth}
           className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           data-testid="connect-neon-button"
-          aria-label={t("integrations.neon.connectTo") + " Neon"}
+          aria-label={t("integrations.neon.connectToNeon")}
         >
           {isOpeningOauth ? (
             <>

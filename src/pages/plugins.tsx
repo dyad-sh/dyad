@@ -4,8 +4,10 @@ import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { PluginsList } from "@/components/plugins/PluginsList";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
+import { useTranslation } from "react-i18next";
 
 const PluginsPage: React.FC = () => {
+  const { t } = useTranslation("home");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const { lastDeepLink } = useDeepLink();
 
@@ -24,15 +26,15 @@ const PluginsPage: React.FC = () => {
         <header className="mb-8 flex items-start justify-between gap-4">
           <div className="text-left">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Plugins
+              {t("plugins.title")}
             </h1>
             <p className="text-md text-gray-600 dark:text-gray-400">
-              Connect plugins (MCP servers) to give the AI new tools.
+              {t("plugins.description")}
             </p>
           </div>
           <Button onClick={() => setIsAddDialogOpen(true)}>
             <Plus size={16} />
-            Add Plugin
+            {t("plugins.add")}
           </Button>
         </header>
         <PluginsList

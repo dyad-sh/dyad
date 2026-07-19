@@ -3,6 +3,7 @@ import { Upload } from "lucide-react";
 import { useState } from "react";
 import { ImportAppDialog } from "./ImportAppDialog";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export function ImportAppButton({
   className,
@@ -13,6 +14,7 @@ export function ImportAppButton({
   variant?: React.ComponentProps<typeof Button>["variant"];
   size?: React.ComponentProps<typeof Button>["size"];
 }) {
+  const { t } = useTranslation("home");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   return (
@@ -24,7 +26,7 @@ export function ImportAppButton({
           onClick={() => setIsDialogOpen(true)}
         >
           <Upload className="mr-2 h-4 w-4" />
-          Import App
+          {t("importApp")}
         </Button>
       </div>
       <ImportAppDialog

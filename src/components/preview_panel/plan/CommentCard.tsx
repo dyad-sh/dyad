@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSetAtom } from "jotai";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import {
   planAnnotationsAtom,
   removePlanAnnotation,
@@ -18,6 +19,8 @@ export const CommentCard: React.FC<CommentCardProps> = ({
   annotation,
   chatId,
 }) => {
+  const { t } = useTranslation("home");
+  const { t: tc } = useTranslation("common");
   const setAnnotations = useSetAtom(planAnnotationsAtom);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(annotation.comment);
@@ -55,7 +58,7 @@ export const CommentCard: React.FC<CommentCardProps> = ({
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            aria-label="Edit comment"
+            aria-label={t("preview.planComments.edit")}
             className="p-1 rounded hover:bg-muted"
           >
             <Pencil size={12} className="text-muted-foreground" />
@@ -63,7 +66,7 @@ export const CommentCard: React.FC<CommentCardProps> = ({
           <button
             type="button"
             onClick={handleDelete}
-            aria-label="Delete comment"
+            aria-label={t("preview.planComments.delete")}
             className="p-1 rounded hover:bg-muted"
           >
             <Trash2 size={12} className="text-muted-foreground" />
@@ -84,14 +87,14 @@ export const CommentCard: React.FC<CommentCardProps> = ({
           />
           <div className="flex gap-1 justify-end">
             <Button variant="ghost" size="sm" onClick={handleCancel}>
-              Cancel
+              {t("preview.planComments.cancel")}
             </Button>
             <Button
               size="sm"
               onClick={handleSave}
               disabled={!editedText.trim()}
             >
-              Save
+              {tc("save")}
             </Button>
           </div>
         </div>

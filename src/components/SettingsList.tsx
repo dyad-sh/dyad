@@ -7,23 +7,23 @@ import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
 import Fuse from "fuse.js";
 import { SearchIcon, XIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type SettingsSection = {
   id: string;
-  label: string;
 };
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
-  { id: SECTION_IDS.general, label: "General" },
-  { id: SECTION_IDS.workflow, label: "Workflow" },
-  { id: SECTION_IDS.ai, label: "AI" },
-  { id: SECTION_IDS.providers, label: "Model Providers" },
-  { id: SECTION_IDS.telemetry, label: "Telemetry" },
-  { id: SECTION_IDS.integrations, label: "Integrations" },
-  { id: SECTION_IDS.agentPermissions, label: "Agent Permissions" },
-  { id: SECTION_IDS.advanced, label: "Advanced" },
-  { id: SECTION_IDS.experiments, label: "Experiments" },
-  { id: SECTION_IDS.dangerZone, label: "Danger Zone" },
+  { id: SECTION_IDS.general },
+  { id: SECTION_IDS.workflow },
+  { id: SECTION_IDS.ai },
+  { id: SECTION_IDS.providers },
+  { id: SECTION_IDS.telemetry },
+  { id: SECTION_IDS.integrations },
+  { id: SECTION_IDS.agentPermissions },
+  { id: SECTION_IDS.advanced },
+  { id: SECTION_IDS.experiments },
+  { id: SECTION_IDS.dangerZone },
 ];
 
 const fuse = new Fuse(SETTINGS_SEARCH_INDEX, {
@@ -39,6 +39,7 @@ const fuse = new Fuse(SETTINGS_SEARCH_INDEX, {
 });
 
 export function SettingsList({ show }: { show: boolean }) {
+  const { t } = useTranslation("settings");
   const [activeSection, setActiveSection] = useAtom(activeSettingsSectionAtom);
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +59,33 @@ export function SettingsList({ show }: { show: boolean }) {
     if (!searchQuery.trim()) return null;
     return fuse.search(searchQuery.trim());
   }, [searchQuery]);
+
+  const getSectionLabel = (id: string) => {
+    switch (id) {
+      case SECTION_IDS.general:
+        return t("sections.general");
+      case SECTION_IDS.workflow:
+        return t("sections.workflow");
+      case SECTION_IDS.ai:
+        return t("sections.ai");
+      case SECTION_IDS.providers:
+        return t("sections.providers");
+      case SECTION_IDS.telemetry:
+        return t("sections.telemetry");
+      case SECTION_IDS.integrations:
+        return t("sections.integrations");
+      case SECTION_IDS.agentPermissions:
+        return t("sections.agentPermissions");
+      case SECTION_IDS.advanced:
+        return t("sections.advanced");
+      case SECTION_IDS.experiments:
+        return t("sections.experiments");
+      case SECTION_IDS.dangerZone:
+        return t("sections.dangerZone");
+      default:
+        return id;
+    }
+  };
 
   useEffect(() => {
     if (!show) return;
@@ -93,7 +121,7 @@ export function SettingsList({ show }: { show: boolean }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-shrink-0 p-4">
-        <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
+        <h2 className="text-lg font-semibold tracking-tight">{t("title")}</h2>
       </div>
       <div className="flex-shrink-0 px-4 pb-2">
         <div className="relative">
@@ -101,8 +129,8 @@ export function SettingsList({ show }: { show: boolean }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search settings..."
-            aria-label="Search settings"
+            placeholder={t("search.placeholder")}
+            aria-label={t("search.ariaLabel")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-md border border-input bg-transparent pl-8 pr-8 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -114,7 +142,7 @@ export function SettingsList({ show }: { show: boolean }) {
                 inputRef.current?.focus();
               }}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
+              aria-label={t("search.clear")}
             >
               <XIcon className="h-3.5 w-3.5" />
             </button>
@@ -139,13 +167,13 @@ export function SettingsList({ show }: { show: boolean }) {
                 >
                   <div className="font-medium">{result.item.label}</div>
                   <div className="text-xs text-muted-foreground">
-                    {result.item.sectionLabel}
+                    {getSectionLabel(result.item.sectionId)}
                   </div>
                 </button>
               ))
             ) : (
               <div className="px-3 py-4 text-sm text-muted-foreground text-center">
-                No settings found
+                {t("search.noResults")}
               </div>
             )
           ) : (
@@ -160,7 +188,7 @@ export function SettingsList({ show }: { show: boolean }) {
                     : "hover:bg-sidebar-accent",
                 )}
               >
-                {section.label}
+                {getSectionLabel(section.id)}
               </button>
             ))
           )}

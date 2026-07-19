@@ -52,9 +52,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
                 type="button"
                 onClick={() => setShowSummary(!showSummary)}
                 className="text-primary hover:text-primary/80 transition-colors"
-                aria-label={t(
-                  showSummary ? "hideSummary" : "showSummary",
-                )}
+                aria-label={t(showSummary ? "hideSummary" : "showSummary")}
               >
                 {showSummary ? (
                   <ChevronUp size={16} />

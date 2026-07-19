@@ -13,6 +13,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
+import { formatDate, formatTime } from "@/i18n/format";
 
 interface ConsoleEntryProps {
   type: "server" | "client" | "edge-function" | "network-requests";
@@ -25,9 +26,14 @@ interface ConsoleEntryProps {
   onToggleExpand?: () => void;
 }
 
-const formatTimestamp = (timestamp: number) => {
+const formatTimestamp = (timestamp: number, locale: string) => {
   const date = new Date(timestamp);
-  return date.toLocaleTimeString("en-US", { hour12: false });
+  return formatTime(date, locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 };
 
 const MAX_MESSAGE_LENGTH = 300;
@@ -43,7 +49,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
     isExpanded = false,
     onToggleExpand,
   } = props;
-  const { t } = useTranslation(["home", "common"]);
+  const { t, i18n } = useTranslation(["home", "common"]);
   const setChatInput = useSetAtom(chatInputValueAtom);
 
   const isTruncated = message.length > MAX_MESSAGE_LENGTH;
@@ -53,9 +59,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
       : message;
 
   const handleSendToChat = () => {
-    const time = new Date(timestamp).toLocaleTimeString("en-US", {
-      hour12: false,
-    });
+    const time = formatTimestamp(timestamp, i18n.language);
 
     const prefix = sourceName ? `[${sourceName}]` : "";
     const formattedLog = `[${time}] ${level.toUpperCase()} ${prefix}: ${message}`;
@@ -91,9 +95,9 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
         )}
         <span
           className="text-gray-400 shrink-0"
-          title={new Date(timestamp).toLocaleString()}
+          title={formatDate(new Date(timestamp), i18n.language)}
         >
-          {formatTimestamp(timestamp)}
+          {formatTimestamp(timestamp, i18n.language)}
         </span>
         <span className="flex-1 whitespace-pre-wrap break-all">
           {sourceName && (

@@ -81,7 +81,10 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
           <DyadStateIndicator state="pending" pendingLabel={t("writing")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("didNotFinish")}
+          />
         )}
         <div className="ml-auto flex items-center gap-1">
           {/* Hide the deep-link when the write didn't finish — an aborted tag

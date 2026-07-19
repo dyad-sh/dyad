@@ -79,6 +79,7 @@ const ConsoleHeader = ({
 
 // Main PreviewPanel component
 export function PreviewPanel() {
+  const { t } = useTranslation("home");
   const previewMode = useAtomValue(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
@@ -220,7 +221,9 @@ export function PreviewPanel() {
                         result.canceled === false
                       ) {
                         showError(
-                          `Could not find Node.js at the path "${result.selectedPath}"`,
+                          t("preview.nodeSetup.notFound", {
+                            path: result.selectedPath,
+                          }),
                         );
                       }
                     }}
@@ -310,6 +313,7 @@ function PreviewNodeRequirement({
   onCancelManagedNodeInstall: () => Promise<void>;
   onSelectNodeFolder: () => Promise<void>;
 }) {
+  const { t } = useTranslation("home");
   const [isCheckingAgain, setIsCheckingAgain] = useState(false);
   const [isInstallingManagedNode, setIsInstallingManagedNode] = useState(false);
   const [isCancellingManagedNode, setIsCancellingManagedNode] = useState(false);
@@ -363,11 +367,11 @@ function PreviewNodeRequirement({
       if (isManagedNodeInstallCancelError(error)) {
         return;
       }
-      showError(error.message ?? "Failed to install Dyad-managed Node.js");
+      showError(error.message ?? t("preview.nodeSetup.installFailed"));
     } finally {
       setIsInstallingManagedNode(false);
     }
-  }, [onInstallManagedNode]);
+  }, [onInstallManagedNode, t]);
 
   useEffect(() => {
     if (!autoInstallManagedNode || autoInstallAttempted) {
@@ -382,7 +386,7 @@ function PreviewNodeRequirement({
     try {
       await onCancelManagedNodeInstall();
     } catch (error: any) {
-      showError(error.message ?? "Failed to cancel Node.js install");
+      showError(error.message ?? t("preview.nodeSetup.cancelFailed"));
     } finally {
       setIsInstallingManagedNode(false);
       setIsCancellingManagedNode(false);
@@ -403,7 +407,7 @@ function PreviewNodeRequirement({
     try {
       await onSelectNodeFolder();
     } catch (error) {
-      showError("Error setting Node.js path:" + error);
+      showError(t("preview.nodeSetup.pathError", { error }));
     } finally {
       setIsSelectingNodeFolder(false);
     }
@@ -422,7 +426,9 @@ function PreviewNodeRequirement({
           <div className="mx-auto flex h-7 w-full min-w-0 max-w-xs items-center justify-center gap-1.5 rounded-full bg-(--background-darker)/70 px-3">
             <Globe className="size-3 shrink-0 text-muted-foreground" />
             <span className="truncate text-xs text-muted-foreground">
-              {appName ? `${appName} · localhost` : "Your app · localhost"}
+              {appName
+                ? t("preview.nodeSetup.appHost", { appName })
+                : t("preview.nodeSetup.yourApp")}
             </span>
           </div>
           <div className="w-13 shrink-0" aria-hidden="true" />
@@ -435,10 +441,10 @@ function PreviewNodeRequirement({
               {isInstallingManagedNode ? (
                 <>
                   <h3 className="text-lg font-semibold tracking-tight text-foreground">
-                    Installing Node.js
+                    {t("preview.nodeSetup.installing")}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-foreground/80">
-                    Dyad is setting up a private Node.js runtime for previews.
+                    {t("preview.nodeSetup.description")}
                   </p>
                   <div className="mt-4">
                     <div className="h-2 overflow-hidden rounded-full bg-(--background-darker)">
@@ -461,17 +467,17 @@ function PreviewNodeRequirement({
                     {isCancellingManagedNode && (
                       <Loader2 className="size-3.5 animate-spin" />
                     )}
-                    Cancel
+                    {t("preview.nodeSetup.cancel")}
                   </Button>
                 </>
               ) : hasOpenedInstaller ? (
                 <>
                   <h3 className="text-lg font-semibold tracking-tight text-foreground">
-                    Finish the Node.js install
+                    {t("preview.nodeSetup.finishInstall")}
                   </h3>
                   <ol className="mx-auto mt-3 max-w-xs space-y-1.5 text-left text-sm leading-6 text-foreground/80">
-                    <li>1. Open the installer you just downloaded.</li>
-                    <li>2. Click through with the default settings.</li>
+                    <li>{t("preview.nodeSetup.stepOne")}</li>
+                    <li>{t("preview.nodeSetup.stepTwo")}</li>
                   </ol>
                   {/* Live watching status while polling for the install */}
                   <div className="mt-4 flex items-center justify-center gap-2.5 rounded-lg bg-(--background-lighter) px-3 py-2.5">
@@ -483,18 +489,17 @@ function PreviewNodeRequirement({
                       <span className="relative inline-flex size-2 rounded-full bg-primary" />
                     </span>
                     <p className="text-left text-xs leading-5 text-foreground/80">
-                      Watching for Node.js…
+                      {t("preview.nodeSetup.watching")}
                     </p>
                   </div>
                 </>
               ) : (
                 <>
                   <h3 className="text-lg font-semibold tracking-tight text-foreground">
-                    Install Node.js to see your preview
+                    {t("preview.nodeSetup.installToPreview")}
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-foreground/80">
-                    The free engine that runs your app on this computer. About
-                    two minutes to install.
+                    {t("preview.nodeSetup.engineDescription")}
                   </p>
                   {managedNodeSupported ? (
                     <Button
@@ -502,7 +507,7 @@ function PreviewNodeRequirement({
                       onClick={handleInstallManagedNode}
                     >
                       <Download className="size-4" />
-                      Install Node.js for me (~30 MB)
+                      {t("preview.nodeSetup.installForMe")}
                     </Button>
                   ) : (
                     <Button
@@ -511,7 +516,7 @@ function PreviewNodeRequirement({
                       disabled={!nodeDownloadUrl}
                     >
                       <Download className="size-4" />
-                      Download Node.js from nodejs.org
+                      {t("preview.nodeSetup.downloadFromNode")}
                     </Button>
                   )}
                 </>
@@ -520,7 +525,7 @@ function PreviewNodeRequirement({
               {isCheckFailed && (
                 <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-left text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
                   <AlertCircle className="mr-1.5 inline size-3.5 align-[-2px]" />
-                  Dyad couldn't check for Node.js. It will keep trying.
+                  {t("preview.nodeSetup.checkFailed")}
                 </p>
               )}
 
@@ -537,7 +542,7 @@ function PreviewNodeRequirement({
                   ) : (
                     <FolderOpen className="size-3.5" />
                   )}
-                  I already have Node.js
+                  {t("preview.nodeSetup.alreadyHaveNode")}
                 </Button>
                 <div
                   className="h-4 w-px shrink-0 bg-border"
@@ -555,7 +560,7 @@ function PreviewNodeRequirement({
                   ) : (
                     <RefreshCw className="size-3.5" />
                   )}
-                  Check now
+                  {t("preview.nodeSetup.checkNow")}
                 </Button>
               </div>
 
@@ -569,14 +574,14 @@ function PreviewNodeRequirement({
                       className="cursor-pointer font-medium text-muted-foreground transition-colors hover:text-primary hover:underline"
                     >
                       {hasOpenedInstaller
-                        ? "Reopen nodejs.org download"
-                        : "Download from nodejs.org instead"}
+                        ? t("preview.nodeSetup.reopenDownload")
+                        : t("preview.nodeSetup.downloadInstead")}
                     </button>
                   )}
               </div>
 
               <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                You can install Node.js while your app is building.
+                {t("preview.nodeSetup.installWhileBuilding")}
               </p>
             </div>
           </div>

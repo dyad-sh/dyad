@@ -1,17 +1,18 @@
 import { Palette, FileText, BookOpen, Image } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export type FilterType = "all" | "themes" | "prompts" | "media";
 
 const FILTER_OPTIONS: {
   key: FilterType;
-  label: string;
+  labelKey: FilterType;
   icon: typeof BookOpen;
 }[] = [
-  { key: "all", label: "All", icon: BookOpen },
-  { key: "themes", label: "Themes", icon: Palette },
-  { key: "prompts", label: "Prompts", icon: FileText },
-  { key: "media", label: "Media", icon: Image },
+  { key: "all", labelKey: "all", icon: BookOpen },
+  { key: "themes", labelKey: "themes", icon: Palette },
+  { key: "prompts", labelKey: "prompts", icon: FileText },
+  { key: "media", labelKey: "media", icon: Image },
 ];
 
 export function LibraryFilterTabs({
@@ -21,8 +22,13 @@ export function LibraryFilterTabs({
   active: FilterType;
   onChange: (f: FilterType) => void;
 }) {
+  const { t } = useTranslation("home");
   return (
-    <div className="flex gap-2 mb-6" role="group" aria-label="Library filters">
+    <div
+      className="flex gap-2 mb-6"
+      role="group"
+      aria-label={t("library.filters")}
+    >
       {FILTER_OPTIONS.map((opt) => (
         <button
           key={opt.key}
@@ -37,7 +43,7 @@ export function LibraryFilterTabs({
           )}
         >
           <opt.icon className="h-3.5 w-3.5" />
-          {opt.label}
+          {t(`library.${opt.labelKey}`)}
         </button>
       ))}
     </div>

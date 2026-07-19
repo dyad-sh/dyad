@@ -200,7 +200,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
               </div>
             </Panel>
             <PanelResizeHandle
-              aria-label="Resize file tree"
+              aria-label={t("preview.resizeFileTree")}
               className="w-1 bg-border hover:bg-gray-400 transition-colors cursor-col-resize"
             />
             <Panel defaultSize={67} minSize={30}>

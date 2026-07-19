@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink, Database, Loader2 } from "lucide-react";
 import { showSuccess, showError } from "@/lib/toast";
 import { useVersions } from "@/hooks/useVersions";
+import { useTranslation } from "react-i18next";
 
 interface PortalMigrateProps {
   appId: number;
 }
 
 export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
+  const { t } = useTranslation("home");
   const [output, setOutput] = useState<string>("");
   const { refreshVersions } = useVersions(appId);
 
@@ -21,15 +23,13 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
     },
     onSuccess: (result) => {
       setOutput(result.output);
-      showSuccess(
-        "Database migration file generated and committed successfully!",
-      );
+      showSuccess(t("portalMigration.success"));
       refreshVersions();
     },
     onError: (error) => {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      setOutput(`Error: ${errorMessage}`);
+      setOutput(t("portalMigration.errorOutput", { error: errorMessage }));
       showError(errorMessage);
     },
   });
@@ -50,12 +50,12 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           <Database className="w-5 h-5 text-primary" />
-          Portal Database Migration
+          {t("portalMigration.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Generate a new database migration file for your Portal app.
+          {t("portalMigration.description")}
         </p>
 
         <div className="flex items-center gap-3">
@@ -67,12 +67,12 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
             {migrateMutation.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Generating...
+                {t("portalMigration.generating")}
               </>
             ) : (
               <>
                 <Database className="w-4 h-4 mr-2" />
-                Generate database migration
+                {t("portalMigration.generate")}
               </>
             )}
           </Button>
@@ -84,7 +84,7 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
             className="text-sm"
           >
             <ExternalLink className="w-3 h-3 mr-1" />
-            Docs
+            {t("portalMigration.docs")}
           </Button>
         </div>
 
@@ -92,7 +92,7 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
           <div className="mt-4">
             <div className="bg-gray-50 dark:bg-gray-900 border rounded-lg p-3">
               <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Command Output:
+                {t("portalMigration.commandOutput")}
               </h4>
               <div className="max-h-64 overflow-auto">
                 <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono">

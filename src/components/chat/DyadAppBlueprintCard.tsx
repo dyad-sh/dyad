@@ -396,10 +396,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
             try {
               currentApp = await ipc.app.getApp(selectedAppId);
             } catch (error) {
-              recordApplyError(
-                "Could not load the app before applying the app blueprint.",
-                error,
-              );
+              recordApplyError(t("blueprint.loadAppError"), error);
             }
           }
 
@@ -446,7 +443,9 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                     });
                   } catch (error) {
                     recordApplyError(
-                      `The app was renamed to "${renamed.name}" but the blueprint could not be updated to match.`,
+                      t("blueprint.renameMismatchError", {
+                        name: renamed.name,
+                      }),
                       error,
                     );
                   }
@@ -462,7 +461,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                   // would build under the old name/path. Treat them as fatal so
                   // the user can fix the blueprint and re-approve.
                   renameFailed = true;
-                  recordApplyError("Could not rename the app.", error);
+                  recordApplyError(t("blueprint.renameError"), error);
                 }
               }
             }
@@ -491,7 +490,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
               templateNeedsRestart = needsRestart;
             } catch (error) {
               templateApplyFailed = true;
-              recordApplyError("Could not apply the selected template.", error);
+              recordApplyError(t("blueprint.templateApplyError"), error);
             }
           }
 
@@ -507,7 +506,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
               });
             }
           } catch (error) {
-            recordApplyError("Could not apply the selected theme.", error);
+            recordApplyError(t("blueprint.themeApplyError"), error);
           }
 
           if (templateNeedsRestart) {
@@ -517,10 +516,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                 removeNodeModules: true,
               });
             } catch (error) {
-              recordApplyError(
-                "Could not restart the app after the template change.",
-                error,
-              );
+              recordApplyError(t("blueprint.restartError"), error);
             }
           }
 
@@ -547,8 +543,8 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
             return { ...prev, approvedChatIds: nextApproved };
           });
           const errorPrefix = renameFailed
-            ? "Could not rename the app. Please choose a different name and try again"
-            : "Could not apply the selected template. Please review the plan and try again";
+            ? t("blueprint.renameFailed")
+            : t("blueprint.templateApplyFailed");
           const errorMessage = `${errorPrefix}:\n- ${applyErrors.join("\n- ")}`;
           setApprovalError(errorMessage);
           showError(errorMessage);
@@ -556,7 +552,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
         }
 
         if (applyErrors.length > 0) {
-          const errorMessage = `Blueprint approved, but some changes could not be applied:\n- ${applyErrors.join("\n- ")}`;
+          const errorMessage = `${t("blueprint.approvalPartialFailed")}\n- ${applyErrors.join("\n- ")}`;
           setApprovalError(errorMessage);
           showError(errorMessage);
         }
@@ -576,22 +572,17 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
                   (v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
                 )
                 .join("\n")
-            : "No visuals planned";
+            : t("blueprint.noVisualsPlanned");
 
-        const followUpPrompt = [
-          "The app blueprint has been approved. Please build the app based on the following approved blueprint:",
-          "",
-          `App Name: ${finalAppName}`,
-          `Template: ${plan.templateId}`,
-          `Theme: ${plan.themeId}`,
-          `Primary Color: ${plan.primaryColor}`,
-          `Design Direction: ${plan.designDirection}`,
-          "",
-          "Visual Assets:",
+        const followUpPrompt = t("blueprint.followUpPrompt", {
+          appName: finalAppName,
+          template: plan.templateId,
+          theme: plan.themeId,
+          primaryColor: plan.primaryColor,
+          designDirection: plan.designDirection,
           visualsSummary,
-          "",
-          `Original Prompt: ${plan.userPrompt}`,
-        ].join("\n");
+          originalPrompt: plan.userPrompt,
+        });
 
         // Send the follow-up message in its own try/catch — the blueprint is
         // already approved and persisted at this point, so a failure here is a

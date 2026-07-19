@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   pendingQuestionnaireAtom,
@@ -25,6 +26,7 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 const MAX_DISPLAYED_OPTIONS = 3;
 
 export function QuestionnaireInput() {
+  const { t } = useTranslation("chat");
   const [questionnaireMap, setQuestionnaireMap] = useAtom(
     pendingQuestionnaireAtom,
   );
@@ -238,15 +240,15 @@ export function QuestionnaireInput() {
           aria-expanded={isExpanded}
           aria-label={
             isExpanded
-              ? "Collapse questionnaire"
-              : `Expand questionnaire: ${currentQuestion.question}`
+              ? t("collapseQuestionnaire")
+              : t("expandQuestionnaire", { title: currentQuestion.question })
           }
         >
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             {isExpanded ? (
               <>
                 <ClipboardList className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm">Questions</span>
+                <span className="text-sm">{t("questions")}</span>
               </>
             ) : (
               <>
@@ -262,7 +264,10 @@ export function QuestionnaireInput() {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             <span className="text-xs text-muted-foreground tabular-nums">
-              {currentIndex + 1} of {questionnaire.questions.length}
+              {t("questionnaire.questionProgress", {
+                current: currentIndex + 1,
+                total: questionnaire.questions.length,
+              })}
             </span>
             {isExpanded ? (
               <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -276,7 +281,7 @@ export function QuestionnaireInput() {
           variant="ghost"
           size="icon"
           className="h-7 w-7 text-muted-foreground flex-shrink-0 mr-1.5"
-          aria-label="Dismiss questionnaire"
+          aria-label={t("dismissQuestionnaire")}
         >
           <X size={14} />
         </Button>
@@ -298,7 +303,7 @@ export function QuestionnaireInput() {
                   <Input
                     autoFocus
                     placeholder={
-                      currentQuestion.placeholder || "Type your answer..."
+                      currentQuestion.placeholder || t("typeYourAnswer")
                     }
                     value={(responses[currentQuestion.id] as string) || ""}
                     onChange={(e) =>
@@ -355,7 +360,7 @@ export function QuestionnaireInput() {
                         id={`${currentQuestion.id}-custom`}
                       />
                       <Input
-                        placeholder="Other..."
+                        placeholder={t("other")}
                         className="flex-1 h-7 text-sm"
                         value={additionalTexts[currentQuestion.id] || ""}
                         onFocus={() => {
@@ -430,7 +435,7 @@ export function QuestionnaireInput() {
                     {/* Free-form text input as an inline row (no checkbox) */}
                     <div className="flex items-center py-1 px-2 rounded hover:bg-muted/50 transition-colors">
                       <Input
-                        placeholder="Other..."
+                        placeholder={t("other")}
                         className="flex-1 h-7 text-sm"
                         value={additionalTexts[currentQuestion.id] || ""}
                         onChange={(e) =>
@@ -455,7 +460,7 @@ export function QuestionnaireInput() {
                 size="sm"
               >
                 <ArrowLeft size={14} className="mr-1.5" />
-                Back
+                {t("back")}
               </Button>
               <Button
                 onClick={handleNext}
@@ -465,11 +470,11 @@ export function QuestionnaireInput() {
                 {isLastQuestion ? (
                   <>
                     <Send size={14} className="mr-1.5" />
-                    Submit
+                    {t("submit")}
                   </>
                 ) : (
                   <>
-                    Next
+                    {t("next")}
                     <ArrowRight size={14} className="ml-1.5" />
                   </>
                 )}

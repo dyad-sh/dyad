@@ -20,7 +20,9 @@ import { useAppCollections } from "@/hooks/useAppCollections";
 import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { AppItem } from "./appItem";
+import { useTranslation } from "react-i18next";
 export function AppList({ show }: { show?: boolean }) {
+  const { t } = useTranslation(["home", "common"]);
   const navigate = useNavigate();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const openApp = useOpenApp();
@@ -103,14 +105,14 @@ export function AppList({ show }: { show?: boolean }) {
                 className="flex flex-1 items-center justify-start gap-2 py-3"
               >
                 <PlusCircle size={16} />
-                <span>New App</span>
+                <span>{t("apps.newApp")}</span>
               </Button>
               <Button
                 onClick={() => setIsSearchDialogOpen(!isSearchDialogOpen)}
                 variant="outline"
                 className="flex shrink-0 items-center justify-center py-3 px-3"
-                title="Search Apps"
-                aria-label="Search Apps"
+                title={t("common:searchApps")}
+                aria-label={t("common:searchApps")}
                 data-testid="search-apps-button"
               >
                 <Search size={16} />
@@ -119,25 +121,25 @@ export function AppList({ show }: { show?: boolean }) {
 
             {loading ? (
               <div className="py-2 px-4 text-sm text-gray-500">
-                Loading apps...
+                {t("apps.loading")}
               </div>
             ) : error ? (
               <div className="py-2 px-4 text-sm text-red-500">
-                Error loading apps
+                {t("apps.loadError")}
               </div>
             ) : apps.length === 0 ? (
               <div className="py-2 px-4 text-sm text-gray-500">
-                No apps found
+                {t("apps.noApps")}
               </div>
             ) : (
               <SidebarMenu className="space-y-1" data-testid="app-list">
                 <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
-                  Favorite apps
+                  {t("apps.favorites")}
                 </div>
                 {favoriteApps.length === 0 ? (
                   <div className="mx-2 mb-2 flex items-center gap-2 rounded-md border border-dashed border-sidebar-border px-3 py-3 text-xs text-muted-foreground">
                     <Star size={14} className="shrink-0" />
-                    <span>Star an app to pin it here</span>
+                    <span>{t("apps.starToPin")}</span>
                   </div>
                 ) : (
                   favoriteApps.map((app) => (
@@ -155,7 +157,7 @@ export function AppList({ show }: { show?: boolean }) {
                     className="mt-2"
                   >
                     <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
-                      Collections
+                      {t("common:collections")}
                     </div>
                     <Accordion multiple className="px-1">
                       {collections.map((collection) => {
@@ -185,7 +187,7 @@ export function AppList({ show }: { show?: boolean }) {
                             <AccordionContent className="pb-1 pl-3">
                               {members.length === 0 ? (
                                 <div className="px-3 py-2 text-xs text-muted-foreground italic">
-                                  Empty
+                                  {t("common:empty")}
                                 </div>
                               ) : (
                                 members.map((app) => (
@@ -205,7 +207,7 @@ export function AppList({ show }: { show?: boolean }) {
                   </div>
                 )}
                 <div className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                  Other apps
+                  {t("apps.other")}
                 </div>
                 {nonFavoriteApps.map((app) => (
                   <AppItem

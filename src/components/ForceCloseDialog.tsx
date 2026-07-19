@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Upload } from "lucide-react";
 import { ipc } from "@/ipc/types";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
+import { formatDate } from "@/i18n/format";
 
 interface ForceClosePerformanceData {
   timestamp: number;
@@ -28,7 +29,7 @@ interface ForceClosePerformanceData {
 // Mounted in the root layout so it appears regardless of the current route,
 // e.g. when the app restores a chat on startup.
 export function ForceCloseDialog() {
-  const { t } = useTranslation(["home", "common"]);
+  const { t, i18n } = useTranslation(["home", "common"]);
   const setHelpDialog = useSetAtom(helpDialogAtom);
   const [isOpen, setIsOpen] = useState(false);
   const [performanceData, setPerformanceData] = useState<
@@ -58,7 +59,7 @@ export function ForceCloseDialog() {
   };
 
   const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
+    return formatDate(new Date(timestamp), i18n.language);
   };
 
   return (

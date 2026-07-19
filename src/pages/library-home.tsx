@@ -18,11 +18,13 @@ import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
+import { useTranslation } from "react-i18next";
 // ---------------------------------------------------------------------------
 // Main Library Homepage
 // ---------------------------------------------------------------------------
 
 export default function LibraryHomePage() {
+  const { t } = useTranslation("home");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -127,7 +129,7 @@ export default function LibraryHomePage() {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold">
               <BookOpen className="inline-block h-8 w-8 mr-2" />
-              Library
+              {t("library.title")}
             </h1>
             <div className="flex items-center gap-2">
               <ImageGenerationProgressButton />
@@ -163,14 +165,14 @@ export default function LibraryHomePage() {
           ) : hasNoResults ? (
             <div className="text-muted-foreground text-center py-12">
               {searchQuery
-                ? "No results found."
+                ? t("library.noResults")
                 : activeFilter === "media"
-                  ? "No media files yet."
+                  ? t("library.noMediaFiles")
                   : activeFilter === "themes"
-                    ? "No themes yet."
+                    ? t("library.noThemes")
                     : activeFilter === "prompts"
-                      ? "No prompts yet."
-                      : "No items in your library yet."}
+                      ? t("library.noPrompts")
+                      : t("library.noItems")}
             </div>
           ) : (
             <div

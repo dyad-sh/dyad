@@ -68,7 +68,10 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
           />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("didNotFinish")}
+          />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />

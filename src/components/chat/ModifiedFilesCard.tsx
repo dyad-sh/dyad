@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useSetAtom } from "jotai";
 import { Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ export function ModifiedFilesCard({
   onRetry,
   isRetryLoading,
 }: ModifiedFilesCardProps) {
+  const { t } = useTranslation("chat");
   const { changes, loading, error } = useVersionChanges(appId, commitHash);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
@@ -96,7 +98,7 @@ export function ModifiedFilesCard({
         ) : (
           <Undo size={16} />
         )}
-        Undo
+        {t("undo")}
       </Button>
       <Button
         variant="outline"
@@ -111,7 +113,7 @@ export function ModifiedFilesCard({
         ) : (
           <RefreshCw size={16} />
         )}
-        Retry
+        {t("retry")}
       </Button>
     </div>
   );
@@ -124,7 +126,7 @@ export function ModifiedFilesCard({
       >
         {hasChanges && (
           <div className="px-3 py-2 text-sm font-medium">
-            Modified files{" "}
+            {t("modifiedFiles")}{" "}
             <span className="text-muted-foreground font-normal">
               ({changes.length})
             </span>

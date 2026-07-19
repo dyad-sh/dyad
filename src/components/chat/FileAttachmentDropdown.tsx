@@ -1,6 +1,7 @@
 import { MessageSquare, Upload } from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 interface FileAttachmentDropdownProps {
   onFileSelect: (
@@ -14,6 +15,7 @@ export function FileAttachmentDropdown({
   onFileSelect,
   closeMenu,
 }: FileAttachmentDropdownProps) {
+  const { t } = useTranslation("chat");
   const chatContextFileInputRef = useRef<HTMLInputElement>(null);
   const uploadToCodebaseFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,20 +46,20 @@ export function FileAttachmentDropdown({
         closeOnClick={false}
         onClick={handleChatContextClick}
         className="py-3 px-4"
-        title="Example use case: screenshot of the app to point out a UI issue"
+        title={t("attachFileContextExample")}
       >
         <MessageSquare size={16} className="mr-2" />
-        Attach file as chat context
+        {t("attachFileContext")}
       </DropdownMenuItem>
 
       <DropdownMenuItem
         closeOnClick={false}
         onClick={handleUploadToCodebaseClick}
         className="py-3 px-4"
-        title="Example use case: add an image to use for your app"
+        title={t("uploadFileCodebaseExample")}
       >
         <Upload size={16} className="mr-2" />
-        Upload file to codebase
+        {t("uploadFileCodebase")}
       </DropdownMenuItem>
     </>
   );

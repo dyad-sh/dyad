@@ -35,7 +35,7 @@ export function SetupBanner({
   variant?: "inline" | "dialog";
   forceShow?: boolean;
 }) {
-  const { t } = useTranslation("home");
+  const { t } = useTranslation(["home", "common"]);
   const posthog = usePostHog();
   const navigate = useNavigate();
   const hasPendingPrompt = useAtomValue(pendingFirstPromptAtom);
@@ -104,10 +104,10 @@ export function SetupBanner({
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground">
             {hasProviderSetup
-              ? "Manage AI setup"
+              ? t("manageAiSetup")
               : variant === "dialog"
-                ? "You're almost ready to build"
-                : "Connect AI to start building"}
+                ? t("almostReadyToBuild")
+                : t("connectAiToBuild")}
           </h2>
           {variant === "dialog" && hasPendingPrompt && !hasProviderSetup ? (
             <p className="mt-2 flex items-center justify-center gap-1.5 text-sm leading-6 text-muted-foreground">
@@ -115,13 +115,11 @@ export function SetupBanner({
                 aria-hidden="true"
                 className="size-4 shrink-0 text-primary"
               />
-              Your prompt is saved — it'll send as soon as you're connected.
+              {t("promptSavedUntilConnected")}
             </p>
           ) : (
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {hasProviderSetup
-                ? "Change how Dyad accesses AI."
-                : "Dyad uses AI to build your app."}
+              {hasProviderSetup ? t("changeAiAccess") : t("dyadUsesAiToBuild")}
             </p>
           )}
         </div>
@@ -133,47 +131,53 @@ export function SetupBanner({
         >
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <img src={logo} alt="Dyad Logo" className="size-6" />
+              <img src={logo} alt={t("dyadLogoAlt")} className="size-6" />
             </div>
             <div className="min-w-0">
               <h3 className="text-lg font-semibold text-primary">
-                Start free Dyad Pro trial
+                {t("startDyadProTrial")}
               </h3>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                No API keys. Access leading models instantly.
+                {t("noApiKeysAccessModels")}
               </p>
             </div>
           </div>
           <Button as="span" size="sm" className="shrink-0">
-            Start
+            {t("start")}
           </Button>
         </button>
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-muted-foreground">
-            Or use your own API key
+            {t("useOwnApiKey")}
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <ProviderOptionButton
               label="Google"
-              chip="Free"
+              chip={t("common:free")}
               onClick={handleGoogleSetupClick}
-              icon={<img src={googleIcon} alt="Google" className="size-4" />}
+              icon={
+                <img
+                  src={googleIcon}
+                  alt={t("googleLogoAlt")}
+                  className="size-4"
+                />
+              }
             />
             <ProviderOptionButton
               label="OpenRouter"
-              chip="Free"
+              chip={t("common:free")}
               onClick={handleOpenRouterSetupClick}
               icon={
                 <img
                   src={openrouterLogo}
-                  alt="OpenRouter"
+                  alt={t("openrouterLogoAlt")}
                   className="size-4 dark:invert"
                 />
               }
             />
             <ProviderOptionButton
-              label="Other providers"
+              label={t("otherProviders")}
               onClick={handleOtherProvidersClick}
               icon={<Settings className="size-4 text-muted-foreground" />}
             />
@@ -197,7 +201,7 @@ export function SetupBanner({
                 className="ml-0.5 size-2 fill-current stroke-current"
               />
             </span>
-            Watch the walkthrough
+            {t("watchWalkthrough")}
           </button>
         </div>
       </div>
@@ -244,6 +248,7 @@ export const OpenRouterSetupBanner = ({
 }: {
   className?: string;
 }) => {
+  const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
   return (
@@ -261,15 +266,15 @@ export const OpenRouterSetupBanner = ({
       leadingIcon={
         <img
           src={openrouterLogo}
-          alt="OpenRouter"
+          alt={t("openrouterLogoAlt")}
           className="w-4 h-4 dark:invert"
         />
       }
-      title="Setup OpenRouter API Key"
+      title={t("setup.setupOpenRouterApiKey")}
       chip={
         <>
           <GiftIcon className="w-3 h-3" />
-          Free models available
+          {t("setup.freeModelsAvailable")}
         </>
       }
     />

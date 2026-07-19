@@ -16,14 +16,14 @@ export function AutoFixProblemsSwitch({
     <div className="flex items-center space-x-2">
       <Switch
         id="auto-fix-problems"
-        aria-label="Auto-fix problems"
+        aria-label={t("workflow.autoFixProblems")}
         checked={settings?.enableAutoFixProblems}
         onCheckedChange={() => {
           updateSettings({
             enableAutoFixProblems: !settings?.enableAutoFixProblems,
           });
           if (!settings?.enableAutoFixProblems && showToast) {
-            showInfo("You can disable Auto-fix problems in the Settings page.");
+            showInfo(t("workflow.autoFixProblemsDisabledHint"));
           }
         }}
       />

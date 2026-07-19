@@ -41,6 +41,7 @@ import { MediaFolderOpen } from "./media-library/MediaFolderOpen";
 import { ImageLightbox } from "./chat/ImageLightbox";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { AppSearchSelect } from "./AppSearchSelect";
+import { useTranslation } from "react-i18next";
 
 interface DyadAppMediaFolderProps {
   appName: string;
@@ -67,6 +68,8 @@ export function DyadAppMediaFolder({
   isMutatingMedia = false,
   searchQuery,
 }: DyadAppMediaFolderProps) {
+  const { t } = useTranslation("home");
+  const { t: tc } = useTranslation("common");
   const [isOpen, setIsOpen] = useState(false);
   const [renameTargetFile, setRenameTargetFile] = useState<MediaFile | null>(
     null,
@@ -206,21 +209,21 @@ export function DyadAppMediaFolder({
         >
           <DialogContent data-testid="media-rename-dialog">
             <DialogHeader>
-              <DialogTitle>Rename Image</DialogTitle>
+              <DialogTitle>{t("media.renameImage")}</DialogTitle>
               <DialogDescription>
-                Rename the image without changing its extension.
+                {t("media.renameDescription")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 py-2">
               <p className="text-sm text-muted-foreground">
-                Current file: {renameTargetFile?.fileName}
+                {t("media.currentFile")} {renameTargetFile?.fileName}
               </p>
               <div className="flex items-center gap-2">
                 <Input
                   data-testid="media-rename-input"
                   value={renameBaseName}
                   onChange={(event) => setRenameBaseName(event.target.value)}
-                  placeholder="New image name"
+                  placeholder={t("media.newImageName")}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       void handleRenameImage();
@@ -246,7 +249,7 @@ export function DyadAppMediaFolder({
                 }}
                 disabled={isBusy}
               >
-                Cancel
+                {tc("cancel")}
               </Button>
               <Button
                 data-testid="media-rename-confirm-button"
@@ -262,7 +265,7 @@ export function DyadAppMediaFolder({
                     getFileNameWithoutExtension(renameTargetFile.fileName)
                 }
               >
-                Save
+                {tc("save")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -278,15 +281,17 @@ export function DyadAppMediaFolder({
         >
           <AlertDialogContent data-testid="media-delete-dialog">
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Image</AlertDialogTitle>
+              <AlertDialogTitle>{t("media.deleteImage")}</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete{" "}
-                <strong>{deleteTargetFile?.fileName}</strong>? This action
-                cannot be undone.
+                {t("media.deleteDescription", {
+                  name: deleteTargetFile?.fileName ?? "",
+                })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isBusy}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={isBusy}>
+                {tc("cancel")}
+              </AlertDialogCancel>
               <Button
                 data-testid="media-delete-confirm-button"
                 variant="destructive"
@@ -295,7 +300,7 @@ export function DyadAppMediaFolder({
                 }}
                 disabled={isBusy}
               >
-                Delete
+                {tc("delete")}
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -312,9 +317,11 @@ export function DyadAppMediaFolder({
         >
           <DialogContent data-testid="media-move-dialog">
             <DialogHeader>
-              <DialogTitle>Move Image</DialogTitle>
+              <DialogTitle>{t("media.moveImage")}</DialogTitle>
               <DialogDescription>
-                Move <strong>{moveTargetFile?.fileName}</strong> to another app.
+                {t("media.moveDescription", {
+                  name: moveTargetFile?.fileName ?? "",
+                })}
               </DialogDescription>
             </DialogHeader>
             <div className="py-2">
@@ -334,7 +341,7 @@ export function DyadAppMediaFolder({
                 }}
                 disabled={isBusy}
               >
-                Cancel
+                {tc("cancel")}
               </Button>
               <Button
                 data-testid="media-move-confirm-button"
@@ -343,7 +350,7 @@ export function DyadAppMediaFolder({
                 }}
                 disabled={isBusy || moveTargetAppId === null}
               >
-                Move
+                {tc("move")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -386,7 +393,7 @@ export function DyadAppMediaFolder({
         )}
       >
         <Image className="h-3 w-3" />
-        Media
+        {t("media.mediaLabel")}
       </Badge>
       <div className="flex items-center gap-3">
         <div className="w-14 h-14 flex items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/20">
@@ -395,7 +402,7 @@ export function DyadAppMediaFolder({
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold truncate">{appName}</h3>
           <p className="text-sm text-muted-foreground">
-            {files.length} media file{files.length !== 1 ? "s" : ""}
+            {t("media.mediaFileCount", { count: files.length })}
           </p>
         </div>
       </div>

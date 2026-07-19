@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -23,6 +24,7 @@ interface TokenBarProps {
 }
 
 export function TokenBar({ chatId }: TokenBarProps) {
+  const { t } = useTranslation("chat");
   const [inputValue] = useAtom(chatInputValueAtom);
   const { settings } = useSettings();
   const { result, error } = useCountTokens(chatId ?? null, inputValue);
@@ -57,10 +59,14 @@ export function TokenBar({ chatId }: TokenBarProps) {
           <TooltipTrigger className="w-full">
             <div className="w-full">
               <div className="flex gap-3 mb-1 text-xs text-muted-foreground">
-                <span>Tokens: {totalTokens.toLocaleString()}</span>
+                <span>
+                  {t("tokenUsage", { value: totalTokens.toLocaleString() })}
+                </span>
                 <span>{Math.round(percentUsed)}%</span>
                 <span>
-                  Context window: {(contextWindow / 1000).toFixed(0)}K
+                  {t("contextWindow", {
+                    value: (contextWindow / 1000).toFixed(0),
+                  })}
                 </span>
               </div>
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">
@@ -94,31 +100,31 @@ export function TokenBar({ chatId }: TokenBarProps) {
           </TooltipTrigger>
           <TooltipContent side="top" className="w-64 p-2">
             <div className="space-y-1">
-              <div className="font-medium">Token Usage Breakdown</div>
+              <div className="font-medium">{t("tokenUsageBreakdown")}</div>
               <div className="grid grid-cols-[20px_1fr_auto] gap-x-2 items-center">
                 <MessageSquare size={12} className="text-blue-500" />
-                <span>Message History</span>
+                <span>{t("messageHistory")}</span>
                 <span>{messageHistoryTokens.toLocaleString()}</span>
 
                 <Code size={12} className="text-green-500" />
-                <span>Codebase</span>
+                <span>{t("codebase")}</span>
                 <span>{codebaseTokens.toLocaleString()}</span>
 
                 <ExternalLink size={12} className="text-orange-500" />
-                <span>Mentioned Apps</span>
+                <span>{t("mentionedApps")}</span>
                 <span>{mentionedAppsTokens.toLocaleString()}</span>
 
                 <Bot size={12} className="text-purple-500" />
-                <span>System Prompt</span>
+                <span>{t("systemPrompt")}</span>
                 <span>{systemPromptTokens.toLocaleString()}</span>
 
                 <AlignLeft size={12} className="text-yellow-500" />
-                <span>Current Input</span>
+                <span>{t("currentInput")}</span>
                 <span>{inputTokens.toLocaleString()}</span>
               </div>
               <div className="pt-1 border-t border-border">
                 <div className="flex justify-between font-medium">
-                  <span>Total</span>
+                  <span>{t("total")}</span>
                   <span>{totalTokens.toLocaleString()}</span>
                 </div>
               </div>
@@ -127,12 +133,14 @@ export function TokenBar({ chatId }: TokenBarProps) {
         </Tooltip>
       </TooltipProvider>
       {error && (
-        <div className="text-red-500 text-xs mt-1">Failed to count tokens</div>
+        <div className="text-red-500 text-xs mt-1">
+          {t("failedCountTokens")}
+        </div>
       )}
       {(!settings?.enableProSmartFilesContextMode ||
         !settings?.enableDyadPro) && (
         <div className="text-xs text-center text-muted-foreground mt-2">
-          Optimize your tokens with{" "}
+          {t("optimizeTokens")}{" "}
           <a
             onClick={() =>
               settings?.enableDyadPro
@@ -143,7 +151,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
             }
             className="text-blue-500 dark:text-blue-400 cursor-pointer hover:underline"
           >
-            Dyad Pro's Smart Context
+            {t("dyadProSmartContext")}
           </a>
         </div>
       )}

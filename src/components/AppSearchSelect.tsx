@@ -6,6 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useTranslation } from "react-i18next";
 
 export function AppSearchSelect({
   apps,
@@ -18,6 +19,7 @@ export function AppSearchSelect({
   onSelect: (appId: number) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -39,13 +41,13 @@ export function AppSearchSelect({
     >
       <PopoverTrigger
         disabled={disabled}
-        aria-label="Select target app"
+        aria-label={t("selectTargetApp")}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
       >
         <span className={selectedApp ? "" : "text-muted-foreground"}>
-          {selectedApp?.name ?? "Select an app..."}
+          {selectedApp?.name ?? t("selectApp")}
         </span>
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </PopoverTrigger>
@@ -53,7 +55,7 @@ export function AppSearchSelect({
         <div className="flex items-center border-b px-3">
           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
           <Input
-            placeholder="Search apps..."
+            placeholder={t("searchAppsPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9 border-0 shadow-none focus-visible:ring-0 px-0"
@@ -62,7 +64,7 @@ export function AppSearchSelect({
         <div className="max-h-[200px] overflow-y-auto p-1">
           {filteredApps.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
-              No apps found.
+              {t("noAppsFound")}
             </p>
           ) : (
             filteredApps.map((app) => (

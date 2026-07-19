@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { AgentTodo } from "@/ipc/types";
 import {
   CheckCircle2,
@@ -40,6 +41,7 @@ function getStatusIcon(status: AgentTodo["status"], size: "sm" | "md" = "sm") {
 }
 
 export function TodoList({ todos }: TodoListProps) {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (!todos.length) return null;
@@ -60,7 +62,7 @@ export function TodoList({ todos }: TodoListProps) {
             <>
               <ListTodo className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               <span className="text-sm">
-                {completed} of {total} To-dos Completed
+                {t("todosCompleted", { completed, total })}
               </span>
             </>
           ) : inProgressTask ? (
@@ -80,8 +82,8 @@ export function TodoList({ todos }: TodoListProps) {
               )}
               <span className="text-sm text-muted-foreground">
                 {completed === total
-                  ? "All tasks completed"
-                  : "No task in progress"}
+                  ? t("allTasksCompleted")
+                  : t("noTaskInProgress")}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                 ({completed}/{total})

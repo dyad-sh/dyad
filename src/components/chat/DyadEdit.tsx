@@ -63,7 +63,10 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
           <DyadStateIndicator state="pending" pendingLabel={t("editing")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("didNotFinish")}
+          />
         )}
         <div className="ml-auto flex items-center gap-1">
           <DyadBadge color="sky">{t("turboEdit")}</DyadBadge>

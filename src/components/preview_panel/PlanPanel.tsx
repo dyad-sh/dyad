@@ -20,6 +20,7 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useChatMode } from "@/hooks/useChatMode";
+import { useTranslation } from "react-i18next";
 import { SelectionCommentButton } from "./plan/SelectionCommentButton";
 import { CommentsFloatingButton } from "./plan/CommentsFloatingButton";
 import { CommentPopover } from "./plan/CommentPopover";
@@ -29,6 +30,7 @@ import {
 } from "./plan/planAnnotationDom";
 
 export const PlanPanel: React.FC = () => {
+  const { t } = useTranslation("home");
   const chatId = useAtomValue(selectedChatIdAtom);
   const planState = useAtomValue(planStateAtom);
   const previewMode = useAtomValue(previewModeAtom);
@@ -219,7 +221,7 @@ export const PlanPanel: React.FC = () => {
               <div className="flex items-center gap-2">
                 <FileText className="text-blue-500" size={20} />
                 <h2 className="text-lg font-semibold">
-                  {currentTitle || "Implementation Plan"}
+                  {currentTitle || t("preview.planPanel.implementationPlan")}
                 </h2>
               </div>
               {currentSummary && (
@@ -266,10 +268,10 @@ export const PlanPanel: React.FC = () => {
               {acceptedInNewChat === null
                 ? // After a restart the in-memory choice is lost, so we can't
                   // say whether implementation started here or in a new chat.
-                  "Plan accepted"
+                  t("preview.planPanel.accepted")
                 : acceptedInNewChat === false
-                  ? "Plan accepted — implementation started in this chat"
-                  : "Plan accepted — implementation started in a new chat"}
+                  ? t("preview.planPanel.acceptedHere")
+                  : t("preview.planPanel.acceptedNewChat")}
             </span>
           </div>
         ) : (
@@ -281,7 +283,7 @@ export const PlanPanel: React.FC = () => {
               data-testid="accept-plan-new-chat"
             >
               <Check size={16} className="mr-2" />
-              Accept plan and start a new chat
+              {t("preview.planPanel.acceptNewChat")}
             </Button>
             <Button
               onClick={() => handleAccept(false)}
@@ -290,7 +292,7 @@ export const PlanPanel: React.FC = () => {
               className="w-full"
               data-testid="accept-plan-continue-here"
             >
-              Accept plan and continue here
+              {t("preview.planPanel.acceptHere")}
             </Button>
           </div>
         )}

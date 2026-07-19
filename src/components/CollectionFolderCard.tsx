@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { AppCollection } from "@/hooks/useAppCollections";
+import { useTranslation } from "react-i18next";
 
 interface CollectionFolderCardProps {
   collection: AppCollection;
@@ -21,6 +22,7 @@ export function CollectionFolderCard({
   onRename,
   onDelete,
 }: CollectionFolderCardProps) {
+  const { t } = useTranslation(["home", "common"]);
   const count = collection.appIds.length;
   return (
     <div
@@ -47,7 +49,9 @@ export function CollectionFolderCard({
         <DropdownMenu>
           <DropdownMenuTrigger
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={`Collection ${collection.name} actions`}
+            aria-label={t("collections.actions", {
+              collectionName: collection.name,
+            })}
             data-testid={`collection-folder-${collection.id}-menu`}
           >
             <MoreVertical className="h-4 w-4" />
@@ -55,14 +59,14 @@ export function CollectionFolderCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onRename(collection)}>
               <Pencil className="mr-2 h-4 w-4" />
-              Rename
+              {t("collections.rename")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => onDelete(collection)}
               className="text-destructive focus:text-destructive"
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete
+              {t("common:delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -74,7 +78,7 @@ export function CollectionFolderCard({
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold truncate">{collection.name}</h3>
           <p className="text-sm text-muted-foreground">
-            {count} app{count !== 1 ? "s" : ""}
+            {t("collections.appCount", { count })}
           </p>
         </div>
       </div>

@@ -50,7 +50,7 @@ export function KeyValueEditor({
   isSaving: boolean;
   itemLabel?: string;
 }) {
-  const { t } = useTranslation(["settings", "common"]);
+  const { t } = useTranslation(["settings", "common", "home"]);
   const initial = useMemo(() => parseJsonToArray(json), [json]);
   const [envVars, setEnvVars] = useState<KeyValue[]>(initial);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -83,7 +83,14 @@ export function KeyValueEditor({
     setNewKey("");
     setNewValue("");
     setIsAddingNew(false);
-    showSuccess(`${itemLabel}s saved`);
+    showSuccess(
+      t("home:plugins.keyValueSaved", {
+        item:
+          itemLabel === "Header"
+            ? t("home:plugins.headers")
+            : t("home:plugins.environmentVariables"),
+      }),
+    );
   };
 
   const handleEdit = (kv: KeyValue) => {
@@ -115,7 +122,14 @@ export function KeyValueEditor({
     setEditingKey(null);
     setEditingKeyValue("");
     setEditingValue("");
-    showSuccess(`${itemLabel}s saved`);
+    showSuccess(
+      t("home:plugins.keyValueSaved", {
+        item:
+          itemLabel === "Header"
+            ? t("home:plugins.headers")
+            : t("home:plugins.environmentVariables"),
+      }),
+    );
   };
 
   const handleCancelEdit = () => {
@@ -127,7 +141,14 @@ export function KeyValueEditor({
   const handleDelete = async (key: string) => {
     const next = envVars.filter((e) => e.key !== key);
     await saveAll(next);
-    showSuccess(`${itemLabel}s saved`);
+    showSuccess(
+      t("home:plugins.keyValueSaved", {
+        item:
+          itemLabel === "Header"
+            ? t("home:plugins.headers")
+            : t("home:plugins.environmentVariables"),
+      }),
+    );
   };
 
   return (
@@ -199,7 +220,7 @@ export function KeyValueEditor({
         >
           <Plus size={14} />
           {itemLabel === "Header"
-            ? "Add Header"
+            ? t("home:plugins.addHeader")
             : t("settings:toolsMcp.addEnvVar")}
         </Button>
       )}
@@ -207,7 +228,12 @@ export function KeyValueEditor({
       <div className="space-y-2">
         {envVars.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No {itemLabel.toLowerCase()}s configured
+            {t("home:plugins.noItemsConfigured", {
+              item:
+                itemLabel === "Header"
+                  ? t("home:plugins.headers")
+                  : t("home:plugins.environmentVariables"),
+            })}
           </p>
         ) : (
           envVars.map((kv) => (
@@ -221,16 +247,16 @@ export function KeyValueEditor({
                     <Input
                       value={editingKeyValue}
                       onChange={(e) => setEditingKeyValue(e.target.value)}
-                      placeholder="Key"
-                      aria-label="Key"
+                      placeholder={t("settings:toolsMcp.key")}
+                      aria-label={t("settings:toolsMcp.key")}
                       className="h-8"
                       disabled={disabled || isSaving}
                     />
                     <Input
                       value={editingValue}
                       onChange={(e) => setEditingValue(e.target.value)}
-                      placeholder="Value"
-                      aria-label="Value"
+                      placeholder={t("settings:toolsMcp.value")}
+                      aria-label={t("settings:toolsMcp.value")}
                       className="h-8"
                       disabled={disabled || isSaving}
                     />

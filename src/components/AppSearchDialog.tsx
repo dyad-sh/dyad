@@ -9,6 +9,7 @@ import {
 import { useState, useEffect } from "react";
 import { useSearchApps } from "@/hooks/useSearchApps";
 import type { AppSearchResult } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 type AppSearchDialogProps = {
   open: boolean;
@@ -25,6 +26,7 @@ export function AppSearchDialog({
   allApps,
   disableShortcut,
 }: AppSearchDialogProps) {
+  const { t } = useTranslation("common");
   const [searchQuery, setSearchQuery] = useState<string>("");
   function useDebouncedValue<T>(value: T, delay: number): T {
     const [debounced, setDebounced] = useState<T>(value);
@@ -108,16 +110,16 @@ export function AppSearchDialog({
       filter={commandFilter}
     >
       <CommandInput
-        placeholder="Search apps"
+        placeholder={t("searchApps")}
         value={searchQuery}
         onValueChange={setSearchQuery}
         data-testid="app-search-input"
       />
       <CommandList data-testid="app-search-list">
         <CommandEmpty data-testid="app-search-empty">
-          No results found.
+          {t("noResults")}
         </CommandEmpty>
-        <CommandGroup heading="Apps" data-testid="app-search-group">
+        <CommandGroup heading={t("apps")} data-testid="app-search-group">
           {appsToShow.map((app) => {
             const isSearch = searchQuery.trim() !== "";
             let snippet = null;

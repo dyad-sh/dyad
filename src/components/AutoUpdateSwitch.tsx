@@ -17,15 +17,14 @@ export function AutoUpdateSwitch() {
     <div className="flex items-center space-x-2">
       <Switch
         id="enable-auto-update"
-        aria-label="Auto-update"
+        aria-label={t("general.autoUpdate")}
         checked={settings.enableAutoUpdate}
         onCheckedChange={(checked) => {
           updateSettings({ enableAutoUpdate: checked });
-          toast("Auto-update settings changed", {
-            description:
-              "You will need to restart Dyad for your settings to take effect.",
+          toast(t("general.autoUpdateChanged"), {
+            description: t("general.restartRequired"),
             action: {
-              label: "Restart Dyad",
+              label: t("general.restartDyad"),
               onClick: () => {
                 ipc.system.restartDyad();
               },

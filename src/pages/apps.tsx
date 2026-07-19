@@ -40,8 +40,10 @@ import { CollectionDetailView } from "@/components/CollectionDetailView";
 import { AddOrEditCollectionDialog } from "@/components/AddOrEditCollectionDialog";
 import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectionDialog";
 import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
+import { useTranslation } from "react-i18next";
 
 export default function AppsPage() {
+  const { t } = useTranslation(["home", "common"]);
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const { collections, isLoading: collectionsLoading } = useAppCollections();
@@ -104,6 +106,7 @@ export default function AppsPage() {
   const allVisibleSelected =
     visibleFilteredIds.length > 0 &&
     visibleFilteredIds.every((id) => selectedAppIds.has(id));
+  const isAppsView = view === "apps";
 
   const handleEnterSelectionMode = () => {
     setIsSelectionMode(true);
@@ -164,7 +167,7 @@ export default function AppsPage() {
           .map((r) => apps.find((a) => a.id === r.appId)?.name ?? `#${r.appId}`)
           .join(", ");
         showError(
-          `Failed to delete ${failed.length} app${failed.length === 1 ? "" : "s"}: ${failedNames}`,
+          t("apps.failedDelete", { count: failed.length, failedNames }),
         );
         // Keep only the failed ids selected so the user can retry.
         setSelectedAppIds(new Set(failed.map((r) => r.appId)));
@@ -189,8 +192,8 @@ export default function AppsPage() {
         <BackButton />
 
         <header className="mb-6 flex items-end justify-between gap-3">
-          <h1 className="text-3xl font-bold">Apps</h1>
-          {view === "apps" && !isSelectionMode && apps.length > 0 && (
+          <h1 className="text-3xl font-bold">{t("apps.title")}</h1>
+          {isAppsView && !isSelectionMode && apps.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -199,7 +202,7 @@ export default function AppsPage() {
               className="flex items-center gap-2"
             >
               <CheckSquare className="h-4 w-4" />
-              Select
+              {t("apps.select")}
             </Button>
           )}
         </header>
@@ -216,10 +219,12 @@ export default function AppsPage() {
             <input
               type="text"
               placeholder={
-                view === "apps" ? "Search apps..." : "Search collections..."
+                isAppsView
+                  ? t("apps.searchAppsPlaceholder")
+                  : t("apps.searchCollectionsPlaceholder")
               }
               aria-label={
-                view === "apps" ? "Search apps" : "Search collections"
+                isAppsView ? t("apps.searchApps") : t("apps.searchCollections")
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -243,16 +248,15 @@ export default function AppsPage() {
           />
         </div>
 
-        {view === "apps" && isSelectionMode && (
+        {isAppsView && isSelectionMode && (
           <div
             data-testid="apps-gallery-selection-toolbar"
             className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-border bg-(--background-lighter) px-3 py-2"
           >
             <div className="text-sm text-muted-foreground">
               <span data-testid="apps-gallery-selection-count">
-                {selectedAppIds.size}
-              </span>{" "}
-              selected
+                {t("apps.selectedCount", { count: selectedAppIds.size })}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -262,7 +266,9 @@ export default function AppsPage() {
                 disabled={visibleFilteredIds.length === 0}
                 data-testid="apps-gallery-select-all-button"
               >
-                {allVisibleSelected ? "Clear visible" : "Select all visible"}
+                {allVisibleSelected
+                  ? t("apps.clearVisible")
+                  : t("apps.selectAllVisible")}
               </Button>
               <Button
                 variant="outline"
@@ -270,7 +276,7 @@ export default function AppsPage() {
                 onClick={handleExitSelectionMode}
                 data-testid="apps-gallery-cancel-select-button"
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
               <Button
                 variant="outline"
@@ -281,7 +287,7 @@ export default function AppsPage() {
                 className="flex items-center gap-1"
               >
                 <FolderPlus className="h-4 w-4" />
-                Add to collection ({selectedAppIds.size})
+                {t("apps.addToCollection", { count: selectedAppIds.size })}
               </Button>
               <Button
                 variant="destructive"
@@ -292,27 +298,25 @@ export default function AppsPage() {
                 className="flex items-center gap-1"
               >
                 <Trash2 className="h-4 w-4" />
-                Delete ({selectedAppIds.size})
+                {t("apps.deleteSelected", { count: selectedAppIds.size })}
               </Button>
             </div>
           </div>
         )}
 
-        {view === "apps" ? (
+        {isAppsView ? (
           loading ? (
             <div className="text-muted-foreground text-center py-12">
-              Loading apps...
+              {t("apps.loading")}
             </div>
           ) : filteredApps.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <p className="text-muted-foreground text-center">
-                {searchQuery
-                  ? "No apps match your search."
-                  : "You haven't created any apps yet."}
+                {searchQuery ? t("apps.noSearchMatch") : t("apps.noAppsYet")}
               </p>
               {!searchQuery && (
                 <Button onClick={() => navigate({ to: "/" })} size="sm">
-                  Create your first app
+                  {t("apps.createFirst")}
                 </Button>
               )}
             </div>
@@ -354,19 +358,19 @@ export default function AppsPage() {
                 data-testid="add-collection-button"
               >
                 <Plus className="h-4 w-4" />
-                Add collection
+                {t("collections.add")}
               </Button>
             </div>
             {collectionsLoading ? (
               <div className="text-muted-foreground text-center py-12">
-                Loading collections...
+                {t("collections.loading")}
               </div>
             ) : filteredCollections.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <p className="text-muted-foreground text-center">
                   {searchQuery
-                    ? "No collections match your search."
-                    : "No collections yet. Create one to organize your apps."}
+                    ? t("collections.noCollectionsMatchSearch")
+                    : t("collections.emptyDescription")}
                 </p>
                 {!searchQuery && (
                   <Button
@@ -377,7 +381,7 @@ export default function AppsPage() {
                     }}
                   >
                     <Plus className="mr-1 h-4 w-4" />
-                    Add collection
+                    {t("collections.add")}
                   </Button>
                 )}
               </div>
@@ -413,12 +417,10 @@ export default function AppsPage() {
         <DialogContent className="max-w-sm p-4">
           <DialogHeader className="pb-2">
             <DialogTitle>
-              Delete {selectedAppIds.size} app
-              {selectedAppIds.size === 1 ? "" : "s"}?
+              {t("apps.deleteTitle", { count: selectedAppIds.size })}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              This action is irreversible. All app files and chat history for
-              these apps will be permanently deleted.
+              {t("apps.deleteDescription")}
             </DialogDescription>
           </DialogHeader>
           {selectedApps.length > 0 && (
@@ -440,7 +442,7 @@ export default function AppsPage() {
               disabled={isDeleting}
               size="sm"
             >
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -453,13 +455,10 @@ export default function AppsPage() {
               {isDeleting ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Deleting...
+                  {t("common:deleting")}
                 </>
               ) : (
-                <>
-                  Delete {selectedAppIds.size} app
-                  {selectedAppIds.size === 1 ? "" : "s"}
-                </>
+                <>{t("apps.deleteCount", { count: selectedAppIds.size })}</>
               )}
             </Button>
           </DialogFooter>

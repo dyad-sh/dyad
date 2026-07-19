@@ -10,6 +10,7 @@ import {
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ComponentType } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -151,6 +152,7 @@ function AppSidebarRailButton({
 
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar(); // retrieve current sidebar state
+  const { t } = useTranslation("common");
   const [hoverState, setHoverState] =
     useState<AppSidebarHoverState>("no-hover");
   const expandedByHover = useRef(false);
@@ -271,7 +273,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <AppSidebarRailButton
               icon={HelpCircle}
-              label="Help"
+              label={t("nav.help")}
               isExpanded={state === "expanded"}
               onClick={() => setHelpDialog({ open: true })}
             />
@@ -290,8 +292,16 @@ function AppIcons({
   onHoverChange: (state: AppSidebarHoverState) => void;
   isExpanded: boolean;
 }) {
+  const { t } = useTranslation("common");
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
+  const labels: Record<AppSidebarItemTitle, string> = {
+    Apps: t("nav.apps"),
+    Settings: t("nav.settings"),
+    Library: t("nav.library"),
+    Templates: t("nav.templates"),
+    Plugins: t("nav.plugins"),
+  };
 
   const hoverForTitle = (title: AppSidebarItemTitle): AppSidebarHoverState => {
     switch (title) {
@@ -322,7 +332,7 @@ function AppIcons({
               <SidebarMenuItem key={item.title}>
                 <AppSidebarRailButton
                   icon={item.icon}
-                  label={item.title}
+                  label={labels[item.title]}
                   to={item.to}
                   isActive={isActive}
                   isExpanded={isExpanded}

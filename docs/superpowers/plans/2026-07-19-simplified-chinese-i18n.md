@@ -338,7 +338,7 @@ selector is missing.
 - [ ] **Step 3: Push the feature branch.**
 
   Push `codex/i18n-zh-cn` to the fork with `git push --set-upstream origin
-  codex/i18n-zh-cn`, then verify the remote branch is ahead of `upstream/main`.
+codex/i18n-zh-cn`, then verify the remote branch is ahead of `upstream/main`.
 
 - [ ] **Step 4: Create the PR in a natural maintainer voice.**
 

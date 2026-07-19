@@ -61,7 +61,9 @@ export function RuntimeModeSelector() {
     try {
       await updateSettings({ runtimeMode2: value });
     } catch (error: any) {
-      showError(`Failed to update runtime mode: ${error.message}`);
+      showError(
+        t("general.runtimeModeUpdateFailed", { message: error.message }),
+      );
     }
   };
 
@@ -97,11 +99,13 @@ export function RuntimeModeSelector() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="host">Local (default)</SelectItem>
-              <SelectItem value="docker">Docker (experimental)</SelectItem>
+              <SelectItem value="host">{t("general.localRuntime")}</SelectItem>
+              <SelectItem value="docker">
+                {t("general.dockerRuntime")}
+              </SelectItem>
               {showCloudSandboxOption && (
                 <SelectItem disabled={!hasCloudSandboxAccess} value="cloud">
-                  Cloud Sandbox (Pro)
+                  {t("general.cloudSandbox")}
                 </SelectItem>
               )}
             </SelectContent>
@@ -113,19 +117,20 @@ export function RuntimeModeSelector() {
       </div>
       {showCloudSandboxOption && !hasCloudSandboxAccess && (
         <div className="text-sm text-muted-foreground bg-muted/40 p-2 rounded">
-          Cloud sandboxes are a Dyad Pro feature.{" "}
+          {t("general.cloudSandboxProDescription")}{" "}
           <button
             type="button"
             className="underline font-medium cursor-pointer text-primary"
             onClick={() => ipc.system.openExternalUrl("https://dyad.sh/pro#ai")}
           >
-            Upgrade to Pro
+            {t("general.upgradeToPro")}
           </button>
         </div>
       )}
       {isDockerMode && (
         <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
-          ⚠️ Docker mode is <b>experimental</b> and requires{" "}
+          ⚠️ {t("general.dockerModeIs")}{" "}
+          <b>{t("general.dockerExperimental")}</b> {t("general.dockerRequires")}{" "}
           <button
             type="button"
             className="underline font-medium cursor-pointer"
@@ -135,15 +140,14 @@ export function RuntimeModeSelector() {
               )
             }
           >
-            Docker Desktop
+            {t("general.dockerDesktop")}
           </button>{" "}
-          to be installed and running
+          {t("general.dockerDesktopRequired")}
         </div>
       )}
       {isCloudMode && hasCloudSandboxAccess && (
         <div className="text-sm text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/30 p-2 rounded">
-          Cloud Sandbox runs previews remotely and gives you a shareable preview
-          link. Note: running in cloud mode consumes Pro credits.
+          {t("general.cloudSandboxDescription")}
         </div>
       )}
       <AlertDialog

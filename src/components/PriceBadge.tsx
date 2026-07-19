@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 const PILL_BASE =
   "text-[10px] leading-none px-1.5 py-1 rounded-full font-medium";
@@ -23,6 +24,7 @@ export function PriceBadge({
 }: {
   dollarSigns: number | undefined;
 }) {
+  const { t } = useTranslation("common");
   if (dollarSigns === undefined || dollarSigns === null) return null;
 
   if (dollarSigns === 0) {
@@ -33,7 +35,7 @@ export function PriceBadge({
           "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
         )}
       >
-        Free
+        {t("free")}
       </span>
     );
   }
@@ -43,7 +45,7 @@ export function PriceBadge({
 
   return (
     <span
-      aria-label={`Price: ${(dollarSigns / 2).toFixed(1)}`}
+      aria-label={t("price", { amount: (dollarSigns / 2).toFixed(1) })}
       className={cn(PILL_BASE, "bg-primary/10 text-primary tracking-tight")}
     >
       {"$".repeat(full)}

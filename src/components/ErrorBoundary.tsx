@@ -77,21 +77,17 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
   return (
     <div className="flex flex-col items-center justify-center h-screen p-6">
       <div className="max-w-md w-full bg-background p-6 rounded-lg shadow-lg">
-        <h2 className="text-xl font-bold mb-4">
-          {t("errorBoundary.title")}
-        </h2>
+        <h2 className="text-xl font-bold mb-4">{t("errorBoundary.title")}</h2>
 
         <p className="text-sm mb-3">{t("errorBoundary.description")}</p>
 
         {error && (
           <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-md mb-6">
             <p className="text-sm mb-1">
-              <strong>{t("errorBoundary.errorName")}</strong>{" "}
-              {error.name}
+              <strong>{t("errorBoundary.errorName")}</strong> {error.name}
             </p>
             <p className="text-sm">
-              <strong>{t("errorBoundary.errorMessage")}</strong>{" "}
-              {error.message}
+              <strong>{t("errorBoundary.errorMessage")}</strong> {error.message}
             </p>
           </div>
         )}

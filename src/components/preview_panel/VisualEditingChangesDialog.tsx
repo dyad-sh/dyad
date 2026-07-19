@@ -6,6 +6,7 @@ import { Check, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useTranslation } from "react-i18next";
 
 interface VisualEditingChangesDialogProps {
   onReset?: () => void;
@@ -16,6 +17,7 @@ export function VisualEditingChangesDialog({
   onReset,
   iframeRef,
 }: VisualEditingChangesDialogProps) {
+  const { t } = useTranslation("home");
   const [pendingChanges, setPendingChanges] = useAtom(pendingVisualChangesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isSaving, setIsSaving] = useState(false);
@@ -73,11 +75,15 @@ export function VisualEditingChangesDialog({
 
           setPendingChanges(new Map());
           textContentCache.current.clear();
-          showSuccess("Visual changes saved to source files");
+          showSuccess(t("preview.visualEditingChanges.saved"));
           onReset?.();
         } catch (error) {
           console.error("Failed to save visual editing changes:", error);
-          showError(`Failed to save changes: ${error}`);
+          showError(
+            t("preview.visualEditingChanges.failedSave", {
+              error: String(error),
+            }),
+          );
         } finally {
           setIsSaving(false);
           setAllResponsesReceived(false);
@@ -137,12 +143,14 @@ export function VisualEditingChangesDialog({
 
         setPendingChanges(new Map());
         textContentCache.current.clear();
-        showSuccess("Visual changes saved to source files");
+        showSuccess(t("preview.visualEditingChanges.saved"));
         onReset?.();
       }
     } catch (error) {
       console.error("Failed to save visual editing changes:", error);
-      showError(`Failed to save changes: ${error}`);
+      showError(
+        t("preview.visualEditingChanges.failedSave", { error: String(error) }),
+      );
       setIsSaving(false);
       isWaitingForResponses.current = false;
     }
@@ -156,13 +164,18 @@ export function VisualEditingChangesDialog({
   return (
     <div className="bg-[var(--background)] border-b border-[var(--border)] px-2 lg:px-4 py-1.5 flex flex-col lg:flex-row items-start lg:items-center lg:justify-between gap-1.5 lg:gap-4 flex-wrap">
       <p className="text-xs lg:text-sm w-full lg:w-auto">
-        <span className="font-medium">{pendingChanges.size}</span> component
-        {pendingChanges.size > 1 ? "s" : ""} modified
+        {t("preview.visualEditingChanges.pending", {
+          count: pendingChanges.size,
+        })}
       </p>
       <div className="flex gap-1 lg:gap-2 w-full lg:w-auto flex-wrap">
         <Button size="sm" onClick={handleSave} disabled={isSaving}>
           <Check size={14} className="mr-1" />
-          <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+          <span>
+            {isSaving
+              ? t("preview.visualEditingChanges.saving")
+              : t("preview.visualEditingChanges.save")}
+          </span>
         </Button>
         <Button
           size="sm"
@@ -171,7 +184,7 @@ export function VisualEditingChangesDialog({
           disabled={isSaving}
         >
           <X size={14} className="mr-1" />
-          <span>Discard</span>
+          <span>{t("preview.visualEditingChanges.discard")}</span>
         </Button>
       </div>
     </div>

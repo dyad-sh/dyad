@@ -43,9 +43,7 @@ export function SupabaseIntegration() {
         showError(t("integrations.supabase.failedDisconnect"));
       }
     } catch (err: any) {
-      showError(
-        err.message || "An error occurred while disconnecting from Supabase",
-      );
+      showError(err.message || t("integrations.supabase.errorDisconnect"));
     } finally {
       setIsDisconnecting(false);
     }
@@ -67,7 +65,7 @@ export function SupabaseIntegration() {
       });
       showSuccess(t("integrations.supabase.settingUpdated"));
     } catch (err: any) {
-      showError(err.message || "Failed to update setting");
+      showError(err.message || t("integrations.supabase.failedUpdateSetting"));
     }
   };
 
@@ -76,9 +74,9 @@ export function SupabaseIntegration() {
       await updateSettings({
         skipPruneEdgeFunctions: enabled,
       });
-      showSuccess("Setting updated");
+      showSuccess(t("integrations.supabase.settingUpdated"));
     } catch (err: any) {
-      showError(err.message || "Failed to update setting");
+      showError(err.message || t("integrations.supabase.failedUpdateSetting"));
     }
   };
 
@@ -94,9 +92,12 @@ export function SupabaseIntegration() {
             {t("integrations.supabase.title")}
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {t("integrations.supabase.organizationsConnected", {
-              count: organizations.length,
-            })}
+            {t(
+              organizations.length === 1
+                ? "integrations.supabase.organizationsConnected_one"
+                : "integrations.supabase.organizationsConnected_other",
+              { count: organizations.length },
+            )}
           </p>
         </div>
         <Button
@@ -122,7 +123,10 @@ export function SupabaseIntegration() {
           >
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-gray-700 dark:text-gray-300 font-medium truncate">
-                {org.name || `Organization ${org.organizationSlug.slice(0, 8)}`}
+                {org.name ||
+                  t("integrations.supabase.organizationFallback", {
+                    slug: org.organizationSlug.slice(0, 8),
+                  })}
               </span>
               {org.ownerEmail && (
                 <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
@@ -144,7 +148,7 @@ export function SupabaseIntegration() {
                 }
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
-                <span className="text-xs">Disconnect</span>
+                <span className="text-xs">{t("common:disconnect")}</span>
               </TooltipTrigger>
               <TooltipContent>
                 {t("integrations.supabase.disconnectOrganization")}
@@ -158,7 +162,7 @@ export function SupabaseIntegration() {
         <div className="flex items-center space-x-3">
           <Switch
             id="supabase-migrations"
-            aria-label="Write SQL migration files"
+            aria-label={t("integrations.supabase.writeSqlMigrations")}
             checked={!!settings?.enableSupabaseWriteSqlMigration}
             onCheckedChange={handleMigrationSettingChange}
           />
@@ -180,7 +184,7 @@ export function SupabaseIntegration() {
         <div className="flex items-center space-x-3">
           <Switch
             id="skip-prune-edge-functions"
-            aria-label="Keep extra Supabase edge functions"
+            aria-label={t("integrations.supabase.keepExtraEdgeFunctions")}
             checked={!!settings?.skipPruneEdgeFunctions}
             onCheckedChange={handleSkipPruneSettingChange}
           />
@@ -189,12 +193,10 @@ export function SupabaseIntegration() {
               htmlFor="skip-prune-edge-functions"
               className="text-sm font-medium"
             >
-              Keep extra Supabase edge functions
+              {t("integrations.supabase.keepExtraEdgeFunctions")}
             </Label>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              When disabled, edge functions deployed to Supabase but not present
-              in your codebase will be automatically deleted during sync
-              operations (e.g., after reverting or modifying shared modules).
+              {t("integrations.supabase.keepExtraEdgeFunctionsDescription")}
             </p>
           </div>
         </div>

@@ -5,8 +5,10 @@ import { Terminal } from "lucide-react";
 import { ipc, type AppUpgrade } from "@/ipc/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useTranslation } from "react-i18next";
 
 export function AppUpgrades({ appId }: { appId: number | null }) {
+  const { t } = useTranslation("home");
   const queryClient = useQueryClient();
 
   const {
@@ -68,7 +70,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
     return (
       <div className="mt-6">
         <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-          App Upgrades
+          {t("upgrades.title")}
         </h3>
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
@@ -79,10 +81,10 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
     return (
       <div className="mt-6">
         <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-          App Upgrades
+          {t("upgrades.title")}
         </h3>
         <Alert variant="destructive">
-          <AlertTitle>Error loading upgrades</AlertTitle>
+          <AlertTitle>{t("upgrades.loadError")}</AlertTitle>
           <AlertDescription>{queryError.message}</AlertDescription>
         </Alert>
       </div>
@@ -94,14 +96,14 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
   return (
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
-        App Upgrades
+        {t("upgrades.title")}
       </h3>
       {currentUpgrades.length === 0 ? (
         <div
           data-testid="no-app-upgrades-needed"
           className="p-4 bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800/50 rounded-lg text-sm text-green-800 dark:text-green-300"
         >
-          App is up-to-date and has all Dyad capabilities enabled
+          {t("upgrades.upToDate")}
         </div>
       ) : (
         <div className="space-y-4">
@@ -124,7 +126,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
                   >
                     <Terminal className="h-4 w-4" />
                     <AlertTitle className="dark:text-red-200">
-                      Upgrade Failed
+                      {t("upgrades.failed")}
                     </AlertTitle>
                     <AlertDescription className="text-xs text-red-400 dark:text-red-300">
                       {(mutationError as Error).message}{" "}
@@ -137,7 +139,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
                         }}
                         className="underline font-medium hover:dark:text-red-200"
                       >
-                        Manual Upgrade Instructions
+                        {t("upgrades.manualInstructions")}
                       </a>
                     </AlertDescription>
                   </Alert>
@@ -153,7 +155,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
                 {isUpgrading && upgradingVariables === upgrade.id ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : null}
-                Upgrade
+                {t("upgrades.upgrade")}
               </Button>
             </div>
           ))}

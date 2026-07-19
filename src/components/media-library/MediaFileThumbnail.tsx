@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { MediaFile } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 export function MediaFileThumbnail({
   file,
@@ -38,6 +39,7 @@ export function MediaFileThumbnail({
   onPreviewImage: (file: MediaFile) => void;
   isBusy: boolean;
 }) {
+  const { t } = useTranslation("home");
   const mediaUrl = buildDyadMediaThumbnailUrl(
     appPath,
     file.fileName,
@@ -70,7 +72,7 @@ export function MediaFileThumbnail({
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
             data-testid="media-file-actions-trigger"
-            aria-label={`Media actions for ${file.fileName}`}
+            aria-label={t("media.actionsFor", { name: file.fileName })}
             className={cn(
               buttonVariants({
                 variant: "secondary",
@@ -95,7 +97,7 @@ export function MediaFileThumbnail({
               disabled={isBusy}
             >
               <MessageSquarePlus className="mr-2 h-4 w-4" />
-              Start New Chat With Image
+              {t("media.startChatWithImage")}
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="media-rename-image"
@@ -103,7 +105,7 @@ export function MediaFileThumbnail({
               disabled={isBusy}
             >
               <Pencil className="mr-2 h-4 w-4" />
-              Rename Image
+              {t("media.renameImage")}
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="media-move-to-submenu"
@@ -111,7 +113,7 @@ export function MediaFileThumbnail({
               disabled={isBusy}
             >
               <MoveRight className="mr-2 h-4 w-4" />
-              Move To
+              {t("media.moveTo")}
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="media-delete-image"
@@ -120,7 +122,7 @@ export function MediaFileThumbnail({
               disabled={isBusy}
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete Image
+              {t("media.deleteImage")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

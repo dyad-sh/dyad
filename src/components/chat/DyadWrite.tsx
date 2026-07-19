@@ -77,7 +77,10 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           <DyadStateIndicator state="pending" pendingLabel={t("writing")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("didNotFinish")}
+          />
         )}
         <div className="ml-auto flex items-center gap-1">
           {!inProgress && (

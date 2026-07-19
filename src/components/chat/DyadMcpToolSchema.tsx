@@ -46,10 +46,7 @@ export const DyadMcpToolSchema: React.FC<DyadMcpToolSchemaProps> = ({
           </span>
         )}
         {inProgress && (
-          <DyadStateIndicator
-            state="pending"
-            pendingLabel={t("loading")}
-          />
+          <DyadStateIndicator state="pending" pendingLabel={t("loading")} />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isExpanded} />

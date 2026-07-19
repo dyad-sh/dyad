@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 
 interface SkippableBannerProps {
@@ -28,6 +29,7 @@ export function SkippableBanner({
   onSkip,
   "data-testid": testId,
 }: SkippableBannerProps) {
+  const { t } = useTranslation("chat");
   const c = colors;
 
   return (
@@ -39,7 +41,7 @@ export function SkippableBanner({
           type="button"
           onClick={onSkip}
           className={`absolute -top-2 -right-2 inline-flex items-center justify-center rounded-full p-1 transition-colors duration-150 ${c.skipBtn} cursor-pointer bg-white dark:bg-indigo-800 ring-1 ring-inset ${c.ring} shadow-sm`}
-          aria-label="Dismiss"
+          aria-label={t("dismiss")}
         >
           <X className="h-3.5 w-3.5" />
         </button>

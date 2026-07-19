@@ -19,14 +19,6 @@ const ZOOM_LEVEL_LABELS: Record<ZoomLevel, string> = {
   "150": "150%",
 };
 
-const ZOOM_LEVEL_DESCRIPTIONS: Record<ZoomLevel, string> = {
-  "90": "Slightly zoomed out to fit more content on screen.",
-  "100": "Default zoom level.",
-  "110": "Zoom in a little for easier reading.",
-  "125": "Large zoom for improved readability.",
-  "150": "Maximum zoom for maximum accessibility.",
-};
-
 export function ZoomSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
@@ -36,6 +28,21 @@ export function ZoomSelector() {
       ? (value as ZoomLevel)
       : DEFAULT_ZOOM_LEVEL;
   }, [settings?.zoomLevel]);
+
+  const getZoomDescription = (value: ZoomLevel) => {
+    switch (value) {
+      case "90":
+        return t("ai.zoomOptionDescription90");
+      case "100":
+        return t("ai.zoomOptionDescription100");
+      case "110":
+        return t("ai.zoomOptionDescription110");
+      case "125":
+        return t("ai.zoomOptionDescription125");
+      case "150":
+        return t("ai.zoomOptionDescription150");
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -60,7 +67,7 @@ export function ZoomSelector() {
               <div className="flex flex-col text-left">
                 <span>{label}</span>
                 <span className="text-xs text-muted-foreground">
-                  {ZOOM_LEVEL_DESCRIPTIONS[value as ZoomLevel]}
+                  {getZoomDescription(value as ZoomLevel)}
                 </span>
               </div>
             </SelectItem>

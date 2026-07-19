@@ -25,6 +25,7 @@ import { ChatTabs } from "@/components/chat/ChatTabs";
 import { pendingFirstPromptAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -34,6 +35,7 @@ export const TitleBar = () => {
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
   const queryClient = useQueryClient();
+  const { t } = useTranslation("common");
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
   const showWindowControls = platform !== null && platform !== "darwin";
@@ -64,7 +66,7 @@ export const TitleBar = () => {
   ]);
 
   const selectedApp = apps.find((app) => app.id === selectedAppId);
-  const displayText = selectedApp ? selectedApp.name : "No app selected";
+  const displayText = selectedApp ? selectedApp.name : t("noAppSelected");
 
   const handleAppClick = () => {
     if (selectedApp) {
@@ -96,8 +98,8 @@ export const TitleBar = () => {
                   data-app-path={selectedApp?.path ?? ""}
                   aria-label={
                     selectedApp
-                      ? `Manage ${selectedApp.name}`
-                      : "No app selected"
+                      ? t("manageApp", { appName: selectedApp.name })
+                      : t("noAppSelected")
                   }
                   variant="outline"
                   size="sm"
@@ -114,7 +116,7 @@ export const TitleBar = () => {
             >
               <img src={logo} alt="Dyad" className="w-5 h-5 shrink-0" />
               <span className="hidden @2xl:inline max-w-40 truncate">
-                Manage app
+                {t("manageAppLabel")}
               </span>
             </TooltipTrigger>
             <TooltipContent>{displayText}</TooltipContent>
@@ -139,6 +141,7 @@ export const TitleBar = () => {
 
 function WindowsControls() {
   const { isDarkMode } = useTheme();
+  const { t } = useTranslation("common");
 
   const minimizeWindow = () => {
     ipc.system.minimizeWindow();
@@ -157,7 +160,7 @@ function WindowsControls() {
       <button
         className="w-12 h-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         onClick={minimizeWindow}
-        aria-label="Minimize"
+        aria-label={t("minimize")}
       >
         <svg
           width="12"
@@ -176,7 +179,7 @@ function WindowsControls() {
       <button
         className="w-12 h-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         onClick={maximizeWindow}
-        aria-label="Maximize"
+        aria-label={t("maximize")}
       >
         <svg
           width="12"
@@ -197,7 +200,7 @@ function WindowsControls() {
       <button
         className="w-12 h-full flex items-center justify-center hover:bg-red-500 transition-colors"
         onClick={closeWindow}
-        aria-label="Close"
+        aria-label={t("close")}
       >
         <svg
           width="12"
@@ -224,6 +227,7 @@ export function DyadProButton({
 }) {
   const { navigate } = useRouter();
   const { userBudget } = useUserBudgetInfo();
+  const { t } = useTranslation("common");
   return (
     <Button
       data-testid="title-bar-dyad-pro-button"
@@ -243,9 +247,9 @@ export function DyadProButton({
     >
       {isDyadProEnabled
         ? userBudget?.isTrial
-          ? "Pro Trial"
-          : "Pro"
-        : "Pro (off)"}
+          ? t("proTrial")
+          : t("pro")
+        : t("proOff")}
       {userBudget && isDyadProEnabled && (
         <AICreditStatus userBudget={userBudget} />
       )}
@@ -258,6 +262,7 @@ export function AICreditStatus({
 }: {
   userBudget: NonNullable<UserBudgetInfo>;
 }) {
+  const { t } = useTranslation("common");
   const total = Math.round(userBudget.totalCredits);
   const used = Math.round(userBudget.usedCredits);
   const remaining = Math.max(0, total - used);
@@ -275,13 +280,12 @@ export function AICreditStatus({
       <TooltipContent>
         <div className="flex flex-col gap-0.5 text-xs">
           <p className="font-medium">
-            {remaining.toLocaleString()} of {total.toLocaleString()} credits
-            remaining
+            {t("creditsRemaining", { remaining, total })}
           </p>
-          {resetDate && <p className="opacity-80">Resets on {resetDate}</p>}
-          <p className="opacity-60">
-            Note: credit status may take a moment to update.
-          </p>
+          {resetDate && (
+            <p className="opacity-80">{t("creditsResetOn", { resetDate })}</p>
+          )}
+          <p className="opacity-60">{t("creditsUpdateNotice")}</p>
         </div>
       </TooltipContent>
     </Tooltip>

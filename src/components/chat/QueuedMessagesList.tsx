@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { QueuedMessageItem } from "@/atoms/chatAtoms";
 import {
   ChevronDown,
@@ -46,6 +47,7 @@ function QueuedMessageItemRow({
   onMoveUp,
   onMoveDown,
 }: QueuedMessageItemRowProps) {
+  const { t } = useTranslation("chat");
   return (
     <li className="flex items-center gap-2 text-sm py-1.5 px-2 bg-muted/50 rounded group">
       {/* Message preview */}
@@ -62,7 +64,7 @@ function QueuedMessageItemRow({
           type="button"
           onClick={onEdit}
           className="p-1 hover:bg-muted rounded cursor-pointer"
-          title="Edit"
+          title={t("editQueuedMessage")}
         >
           <Pencil size={14} className="text-muted-foreground" />
         </button>
@@ -74,7 +76,7 @@ function QueuedMessageItemRow({
             "p-1 hover:bg-muted rounded cursor-pointer",
             index === 0 && "opacity-30 cursor-not-allowed",
           )}
-          title="Move up"
+          title={t("moveUp")}
         >
           <ArrowUp size={14} className="text-muted-foreground" />
         </button>
@@ -86,7 +88,7 @@ function QueuedMessageItemRow({
             "p-1 hover:bg-muted rounded cursor-pointer",
             index === total - 1 && "opacity-30 cursor-not-allowed",
           )}
-          title="Move down"
+          title={t("moveDown")}
         >
           <ArrowDown size={14} className="text-muted-foreground" />
         </button>
@@ -94,7 +96,7 @@ function QueuedMessageItemRow({
           type="button"
           onClick={onDelete}
           className="p-1 hover:bg-muted rounded cursor-pointer"
-          title="Delete"
+          title={t("delete")}
         >
           <Trash2 size={14} className="text-red-500" />
         </button>
@@ -115,15 +117,16 @@ export function QueuedMessagesList({
   onPauseQueue,
   onResumeQueue,
 }: QueuedMessagesListProps) {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(true);
 
   if (!messages.length) return null;
 
   const statusText = hasError
-    ? "will send after a successful response"
+    ? t("queueStatusAfterError")
     : isStreaming
-      ? "will send after current response"
-      : "ready to send";
+      ? t("queueStatusAfterCurrent")
+      : t("queueStatusReady");
 
   return (
     <div
@@ -146,10 +149,12 @@ export function QueuedMessagesList({
           }}
           className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           onClick={() => setIsExpanded((v) => !v)}
-          title={isExpanded ? "Collapse" : "Expand"}
+          title={isExpanded ? t("queue.collapse") : t("queue.expand")}
         >
           <ListOrdered className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-          <span className="text-sm">{messages.length} Queued</span>
+          <span className="text-sm">
+            {t("queuedCount", { count: messages.length })}
+          </span>
           {!isPaused && (
             <span className="text-xs text-muted-foreground">
               - {statusText}
@@ -157,7 +162,7 @@ export function QueuedMessagesList({
           )}
           {isPaused && (
             <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 font-medium">
-              Paused
+              {t("paused")}
             </span>
           )}
         </div>
@@ -165,8 +170,8 @@ export function QueuedMessagesList({
           <button
             type="button"
             onClick={isPaused ? onResumeQueue : onPauseQueue}
-            aria-label={isPaused ? "Resume queue" : "Pause queue"}
-            title={isPaused ? "Resume queue" : "Pause queue"}
+            aria-label={isPaused ? t("resumeQueue") : t("pauseQueue")}
+            title={isPaused ? t("resumeQueue") : t("pauseQueue")}
             className={cn(
               "ml-2 px-2 py-1 rounded-lg transition-colors duration-150 cursor-pointer",
               isPaused
@@ -180,7 +185,7 @@ export function QueuedMessagesList({
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1 hover:bg-muted rounded cursor-pointer"
-            title={isExpanded ? "Collapse" : "Expand"}
+            title={isExpanded ? t("queue.collapse") : t("queue.expand")}
           >
             {isExpanded ? (
               <ChevronUp className="w-4 h-4 text-muted-foreground" />

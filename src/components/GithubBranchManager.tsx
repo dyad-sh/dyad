@@ -66,6 +66,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
+import { useTranslation } from "react-i18next";
 
 interface BranchManagerProps {
   appId: number;
@@ -76,6 +77,7 @@ export function GithubBranchManager({
   appId,
   onBranchChange,
 }: BranchManagerProps) {
+  const { t } = useTranslation(["home", "common"]);
   const [branches, setBranches] = useState<string[]>([]);
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -128,11 +130,11 @@ export function GithubBranchManager({
       }
       setConflicts([]);
       if (aborted) {
-        showSuccess("Sync cancelled");
+        showSuccess(t("integrations.github.syncCancelled"));
         await loadBranches();
       }
     } catch (error: any) {
-      showError(error?.message || "Failed to cancel sync");
+      showError(error?.message || t("integrations.github.failedCancelSync"));
     } finally {
       setIsCancellingSync(false);
     }
@@ -152,7 +154,9 @@ export function GithubBranchManager({
       setBranches(Array.from(allBranches).sort());
       setCurrentBranch(localResult.current || null);
     } catch (error: any) {
-      showError(error.message || "Failed to load branches");
+      showError(
+        error.message || t("integrations.githubBranch.failedLoadBranches"),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -172,7 +176,9 @@ export function GithubBranchManager({
         branch: branchName,
         from: sourceBranch || undefined,
       });
-      showSuccess(`Branch '${branchName}' created`);
+      showSuccess(
+        t("integrations.githubBranch.branchCreated", { name: branchName }),
+      );
       setNewBranchName("");
       setSourceBranch(""); // Reset source branch selection
       setShowCreateDialog(false);
@@ -180,7 +186,9 @@ export function GithubBranchManager({
       // Automatically switch to the newly created branch
       await handleSwitchBranch(branchName);
     } catch (error: any) {
-      showError(error.message || "Failed to create branch");
+      showError(
+        error.message || t("integrations.githubBranch.failedCreateBranch"),
+      );
     } finally {
       setIsCreating(false);
     }
@@ -196,7 +204,9 @@ export function GithubBranchManager({
 
       try {
         await switchBranch();
-        showSuccess(`Switched to branch '${branch}'`);
+        showSuccess(
+          t("integrations.githubBranch.switchedToBranch", { name: branch }),
+        );
         setCurrentBranch(branch);
         onBranchChange?.();
         return;
@@ -268,7 +278,9 @@ export function GithubBranchManager({
         throw initialError;
       }
     } catch (error: any) {
-      showError(error.message || "Failed to switch branch");
+      showError(
+        error.message || t("integrations.githubBranch.failedSwitchBranch"),
+      );
     } finally {
       setIsSwitching(false);
     }
@@ -292,7 +304,10 @@ export function GithubBranchManager({
       try {
         await ipc.github.switchBranch({ appId, branch: targetBranch });
         showSuccess(
-          `Aborted ongoing ${operationType} and switched to branch '${targetBranch}'`,
+          t("integrations.githubBranch.abortedAndSwitched", {
+            type: operationType,
+            name: targetBranch,
+          }),
         );
         setCurrentBranch(targetBranch);
         onBranchChange?.();
@@ -300,13 +315,17 @@ export function GithubBranchManager({
       } catch (switchError: any) {
         showError(
           switchError?.message ||
-            `Failed to switch branch after aborting ${operationType}. Please try again.`,
+            t("integrations.githubBranch.failedSwitchAfterAbort", {
+              type: operationType,
+            }),
         );
       }
     } catch (abortError: any) {
       showError(
         abortError?.message ||
-          `Failed to abort ongoing ${operationType} before switching branches.`,
+          t("integrations.githubBranch.failedAbortBeforeSwitch", {
+            type: operationType,
+          }),
       );
     } finally {
       setIsSwitching(false);
@@ -320,11 +339,15 @@ export function GithubBranchManager({
     setIsDeleting(true);
     try {
       await ipc.github.deleteBranch({ appId, branch: branchToDelete });
-      showSuccess(`Branch '${branchToDelete}' deleted`);
+      showSuccess(
+        t("integrations.githubBranch.branchDeleted", { name: branchToDelete }),
+      );
       setBranchToDelete(null);
       await loadBranches();
     } catch (error: any) {
-      showError(error.message || "Failed to delete branch");
+      showError(
+        error.message || t("integrations.githubBranch.failedDeleteBranch"),
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -340,12 +363,19 @@ export function GithubBranchManager({
         oldBranch: branchToRename,
         newBranch: trimmedNewName,
       });
-      showSuccess(`Renamed '${branchToRename}' to '${trimmedNewName}'`);
+      showSuccess(
+        t("integrations.githubBranch.branchRenamed", {
+          oldName: branchToRename,
+          newName: trimmedNewName,
+        }),
+      );
       setBranchToRename(null);
       setRenameBranchName("");
       await loadBranches();
     } catch (error: any) {
-      showError(error.message || "Failed to rename branch");
+      showError(
+        error.message || t("integrations.githubBranch.failedRenameBranch"),
+      );
     } finally {
       setIsRenaming(false);
     }
@@ -357,7 +387,12 @@ export function GithubBranchManager({
     setConflicts([]); // Clear conflicts when starting a new merge operation
     try {
       await ipc.github.mergeBranch({ appId, branch: branchToMerge });
-      showSuccess(`Merged '${branchToMerge}' into '${currentBranch}'`);
+      showSuccess(
+        t("integrations.githubBranch.branchMerged", {
+          source: branchToMerge,
+          target: currentBranch,
+        }),
+      );
       setConflicts([]); // Clear conflicts on successful merge
       setBranchToMerge(null);
       await loadBranches(); // Refresh to see any status changes if we implement them
@@ -375,7 +410,7 @@ export function GithubBranchManager({
         // Conflicts were detected - show the resolver
         setConflicts(conflictsDetected);
         setBranchToMerge(null);
-        showInfo("Merge conflict detected. Please resolve them in the dialog.");
+        showInfo(t("integrations.githubBranch.mergeConflict"));
         return;
       }
 
@@ -386,11 +421,11 @@ export function GithubBranchManager({
         errorName === "MergeConflictError" || errorName === "GitConflictError";
 
       if (isConflict) {
-        showError(
-          "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
-        );
+        showError(t("integrations.github.mergeConflictNoFiles"));
       } else {
-        showError(error.message || "Failed to merge branch");
+        showError(
+          error.message || t("integrations.githubBranch.failedMergeBranch"),
+        );
       }
       // Close the merge modal on any error since user has been notified
       setBranchToMerge(null);
@@ -403,10 +438,10 @@ export function GithubBranchManager({
     setIsPulling(true);
     try {
       await ipc.github.pull({ appId });
-      showSuccess("Pulled latest changes from remote");
+      showSuccess(t("integrations.githubBranch.pulledLatest"));
       await loadBranches();
     } catch (error: any) {
-      showError(error.message || "Failed to pull changes");
+      showError(error.message || t("integrations.githubBranch.failedPull"));
     } finally {
       setIsPulling(false);
     }
@@ -429,13 +464,17 @@ export function GithubBranchManager({
           }
         >
           <SelectTrigger className="w-full" data-testid="branch-select-trigger">
-            <SelectValue placeholder="Select branch" />
+            <SelectValue
+              placeholder={t("integrations.githubBranch.selectBranch")}
+            />
           </SelectTrigger>
           <SelectContent>
             {branches.map((branch) => (
               <SelectItem key={branch} value={branch} aria-label={branch}>
                 <Network className="h-4 w-4 text-gray-500" />
-                <span className="font-medium text-sm">Branch:</span>
+                <span className="font-medium text-sm">
+                  {t("integrations.githubBranch.branchLabel")}
+                </span>
                 <span
                   data-testid="current-branch-display"
                   className="font-mono text-sm bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
@@ -455,14 +494,16 @@ export function GithubBranchManager({
                   className={cn(
                     buttonVariants({ variant: "outline", size: "icon" }),
                   )}
-                  aria-label="Branch actions"
+                  aria-label={t("integrations.githubBranch.branchActions")}
                   data-testid="branch-actions-menu-trigger"
                 />
               }
             >
               <EllipsisVertical className="h-4 w-4" />
             </TooltipTrigger>
-            <TooltipContent>Branch actions</TooltipContent>
+            <TooltipContent>
+              {t("integrations.githubBranch.branchActions")}
+            </TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
@@ -470,7 +511,7 @@ export function GithubBranchManager({
               data-testid="create-branch-trigger"
             >
               <Plus className="mr-2 h-4 w-4" />
-              Create new branch
+              {t("integrations.githubBranch.createNewBranch")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={loadBranches}
@@ -480,7 +521,7 @@ export function GithubBranchManager({
               <RefreshCw
                 className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
               />
-              Refresh branches
+              {t("integrations.githubBranch.refreshBranches")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={handleGitPull}
@@ -490,7 +531,7 @@ export function GithubBranchManager({
               <GitPullRequestArrow
                 className={`mr-2 h-4 w-4 ${isPulling ? "animate-spin" : ""}`}
               />
-              Git pull
+              {t("integrations.github.gitPull")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -498,12 +539,18 @@ export function GithubBranchManager({
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Branch</DialogTitle>
-              <DialogDescription>Create a new branch.</DialogDescription>
+              <DialogTitle>
+                {t("integrations.githubBranch.createBranchTitle")}
+              </DialogTitle>
+              <DialogDescription>
+                {t("integrations.githubBranch.createBranchDescription")}
+              </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div>
-                <Label htmlFor="branch-name">Branch Name</Label>
+                <Label htmlFor="branch-name">
+                  {t("integrations.githubBranch.branchName")}
+                </Label>
                 <Input
                   id="branch-name"
                   value={newBranchName}
@@ -514,7 +561,9 @@ export function GithubBranchManager({
                 />
               </div>
               <div>
-                <Label htmlFor="source-branch">Source Branch</Label>
+                <Label htmlFor="source-branch">
+                  {t("integrations.githubBranch.sourceBranch")}
+                </Label>
                 <Select
                   value={sourceBranch}
                   onValueChange={(v) => setSourceBranch(v ?? "")}
@@ -523,10 +572,16 @@ export function GithubBranchManager({
                     className="mt-2"
                     data-testid="source-branch-select-trigger"
                   >
-                    <SelectValue placeholder="Select source (optional, defaults to HEAD)" />
+                    <SelectValue
+                      placeholder={t(
+                        "integrations.githubBranch.sourceBranchPlaceholder",
+                      )}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="HEAD">HEAD (Current)</SelectItem>
+                    <SelectItem value="HEAD">
+                      {t("integrations.github.headCurrent")}
+                    </SelectItem>
                     {branches.map((b) => (
                       <SelectItem key={b} value={b}>
                         {b}
@@ -541,14 +596,16 @@ export function GithubBranchManager({
                 variant="outline"
                 onClick={() => setShowCreateDialog(false)}
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
               <Button
                 onClick={handleCreateBranch}
                 disabled={isCreating || !newBranchName.trim()}
                 data-testid="create-branch-submit-button"
               >
-                {isCreating ? "Creating..." : "Create Branch"}
+                {isCreating
+                  ? t("common:creating")
+                  : t("integrations.githubBranch.createBranch")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -562,13 +619,19 @@ export function GithubBranchManager({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Branch</DialogTitle>
+            <DialogTitle>
+              {t("integrations.githubBranch.renameBranch")}
+            </DialogTitle>
             <DialogDescription>
-              Enter a new name for branch '{branchToRename}'.
+              {t("integrations.githubBranch.renameBranchDescription", {
+                name: branchToRename,
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="rename-branch-name">New Name</Label>
+            <Label htmlFor="rename-branch-name">
+              {t("integrations.githubBranch.newName")}
+            </Label>
             <Input
               id="rename-branch-name"
               value={renameBranchName}
@@ -580,14 +643,16 @@ export function GithubBranchManager({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBranchToRename(null)}>
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button
               onClick={handleRenameBranch}
               disabled={isRenaming || !renameBranchName.trim()}
               data-testid="rename-branch-submit-button"
             >
-              {isRenaming ? "Renaming..." : "Rename"}
+              {isRenaming
+                ? t("common:updating")
+                : t("integrations.githubBranch.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -600,22 +665,28 @@ export function GithubBranchManager({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Merge Branch</DialogTitle>
+            <DialogTitle>
+              {t("integrations.githubBranch.mergeBranch")}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to merge '{branchToMerge}' into '
-              {currentBranch}'?
+              {t("integrations.githubBranch.mergeBranchConfirmation", {
+                source: branchToMerge,
+                target: currentBranch,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBranchToMerge(null)}>
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button
               onClick={handleMergeBranch}
               disabled={isMerging}
               data-testid="merge-branch-submit-button"
             >
-              {isMerging ? "Merging..." : "Merge"}
+              {isMerging
+                ? t("integrations.githubBranch.merging")
+                : t("integrations.githubBranch.merge")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -627,19 +698,26 @@ export function GithubBranchManager({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Branch</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("integrations.githubBranch.deleteBranch")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the branch '{branchToDelete}'. This
-              action cannot be undone.
+              {t("integrations.githubBranch.deleteBranchConfirmation", {
+                name: branchToDelete,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t("common:cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDeleteBranch}
               disabled={isDeleting}
             >
-              {isDeleting ? "Deleting..." : "Delete Branch"}
+              {isDeleting
+                ? t("common:deleting")
+                : t("integrations.githubBranch.deleteBranch")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -662,41 +740,38 @@ export function GithubBranchManager({
               <div className="flex flex-col">
                 <span className="text-base font-semibold">
                   {abortConfirmation?.operationType === "merge"
-                    ? "Merge in Progress"
-                    : "Rebase in Progress"}
+                    ? t("integrations.githubBranch.mergeInProgress")
+                    : t("integrations.githubBranch.rebaseInProgress")}
                 </span>
                 <span className="text-sm text-muted-foreground font-normal">
-                  This action will abort the current operation
+                  {t("integrations.githubBranch.abortAction")}
                 </span>
               </div>
             </AlertDialogTitle>
 
             <AlertDialogDescription className="mt-4 space-y-4 text-sm">
               <p className="text-foreground">
-                A{" "}
-                <span className="font-medium">
-                  {abortConfirmation?.operationType}
-                </span>{" "}
-                operation is currently in progress. Switching to{" "}
-                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-                  {abortConfirmation?.targetBranch}
-                </span>{" "}
-                will abort this operation.
+                {t("integrations.githubBranch.operationInProgress", {
+                  type: abortConfirmation?.operationType,
+                  targetBranch: abortConfirmation?.targetBranch,
+                })}
               </p>
 
               {abortConfirmation?.hasConflicts && (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
-                  <p className="font-medium">Unresolved conflicts detected</p>
+                  <p className="font-medium">
+                    {t("integrations.githubBranch.unresolvedConflicts")}
+                  </p>
                   <p className="mt-1 text-xs">
-                    Aborting will discard any conflict resolution work you’ve
-                    already done.
+                    {t("integrations.githubBranch.abortWarning")}
                   </p>
                 </div>
               )}
 
               <p className="text-muted-foreground">
-                Are you sure you want to abort the{" "}
-                {abortConfirmation?.operationType} and switch branches?
+                {t("integrations.githubBranch.abortConfirmation", {
+                  type: abortConfirmation?.operationType,
+                })}
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -706,7 +781,7 @@ export function GithubBranchManager({
               disabled={isSwitching}
               data-testid="abort-confirmation-cancel"
             >
-              Keep working
+              {t("integrations.githubBranch.keepWorking")}
             </AlertDialogCancel>
 
             <AlertDialogAction
@@ -718,14 +793,12 @@ export function GithubBranchManager({
               {isSwitching ? (
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Aborting…
+                  {t("integrations.github.aborting")}
                 </span>
               ) : (
-                `Abort ${
-                  abortConfirmation?.operationType === "merge"
-                    ? "Merge"
-                    : "Rebase"
-                } & Switch`
+                t("integrations.githubBranch.abortAndSwitch", {
+                  type: abortConfirmation?.operationType,
+                })
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -736,22 +809,31 @@ export function GithubBranchManager({
       {conflicts.length > 0 && (
         <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
           <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
-            conflicts: {conflicts.join(", ")}
+            {t(
+              conflicts.length === 1
+                ? "integrations.github.conflictFile"
+                : "integrations.github.conflictFiles",
+              { count: conflicts.length },
+            )}
+            : {conflicts.join(", ")}
           </p>
           <div className="flex gap-2">
             <Button
               onClick={resolveWithAI}
               disabled={isCancellingSync || isResolving}
             >
-              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
+              {isResolving
+                ? t("integrations.github.resolving")
+                : t("integrations.github.resolveConflictsWithAi")}
             </Button>
             <Button
               variant="outline"
               onClick={handleCancelSync}
               disabled={isCancellingSync || isResolving}
             >
-              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
+              {isCancellingSync
+                ? t("integrations.github.cancelling")
+                : t("integrations.github.cancelSync")}
             </Button>
           </div>
         </div>
@@ -767,10 +849,10 @@ export function GithubBranchManager({
               <GitBranch className="w-5 h-5" />
               <div>
                 <CardTitle className="text-sm" data-testid="branches-header">
-                  Branches
+                  {t("integrations.githubBranch.branches")}
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Manage your branches, merge, delete, and more.
+                  {t("integrations.githubBranch.branchesDescription")}
                 </CardDescription>
               </div>
             </div>
@@ -824,7 +906,9 @@ export function GithubBranchManager({
                               data-testid="merge-branch-menu-item"
                             >
                               <GitMerge className="mr-2 h-4 w-4" />
-                              Merge into {currentBranch}
+                              {t("integrations.githubBranch.mergeInto", {
+                                branch: currentBranch,
+                              })}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -834,7 +918,7 @@ export function GithubBranchManager({
                               data-testid="rename-branch-menu-item"
                             >
                               <Edit2 className="mr-2 h-4 w-4" />
-                              Rename
+                              {t("integrations.githubBranch.rename")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
@@ -842,7 +926,7 @@ export function GithubBranchManager({
                               data-testid="delete-branch-menu-item"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
+                              {t("common:delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

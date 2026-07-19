@@ -37,6 +37,8 @@ import type {
   SecurityReviewResult,
 } from "@/ipc/types/security";
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { showSuccess, showWarning, toast } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
@@ -85,24 +87,27 @@ const createFindingKey = (finding: {
   });
 };
 
-const formatTimeAgo = (input: string | number | Date): string => {
+const formatTimeAgo = (
+  input: string | number | Date,
+  t: TFunction<"home">,
+): string => {
   const timestampMs = new Date(input).getTime();
   const nowMs = Date.now();
   const diffMs = Math.max(0, nowMs - timestampMs);
 
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
+  if (minutes < 1) return t("preview.security_panel.justNow");
   if (minutes < 60) {
-    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+    return t("preview.security_panel.minutesAgo", { count: minutes });
   }
 
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    return t("preview.security_panel.hoursAgo", { count: hours });
   }
 
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t("preview.security_panel.daysAgo", { count: days });
 };
 
 const getSeverityOrder = (level: SecurityFinding["level"]): number => {
@@ -142,6 +147,8 @@ function RunReviewButton({
   onRun: () => void;
   secondary?: boolean;
 }) {
+  const { t } = useTranslation("home");
+
   return (
     <Button
       onClick={onRun}
@@ -167,12 +174,12 @@ function RunReviewButton({
               d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             />
           </svg>
-          Running review...
+          {t("preview.security_panel.runningReview")}
         </>
       ) : (
         <>
           <Shield className="w-4 h-4" />
-          Run review
+          {t("preview.security_panel.runReview")}
         </>
       )}
     </Button>
@@ -180,6 +187,7 @@ function RunReviewButton({
 }
 
 function ReviewSummary({ data }: { data: SecurityReviewResult }) {
+  const { t } = useTranslation("home");
   const counts = data.findings.reduce(
     (acc, finding) => {
       acc[finding.level] = (acc[finding.level] || 0) + 1;
@@ -194,11 +202,18 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
     "medium",
     "low",
   ];
+  const severityLabels = {
+    critical: t("preview.security_panel.critical"),
+    high: t("preview.security_panel.high"),
+    medium: t("preview.security_panel.medium"),
+    low: t("preview.security_panel.low"),
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <div className="text-xs text-muted-foreground">
-        Last reviewed {formatTimeAgo(data.timestamp)}
+        {t("preview.security_panel.lastReviewed")}{" "}
+        {formatTimeAgo(data.timestamp, t)}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {severityLevels
@@ -213,7 +228,7 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
             >
               <span className="flex-shrink-0">{getSeverityIcon(level)}</span>
               <span>{counts[level]}</span>
-              <span className="capitalize">{level}</span>
+              <span>{severityLabels[level]}</span>
             </span>
           ))}
       </div>
@@ -244,18 +259,19 @@ function SecurityHeader({
   isFixingSelected: boolean;
   selectedFixCount?: number;
 }) {
+  const { t } = useTranslation("home");
   const hasFindings = Boolean(data?.findings.length);
   const totalFindingCount = data?.findings.length ?? 0;
   const selectedIssueLabel =
     selectedCount > 0
-      ? `${selectedCount} issue${selectedCount === 1 ? "" : "s"}`
-      : "all issues";
+      ? t("preview.security_panel.issueCount", { count: selectedCount })
+      : t("preview.security_panel.allIssues");
   const existingFixIssueLabel =
     selectedFixCount === undefined
       ? ""
       : selectedFixCount === totalFindingCount
-        ? "all issues"
-        : `${selectedFixCount} issue${selectedFixCount === 1 ? "" : "s"}`;
+        ? t("preview.security_panel.allIssues")
+        : t("preview.security_panel.issueCount", { count: selectedFixCount });
   const hasSelectedFix = selectedFixCount !== undefined;
   const showSelectedFixActions = hasSelectedFix && !isFixingSelected;
   const activeIssueLabel = hasSelectedFix
@@ -268,7 +284,7 @@ function SecurityHeader({
         <div className="flex min-w-48 flex-1 items-center gap-1">
           <Shield className="size-5 shrink-0" />
           <h1 className="truncate text-lg font-semibold text-foreground">
-            Security Review
+            {t("preview.security_panel.title")}
           </h1>
           <Tooltip>
             <TooltipTrigger
@@ -277,7 +293,7 @@ function SecurityHeader({
                   variant="ghost"
                   size="icon"
                   className="size-8 text-muted-foreground"
-                  aria-label="Open Security Review documentation"
+                  aria-label={t("preview.security_panel.openDocs")}
                   onClick={() =>
                     ipc.system.openExternalUrl(
                       "https://www.dyad.sh/docs/guides/security-review",
@@ -288,7 +304,9 @@ function SecurityHeader({
             >
               <ExternalLink className="size-4" />
             </TooltipTrigger>
-            <TooltipContent>Open Security Review docs</TooltipContent>
+            <TooltipContent>
+              {t("preview.security_panel.openDocs")}
+            </TooltipContent>
           </Tooltip>
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -299,15 +317,17 @@ function SecurityHeader({
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
-                  aria-label="Edit security rules"
+                  aria-label={t("preview.security_panel.editSecurityRules")}
                   onClick={onOpenEditRules}
                 />
               }
             >
               <Pencil className="size-4" />
-              Edit rules
+              {t("preview.security_panel.editSecurityRules")}
             </TooltipTrigger>
-            <TooltipContent>Edit security rules</TooltipContent>
+            <TooltipContent>
+              {t("preview.security_panel.editSecurityRules")}
+            </TooltipContent>
           </Tooltip>
           {showSelectedFixActions && (
             <div className="inline-flex">
@@ -317,7 +337,9 @@ function SecurityHeader({
                 className="rounded-r-none"
                 disabled={isRunning}
               >
-                Show fix for {existingFixIssueLabel}
+                {t("preview.security_panel.showFixFor", {
+                  label: existingFixIssueLabel,
+                })}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger
@@ -325,7 +347,12 @@ function SecurityHeader({
                     <Button
                       variant="outline"
                       className="rounded-l-none border-l-0 px-2"
-                      aria-label={`More fix actions for ${existingFixIssueLabel}`}
+                      aria-label={t(
+                        "preview.security_panel.moreFixActionsFor",
+                        {
+                          label: existingFixIssueLabel,
+                        },
+                      )}
                       disabled={isRunning}
                     />
                   }
@@ -338,7 +365,7 @@ function SecurityHeader({
                     disabled={isRunning}
                   >
                     <Wrench className="size-4" />
-                    Re-run fix
+                    {t("preview.security_panel.rerunFix")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -376,12 +403,16 @@ function SecurityHeader({
                       d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  Fixing {activeIssueLabel}...
+                  {t("preview.security_panel.fixing", {
+                    label: activeIssueLabel,
+                  })}
                 </>
               ) : (
                 <>
                   <Wrench className="w-4 h-4" />
-                  Fix {selectedIssueLabel}
+                  {t("preview.security_panel.fix", {
+                    label: selectedIssueLabel,
+                  })}
                 </>
               )}
             </Button>
@@ -394,6 +425,8 @@ function SecurityHeader({
 }
 
 function LoadingView() {
+  const { t } = useTranslation("home");
+
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
       <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -418,29 +451,33 @@ function LoadingView() {
         </svg>
       </div>
       <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mt-4">
-        Loading...
+        {t("preview.security_panel.loading")}
       </h2>
     </div>
   );
 }
 
 function NoAppSelectedView() {
+  const { t } = useTranslation("home");
+
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
       <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
         <Shield className="w-8 h-8 text-gray-400" />
       </div>
       <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-        No App Selected
+        {t("preview.security_panel.noAppSelectedTitle")}
       </h2>
       <p className="text-gray-600 dark:text-gray-400 max-w-md">
-        Select an app to run a security review
+        {t("preview.security_panel.noAppSelectedDescription")}
       </p>
     </div>
   );
 }
 
 function RunningReviewCard() {
+  const { t } = useTranslation("home");
+
   return (
     <Card>
       <CardContent className="pt-6">
@@ -467,10 +504,10 @@ function RunningReviewCard() {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            Security review is running
+            {t("preview.security_panel.reviewRunning")}
           </h3>
           <p className="text-gray-600 dark:text-gray-400">
-            Results will be available soon.
+            {t("preview.security_panel.reviewRunningDescription")}
           </p>
         </div>
       </CardContent>
@@ -485,6 +522,8 @@ function NoReviewCard({
   isRunning: boolean;
   onRun: () => void;
 }) {
+  const { t } = useTranslation("home");
+
   return (
     <Card>
       <CardContent className="pt-6">
@@ -493,11 +532,10 @@ function NoReviewCard({
             <Shield className="w-8 h-8 text-gray-400" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            No Security Review Found
+            {t("preview.security_panel.noReviewFoundTitle")}
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Run a security review to identify potential vulnerabilities in your
-            application.
+            {t("preview.security_panel.noReviewFoundDescription")}
           </p>
           <RunReviewButton isRunning={isRunning} onRun={onRun} />
         </div>
@@ -507,6 +545,8 @@ function NoReviewCard({
 }
 
 function NoIssuesCard({ data }: { data?: SecurityReviewResult }) {
+  const { t } = useTranslation("home");
+
   return (
     <Card>
       <CardContent className="pt-6">
@@ -515,14 +555,15 @@ function NoIssuesCard({ data }: { data?: SecurityReviewResult }) {
             <Shield className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            No Security Issues Found
+            {t("preview.security_panel.noIssuesFoundTitle")}
           </h3>
           <p className="text-gray-600 dark:text-gray-400">
-            Your application passed the security review with no issues detected.
+            {t("preview.security_panel.noIssuesFoundDescription")}
           </p>
           {data && (
             <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-              Last reviewed {formatTimeAgo(data.timestamp)}
+              {t("preview.security_panel.lastReviewed")}{" "}
+              {formatTimeAgo(data.timestamp, t)}
             </p>
           )}
         </div>
@@ -546,6 +587,7 @@ function FindingFixActions({
   onRerunFix: (finding: SecurityReviewFinding) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation("home");
   const size = compact ? "sm" : "default";
 
   if (isFixing) {
@@ -566,7 +608,7 @@ function FindingFixActions({
             d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           />
         </svg>
-        Fixing Issue...
+        {t("preview.security_panel.fixingIssue")}
       </Button>
     );
   }
@@ -574,7 +616,7 @@ function FindingFixActions({
   if (!finding.fixChatId) {
     return (
       <Button onClick={() => onFix(finding)} size={size} variant="default">
-        Fix Issue
+        {t("preview.security_panel.fixIssue")}
       </Button>
     );
   }
@@ -587,7 +629,7 @@ function FindingFixActions({
         variant="outline"
         className="rounded-r-none"
       >
-        Show fix
+        {t("preview.security_panel.showFix")}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -596,7 +638,9 @@ function FindingFixActions({
               size={size}
               variant="outline"
               className={cn("rounded-l-none border-l-0 px-2", compact && "w-8")}
-              aria-label={`More fix actions for ${finding.title}`}
+              aria-label={t("preview.security_panel.moreFixActionsFor", {
+                label: finding.title,
+              })}
             />
           }
         >
@@ -605,7 +649,7 @@ function FindingFixActions({
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => onRerunFix(finding)}>
             <Wrench className="w-4 h-4" />
-            Re-run fix
+            {t("preview.security_panel.rerunFix")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -634,6 +678,7 @@ function FindingsTable({
   onToggleSelection: (findingKey: string) => void;
   onToggleSelectAll: () => void;
 }) {
+  const { t } = useTranslation("home");
   const sortedFindings = [...findings].sort(
     (a, b) => getSeverityOrder(a.level) - getSeverityOrder(b.level),
   );
@@ -656,17 +701,17 @@ function FindingsTable({
               <Checkbox
                 checked={allSelected}
                 onCheckedChange={onToggleSelectAll}
-                aria-label="Select all issues"
+                aria-label={t("preview.security_panel.selectAllIssues")}
               />
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-24">
-              Level
+              {t("preview.security_panel.level")}
             </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-              Issue
+              {t("preview.security_panel.issue")}
             </th>
             <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-32">
-              Action
+              {t("preview.security_panel.action")}
             </th>
           </tr>
         </thead>
@@ -691,7 +736,9 @@ function FindingsTable({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => onToggleSelection(findingKey)}
-                    aria-label={`Select ${finding.title}`}
+                    aria-label={t("preview.security_panel.selectIssue", {
+                      title: finding.title,
+                    })}
                     onClick={(e) => e.stopPropagation()}
                   />
                 </td>
@@ -728,7 +775,7 @@ function FindingsTable({
                         className="h-7 px-2 py-0 gap-1"
                       >
                         <ChevronDown className="w-3 h-3" />
-                        Show more
+                        {t("preview.security_panel.showMore")}
                       </Button>
                     )}
                   </div>
@@ -769,6 +816,8 @@ function FindingDetailsDialog({
   onRerunFix: (finding: SecurityReviewFinding) => void;
   fixingFindingKey?: string | null;
 }) {
+  const { t } = useTranslation("home");
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[80vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -801,7 +850,7 @@ function FindingDetailsDialog({
             />
           )}
           <DialogClose className={cn(buttonVariants({ variant: "outline" }))}>
-            Close
+            {t("preview.security_panel.close")}
           </DialogClose>
         </DialogFooter>
       </DialogContent>
@@ -810,6 +859,8 @@ function FindingDetailsDialog({
 }
 
 export const SecurityPanel = () => {
+  const { t } = useTranslation("home");
+  const { t: tc } = useTranslation("common");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setIsChatPanelHidden = useSetAtom(isChatPanelHiddenAtom);
   const { selectChat } = useSelectChat();
@@ -863,7 +914,7 @@ export const SecurityPanel = () => {
 
   const handleSaveRules = async () => {
     if (!selectedAppId) {
-      showError("No app selected");
+      showError(t("preview.security_panel.noAppSelected"));
       return;
     }
 
@@ -880,12 +931,16 @@ export const SecurityPanel = () => {
       if (warning) {
         showWarning(warning);
       } else {
-        showSuccess("Security rules saved");
+        showSuccess(t("preview.security_panel.rulesSaved"));
       }
       setIsEditRulesOpen(false);
       refetchRules();
     } catch (err: any) {
-      showError(`Failed to save security rules: ${err.message || err}`);
+      showError(
+        t("preview.security_panel.failedSaveRules", {
+          error: err.message || err,
+        }),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -898,7 +953,7 @@ export const SecurityPanel = () => {
 
   const handleRunSecurityReview = async () => {
     if (!selectedAppId) {
-      showError("No app selected");
+      showError(t("preview.security_panel.noAppSelected"));
       return;
     }
 
@@ -924,14 +979,14 @@ export const SecurityPanel = () => {
         },
       });
     } catch (err) {
-      showError(`Failed to run security review: ${err}`);
+      showError(t("preview.security_panel.failedRunReview", { error: err }));
       setIsRunningReview(false);
     }
   };
 
   const showFixChat = (chatId: number) => {
     if (!selectedAppId) {
-      showError("No app selected");
+      showError(t("preview.security_panel.noAppSelected"));
       return;
     }
     setIsChatPanelHidden(false);
@@ -969,7 +1024,7 @@ export const SecurityPanel = () => {
       });
     } catch (err) {
       activeFixStreamChatIdsRef.current.delete(chatId);
-      showError(`Failed to run fix: ${err}`);
+      showError(t("preview.security_panel.failedRunFix", { error: err }));
       setFixing(false);
     }
   };
@@ -986,15 +1041,15 @@ export const SecurityPanel = () => {
     onFixSettled?: () => void;
   }): Promise<{ chatId: number; created: boolean } | null> => {
     if (!selectedAppId) {
-      showError("No app selected");
+      showError(t("preview.security_panel.noAppSelected"));
       return null;
     }
     if (!data) {
-      showError("No security review loaded");
+      showError(t("preview.security_panel.noReviewLoaded"));
       return null;
     }
     if (findingsToFix.length === 0) {
-      showError("No valid issues selected");
+      showError(t("preview.security_panel.noValidIssues"));
       return null;
     }
 
@@ -1026,7 +1081,9 @@ export const SecurityPanel = () => {
       }
       return { chatId, created };
     } catch (err) {
-      showError(`Failed to create fix chat: ${err}`);
+      showError(
+        t("preview.security_panel.failedCreateFixChat", { error: err }),
+      );
       setFixing(false);
       return null;
     }
@@ -1045,7 +1102,7 @@ export const SecurityPanel = () => {
   const handleShowFix = (finding: SecurityReviewFinding) => {
     if (finding.fixChatId) {
       showFixChat(finding.fixChatId);
-      toast.info("Opened fix chat");
+      toast.info(t("preview.security_panel.openedFixChat"));
     }
   };
 
@@ -1097,11 +1154,11 @@ export const SecurityPanel = () => {
 
   const handleFixSelected = async () => {
     if (!selectedAppId) {
-      showError("No app selected");
+      showError(t("preview.security_panel.noAppSelected"));
       return;
     }
     if (!data?.findings) {
-      showError("No security review loaded");
+      showError(t("preview.security_panel.noReviewLoaded"));
       return;
     }
 
@@ -1112,7 +1169,7 @@ export const SecurityPanel = () => {
           )
         : data.findings;
     if (findingsToFix.length === 0) {
-      showError("No valid issues selected");
+      showError(t("preview.security_panel.noValidIssues"));
       return;
     }
 
@@ -1133,7 +1190,7 @@ export const SecurityPanel = () => {
       return;
     }
     showFixChat(selectedFixChat.chatId);
-    toast.info("Opened fix chat");
+    toast.info(t("preview.security_panel.openedFixChat"));
   };
 
   const handleRerunSelectedFix = async () => {
@@ -1210,34 +1267,34 @@ export const SecurityPanel = () => {
         <Dialog open={isEditRulesOpen} onOpenChange={setIsEditRulesOpen}>
           <DialogContent className="sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
             <DialogHeader>
-              <DialogTitle>Edit Security Rules</DialogTitle>
+              <DialogTitle>
+                {t("preview.security_panel.editRulesTitle")}
+              </DialogTitle>
             </DialogHeader>
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              This allows you to add additional context about your project
-              specifically for security reviews. This content is saved to the{" "}
-              <code className="text-xs">SECURITY_RULES.md</code> file. This can
-              help catch additional issues or avoid flagging issues that are not
-              relevant for your app.
+              {t("preview.security_panel.editRulesDescription")}
             </div>
             <div className="mt-3">
               <textarea
                 className="w-full h-72 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent p-3 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 value={rulesContent}
                 onChange={(e) => setRulesContent(e.target.value)}
-                placeholder="# SECURITY_RULES.md\n\nDescribe relevant security context, accepted risks, non-issues, and environment details."
+                placeholder={t(
+                  "preview.security_panel.securityRulesFullPlaceholder",
+                )}
               />
             </div>
             <DialogFooter>
               <DialogClose
                 className={cn(buttonVariants({ variant: "outline" }))}
               >
-                Cancel
+                {tc("cancel")}
               </DialogClose>
               <Button
                 onClick={handleSaveRules}
                 disabled={isSaving || isFetchingRules}
               >
-                {isSaving ? "Saving..." : "Save"}
+                {isSaving ? tc("saving") : tc("save")}
               </Button>
             </DialogFooter>
           </DialogContent>

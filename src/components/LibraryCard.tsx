@@ -11,6 +11,7 @@ import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog"
 import { EditThemeDialog } from "@/components/EditThemeDialog";
 import { showError } from "@/lib/toast";
 import type { CustomTheme } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 export type LibraryItem =
   | { type: "theme"; data: CustomTheme }
@@ -19,13 +20,13 @@ export type LibraryItem =
 const CARD_TYPE_CONFIG = {
   theme: {
     icon: Palette,
-    label: "Theme",
+    labelKey: "theme",
     badgeClass:
       "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800",
   },
   prompt: {
     icon: FileText,
-    label: "Prompt",
+    labelKey: "prompt",
     badgeClass:
       "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800",
   },
@@ -45,6 +46,7 @@ export function LibraryCard({
   }) => Promise<void>;
   onDeletePrompt?: (id: number) => Promise<void>;
 }) {
+  const { t } = useTranslation("home");
   const config = CARD_TYPE_CONFIG[item.type];
   const Icon = config.icon;
 
@@ -63,7 +65,7 @@ export function LibraryCard({
         className={cn("absolute top-3 right-3 gap-1", config.badgeClass)}
       >
         <Icon className="h-3 w-3" />
-        {config.label}
+        {t(`library.${config.labelKey}`)}
       </Badge>
       <div className="space-y-2">
         <div className="flex items-start justify-between pr-20">
@@ -79,7 +81,8 @@ export function LibraryCard({
             )}
             {slug && (
               <p className="text-xs text-muted-foreground mt-1">
-                Use <code className="font-mono">/{slug}</code> in chat
+                {t("library.useInChat")}{" "}
+                <code className="font-mono">/{slug}</code> {t("library.inChat")}
               </p>
             )}
           </div>
@@ -107,6 +110,7 @@ export function LibraryCard({
 }
 
 function ThemeActions({ theme }: { theme: CustomTheme }) {
+  const { t } = useTranslation("home");
   const updateThemeMutation = useUpdateCustomTheme();
   const deleteThemeMutation = useDeleteCustomTheme();
   const isDeleting = deleteThemeMutation.isPending;
@@ -125,7 +129,10 @@ function ThemeActions({ theme }: { theme: CustomTheme }) {
       await deleteThemeMutation.mutateAsync(theme.id);
     } catch (error) {
       showError(
-        `Failed to delete theme: ${error instanceof Error ? error.message : "Unknown error"}`,
+        t("library.failedDeleteTheme", {
+          error:
+            error instanceof Error ? error.message : t("library.unknownError"),
+        }),
       );
     }
   };
@@ -135,7 +142,7 @@ function ThemeActions({ theme }: { theme: CustomTheme }) {
       <EditThemeDialog theme={theme} onUpdateTheme={handleUpdate} />
       <DeleteConfirmationDialog
         itemName={theme.name}
-        itemType="Theme"
+        itemType={t("library.theme")}
         onDelete={handleDelete}
         isDeleting={isDeleting}
       />
@@ -157,6 +164,7 @@ function PromptActions({
   }) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }) {
+  const { t } = useTranslation("home");
   return (
     <>
       <CreateOrEditPromptDialog
@@ -166,7 +174,7 @@ function PromptActions({
       />
       <DeleteConfirmationDialog
         itemName={prompt.title}
-        itemType="Prompt"
+        itemType={t("library.prompt")}
         onDelete={() => onDelete(prompt.id)}
       />
     </>

@@ -2,12 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
-import {
-  differenceInCalendarDays,
-  formatDistanceToNow,
-  isToday,
-  isYesterday,
-} from "date-fns";
+import { differenceInCalendarDays, isToday, isYesterday } from "date-fns";
 import {
   PlusCircle,
   MoreVertical,
@@ -54,6 +49,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSetChatFavorite } from "@/hooks/useSetChatFavorite";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
+import { formatRelativeTime } from "@/i18n/format";
 
 const CHAT_ACTION_SPRING = {
   type: "spring" as const,
@@ -71,7 +67,7 @@ export function ChatList({
   showViewAllAppsButton?: boolean;
   onViewAllApps?: () => void;
 }) {
-  const { t } = useTranslation("chat");
+  const { t, i18n } = useTranslation("chat");
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -471,9 +467,9 @@ export function ChatList({
                                   {chat.title || t("newChat")}
                                 </span>
                                 <span className="text-xs text-gray-500">
-                                  {formatDistanceToNow(
+                                  {formatRelativeTime(
                                     new Date(chat.createdAt),
-                                    { addSuffix: true },
+                                    i18n.language,
                                   )}
                                 </span>
                               </div>

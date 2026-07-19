@@ -2,6 +2,7 @@ import { useAtomValue } from "jotai";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { usePostHog } from "posthog-js/react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { chatMessagesByIdAtom, isStreamingByIdAtom } from "@/atoms/chatAtoms";
@@ -15,8 +16,6 @@ import { cn } from "@/lib/utils";
 export interface PromoMessageConfig {
   /** Stable id used for the promo_click event and UTM attribution. */
   id: string;
-  text: string;
-  cta: string;
   /** Pro promos open the in-app trial dialog; community tips open an external URL. */
   target: { type: "trial-dialog" } | { type: "url"; url: string };
   /** Relative frequency in the rotation. */
@@ -26,71 +25,51 @@ export interface PromoMessageConfig {
 export const PROMO_MESSAGES: PromoMessageConfig[] = [
   {
     id: "pro-trial",
-    text: "Build more with Dyad Pro — free for 7 days.",
-    cta: "Start Free Trial",
     target: { type: "trial-dialog" },
     weight: 3,
   },
   {
     id: "agent-mode",
-    text: "Let Dyad Pro fix bugs with Agent mode.",
-    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 3,
   },
   {
     id: "custom-theme",
-    text: "Give your app a unique look with AI theme generator.",
-    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 2,
   },
   {
     id: "speech-to-text",
-    text: "Tired of typing? Talk to Dyad with your voice.",
-    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 3,
   },
   {
     id: "web-search",
-    text: "Let Dyad use the web for fresh information and better builds.",
-    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 2,
   },
   {
     id: "pro-tools",
-    text: "Recreate a website with Dyad Pro.",
-    cta: "Unlock Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 2,
   },
   {
     id: "all-models",
-    text: "Access all the leading AI models in one subscription.",
-    cta: "Get Dyad Pro",
     target: { type: "trial-dialog" },
     weight: 3,
   },
   {
     id: "github-star",
-    text: "Enjoying Dyad? Star us on GitHub.",
-    cta: "Star on GitHub",
     target: { type: "url", url: "https://github.com/dyad-sh/dyad" },
     weight: 1,
   },
   {
     id: "reddit",
-    text: "Join 4000+ builders in the Dyad subreddit.",
-    cta: "Join r/dyadbuilders",
     target: { type: "url", url: "https://www.reddit.com/r/dyadbuilders/" },
     weight: 1,
   },
   {
     id: "follow-x",
-    text: "Follow Dyad on X for build tips and release updates.",
-    cta: "Follow @dyad_sh",
     target: { type: "url", url: "https://x.com/dyad_sh" },
     weight: 0.5,
   },
@@ -196,6 +175,7 @@ export function usePromoMessage(chatId?: number): PromoMessageState {
  * composer drops its own top border and corners while this is visible.
  */
 export function PromoMessage({ seed }: { seed: number }) {
+  const { t } = useTranslation("chat");
   const posthog = usePostHog();
   const [isTrialDialogOpen, setIsTrialDialogOpen] = useState(false);
   const [devMessageIndex, setDevMessageIndex] = useState<number | null>(null);
@@ -208,6 +188,52 @@ export function PromoMessage({ seed }: { seed: number }) {
     devMessageIndex === null
       ? pickPromoMessage(seed)
       : PROMO_MESSAGES[devMessageIndex];
+  const promoCopyById: Record<string, { text: string; cta: string }> = {
+    "pro-trial": {
+      text: t("promoMessages.pro-trial.text"),
+      cta: t("promoMessages.pro-trial.cta"),
+    },
+    "agent-mode": {
+      text: t("promoMessages.agent-mode.text"),
+      cta: t("promoMessages.agent-mode.cta"),
+    },
+    "custom-theme": {
+      text: t("promoMessages.custom-theme.text"),
+      cta: t("promoMessages.custom-theme.cta"),
+    },
+    "speech-to-text": {
+      text: t("promoMessages.speech-to-text.text"),
+      cta: t("promoMessages.speech-to-text.cta"),
+    },
+    "web-search": {
+      text: t("promoMessages.web-search.text"),
+      cta: t("promoMessages.web-search.cta"),
+    },
+    "pro-tools": {
+      text: t("promoMessages.pro-tools.text"),
+      cta: t("promoMessages.pro-tools.cta"),
+    },
+    "all-models": {
+      text: t("promoMessages.all-models.text"),
+      cta: t("promoMessages.all-models.cta"),
+    },
+    "github-star": {
+      text: t("promoMessages.github-star.text"),
+      cta: t("promoMessages.github-star.cta"),
+    },
+    reddit: {
+      text: t("promoMessages.reddit.text"),
+      cta: t("promoMessages.reddit.cta"),
+    },
+    "follow-x": {
+      text: t("promoMessages.follow-x.text"),
+      cta: t("promoMessages.follow-x.cta"),
+    },
+  };
+  const promoCopy = promoCopyById[message.id] ?? {
+    text: t("promoMessages.pro-trial.text"),
+    cta: t("promoMessages.pro-trial.cta"),
+  };
   const isProPromo = message.target.type === "trial-dialog";
 
   const handleCtaClick = () => {
@@ -241,10 +267,11 @@ export function PromoMessage({ seed }: { seed: number }) {
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
         )}
         <span className="flex-1 min-w-0 truncate text-muted-foreground">
-          {message.text}
+          {promoCopy.text}
         </span>
         <button
           type="button"
+          data-testid="promo-cta"
           onClick={handleCtaClick}
           className={cn(
             "inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md border px-2 font-medium transition-colors",
@@ -253,13 +280,13 @@ export function PromoMessage({ seed }: { seed: number }) {
               : "border-border bg-background/50 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
-          {message.cta}
+          {promoCopy.cta}
         </button>
         {SHOW_PROMO_DEV_CYCLE && (
           <button
             type="button"
-            aria-label="Cycle promo message"
-            title="Cycle promo message"
+            aria-label={t("cyclePromoMessage")}
+            title={t("cyclePromoMessage")}
             onClick={handleDevCycle}
             className="inline-flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/70 hover:bg-muted hover:text-foreground"
           >

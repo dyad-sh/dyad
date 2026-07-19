@@ -12,6 +12,7 @@ import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
+import { useTranslation } from "react-i18next";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -69,6 +70,7 @@ ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
 export const Console = () => {
+  const { t } = useTranslation("home");
   const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
   const setConsoleEntries = useSetAtom(setConsoleEntriesForAppAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -116,11 +118,13 @@ export const Console = () => {
         setConsoleEntries({ appId: selectedAppId, entries: [] });
       } catch (error) {
         showError(
-          error instanceof Error ? error.message : "Failed to clear logs",
+          error instanceof Error
+            ? error.message
+            : t("preview.console.failedClearLogs"),
         );
       }
     }
-  }, [selectedAppId, setConsoleEntries]);
+  }, [selectedAppId, setConsoleEntries, t]);
 
   useEffect(() => {
     const container = containerRef.current?.parentElement;

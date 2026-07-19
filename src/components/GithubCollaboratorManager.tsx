@@ -18,6 +18,7 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { showSuccess, showError } from "@/lib/toast";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +45,7 @@ interface CollaboratorManagerProps {
 }
 
 export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
+  const { t } = useTranslation(["home", "common"]);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [inviteUsername, setInviteUsername] = useState("");
@@ -60,7 +62,11 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
       setCollaborators(collabs);
     } catch (error: any) {
       console.error("Failed to load collaborators:", error);
-      showError("Failed to load collaborators: " + error.message);
+      showError(
+        t("integrations.githubCollaborator.failedLoad", {
+          error: error.message,
+        }),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -79,7 +85,9 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     setIsInviting(true);
     try {
       await ipc.github.inviteCollaborator({ appId, username: trimmedUsername });
-      showSuccess(`Invited ${trimmedUsername} to the project.`);
+      showSuccess(
+        t("integrations.githubCollaborator.invited", { name: trimmedUsername }),
+      );
       setInviteUsername("");
       // Reload list (though they might be pending)
       loadCollaborators();
@@ -98,7 +106,11 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
         appId,
         username: collaboratorToDelete,
       });
-      showSuccess(`Removed ${collaboratorToDelete} from the project.`);
+      showSuccess(
+        t("integrations.githubCollaborator.removed", {
+          name: collaboratorToDelete,
+        }),
+      );
       loadCollaborators();
     } catch (error: any) {
       showError(error.message);
@@ -118,10 +130,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
             <Users className="w-5 h-5" />
             <div>
               <CardTitle className="text-sm" data-testid="collaborators-header">
-                Collaborators
+                {t("integrations.githubCollaborator.title")}
               </CardTitle>
               <CardDescription className="text-xs">
-                Manage who has access to this project via GitHub.
+                {t("integrations.githubCollaborator.description")}
               </CardDescription>
             </div>
           </div>
@@ -141,7 +153,9 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
           {/* Invite Form */}
           <form onSubmit={handleInvite} className="flex gap-2">
             <Input
-              placeholder="GitHub username"
+              placeholder={t(
+                "integrations.githubCollaborator.usernamePlaceholder",
+              )}
               value={inviteUsername}
               onChange={(e) => setInviteUsername(e.target.value)}
               disabled={isInviting}
@@ -153,11 +167,11 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
               disabled={isInviting || !inviteUsername.trim()}
             >
               {isInviting ? (
-                "Inviting..."
+                t("integrations.githubCollaborator.inviting")
               ) : (
                 <>
                   <UserPlus className="w-4 h-4 mr-2" />
-                  Invite
+                  {t("integrations.githubCollaborator.invite")}
                 </>
               )}
             </Button>
@@ -166,15 +180,15 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
           {/* Collaborators List */}
           <div className="space-y-2 mt-4">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Current Team
+              {t("integrations.githubCollaborator.currentTeam")}
             </h3>
             {isLoading ? (
               <div className="text-sm text-center py-4 text-gray-500">
-                Loading collaborators...
+                {t("integrations.githubCollaborator.loadingCollaborators")}
               </div>
             ) : collaborators.length === 0 ? (
               <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
-                No collaborators found.
+                {t("integrations.githubCollaborator.noCollaborators")}
               </div>
             ) : (
               <div className="space-y-2">
@@ -194,10 +208,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
                         <p className="text-sm font-medium">{collab.login}</p>
                         <p className="text-xs text-gray-500">
                           {collab.permissions?.admin
-                            ? "Admin"
+                            ? t("integrations.githubCollaborator.admin")
                             : collab.permissions?.push
-                              ? "Editor"
-                              : "Viewer"}
+                              ? t("integrations.githubCollaborator.editor")
+                              : t("integrations.githubCollaborator.viewer")}
                         </p>
                       </div>
                     </div>
@@ -226,22 +240,24 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove collaborator?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("integrations.githubCollaborator.removeCollaborator")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove{" "}
-              <span className="font-medium">{collaboratorToDelete}</span> from
-              this project? This action cannot be undone.
+              {t("integrations.githubCollaborator.removeConfirmation", {
+                name: collaboratorToDelete,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="confirm-remove-collaborator-cancel">
-              Cancel
+              {t("common:cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               data-testid="confirm-remove-collaborator"
               onClick={handleRemove}
             >
-              Remove
+              {t("common:remove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

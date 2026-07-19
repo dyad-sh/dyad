@@ -147,9 +147,12 @@ export const DatabaseEnvVars = ({
                     variant="outline"
                     size="icon"
                     onClick={() => toggleReveal(row.key)}
-                    aria-label={`${
-                      revealedKeys.has(row.key) ? "Hide" : "Show"
-                    } ${row.key}`}
+                    aria-label={t(
+                      revealedKeys.has(row.key)
+                        ? "preview.databaseEnvVars.hide"
+                        : "preview.databaseEnvVars.show",
+                      { key: row.key },
+                    )}
                     aria-pressed={revealedKeys.has(row.key)}
                   >
                     {revealedKeys.has(row.key) ? (
@@ -164,7 +167,9 @@ export const DatabaseEnvVars = ({
                   variant="outline"
                   size="icon"
                   onClick={() => handleCopy(row)}
-                  aria-label={`Copy ${row.key}`}
+                  aria-label={t("preview.databaseEnvVars.copy", {
+                    key: row.key,
+                  })}
                 >
                   {copiedKey === row.key ? (
                     <Check className="w-4 h-4 text-green-600 dark:text-green-400" />

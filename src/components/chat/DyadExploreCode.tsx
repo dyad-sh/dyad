@@ -98,9 +98,14 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
           <DyadStateIndicator state="pending" pendingLabel={t("exploring")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("didNotFinish")}
+          />
         )}
-        {errored && <DyadStateIndicator state="error" errorLabel={t("failed")} />}
+        {errored && (
+          <DyadStateIndicator state="error" errorLabel={t("failed")} />
+        )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>

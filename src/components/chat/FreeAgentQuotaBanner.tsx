@@ -1,4 +1,6 @@
 import { AlertTriangle, ArrowRight, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { formatTime } from "@/i18n/format";
 import { Button } from "@/components/ui/button";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { ipc } from "@/ipc/types";
@@ -14,6 +16,7 @@ interface FreeAgentQuotaBannerProps {
 export function FreeAgentQuotaBanner({
   onSwitchToBuildMode,
 }: FreeAgentQuotaBannerProps) {
+  const { t, i18n } = useTranslation("chat");
   const {
     quotaStatus,
     isQuotaExceeded,
@@ -30,13 +33,13 @@ export function FreeAgentQuotaBanner({
   const resetTimeDisplay =
     hoursUntilReset !== null
       ? hoursUntilReset === 0
-        ? "less than 1 hour"
-        : `${hoursUntilReset} hour${hoursUntilReset === 1 ? "" : "s"}`
-      : "later";
+        ? t("quota.lessThanHour")
+        : t("quota.hours", { count: hoursUntilReset })
+      : t("quota.later");
 
   // Format the actual reset time (e.g., "11:59 PM")
   const resetDateTime = resetTime
-    ? new Date(resetTime).toLocaleTimeString([], {
+    ? formatTime(new Date(resetTime), i18n.language, {
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
@@ -56,15 +59,15 @@ export function FreeAgentQuotaBanner({
         <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="flex-1 space-y-2">
           <p className="text-sm text-amber-700 dark:text-amber-300">
-            You have used all {messagesLimit} messages for the free Agent mode
-            today. Check back in {resetTimeDisplay} ({resetDateTime}). If you
-            don't want to wait, upgrade to Dyad Pro or switch back to Build
-            mode.
+            {t("quota.message", {
+              label: t("quota.freeAgentLabel", { count: messagesLimit }),
+              resetTime: `${resetTimeDisplay} (${resetDateTime})`,
+            })}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleUpgrade} size="sm" className="gap-1.5">
               <Sparkles className="h-3.5 w-3.5" />
-              Upgrade to Dyad Pro
+              {t("quota.upgrade")}
             </Button>
             <Button
               onClick={onSwitchToBuildMode}
@@ -73,7 +76,7 @@ export function FreeAgentQuotaBanner({
               className="gap-1.5 border-amber-500/50 hover:bg-amber-500/20"
             >
               <ArrowRight className="h-3.5 w-3.5" />
-              Switch back to Build mode
+              {t("quota.switchToBuild")}
             </Button>
           </div>
         </div>

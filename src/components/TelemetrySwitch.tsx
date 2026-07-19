@@ -10,7 +10,7 @@ export function TelemetrySwitch() {
     <div className="flex items-center space-x-2">
       <Switch
         id="telemetry-switch"
-        aria-label="Telemetry"
+        aria-label={t("telemetry.enable")}
         checked={settings?.telemetryConsent === "opted_in"}
         onCheckedChange={() => {
           updateSettings({

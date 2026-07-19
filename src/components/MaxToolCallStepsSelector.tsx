@@ -18,34 +18,31 @@ interface OptionInfo {
 
 const defaultValue = "default";
 
-const options: OptionInfo[] = [
-  {
-    value: "25",
-    label: "Low (25)",
-    description:
-      "Limits tool calls to 25. Good for simple tasks that don't need many steps.",
-  },
-  {
-    value: "50",
-    label: "Medium (50)",
-    description: "Moderate limit for straightforward tasks.",
-  },
-  {
-    value: defaultValue,
-    label: `Default (${DEFAULT_MAX_TOOL_CALL_STEPS})`,
-    description: "Balanced limit for most tasks.",
-  },
-  {
-    value: "200",
-    label: "High (200)",
-    description:
-      "Extended limit for complex multi-step tasks (may increase cost and time).",
-  },
-];
-
 export const MaxToolCallStepsSelector: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const options: OptionInfo[] = [
+    {
+      value: "25",
+      label: t("ai.toolStepsLow"),
+      description: t("ai.toolStepsLowDescription"),
+    },
+    {
+      value: "50",
+      label: t("ai.toolStepsMedium"),
+      description: t("ai.toolStepsMediumDescription"),
+    },
+    {
+      value: defaultValue,
+      label: t("ai.toolStepsDefault", { count: DEFAULT_MAX_TOOL_CALL_STEPS }),
+      description: t("ai.toolStepsDefaultDescription"),
+    },
+    {
+      value: "200",
+      label: t("ai.toolStepsHigh"),
+      description: t("ai.toolStepsHighDescription"),
+    },
+  ];
 
   const handleValueChange = (value: string) => {
     if (value === "default") {

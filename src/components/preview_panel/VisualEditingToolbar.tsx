@@ -20,18 +20,19 @@ import { NumberInput } from "@/components/ui/NumberInput";
 import { rgbToHex, processNumericValue } from "@/utils/style-utils";
 import { ImageSwapPopover, type ImageUploadData } from "./ImageSwapPopover";
 import { mergePendingChange } from "@/ipc/types/visual-editing";
+import { useTranslation } from "react-i18next";
 
 const FONT_WEIGHT_OPTIONS = [
-  { value: "", label: "Default" },
-  { value: "100", label: "Thin (100)" },
-  { value: "200", label: "Extra Light (200)" },
-  { value: "300", label: "Light (300)" },
-  { value: "400", label: "Normal (400)" },
-  { value: "500", label: "Medium (500)" },
-  { value: "600", label: "Semi Bold (600)" },
-  { value: "700", label: "Bold (700)" },
-  { value: "800", label: "Extra Bold (800)" },
-  { value: "900", label: "Black (900)" },
+  { value: "", labelKey: "default" },
+  { value: "100", labelKey: "thin" },
+  { value: "200", labelKey: "extraLight" },
+  { value: "300", labelKey: "light" },
+  { value: "400", labelKey: "normal" },
+  { value: "500", labelKey: "medium" },
+  { value: "600", labelKey: "semiBold" },
+  { value: "700", labelKey: "bold" },
+  { value: "800", labelKey: "extraBold" },
+  { value: "900", labelKey: "black" },
 ] as const;
 
 const FONT_FAMILY_OPTIONS = [
@@ -75,6 +76,7 @@ export function VisualEditingToolbar({
   isDynamicImage,
   currentImageSrc,
 }: VisualEditingToolbarProps) {
+  const { t } = useTranslation("home");
   const coordinates = useAtomValue(currentComponentCoordinatesAtom);
   const [currentMargin, setCurrentMargin] = useState({ x: "", y: "" });
   const [currentPadding, setCurrentPadding] = useState({ x: "", y: "" });
@@ -372,37 +374,39 @@ export function VisualEditingToolbar({
             <button
               onClick={handleDeselectComponent}
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
-              aria-label="Deselect Component"
+              aria-label={t("preview.visualEditing.deselectComponent")}
             />
           }
         >
           <X size={16} />
         </TooltipTrigger>
-        <TooltipContent>Deselect Component</TooltipContent>
+        <TooltipContent>
+          {t("preview.visualEditing.deselectComponent")}
+        </TooltipContent>
       </Tooltip>
 
       {isDynamic ? (
         <div className="flex items-center px-2 py-1 text-yellow-800 dark:text-yellow-200 rounded text-xs font-medium">
-          <span>This component is styled dynamically</span>
+          <span>{t("preview.visualEditing.styledDynamically")}</span>
         </div>
       ) : (
         <>
           <StylePopover
             icon={<Move size={16} />}
-            title="Margin"
-            tooltip="Margin"
+            title={t("preview.visualEditing.margin")}
+            tooltip={t("preview.visualEditing.margin")}
           >
             <div className="grid grid-cols-1 gap-2">
               <NumberInput
                 id="margin-x"
-                label="Horizontal"
+                label={t("preview.visualEditing.horizontal")}
                 value={currentMargin.x}
                 onChange={(v) => handleSpacingChange("margin", "x", v)}
                 placeholder="10"
               />
               <NumberInput
                 id="margin-y"
-                label="Vertical"
+                label={t("preview.visualEditing.vertical")}
                 value={currentMargin.y}
                 onChange={(v) => handleSpacingChange("margin", "y", v)}
                 placeholder="10"
@@ -426,20 +430,20 @@ export function VisualEditingToolbar({
                 <rect x="7" y="7" width="10" height="10" rx="1" />
               </svg>
             }
-            title="Padding"
-            tooltip="Padding"
+            title={t("preview.visualEditing.padding")}
+            tooltip={t("preview.visualEditing.padding")}
           >
             <div className="grid grid-cols-1 gap-2">
               <NumberInput
                 id="padding-x"
-                label="Horizontal"
+                label={t("preview.visualEditing.horizontal")}
                 value={currentPadding.x}
                 onChange={(v) => handleSpacingChange("padding", "x", v)}
                 placeholder="10"
               />
               <NumberInput
                 id="padding-y"
-                label="Vertical"
+                label={t("preview.visualEditing.vertical")}
                 value={currentPadding.y}
                 onChange={(v) => handleSpacingChange("padding", "y", v)}
                 placeholder="10"
@@ -449,8 +453,8 @@ export function VisualEditingToolbar({
 
           <StylePopover
             icon={<Square size={16} />}
-            title="Border"
-            tooltip="Border"
+            title={t("preview.visualEditing.border")}
+            tooltip={t("preview.visualEditing.border")}
           >
             <div className="space-y-2">
               <NumberInput
@@ -469,7 +473,7 @@ export function VisualEditingToolbar({
               />
               <div>
                 <Label htmlFor="border-color" className="text-xs">
-                  Color
+                  {t("preview.visualEditing.color")}
                 </Label>
                 <ColorPicker
                   id="border-color"
@@ -483,12 +487,12 @@ export function VisualEditingToolbar({
 
           <StylePopover
             icon={<Palette size={16} />}
-            title="Background Color"
-            tooltip="Background"
+            title={t("preview.visualEditing.backgroundColor")}
+            tooltip={t("preview.visualEditing.background")}
           >
             <div>
               <Label htmlFor="bg-color" className="text-xs">
-                Color
+                {t("preview.visualEditing.color")}
               </Label>
               <ColorPicker
                 id="bg-color"
@@ -505,20 +509,20 @@ export function VisualEditingToolbar({
           {hasStaticText && (
             <StylePopover
               icon={<Type size={16} />}
-              title="Text Style"
-              tooltip="Text Style"
+              title={t("preview.visualEditing.textStyle")}
+              tooltip={t("preview.visualEditing.textStyle")}
             >
               <div className="space-y-2">
                 <NumberInput
                   id="font-size"
-                  label="Font Size"
+                  label={t("preview.visualEditing.fontSize")}
                   value={currentTextStyles.fontSize}
                   onChange={(v) => handleTextStyleChange("fontSize", v)}
                   placeholder="16"
                 />
                 <div>
                   <Label htmlFor="font-weight" className="text-xs">
-                    Font Weight
+                    {t("preview.visualEditing.fontWeight")}
                   </Label>
                   <select
                     id="font-weight"
@@ -530,14 +534,14 @@ export function VisualEditingToolbar({
                   >
                     {FONT_WEIGHT_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
-                        {opt.label}
+                        {t(`preview.visualEditing.fontWeights.${opt.labelKey}`)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <Label htmlFor="font-family" className="text-xs">
-                    Font Family
+                    {t("preview.visualEditing.fontFamily")}
                   </Label>
                   <select
                     id="font-family"
@@ -556,7 +560,7 @@ export function VisualEditingToolbar({
                 </div>
                 <div>
                   <Label htmlFor="text-color" className="text-xs">
-                    Text Color
+                    {t("preview.visualEditing.textColor")}
                   </Label>
                   <ColorPicker
                     id="text-color"

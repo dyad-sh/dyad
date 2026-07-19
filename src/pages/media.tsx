@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
+import { useTranslation } from "react-i18next";
 
 export default function MediaPage() {
+  const { t } = useTranslation("home");
   const {
     mediaApps,
     isLoading,
@@ -30,13 +32,13 @@ export default function MediaPage() {
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="flex items-center text-2xl font-bold sm:text-3xl">
             <Image className="mr-2 h-7 w-7 sm:h-8 sm:w-8" />
-            Media
+            {t("media.title")}
           </h1>
           <div className="flex items-center gap-2">
             <ImageGenerationProgressButton />
             <Button onClick={() => setImageGeneratorOpen(true)}>
               <ImagePlus className="mr-2 h-4 w-4" />
-              Generate Image
+              {t("media.generateImage")}
             </Button>
           </div>
         </div>
@@ -44,7 +46,7 @@ export default function MediaPage() {
         <LibrarySearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search images..."
+          placeholder={t("media.searchPlaceholder")}
         />
 
         {isLoading ? (
@@ -53,9 +55,7 @@ export default function MediaPage() {
           </div>
         ) : filteredMediaApps.length === 0 ? (
           <div className="text-muted-foreground text-center py-12">
-            {searchQuery
-              ? "No results found."
-              : "No media files yet. Media files from your apps will appear here."}
+            {searchQuery ? t("library.noResults") : t("media.noFiles")}
           </div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">

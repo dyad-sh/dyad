@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { FileWarning, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +33,7 @@ interface UncommittedFilesBannerProps {
 }
 
 export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
+  const { t } = useTranslation("chat");
   const { uncommittedFiles, hasUncommittedFiles, isLoading } =
     useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
@@ -88,8 +90,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         <div className="flex items-center gap-2 text-sm">
           <FileWarning size={16} />
           <span>
-            You have <strong>{uncommittedFiles.length}</strong> uncommitted{" "}
-            {uncommittedFiles.length === 1 ? "change" : "changes"}.
+            {t("uncommittedChanges", { count: uncommittedFiles.length })}
           </span>
         </div>
         <Button
@@ -98,7 +99,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
           onClick={handleOpenDialog}
           data-testid="review-commit-button"
         >
-          Review & commit
+          {t("reviewCommitChanges")}
         </Button>
       </div>
 
@@ -116,9 +117,9 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
           data-testid="commit-dialog"
         >
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle>Review & Commit Changes</DialogTitle>
+            <DialogTitle>{t("reviewCommitChanges")}</DialogTitle>
             <DialogDescription>
-              Review your changes and enter a commit message.
+              {t("reviewChangesDescription")}
             </DialogDescription>
           </DialogHeader>
 
@@ -128,20 +129,20 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                 htmlFor="commit-message"
                 className="text-sm font-medium mb-2 block"
               >
-                Commit message
+                {t("commitMessage")}
               </label>
               <Input
                 id="commit-message"
                 value={commitMessage}
                 onChange={(e) => setCommitMessage(e.target.value)}
-                placeholder="Enter commit message..."
+                placeholder={t("enterCommitMessage")}
                 data-testid="commit-message-input"
               />
             </div>
 
             <div>
               <p className="text-sm font-medium mb-2">
-                Changed files ({uncommittedFiles.length})
+                {t("changedFiles", { count: uncommittedFiles.length })}
               </p>
               <TooltipProvider delay={300}>
                 <div
@@ -196,9 +197,13 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                   id="discard-confirm-title"
                   className="text-sm text-destructive font-medium"
                 >
-                  Discard changes to {uncommittedFiles.length}{" "}
-                  {uncommittedFiles.length === 1 ? "file" : "files"}?{" "}
-                  <span id="discard-confirm-desc">This cannot be undone.</span>
+                  {t("discardChangesTo", {
+                    count: uncommittedFiles.length,
+                    label: t("fileCount", { count: uncommittedFiles.length }),
+                  })}{" "}
+                  <span id="discard-confirm-desc">
+                    {t("thisCannotBeUndone")}
+                  </span>
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -208,7 +213,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                     disabled={isDiscarding}
                     data-testid="confirm-discard-button"
                   >
-                    {isDiscarding ? "Discarding..." : "Yes, discard all"}
+                    {isDiscarding ? t("discarding") : t("yesDiscardAll")}
                   </Button>
                   <Button
                     variant="outline"
@@ -216,7 +221,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                     onClick={() => setShowDiscardConfirm(false)}
                     disabled={isDiscarding}
                   >
-                    Keep changes
+                    {t("keepChanges")}
                   </Button>
                 </div>
               </div>
@@ -231,21 +236,21 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               disabled={isCommitting || isDiscarding || showDiscardConfirm}
               data-testid="discard-button"
             >
-              Discard all
+              {t("discardAll")}
             </Button>
             <Button
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
               disabled={isCommitting || isDiscarding}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               onClick={handleCommit}
               disabled={!commitMessage.trim() || isCommitting || isDiscarding}
               data-testid="commit-button"
             >
-              {isCommitting ? "Committing..." : "Commit"}
+              {isCommitting ? t("committing") : t("commit")}
             </Button>
           </DialogFooter>
         </DialogContent>

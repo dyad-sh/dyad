@@ -14,6 +14,7 @@ import {
 import { GaugeIcon, CheckIcon } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 import {
   THINKING_EFFORT_DEFAULT,
   THINKING_EFFORT_OPTIONS,
@@ -23,6 +24,7 @@ import {
 
 export function ThinkingEffortSelector() {
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
 
   if (!settings) {
     return null;
@@ -49,13 +51,10 @@ export function ThinkingEffortSelector() {
           <GaugeIcon className="h-3.5 w-3.5" />
           <span className="truncate">{currentOption.label}</span>
         </TooltipTrigger>
-        <TooltipContent>
-          Effort: how hard the model thinks before responding. Applies to
-          reasoning-capable models.
-        </TooltipContent>
+        <TooltipContent>{t("ai.thinkingEffortTooltip")}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent className="w-64" align="start">
-        <DropdownMenuLabel>Effort</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("ai.thinkingEffort")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {THINKING_EFFORT_OPTIONS.map((option) => {
           const isSelected = option.value === currentValue;
@@ -74,7 +73,10 @@ export function ThinkingEffortSelector() {
                   <span className="text-[13px] leading-tight">
                     {option.label}
                     {option.value === THINKING_EFFORT_DEFAULT && (
-                      <span className="text-muted-foreground"> (default)</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        {t("ai.defaultSuffix")}
+                      </span>
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground">

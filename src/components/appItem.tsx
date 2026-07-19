@@ -1,9 +1,10 @@
-import { formatDistanceToNow } from "date-fns";
 import { Star } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { AppAvatar } from "@/components/AppAvatar";
 import type { ListedApp } from "@/ipc/types/app";
+import { formatRelativeTime } from "@/i18n/format";
 
 type AppItemProps = {
   app: ListedApp;
@@ -12,6 +13,8 @@ type AppItemProps = {
 };
 
 export function AppItem({ app, handleAppClick, selectedAppId }: AppItemProps) {
+  const { i18n } = useTranslation();
+
   return (
     <SidebarMenuItem className="mb-1 relative ">
       <div className="flex w-[206px] items-center" title={app.name}>
@@ -37,9 +40,7 @@ export function AppItem({ app, handleAppClick, selectedAppId }: AppItemProps) {
               )}
             </div>
             <span className="text-xs text-gray-500">
-              {formatDistanceToNow(new Date(app.createdAt), {
-                addSuffix: true,
-              })}
+              {formatRelativeTime(new Date(app.createdAt), i18n.language)}
             </span>
           </div>
         </Button>

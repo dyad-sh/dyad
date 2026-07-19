@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { useTranslation } from "react-i18next";
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
 const maskEnvApiKey = (key: string | undefined): string => {
@@ -81,6 +82,7 @@ export function ApiKeyConfiguration({
   highlightPasteButton = false,
   onDismissPasteHighlight,
 }: ApiKeyConfigurationProps) {
+  const { t } = useTranslation(["settings", "common"]);
   const [showUserApiKey, setShowUserApiKey] = useState(false);
   const [prevProvider, setPrevProvider] = useState(provider);
 
@@ -145,14 +147,14 @@ export function ApiKeyConfiguration({
         className="border rounded-lg px-4 bg-(--background-lightest)"
       >
         <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
-          API Key from Settings
+          {t("apiKey.fromSettings")}
         </AccordionTrigger>
         <AccordionContent className="pt-4 ">
           {isValidUserKey && (
             <Alert variant="default" className="mb-4">
               <KeyRound className="h-4 w-4" />
               <AlertTitle className="flex justify-between items-center">
-                <span>Current Key (Settings)</span>
+                <span>{t("apiKey.currentKey")}</span>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -161,7 +163,7 @@ export function ApiKeyConfiguration({
                   className="flex items-center gap-1 h-7 px-2"
                 >
                   <Trash2 className="h-4 w-4" />
-                  {isSaving ? "Deleting..." : "Delete"}
+                  {isSaving ? t("common:deleting") : t("common:delete")}
                 </Button>
               </AlertTitle>
               <AlertDescription>
@@ -174,7 +176,7 @@ export function ApiKeyConfiguration({
                     variant="ghost"
                     size="icon"
                     aria-label={
-                      showUserApiKey ? "Hide API key" : "Show API key"
+                      showUserApiKey ? t("apiKey.hide") : t("apiKey.show")
                     }
                     onClick={() => setShowUserApiKey((prev) => !prev)}
                     className="text-muted-foreground hover:text-foreground shrink-0"
@@ -188,7 +190,7 @@ export function ApiKeyConfiguration({
                 </div>
                 {activeKeySource === "settings" && (
                   <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                    This key is currently active.
+                    {t("apiKey.thisKeyActive")}
                   </p>
                 )}
               </AlertDescription>
@@ -200,14 +202,18 @@ export function ApiKeyConfiguration({
               htmlFor="apiKeyInput"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300"
             >
-              {isValidUserKey ? "Update" : "Set"} {providerDisplayName} API Key
+              {t(isValidUserKey ? "apiKey.updateKey" : "apiKey.setKey", {
+                name: providerDisplayName,
+              })}
             </label>
             <div className="flex items-start space-x-2">
               <Input
                 id="apiKeyInput"
                 value={apiKeyInput}
                 onChange={(e) => onApiKeyInputChange(e.target.value)}
-                placeholder={`Enter new ${providerDisplayName} API Key here`}
+                placeholder={t("apiKey.enterKey", {
+                  name: providerDisplayName,
+                })}
                 className={`flex-grow ${saveError ? "border-red-500" : ""}`}
               />
               <Popover
@@ -226,7 +232,7 @@ export function ApiKeyConfiguration({
                         try {
                           text = await navigator.clipboard.readText();
                         } catch (error) {
-                          showError("Failed to paste from clipboard");
+                          showError(t("apiKey.failedPaste"));
                           console.error(
                             "Failed to paste from clipboard",
                             error,
@@ -245,10 +251,10 @@ export function ApiKeyConfiguration({
                           ? "ring-4 ring-primary/60 shadow-lg shadow-primary/30"
                           : undefined
                       }
-                      title="Paste from clipboard and save"
+                      title={t("apiKey.pasteAndSave")}
                     >
                       <Clipboard className="h-4 w-4" />
-                      Paste & Save
+                      {t("apiKey.pasteAndSave")}
                     </Button>
                   }
                 />
@@ -258,7 +264,7 @@ export function ApiKeyConfiguration({
                   className="w-fit py-2 px-3 bg-background text-primary shadow-lg ring-1 ring-primary/40"
                 >
                   <div className="text-sm font-semibold flex items-center gap-1">
-                    <ArrowUp /> Copied your API key? Click to paste & save it
+                    <ArrowUp /> {t("apiKey.pasteHint")}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -268,7 +274,7 @@ export function ApiKeyConfiguration({
                 disabled={isMutatingKey || !apiKeyInput}
                 variant={apiKeyInput ? "default" : "outline"}
               >
-                {isSaving ? "Saving..." : "Save Key"}
+                {isSaving ? t("common:saving") : t("apiKey.saveKey")}
               </Button>
               {onTestKey && (
                 <Button
@@ -277,7 +283,7 @@ export function ApiKeyConfiguration({
                   onClick={() => onTestKey(apiKeyInput || userApiKey || "")}
                   disabled={isMutatingKey || (!apiKeyInput && !userApiKey)}
                 >
-                  {isTesting ? "Testing..." : "Test Key"}
+                  {isTesting ? t("apiKey.testing") : t("apiKey.testKey")}
                 </Button>
               )}
             </div>
@@ -288,8 +294,7 @@ export function ApiKeyConfiguration({
               </p>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Setting a key here will override the environment variable (if
-              set).
+              {t("apiKey.overrideEnvVar")}
             </p>
           </div>
         </AccordionContent>
@@ -301,26 +306,27 @@ export function ApiKeyConfiguration({
           className="border rounded-lg px-4 bg-(--background-lightest)"
         >
           <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
-            API Key from Environment Variable
+            {t("apiKey.fromEnvVar")}
           </AccordionTrigger>
           <AccordionContent className="pt-4">
             {hasEnvKey ? (
               <Alert variant="default">
                 <KeyRound className="h-4 w-4" />
-                <AlertTitle>Environment Variable Key ({envVarName})</AlertTitle>
+                <AlertTitle>
+                  {t("apiKey.envVarKey", { name: envVarName })}
+                </AlertTitle>
                 <AlertDescription>
                   <p className="font-mono text-sm">
                     {maskEnvApiKey(envApiKey)}
                   </p>
                   {activeKeySource === "env" && (
                     <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                      This key is currently active (no settings key set).
+                      {t("apiKey.envVarActive")}
                     </p>
                   )}
                   {activeKeySource === "settings" && (
                     <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-                      This key is currently being overridden by the key set in
-                      Settings.
+                      {t("apiKey.envVarOverridden")}
                     </p>
                   )}
                 </AlertDescription>
@@ -328,20 +334,17 @@ export function ApiKeyConfiguration({
             ) : (
               <Alert variant="default">
                 <Info className="h-4 w-4" />
-                <AlertTitle>Environment Variable Not Set</AlertTitle>
+                <AlertTitle>{t("apiKey.envVarNotSet")}</AlertTitle>
                 <AlertDescription>
-                  The{" "}
+                  {t("apiKey.envVarNotSetDescription", { name: envVarName })}{" "}
                   <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">
                     {envVarName}
                   </code>{" "}
-                  environment variable is not set.
                 </AlertDescription>
               </Alert>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-              This key is set outside the application. If present, it will be
-              used only if no key is configured in the Settings section above.
-              Requires app restart to detect changes.
+              {t("apiKey.envVarHelpText")}
             </p>
           </AccordionContent>
         </AccordionItem>

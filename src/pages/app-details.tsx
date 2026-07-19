@@ -75,7 +75,7 @@ function UnavailableIntegrationCard({
 }: {
   provider: "supabase" | "neon";
 }) {
-  const { t } = useTranslation("home");
+  const { t } = useTranslation(["home", "common"]);
   const label = provider === "supabase" ? "Supabase" : "Neon";
   const descriptionKey =
     provider === "supabase"
@@ -100,7 +100,7 @@ export default function AppDetailsPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/app-details" as const });
   const appId = search.appId ? Number(search.appId) : null;
-  const { t } = useTranslation("home");
+  const { t } = useTranslation(["home", "common"]);
   const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -354,7 +354,7 @@ export default function AppDetailsPage() {
     onSuccess: async () => {
       await invalidateAppQuery(queryClient, { appId });
       await refreshApps();
-      showSuccess("App location updated");
+      showSuccess(t("appDetails.locationUpdated"));
     },
     onError: (error) => {
       showError(error);
@@ -364,9 +364,12 @@ export default function AppDetailsPage() {
   if (!selectedApp) {
     return (
       <div className="relative min-h-screen p-8">
-        <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
+        <BackButton
+          label={t("common:back")}
+          className="absolute top-4 left-4 mb-0"
+        />
         <div className="flex flex-col items-center justify-center h-full">
-          <h2 className="text-xl font-bold">App not found</h2>
+          <h2 className="text-xl font-bold">{t("appDetails.notFound")}</h2>
         </div>
       </div>
     );
@@ -411,7 +414,10 @@ export default function AppDetailsPage() {
       className="relative min-h-screen p-4 w-full"
       data-testid="app-details-page"
     >
-      <BackButton label="Back" className="absolute top-4 left-4 mb-0" />
+      <BackButton
+        label={t("common:back")}
+        className="absolute top-4 left-4 mb-0"
+      />
 
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
         <div className="flex items-center mb-3">
@@ -439,8 +445,8 @@ export default function AppDetailsPage() {
             </TooltipTrigger>
             <TooltipContent>
               {selectedApp.isFavorite
-                ? "Remove from favorites"
-                : "Add to favorites"}
+                ? t("appDetails.removeFavorite")
+                : t("appDetails.addFavorite")}
             </TooltipContent>
           </Tooltip>
           <Button
@@ -471,7 +477,7 @@ export default function AppDetailsPage() {
                   size="sm"
                   className="h-8 justify-start text-xs"
                 >
-                  Rename folder
+                  {t("appDetails.renameFolder")}
                 </Button>
                 <Button
                   onClick={() => setIsChangeLocationDialogOpen(true)}
@@ -479,7 +485,7 @@ export default function AppDetailsPage() {
                   size="sm"
                   className="h-8 justify-start text-xs"
                 >
-                  Move folder
+                  {t("appDetails.moveFolder")}
                 </Button>
                 <Button
                   onClick={handleOpenCopyDialog}
@@ -487,7 +493,7 @@ export default function AppDetailsPage() {
                   size="sm"
                   className="h-8 justify-start text-xs"
                 >
-                  Copy app
+                  {t("appDetails.copyApp")}
                 </Button>
                 <Button
                   onClick={() => setIsDeleteDialogOpen(true)}
@@ -495,7 +501,7 @@ export default function AppDetailsPage() {
                   size="sm"
                   className="h-8 justify-start text-xs"
                 >
-                  Delete
+                  {t("common:delete")}
                 </Button>
               </div>
             </PopoverContent>
@@ -507,19 +513,23 @@ export default function AppDetailsPage() {
             type="button"
             onClick={handleOpenInChat}
             disabled={chatsLoading || isOpeningChat}
-            aria-label={`Open ${selectedApp.name} in Chat`}
+            aria-label={t("appDetails.openInChatFor", {
+              appName: selectedApp.name,
+            })}
             data-testid="app-details-screenshot-open-in-chat"
             className="group relative mb-4 block aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60"
           >
             <img
               src={latestScreenshotUrl}
-              alt={`Preview of ${selectedApp?.name ?? "app"}`}
+              alt={t("appDetails.preview", {
+                appName: selectedApp?.name ?? t("common:app"),
+              })}
               onError={() => setScreenshotLoadFailed(true)}
               className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02] group-disabled:scale-100"
             />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/15 group-hover:opacity-100 group-disabled:opacity-0">
               <span className="flex items-center gap-2 rounded-md bg-background/95 px-3 py-1.5 text-sm font-medium text-foreground shadow-md">
-                Open in Chat
+                {t("appDetails.openInChat")}
                 <MessageCircle className="h-4 w-4" />
               </span>
             </div>
@@ -529,19 +539,19 @@ export default function AppDetailsPage() {
         <div className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
-              Created
+              {t("appDetails.created")}
             </span>
             <span>{selectedApp.createdAt.toString()}</span>
           </div>
           <div>
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
-              Last Updated
+              {t("appDetails.lastUpdated")}
             </span>
             <span>{selectedApp.updatedAt.toString()}</span>
           </div>
           <div className="col-span-2">
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
-              Path
+              {t("appDetails.path")}
             </span>
             <div className="flex items-center gap-1">
               <Tooltip>
@@ -559,14 +569,14 @@ export default function AppDetailsPage() {
                 >
                   <Folder className="h-3.5 w-3.5" />
                 </TooltipTrigger>
-                <TooltipContent>Show in folder</TooltipContent>
+                <TooltipContent>{t("appDetails.showInFolder")}</TooltipContent>
               </Tooltip>
               <span className="text-sm break-all">{currentAppPath}</span>
             </div>
           </div>
           <div className="col-span-2">
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
-              Collection
+              {t("appDetails.collection")}
             </span>
             <div className="flex items-center gap-1">
               <Folder className="h-3.5 w-3.5 text-muted-foreground" />
@@ -574,7 +584,7 @@ export default function AppDetailsPage() {
                 className="text-sm"
                 data-testid="app-details-collection-name"
               >
-                {currentCollection?.name ?? "No collection yet"}
+                {currentCollection?.name ?? t("appDetails.noCollection")}
               </span>
               <Button
                 variant="ghost"
@@ -600,13 +610,13 @@ export default function AppDetailsPage() {
                         collectionId: null,
                         appIds: [selectedApp.id],
                       });
-                      showSuccess("Removed from collection");
+                      showSuccess(t("appDetails.removedFromCollection"));
                     } catch (error) {
                       showError(error);
                     }
                   }}
-                  title="Remove from collection"
-                  aria-label="Remove from collection"
+                  title={t("appDetails.removeFromCollection")}
+                  aria-label={t("appDetails.removeFromCollection")}
                   data-testid="app-details-remove-collection-button"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -622,7 +632,7 @@ export default function AppDetailsPage() {
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >
-            Open in Chat
+            {t("appDetails.openInChat")}
             <MessageCircle className="h-4 w-4" />
           </Button>
           <div className="border border-gray-200 rounded-md p-4">
@@ -683,12 +693,12 @@ export default function AppDetailsPage() {
         <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
-              <DialogTitle>Rename App</DialogTitle>
+              <DialogTitle>{t("appDetails.renameApp")}</DialogTitle>
             </DialogHeader>
             <Input
               value={newAppName}
               onChange={(e) => setNewAppName(e.target.value)}
-              placeholder="Enter new app name"
+              placeholder={t("common:enterNewAppName")}
               className="my-2"
               autoFocus
             />
@@ -699,7 +709,7 @@ export default function AppDetailsPage() {
                 disabled={isRenaming}
                 size="sm"
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
               <Button
                 onClick={() => {
@@ -709,7 +719,7 @@ export default function AppDetailsPage() {
                 disabled={isRenaming || !newAppName.trim()}
                 size="sm"
               >
-                Continue
+                {t("common:continue")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -722,15 +732,15 @@ export default function AppDetailsPage() {
         >
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
-              <DialogTitle>Rename app folder</DialogTitle>
+              <DialogTitle>{t("appDetails.renameFolderTitle")}</DialogTitle>
               <DialogDescription className="text-xs">
-                This will change only the folder name, not the app name.
+                {t("appDetails.renameFolderDescription")}
               </DialogDescription>
             </DialogHeader>
             <Input
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
-              placeholder="Enter new folder name"
+              placeholder={t("appDetails.enterFolderName")}
               className="my-2"
               autoFocus
             />
@@ -750,7 +760,7 @@ export default function AppDetailsPage() {
                 disabled={isRenamingFolder}
                 size="sm"
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
               <Button
                 onClick={handleRenameFolderOnly}
@@ -779,10 +789,10 @@ export default function AppDetailsPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Renaming...
+                    {t("common:renaming")}
                   </>
                 ) : (
-                  "Rename Folder"
+                  t("appDetails.renameFolder")
                 )}
               </Button>
             </DialogFooter>
@@ -797,10 +807,12 @@ export default function AppDetailsPage() {
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
               <DialogTitle className="text-base">
-                How would you like to rename "{selectedApp.name}"?
+                {t("appDetails.renameChoiceTitle", {
+                  appName: selectedApp.name,
+                })}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Choose an option:
+                {t("common:chooseOption")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 my-2">
@@ -817,11 +829,13 @@ export default function AppDetailsPage() {
               >
                 <div className="absolute top-1 right-1">
                   <span className="bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300 text-[10px]">
-                    Recommended
+                    {t("common:recommended")}
                   </span>
                 </div>
                 <div className="text-left">
-                  <p className="font-medium text-xs">Rename app and folder</p>
+                  <p className="font-medium text-xs">
+                    {t("appDetails.renameAppAndFolder")}
+                  </p>
                   {renameFolderHasCollision ? (
                     <p className="text-xs text-yellow-600 dark:text-yellow-500">
                       {t("renameFolderCollision", {
@@ -845,9 +859,11 @@ export default function AppDetailsPage() {
                 disabled={isRenaming}
               >
                 <div className="text-left">
-                  <p className="font-medium text-xs">Rename app only</p>
+                  <p className="font-medium text-xs">
+                    {t("appDetails.renameAppOnly")}
+                  </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    The folder name will remain the same.
+                    {t("appDetails.folderNameUnchanged")}
                   </p>
                 </div>
               </Button>
@@ -859,7 +875,7 @@ export default function AppDetailsPage() {
                 disabled={isRenaming}
                 size="sm"
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -870,24 +886,25 @@ export default function AppDetailsPage() {
           <Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
             <DialogContent className="max-w-md p-4">
               <DialogHeader className="pb-2">
-                <DialogTitle>Copy "{selectedApp.name}"</DialogTitle>
+                <DialogTitle>
+                  {t("appDetails.copyTitle", { appName: selectedApp.name })}
+                </DialogTitle>
                 <DialogDescription className="text-sm">
-                  <p>Create a copy of this app.</p>
-                  <p>
-                    Note: this does not copy over the Supabase project or GitHub
-                    project.
-                  </p>
+                  <p>{t("appDetails.copyDescription")}</p>
+                  <p>{t("appDetails.copyIntegrationNotice")}</p>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 my-2">
                 <div>
-                  <Label htmlFor="newAppName">New app name</Label>
+                  <Label htmlFor="newAppName">
+                    {t("appDetails.newAppName")}
+                  </Label>
                   <div className="relative mt-1">
                     <Input
                       id="newAppName"
                       value={newCopyAppName}
                       onChange={handleAppNameChange}
-                      placeholder="Enter new app name"
+                      placeholder={t("common:enterNewAppName")}
                       className="pr-8"
                       disabled={copyAppMutation.isPending}
                     />
@@ -900,8 +917,7 @@ export default function AppDetailsPage() {
 
                   {nameExists && (
                     <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">
-                      An app with this name already exists. Please choose
-                      another name.
+                      {t("appDetails.nameExists")}
                     </p>
                   )}
                   {!nameExists &&
@@ -937,16 +953,15 @@ export default function AppDetailsPage() {
                       )}
                     <div className="absolute top-1 right-1">
                       <span className="bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300 text-[10px]">
-                        Recommended
+                        {t("common:recommended")}
                       </span>
                     </div>
                     <div className="text-left">
                       <p className="font-medium text-xs">
-                        Copy app with history
+                        {t("appDetails.copyWithHistory")}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Copies the entire app, including the Git version
-                        history.
+                        {t("appDetails.copyWithHistoryDescription")}
                       </p>
                     </div>
                   </Button>
@@ -971,10 +986,10 @@ export default function AppDetailsPage() {
                       )}
                     <div className="text-left">
                       <p className="font-medium text-xs">
-                        Copy app without history
+                        {t("appDetails.copyWithoutHistory")}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Useful if the current app has a Git-related issue.
+                        {t("appDetails.copyWithoutHistoryDescription")}
                       </p>
                     </div>
                   </Button>
@@ -987,7 +1002,7 @@ export default function AppDetailsPage() {
                   disabled={copyAppMutation.isPending}
                   size="sm"
                 >
-                  Cancel
+                  {t("common:cancel")}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1001,10 +1016,9 @@ export default function AppDetailsPage() {
         >
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
-              <DialogTitle>Change App Location</DialogTitle>
+              <DialogTitle>{t("appDetails.changeLocation")}</DialogTitle>
               <DialogDescription className="text-xs">
-                Select a folder where this app will be stored. The app folder
-                name will remain the same.
+                {t("appDetails.changeLocationDescription")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="pt-2">
@@ -1014,7 +1028,7 @@ export default function AppDetailsPage() {
                 disabled={changeLocationMutation.isPending}
                 size="sm"
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
               <Button
                 onClick={handleChangeLocation}
@@ -1024,10 +1038,10 @@ export default function AppDetailsPage() {
                 {changeLocationMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Moving...
+                    {t("appDetails.moving")}
                   </>
                 ) : (
-                  "Select Folder"
+                  t("common:selectFolder")
                 )}
               </Button>
             </DialogFooter>
@@ -1038,10 +1052,11 @@ export default function AppDetailsPage() {
         <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
-              <DialogTitle>Delete "{selectedApp.name}"?</DialogTitle>
+              <DialogTitle>
+                {t("appDetails.deleteTitle", { appName: selectedApp.name })}
+              </DialogTitle>
               <DialogDescription className="text-xs">
-                This action is irreversible. All app files and chat history will
-                be permanently deleted.
+                {t("appDetails.deleteDescription")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex justify-end gap-2 pt-2">
@@ -1051,7 +1066,7 @@ export default function AppDetailsPage() {
                 disabled={isDeleting}
                 size="sm"
               >
-                Cancel
+                {t("common:cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -1082,10 +1097,10 @@ export default function AppDetailsPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Deleting...
+                    {t("common:deleting")}
                   </>
                 ) : (
-                  "Delete App"
+                  t("appDetails.deleteApp")
                 )}
               </Button>
             </DialogFooter>

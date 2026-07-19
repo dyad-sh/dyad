@@ -449,10 +449,10 @@ export default function HomePage() {
         <div className="w-full">
           <div className="mb-6 text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-foreground">
-              What do you want to build?
+              {t("buildQuestion")}
             </h1>
             <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
-              Describe your idea. Dyad will turn it into a working app.
+              {t("buildDescription")}
             </p>
             <div className="mt-4 flex justify-center">
               <ImportAppButton
@@ -482,8 +482,8 @@ export default function HomePage() {
                 >
                   <Zap aria-hidden="true" className="size-3.5" />
                   {hasConfiguredAiProvider
-                    ? "Manage AI setup"
-                    : "Connect AI to build — takes a minute"}
+                    ? t("manageAiSetup")
+                    : t("connectAiToBuild")}
                 </button>
               </div>
             )}
@@ -523,13 +523,13 @@ export default function HomePage() {
           <DialogHeader className="sr-only">
             <DialogTitle>
               {hasConfiguredAiProvider
-                ? "Manage AI setup"
-                : "You're almost ready to build"}
+                ? t("manageAiSetup")
+                : t("almostReadyToBuild")}
             </DialogTitle>
             <DialogDescription>
               {hasConfiguredAiProvider
-                ? "Change how Dyad accesses AI."
-                : "Choose how Dyad should access AI before generating your app."}
+                ? t("changeAiAccess")
+                : t("chooseAiAccess")}
             </DialogDescription>
           </DialogHeader>
           <SetupBanner variant="dialog" forceShow />

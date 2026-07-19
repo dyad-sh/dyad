@@ -44,7 +44,10 @@ export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
             <DyadStateIndicator state="pending" pendingLabel={t("copying")} />
           )}
           {state === "aborted" && (
-            <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+            <DyadStateIndicator
+              state="aborted"
+              abortedLabel={t("didNotFinish")}
+            />
           )}
           {state === "finished" && (
             <DyadStateIndicator state="finished" finishedLabel={t("copied")} />

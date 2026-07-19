@@ -4,6 +4,7 @@ import {
   visualEditingSelectedComponentAtom,
 } from "@/atoms/previewAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useTranslation } from "react-i18next";
 import { Code2, X } from "lucide-react";
 import {
   Tooltip,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/tooltip";
 
 export function SelectedComponentsDisplay() {
+  const { t } = useTranslation("chat");
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );
@@ -60,7 +62,7 @@ export function SelectedComponentsDisplay() {
     >
       <div className="flex items-center justify-between mb-2 px-1">
         <span className="text-xs font-medium text-muted-foreground">
-          Selected Components ({selectedComponents.length})
+          {t("selectedComponents", { count: selectedComponents.length })}
         </span>
         <Tooltip>
           <TooltipTrigger
@@ -71,9 +73,9 @@ export function SelectedComponentsDisplay() {
               />
             }
           >
-            Clear all
+            {t("clearAll")}
           </TooltipTrigger>
-          <TooltipContent>Clear all selected components</TooltipContent>
+          <TooltipContent>{t("clearAllComponents")}</TooltipContent>
         </Tooltip>
       </div>
       {selectedComponents.map((selectedComponent, index) => (
@@ -105,14 +107,14 @@ export function SelectedComponentsDisplay() {
                 render={
                   <button
                     onClick={() => handleRemoveComponent(index)}
-                    aria-label="Deselect component"
+                    aria-label={t("deselectComponent")}
                     className="ml-2 flex-shrink-0 rounded-full p-0.5 hover:bg-indigo-600/20"
                   />
                 }
               >
                 <X size={18} className="text-indigo-600 dark:text-indigo-400" />
               </TooltipTrigger>
-              <TooltipContent>Deselect component</TooltipContent>
+              <TooltipContent>{t("deselectComponent")}</TooltipContent>
             </Tooltip>
           </div>
         </div>

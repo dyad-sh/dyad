@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/i18n/format";
 
 export function ChatErrorBox({
   onDismiss,
@@ -29,7 +30,7 @@ export function ChatErrorBox({
   isDyadProEnabled: boolean;
   onStartNewChat?: () => void;
 }) {
-  const { t } = useTranslation("chat");
+  const { t, i18n } = useTranslation("chat");
   const fallbackPrefix = "Fallbacks=[{";
   const normalizedError = error.includes(fallbackPrefix)
     ? error.split(fallbackPrefix)[0]
@@ -101,7 +102,7 @@ export function ChatErrorBox({
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          {t("errorBox.invalidProKey")} {" "}
+          {t("errorBox.invalidProKey")}{" "}
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=invalid-pro-key-error"
             variant="primary"
@@ -117,7 +118,7 @@ export function ChatErrorBox({
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          {t("errorBox.creditsUsed")} {" "}
+          {t("errorBox.creditsUsed")}{" "}
           {!isTrialProUser && (
             <>
               {t("errorBox.switchToFreeModel", {
@@ -162,11 +163,11 @@ export function ChatErrorBox({
 
   if (isFreeModelQuotaError) {
     const resetTime = freeModelResetTime
-      ? new Intl.DateTimeFormat(undefined, {
+      ? formatTime(new Date(freeModelResetTime), i18n.language, {
           hour: "numeric",
           minute: "2-digit",
           timeZoneName: "short",
-        }).format(new Date(freeModelResetTime))
+        })
       : null;
 
     return (
@@ -212,9 +213,7 @@ export function ChatErrorBox({
               <span>{t("errorBox.startNewChat")}</span>
               <MessageSquarePlus size={18} />
             </TooltipTrigger>
-            <TooltipContent>
-              {t("errorBox.newChatTip")}
-            </TooltipContent>
+            <TooltipContent>{t("errorBox.newChatTip")}</TooltipContent>
           </Tooltip>
         )}
         <ExternalLink href="https://www.dyad.sh/docs/faq">

@@ -82,19 +82,19 @@ Translations are written manually and reviewed in context. The glossary uses
 the following Mainland Chinese choices unless a feature-specific context
 requires a more precise term:
 
-| English concept | Simplified Chinese choice |
-| --- | --- |
-| mouse | 鼠标 |
-| file / folder | 文件 / 文件夹 |
-| repository | 仓库 |
-| project / app | 项目 / 应用 |
-| deploy / publish | 部署 / 发布 |
-| commit / stage / push | 提交 / 暂存 / 推送 |
-| rollback / restore | 回滚 / 恢复 |
-| provider | 提供商 |
-| token | 令牌 |
-| troubleshooting | 故障排查 |
-| review | 检查 or 审查, chosen by the operation |
+| English concept       | Simplified Chinese choice             |
+| --------------------- | ------------------------------------- |
+| mouse                 | 鼠标                                  |
+| file / folder         | 文件 / 文件夹                         |
+| repository            | 仓库                                  |
+| project / app         | 项目 / 应用                           |
+| deploy / publish      | 部署 / 发布                           |
+| commit / stage / push | 提交 / 暂存 / 推送                    |
+| rollback / restore    | 回滚 / 恢复                           |
+| provider              | 提供商                                |
+| token                 | 令牌                                  |
+| troubleshooting       | 故障排查                              |
+| review                | 检查 or 审查, chosen by the operation |
 
 Chinese punctuation and spacing are adjusted per sentence rather than copied
 from English. Product names, code identifiers, branch names, file names,

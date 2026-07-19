@@ -42,7 +42,7 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
   const filterDesc = filters.length > 0 ? ` (${filters.join(", ")})` : "";
 
   const displayText = t("readingLogs", {
-    count: hasResults ? `${logCount} ` : "",
+    value: hasResults ? `${logCount} ` : "",
     filters: filterDesc,
   });
 
@@ -62,7 +62,10 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
           <DyadStateIndicator state="pending" pendingLabel={t("reading")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
+          <DyadStateIndicator
+            state="aborted"
+            abortedLabel={t("didNotFinish")}
+          />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />

@@ -2,6 +2,8 @@
   "newChat": "New Chat",
   "viewAllApps": "All apps",
   "searchChats": "Search chats",
+  "chats": "Chats",
+  "untitledChat": "Untitled Chat",
   "groupToday": "Today",
   "groupYesterday": "Yesterday",
   "groupThisWeek": "This Week",
@@ -165,7 +167,7 @@
   "copy": "Copy",
   "requestId": "Request ID",
   "copyRequestId": "Copy Request ID",
-  "maxTokensUsed": "Max tokens used: {{count}}",
+  "maxTokensUsed": "Max tokens used: {{value}}",
   "allowToolToRun": "Allow {{toolName}} to run?",
   "queueCount": "(1 of {{total}})",
   "allowOnce": "Allow once",
@@ -187,6 +189,7 @@
   "updateFiles": "Update files",
   "closeVersionPane": "Close version pane",
   "versionHistory": "Version History",
+  "reopenVersionHistory": "Reopen Version History",
   "noVersionsAvailable": "No versions available",
   "versionLabel": "Version {{number}} ({{hash}})",
   "dbSnapshot": "DB",
@@ -205,7 +208,7 @@
   "todosCompleted": "{{completed}} of {{total}} To-dos Completed",
   "allTasksCompleted": "All tasks completed",
   "noTaskInProgress": "No task in progress",
-  "tokenUsage": "Tokens: {{count}}",
+  "tokenUsage": "Tokens: {{value}}",
   "tokenPercentUsed": "{{percent}}% of {{limit}}K",
   "tokenUsageBreakdown": "Token Usage Breakdown",
   "messageHistory": "Message History",
@@ -240,6 +243,8 @@
   "clearAllComponents": "Clear all selected components",
   "deselectComponent": "Deselect component",
   "chatMode": {
+    "ariaLabel": "Chat mode: {{mode}}",
+    "openMenuShortcut": "Open mode menu ({{shortcut}} to toggle)",
     "openMenu": "Open mode menu",
     "toggleShortcut": "{{shortcut}} to toggle",
     "agentV2": "Agent v2",
@@ -248,6 +253,14 @@
     "buildDescription": "Generate and edit code",
     "ask": "Ask",
     "askDescription": "Ask questions about the app",
+    "plan": "Plan",
+    "planDescription": "Design before you build",
+    "basicAgent": "Basic Agent",
+    "remaining": "({{remaining}}/{{limit}} remaining for today)",
+    "dailyLimitReached": "Daily limit reached",
+    "tryAgentFree": "Try our AI agent for free",
+    "buildUnavailable": "Dyad Free is not available in Build mode.",
+    "buildUnavailableDescription": "Use Agent, Ask, or Plan with Dyad Free",
     "buildWithMcp": "Build with MCP",
     "buildWithMcpDescription": "Like Build, but can use tools (MCP) to generate code"
   },
@@ -340,6 +353,11 @@
   "agentModeActivated": "Agent Mode Activated",
   "agentModeTip": "Tip: Create a new chat to give the agent a clean context for better results.",
   "neverShowAgain": "Never show again",
+  "untitled": "Untitled",
+  "imageUnavailable": "Image unavailable",
+  "attachmentUpload": "Upload to codebase",
+  "attachmentContext": "Use as chat context",
+  "changeNumber": "Change {{number}}",
   "from": "from",
   "close": "Close",
   "decline": "Decline",
@@ -458,7 +476,7 @@
   "thought": "Thought",
   "collapseThinking": "Collapse thinking",
   "savedCodebaseTokens": "Saved {{percent}}% of codebase tokens with Smart Context",
-  "savedTokens": "Saved {{count}} tokens",
+  "savedTokens": "Saved {{value}} tokens",
   "webCrawl": "Web Crawl",
   "webFetch": "Web Fetch",
   "done": "Done",
@@ -519,6 +537,56 @@
   "fileOpenError": "Could not open file. It may have been moved or deleted.",
   "expandedImage": "Expanded image: {{alt}}",
   "openFile": "Open file",
+  "searchVersions": "Search versions...",
+  "clearSearch": "Clear search",
+  "discarding": "Discarding...",
+  "contextWindow": "Context window: {{value}}K",
+  "queuedCount": "{{count}} queued",
+  "queueStatusAfterError": "will send after a successful response",
+  "queueStatusAfterCurrent": "will send after the current response",
+  "queueStatusReady": "ready to send",
+  "promoMessages": {
+    "pro-trial": {
+      "text": "Build more with Dyad Pro — free for 7 days.",
+      "cta": "Start Free Trial"
+    },
+    "agent-mode": {
+      "text": "Let Dyad Pro fix bugs with Agent mode.",
+      "cta": "Get Dyad Pro"
+    },
+    "custom-theme": {
+      "text": "Give your app a unique look with AI theme generator.",
+      "cta": "Get Dyad Pro"
+    },
+    "speech-to-text": {
+      "text": "Tired of typing? Talk to Dyad with your voice.",
+      "cta": "Get Dyad Pro"
+    },
+    "web-search": {
+      "text": "Let Dyad use the web for fresh information and better builds.",
+      "cta": "Get Dyad Pro"
+    },
+    "pro-tools": {
+      "text": "Recreate a website with Dyad Pro.",
+      "cta": "Unlock Dyad Pro"
+    },
+    "all-models": {
+      "text": "Access all the leading AI models in one subscription.",
+      "cta": "Get Dyad Pro"
+    },
+    "github-star": {
+      "text": "Enjoying Dyad? Star us on GitHub.",
+      "cta": "Star on GitHub"
+    },
+    "reddit": {
+      "text": "Join 4000+ builders in the Dyad subreddit.",
+      "cta": "Join r/dyadbuilders"
+    },
+    "follow-x": {
+      "text": "Follow Dyad on X for build tips and release updates.",
+      "cta": "Follow @dyad_sh"
+    }
+  },
   "blueprint": {
     "title": "App Blueprint",
     "generating": "Generating...",
@@ -547,9 +615,22 @@
     "addVisualError": "Could not add visual. Please try again.",
     "removeVisualError": "Could not remove visual. Please try again.",
     "saveChangesError": "Could not save app blueprint changes. Please try again.",
+    "loadAppError": "Could not load the app before applying the app blueprint.",
+    "renameMismatchError": "The app was renamed to \"{{name}}\" but the blueprint could not be updated to match.",
+    "renameError": "Could not rename the app.",
+    "templateApplyError": "Could not apply the selected template.",
+    "themeApplyError": "Could not apply the selected theme.",
+    "restartError": "Could not restart the app after the template change.",
+    "renameFailed": "Could not rename the app. Please choose a different name and try again",
+    "templateApplyFailed": "Could not apply the selected template. Please review the plan and try again",
+    "approvalPartialFailed": "Blueprint approved, but some changes could not be applied:",
+    "noVisualsPlanned": "No visuals planned",
+    "followUpPrompt": "The app blueprint has been approved. Please build the app based on the following approved blueprint:\n\nApp Name: {{appName}}\nTemplate: {{template}}\nTheme: {{theme}}\nPrimary Color: {{primaryColor}}\nDesign Direction: {{designDirection}}\n\nVisual Assets:\n{{visualsSummary}}\n\nOriginal Prompt: {{originalPrompt}}",
     "unavailableError": "Blueprint data is unavailable. Please regenerate the plan.",
     "approveError": "Failed to approve the app blueprint. Please try again.",
     "visitWebsite": "Visit {{name}} website",
+    "followUpError": "Failed to continue from this blueprint: {{error}}",
+    "editAppName": "Edit app name",
     "cancelEditing": "Cancel editing",
     "saveDesignDirection": "Save design direction",
     "addDesignDirection": "Add design direction",
@@ -635,6 +716,11 @@
   },
   "quota": {
     "message": "You have used all {{label}} messages for today. Check back in {{resetTime}}. If you don't want to wait, upgrade to Dyad Pro or switch back to Build mode.",
+    "freeAgentLabel": "free Agent",
+    "lessThanHour": "less than 1 hour",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "later": "later",
     "upgrade": "Upgrade to Dyad Pro",
     "switchToBuild": "Switch back to Build mode"
   },
@@ -658,7 +744,7 @@
   "listFiles": "List Files",
   "logFilterType": "type: {{value}}",
   "logFilterLevel": "level: {{value}}",
-  "readingLogs": "Reading {{count}}logs{{filters}}",
+  "readingLogs": "Reading {{value}}logs{{filters}}",
   "reading": "Reading...",
   "signatures": "Signatures",
   "error": "Error",
@@ -669,7 +755,7 @@
   "truncatedCapitalized": "Truncated",
   "searchAndReplace": "Search & Replace",
   "applyingChanges": "Applying changes...",
-  "pausedAfterToolCalls": "Paused after {{count}} tool calls",
+  "pausedAfterToolCalls": "Paused after {{value}} tool calls",
   "aborted": "Aborted",
   "typingEcommerceStore": "an ecommerce store...",
   "typingInformationPage": "an information page...",

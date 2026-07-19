@@ -60,13 +60,15 @@ export function DefaultChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
-        return "Build";
+        return t("workflow.chatModeBuild");
       case "local-agent":
-        return isProEnabled ? "Agent" : "Basic Agent";
+        return isProEnabled
+          ? t("workflow.chatModeAgent")
+          : t("workflow.chatModeBasicAgent");
       case "ask":
-        return "Ask";
+        return t("workflow.chatModeAsk");
       case "plan":
-        return "Plan";
+        return t("workflow.chatModePlan");
       default:
         throw new Error(`Unknown chat mode: ${mode}`);
     }
@@ -93,23 +95,27 @@ export function DefaultChatModeSelector() {
               <SelectItem value="local-agent">
                 <div className="flex flex-col items-start">
                   <span className="font-medium">
-                    {isProEnabled ? "Agent" : "Basic Agent"}
+                    {isProEnabled
+                      ? t("workflow.chatModeAgent")
+                      : t("workflow.chatModeBasicAgent")}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {isProEnabled
-                      ? "Better at bigger tasks"
-                      : "Free tier (10 messages/day)"}
+                      ? t("workflow.chatModeAgentDescription")
+                      : t("workflow.chatModeBasicAgentDescription")}
                   </span>
                 </div>
               </SelectItem>
             )}
             <SelectItem value="build" disabled={isDyadFreeSelected}>
               <div className="flex flex-col items-start">
-                <span className="font-medium">Build</span>
+                <span className="font-medium">
+                  {t("workflow.chatModeBuild")}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {isDyadFreeSelected
-                    ? "Use Agent with Dyad Free"
-                    : "Generate and edit code"}
+                    ? t("workflow.chatModeBuildFreeDescription")
+                    : t("workflow.chatModeBuildDescription")}
                 </span>
               </div>
             </SelectItem>

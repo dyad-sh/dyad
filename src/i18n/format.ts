@@ -10,6 +10,21 @@ export function formatDate(date: Date, locale: string): string {
   }).format(date);
 }
 
+export function formatDateOnly(date: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
+}
+
+export function formatTime(
+  date: Date,
+  locale: string,
+  options: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+  },
+): string {
+  return new Intl.DateTimeFormat(locale, options).format(date);
+}
+
 export function formatNumber(value: number, locale: string): string {
   return new Intl.NumberFormat(locale).format(value);
 }

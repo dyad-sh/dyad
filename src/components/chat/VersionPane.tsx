@@ -1,7 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
-import { formatDistanceToNow } from "date-fns";
 import {
   RotateCcw,
   X,
@@ -14,6 +13,7 @@ import {
 import type { Version } from "@/ipc/types";
 import { ipc, MAX_VERSION_NOTE_LENGTH } from "@/ipc/types";
 import { cn } from "@/lib/utils";
+import { formatRelativeTime } from "@/i18n/format";
 import { queryKeys } from "@/lib/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Virtuoso } from "react-virtuoso";
+import { useTranslation } from "react-i18next";
 
 import { useRunApp } from "@/hooks/useRunApp";
 import { showError } from "@/lib/toast";
@@ -122,6 +123,7 @@ function VersionRow({
   onExpandNote,
   onRestoreVersion,
 }: VersionRowProps) {
+  const { t, i18n } = useTranslation("chat");
   const isRestoreDisabled =
     isRevertingVersion || isCheckingOutVersion || isResolvingPreviewBranch;
   const trimmedSearchQuery = searchQuery.trim();
@@ -181,13 +183,13 @@ function VersionRow({
                 data-testid={`version-favorite-button-${versionNumber}`}
                 aria-label={
                   version.isFavorite
-                    ? `Remove version ${versionNumber} from favorites`
-                    : `Favorite version ${versionNumber}`
+                    ? t("removeVersionFromFavorites")
+                    : t("favoriteVersion")
                 }
                 title={
                   version.isFavorite
-                    ? "Remove version from favorites"
-                    : "Favorite version"
+                    ? t("removeVersionFromFavorites")
+                    : t("favoriteVersion")
                 }
                 onClick={(e) => {
                   e.stopPropagation();
@@ -208,7 +210,7 @@ function VersionRow({
                 />
               </button>
               <span className="font-medium text-xs">
-                Version{" "}
+                {t("version")}{" "}
                 <HighlightMatch
                   text={String(versionNumber)}
                   query={trimmedSearchQuery}
@@ -238,13 +240,15 @@ function VersionRow({
                           )}
                         >
                           <Database size={10} />
-                          <span>DB</span>
+                          <span>{t("dbSnapshot")}</span>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
                         {isExpired
-                          ? "DB snapshot may have expired (older than 24 hours)"
-                          : `Database snapshot available at timestamp ${version.dbTimestamp}`}
+                          ? t("dbSnapshotExpired")
+                          : t("dbSnapshotAvailable", {
+                              timestamp: version.dbTimestamp,
+                            })}
                       </TooltipContent>
                     </Tooltip>
                   );
@@ -256,10 +260,11 @@ function VersionRow({
               )}
               <span className="text-xs opacity-90">
                 {isCheckingOutVersion && selectedVersionId === version.oid
-                  ? "Loading..."
-                  : formatDistanceToNow(new Date(version.timestamp * 1000), {
-                      addSuffix: true,
-                    })}
+                  ? t("loading")
+                  : formatRelativeTime(
+                      new Date(version.timestamp * 1000),
+                      i18n.language,
+                    )}
               </span>
             </div>
           </div>
@@ -277,8 +282,8 @@ function VersionRow({
               {showNoteEditor ? (
                 <Textarea
                   value={version.note ?? ""}
-                  placeholder="Add note..."
-                  aria-label={`Note for version ${versionNumber}`}
+                  placeholder={t("addNote")}
+                  aria-label={t("noteForVersion", { number: versionNumber })}
                   autoFocus={shouldAutoFocusNote}
                   maxLength={MAX_VERSION_NOTE_LENGTH}
                   onClick={(e) => e.stopPropagation()}
@@ -291,7 +296,7 @@ function VersionRow({
               ) : (
                 <button
                   type="button"
-                  aria-label={`Add note for version ${versionNumber}`}
+                  aria-label={t("addNoteForVersion", { number: versionNumber })}
                   onClick={(e) => {
                     e.stopPropagation();
                     onExpandNote(version.oid);
@@ -299,7 +304,7 @@ function VersionRow({
                   className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <Pencil className="h-3 w-3" />
-                  <span>Add note</span>
+                  <span>{t("addNote")}</span>
                 </button>
               )}
             </div>
@@ -316,13 +321,13 @@ function VersionRow({
                   selectedVersionId === version.oid && "visible",
                   isRestoreDisabled && "opacity-50 cursor-not-allowed",
                 )}
-                aria-label="Restore to this version"
+                aria-label={t("restoreToVersion")}
                 title={
                   isRevertingVersion
-                    ? "Restoring to this version..."
+                    ? t("restoringToVersion")
                     : isCheckingOutVersion || isResolvingPreviewBranch
-                      ? "Preparing version preview..."
-                      : "Restore to this version"
+                      ? t("preparingVersionPreview")
+                      : t("restoreToVersion")
                 }
               >
                 {isRevertingVersion ? (
@@ -330,7 +335,9 @@ function VersionRow({
                 ) : (
                   <RotateCcw size={12} />
                 )}
-                <span>{isRevertingVersion ? "Restoring..." : "Restore"}</span>
+                <span>
+                  {isRevertingVersion ? t("restoring") : t("restore")}
+                </span>
               </button>
             </div>
           </div>
@@ -341,6 +348,7 @@ function VersionRow({
 }
 
 export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
+  const { t } = useTranslation("chat");
   const appId = useAtomValue(selectedAppIdAtom);
   const currentAppIdRef = useRef(appId);
   const previousAppIdRef = useRef(appId);
@@ -544,15 +552,12 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
               returnedToBranch = true;
             } catch (error) {
               console.error("Could not return to branch", error);
-              showError(
-                "Unable to return to the branch that was active before previewing this version. Reopen Version History to try again.",
-                {
-                  action: {
-                    label: "Reopen Version History",
-                    onClick: onOpen,
-                  },
+              showError(t("errorMessages.versionRestoreBranch"), {
+                action: {
+                  label: t("reopenVersionHistory"),
+                  onClick: onOpen,
                 },
-              );
+              });
             } finally {
               checkedOutVersionIdRef.current = null;
               returnBranchRef.current = null;
@@ -561,15 +566,12 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
               await restartApp();
             }
           } else {
-            showError(
-              "Unable to determine the branch to return to. Dyad left the current version checked out instead of switching branches.",
-              {
-                action: {
-                  label: "Reopen Version History",
-                  onClick: onOpen,
-                },
+            showError(t("errorMessages.versionRestoreUnknownBranch"), {
+              action: {
+                label: t("reopenVersionHistory"),
+                onClick: onOpen,
               },
-            );
+            });
           }
         }
       }
@@ -650,9 +652,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         isResolvingPreviewBranchRef.current = false;
         setIsResolvingPreviewBranch(false);
         setSelectedVersionId(checkedOutVersionIdRef.current);
-        showError(
-          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
-        );
+        showError(t("errorMessages.versionPreviewBranch"));
         return;
       }
       if (!isCurrentPreviewRequest()) {
@@ -662,9 +662,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       setIsResolvingPreviewBranch(false);
       if (latestBranchResult.isError) {
         setSelectedVersionId(checkedOutVersionIdRef.current);
-        showError(
-          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
-        );
+        showError(t("errorMessages.versionPreviewBranch"));
         return;
       }
       const latestBranch = latestBranchResult.data?.branch;
@@ -674,9 +672,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       const returnBranch = getReturnBranch();
       if (!returnBranch) {
         setSelectedVersionId(checkedOutVersionIdRef.current);
-        showError(
-          "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.",
-        );
+        showError(t("errorMessages.versionPreviewBranch"));
         return;
       }
       isPreviewCheckoutInProgressRef.current = true;
@@ -888,12 +884,12 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   return (
     <div className="h-full border-t border-2 border-border w-full flex flex-col">
       <div className="p-2 border-b border-border flex items-center justify-between">
-        <h2 className="text-base font-medium pl-2">Version History</h2>
+        <h2 className="text-base font-medium pl-2">{t("versionHistory")}</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={onClose}
             className="p-1 hover:bg-(--background-lightest) rounded-md  "
-            aria-label="Close version pane"
+            aria-label={t("closeVersionPane")}
           >
             <X size={20} />
           </button>
@@ -906,8 +902,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search versions..."
-              aria-label="Search versions"
+              placeholder={t("searchVersions")}
+              aria-label={t("searchVersions")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-md border border-input bg-transparent pl-8 pr-8 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -919,7 +915,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
                   searchInputRef.current?.focus();
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label="Clear search"
+                aria-label={t("clearSearch")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -929,14 +925,14 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
             type="button"
             aria-label={
               showFavoritesOnly
-                ? "Show all versions"
-                : "Show favorite versions only"
+                ? t("showAllVersions")
+                : t("showFavoriteVersionsOnly")
             }
             aria-pressed={showFavoritesOnly}
             title={
               showFavoritesOnly
-                ? "Show all versions"
-                : "Show favorite versions only"
+                ? t("showAllVersions")
+                : t("showFavoriteVersionsOnly")
             }
             onClick={() => setShowFavoritesOnly((value) => !value)}
             className={cn(
@@ -954,12 +950,12 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       </div>
       <div className="flex-1 min-h-0">
         {versions.length === 0 ? (
-          <div className="p-4">No versions available</div>
+          <div className="p-4">{t("noVersionsAvailable")}</div>
         ) : filteredVersions.length === 0 ? (
           <div className="p-4 text-sm text-muted-foreground">
             {showFavoritesOnly && !searchQuery.trim()
-              ? "No favorite versions"
-              : "No matching versions"}
+              ? t("noFavoriteVersions")
+              : t("noMatchingVersions")}
           </div>
         ) : (
           <Virtuoso

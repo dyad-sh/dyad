@@ -9,6 +9,7 @@ import {
 import { useState, useEffect } from "react";
 import { useSearchChats } from "@/hooks/useSearchChats";
 import type { ChatSummary, ChatSearchResult } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 type ChatSearchDialogProps = {
   open: boolean;
@@ -25,6 +26,7 @@ export function ChatSearchDialog({
   onSelectChat,
   allChats,
 }: ChatSearchDialogProps) {
+  const { t } = useTranslation("chat");
   const [searchQuery, setSearchQuery] = useState<string>("");
   function useDebouncedValue<T>(value: T, delay: number): T {
     const [debounced, setDebounced] = useState<T>(value);
@@ -106,13 +108,13 @@ export function ChatSearchDialog({
       filter={commandFilter}
     >
       <CommandInput
-        placeholder="Search chats"
+        placeholder={t("searchChats")}
         value={searchQuery}
         onValueChange={setSearchQuery}
       />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
-        <CommandGroup heading="Chats">
+        <CommandEmpty>{t("noChatsFound")}</CommandEmpty>
+        <CommandGroup heading={t("chats")}>
           {chatsToShow.map((chat) => {
             const isSearch = searchQuery.trim() !== "";
             const hasSnippet =
@@ -132,13 +134,13 @@ export function ChatSearchDialog({
                   onSelectChat({ chatId: chat.id, appId: chat.appId })
                 }
                 value={
-                  (chat.title || "Untitled Chat") +
+                  (chat.title || t("untitledChat")) +
                   (snippet ? ` ${snippet.raw}` : "")
                 }
                 keywords={snippet ? [snippet.raw] : []}
               >
                 <div className="flex flex-col">
-                  <span>{chat.title || "Untitled Chat"}</span>
+                  <span>{chat.title || t("untitledChat")}</span>
                   {snippet && (
                     <span className="text-xs text-muted-foreground mt-1 line-clamp-2">
                       {snippet.before}

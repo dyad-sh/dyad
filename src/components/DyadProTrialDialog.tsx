@@ -2,6 +2,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Check, Zap, Wand2, Cpu } from "lucide-react";
 import { ipc } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 interface DyadProTrialDialogProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export function DyadProTrialDialog({
   onClose,
   utmCampaign = "setup-dialog-v2",
 }: DyadProTrialDialogProps) {
+  const { t } = useTranslation("home");
   const utmParams = `utm_source=dyad-app&utm_medium=app&utm_campaign=${encodeURIComponent(utmCampaign)}`;
 
   const handleStartTrial = () => {
@@ -31,18 +33,18 @@ export function DyadProTrialDialog({
   const features = [
     {
       icon: Zap,
-      title: "50 AI Credits",
-      description: "Start building right away",
+      title: t("proTrial.creditsTitle"),
+      description: t("proTrial.creditsDescription"),
     },
     {
       icon: Cpu,
-      title: "Agent Mode",
-      description: "Automatically debug errors with AI",
+      title: t("proTrial.agentTitle"),
+      description: t("proTrial.agentDescription"),
     },
     {
       icon: Wand2,
-      title: "Pro Features",
-      description: "AI themes, visual editing & more",
+      title: t("proTrial.featuresTitle"),
+      description: t("proTrial.featuresDescription"),
     },
   ];
 
@@ -57,10 +59,10 @@ export function DyadProTrialDialog({
           {/* Title */}
           <div className="text-center">
             <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              Unlock Dyad Pro
+              {t("proTrial.title")}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Start your free 7-day trial today
+              {t("proTrial.subtitle")}
             </p>
           </div>
         </div>
@@ -95,20 +97,20 @@ export function DyadProTrialDialog({
               className="w-full bg-violet-600 py-5 text-base font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:bg-violet-500 hover:shadow-xl hover:shadow-violet-500/40 active:scale-[0.98]"
             >
               <Sparkles className="mr-2 h-4 w-4" />
-              Start Free Trial
+              {t("proTrial.start")}
             </Button>
             <Button
               variant="ghost"
               onClick={handleLearnMore}
               className="w-full text-muted-foreground hover:text-foreground"
             >
-              Learn more about Pro
+              {t("proTrial.learnMore")}
             </Button>
           </div>
 
           {/* Fine print */}
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Cancel anytime. Free trial for first-time customers only.
+            {t("proTrial.disclaimer")}
           </p>
         </div>
       </DialogContent>

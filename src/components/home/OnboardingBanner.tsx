@@ -1,5 +1,6 @@
 import { ipc } from "@/ipc/types";
 import { Play } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export const OnboardingBanner = ({
   isVisible,
@@ -8,6 +9,7 @@ export const OnboardingBanner = ({
   isVisible: boolean;
   setIsVisible: (isVisible: boolean) => void;
 }) => {
+  const { t } = useTranslation("home");
   if (!isVisible) return null;
 
   return (
@@ -29,7 +31,7 @@ export const OnboardingBanner = ({
           <div className="relative p-2">
             <img
               src="https://img.youtube.com/vi/rgdNoHLaRN4/maxresdefault.jpg"
-              alt="Get started with Dyad in 3 minutes"
+              alt={t("onboarding.title")}
               className="w-28 h-16 object-cover rounded-md"
             />
             <div className="absolute inset-0 flex items-center justify-center">
@@ -40,11 +42,9 @@ export const OnboardingBanner = ({
           </div>
           <div className="flex-1 px-4 py-3">
             <div className="text-foreground">
-              <p className="font-semibold text-base">
-                Get started with Dyad in 3 minutes
-              </p>
+              <p className="font-semibold text-base">{t("onboarding.title")}</p>
               <p className="text-sm text-muted-foreground">
-                Start building your app for free
+                {t("onboarding.description")}
               </p>
             </div>
           </div>

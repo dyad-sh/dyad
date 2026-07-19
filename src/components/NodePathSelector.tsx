@@ -211,9 +211,22 @@ export function NodePathSelector() {
     : systemTooOld
       ? t("general.systemNodeTooOld")
       : t("general.noUsableNodeFound");
-  const installPhaseLabel = installPhase
-    ? t(`general.managedNodeInstallPhases.${installPhase}`)
-    : t("general.managedNodeInstallPhases.starting");
+  const installPhaseLabel = (() => {
+    switch (installPhase) {
+      case "downloading":
+        return t("general.managedNodeInstallPhases.downloading");
+      case "verifying":
+        return t("general.managedNodeInstallPhases.verifying");
+      case "extracting":
+        return t("general.managedNodeInstallPhases.extracting");
+      case "installing":
+        return t("general.managedNodeInstallPhases.installing");
+      case "done":
+        return t("general.managedNodeInstallPhases.done");
+      default:
+        return t("general.managedNodeInstallPhases.starting");
+    }
+  })();
   return (
     <div className="space-y-4">
       <div className="space-y-2">

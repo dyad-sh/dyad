@@ -49,7 +49,7 @@ export const ThinkingBudgetSelector: React.FC = () => {
             {THINKING_EFFORT_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.value === THINKING_EFFORT_DEFAULT
-                  ? `${option.label} (default)`
+                  ? `${option.label} ${t("ai.defaultSuffix")}`
                   : option.label}
               </SelectItem>
             ))}

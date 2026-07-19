@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { BugIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface ScreenshotSuccessDialogProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export function ScreenshotSuccessDialog({
   handleReportBug,
   isLoading,
 }: ScreenshotSuccessDialogProps) {
+  const { t } = useTranslation("home");
   const handleSubmit = async () => {
     await handleReportBug();
     onClose();
@@ -23,9 +25,7 @@ export function ScreenshotSuccessDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            Screenshot captured to clipboard! Please paste in GitHub issue.
-          </DialogTitle>
+          <DialogTitle>{t("screenshot.capturedToClipboard")}</DialogTitle>
         </DialogHeader>
         <Button
           variant="default"
@@ -33,7 +33,9 @@ export function ScreenshotSuccessDialog({
           className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
         >
           <BugIcon className="mr-2 h-5 w-5" />{" "}
-          {isLoading ? "Preparing Report..." : "Create GitHub issue"}
+          {isLoading
+            ? t("help.preparingReport")
+            : t("screenshot.createGithubIssue")}
         </Button>
       </DialogContent>
     </Dialog>

@@ -11,6 +11,7 @@ import {
   ANNOTATION_ID_ATTRIBUTE,
   ANNOTATION_MARK_SELECTOR,
 } from "./planAnnotationDom";
+import { useTranslation } from "react-i18next";
 
 interface PopoverState {
   annotationId: string;
@@ -31,6 +32,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
   chatId,
   annotations,
 }) => {
+  const { t } = useTranslation("home");
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -210,7 +212,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     <div
       ref={popoverRef}
       role="dialog"
-      aria-label="Comment on selected text"
+      aria-label={t("preview.planComments.commentOnSelectedText")}
       tabIndex={-1}
       style={{
         position: "fixed",

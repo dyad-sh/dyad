@@ -32,6 +32,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   isFreeProBuildModeCombination,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/freeProModel";
 
 export function ChatModeSelector() {
+  const { t } = useTranslation("chat");
   const { updateSettings } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
@@ -102,7 +104,7 @@ export function ChatModeSelector() {
       settings &&
       isFreeProBuildModeCombination(settings.selectedModel, newMode)
     ) {
-      toast.error("Dyad Free is not available in Build mode.");
+      toast.error(t("chatMode.buildUnavailable"));
       return;
     }
     // An explicit pick outside a chat updates settings.selectedChatMode;
@@ -141,7 +143,18 @@ export function ChatModeSelector() {
   };
 
   const getModeDisplayName = (mode: ChatMode) => {
-    return getChatModeDisplayName(mode, isProEnabled);
+    switch (mode) {
+      case "build":
+        return t("chatMode.build");
+      case "ask":
+        return t("chatMode.ask");
+      case "plan":
+        return t("chatMode.plan");
+      case "local-agent":
+        return t(isProEnabled ? "chatMode.agentV2" : "chatMode.basicAgent");
+      default:
+        return getChatModeDisplayName(mode, isProEnabled);
+    }
   };
 
   const getModeIcon = (mode: ChatMode) => {
@@ -171,7 +184,9 @@ export function ChatModeSelector() {
             render={
               <MiniSelectTrigger
                 data-testid="chat-mode-selector"
-                aria-label={`Chat mode: ${getModeDisplayName(selectedMode)}`}
+                aria-label={t("chatMode.ariaLabel", {
+                  mode: getModeDisplayName(selectedMode),
+                })}
                 className={cn(
                   "cursor-pointer w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
                   selectedMode === "build" || selectedMode === "local-agent"
@@ -194,7 +209,9 @@ export function ChatModeSelector() {
             </SelectValue>
           </TooltipTrigger>
           <TooltipContent>
-            {`Open mode menu (${isMac ? "\u2318 + ." : "Ctrl + ."} to toggle)`}
+            {t("chatMode.openMenuShortcut", {
+              shortcut: isMac ? "\u2318 + ." : "Ctrl + .",
+            })}
           </TooltipContent>
         </Tooltip>
         <SelectContent align="start">
@@ -203,10 +220,10 @@ export function ChatModeSelector() {
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />
-                  <span className="font-medium">Agent v2</span>
+                  <span className="font-medium">{t("chatMode.agentV2")}</span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-[22px]">
-                  Better at bigger tasks and debugging
+                  {t("chatMode.agentV2Description")}
                 </span>
               </div>
             </SelectItem>
@@ -215,10 +232,10 @@ export function ChatModeSelector() {
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
                 <Lightbulb size={14} className="text-blue-500" />
-                <span className="font-medium">Plan</span>
+                <span className="font-medium">{t("chatMode.plan")}</span>
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
-                Design before you build
+                {t("chatMode.planDescription")}
               </span>
             </div>
           </SelectItem>
@@ -227,15 +244,20 @@ export function ChatModeSelector() {
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />
-                  <span className="font-medium">Basic Agent</span>
+                  <span className="font-medium">
+                    {t("chatMode.basicAgent")}
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    {`(${isQuotaExceeded ? "0" : messagesRemaining}/${messagesLimit} remaining for today)`}
+                    {t("chatMode.remaining", {
+                      remaining: isQuotaExceeded ? 0 : messagesRemaining,
+                      limit: messagesLimit,
+                    })}
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-[22px]">
                   {isQuotaExceeded
-                    ? "Daily limit reached"
-                    : "Try our AI agent for free"}
+                    ? t("chatMode.dailyLimitReached")
+                    : t("chatMode.tryAgentFree")}
                 </span>
               </div>
             </SelectItem>
@@ -244,12 +266,12 @@ export function ChatModeSelector() {
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
                 <Hammer size={14} className="text-muted-foreground" />
-                <span className="font-medium">Build</span>
+                <span className="font-medium">{t("chatMode.build")}</span>
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
                 {buildUnavailableForDyadFree
-                  ? "Use Agent, Ask, or Plan with Dyad Free"
-                  : "Generate and edit code"}
+                  ? t("chatMode.buildUnavailableDescription")
+                  : t("chatMode.buildDescription")}
               </span>
             </div>
           </SelectItem>
@@ -257,10 +279,10 @@ export function ChatModeSelector() {
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
                 <MessageCircle size={14} className="text-purple-500" />
-                <span className="font-medium">Ask</span>
+                <span className="font-medium">{t("chatMode.ask")}</span>
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
-                Ask questions about the app
+                {t("chatMode.askDescription")}
               </span>
             </div>
           </SelectItem>

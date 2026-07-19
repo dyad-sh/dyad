@@ -25,35 +25,36 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { AiAccessBanner } from "./ProBanner";
 import { AppSearchSelect } from "./AppSearchSelect";
 import type { ImageThemeMode } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 const THEME_MODES: {
   value: ImageThemeMode;
-  label: string;
-  description: string;
+  labelKey: ImageThemeMode;
+  descriptionKey: ImageThemeMode;
   icon: typeof ImageIcon;
 }[] = [
   {
     value: "plain",
-    label: "Plain",
-    description: "No style applied",
+    labelKey: "plain",
+    descriptionKey: "plain",
     icon: Sparkles,
   },
   {
     value: "3d-clay",
-    label: "3D / Clay",
-    description: "Soft, rounded clay aesthetic",
+    labelKey: "3d-clay",
+    descriptionKey: "3d-clay",
     icon: Box,
   },
   {
     value: "real-photography",
-    label: "Photography",
-    description: "Photorealistic DSLR quality",
+    labelKey: "real-photography",
+    descriptionKey: "real-photography",
     icon: Camera,
   },
   {
     value: "isometric-illustration",
-    label: "Isometric",
-    description: "Clean geometric illustrations",
+    labelKey: "isometric-illustration",
+    descriptionKey: "isometric-illustration",
     icon: Layers,
   },
 ];
@@ -69,6 +70,7 @@ export function ImageGeneratorDialog({
   defaultAppId?: number;
   source?: "chat" | "media-library";
 }) {
+  const { t } = useTranslation("home");
   const [prompt, setPrompt] = useState("");
   const [themeMode, setThemeMode] = useState<ImageThemeMode>("plain");
   const [targetAppId, setTargetAppId] = useState<number | null>(null);
@@ -77,6 +79,18 @@ export function ImageGeneratorDialog({
   const generateImage = useGenerateImage();
   const { userBudget, isLoadingUserBudget: isBudgetLoading } =
     useUserBudgetInfo();
+  const themeLabels = {
+    plain: t("imageGenerator.plain"),
+    "3d-clay": t("imageGenerator.clay3d"),
+    "real-photography": t("imageGenerator.photography"),
+    "isometric-illustration": t("imageGenerator.isometric"),
+  };
+  const themeDescriptions = {
+    plain: t("imageGenerator.plainDescription"),
+    "3d-clay": t("imageGenerator.clay3dDescription"),
+    "real-photography": t("imageGenerator.photographyDescription"),
+    "isometric-illustration": t("imageGenerator.isometricDescription"),
+  };
 
   // Sync defaultAppId only when dialog opens (not while already open)
   useEffect(() => {
@@ -124,10 +138,10 @@ export function ImageGeneratorDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ImageIcon className="h-5 w-5" />
-            Generate Image
+            {t("imageGenerator.generateImage")}
           </DialogTitle>
           <DialogDescription>
-            Describe the image you want to generate and choose a visual style.
+            {t("imageGenerator.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -141,13 +155,13 @@ export function ImageGeneratorDialog({
               <div className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
                 <Lock className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold text-center mb-2">
-                  AI Image Generator
+                  {t("imageGenerator.lockedTitle")}
                 </h3>
                 <p className="text-sm text-muted-foreground text-center max-w-md">
-                  Generate custom images using AI to use in your apps.
+                  {t("imageGenerator.lockedDescription")}
                 </p>
                 <p className="text-xs text-muted-foreground/70 mt-2">
-                  Pro-only feature
+                  {t("imageGenerator.proOnly")}
                 </p>
               </div>
               <AiAccessBanner />
@@ -156,10 +170,12 @@ export function ImageGeneratorDialog({
             <>
               {/* Prompt */}
               <div className="space-y-2">
-                <Label htmlFor="image-prompt">Prompt</Label>
+                <Label htmlFor="image-prompt">
+                  {t("imageGenerator.prompt")}
+                </Label>
                 <Textarea
                   id="image-prompt"
-                  placeholder="Describe the image you want to create..."
+                  placeholder={t("imageGenerator.promptPlaceholder")}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   className="min-h-[100px] resize-none"
@@ -168,7 +184,7 @@ export function ImageGeneratorDialog({
 
               {/* Theme Mode Selector */}
               <div className="space-y-2">
-                <Label>Style</Label>
+                <Label>{t("imageGenerator.style")}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {THEME_MODES.map((mode) => {
                     const Icon = mode.icon;
@@ -192,10 +208,10 @@ export function ImageGeneratorDialog({
                           <div
                             className={`text-sm font-medium ${isSelected ? "text-primary" : ""}`}
                           >
-                            {mode.label}
+                            {themeLabels[mode.labelKey]}
                           </div>
                           <div className="text-xs text-muted-foreground truncate">
-                            {mode.description}
+                            {themeDescriptions[mode.descriptionKey]}
                           </div>
                         </div>
                       </button>
@@ -206,7 +222,7 @@ export function ImageGeneratorDialog({
 
               {/* Target App Selector */}
               <div className="space-y-2">
-                <Label>Save to App</Label>
+                <Label>{t("imageGenerator.saveToApp")}</Label>
                 <AppSearchSelect
                   apps={apps}
                   selectedAppId={effectiveTargetAppId}
@@ -219,23 +235,23 @@ export function ImageGeneratorDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancel
+            {t("imageGenerator.cancel")}
           </Button>
           <div className="flex items-center gap-2">
             {!prompt.trim() || effectiveTargetAppId === null ? (
               <p className="text-xs text-muted-foreground">
                 {!prompt.trim() && effectiveTargetAppId === null
-                  ? "Enter a prompt and select an app"
+                  ? t("imageGenerator.missingPromptAndApp")
                   : !prompt.trim()
-                    ? "Enter a prompt to generate"
-                    : "Select an app to save to"}
+                    ? t("imageGenerator.missingPrompt")
+                    : t("imageGenerator.missingApp")}
               </p>
             ) : null}
             <Button
               onClick={handleGenerate}
               disabled={!prompt.trim() || effectiveTargetAppId === null}
             >
-              Generate
+              {t("imageGenerator.generate")}
             </Button>
           </div>
         </DialogFooter>

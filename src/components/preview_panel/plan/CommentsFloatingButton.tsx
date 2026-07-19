@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/popover";
 import { CommentCard } from "./CommentCard";
 import type { PlanAnnotation } from "@/atoms/planAtoms";
+import { useTranslation } from "react-i18next";
 
 interface CommentsFloatingButtonProps {
   chatId: number;
@@ -22,13 +23,14 @@ export const CommentsFloatingButton: React.FC<CommentsFloatingButtonProps> = ({
   onSendComments,
   isSending,
 }) => {
+  const { t } = useTranslation("home");
   if (annotations.length === 0) return null;
 
   return (
     <div className="sticky top-3 float-right z-10 mr-1">
       <Popover>
         <PopoverTrigger
-          aria-label="View comments"
+          aria-label={t("preview.planComments.view")}
           className="relative rounded-full w-9 h-9 flex items-center justify-center bg-muted/80 text-muted-foreground border shadow-sm hover:bg-muted transition-colors cursor-pointer"
         >
           <MessageSquare size={16} />
@@ -46,7 +48,9 @@ export const CommentsFloatingButton: React.FC<CommentsFloatingButtonProps> = ({
             <div className="flex items-center gap-2 p-3 border-b">
               <MessageSquare size={16} className="text-muted-foreground" />
               <span className="text-sm font-medium">
-                Comments ({annotations.length})
+                {t("preview.planComments.comments", {
+                  count: annotations.length,
+                })}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -66,7 +70,9 @@ export const CommentsFloatingButton: React.FC<CommentsFloatingButtonProps> = ({
                 size="sm"
               >
                 <Send size={14} className="mr-2" />
-                {isSending ? "Sending\u2026" : "Send Comments"}
+                {isSending
+                  ? t("preview.planComments.sending")
+                  : t("preview.planComments.send")}
               </Button>
             </div>
           </div>

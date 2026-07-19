@@ -13,6 +13,7 @@ import {
   hasOverlappingPlanAnnotation,
 } from "./planAnnotationDom";
 import { getSelectionCommentAnchorRect } from "./selectionCommentButtonPosition";
+import { useTranslation } from "react-i18next";
 
 interface FloatingButtonState {
   x: number;
@@ -35,6 +36,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
   chatId,
   chatAnnotations,
 }) => {
+  const { t } = useTranslation("home");
   const setAnnotations = useSetAtom(planAnnotationsAtom);
   const [floatingButton, setFloatingButton] =
     useState<FloatingButtonState | null>(null);
@@ -250,7 +252,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
         >
           <button
             onClick={handleCommentClick}
-            aria-label="Add comment"
+            aria-label={t("preview.planComments.add")}
             className="p-1.5 rounded-md bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-colors"
           >
             <MessageSquare size={14} />
@@ -262,7 +264,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
         <div
           ref={formRef}
           role="dialog"
-          aria-label="Add comment on selected text"
+          aria-label={t("preview.planComments.addOnSelectedText")}
           style={{
             position: "fixed",
             left: floatingButton.x,
@@ -278,20 +280,20 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
             autoFocus
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add your comment..."
+            placeholder={t("preview.planComments.placeholder")}
             className="w-full text-sm min-h-[60px] rounded-md border bg-background px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <div className="flex items-center justify-end">
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="sm" onClick={handleCancel}>
-                Cancel
+                {t("preview.planComments.cancel")}
               </Button>
               <Button
                 size="sm"
                 onClick={handleSubmit}
                 disabled={!commentText.trim()}
               >
-                Add Comment
+                {t("preview.planComments.addComment")}
               </Button>
             </div>
           </div>

@@ -41,7 +41,8 @@ const ProblemItem: React.FC<ProblemItemProps> = ({ problem, index }) => {
             {problem.line}:{problem.column}
           </span>
           <span className="text-[11px] bg-muted/50 px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-            {t("typescript")}{problem.code}
+            {t("typescript")}
+            {problem.code}
           </span>
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">

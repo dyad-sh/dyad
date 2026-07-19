@@ -4,6 +4,7 @@ import type { McpServer } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { useOauthCallbackPort } from "./AddPluginDialog";
+import { useTranslation } from "react-i18next";
 
 // Produced by feedbackFor below; the summary card and detail page
 // render it as a badge or alert.
@@ -23,6 +24,7 @@ const disconnectingServerIdAtom = atom<number | null>(null);
 // Shared OAuth connect/probe handling for the plugins list and the
 // plugin detail page.
 export function usePluginConnect() {
+  const { t } = useTranslation("home");
   const { statusByServer, updateServer, startOAuth, disconnectOAuth } =
     useMcp();
   const [connectingServerId, setConnectingServerId] = useAtom(
@@ -69,10 +71,10 @@ export function usePluginConnect() {
       callbackPort: opts?.callbackPort,
     });
     if (result.success) {
-      showSuccess("OAuth connection successful");
+      showSuccess(t("plugins.oauthConnectionSuccessful"));
       return;
     }
-    const message = result.error ?? "OAuth flow failed";
+    const message = result.error ?? t("plugins.oauthFlowFailed");
     if (result.errorKind === "discovery_failed") {
       setConnectFeedback({
         serverId,
@@ -83,9 +85,7 @@ export function usePluginConnect() {
       // failure is visible even when the new row is scrolled out of
       // view. Manual retries show the inline panel in place.
       if (opts?.showToast) {
-        showError(
-          "OAuth connection failed. This server doesn't support OAuth.",
-        );
+        showError(t("plugins.oauthConnectionFailed"));
       }
     } else {
       showError(message);
@@ -104,13 +104,10 @@ export function usePluginConnect() {
         setConnectFeedback({
           serverId,
           kind: "unauthorized",
-          message:
-            "This server requires authentication. Enable OAuth and try again.",
+          message: t("plugins.serverRequiresAuth"),
         });
         if (opts?.showToast) {
-          showError(
-            "Server connection failed. This server requires authentication. Try enabling OAuth.",
-          );
+          showError(t("plugins.serverConnectionFailed"));
         }
       } else {
         setConnectFeedback(null);
@@ -127,7 +124,7 @@ export function usePluginConnect() {
     if (opts.wantsOAuth) {
       // Bridge the gap until the new row arrives in `serversQuery`
       // and shows its own "Connecting…" state.
-      showInfo(`Connecting OAuth for "${created.name}"…`);
+      showInfo(t("plugins.connectingOAuth", { name: created.name }));
       await runAutoConnect(created.id, {
         showToast: true,
         callbackPort:
@@ -169,10 +166,10 @@ export function usePluginConnect() {
     setDisconnectingServerId(serverId);
     try {
       await disconnectOAuth(serverId);
-      showSuccess("Disconnected OAuth");
+      showSuccess(t("plugins.disconnectedOAuth"));
     } catch (err) {
       showError(
-        err instanceof Error ? err.message : "Failed to disconnect OAuth",
+        err instanceof Error ? err.message : t("plugins.failedDisconnectOAuth"),
       );
     } finally {
       setDisconnectingServerId(null);
@@ -189,8 +186,7 @@ export function usePluginConnect() {
       return {
         serverId: server.id,
         kind: "unauthorized",
-        message:
-          "This server requires authentication. Enable OAuth and try again.",
+        message: t("plugins.serverRequiresAuth"),
       };
     }
     return null;

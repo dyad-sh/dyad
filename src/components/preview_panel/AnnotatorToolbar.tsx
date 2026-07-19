@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 import { ToolbarColorPicker } from "./ToolbarColorPicker";
 import {
   Tooltip,
@@ -47,6 +48,8 @@ export const AnnotatorToolbar = ({
   onDeactivate,
   hasSubmitHandler,
 }: AnnotatorToolbarProps) => {
+  const { t } = useTranslation("home");
+  const { t: tc } = useTranslation("common");
   return (
     <div className="flex items-center justify-center p-2 border-b space-x-2">
       {/* Tool Selection Buttons */}
@@ -56,7 +59,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={() => onToolChange("select")}
-                aria-label="Select"
+                aria-label={t("preview.annotator.select")}
                 className={cn(
                   "p-1 rounded transition-colors duration-200",
                   tool === "select"
@@ -68,7 +71,7 @@ export const AnnotatorToolbar = ({
           >
             <MousePointer2 size={16} />
           </TooltipTrigger>
-          <TooltipContent>Select</TooltipContent>
+          <TooltipContent>{t("preview.annotator.select")}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -76,7 +79,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={() => onToolChange("draw")}
-                aria-label="Draw"
+                aria-label={t("preview.annotator.draw")}
                 className={cn(
                   "p-1 rounded transition-colors duration-200",
                   tool === "draw"
@@ -88,7 +91,7 @@ export const AnnotatorToolbar = ({
           >
             <Pencil size={16} />
           </TooltipTrigger>
-          <TooltipContent>Draw</TooltipContent>
+          <TooltipContent>{t("preview.annotator.draw")}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -96,7 +99,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={() => onToolChange("text")}
-                aria-label="Text"
+                aria-label={t("preview.annotator.text")}
                 className={cn(
                   "p-1 rounded transition-colors duration-200",
                   tool === "text"
@@ -108,7 +111,7 @@ export const AnnotatorToolbar = ({
           >
             <Type size={16} />
           </TooltipTrigger>
-          <TooltipContent>Text</TooltipContent>
+          <TooltipContent>{t("preview.annotator.text")}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -117,7 +120,7 @@ export const AnnotatorToolbar = ({
               <ToolbarColorPicker color={color} onChange={onColorChange} />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Color</TooltipContent>
+          <TooltipContent>{t("preview.annotator.color")}</TooltipContent>
         </Tooltip>
 
         <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
@@ -127,7 +130,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={onDelete}
-                aria-label="Delete"
+                aria-label={tc("delete")}
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!selectedId}
               />
@@ -135,7 +138,9 @@ export const AnnotatorToolbar = ({
           >
             <Trash2 size={16} />
           </TooltipTrigger>
-          <TooltipContent>Delete Selected</TooltipContent>
+          <TooltipContent>
+            {t("preview.annotator.deleteSelected")}
+          </TooltipContent>
         </Tooltip>
 
         <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
@@ -145,7 +150,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={onUndo}
-                aria-label="Undo"
+                aria-label={t("preview.annotator.undo")}
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={historyStep === 0}
               />
@@ -153,7 +158,7 @@ export const AnnotatorToolbar = ({
           >
             <Undo size={16} />
           </TooltipTrigger>
-          <TooltipContent>Undo</TooltipContent>
+          <TooltipContent>{t("preview.annotator.undo")}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -161,7 +166,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={onRedo}
-                aria-label="Redo"
+                aria-label={t("preview.annotator.redo")}
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={historyStep === historyLength - 1}
               />
@@ -169,7 +174,7 @@ export const AnnotatorToolbar = ({
           >
             <Redo size={16} />
           </TooltipTrigger>
-          <TooltipContent>Redo</TooltipContent>
+          <TooltipContent>{t("preview.annotator.redo")}</TooltipContent>
         </Tooltip>
 
         <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
@@ -179,7 +184,7 @@ export const AnnotatorToolbar = ({
             render={
               <button
                 onClick={onSubmit}
-                aria-label="Add to Chat"
+                aria-label={t("preview.annotator.addToChat")}
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200 dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!hasSubmitHandler}
               />
@@ -187,21 +192,23 @@ export const AnnotatorToolbar = ({
           >
             <Check size={16} />
           </TooltipTrigger>
-          <TooltipContent>Add to Chat</TooltipContent>
+          <TooltipContent>{t("preview.annotator.addToChat")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={
               <button
                 onClick={onDeactivate}
-                aria-label="Close Annotator"
+                aria-label={t("preview.annotator.closeAnnotator")}
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200 dark:text-purple-300 dark:hover:bg-purple-900"
               />
             }
           >
             <X size={16} />
           </TooltipTrigger>
-          <TooltipContent>Close Annotator</TooltipContent>
+          <TooltipContent>
+            {t("preview.annotator.closeAnnotator")}
+          </TooltipContent>
         </Tooltip>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { PluginSummaryCard } from "./PluginSummaryCard";
 import { PluginsStats } from "./PluginsStats";
 import { usePluginConnect } from "./usePluginConnect";
+import { useTranslation } from "react-i18next";
 
 export function PluginsList({
   addDialogOpen,
@@ -16,6 +17,7 @@ export function PluginsList({
   addDialogOpen: boolean;
   onAddDialogOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation("home");
   const navigate = useNavigate();
   // Gate on the servers query alone: tool discovery can take seconds,
   // and the cards already render a placeholder count until it lands.
@@ -100,7 +102,7 @@ export function PluginsList({
           ))}
           {servers.length === 0 && (
             <div className="col-span-full text-sm text-muted-foreground">
-              No plugins added yet.
+              {t("plugins.noPlugins")}
             </div>
           )}
         </div>

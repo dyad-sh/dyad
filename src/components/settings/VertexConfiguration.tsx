@@ -6,8 +6,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, CheckCircle2 } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import type { UserSettings, VertexProviderSetting } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 export function VertexConfiguration() {
+  const { t } = useTranslation(["settings", "common"]);
   const { settings, updateSettings } = useSettings();
   const existing =
     (settings?.providerSettings?.vertex as VertexProviderSetting) ?? {};
@@ -36,7 +38,7 @@ export function VertexConfiguration() {
         JSON.parse(serviceAccountKey);
       }
     } catch (e: any) {
-      setError("Service account JSON is invalid: " + e.message);
+      setError(t("vertex.invalidJson", { message: e.message }));
       return;
     }
 
@@ -58,7 +60,7 @@ export function VertexConfiguration() {
       await updateSettings(settingsUpdate);
       setSaved(true);
     } catch (e: any) {
-      setError(e?.message || "Failed to save Vertex settings");
+      setError(e?.message || t("vertex.failedSave"));
     } finally {
       setSaving(false);
     }
@@ -75,34 +77,36 @@ export function VertexConfiguration() {
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-4">
         <div>
-          <label className="block text-sm font-medium mb-1">Project ID</label>
+          <label className="block text-sm font-medium mb-1">
+            {t("vertex.projectId")}
+          </label>
           <Input
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            placeholder="your-gcp-project-id"
+            placeholder={t("vertex.projectIdPlaceholder")}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Location</label>
+          <label className="block text-sm font-medium mb-1">
+            {t("vertex.location")}
+          </label>
           <Input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             placeholder="us-central1"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            If you see a "model not found" error, try a different region. Some
-            partner models (MaaS) are only available in specific locations
-            (e.g., us-central1, us-west2).
+            {t("vertex.locationHelp")}
           </p>
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">
-            Service Account JSON Key
+            {t("vertex.serviceAccountKey")}
           </label>
           <Textarea
             value={serviceAccountKey}
             onChange={(e) => setServiceAccountKey(e.target.value)}
-            placeholder="Paste the full JSON contents of your service account key here"
+            placeholder={t("vertex.serviceAccountKeyPlaceholder")}
             className="min-h-40"
           />
         </div>
@@ -110,11 +114,11 @@ export function VertexConfiguration() {
 
       <div className="flex items-center gap-2">
         <Button onClick={onSave} disabled={saving}>
-          {saving ? "Saving..." : "Save Settings"}
+          {saving ? t("common:saving") : t("vertex.saveSettings")}
         </Button>
         {saved && !error && (
           <span className="flex items-center text-green-600 text-sm">
-            <CheckCircle2 className="h-4 w-4 mr-1" /> Saved
+            <CheckCircle2 className="h-4 w-4 mr-1" /> {t("vertex.saved")}
           </span>
         )}
       </div>
@@ -122,17 +126,16 @@ export function VertexConfiguration() {
       {!isConfigured && (
         <Alert variant="default">
           <Info className="h-4 w-4" />
-          <AlertTitle>Configuration Required</AlertTitle>
+          <AlertTitle>{t("vertex.configRequired")}</AlertTitle>
           <AlertDescription>
-            Provide Project, Location, and a service account JSON key with
-            Vertex AI access.
+            {t("vertex.configRequiredDescription")}
           </AlertDescription>
         </Alert>
       )}
 
       {error && (
         <Alert variant="destructive">
-          <AlertTitle>Save Error</AlertTitle>
+          <AlertTitle>{t("vertex.saveError")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}

@@ -415,7 +415,11 @@ export const PreviewToolbar = () => {
             render={
               <button
                 onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-                aria-label={isChatPanelHidden ? "Show chat" : "Hide chat"}
+                aria-label={
+                  isChatPanelHidden
+                    ? t("preview.chatToggle.show")
+                    : t("preview.chatToggle.hide")
+                }
                 aria-pressed={isChatPanelHidden}
                 className="no-app-region-drag cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 data-testid="preview-toggle-chat-panel-button"
@@ -429,7 +433,9 @@ export const PreviewToolbar = () => {
             )}
           </TooltipTrigger>
           <TooltipContent>
-            {isChatPanelHidden ? "Show chat" : "Hide chat"}
+            {isChatPanelHidden
+              ? t("preview.chatToggle.show")
+              : t("preview.chatToggle.hide")}
           </TooltipContent>
         </Tooltip>
       </div>

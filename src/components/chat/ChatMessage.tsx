@@ -17,7 +17,6 @@ import {
   Bot,
   Ban,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectAtom } from "jotai/utils";
@@ -39,6 +38,7 @@ import {
   isCancelledResponseContent,
   stripCancelledResponseNotice,
 } from "@/shared/chatCancellation";
+import { formatDate, formatRelativeTime } from "@/i18n/format";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -95,7 +95,7 @@ const ChatMessage = ({
   isLastMessage,
   isCancelledPrompt,
 }: ChatMessageProps) => {
-  const { t } = useTranslation("chat");
+  const { t, i18n } = useTranslation("chat");
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
@@ -175,9 +175,9 @@ const ChatMessage = ({
     const diffInHours =
       (now.getTime() - messageTime.getTime()) / (1000 * 60 * 60);
     if (diffInHours < 24) {
-      return formatDistanceToNow(messageTime, { addSuffix: true });
+      return formatRelativeTime(messageTime, i18n.language);
     } else {
-      return format(messageTime, "MMM d, yyyy 'at' h:mm a");
+      return formatDate(messageTime, i18n.language);
     }
   };
 
@@ -389,7 +389,7 @@ const ChatMessage = ({
               <div
                 className="flex items-center space-x-1 px-1 py-0.5"
                 title={t("maxTokensUsed", {
-                  count: message.totalTokens.toLocaleString(),
+                  value: message.totalTokens.toLocaleString(),
                 })}
               >
                 <Info className="h-3 w-3" />

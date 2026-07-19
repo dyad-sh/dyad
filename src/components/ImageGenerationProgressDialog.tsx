@@ -27,13 +27,23 @@ import type {
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
-const THEME_LABELS: Record<string, string> = {
-  plain: "Plain",
-  "3d-clay": "3D / Clay",
-  "real-photography": "Photography",
-  "isometric-illustration": "Isometric",
-};
+function themeLabel(t: TFunction<"home">, mode: string): string {
+  switch (mode) {
+    case "plain":
+      return t("imageGeneration.modePlain");
+    case "3d-clay":
+      return t("imageGeneration.modeClay3d");
+    case "real-photography":
+      return t("imageGeneration.modePhotography");
+    case "isometric-illustration":
+      return t("imageGeneration.modeIsometric");
+    default:
+      return mode;
+  }
+}
 
 function StatusIcon({ status }: { status: ImageGenerationStatus }) {
   switch (status) {
@@ -49,44 +59,46 @@ function StatusIcon({ status }: { status: ImageGenerationStatus }) {
 }
 
 function StatusLabel({ status }: { status: ImageGenerationStatus }) {
+  const { t } = useTranslation("home");
   switch (status) {
     case "pending":
       return (
         <Badge variant="secondary" className="text-xs">
-          Generating
+          {t("imageGeneration.generating")}
         </Badge>
       );
     case "success":
       return (
         <Badge variant="secondary" className="text-xs text-green-600">
-          Completed
+          {t("imageGeneration.completed")}
         </Badge>
       );
     case "error":
       return (
         <Badge variant="secondary" className="text-xs text-red-600">
-          Failed
+          {t("imageGeneration.failed")}
         </Badge>
       );
     case "cancelled":
       return (
         <Badge variant="secondary" className="text-xs text-muted-foreground">
-          Cancelled
+          {t("imageGeneration.cancelled")}
         </Badge>
       );
   }
 }
 
 function useRelativeTime(timestamp: number, intervalMs = 30_000): string {
+  const { t } = useTranslation("home");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(id);
   }, [intervalMs]);
   const seconds = Math.floor((now - timestamp) / 1000);
-  if (seconds < 60) return "Just now";
+  if (seconds < 60) return t("imageGeneration.justNow");
   const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ago`;
+  return t("imageGeneration.minutesAgo", { count: minutes });
 }
 
 function RelativeTime({ timestamp }: { timestamp: number }) {
@@ -95,6 +107,7 @@ function RelativeTime({ timestamp }: { timestamp: number }) {
 }
 
 function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
+  const { t } = useTranslation("home");
   const [expanded, setExpanded] = useState(false);
   const cancelGeneration = useCancelImageGeneration();
   const [imgError, setImgError] = useState(false);
@@ -127,7 +140,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
           {/* Full prompt */}
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1">
-              Prompt
+              {t("imageGeneration.prompt")}
             </p>
             <p className="text-sm whitespace-pre-wrap">{job.prompt}</p>
           </div>
@@ -137,7 +150,9 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
             {job.status === "pending" ? (
               <div className="w-full aspect-video max-w-xs rounded-lg border-2 border-dashed border-muted-foreground/25 flex flex-col items-center justify-center gap-2 bg-muted/10">
                 <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                <p className="text-xs text-muted-foreground">Generating...</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("imageGeneration.generatingImage")}
+                </p>
               </div>
             ) : job.status === "success" && job.result ? (
               imgError ? (
@@ -155,7 +170,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
                       job.result.appPath,
                       job.result.fileName,
                     )}
-                    alt="Generated image"
+                    alt={t("imageGeneration.generatedImage")}
                     className="w-full max-w-xs rounded-lg border shadow-sm hover:opacity-90 transition-opacity"
                     onError={() => setImgError(true)}
                   />
@@ -163,13 +178,13 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
               )
             ) : job.status === "error" ? (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-2 text-xs text-destructive">
-                {job.error || "Image generation failed"}
+                {job.error || t("imageGeneration.generationFailed")}
               </div>
             ) : job.status === "cancelled" ? (
               <div className="w-full aspect-video max-w-xs rounded-lg border-2 border-dashed border-muted-foreground/25 flex flex-col items-center justify-center gap-2 bg-muted/10">
                 <Ban className="h-6 w-6 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">
-                  Generation was cancelled
+                  {t("imageGeneration.generationCancelled")}
                 </p>
               </div>
             ) : null}
@@ -179,7 +194,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
           <div className="flex items-center gap-2 flex-wrap">
             <StatusLabel status={job.status} />
             <Badge variant="outline" className="text-xs">
-              {THEME_LABELS[job.themeMode] || job.themeMode}
+              {themeLabel(t, job.themeMode)}
             </Badge>
             <span className="text-xs text-muted-foreground">
               {job.targetAppName}
@@ -194,7 +209,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
               className="text-xs"
               onClick={() => cancelGeneration(job.id)}
             >
-              Cancel
+              {t("imageGeneration.cancel")}
             </Button>
           )}
         </div>
@@ -225,6 +240,7 @@ export function ImageGenerationProgressDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation("home");
   const recentJobs = useAtomValue(imageGenerationJobsAtom);
 
   return (
@@ -233,17 +249,17 @@ export function ImageGenerationProgressDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ImageIcon className="h-5 w-5" />
-            Image Generation
+            {t("imageGeneration.title")}
           </DialogTitle>
           <DialogDescription>
-            Recent image generations from the last 30 minutes.
+            {t("imageGeneration.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2 py-2">
           {recentJobs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No recent image generations.
+              {t("imageGeneration.noRecent")}
             </div>
           ) : (
             recentJobs

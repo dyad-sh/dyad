@@ -18,39 +18,36 @@ interface OptionInfo {
 
 const defaultValue = "default";
 
-const options: OptionInfo[] = [
-  {
-    value: "2",
-    label: "Economy (2)",
-    description:
-      "Minimal context to reduce token usage and improve response times.",
-  },
-  {
-    value: defaultValue,
-    label: `Default (${MAX_CHAT_TURNS_IN_CONTEXT})  `,
-    description: "Balanced context size for most conversations.",
-  },
-  {
-    value: "5",
-    label: "Plus (5)",
-    description: "Slightly higher context size for detailed conversations.",
-  },
-  {
-    value: "10",
-    label: "High (10)",
-    description:
-      "Extended context for complex conversations requiring more history.",
-  },
-  {
-    value: "100",
-    label: "Max (100)",
-    description: "Maximum context (not recommended due to cost and speed).",
-  },
-];
-
 export const MaxChatTurnsSelector: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation("settings");
+  const options: OptionInfo[] = [
+    {
+      value: "2",
+      label: t("ai.chatTurnEconomy"),
+      description: t("ai.chatTurnEconomyDescription"),
+    },
+    {
+      value: defaultValue,
+      label: t("ai.chatTurnDefault", { count: MAX_CHAT_TURNS_IN_CONTEXT }),
+      description: t("ai.chatTurnDefaultDescription"),
+    },
+    {
+      value: "5",
+      label: t("ai.chatTurnPlus"),
+      description: t("ai.chatTurnPlusDescription"),
+    },
+    {
+      value: "10",
+      label: t("ai.chatTurnHigh"),
+      description: t("ai.chatTurnHighDescription"),
+    },
+    {
+      value: "100",
+      label: t("ai.chatTurnMax"),
+      description: t("ai.chatTurnMaxDescription"),
+    },
+  ];
 
   const handleValueChange = (value: string) => {
     if (value === "default") {

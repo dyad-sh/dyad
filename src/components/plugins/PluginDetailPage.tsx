@@ -16,16 +16,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import type { McpToolConsent } from "@/ipc/types";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
-import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
-
-// Keyed on the full kind union so adding a feedback kind forces a
-// title here instead of silently reusing another kind's.
-const FEEDBACK_TITLES: Record<ConnectFeedback["kind"], string> = {
-  unauthorized: "Server requires authentication",
-  discovery_failed: "Server doesn't support OAuth",
-};
+import { usePluginConnect } from "./usePluginConnect";
+import { useTranslation } from "react-i18next";
 
 export function PluginDetailPage({ serverId }: { serverId: number }) {
+  const { t } = useTranslation("home");
   const navigate = useNavigate();
   const {
     servers,
@@ -107,7 +102,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           onClick={() => navigate({ to: "/plugins" })}
         >
           <ArrowLeft size={16} />
-          All Plugins
+          {t("plugins.all")}
         </Button>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
@@ -123,7 +118,10 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                         : "text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-500/50"
                     }`}
                   >
-                    OAuth: {s.oauthConnected ? "connected" : "not connected"}
+                    {t("plugins.oauthLabel")}:{" "}
+                    {s.oauthConnected
+                      ? t("plugins.connected")
+                      : t("plugins.notConnected")}
                   </span>
                 )}
               </h1>
@@ -147,7 +145,9 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                   onClick={() => onConnect(s.id)}
                   disabled={connectingServerId !== null}
                 >
-                  {connectingServerId === s.id ? "Connecting…" : "Connect"}
+                  {connectingServerId === s.id
+                    ? t("plugins.connecting")
+                    : t("plugins.connect")}
                 </Button>
               )}
               {s.oauthEnabled && s.oauthConnected && (
@@ -157,22 +157,22 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                   disabled={disconnectingServerId === s.id}
                 >
                   {disconnectingServerId === s.id
-                    ? "Disconnecting…"
-                    : "Disconnect"}
+                    ? t("plugins.disconnecting")
+                    : t("plugins.disconnect")}
                 </Button>
               )}
               <Switch
-                aria-label={`Enabled toggle for ${s.name}`}
+                aria-label={t("plugins.enabledToggle", { name: s.name })}
                 checked={!!s.enabled}
                 onCheckedChange={() => toggleEnabled(s.id, !!s.enabled)}
               />
               <DeleteConfirmationDialog
                 itemName={s.name}
-                itemType="Plugin"
+                itemType={t("plugins.title")}
                 onDelete={onDelete}
                 trigger={
                   <span className={buttonVariants({ variant: "outline" })}>
-                    Delete
+                    {t("plugins.delete")}
                   </span>
                 }
               />
@@ -182,7 +182,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {feedback && (
             <div className="mt-4">
               <Alert variant="destructive">
-                <AlertTitle>{FEEDBACK_TITLES[feedback.kind]}</AlertTitle>
+                <AlertTitle>
+                  {feedback.kind === "unauthorized"
+                    ? t("plugins.feedbackAuthTitle")
+                    : t("plugins.feedbackOAuthTitle")}
+                </AlertTitle>
                 <AlertDescription className="gap-2">
                   <span>{feedback.message}</span>
                   {feedback.kind === "unauthorized" && (
@@ -191,7 +195,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                       onClick={() => onEnableOAuthAndRetry(s.id)}
                       disabled={isUpdatingServer || connectingServerId !== null}
                     >
-                      Enable OAuth & retry
+                      {t("plugins.enableOAuthRetry")}
                     </Button>
                   )}
                   {feedback.kind === "discovery_failed" && (
@@ -200,7 +204,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                       onClick={() => onDisableOAuthAndRetry(s.id)}
                       disabled={isUpdatingServer || connectingServerId !== null}
                     >
-                      Disable OAuth & retry
+                      {t("plugins.disableOAuthRetry")}
                     </Button>
                   )}
                 </AlertDescription>
@@ -211,7 +215,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {s.transport === "stdio" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">
-                Environment Variables
+                {t("plugins.environmentVariables")}
               </div>
               <KeyValueEditor
                 id={s.id}
@@ -229,7 +233,9 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           )}
           {s.transport === "http" && (
             <div className="mt-6">
-              <div className="text-sm font-medium mb-2">Headers</div>
+              <div className="text-sm font-medium mb-2">
+                {t("plugins.headers")}
+              </div>
               <KeyValueEditor
                 id={s.id}
                 json={s.headersJson}
@@ -247,19 +253,21 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           )}
 
           <div className="mt-6">
-            <div className="text-sm font-medium mb-2">Tools</div>
+            <div className="text-sm font-medium mb-2">{t("plugins.tools")}</div>
             <div className="space-y-2">
-              {tools.map((t) => (
-                <div key={t.name} className="border rounded p-2">
+              {tools.map((tool) => (
+                <div key={tool.name} className="border rounded p-2">
                   <div className="flex items-center gap-4">
-                    <div className="font-mono text-sm truncate">{t.name}</div>
+                    <div className="font-mono text-sm truncate">
+                      {tool.name}
+                    </div>
                     <div className="flex items-center gap-2">
                       <Select
-                        value={consentsMap[`${s.id}:${t.name}`] || "ask"}
+                        value={consentsMap[`${s.id}:${tool.name}`] || "ask"}
                         onValueChange={(v) => {
                           // The mutation already shows an error toast.
                           onSetToolConsent(
-                            t.name,
+                            tool.name,
                             v as McpToolConsent["consent"],
                           ).catch(() => {});
                         }}
@@ -268,16 +276,22 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="ask">Ask</SelectItem>
-                          <SelectItem value="always">Always allow</SelectItem>
-                          <SelectItem value="denied">Deny</SelectItem>
+                          <SelectItem value="ask">
+                            {t("plugins.ask")}
+                          </SelectItem>
+                          <SelectItem value="always">
+                            {t("plugins.alwaysAllow")}
+                          </SelectItem>
+                          <SelectItem value="denied">
+                            {t("plugins.deny")}
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  {t.description && (
+                  {tool.description && (
                     <div className="mt-1 text-xs max-w-[500px] text-muted-foreground truncate">
-                      {t.description}
+                      {tool.description}
                     </div>
                   )}
                 </div>
@@ -285,12 +299,12 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               {tools.length === 0 && (
                 <div className="text-xs text-muted-foreground">
                   {discoveredTools
-                    ? "No tools discovered."
+                    ? t("plugins.noToolsDiscovered")
                     : statusByServer[s.id] === "unauthorized"
-                      ? "Tools will be listed once the server is connected."
+                      ? t("plugins.toolsWaitingForConnection")
                       : statusByServer[s.id] === "error"
-                        ? "Tool discovery failed."
-                        : "Discovering tools…"}
+                        ? t("plugins.toolDiscoveryFailed")
+                        : t("plugins.discoveringTools")}
                 </div>
               )}
             </div>

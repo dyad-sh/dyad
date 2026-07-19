@@ -50,7 +50,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
-  const { t } = useTranslation(["home", "common"]);
+  const { t } = useTranslation(["home", "common", "settings"]);
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
@@ -194,7 +194,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             >
               <img
                 src={isDarkMode ? supabaseLogoDark : supabaseLogoLight}
-                alt="Supabase Logo"
+                alt={t("integrations.supabase.logoAlt")}
                 style={{ height: 20, width: "auto", marginRight: 4 }}
               />
               <ExternalLink className="h-4 w-4" />
@@ -270,7 +270,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         value={branch.projectRef}
                       >
                         {branch.name}
-                        {branch.isDefault && " (Default)"}
+                        {branch.isDefault &&
+                          ` (${t("integrations.supabase.default")})`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -370,7 +371,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="font-medium truncate">
                           {org.name ||
-                            `Organization ${org.organizationSlug.slice(0, 8)}`}
+                            t("integrations.supabase.organizationFallback", {
+                              slug: org.organizationSlug.slice(0, 8),
+                            })}
                         </span>
                         {org.ownerEmail && (
                           <span className="text-xs text-muted-foreground truncate">
@@ -392,7 +395,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                           }
                         >
                           <Trash2 className="h-3.5 w-3.5 mr-1" />
-                          <span className="text-xs">Disconnect</span>
+                          <span className="text-xs">
+                            {t("common:disconnect")}
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent>
                           {t("integrations.supabase.disconnectOrganization")}
@@ -409,7 +414,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  <Label htmlFor="project-select">Project</Label>
+                  <Label htmlFor="project-select">
+                    {t("integrations.supabase.project")}
+                  </Label>
                   <Select
                     value={currentProjectValue}
                     onValueChange={(v) => v && handleProjectSelect(v)}
@@ -450,11 +457,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   return (
     <div className="flex flex-col space-y-4 p-4 border rounded-md">
       <div className="flex flex-col md:flex-row items-center justify-between">
-        <h2 className="text-lg font-medium">Integrations</h2>
+        <h2 className="text-lg font-medium">
+          {t("settings:integrations.title")}
+        </h2>
         <img
           onClick={handleAddAccount}
           src={isDarkMode ? connectSupabaseDark : connectSupabaseLight}
-          alt="Connect to Supabase"
+          alt={t("integrations.supabase.connectToSupabase")}
           className="w-full h-10 min-h-8 min-w-20 cursor-pointer"
           data-testid="connect-supabase-button"
         />

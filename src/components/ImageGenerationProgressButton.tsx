@@ -7,8 +7,10 @@ import {
   pendingImageGenerationsCountAtom,
 } from "@/atoms/imageGenerationAtoms";
 import { ImageGenerationProgressDialog } from "./ImageGenerationProgressDialog";
+import { useTranslation } from "react-i18next";
 
 export function ImageGenerationProgressButton() {
+  const { t } = useTranslation("home");
   const recentJobs = useAtomValue(imageGenerationJobsAtom);
   const pendingCount = useAtomValue(pendingImageGenerationsCountAtom);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -24,7 +26,7 @@ export function ImageGenerationProgressButton() {
         onClick={() => setDialogOpen(true)}
       >
         <Clock className="h-4 w-4 mr-1" />
-        Recent
+        {t("imageGeneration.recent")}
         {pendingCount > 0 && (
           <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
             {pendingCount}

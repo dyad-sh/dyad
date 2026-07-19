@@ -1,6 +1,8 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   FlaskConical,
   Play,
@@ -47,7 +49,6 @@ import {
   buildSingleTestFileResult,
   findCaseResult,
   reconcileResultFile,
-  statusLabel,
   testKey,
 } from "./testResultUtils";
 
@@ -57,6 +58,24 @@ import {
  * chunks per frame; flushing on a cadence keeps that to ~10 renders/second.
  */
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
+
+function testStatusLabel(t: TFunction<"home">, status: TestStatus): string {
+  switch (status) {
+    case "passed":
+      return t("preview.testsPanel.statusPassed");
+    case "partial":
+      return t("preview.testsPanel.statusPartial");
+    case "failed":
+      return t("preview.testsPanel.statusFailed");
+    case "inconclusive":
+      return t("preview.testsPanel.statusInconclusive");
+    case "running":
+      return t("preview.testsPanel.statusRunning");
+    case "not-run":
+    default:
+      return t("preview.testsPanel.statusNotRun");
+  }
+}
 
 function StatusIcon({ status }: { status: TestStatus }) {
   switch (status) {
@@ -121,6 +140,7 @@ function FailureDetails({
   screenshotPath: string | undefined;
   label: string;
 }) {
+  const { t } = useTranslation("home");
   const [screenshot, setScreenshot] = useState<string | null>(null);
   // Distinguishes "still fetching" from "fetched, but unavailable" — without it
   // a null result is indistinguishable from the initial state and the UI would
@@ -162,17 +182,21 @@ function FailureDetails({
         <div className="space-y-1">
           <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <ImageIcon size={12} />
-            Failure screenshot
+            {t("preview.testsPanel.failureScreenshot")}
           </div>
           {screenshot ? (
             <img
               src={screenshot}
-              alt={`Failure screenshot for ${label}`}
+              alt={t("preview.testsPanel.failureScreenshotFor", {
+                name: label,
+              })}
               className="max-h-72 w-auto rounded-md border border-border"
             />
           ) : (
             <div className="text-[11px] text-muted-foreground">
-              {loaded ? "Screenshot unavailable" : "Loading screenshot…"}
+              {loaded
+                ? t("preview.testsPanel.screenshotUnavailable")
+                : t("preview.testsPanel.loadingScreenshot")}
             </div>
           )}
         </div>
@@ -190,12 +214,13 @@ function RunButton({
   disabled: boolean;
   label: string;
 }) {
+  const { t } = useTranslation("home");
   return (
     <button
       onClick={onRun}
       disabled={disabled}
       aria-label={label}
-      title="During database-isolated runs, other app operations may wait until the run finishes."
+      title={t("preview.testsPanel.isolatedRunHint")}
       className={cn(
         "flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all cursor-pointer",
         "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
@@ -204,12 +229,13 @@ function RunButton({
       )}
     >
       <Play size={13} />
-      Run
+      {t("preview.testsPanel.run")}
     </button>
   );
 }
 
 function FixButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const { t } = useTranslation("home");
   return (
     <button
       onClick={onClick}
@@ -217,7 +243,7 @@ function FixButton({ onClick, label }: { onClick: () => void; label: string }) {
       className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60 cursor-pointer"
     >
       <Sparkles size={13} />
-      Fix
+      {t("preview.testsPanel.fix")}
     </button>
   );
 }
@@ -255,6 +281,7 @@ function TestCaseRow({
   onRun,
   onAskAiToFix,
 }: TestCaseRowProps) {
+  const { t } = useTranslation("home");
   const [expanded, setExpanded] = useState(false);
   const isFailing = status === "failed" || status === "inconclusive";
   // Expandable when there's error text OR a failure screenshot — some failures
@@ -298,7 +325,7 @@ function TestCaseRow({
               statusTextClass(status),
             )}
           >
-            {statusLabel(status)}
+            {testStatusLabel(t, status)}
             {result?.durationMs != null &&
               ` · ${(result.durationMs / 1000).toFixed(1)}s`}
           </span>
@@ -307,7 +334,7 @@ function TestCaseRow({
           <button
             onClick={() => setExpanded((v) => !v)}
             className="text-muted-foreground hover:text-foreground"
-            aria-label="Toggle details"
+            aria-label={t("preview.testsPanel.toggleDetails")}
           >
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
@@ -322,13 +349,15 @@ function TestCaseRow({
                 result?.screenshotPath,
               )
             }
-            label={`Ask AI to fix test: ${testCase.title}`}
+            label={t("preview.testsPanel.askAiToFixTest", {
+              name: testCase.title,
+            })}
           />
         )}
         <RunButton
           onRun={onRun}
           disabled={disabled}
-          label={`Run test: ${testCase.title}`}
+          label={t("preview.testsPanel.runTest", { name: testCase.title })}
         />
       </div>
       {expanded && canExpand && (
@@ -380,6 +409,7 @@ function FileRow({
   caseResult,
   onAskAiToFix,
 }: FileRowProps) {
+  const { t } = useTranslation("home");
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
   const isFailing = status === "failed" || status === "inconclusive";
@@ -401,7 +431,11 @@ function FileRow({
         <button
           onClick={toggle}
           disabled={!hasTests}
-          aria-label={hasTests ? `Toggle tests in ${fileName}` : undefined}
+          aria-label={
+            hasTests
+              ? t("preview.testsPanel.toggleTestsIn", { file: fileName })
+              : undefined
+          }
           aria-expanded={hasTests ? expanded : undefined}
           className={cn(
             "shrink-0 text-muted-foreground",
@@ -431,9 +465,13 @@ function FileRow({
               statusTextClass(status),
             )}
           >
-            {statusLabel(status)}
-            {hasTests &&
-              ` · ${tests.length} ${tests.length === 1 ? "test" : "tests"}`}
+            {testStatusLabel(t, status)}
+            {hasTests && (
+              <>
+                {" · "}
+                {t("preview.testsPanel.testCount", { count: tests.length })}
+              </>
+            )}
             {result?.durationMs != null &&
               ` · ${(result.durationMs / 1000).toFixed(1)}s`}
           </span>
@@ -448,13 +486,13 @@ function FileRow({
                 result?.screenshotPath,
               )
             }
-            label={`Ask AI to fix tests in: ${fileName}`}
+            label={t("preview.testsPanel.askAiToFixTests", { file: fileName })}
           />
         )}
         <RunButton
           onRun={onRunFile}
           disabled={disabled}
-          label={`Run all tests in: ${fileName}`}
+          label={t("preview.testsPanel.runAllInFile", { file: fileName })}
         />
       </div>
       {expanded && hasTests && (
@@ -480,6 +518,7 @@ function FileRow({
 }
 
 export function TestsPanel() {
+  const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
@@ -738,7 +777,7 @@ export function TestsPanel() {
   const askAiToFix = useCallback<AskAiToFix>(
     async (file, error, testTitle, screenshotPath) => {
       if (chatId == null) {
-        showInfo("Open a chat to ask the AI to fix this test.");
+        showInfo(t("preview.testsPanel.openChatToFix"));
         return;
       }
       const target = testTitle
@@ -792,9 +831,9 @@ export function TestsPanel() {
       }
 
       streamMessage({ prompt: sections.join("\n\n"), chatId, attachments });
-      showInfo("Sent to chat — asking the AI to fix the test…");
+      showInfo(t("preview.testsPanel.sentToChatFix"));
     },
-    [chatId, streamMessage, jotaiStore, selectedAppId],
+    [chatId, streamMessage, jotaiStore, selectedAppId, t],
   );
 
   // Kick off a first test by asking the AI (in chat) to cover a critical flow.
@@ -802,7 +841,7 @@ export function TestsPanel() {
   // turn finishes (see the invalidate-on-stream-end effect above).
   const generateTest = useCallback(() => {
     if (chatId == null) {
-      showInfo("Open a chat to generate a test.");
+      showInfo(t("preview.testsPanel.openChatToGenerate"));
       return;
     }
     streamMessage({
@@ -810,8 +849,8 @@ export function TestsPanel() {
         "Generate an end-to-end test for a critical user journey in this app. First explore the app to find its most important flow, then write a single Playwright test that covers it.",
       chatId,
     });
-    showInfo("Sent to chat — generating a test…");
-  }, [chatId, streamMessage]);
+    showInfo(t("preview.testsPanel.sentToChatGenerate"));
+  }, [chatId, streamMessage, t]);
 
   const enableTesting = useCallback(() => {
     if (selectedAppId == null) return;
@@ -881,7 +920,7 @@ export function TestsPanel() {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
         <FlaskConical size={32} className="mb-3 opacity-50" />
-        <p>Select an app to view tests.</p>
+        <p>{t("preview.testsPanel.selectApp")}</p>
       </div>
     );
   }
@@ -891,22 +930,24 @@ export function TestsPanel() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <FlaskConical size={18} className="text-teal-600 dark:text-teal-400" />
-        <h2 className="text-base font-semibold text-foreground">Tests</h2>
+        <h2 className="text-base font-semibold text-foreground">
+          {t("preview.testsPanel.title")}
+        </h2>
         <span className="px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded">
-          Experimental
+          {t("preview.testsPanel.experimental")}
         </span>
         <div className="flex-1" />
         {testingEnabled && !isRunning && (
           <button
             onClick={disableTesting}
             disabled={isTogglingTesting}
-            aria-label="Disable testing for this app"
+            aria-label={t("preview.testsPanel.disableForApp")}
             className={cn(
               "text-xs px-2 py-1 rounded-md text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer",
               isTogglingTesting && "opacity-40 cursor-not-allowed",
             )}
           >
-            Disable testing
+            {t("preview.testsPanel.disable")}
           </button>
         )}
         {testingEnabled && specs.length > 0 && (
@@ -916,11 +957,13 @@ export function TestsPanel() {
             aria-pressed={parallel}
             title={
               parallel
-                ? "Parallel: a file's tests run concurrently (faster, shared dev server)"
-                : "Serial: a file's tests run one at a time"
+                ? t("preview.testsPanel.parallelTitle")
+                : t("preview.testsPanel.serialTitle")
             }
             aria-label={
-              parallel ? "Switch to serial mode" : "Switch to parallel mode"
+              parallel
+                ? t("preview.testsPanel.switchSerial")
+                : t("preview.testsPanel.switchParallel")
             }
             className={cn(
               "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md cursor-pointer transition-colors",
@@ -931,7 +974,9 @@ export function TestsPanel() {
             )}
           >
             <Zap size={14} />
-            {parallel ? "Parallel" : "Serial"}
+            {parallel
+              ? t("preview.testsPanel.parallel")
+              : t("preview.testsPanel.serial")}
           </button>
         )}
         {testingEnabled && specs.length > 0 && (
@@ -941,11 +986,13 @@ export function TestsPanel() {
             aria-pressed={headed}
             title={
               headed
-                ? "Headed: tests open a visible browser window"
-                : "Headless: tests run without a visible window"
+                ? t("preview.testsPanel.headedTitle")
+                : t("preview.testsPanel.headlessTitle")
             }
             aria-label={
-              headed ? "Switch to headless mode" : "Switch to headed mode"
+              headed
+                ? t("preview.testsPanel.switchHeadless")
+                : t("preview.testsPanel.switchHeaded")
             }
             className={cn(
               "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md cursor-pointer transition-colors",
@@ -956,17 +1003,19 @@ export function TestsPanel() {
             )}
           >
             {headed ? <Eye size={14} /> : <EyeOff size={14} />}
-            {headed ? "Headed" : "Headless"}
+            {headed
+              ? t("preview.testsPanel.headed")
+              : t("preview.testsPanel.headless")}
           </button>
         )}
         {isRunning ? (
           <button
             onClick={stop}
-            aria-label="Stop running tests"
+            aria-label={t("preview.testsPanel.stopRunning")}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 cursor-pointer"
           >
             <Square size={14} />
-            Stop
+            {t("preview.testsPanel.stop")}
           </button>
         ) : (
           testingEnabled &&
@@ -974,8 +1023,8 @@ export function TestsPanel() {
             <button
               onClick={() => runTests()}
               disabled={!devServerRunning}
-              title="During database-isolated runs, other app operations may wait until the run finishes."
-              aria-label="Run all tests"
+              title={t("preview.testsPanel.isolatedRunHint")}
+              aria-label={t("preview.testsPanel.runAll")}
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
@@ -983,7 +1032,7 @@ export function TestsPanel() {
               )}
             >
               <Play size={14} />
-              Run all
+              {t("preview.testsPanel.runAllLabel")}
             </button>
           )
         )}
@@ -1006,49 +1055,52 @@ export function TestsPanel() {
               {isRunning && (
                 <span className="text-blue-600 dark:text-blue-400">
                   {runState.phase === "setup"
-                    ? "Setting up testing… "
-                    : "Running… "}
+                    ? `${t("preview.testsPanel.settingUp")} `
+                    : `${t("preview.testsPanel.running")} `}
                 </span>
               )}
               <span className="text-green-600 dark:text-green-500">
-                {counts.passed} passed
+                {counts.passed} {t("preview.testsPanel.passed")}
               </span>
               {counts.failed > 0 && (
                 <span className="text-red-600 dark:text-red-400">
                   {" · "}
-                  {counts.failed} failed
+                  {counts.failed} {t("preview.testsPanel.failed")}
                 </span>
               )}
               {counts.inconclusive > 0 && (
                 <span className="text-amber-600 dark:text-amber-400">
                   {" · "}
-                  {counts.inconclusive} inconclusive
+                  {counts.inconclusive} {t("preview.testsPanel.inconclusive")}
                 </span>
               )}
               {counts.partial > 0 && (
                 <span className="text-teal-600 dark:text-teal-400">
                   {" · "}
-                  {counts.partial} partial
+                  {counts.partial} {t("preview.testsPanel.partial")}
                 </span>
               )}
-              {` of ${specs.length} ${specs.length === 1 ? "file" : "files"}`}
+              {` ${t("preview.testsPanel.of")} ${specs.length} ${t(
+                "preview.testsPanel.file",
+                { count: specs.length },
+              )}`}
               {!isRunning && runState.isolation?.mode === "neon-branch" && (
                 <span
                   className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
-                  title="Tests ran against a temporary copy of your database — your real data was not touched."
+                  title={t("preview.testsPanel.isolatedTestDataTitle")}
                 >
                   <ShieldCheck size={11} className="shrink-0" />
-                  Isolated test data
+                  {t("preview.testsPanel.isolatedTestData")}
                 </span>
               )}
               {!isRunning &&
                 runState.isolation?.mode === "supabase-test-user" && (
                   <span
                     className="ml-2 inline-flex items-center gap-1 rounded-full bg-teal-100 dark:bg-teal-900/30 px-2 py-0.5 text-[11px] font-medium text-teal-700 dark:text-teal-300 align-middle"
-                    title="Tests ran as a temporary, isolated test user under Row-Level Security — your real data was not touched."
+                    title={t("preview.testsPanel.isolatedTestUserTitle")}
                   >
                     <ShieldCheck size={11} className="shrink-0" />
-                    Isolated test user
+                    {t("preview.testsPanel.isolatedTestUser")}
                   </span>
                 )}
             </div>
@@ -1073,8 +1125,7 @@ export function TestsPanel() {
             <div className="flex items-start gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800 text-sm text-teal-800 dark:text-teal-200">
               <ShieldCheck size={15} className="shrink-0 mt-0.5" />
               <span className="flex-1">
-                Neon test runs restart the preview to switch to a temporary
-                database, then restart it again afterward.
+                {t("preview.testsPanel.neonRestartNotice")}
               </span>
             </div>
           )}
@@ -1083,12 +1134,12 @@ export function TestsPanel() {
           {!devServerRunning && specs.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
               <AlertTriangle size={15} className="shrink-0" />
-              <span className="flex-1">Start the app to run tests.</span>
+              <span className="flex-1">{t("preview.testsPanel.startApp")}</span>
               <button
                 onClick={() => runApp(selectedAppId)}
                 className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
               >
-                Start
+                {t("preview.testsPanel.start")}
               </button>
             </div>
           )}
@@ -1110,7 +1161,7 @@ export function TestsPanel() {
                     "opacity-40 cursor-not-allowed",
                 )}
               >
-                Retry
+                {t("preview.testsPanel.retry")}
               </button>
             </div>
           )}
@@ -1130,7 +1181,7 @@ export function TestsPanel() {
         ) : loadingSpecs ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <Loader2 size={20} className="animate-spin mr-2" />
-            Loading tests…
+            {t("preview.testsPanel.loading")}
           </div>
         ) : specsQuery.isError ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
@@ -1139,16 +1190,16 @@ export function TestsPanel() {
               className="mb-3 text-amber-500 dark:text-amber-400"
             />
             <h3 className="text-base font-semibold text-foreground mb-2">
-              Couldn&apos;t load tests
+              {t("preview.testsPanel.loadFailedTitle")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mb-4">
-              The test list couldn&apos;t be read for this app.
+              {t("preview.testsPanel.loadFailedDescription")}
             </p>
             <button
               onClick={() => void specsQuery.refetch()}
               className="px-3 py-1.5 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium text-amber-900 dark:text-amber-100"
             >
-              Retry
+              {t("preview.testsPanel.retry")}
             </button>
           </div>
         ) : specs.length === 0 ? (
@@ -1160,12 +1211,10 @@ export function TestsPanel() {
               />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
-              No tests yet
+              {t("preview.testsPanel.noTests")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-sm mb-5">
-              Generate your first test, or ask the AI in chat to write one for a
-              specific feature. Generated tests show up here as a starting point
-              you can review and re-run.
+              {t("preview.testsPanel.noTestsDescription")}
             </p>
             <button
               onClick={generateTest}
@@ -1177,7 +1226,7 @@ export function TestsPanel() {
               )}
             >
               <Sparkles size={16} />
-              Generate a test for a critical user journey
+              {t("preview.testsPanel.generateJourney")}
             </button>
           </div>
         ) : (
@@ -1225,17 +1274,18 @@ function EnableTestingScreen({
   onEnable: () => void;
   isEnabling: boolean;
 }) {
+  const { t } = useTranslation("home");
+
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
       <div className="w-12 h-12 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center mb-4">
         <FlaskConical size={22} className="text-teal-600 dark:text-teal-400" />
       </div>
       <h3 className="text-lg font-semibold text-foreground mb-2">
-        Enable testing for this app
+        {t("preview.testsPanel.enable")}
       </h3>
       <p className="text-sm text-muted-foreground max-w-sm mb-5">
-        Let Dyad write and run end-to-end tests that drive your app like a real
-        user. Tests are a starting point you can review, edit, and re-run.
+        {t("preview.testsPanel.enableDescription")}
       </p>
 
       {/* Data-safety warning, scaled to how well runs are isolated for this
@@ -1244,20 +1294,17 @@ function EnableTestingScreen({
       {hasNeonIsolation ? (
         <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-left text-[13px] text-teal-800 dark:text-teal-200">
           <ShieldCheck size={15} className="shrink-0 mt-0.5" />
-          <span>
-            Tests run against a temporary copy of your Neon database, so your
-            real data isn&apos;t touched.
-          </span>
+          <span>{t("preview.testsPanel.neonDataWarning")}</span>
         </div>
       ) : (
         <div className="flex items-start gap-2 max-w-sm mb-5 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-left text-[13px] text-amber-800 dark:text-amber-200">
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
             {hasSupabaseIsolation
-              ? "Tests run as an isolated test user under Row-Level Security, but RLS may not cover every table. We strongly recommend enabling data backups before running tests, in case they do something unintended."
+              ? t("preview.testsPanel.rlsWarning")
               : hasManagedDatabase
-                ? "Dyad can't isolate this database in the current setup. These tests can create, update, or delete current data, so we strongly recommend enabling data backups before running them."
-                : "These tests can create, update, or delete real data, and Dyad can't isolate a custom or non-database backend. We strongly recommend enabling data backups before running tests, in case they do something unintended."}
+                ? t("preview.testsPanel.notIsolatedWarning")
+                : t("preview.testsPanel.customBackendWarning")}
           </span>
         </div>
       )}
@@ -1276,7 +1323,7 @@ function EnableTestingScreen({
         ) : (
           <FlaskConical size={16} />
         )}
-        Enable testing for this app
+        {t("preview.testsPanel.enable")}
       </button>
     </div>
   );
@@ -1292,6 +1339,7 @@ const OutputDrawer = memo(function OutputDrawer({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation("home");
   const output = useAtomValue(currentTestRunOutputAtom);
   const outputRef = useRef<HTMLPreElement>(null);
 
@@ -1309,11 +1357,11 @@ const OutputDrawer = memo(function OutputDrawer({
       <button
         onClick={onToggle}
         aria-expanded={open}
-        aria-label="Toggle test output"
+        aria-label={t("preview.testsPanel.toggleOutput")}
         className="flex items-center gap-2 w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-(--background-darkest) cursor-pointer"
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        Output
+        {t("preview.testsPanel.output")}
       </button>
       {open && (
         <pre

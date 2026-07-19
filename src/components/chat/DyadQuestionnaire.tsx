@@ -35,7 +35,10 @@ function parseQAEntries(content: string): QAEntry[] {
   return entries;
 }
 
-const TYPE_META: Record<string, { icon: React.ReactNode; key: "freeText" | "singleChoice" | "multipleChoice" }> = {
+const TYPE_META: Record<
+  string,
+  { icon: React.ReactNode; key: "freeText" | "singleChoice" | "multipleChoice" }
+> = {
   text: {
     icon: <MessageSquareText size={12} />,
     key: "freeText",

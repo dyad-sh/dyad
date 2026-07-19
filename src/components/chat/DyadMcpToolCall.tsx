@@ -84,9 +84,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
       onClick={() => setExpanded((v) => !v)}
     >
       <DyadCardHeader icon={<Wrench size={15} />} accentColor="blue">
-        <DyadBadge color="blue">
-          {merged ? t("tool") : t("toolCall")}
-        </DyadBadge>
+        <DyadBadge color="blue">{merged ? t("tool") : t("toolCall")}</DyadBadge>
         {serverName && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-200 dark:ring-blue-800">
             {serverName}

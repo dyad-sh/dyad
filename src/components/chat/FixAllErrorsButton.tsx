@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { Sparkles, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface FixAllErrorsButtonProps {
   errorMessages: string[];
@@ -12,6 +13,7 @@ export function FixAllErrorsButton({
   errorMessages,
   chatId,
 }: FixAllErrorsButtonProps) {
+  const { t } = useTranslation("chat");
   const { streamMessage } = useStreamChat();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -41,7 +43,7 @@ export function FixAllErrorsButton({
       ) : (
         <Sparkles size={16} className="mr-1" />
       )}
-      Fix All Errors ({errorMessages.length})
+      {t("fixAllErrors", { count: errorMessages.length })}
     </Button>
   );
 }

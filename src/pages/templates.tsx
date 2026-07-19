@@ -4,8 +4,10 @@ import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import { TemplateCard } from "@/components/TemplateCard";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
+import { useTranslation } from "react-i18next";
 
 const TemplatesPage: React.FC = () => {
+  const { t } = useTranslation("home");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { templates, isLoading } = useTemplates();
   const { settings, updateSettings } = useSettings();
@@ -30,11 +32,11 @@ const TemplatesPage: React.FC = () => {
         <BackButton />
         <header className="mb-8 text-left">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Pick your default template
+            {t("templates.title")}
           </h1>
           <p className="text-md text-gray-600 dark:text-gray-400">
-            Choose a starting point for your new project.
-            {isLoading && " Loading additional templates..."}
+            {t("templates.description")}
+            {isLoading && <> {t("templates.loadingAdditional")}</>}
           </p>
         </header>
 
@@ -42,7 +44,7 @@ const TemplatesPage: React.FC = () => {
         {officialTemplates.length > 0 && (
           <section className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Official templates
+              {t("templates.official")}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {officialTemplates.map((template) => (
@@ -62,7 +64,7 @@ const TemplatesPage: React.FC = () => {
         {communityTemplates.length > 0 && (
           <section className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Community templates
+              {t("templates.community")}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {communityTemplates.map((template) => (

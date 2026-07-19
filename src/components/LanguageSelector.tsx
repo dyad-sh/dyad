@@ -61,7 +61,7 @@ export function LanguageSelector() {
       </div>
       <Select value={currentLanguage} onValueChange={handleChange}>
         <SelectTrigger id="language" className="w-[220px]">
-          <SelectValue placeholder="Select language" />
+          <SelectValue placeholder={t("general.selectLanguage")} />
         </SelectTrigger>
         <SelectContent>
           {LANGUAGE_OPTIONS.map((lang) => (

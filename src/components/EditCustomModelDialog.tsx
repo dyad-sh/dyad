@@ -14,6 +14,7 @@ import { ipc } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
+import { useTranslation } from "react-i18next";
 
 interface Model {
   apiName: string;
@@ -40,6 +41,7 @@ export function EditCustomModelDialog({
   providerId,
   model,
 }: EditCustomModelDialogProps) {
+  const { t } = useTranslation(["settings", "common"]);
   const [apiName, setApiName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
@@ -72,13 +74,13 @@ export function EditCustomModelDialog({
         contextWindow: contextWindow ? parseInt(contextWindow, 10) : undefined,
       };
 
-      if (!newParams.apiName) throw new Error("Model API name is required");
+      if (!newParams.apiName) throw new Error(t("models.modelIdRequired"));
       if (!newParams.displayName)
-        throw new Error("Model display name is required");
+        throw new Error(t("models.modelNameRequired"));
       if (maxOutputTokens && isNaN(newParams.maxOutputTokens ?? NaN))
-        throw new Error("Max Output Tokens must be a valid number");
+        throw new Error(t("models.invalidMaxOutput"));
       if (contextWindow && isNaN(newParams.contextWindow ?? NaN))
-        throw new Error("Context Window must be a valid number");
+        throw new Error(t("models.invalidContextWindow"));
 
       // First delete the old model
       await ipc.languageModel.deleteModel({
@@ -108,11 +110,11 @@ export function EditCustomModelDialog({
         try {
           await updateSettings({ selectedModel: newModel });
         } catch {
-          showError("Failed to update settings");
+          showError(t("models.failedUpdateSettings"));
           return; // stop closing dialog
         }
       }
-      showSuccess("Custom model updated successfully!");
+      showSuccess(t("models.modelUpdated"));
       onSuccess();
       onClose();
     },
@@ -138,16 +140,16 @@ export function EditCustomModelDialog({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Edit Custom Model</DialogTitle>
+          <DialogTitle>{t("models.editModelTitle")}</DialogTitle>
           <DialogDescription>
-            Modify the configuration of the selected language model.
+            {t("models.editModelDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-model-id" className="text-right">
-                Model ID*
+                {t("models.modelId")}
               </Label>
               <Input
                 id="edit-model-id"
@@ -156,14 +158,14 @@ export function EditCustomModelDialog({
                   setApiName(e.target.value)
                 }
                 className="col-span-3"
-                placeholder="This must match the model expected by the API"
+                placeholder={t("models.modelIdHelp")}
                 required
                 disabled={mutation.isPending}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-model-name" className="text-right">
-                Name*
+                {t("models.modelName")}
               </Label>
               <Input
                 id="edit-model-name"
@@ -172,14 +174,14 @@ export function EditCustomModelDialog({
                   setDisplayName(e.target.value)
                 }
                 className="col-span-3"
-                placeholder="Human-friendly name for the model"
+                placeholder={t("models.modelNameHelp")}
                 required
                 disabled={mutation.isPending}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-description" className="text-right">
-                Description
+                {t("models.modelDescription")}
               </Label>
               <Input
                 id="edit-description"
@@ -188,13 +190,13 @@ export function EditCustomModelDialog({
                   setDescription(e.target.value)
                 }
                 className="col-span-3"
-                placeholder="Optional: Describe the model's capabilities"
+                placeholder={t("models.modelDescriptionHelp")}
                 disabled={mutation.isPending}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-max-output-tokens" className="text-right">
-                Max Output Tokens
+                {t("models.maxOutputTokensLabel")}
               </Label>
               <Input
                 id="edit-max-output-tokens"
@@ -204,13 +206,13 @@ export function EditCustomModelDialog({
                   setMaxOutputTokens(e.target.value)
                 }
                 className="col-span-3"
-                placeholder="Optional: e.g., 4096"
+                placeholder={t("models.maxOutputTokensHelp")}
                 disabled={mutation.isPending}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-context-window" className="text-right">
-                Context Window
+                {t("models.contextWindowLabel")}
               </Label>
               <Input
                 id="edit-context-window"
@@ -220,7 +222,7 @@ export function EditCustomModelDialog({
                   setContextWindow(e.target.value)
                 }
                 className="col-span-3"
-                placeholder="Optional: e.g., 8192"
+                placeholder={t("models.contextWindowHelp")}
                 disabled={mutation.isPending}
               />
             </div>
@@ -232,10 +234,12 @@ export function EditCustomModelDialog({
               onClick={handleClose}
               disabled={mutation.isPending}
             >
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Updating..." : "Update Model"}
+              {mutation.isPending
+                ? t("common:updating")
+                : t("models.updateModel")}
             </Button>
           </DialogFooter>
         </form>

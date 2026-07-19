@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StylePopover } from "./StylePopover";
 import { VALID_IMAGE_MIME_TYPES } from "@/ipc/types/visual-editing";
+import { useTranslation } from "react-i18next";
 
 export interface ImageUploadData {
   fileName: string;
@@ -24,6 +25,7 @@ export function ImageSwapPopover({
   isDynamicImage,
   onSwap,
 }: ImageSwapPopoverProps) {
+  const { t } = useTranslation("home");
   const [mode, setMode] = useState<"url" | "upload">("url");
   const [urlValue, setUrlValue] = useState(currentSrc);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function ImageSwapPopover({
   const handleUrlSubmit = () => {
     const trimmed = urlValue.trim();
     if (!trimmed) {
-      setUrlError("Please enter a URL.");
+      setUrlError(t("preview.imageSwap.pleaseEnterUrl"));
       return;
     }
     // Accept absolute URLs (http/https/protocol-relative) and root-relative paths
@@ -53,9 +55,7 @@ export function ImageSwapPopover({
       !trimmed.startsWith("//") &&
       !trimmed.startsWith("/")
     ) {
-      setUrlError(
-        "Please enter a valid URL (https://...) or an absolute path (/...).",
-      );
+      setUrlError(t("preview.imageSwap.invalidUrl"));
       return;
     }
     setUrlError(null);
@@ -68,13 +68,11 @@ export function ImageSwapPopover({
     if (!file) return;
 
     if (!(VALID_IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
-      setFileError("Unsupported file type. Please use JPG, PNG, GIF, or WebP.");
+      setFileError(t("preview.imageSwap.unsupportedType"));
       return;
     }
     if (file.size > 7.5 * 1024 * 1024) {
-      setFileError(
-        "Image is too large (max 7.5 MB). Please choose a smaller file.",
-      );
+      setFileError(t("preview.imageSwap.tooLarge"));
       return;
     }
     setFileError(null);
@@ -98,9 +96,7 @@ export function ImageSwapPopover({
       });
     };
     reader.onerror = () => {
-      setFileError(
-        "Failed to read the file. Please try again or choose a different file.",
-      );
+      setFileError(t("preview.imageSwap.readFailed"));
       setSelectedFileName(null);
     };
     reader.readAsDataURL(file);
@@ -112,14 +108,13 @@ export function ImageSwapPopover({
   return (
     <StylePopover
       icon={<ImageIcon size={16} />}
-      title="Image Source"
-      tooltip="Swap Image"
+      title={t("preview.imageSwap.sourceTitle")}
+      tooltip={t("preview.imageSwap.tooltip")}
     >
       <div className="space-y-3">
         {isDynamicImage && (
           <p className="text-xs text-yellow-600 dark:text-yellow-400">
-            This image has a dynamic source. Swapping will replace it with a
-            static value.
+            {t("preview.imageSwap.dynamicSourceWarning")}
           </p>
         )}
 
@@ -135,7 +130,7 @@ export function ImageSwapPopover({
             </TabsTrigger>
             <TabsTrigger value="upload" className="flex-1 gap-1 text-xs">
               <Upload size={12} />
-              Upload
+              {t("preview.imageSwap.upload")}
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -143,7 +138,7 @@ export function ImageSwapPopover({
         {mode === "url" ? (
           <div className="space-y-2">
             <Label htmlFor="image-url" className="text-xs">
-              Image URL
+              {t("preview.imageSwap.imageUrl")}
             </Label>
             <Input
               id="image-url"
@@ -172,12 +167,14 @@ export function ImageSwapPopover({
             )}
             <Button size="sm" onClick={handleUrlSubmit} className="w-full">
               <Check size={14} className="mr-1" />
-              Apply
+              {t("preview.imageSwap.apply")}
             </Button>
           </div>
         ) : (
           <div className="space-y-2">
-            <Label className="text-xs">Upload Image</Label>
+            <Label className="text-xs">
+              {t("preview.imageSwap.uploadImage")}
+            </Label>
             <input
               ref={fileInputRef}
               type="file"
@@ -193,7 +190,7 @@ export function ImageSwapPopover({
             >
               <Upload size={14} className="mr-1 shrink-0" />
               <span className="truncate">
-                {selectedFileName || "Choose File"}
+                {selectedFileName || t("preview.imageSwap.chooseFile")}
               </span>
             </Button>
             {fileError && (
@@ -202,7 +199,7 @@ export function ImageSwapPopover({
               </p>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Supports: JPG, PNG, GIF, WebP
+              {t("preview.imageSwap.supportedFormats")}
             </p>
           </div>
         )}
@@ -210,10 +207,10 @@ export function ImageSwapPopover({
         {/* Current source display */}
         <div className="pt-2 border-t border-border">
           <Label className="text-xs text-gray-500 dark:text-gray-400">
-            Current source
+            {t("preview.imageSwap.currentSource")}
           </Label>
           <p className="text-xs font-mono truncate mt-1" title={appliedSrc}>
-            {appliedSrc || "none"}
+            {appliedSrc || t("preview.imageSwap.none")}
           </p>
         </div>
       </div>

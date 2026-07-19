@@ -24,6 +24,7 @@ import { DEFAULT_OAUTH_CALLBACK_PORT } from "@/ipc/types/mcp";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
+import { useTranslation } from "react-i18next";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 
 export function useOauthCallbackPort() {
@@ -74,6 +75,7 @@ export function AddPluginDialog({
     opts: { wantsOAuth: boolean; callbackPort: number | null },
   ) => Promise<void>;
 }) {
+  const { t } = useTranslation("home");
   const { createServer } = useMcp();
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<Transport>("stdio");
@@ -95,7 +97,7 @@ export function AddPluginDialog({
     if (lastDeepLink?.type === "add-mcp-server") {
       const deepLink = lastDeepLink as AddMcpServerDeepLinkData;
       const payload = deepLink.payload;
-      showInfo(`Prefilled ${payload.name} plugin`);
+      showInfo(t("plugins.prefilled", { name: payload.name }));
       setName(payload.name);
       setTransport(payload.config.type);
       if (payload.config.type === "stdio") {
@@ -121,23 +123,23 @@ export function AddPluginDialog({
 
   const runOnCreate = async () => {
     if (transport === "stdio" && !command.trim()) {
-      showError("Command is required for stdio MCP servers.");
+      showError(t("plugins.commandRequired"));
       return;
     }
     if (transport === "http") {
       const trimmedUrl = url.trim();
       if (!trimmedUrl) {
-        showError("URL is required for HTTP MCP servers.");
+        showError(t("plugins.urlRequired"));
         return;
       }
       try {
         const parsed = new URL(trimmedUrl);
         if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-          showError("URL must use http:// or https://");
+          showError(t("plugins.urlProtocol"));
           return;
         }
       } catch {
-        showError(`Invalid URL: "${trimmedUrl}"`);
+        showError(t("plugins.invalidUrl", { url: trimmedUrl }));
         return;
       }
     }
@@ -192,7 +194,7 @@ export function AddPluginDialog({
       });
     } else if (created) {
       // http servers get feedback from the OAuth/probe flow above.
-      showSuccess(`Added "${created.name}"`);
+      showSuccess(t("plugins.added", { name: created.name }));
     }
   };
 
@@ -208,24 +210,26 @@ export function AddPluginDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Add Plugin</DialogTitle>
+          <DialogTitle>{t("plugins.add")}</DialogTitle>
           <DialogDescription>
-            Connect an MCP server to give the AI new tools.
+            {t("plugins.connectDescription")}
           </DialogDescription>
         </DialogHeader>
         {showPlaintextBanner && <OauthPlaintextStorageAlert />}
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Name</Label>
+              <Label>{t("plugins.name")}</Label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My MCP Server"
+                placeholder={t("plugins.namePlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="mcp-transport-select">Transport</Label>
+              <Label htmlFor="mcp-transport-select">
+                {t("plugins.transport")}
+              </Label>
               <select
                 id="mcp-transport-select"
                 data-testid="mcp-transport-select"
@@ -240,19 +244,19 @@ export function AddPluginDialog({
             {transport === "stdio" && (
               <>
                 <div className="space-y-2">
-                  <Label>Command</Label>
+                  <Label>{t("plugins.command")}</Label>
                   <Input
                     value={command}
                     onChange={(e) => setCommand(e.target.value)}
-                    placeholder="node"
+                    placeholder={t("plugins.commandPlaceholder")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Args</Label>
+                  <Label>{t("plugins.args")}</Label>
                   <Input
                     value={args}
                     onChange={(e) => setArgs(e.target.value)}
-                    placeholder="path/to/mcp-server.js --flag"
+                    placeholder={t("plugins.argsPlaceholder")}
                   />
                 </div>
               </>
@@ -270,14 +274,14 @@ export function AddPluginDialog({
                 <div className="col-span-2">
                   <div className="flex items-center gap-2">
                     <Switch
-                      aria-label="Use OAuth"
+                      aria-label={t("plugins.useOAuth")}
                       checked={oauthEnabled}
                       onCheckedChange={setOauthEnabled}
                     />
-                    <Label>Use OAuth</Label>
+                    <Label>{t("plugins.useOAuth")}</Label>
                   </div>
                   <div className="ml-10 mt-1 text-xs text-muted-foreground">
-                    Required for most remote servers.
+                    {t("plugins.oauthRequired")}
                   </div>
                 </div>
                 {oauthEnabled && (
@@ -295,27 +299,26 @@ export function AddPluginDialog({
                     >
                       <AccordionItem value="advanced">
                         <AccordionTrigger className="py-2 text-sm">
-                          Advanced OAuth options
+                          {t("plugins.advancedOAuth")}
                         </AccordionTrigger>
                         <AccordionContent className="space-y-3 px-1">
                           <div className="space-y-2">
-                            <Label>OAuth Client ID</Label>
+                            <Label>{t("plugins.oauthClientId")}</Label>
                             <div className="text-xs text-muted-foreground">
-                              If the MCP server's setup requires you to register
-                              an app, paste the Client ID of your app here.
-                              Otherwise leave this blank.
+                              {t("plugins.oauthClientIdDescription")}
                             </div>
                             <Input
                               value={oauthClientId}
                               onChange={(e) => setOauthClientId(e.target.value)}
-                              placeholder="Pre-registered client ID"
+                              placeholder={t(
+                                "plugins.oauthClientIdPlaceholder",
+                              )}
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>OAuth Client Secret</Label>
+                            <Label>{t("plugins.oauthClientSecret")}</Label>
                             <div className="text-xs text-muted-foreground">
-                              Include this only if the MCP server gave you a
-                              secret alongside the Client ID.
+                              {t("plugins.oauthClientSecretDescription")}
                             </div>
                             <Input
                               type="password"
@@ -323,14 +326,15 @@ export function AddPluginDialog({
                               onChange={(e) =>
                                 setOauthClientSecret(e.target.value)
                               }
-                              placeholder="Pre-registered client secret"
+                              placeholder={t(
+                                "plugins.oauthClientSecretPlaceholder",
+                              )}
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>OAuth Scope</Label>
+                            <Label>{t("plugins.oauthScope")}</Label>
                             <div className="text-xs text-muted-foreground">
-                              Permissions to request, space-separated. Leave
-                              this blank to use the server's default.
+                              {t("plugins.oauthScopeDescription")}
                             </div>
                             <Input
                               value={oauthScope}
@@ -339,16 +343,9 @@ export function AddPluginDialog({
                             />
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            If you include a Client ID, make sure that you
-                            register{" "}
-                            <code>
-                              http://localhost:
-                              {callbackPort ?? "…"}
-                              /callback
-                            </code>{" "}
-                            as a redirect URI for your MCP server. Your MCP
-                            server most likely provides a dashboard where you
-                            can do this.
+                            {t("plugins.redirectUriDescription", {
+                              uri: `http://localhost:${callbackPort ?? "…"}/callback`,
+                            })}
                           </div>
                         </AccordionContent>
                       </AccordionItem>
@@ -359,16 +356,16 @@ export function AddPluginDialog({
             )}
             <div className="flex items-center gap-2">
               <Switch
-                aria-label="Enabled"
+                aria-label={t("plugins.enabled")}
                 checked={enabled}
                 onCheckedChange={setEnabled}
               />
-              <Label>Enabled</Label>
+              <Label>{t("plugins.enabled")}</Label>
             </div>
           </div>
           <div>
             <Button onClick={onCreate} disabled={!name.trim() || isAdding}>
-              {isAdding ? "Adding…" : "Add Plugin"}
+              {isAdding ? t("plugins.adding") : t("plugins.add")}
             </Button>
           </div>
         </div>

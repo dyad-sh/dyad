@@ -11,6 +11,8 @@ import { ipc } from "@/ipc/types";
 import type { GetNeonProjectResponse, NeonBranch } from "@/ipc/types";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
 import { queryKeys } from "@/lib/queryKeys";
+import { useTranslation } from "react-i18next";
+import { formatDate as formatLocaleDate } from "@/i18n/format";
 
 const getBranchTypeColor = (type: NeonBranch["type"]) => {
   switch (type) {
@@ -27,13 +29,16 @@ const getBranchTypeColor = (type: NeonBranch["type"]) => {
   }
 };
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleString();
-};
-
 export const NeonConfigure = () => {
+  const { t, i18n } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
+  const branchTypeLabels: Record<string, string> = {
+    production: t("integrations.neon.production"),
+    development: t("integrations.neon.development"),
+    snapshot: t("integrations.neon.snapshot"),
+    preview: t("integrations.neon.preview"),
+  };
 
   // Query to get Neon project information
   const {
@@ -62,13 +67,13 @@ export const NeonConfigure = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database size={20} />
-            Neon Database
+            {t("integrations.neon.database")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
             <div className="text-sm text-muted-foreground">
-              Loading Neon project information...
+              {t("preview.neonConfigure.loading")}
             </div>
           </div>
         </CardContent>
@@ -83,13 +88,15 @@ export const NeonConfigure = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Database size={20} />
-            Neon Database
+            {t("integrations.neon.database")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
             <div className="text-sm text-red-500">
-              Error loading Neon project: {error.message}
+              {t("preview.neonConfigure.errorLoading", {
+                error: error.message,
+              })}
             </div>
           </div>
         </CardContent>
@@ -107,7 +114,7 @@ export const NeonConfigure = () => {
         <CardTitle className="flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">
             <Database size={20} />
-            Neon Database
+            {t("integrations.neon.database")}
           </div>
           <NeonDisconnectButton />
         </CardTitle>
@@ -115,18 +122,26 @@ export const NeonConfigure = () => {
       <CardContent className="space-y-4">
         {/* Project Information */}
         <div className="space-y-2">
-          <div className="text-sm font-medium">Project Information</div>
+          <div className="text-sm font-medium">
+            {t("preview.neonConfigure.projectInformation")}
+          </div>
           <div className="bg-muted/50 p-3 rounded-md space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Project Name:</span>
+              <span className="text-muted-foreground">
+                {t("preview.neonConfigure.projectName")}
+              </span>
               <span className="font-medium">{neonProject.projectName}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Project ID:</span>
+              <span className="text-muted-foreground">
+                {t("preview.neonConfigure.projectId")}
+              </span>
               <span className="font-mono text-xs">{neonProject.projectId}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Organization:</span>
+              <span className="text-muted-foreground">
+                {t("preview.neonConfigure.organization")}
+              </span>
               <span className="font-mono text-xs">{neonProject.orgId}</span>
             </div>
           </div>
@@ -136,7 +151,9 @@ export const NeonConfigure = () => {
         <div className="space-y-2">
           <div className="text-sm font-medium flex items-center gap-2">
             <GitBranch size={16} />
-            Branches ({neonProject.branches.length})
+            {t("preview.neonConfigure.branches", {
+              count: neonProject.branches.length,
+            })}
           </div>
           <div className="space-y-2">
             {neonProject.branches.map((branch) => (
@@ -153,19 +170,28 @@ export const NeonConfigure = () => {
                       variant="secondary"
                       className={getBranchTypeColor(branch.type)}
                     >
-                      {branch.type}
+                      {branchTypeLabels[branch.type] ?? branch.type}
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
-                    ID: {branch.branchId}
+                    {t("preview.neonConfigure.branchId", {
+                      id: branch.branchId,
+                    })}
                   </div>
                   {branch.parentBranchName && (
                     <div className="text-xs text-muted-foreground">
-                      Parent: {branch.parentBranchName.slice(0, 20)}...
+                      {t("preview.neonConfigure.parent", {
+                        name: branch.parentBranchName.slice(0, 20),
+                      })}
                     </div>
                   )}
                   <div className="text-xs text-muted-foreground">
-                    Updated: {formatDate(branch.lastUpdated)}
+                    {t("preview.neonConfigure.updated", {
+                      date: formatLocaleDate(
+                        new Date(branch.lastUpdated),
+                        i18n.language,
+                      ),
+                    })}
                   </div>
                 </div>
               </div>

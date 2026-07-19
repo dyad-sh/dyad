@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {} from "react";
+import { useTranslation } from "react-i18next";
 
 interface ProviderSettingsHeaderProps {
   providerDisplayName: string;
@@ -34,11 +35,9 @@ function getKeyButtonText({
   isDyad: boolean;
 }) {
   if (isDyad) {
-    return isConfigured
-      ? "Manage Dyad Pro Subscription"
-      : "Setup Dyad Pro Subscription";
+    return isConfigured ? "manageDyadPro" : "setupDyadPro";
   }
-  return isConfigured ? "Manage API Keys" : "Setup API Key";
+  return isConfigured ? "ai.manageApiKeys" : "ai.setupApiKey";
 }
 
 export function ProviderSettingsHeader({
@@ -50,6 +49,7 @@ export function ProviderSettingsHeader({
   isDyad,
   onOpenProviderWebsite,
 }: ProviderSettingsHeaderProps) {
+  const { t } = useTranslation(["settings", "common"]);
   const handleGetApiKeyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (providerWebsiteUrl) {
@@ -64,7 +64,7 @@ export function ProviderSettingsHeader({
       className="mb-4 cursor-pointer py-5 w-full ring-4 ring-primary/60 shadow-lg shadow-primary/30 border-primary/60"
     >
       <KeyRound className="mr-2 h-4 w-4" />
-      {getKeyButtonText({ isConfigured, isDyad })}
+      {t(getKeyButtonText({ isConfigured, isDyad }))}
       <ExternalLink className="ml-2 h-4 w-4" />
     </Button>
   );
@@ -76,7 +76,7 @@ export function ProviderSettingsHeader({
       <div className="mb-6">
         <div className="flex items-center mb-1">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3">
-            Configure {providerDisplayName}
+            {t("ai.configureProvider", { name: providerDisplayName })}
           </h1>
           {isLoading ? (
             <Skeleton className="h-6 w-6 rounded-full" />
@@ -91,21 +91,20 @@ export function ProviderSettingsHeader({
           )}
           <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
             {isLoading
-              ? "Loading..."
+              ? t("common:loading")
               : isConfigured
-                ? "Setup Complete"
-                : "Not Setup"}
+                ? t("ai.setupComplete")
+                : t("ai.notSetup")}
           </span>
         </div>
         {!isLoading && hasFreeTier && (
           <>
             <span className="text-blue-600 mt-2 dark:text-blue-400 text-sm font-medium bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full inline-flex items-center">
               <GiftIcon className="w-4 h-4 mr-1" />
-              Free tier available
+              {t("ai.freeTierAvailable")}
             </span>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              Free tiers typically allow the provider to use your data to train
-              AI models.
+              {t("ai.freeTierDescription")}
             </p>
           </>
         )}
@@ -122,7 +121,8 @@ export function ProviderSettingsHeader({
               className="w-fit py-2 px-3 bg-background text-primary shadow-lg ring-1 ring-primary/40"
             >
               <div className="text-sm font-semibold flex items-center gap-1">
-                <ArrowUp /> Create your API key with {providerDisplayName}
+                <ArrowUp />{" "}
+                {t("ai.createApiKey", { name: providerDisplayName })}
               </div>
             </PopoverContent>
           </Popover>

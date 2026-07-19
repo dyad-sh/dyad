@@ -1029,9 +1029,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   <Mic size={20} />
                   <Lock size={10} className="absolute -top-0.5 -right-0.5" />
                 </TooltipTrigger>
-                <TooltipContent>
-                  {t("voiceToTextRequiresPro")}
-                </TooltipContent>
+                <TooltipContent>{t("voiceToTextRequiresPro")}</TooltipContent>
               </Tooltip>
             )}
 

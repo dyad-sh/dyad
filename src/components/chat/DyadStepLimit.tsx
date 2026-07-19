@@ -51,7 +51,7 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
     <DyadCard state={state} accentColor="amber" isExpanded={true}>
       <DyadCardHeader icon={<PauseCircle size={15} />} accentColor="amber">
         <span className="font-medium text-sm text-foreground">
-          {t("pausedAfterToolCalls", { count: steps })}
+          {t("pausedAfterToolCalls", { value: steps })}
         </span>
         {isFinished && (
           <Button

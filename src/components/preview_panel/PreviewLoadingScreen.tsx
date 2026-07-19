@@ -66,9 +66,6 @@ function displayLevel(entry: ConsoleEntry): ConsoleEntry["level"] {
   return entry.level;
 }
 
-const PREVIEW_STARTUP_FIX_INTRO = (errorCount: number) =>
-  `The app failed to start. We ran into ${errorCount} error(s) either while installing node modules or running the dev script. Please review package.json to identify and fix the issue(s). Focus on critical errors and do not try to fix non-critical errors like deprecation warnings.`;
-
 export function getPreviewLoadingSessionStartedAt({
   consoleEntries,
   runStartedAt,
@@ -261,16 +258,16 @@ export function PreviewLoadingScreen({
     if (!selectedChatId || errorMessages.length === 0) return;
     const includedErrorMessages = errorMessages.slice(0, MAX_ERRORS_FOR_AI_FIX);
     const count = includedErrorMessages.length;
-    const intro = PREVIEW_STARTUP_FIX_INTRO(count);
+    const intro = t("preview.loadingScreen.startupFixPrompt", { count });
     const omittedCount = errorMessages.length - includedErrorMessages.length;
-    const body = `Error log excerpts (JSON):\n${JSON.stringify(
+    const body = `${t("preview.loadingScreen.errorLogExcerpts")}\n${JSON.stringify(
       includedErrorMessages.map((msg, i) => ({
         index: i + 1,
         message: sanitizePreviewErrorForPrompt(msg),
       })),
       null,
       2,
-    )}${omittedCount > 0 ? `\n\n${omittedCount} additional error(s) omitted.` : ""}`;
+    )}${omittedCount > 0 ? `\n\n${t("preview.loadingScreen.additionalErrorsOmitted", { count: omittedCount })}` : ""}`;
     streamMessage({ prompt: `${intro}\n\n${body}`, chatId: selectedChatId });
   };
 
@@ -303,7 +300,7 @@ export function PreviewLoadingScreen({
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-[var(--background-darkest)] flex-shrink-0">
           <Loader2 className="size-4 animate-spin text-primary flex-shrink-0" />
           <span className="text-sm font-medium text-foreground flex-shrink-0">
-            Preparing preview
+            {t("preview.loadingScreen.preparingPreview")}
           </span>
           {latestServerLine && (
             <>
@@ -334,7 +331,7 @@ export function PreviewLoadingScreen({
           >
             {sessionEntries.length === 0 ? (
               <p className="italic text-muted-foreground">
-                Waiting for server logs…
+                {t("preview.loadingScreen.waitingForLogs")}
               </p>
             ) : (
               sessionEntries.map((entry, i) => (
@@ -373,7 +370,9 @@ export function PreviewLoadingScreen({
               >
                 <AlertTriangle size={14} className="flex-shrink-0" />
                 <span className="text-sm font-medium">
-                  {errorCount} error(s)
+                  {t("preview.loadingScreen.errorSummary", {
+                    count: errorCount,
+                  })}
                 </span>
                 {isErrorsExpanded ? (
                   <ChevronUp size={14} className="flex-shrink-0" />
@@ -400,7 +399,11 @@ export function PreviewLoadingScreen({
                 data-testid="preview-loading-fix-errors-button"
               >
                 <Sparkles size={14} />
-                <span>Fix {errorCount} error(s) with AI</span>
+                <span>
+                  {t("preview.loadingScreen.fixErrorsWithAi", {
+                    count: errorCount,
+                  })}
+                </span>
               </button>
             </div>
           </div>

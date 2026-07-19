@@ -42,6 +42,7 @@ import {
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
 import { ModelsSection } from "./ModelsSection";
+import { useTranslation } from "react-i18next";
 
 interface ProviderSettingsPageProps {
   provider: string;
@@ -75,11 +76,12 @@ function getApiKeyValidationDialogTitle(
   dialog: ApiKeyValidationDialogState | null,
 ) {
   return dialog?.errorKind === DyadErrorKind.Auth
-    ? "API key rejected"
-    : "Could not verify API key";
+    ? "ai.apiKeyRejected"
+    : "ai.apiKeyVerificationFailed";
 }
 
 export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
+  const { t } = useTranslation(["settings", "common"]);
   const navigate = useNavigate();
   const {
     settings,
@@ -188,7 +190,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const normalizeAndValidateKeyInput = (value: string): string | null => {
     const normalizedValue = normalizeProviderApiKeyInput(value);
     if (!normalizedValue) {
-      setSaveError("API Key cannot be empty.");
+      setSaveError(t("ai.apiKeyEmpty"));
       return null;
     }
     const invalidCharacter =
@@ -229,7 +231,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           setApiKeyValidationDialog({
             message:
               error?.message ||
-              `Dyad could not verify this ${providerDisplayName} API key.`,
+              t("ai.apiKeyVerificationMessage", { name: providerDisplayName }),
             apiKey: normalizedValue,
             allowKeepInvalidKey: true,
             errorKind: getErrorKind(error),
@@ -274,7 +276,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
     } catch (error: any) {
       console.error("Error saving API key:", error);
-      setSaveError(error.message || "Failed to save API key.");
+      setSaveError(error.message || t("ai.failedSaveApiKey"));
     } finally {
       setIsSaving(false);
     }
@@ -286,7 +288,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       return;
     }
     if (!shouldValidateApiKey) {
-      setSaveError(`${providerDisplayName} API keys cannot be tested yet.`);
+      setSaveError(t("ai.apiKeyCannotTest", { name: providerDisplayName }));
       return;
     }
 
@@ -298,7 +300,9 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         provider: provider as ProviderApiKeyValidationProvider,
         apiKey: normalizedValue,
       });
-      setTestSuccessMessage(`${providerDisplayName} API key looks good.`);
+      setTestSuccessMessage(
+        t("ai.apiKeyLooksGood", { name: providerDisplayName }),
+      );
     } catch (error: any) {
       setApiKeyValidationDialog({
         message:
@@ -330,7 +334,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       // Optionally show a success message
     } catch (error: any) {
       console.error("Error deleting API key:", error);
-      setSaveError(error.message || "Failed to delete API key.");
+      setSaveError(error.message || t("ai.failedDeleteApiKey"));
     } finally {
       setIsSaving(false);
     }
@@ -344,7 +348,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         enableDyadPro: enabled,
       });
     } catch (error: any) {
-      showError(`Error toggling Dyad Pro: ${error}`);
+      showError(t("ai.errorTogglingPro", { error }));
     } finally {
       setIsSaving(false);
     }
@@ -400,13 +404,15 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         <div className="max-w-4xl mx-auto">
           <BackButton />
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
-            Configure Provider
+            {t("ai.configureProvider", { name: providerDisplayName })}
           </h1>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error Loading Provider Details</AlertTitle>
+            <AlertTitle>{t("ai.errorLoadingProvider")}</AlertTitle>
             <AlertDescription>
-              Could not load provider data: {providersError.message}
+              {t("ai.couldNotLoadProvider", {
+                message: providersError.message,
+              })}
             </AlertDescription>
           </Alert>
         </div>
@@ -421,13 +427,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         <div className="max-w-4xl mx-auto">
           <BackButton />
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
-            Provider Not Found
+            {t("ai.providerNotFound")}
           </h1>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
+            <AlertTitle>{t("common:error")}</AlertTitle>
             <AlertDescription>
-              The provider with ID "{provider}" could not be found.
+              {t("ai.providerNotFoundDescription", { provider })}
             </AlertDescription>
           </Alert>
         </div>
@@ -450,7 +456,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {getApiKeyValidationDialogTitle(apiKeyValidationDialog)}
+              {t(getApiKeyValidationDialogTitle(apiKeyValidationDialog))}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {apiKeyValidationDialog?.message}
@@ -465,7 +471,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
                   void handleSaveKey(apiKey, { skipValidation: true });
                 }}
               >
-                Keep invalid API key
+                {t("ai.keepInvalidApiKey")}
               </AlertDialogCancel>
             )}
             <AlertDialogAction
@@ -473,7 +479,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
                 setApiKeyValidationDialog(null);
               }}
             >
-              Try another API key
+              {t("ai.tryAnotherApiKey")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -491,15 +497,15 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-green-950 dark:text-green-100">
-                  AI access is ready
+                  {t("ai.accessReady")}
                 </h2>
                 <p className="mt-1 text-sm text-green-800/80 dark:text-green-200/80">
-                  You can now start building with Dyad.
+                  {t("ai.readyDescription")}
                 </p>
               </div>
             </div>
             <span className="inline-flex h-11 shrink-0 items-center justify-center rounded-md bg-primary px-8 text-sm font-semibold text-primary-foreground shadow-xs transition-colors">
-              Start building
+              {t("ai.startBuilding")}
             </span>
           </div>
         </button>
@@ -527,9 +533,11 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             </div>
           ) : settingsError ? (
             <Alert variant="destructive">
-              <AlertTitle>Error Loading Settings</AlertTitle>
+              <AlertTitle>{t("ai.errorLoadingSettings")}</AlertTitle>
               <AlertDescription>
-                Could not load configuration data: {settingsError.message}
+                {t("ai.couldNotLoadSettings", {
+                  message: settingsError.message,
+                })}
               </AlertDescription>
             </Alert>
           ) : (
@@ -561,13 +569,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           {isDyad && !settingsLoading && (
             <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
               <div>
-                <h3 className="font-medium">Enable Dyad Pro</h3>
+                <h3 className="font-medium">{t("ai.enableDyadPro")}</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Toggle to enable Dyad Pro
+                  {t("ai.toggleDyadPro")}
                 </p>
               </div>
               <Switch
-                aria-label="Enable Dyad Pro"
+                aria-label={t("ai.enableDyadPro")}
                 checked={settings?.enableDyadPro}
                 onCheckedChange={handleToggleDyadPro}
                 disabled={isSaving}

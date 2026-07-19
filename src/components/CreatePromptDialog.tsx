@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, Save, Edit2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const SLUG_REGEX = /^[a-zA-Z0-9-]*$/;
 
@@ -57,6 +58,8 @@ export function CreateOrEditPromptDialog({
   isOpen,
   onOpenChange,
 }: CreateOrEditPromptDialogProps) {
+  const { t } = useTranslation("home");
+  const { t: tc } = useTranslation("common");
   const [internalOpen, setInternalOpen] = useState(false);
   const open = isOpen !== undefined ? isOpen : internalOpen;
   const setOpen = onOpenChange || setInternalOpen;
@@ -183,13 +186,13 @@ export function CreateOrEditPromptDialog({
         <DialogTrigger>{trigger}</DialogTrigger>
       ) : mode === "create" ? (
         <DialogTrigger className={buttonVariants()}>
-          <Plus className="mr-2 h-4 w-4" /> New Prompt
+          <Plus className="mr-2 h-4 w-4" /> {t("prompt.newPrompt")}
         </DialogTrigger>
       ) : (
         <DialogTrigger
           className={buttonVariants({ variant: "ghost", size: "icon" })}
           data-testid="edit-prompt-button"
-          title="Edit prompt"
+          title={t("prompt.editPrompt")}
         >
           <Edit2 className="h-4 w-4" />
         </DialogTrigger>
@@ -197,22 +200,24 @@ export function CreateOrEditPromptDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
-            {mode === "create" ? "Create New Prompt" : "Edit Prompt"}
+            {mode === "create"
+              ? t("prompt.createTitle")
+              : t("prompt.editTitle")}
           </DialogTitle>
           <DialogDescription>
             {mode === "create"
-              ? "Create a new prompt template for your library."
-              : "Edit your prompt template."}
+              ? t("prompt.createDescription")
+              : t("prompt.editDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <Input
-            placeholder="Title"
+            placeholder={t("prompt.titlePlaceholder")}
             value={draft.title}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
           />
           <Input
-            placeholder="Description (optional)"
+            placeholder={t("prompt.descriptionPlaceholder")}
             value={draft.description}
             onChange={(e) =>
               setDraft((d) => ({ ...d, description: e.target.value }))
@@ -220,7 +225,7 @@ export function CreateOrEditPromptDialog({
           />
           <div>
             <Input
-              placeholder="Slash command (optional)"
+              placeholder={t("prompt.slashCommandPlaceholder")}
               value={draft.slug}
               onChange={(e) => {
                 const v = e.target.value;
@@ -230,14 +235,12 @@ export function CreateOrEditPromptDialog({
               className="font-mono"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              {slugInvalid
-                ? "Use only letters, numbers, and hyphens."
-                : "Used as /command in chat."}
+              {slugInvalid ? t("prompt.slugInvalid") : t("prompt.slugHelp")}
             </p>
           </div>
           <Textarea
             ref={textareaRef}
-            placeholder="Content"
+            placeholder={t("prompt.contentPlaceholder")}
             value={draft.content}
             onChange={(e) => {
               setDraft((d) => ({ ...d, content: e.target.value }));
@@ -250,7 +253,7 @@ export function CreateOrEditPromptDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            Cancel
+            {tc("cancel")}
           </Button>
           <Button
             onClick={onSave}
@@ -258,7 +261,7 @@ export function CreateOrEditPromptDialog({
               !draft.title.trim() || !draft.content.trim() || slugInvalid
             }
           >
-            <Save className="mr-2 h-4 w-4" /> Save
+            <Save className="mr-2 h-4 w-4" /> {tc("save")}
           </Button>
         </DialogFooter>
       </DialogContent>

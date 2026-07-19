@@ -1,12 +1,14 @@
 import { Lock, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 interface AnnotatorOnlyForProProps {
   onGoBack: () => void;
 }
 
 export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
+  const { t } = useTranslation("home");
   const handleGetPro = () => {
     ipc.system.openExternalUrl("https://dyad.sh/pro");
   };
@@ -17,7 +19,7 @@ export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
       <button
         onClick={onGoBack}
         className="absolute top-4 left-4 p-2 hover:bg-accent rounded-md transition-all z-10 group"
-        aria-label="Go back"
+        aria-label={t("preview.annotator.goBack")}
       >
         <ArrowLeft
           size={20}
@@ -32,11 +34,10 @@ export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
 
         {/* Message */}
         <h2 className="text-3xl font-semibold text-foreground mb-4 text-center">
-          Annotator is a Pro Feature
+          {t("preview.annotator.proFeatureTitle")}
         </h2>
         <p className="text-muted-foreground mb-10 text-center max-w-md text-base leading-relaxed">
-          Unlock the ability to annotate screenshots and enhance your workflow
-          with Dyad Pro.
+          {t("preview.annotator.proFeatureDescription")}
         </p>
 
         {/* Get Pro Button */}
@@ -45,7 +46,7 @@ export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
           size="lg"
           className="px-8 shadow-md hover:shadow-lg transition-all"
         >
-          Get Dyad Pro
+          {t("preview.annotator.getDyadPro")}
         </Button>
       </div>
     </div>

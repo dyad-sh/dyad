@@ -8,6 +8,7 @@ import { sortAppsForShowcase } from "@/lib/sortApps";
 import type { ListedApp } from "@/ipc/types/app";
 import type { AppCollection } from "@/hooks/useAppCollections";
 import { AddAppsToCollectionDialog } from "@/components/AddAppsToCollectionDialog";
+import { useTranslation } from "react-i18next";
 
 interface CollectionDetailViewProps {
   collection: AppCollection;
@@ -22,6 +23,7 @@ export function CollectionDetailView({
   collections,
   onBack,
 }: CollectionDetailViewProps) {
+  const { t } = useTranslation(["home", "common"]);
   const openApp = useOpenApp();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
 
@@ -45,11 +47,11 @@ export function CollectionDetailView({
             data-testid="collection-detail-back-button"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            {t("common:back")}
           </Button>
           <h2 className="text-xl font-semibold truncate">{collection.name}</h2>
           <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {memberApps.length} app{memberApps.length === 1 ? "" : "s"}
+            {t("collections.appCount", { count: memberApps.length })}
           </span>
         </div>
         <Button
@@ -59,18 +61,18 @@ export function CollectionDetailView({
           data-testid="collection-detail-add-apps-button"
         >
           <Plus className="h-4 w-4" />
-          Add apps
+          {t("collections.addApps")}
         </Button>
       </div>
 
       {memberApps.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <p className="text-muted-foreground text-center">
-            No apps in this collection yet.
+            {t("collections.noAppsInCollection")}
           </p>
           <Button size="sm" onClick={() => setIsAddDialogOpen(true)}>
             <Plus className="mr-1 h-4 w-4" />
-            Add apps
+            {t("collections.addApps")}
           </Button>
         </div>
       ) : (

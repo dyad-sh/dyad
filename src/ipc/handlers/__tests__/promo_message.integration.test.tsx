@@ -184,14 +184,9 @@ describe("promo message (integration)", () => {
     const seed = findPromoSeed(
       (message) => message.target.type === "trial-dialog",
     );
-    const message = pickPromoMessage(seed);
     render(<PromoMessage seed={seed} />);
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: message.cta,
-      }),
-    );
+    fireEvent.click(screen.getByTestId("promo-cta"));
     expect(await screen.findByText("Unlock Dyad Pro")).toBeTruthy();
   }, 60_000);
 
@@ -203,7 +198,7 @@ describe("promo message (integration)", () => {
     const previousOpenExternalCallCount = harness.bridge.invokeLog.filter(
       (entry) => entry.channel === "open-external-url",
     ).length;
-    fireEvent.click(screen.getByRole("button", { name: message.cta }));
+    fireEvent.click(screen.getByTestId("promo-cta"));
 
     let openExternalCalls = harness.bridge.invokeLog.filter(
       (entry) => entry.channel === "open-external-url",

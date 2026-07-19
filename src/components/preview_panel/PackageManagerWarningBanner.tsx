@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type InstallStatus = "idle" | "installing" | "success" | "error";
 
@@ -36,7 +37,7 @@ function getInstallErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return `Could not install pnpm because of ${String(error)}`;
+  return String(error);
 }
 
 export function PackageManagerWarningBanner() {
@@ -61,6 +62,7 @@ function PackageManagerWarningBannerContent({
 }: {
   warning: PackageManagerWarning;
 }) {
+  const { t } = useTranslation("home");
   const clearWarning = useSetAtom(clearPackageManagerWarningForAppAtom);
   const dismissWarnings = useSetAtom(dismissPackageManagerWarningsAtom);
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
@@ -159,12 +161,16 @@ function PackageManagerWarningBannerContent({
       ));
   const displayMessage = isSuccess
     ? isPnpmMigrationWarning
-      ? "pnpm migration applied. Restarting preview..."
-      : "pnpm installed. Rebuilding preview..."
+      ? t("preview.packageManager.migrationApplied")
+      : t("preview.packageManager.installed")
     : isError
-      ? `${installErrorMessage}.`
+      ? t("preview.packageManager.installFailed", {
+          error: installErrorMessage,
+        })
       : needsNodeUpgrade
-        ? `pnpm v11 requires Node.js ${PNPM_11_MINIMUM_NODE_VERSION} or newer. Download and install the latest Node.js first.`
+        ? t("preview.packageManager.nodeUpgradeRequired", {
+            version: PNPM_11_MINIMUM_NODE_VERSION,
+          })
         : warning.message;
   return (
     <div
@@ -198,12 +204,14 @@ function PackageManagerWarningBannerContent({
             ) : (
               <PackageCheck className="size-3.5" />
             )}
-            {isInstalling ? "Migrating" : "Migrate"}
+            {isInstalling
+              ? t("preview.packageManager.migrating")
+              : t("preview.packageManager.migrate")}
           </Button>
         ) : isError ? (
           <Button size="sm" variant="ghost" onClick={handleOpenDocs}>
             <ExternalLink className="size-3.5" />
-            Docs
+            {t("preview.packageManager.docs")}
           </Button>
         ) : needsNodeUpgrade ? (
           <Button
@@ -213,7 +221,7 @@ function PackageManagerWarningBannerContent({
             disabled={isSuccess}
           >
             <Download className="size-3.5" />
-            Download Node.js
+            {t("preview.packageManager.downloadNode")}
           </Button>
         ) : (
           <Button
@@ -227,7 +235,7 @@ function PackageManagerWarningBannerContent({
             ) : (
               <PackageCheck className="size-3.5" />
             )}
-            Install
+            {t("preview.packageManager.install")}
           </Button>
         )}
         <Button
@@ -235,7 +243,7 @@ function PackageManagerWarningBannerContent({
           variant="ghost"
           className="size-7"
           onClick={() => dismissWarnings(warning.appId)}
-          aria-label="Dismiss pnpm warning"
+          aria-label={t("preview.packageManager.dismissWarning")}
         >
           <X className="size-3.5" />
         </Button>

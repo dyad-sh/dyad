@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { X, Sparkles } from "lucide-react";
 import { Button } from "./ui/button";
+import { useTranslation } from "react-i18next";
 
 interface LocalAgentNewChatToastProps {
   toastId: string | number;
@@ -11,6 +12,7 @@ export function LocalAgentNewChatToast({
   toastId,
   onNeverShowAgain,
 }: LocalAgentNewChatToastProps) {
+  const { t } = useTranslation("chat");
   const handleClose = () => {
     toast.dismiss(toastId);
   };
@@ -32,7 +34,7 @@ export function LocalAgentNewChatToast({
                 </div>
               </div>
               <h3 className="ml-3 text-sm font-semibold text-blue-900 dark:text-blue-100">
-                Agent Mode Activated
+                {t("agentModeActivated")}
               </h3>
 
               {/* Close button */}
@@ -40,7 +42,7 @@ export function LocalAgentNewChatToast({
                 type="button"
                 onClick={handleClose}
                 className="ml-auto flex-shrink-0 p-1.5 text-blue-500 dark:text-slate-400 hover:text-blue-700 dark:hover:text-slate-200 transition-colors duration-200 rounded-md hover:bg-blue-100/50 dark:hover:bg-slate-700/50"
-                aria-label="Close"
+                aria-label={t("close")}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -49,8 +51,7 @@ export function LocalAgentNewChatToast({
             {/* Message */}
             <div className="mb-4">
               <p className="text-[14px] text-blue-800 dark:text-slate-200 leading-relaxed">
-                <strong>Tip: Create a new chat</strong> to give the agent a
-                clean context for better results.
+                {t("agentModeTip")}
               </p>
             </div>
 
@@ -62,7 +63,7 @@ export function LocalAgentNewChatToast({
                 variant="ghost"
                 className="text-blue-600 dark:text-slate-400 hover:text-blue-800 dark:hover:text-slate-200 hover:bg-blue-100/50 dark:hover:bg-slate-700/50"
               >
-                Never show again
+                {t("neverShowAgain")}
               </Button>
             </div>
           </div>

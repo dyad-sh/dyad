@@ -5,6 +5,7 @@ import type {
   McpTool,
   McpToolConsent,
 } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 export function PluginsStats({
   servers,
@@ -19,6 +20,7 @@ export function PluginsStats({
   consentsMap: Record<string, McpToolConsent["consent"]>;
   isLoading: boolean;
 }) {
+  const { t } = useTranslation("home");
   if (isLoading) {
     return <Skeleton className="h-5 w-56" />;
   }
@@ -44,12 +46,13 @@ export function PluginsStats({
   const disabledCount = servers.length - enabled.length;
   return (
     <div className="text-sm text-muted-foreground" data-testid="plugins-stats">
-      {servers.length} plugin{servers.length === 1 ? "" : "s"}
-      {disabledCount > 0 ? ` (${disabledCount} disabled)` : ""} ·{" "}
+      {t("plugins.pluginCount", { count: servers.length })}
+      {disabledCount > 0
+        ? ` ${t("plugins.disabledCount", { count: disabledCount })}`
+        : ""}{" "}
       {discovering
-        ? "— tools"
-        : `${toolCount} tool${toolCount === 1 ? "" : "s"}`}{" "}
-      enabled
+        ? t("plugins.statsToolsPending")
+        : t("plugins.statsTools", { count: toolCount })}
     </div>
   );
 }

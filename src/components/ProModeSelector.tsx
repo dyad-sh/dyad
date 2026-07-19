@@ -21,8 +21,10 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 export function ProModeSelector() {
+  const { t } = useTranslation("home");
   const { settings, updateSettings } = useSettings();
 
   const toggleWebSearch = () => {
@@ -77,14 +79,16 @@ export function ProModeSelector() {
           <Sparkles className="h-3.5 w-3.5" />
           <span className="font-medium">Pro</span>
         </TooltipTrigger>
-        <TooltipContent>Configure Dyad Pro settings</TooltipContent>
+        <TooltipContent>{t("proMode.configure")}</TooltipContent>
       </Tooltip>
       <PopoverContent className="w-80 border-primary/20">
         <div className="space-y-4">
           <div className="space-y-1">
             <h4 className="font-medium flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium">Dyad Pro</span>
+              <span className="text-primary font-medium">
+                {t("proMode.title")}
+              </span>
             </h4>
             <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent" />
           </div>
@@ -95,17 +99,17 @@ export function ProModeSelector() {
                 onClick={() => {
                   ipc.system.openExternalUrl("https://dyad.sh/pro#ai");
                 }}
-                title="Visit dyad.sh/pro to unlock Pro features"
+                title={t("proMode.unlockTitle")}
               >
-                Unlock Pro modes
+                {t("proMode.unlock")}
               </a>
             </div>
           )}
           <div className="flex flex-col gap-3">
             <SelectorRow
               id="pro-enabled"
-              label="Enable Dyad Pro"
-              tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
+              label={t("proMode.enable")}
+              tooltip={t("proMode.enableTooltip")}
               isTogglable={hasProKey}
               settingEnabled={Boolean(settings?.enableDyadPro)}
               toggle={toggleProEnabled}
@@ -116,14 +120,14 @@ export function ProModeSelector() {
                 className="rounded-lg border border-border/60 bg-muted/30 px-3 border-b-0"
               >
                 <AccordionTrigger className="cursor-pointer py-2 text-foreground/80 hover:text-foreground hover:no-underline">
-                  Build mode settings
+                  {t("proMode.buildModeSettings")}
                 </AccordionTrigger>
                 <AccordionContent className="pb-3">
                   <div className="flex flex-col gap-5 pt-2">
                     <SelectorRow
                       id="web-search"
-                      label="Web Access"
-                      tooltip="Allows Dyad to access the web (e.g. search for information)"
+                      label={t("proMode.webAccess")}
+                      tooltip={t("proMode.webAccessTooltip")}
                       isTogglable={proModeTogglable}
                       settingEnabled={Boolean(settings?.enableProWebSearch)}
                       toggle={toggleWebSearch}
@@ -200,6 +204,7 @@ function TurboEditsSelector({
   settings: UserSettings | null;
   onValueChange: (value: "off" | "v1" | "v2") => void;
 }) {
+  const { t } = useTranslation("home");
   // Determine current value based on settings
   const getCurrentValue = (): "off" | "v1" | "v2" => {
     if (!settings?.enableProLazyEditsMode) {
@@ -222,9 +227,9 @@ function TurboEditsSelector({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
         <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
-          Turbo Edits
+          {t("proMode.turboEdits")}
         </Label>
-        <span title="Edits files efficiently without full rewrites. Classic: Uses a smaller model to complete edits. Search & replace: Find and replaces specific text blocks.">
+        <span title={t("proMode.turboEditsTooltip")}>
           <Info
             className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
           />
@@ -246,9 +251,9 @@ function TurboEditsSelector({
               />
             }
           >
-            Off
+            {t("proMode.off")}
           </TooltipTrigger>
-          <TooltipContent>Disable Turbo Edits</TooltipContent>
+          <TooltipContent>{t("proMode.disableTurboEdits")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -262,11 +267,9 @@ function TurboEditsSelector({
               />
             }
           >
-            Classic
+            {t("proMode.classic")}
           </TooltipTrigger>
-          <TooltipContent>
-            Uses a smaller model to complete edits
-          </TooltipContent>
+          <TooltipContent>{t("proMode.classicTooltip")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -280,11 +283,9 @@ function TurboEditsSelector({
               />
             }
           >
-            Search & replace
+            {t("proMode.searchReplace")}
           </TooltipTrigger>
-          <TooltipContent>
-            Find and replaces specific text blocks
-          </TooltipContent>
+          <TooltipContent>{t("proMode.searchReplaceTooltip")}</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -300,6 +301,7 @@ function SmartContextSelector({
   settings: UserSettings | null;
   onValueChange: (value: "off" | "balanced" | "deep") => void;
 }) {
+  const { t } = useTranslation("home");
   // Determine current value based on settings
   const getCurrentValue = (): "off" | "conservative" | "balanced" | "deep" => {
     if (!settings?.enableProSmartFilesContextMode) {
@@ -321,9 +323,9 @@ function SmartContextSelector({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
         <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
-          Smart Context
+          {t("proMode.smartContext")}
         </Label>
-        <span title="Selects the most relevant files as context to save credits working on large codebases.">
+        <span title={t("proMode.smartContextTooltip")}>
           <Info
             className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
           />
@@ -345,9 +347,9 @@ function SmartContextSelector({
               />
             }
           >
-            Off
+            {t("proMode.off")}
           </TooltipTrigger>
-          <TooltipContent>Disable Smart Context</TooltipContent>
+          <TooltipContent>{t("proMode.disableSmartContext")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -361,11 +363,9 @@ function SmartContextSelector({
               />
             }
           >
-            Balanced
+            {t("proMode.balanced")}
           </TooltipTrigger>
-          <TooltipContent>
-            Selects most relevant files with balanced context size
-          </TooltipContent>
+          <TooltipContent>{t("proMode.balancedTooltip")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -379,12 +379,9 @@ function SmartContextSelector({
               />
             }
           >
-            Deep
+            {t("proMode.deep")}
           </TooltipTrigger>
-          <TooltipContent>
-            Experimental: Keeps full conversation history for maximum context
-            and cache-optimized to control costs
-          </TooltipContent>
+          <TooltipContent>{t("proMode.deepTooltip")}</TooltipContent>
         </Tooltip>
       </div>
     </div>

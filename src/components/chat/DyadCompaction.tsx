@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Layers, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
 
 interface DyadCompactionProps {
   node: {
@@ -17,7 +18,9 @@ export const DyadCompaction: React.FC<DyadCompactionProps> = ({
   children,
   node,
 }) => {
-  const { title = "Compacting conversation", state } = node.properties;
+  const { t } = useTranslation("chat");
+  const { title: nodeTitle, state } = node.properties;
+  const title = nodeTitle ?? t("compactingConversation");
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -88,7 +91,7 @@ export const DyadCompaction: React.FC<DyadCompactionProps> = ({
             <VanillaMarkdownParser content={content} />
           ) : inProgress ? (
             <span className="text-xs text-gray-400 italic">
-              Generating summary...
+              {t("generatingSummary")}
             </span>
           ) : null}
         </div>

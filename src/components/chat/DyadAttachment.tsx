@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, FileText, Image } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { ImageLightbox, openFile } from "./ImageLightbox";
+import { useTranslation } from "react-i18next";
 
 export type AttachmentSize = "sm" | "md" | "lg";
 
@@ -29,7 +30,8 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   node,
   size = "md",
 }) => {
-  const name = node?.properties?.name || "Untitled";
+  const { t } = useTranslation("chat");
+  const name = node?.properties?.name || t("untitled");
   const type = node?.properties?.type || "";
   const url = node?.properties?.url || "";
   const filePath = node?.properties?.path || "";
@@ -60,7 +62,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
           }}
           role="button"
           tabIndex={0}
-          aria-label={`Expand image: ${name}`}
+          aria-label={t("expandedImage", { alt: name })}
           title={name}
         >
           <img
@@ -97,10 +99,12 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
         accentColor={accentColor}
       >
         <span className="font-medium text-sm text-foreground truncate">
-          {imageError ? "Image unavailable" : name}
+          {imageError ? t("imageUnavailable") : name}
         </span>
         <DyadBadge color={accentColor}>
-          {attachmentType === "upload-to-codebase" ? "Upload" : "Context"}
+          {attachmentType === "upload-to-codebase"
+            ? t("attachmentUpload")
+            : t("attachmentContext")}
         </DyadBadge>
         {filePath && (
           <ExternalLink

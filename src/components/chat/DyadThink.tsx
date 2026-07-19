@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
 import { DyadTokenSavings } from "./DyadTokenSavings";
+import { useTranslation } from "react-i18next";
 
 interface DyadThinkProps {
   node?: any;
@@ -10,6 +11,7 @@ interface DyadThinkProps {
 }
 
 export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
+  const { t } = useTranslation("chat");
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
@@ -74,7 +76,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
           }`}
         />
         <span className="text-[13px] font-medium text-foreground/70 group-hover:text-foreground transition-colors">
-          {inProgress ? "Thinking…" : "Thought"}
+          {inProgress ? t("thinking") : t("thought")}
         </span>
         {!isExpanded && firstLine && (
           <span className="ml-0.5 truncate text-[13px] text-muted-foreground/85 max-w-md">
@@ -97,7 +99,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
               type="button"
               onClick={() => setIsExpanded(false)}
               className="relative shrink-0 w-6 cursor-pointer group/border"
-              aria-label="Collapse thinking"
+              aria-label={t("collapseThinking")}
             >
               <span className="absolute left-0 top-0 bottom-0 w-px bg-border/60 group-hover/border:w-[2px] group-hover/border:bg-foreground/40 transition-all" />
             </button>

@@ -9,6 +9,7 @@ import {
   DyadDescription,
 } from "./DyadCardPrimitives";
 import { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
 
 interface DyadDeleteProps {
   children?: ReactNode;
@@ -21,6 +22,7 @@ export const DyadDelete: React.FC<DyadDeleteProps> = ({
   node,
   path: pathProp,
 }) => {
+  const { t } = useTranslation("chat");
   const path = pathProp || node?.properties?.path || "";
   const state = node?.properties?.state as CustomTagState;
   const fileName = path ? path.split("/").pop() : "";
@@ -33,7 +35,7 @@ export const DyadDelete: React.FC<DyadDeleteProps> = ({
             {fileName}
           </span>
         )}
-        <DyadBadge color="red">Delete</DyadBadge>
+        <DyadBadge color="red">{t("delete")}</DyadBadge>
       </DyadCardHeader>
       <DyadFilePath path={path} />
       {children && <DyadDescription>{children}</DyadDescription>}

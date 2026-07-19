@@ -13,6 +13,7 @@ import {
   DyadDescription,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadEditProps {
   children?: ReactNode;
@@ -27,6 +28,7 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
   path: pathProp,
   description: descriptionProp,
 }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   const path = pathProp || node?.properties?.path || "";
@@ -58,20 +60,20 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
           )}
         </div>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Editing..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("editing")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
         )}
         <div className="ml-auto flex items-center gap-1">
-          <DyadBadge color="sky">Turbo Edit</DyadBadge>
+          <DyadBadge color="sky">{t("turboEdit")}</DyadBadge>
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
       </DyadCardHeader>
       {description && (
         <DyadDescription>
           <span className={!isContentVisible ? "line-clamp-2" : undefined}>
-            <span className="font-medium">Summary: </span>
+            <span className="font-medium">{t("summary")} </span>
             {description}
           </span>
         </DyadDescription>

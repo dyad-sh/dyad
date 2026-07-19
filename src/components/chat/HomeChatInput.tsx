@@ -37,12 +37,14 @@ import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { showError } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 export function HomeChatInput({
   onSubmit,
 }: {
   onSubmit: (options?: HomeSubmitOptions) => boolean | Promise<boolean>;
 }) {
+  const { t } = useTranslation("chat");
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const [selectedApp, setSelectedApp] = useAtom(homeSelectedAppAtom);
@@ -78,13 +80,18 @@ export function HomeChatInput({
   }, [settings?.enableSelectAppFromHomeChatInput, setSelectedApp]);
 
   const typingText = useTypingPlaceholder([
-    "an ecommerce store...",
-    "an information page...",
-    "a landing page...",
+    t("typingEcommerceStore"),
+    t("typingInformationPage"),
+    t("typingLandingPage"),
   ]);
   const placeholder = selectedApp
-    ? `Send a message to ${selectedApp.name}...`
-    : `Ask Dyad to build ${typingText ?? ""}`;
+    ? t("homePlaceholderWithApp", {
+        appName: selectedApp.name,
+        typingText: "...",
+      })
+    : t("homePlaceholder", {
+        typingText: typingText ? ` ${typingText}` : "",
+      });
 
   // Use the attachments hook
   const {
@@ -200,10 +207,10 @@ export function HomeChatInput({
                       disabled={isTranscribing}
                       aria-label={
                         isRecording
-                          ? "Stop recording"
+                          ? t("stopRecording")
                           : isTranscribing
-                            ? "Transcribing..."
-                            : "Voice to text"
+                            ? t("transcribing")
+                            : t("voiceToText")
                       }
                       className={cn(
                         "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
@@ -224,10 +231,10 @@ export function HomeChatInput({
                 </TooltipTrigger>
                 <TooltipContent>
                   {isRecording
-                    ? "Stop recording"
+                    ? t("stopRecording")
                     : isTranscribing
-                      ? "Transcribing..."
-                      : "Voice to text"}
+                      ? t("transcribing")
+                      : t("voiceToText")}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -238,7 +245,7 @@ export function HomeChatInput({
                       onClick={() =>
                         ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
-                      aria-label="Voice to text (Pro)"
+                      aria-label={t("voiceToTextPro")}
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
                     />
                   }
@@ -246,7 +253,7 @@ export function HomeChatInput({
                   <Mic size={20} />
                   <Lock size={10} className="absolute -top-0.5 -right-0.5" />
                 </TooltipTrigger>
-                <TooltipContent>Voice to text (requires Pro)</TooltipContent>
+                <TooltipContent>{t("voiceToTextRequiresPro")}</TooltipContent>
               </Tooltip>
             )}
 
@@ -255,7 +262,7 @@ export function HomeChatInput({
                 <TooltipTrigger
                   render={
                     <button
-                      aria-label="Cancel generation (unavailable here)"
+                      aria-label={t("cancelGenerationUnavailable")}
                       className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground rounded-lg opacity-50 cursor-not-allowed transition-colors duration-150"
                     />
                   }
@@ -263,7 +270,7 @@ export function HomeChatInput({
                   <StopCircleIcon size={20} />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Cancel generation (unavailable here)
+                  {t("cancelGenerationUnavailable")}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -273,14 +280,14 @@ export function HomeChatInput({
                     <button
                       onClick={handleCustomSubmit}
                       disabled={!inputValue.trim() && attachments.length === 0}
-                      aria-label="Send message"
+                      aria-label={t("sendMessage")}
                       className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
                     />
                   }
                 >
                   <SendHorizontalIcon size={20} />
                 </TooltipTrigger>
-                <TooltipContent>Send message</TooltipContent>
+                <TooltipContent>{t("sendMessage")}</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -305,7 +312,7 @@ export function HomeChatInput({
                   >
                     <FolderOpenIcon size={14} />
                     <span className="truncate max-w-[150px]">
-                      {selectedApp ? selectedApp.name : "No app selected"}
+                      {selectedApp ? selectedApp.name : t("noAppSelected")}
                     </span>
                     {selectedApp && (
                       <button
@@ -315,7 +322,7 @@ export function HomeChatInput({
                           setSelectedApp(null);
                         }}
                         className="hover:bg-primary/20 rounded-sm p-0.5 transition-colors"
-                        aria-label="Deselect app"
+                        aria-label={t("deselectApp")}
                         data-testid="home-app-selector-clear"
                       >
                         <XIcon size={12} />
@@ -324,8 +331,8 @@ export function HomeChatInput({
                   </TooltipTrigger>
                   <TooltipContent>
                     {selectedApp
-                      ? "Change selected app"
-                      : "Select an existing app"}
+                      ? t("changeSelectedApp")
+                      : t("selectExistingApp")}
                   </TooltipContent>
                 </Tooltip>
               )}

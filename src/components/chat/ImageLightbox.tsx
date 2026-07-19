@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { ipc } from "@/ipc/types";
 import { toast } from "sonner";
+import i18n from "@/i18n";
+import { useTranslation } from "react-i18next";
 
 interface ImageLightboxProps {
   imageUrl: string;
@@ -18,7 +20,7 @@ export async function openFile(filePath: string) {
     await ipc.system.openFilePath(filePath);
   } catch (error) {
     console.error("Failed to open file:", error);
-    toast.error("Could not open file. It may have been moved or deleted.");
+    toast.error(i18n.t("chat:fileOpenError"));
   }
 }
 
@@ -29,6 +31,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   onClose,
   onError,
 }) => {
+  const { t } = useTranslation("chat");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       }}
       role="dialog"
       aria-modal="true"
-      aria-label={`Expanded image: ${alt}`}
+      aria-label={t("expandedImage", { alt })}
     >
       <div className="absolute top-4 right-4 flex items-center gap-2">
         {filePath && (
@@ -61,8 +64,8 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
               e.stopPropagation();
               openFile(filePath);
             }}
-            title="Open file"
-            aria-label="Open file"
+            title={t("openFile")}
+            aria-label={t("openFile")}
           >
             <ExternalLink size={20} />
           </button>
@@ -74,7 +77,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
             e.stopPropagation();
             onClose();
           }}
-          aria-label="Close"
+          aria-label={t("close")}
         >
           <X size={20} />
         </button>

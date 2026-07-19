@@ -7,6 +7,7 @@ import {
   DyadStateIndicator,
 } from "./DyadCardPrimitives";
 import { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
 
 interface DyadWebFetchProps {
   children?: ReactNode;
@@ -18,18 +19,19 @@ interface DyadWebFetchProps {
 }
 
 export const DyadWebFetch: FC<DyadWebFetchProps> = ({ children, node }) => {
+  const { t } = useTranslation("chat");
   const state = node?.properties?.state as CustomTagState;
 
   return (
     <DyadCard state={state} accentColor="blue">
       <DyadCardHeader icon={<Globe size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Web Fetch</DyadBadge>
+        <DyadBadge color="blue">{t("webFetch")}</DyadBadge>
         {state && (
           <DyadStateIndicator
             state={state}
-            pendingLabel="Fetching..."
-            finishedLabel="Done"
-            abortedLabel="Aborted"
+            pendingLabel={t("fetching")}
+            finishedLabel={t("done")}
+            abortedLabel={t("aborted")}
           />
         )}
       </DyadCardHeader>

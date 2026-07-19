@@ -8,6 +8,7 @@ import {
   DyadExpandIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 type ProblemWithoutSnippet = Omit<Problem, "snippet">;
 
@@ -22,6 +23,7 @@ interface ProblemItemProps {
 }
 
 const ProblemItem: React.FC<ProblemItemProps> = ({ problem, index }) => {
+  const { t } = useTranslation("chat");
   return (
     <div className="flex items-start gap-3 py-2 px-3 border-b border-border/40 last:border-b-0">
       <div className="flex-shrink-0 size-6 rounded-full bg-muted/60 flex items-center justify-center mt-0.5">
@@ -39,7 +41,7 @@ const ProblemItem: React.FC<ProblemItemProps> = ({ problem, index }) => {
             {problem.line}:{problem.column}
           </span>
           <span className="text-[11px] bg-muted/50 px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-            TS{problem.code}
+            {t("typescript")}{problem.code}
           </span>
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">
@@ -54,6 +56,7 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
   summary,
   children,
 }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   // Parse problems from children content if available
@@ -92,7 +95,7 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
 
   const totalProblems = problems.length;
   const displaySummary =
-    summary || `${totalProblems} problems found (TypeScript errors)`;
+    summary || t("problemsFound", { count: totalProblems });
 
   return (
     <DyadCard
@@ -102,7 +105,7 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
       data-testid="problem-summary"
     >
       <DyadCardHeader icon={<AlertTriangle size={15} />} accentColor="amber">
-        <DyadBadge color="amber">Auto-fix</DyadBadge>
+        <DyadBadge color="amber">{t("autoFix")}</DyadBadge>
         <span className="font-medium text-sm text-foreground truncate">
           {displaySummary}
         </span>

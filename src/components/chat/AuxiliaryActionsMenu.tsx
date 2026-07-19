@@ -37,6 +37,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useTranslation } from "react-i18next";
 
 interface AuxiliaryActionsMenuProps {
   onFileSelect: (
@@ -58,6 +59,7 @@ export function AuxiliaryActionsMenu({
   appId,
   onGenerateImage,
 }: AuxiliaryActionsMenuProps) {
+  const { t } = useTranslation("chat");
   const [isOpen, setIsOpen] = useState(false);
   const [customThemeDialogOpen, setCustomThemeDialogOpen] = useState(false);
   const [allThemesDialogOpen, setAllThemesDialogOpen] = useState(false);
@@ -151,7 +153,7 @@ export function AuxiliaryActionsMenu({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="py-2 px-3">
               <Paperclip size={16} className="mr-2" />
-              Attach files
+              {t("attachFiles")}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <FileAttachmentDropdown
@@ -165,7 +167,7 @@ export function AuxiliaryActionsMenu({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="py-2 px-3">
               <Palette size={16} className="mr-2" />
-              Themes
+              {t("themes")}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem
@@ -175,7 +177,7 @@ export function AuxiliaryActionsMenu({
               >
                 <div className="flex items-center w-full">
                   <Ban size={16} className="mr-2 text-muted-foreground" />
-                  <span className="flex-1">No Theme</span>
+                  <span className="flex-1">{t("noTheme")}</span>
                   {currentThemeId === null && (
                     <Check size={16} className="text-primary ml-2" />
                   )}
@@ -222,7 +224,7 @@ export function AuxiliaryActionsMenu({
                         onClick={() => handleThemeSelect(themeId)}
                         className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
                         data-testid={`theme-option-${themeId}`}
-                        title={theme.description || "Custom theme"}
+                        title={theme.description || t("customTheme")}
                       >
                         <div className="flex items-center w-full">
                           <Brush
@@ -255,7 +257,7 @@ export function AuxiliaryActionsMenu({
                       size={16}
                       className="mr-2 text-muted-foreground"
                     />
-                    <span className="flex-1">More themes</span>
+                    <span className="flex-1">{t("moreThemes")}</span>
                   </div>
                 </DropdownMenuItem>
               )}
@@ -273,7 +275,7 @@ export function AuxiliaryActionsMenu({
                       size={16}
                       className="mr-2 text-muted-foreground"
                     />
-                    <span className="flex-1">New Theme</span>
+                    <span className="flex-1">{t("newTheme")}</span>
                   </div>
                 </DropdownMenuItem>
               </>
@@ -291,7 +293,7 @@ export function AuxiliaryActionsMenu({
               data-testid="generate-image-menu-item"
             >
               <ImageIcon size={16} className="mr-2" />
-              Generate Image
+              {t("generateImage")}
             </DropdownMenuItem>
           )}
 
@@ -312,7 +314,7 @@ export function AuxiliaryActionsMenu({
                   }
                 />
                 <span className="flex-1">
-                  {showTokenBar ? "Hide" : "Show"} token usage
+                  {showTokenBar ? t("hideTokenUsage") : t("showTokenUsage")}
                 </span>
               </DropdownMenuItem>
             </>
@@ -334,7 +336,7 @@ export function AuxiliaryActionsMenu({
       <Dialog open={allThemesDialogOpen} onOpenChange={setAllThemesDialogOpen}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>All Custom Themes</DialogTitle>
+            <DialogTitle>{t("allCustomThemes")}</DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto flex-1 -mx-6 px-6">
             {/* All custom themes list */}

@@ -33,6 +33,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   provider: requestedProvider,
 }) => {
   const { t } = useTranslation("home");
+  const { t: tc } = useTranslation("chat");
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
@@ -369,7 +370,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                         tabIndex={0}
                         className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
                         role="link"
-                        aria-label={`Visit ${option.name} website`}
+                        aria-label={tc("blueprint.visitWebsite", {
+                          name: option.name,
+                        })}
                       >
                         <ExternalLink size={12} />
                       </span>

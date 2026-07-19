@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
+import { useTranslation } from "react-i18next";
 
 const CONTEXT_LIMIT_THRESHOLD = 40_000;
 const LONG_CONTEXT_THRESHOLD = 200_000;
@@ -36,6 +37,7 @@ export function ContextLimitBanner({
   totalTokens,
   contextWindow,
 }: ContextLimitBannerProps) {
+  const { t } = useTranslation("chat");
   const { handleSummarize } = useSummarizeInNewChat();
 
   if (!shouldShowContextLimitBanner({ totalTokens, contextWindow })) {
@@ -45,8 +47,8 @@ export function ContextLimitBanner({
   const tokensRemaining = contextWindow! - totalTokens!;
   const isNearLimit = tokensRemaining <= CONTEXT_LIMIT_THRESHOLD;
   const message = isNearLimit
-    ? "This chat context is running out"
-    : "Long chat context costs extra";
+    ? t("contextRunningOut")
+    : t("longContextCostsExtra");
 
   return (
     <div
@@ -68,10 +70,10 @@ export function ContextLimitBanner({
             />
           }
         >
-          Summarize
+          {t("summarize")}
           <ArrowRight className="h-3 w-3 ml-1" />
         </TooltipTrigger>
-        <TooltipContent>Summarize to new chat</TooltipContent>
+        <TooltipContent>{t("summarizeToNewChat")}</TooltipContent>
       </Tooltip>
     </div>
   );

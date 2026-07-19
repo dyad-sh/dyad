@@ -592,7 +592,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setSelectedChatId(newChatId);
       navigate({ to: "/chat", search: { id: newChatId } });
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      showInfo("We've switched you to a new chat for a clean context");
+      showInfo(t("newChatContextInfo"));
 
       void openPreviewIfSetupRequired(appId);
       await streamMessage({
@@ -697,7 +697,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         await invalidateChats();
       } catch (err) {
         showErrorToast(
-          `Failed to create new chat: ${(err as Error).toString()}`,
+          t("failedCreateChat", { error: (err as Error).toString() }),
         );
       }
     } else {
@@ -729,11 +729,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         showWarning(warningMessage);
       }
       if (!result.success) {
-        setError(result.error ?? "An error occurred while approving");
+        setError(result.error ?? t("approvalError"));
       }
     } catch (err) {
       console.error("Error approving proposal:", err);
-      setError((err as Error)?.message || "An error occurred while approving");
+      setError((err as Error)?.message || t("approvalError"));
     } finally {
       setIsApproving(false);
       if (settings?.autoExpandPreviewPanel) {
@@ -765,7 +765,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
     } catch (err) {
       console.error("Error rejecting proposal:", err);
-      setError((err as Error)?.message || "An error occurred while rejecting");
+      setError((err as Error)?.message || t("rejectionError"));
     } finally {
       setIsRejecting(false);
       // Keep same as handleApprove
@@ -855,14 +855,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {editingQueuedMessageId && (
             <div className="border-b border-border p-2 bg-yellow-500/10 flex items-center justify-between">
               <span className="text-sm text-yellow-700 dark:text-yellow-400">
-                Editing queued message
+                {t("editingQueuedMessage")}
               </span>
               <button
                 type="button"
                 onClick={() => resetEditingState()}
                 className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >
-                Cancel
+                {t("cancel")}
               </button>
             </div>
           )}
@@ -983,10 +983,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       disabled={isTranscribing}
                       aria-label={
                         isRecording
-                          ? t("stopRecording", "Stop recording")
+                          ? t("stopRecording")
                           : isTranscribing
                             ? t("transcribing", "Transcribing...")
-                            : t("voiceToText", "Voice to text")
+                            : t("voiceToText")
                       }
                       className={cn(
                         "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
@@ -1007,10 +1007,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 </TooltipTrigger>
                 <TooltipContent>
                   {isRecording
-                    ? t("stopRecording", "Stop recording")
+                    ? t("stopRecording")
                     : isTranscribing
                       ? t("transcribing", "Transcribing...")
-                      : t("voiceToText", "Voice to text")}
+                      : t("voiceToText")}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -1021,7 +1021,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       onClick={() =>
                         ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
-                      aria-label={t("voiceToTextPro", "Voice to text (Pro)")}
+                      aria-label={t("voiceToTextPro")}
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
                     />
                   }
@@ -1030,7 +1030,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   <Lock size={10} className="absolute -top-0.5 -right-0.5" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  {t("voiceToTextRequiresPro", "Voice to text (requires Pro)")}
+                  {t("voiceToTextRequiresPro")}
                 </TooltipContent>
               </Tooltip>
             )}

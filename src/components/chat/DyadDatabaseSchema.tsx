@@ -7,6 +7,7 @@ import {
   DyadBadge,
   DyadStateIndicator,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadDatabaseSchemaProps {
   node: {
@@ -21,6 +22,7 @@ export function DyadDatabaseSchema({
   node,
   children,
 }: DyadDatabaseSchemaProps) {
+  const { t } = useTranslation("chat");
   const { state } = node.properties;
   const isLoading = state === "pending";
   const content = typeof children === "string" ? children : "";
@@ -28,7 +30,7 @@ export function DyadDatabaseSchema({
   return (
     <DyadCard state={state} accentColor="teal">
       <DyadCardHeader icon={<Database size={15} />} accentColor="teal">
-        <DyadBadge color="teal">Database Schema</DyadBadge>
+        <DyadBadge color="teal">{t("databaseSchema")}</DyadBadge>
         {isLoading && <DyadStateIndicator state="pending" />}
       </DyadCardHeader>
       {content && (

@@ -8,6 +8,7 @@ import {
   DyadExpandIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadMcpToolResultProps {
   node?: any;
@@ -18,6 +19,7 @@ export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
   node,
   children,
 }) => {
+  const { t } = useTranslation("chat");
   const serverName: string = node?.properties?.serverName || "";
   const toolName: string = node?.properties?.toolName || "";
   const [expanded, setExpanded] = useState(false);
@@ -42,7 +44,7 @@ export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
       onClick={() => setExpanded((v) => !v)}
     >
       <DyadCardHeader icon={<CheckCircle size={15} />} accentColor="emerald">
-        <DyadBadge color="emerald">Tool Result</DyadBadge>
+        <DyadBadge color="emerald">{t("toolResult")}</DyadBadge>
         {serverName && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">
             {serverName}

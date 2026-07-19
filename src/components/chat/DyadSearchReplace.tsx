@@ -15,6 +15,7 @@ import {
   DyadDescription,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadSearchReplaceProps {
   children?: ReactNode;
@@ -29,6 +30,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
   path: pathProp,
   description: descriptionProp,
 }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   const path = pathProp || node?.properties?.path || "";
@@ -53,7 +55,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
       data-testid="dyad-search-replace"
     >
       <DyadCardHeader icon={<Search size={15} />} accentColor="violet">
-        <DyadBadge color="violet">Search & Replace</DyadBadge>
+        <DyadBadge color="violet">{t("searchAndReplace")}</DyadBadge>
         {fileName && (
           <span className="font-medium text-sm text-foreground truncate">
             {fileName}
@@ -62,11 +64,11 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
         {inProgress && (
           <DyadStateIndicator
             state="pending"
-            pendingLabel="Applying changes..."
+            pendingLabel={t("applyingChanges")}
           />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />
@@ -75,7 +77,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
       <DyadFilePath path={path} />
       {description && (
         <DyadDescription>
-          <span className="font-medium">Summary: </span>
+          <span className="font-medium">{t("summary")} </span>
           {description}
         </DyadDescription>
       )}
@@ -101,13 +103,13 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                       className="text-muted-foreground"
                     />
                     <span className="font-medium text-muted-foreground">
-                      Change {i + 1}
+                      {t("changeNumber", { number: i + 1 })}
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
                     <div className="p-3 border-t border-border/40 md:border-r">
                       <div className="text-[11px] mb-1 text-muted-foreground font-medium">
-                        Search
+                        {t("search")}
                       </div>
                       <CodeHighlight className="language-typescript">
                         {b.searchContent}
@@ -115,7 +117,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                     </div>
                     <div className="p-3 border-t border-border/40">
                       <div className="text-[11px] mb-1 text-muted-foreground font-medium">
-                        Replace
+                        {t("replace")}
                       </div>
                       <CodeHighlight className="language-typescript">
                         {b.replaceContent}

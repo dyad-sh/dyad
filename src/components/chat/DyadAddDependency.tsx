@@ -1,6 +1,7 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ipc } from "@/ipc/types";
 
@@ -24,6 +25,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
   children,
   node,
 }) => {
+  const { t } = useTranslation("chat");
   const packages = node?.properties?.packages
     ? node.properties.packages.split(" ").filter(Boolean)
     : [];
@@ -39,7 +41,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
       }
     >
       <DyadCardHeader icon={<Package size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Add Packages</DyadBadge>
+        <DyadBadge color="blue">{t("addPackages")}</DyadBadge>
         {hasChildren && (
           <div className="ml-auto">
             <DyadExpandIcon isExpanded={isContentVisible} />
@@ -49,7 +51,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
       {packages.length > 0 && (
         <div className="px-3 pb-2">
           <div className="text-sm text-foreground mb-1">
-            Do you want to install these packages?
+            {t("installPackagesPrompt")}
           </div>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {packages.map((p: string) => (
@@ -68,7 +70,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
             ))}
           </div>
           <div className="text-xs text-muted-foreground mt-2">
-            Make sure these packages are what you want.
+            {t("verifyPackagesPrompt")}
           </div>
         </div>
       )}

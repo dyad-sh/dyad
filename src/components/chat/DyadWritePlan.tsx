@@ -5,6 +5,7 @@ import { previewModeAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
+import { useTranslation } from "react-i18next";
 
 interface DyadWritePlanProps {
   node: {
@@ -19,6 +20,7 @@ interface DyadWritePlanProps {
 }
 
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
+  const { t } = useTranslation("chat");
   const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
@@ -50,7 +52,9 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
                 type="button"
                 onClick={() => setShowSummary(!showSummary)}
                 className="text-primary hover:text-primary/80 transition-colors"
-                aria-label={showSummary ? "Hide summary" : "Show summary"}
+                aria-label={t(
+                  showSummary ? "hideSummary" : "showSummary",
+                )}
               >
                 {showSummary ? (
                   <ChevronUp size={16} />
@@ -72,13 +76,13 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
               className="flex items-center gap-1.5 text-xs font-medium text-primary-foreground px-4 py-1.5 bg-primary rounded-md hover:bg-primary/90 transition-colors"
             >
               <Eye size={14} />
-              View Plan
+              {t("viewPlan")}
             </button>
           )}
           {isInProgress && (
             <span className="flex items-center gap-1.5 text-xs text-primary px-3 py-1 bg-primary/20 rounded-md font-medium">
               <Loader2 size={12} className="animate-spin" />
-              Generating plan...
+              {t("generatingPlan")}
             </span>
           )}
         </div>

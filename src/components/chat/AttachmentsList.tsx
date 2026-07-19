@@ -59,7 +59,10 @@ export function AttachmentsList({
         <div
           key={index}
           className="flex items-center bg-muted rounded-md px-2 py-1 text-xs gap-1"
-          title={`${attachment.file.name} (${(attachment.file.size / 1024).toFixed(1)}KB)`}
+          title={t("attachmentSize", {
+            name: attachment.file.name,
+            size: (attachment.file.size / 1024).toFixed(1),
+          })}
         >
           <div className="flex items-center gap-1">
             {attachment.type === "upload-to-codebase" ? (

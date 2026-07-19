@@ -14,6 +14,7 @@ import {
 import { ImageLightbox } from "./ImageLightbox";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useTranslation } from "react-i18next";
 
 interface DyadImageGenerationNode {
   properties: {
@@ -32,6 +33,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
   children,
   node,
 }) => {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -77,7 +79,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
         <div className="flex items-start">
           <div className="flex-1 min-w-0">
             <DyadCardHeader icon={<ImageIcon size={15} />} accentColor="violet">
-              <DyadBadge color="violet">Image Generation</DyadBadge>
+              <DyadBadge color="violet">{t("imageGeneration")}</DyadBadge>
               {!isExpanded && prompt && (
                 <span className="text-sm text-muted-foreground italic truncate">
                   {prompt}
@@ -86,13 +88,13 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
               {inProgress && (
                 <DyadStateIndicator
                   state="pending"
-                  pendingLabel="Generating..."
+                  pendingLabel={t("generating")}
                 />
               )}
               {aborted && (
                 <DyadStateIndicator
                   state="aborted"
-                  abortedLabel="Did not finish"
+                  abortedLabel={t("didNotFinish")}
                 />
               )}
               <div className="ml-auto flex items-center gap-1">
@@ -104,7 +106,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
                 {prompt && (
                   <div>
                     <span className="text-xs font-medium text-muted-foreground">
-                      Prompt:
+                      {t("prompt")}:
                     </span>
                     <div className="italic mt-0.5 text-foreground">
                       {prompt}
@@ -114,7 +116,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
                 {imagePath && (
                   <div>
                     <span className="text-xs font-medium text-muted-foreground">
-                      Saved to:
+                      {t("savedTo")}
                     </span>
                     <div className="mt-0.5 font-mono text-xs text-foreground">
                       {imagePath}
@@ -134,12 +136,12 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
                 setIsLightboxOpen(true);
               }}
               className="group/thumb shrink-0 m-2 rounded-xl overflow-hidden transition-shadow cursor-pointer shadow-sm hover:shadow-xl relative"
-              title="View generated image"
-              aria-label="View generated image"
+              title={t("viewGeneratedImage")}
+              aria-label={t("viewGeneratedImage")}
             >
               <img
                 src={imageUrl}
-                alt={prompt || "Generated image"}
+                alt={prompt || t("generatedImage")}
                 className="h-20 w-20 object-cover rounded-xl"
                 onError={() => setImageError(true)}
               />
@@ -156,7 +158,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
       {isLightboxOpen && imageUrl && (
         <ImageLightbox
           imageUrl={imageUrl}
-          alt={prompt || "Generated image"}
+          alt={prompt || t("generatedImage")}
           filePath={absolutePath}
           onClose={() => setIsLightboxOpen(false)}
           onError={() => {

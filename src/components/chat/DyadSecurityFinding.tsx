@@ -12,6 +12,7 @@ import {
   type SecurityLevel,
 } from "@/components/security/severity";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
+import { useTranslation } from "react-i18next";
 
 const VALID_LEVELS: readonly SecurityLevel[] = [
   "critical",
@@ -44,6 +45,7 @@ export function DyadSecurityFinding({
   level,
   children,
 }: DyadSecurityFindingProps) {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(true);
 
   const validLevel = isSecurityLevel(level) ? level : undefined;
@@ -66,7 +68,7 @@ export function DyadSecurityFinding({
       >
         {validLevel && <SeverityBadge level={validLevel} />}
         <span className="font-medium text-sm text-foreground truncate">
-          {title || "Security finding"}
+          {title || t("securityFinding")}
         </span>
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isExpanded} />

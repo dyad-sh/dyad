@@ -15,6 +15,8 @@ import {
   type AppBlueprintVisualEditableField,
 } from "@/ipc/types/app_blueprint";
 import type { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 type VisualType = (typeof APP_BLUEPRINT_VISUAL_TYPES)[number];
 
@@ -31,36 +33,59 @@ interface AppBlueprintVisualsProps {
   onRemoveVisual?: (visualId: string) => void;
 }
 
-const TYPE_LABELS: Record<string, { label: string; color: string }> = {
+const TYPE_LABELS: Record<string, { color: string }> = {
   logo: {
-    label: "Logo",
     color:
       "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   },
   photo: {
-    label: "Photo",
     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   },
   illustration: {
-    label: "Illustration",
     color:
       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
   },
   icon: {
-    label: "Icon",
     color:
       "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   },
   background: {
-    label: "Background",
     color: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
   },
   other: {
-    label: "Other",
     color:
       "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300",
   },
 };
+
+function visualTypeLabel(
+  t: TFunction<"chat">,
+  type: string,
+) {
+  switch (type) {
+    case "logo":
+      return t("visualTypes.logo");
+    case "photo":
+      return t("visualTypes.photo");
+    case "illustration":
+      return t("visualTypes.illustration");
+    case "icon":
+      return t("visualTypes.icon");
+    case "background":
+      return t("visualTypes.background");
+    default:
+      return t("visualTypes.other");
+  }
+}
+
+function editableFieldLabel(
+  t: TFunction<"chat">,
+  field: AppBlueprintVisualEditableField,
+) {
+  return field === "description"
+    ? t("blueprint.visualDescription")
+    : t("blueprint.imageGenerationPrompt");
+}
 
 interface EditableTextProps {
   value: string;
@@ -85,6 +110,7 @@ const EditableText: React.FC<EditableTextProps> = ({
   multiline,
   className,
 }) => {
+  const { t } = useTranslation("chat");
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
 
@@ -135,20 +161,24 @@ const EditableText: React.FC<EditableTextProps> = ({
             type="button"
             onClick={handleCancel}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded transition-colors"
-            aria-label={`Cancel editing ${field}`}
+            aria-label={t("blueprint.cancelEditingField", {
+              field: editableFieldLabel(t, field),
+            })}
           >
             <X size={12} />
-            Cancel
+            {t("cancel")}
           </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={!editValue.trim()}
             className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2 py-0.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label={`Save ${field}`}
+            aria-label={t("blueprint.saveField", {
+              field: editableFieldLabel(t, field),
+            })}
           >
             <Check size={12} />
-            Save
+            {t("save")}
           </button>
         </div>
       </div>
@@ -167,7 +197,9 @@ const EditableText: React.FC<EditableTextProps> = ({
               setIsEditing(true);
             }}
             className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded"
-            aria-label={`Edit ${field}`}
+            aria-label={t("blueprint.editField", {
+              field: editableFieldLabel(t, field),
+            })}
           >
             <Pencil size={12} />
           </button>
@@ -184,7 +216,9 @@ const EditableText: React.FC<EditableTextProps> = ({
         setIsEditing(true);
       }}
       className={`${className} cursor-text text-left inline-flex items-center gap-1 group/inline hover:text-primary transition-colors`}
-      aria-label={`Edit ${field}`}
+      aria-label={t("blueprint.editField", {
+        field: editableFieldLabel(t, field),
+      })}
     >
       <span className="truncate">{value}</span>
       <Pencil
@@ -207,6 +241,7 @@ const VisualEntry: React.FC<{
   ) => void;
   onRemove?: (visualId: string) => void;
 }> = ({ visual, isApproved, onEdit, onRemove }) => {
+  const { t } = useTranslation("chat");
   const [showPrompt, setShowPrompt] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const confirmResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -247,7 +282,7 @@ const VisualEntry: React.FC<{
           <span
             className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${typeInfo.color}`}
           >
-            {typeInfo.label}
+            {visualTypeLabel(t, visual.type)}
           </span>
           <EditableText
             value={visual.description}
@@ -265,17 +300,17 @@ const VisualEntry: React.FC<{
                 type="button"
                 onClick={handleRemoveClick}
                 className="flex items-center gap-1 text-xs font-medium text-destructive hover:text-destructive/80 px-1.5 py-0.5 rounded transition-colors"
-                aria-label="Confirm remove visual"
+                aria-label={t("blueprint.confirmRemoveVisual")}
               >
                 <Trash2 size={11} />
-                Confirm?
+                {t("confirm")}
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleRemoveClick}
                 className="opacity-0 group-hover/entry:opacity-100 group-focus-within/entry:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-0.5 rounded"
-                aria-label="Remove visual"
+                aria-label={t("blueprint.removeVisual")}
               >
                 <Trash2 size={13} />
               </button>
@@ -284,7 +319,9 @@ const VisualEntry: React.FC<{
             type="button"
             onClick={() => setShowPrompt(!showPrompt)}
             className="text-muted-foreground hover:text-foreground"
-            aria-label={showPrompt ? "Hide prompt" : "Show prompt"}
+            aria-label={t(
+              showPrompt ? "blueprint.hidePrompt" : "blueprint.showPrompt",
+            )}
           >
             {showPrompt ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
@@ -309,6 +346,7 @@ const AddVisualForm: React.FC<{
   onAdd: (visual: Omit<AppBlueprintVisual, "id">) => void;
   onCancel: () => void;
 }> = ({ onAdd, onCancel }) => {
+  const { t } = useTranslation("chat");
   const [type, setType] = useState<VisualType>("other");
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -327,11 +365,11 @@ const AddVisualForm: React.FC<{
           value={type}
           onChange={(e) => setType(e.target.value as VisualType)}
           className="text-xs bg-background border border-border/50 rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-          aria-label="Visual type"
+          aria-label={t("blueprint.visualType")}
         >
-          {APP_BLUEPRINT_VISUAL_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABELS[t].label}
+          {APP_BLUEPRINT_VISUAL_TYPES.map((visualType) => (
+            <option key={visualType} value={visualType}>
+              {visualTypeLabel(t, visualType)}
             </option>
           ))}
         </select>
@@ -339,8 +377,8 @@ const AddVisualForm: React.FC<{
           type="text"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description"
-          aria-label="Visual description"
+          placeholder={t("blueprint.visualDescription")}
+          aria-label={t("blueprint.visualDescription")}
           className="flex-1 text-sm bg-background border border-border/50 rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           autoFocus
         />
@@ -352,8 +390,8 @@ const AddVisualForm: React.FC<{
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
           if (e.key === "Escape") onCancel();
         }}
-        placeholder="Image generation prompt..."
-        aria-label="Image generation prompt"
+        placeholder={t("blueprint.imageGenerationPrompt")}
+        aria-label={t("blueprint.imageGenerationPrompt")}
         className="w-full text-xs font-mono bg-background border border-border/50 rounded p-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 resize-y min-h-[48px]"
       />
       <div className="flex items-center gap-1.5 justify-end">
@@ -363,7 +401,7 @@ const AddVisualForm: React.FC<{
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded transition-colors"
         >
           <X size={12} />
-          Cancel
+          {t("cancel")}
         </button>
         <button
           type="button"
@@ -372,7 +410,7 @@ const AddVisualForm: React.FC<{
           className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2 py-0.5 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Check size={12} />
-          Add
+          {t("add")}
         </button>
       </div>
     </div>
@@ -387,6 +425,7 @@ export const AppBlueprintVisuals: React.FC<AppBlueprintVisualsProps> = ({
   onAddVisual,
   onRemoveVisual,
 }) => {
+  const { t } = useTranslation("chat");
   const [showAddForm, setShowAddForm] = useState(false);
   const canAdd = !isApproved && !!onAddVisual;
 
@@ -394,7 +433,7 @@ export const AppBlueprintVisuals: React.FC<AppBlueprintVisualsProps> = ({
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Image size={14} className="animate-pulse" />
-        <span>Planning visuals...</span>
+        <span>{t("blueprint.planningVisuals")}</span>
       </div>
     );
   }
@@ -409,7 +448,7 @@ export const AppBlueprintVisuals: React.FC<AppBlueprintVisualsProps> = ({
         <div className="flex items-center gap-2">
           <Image size={14} className="text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Visual Assets ({visuals.length})
+            {t("blueprint.visualAssets", { count: visuals.length })}
           </span>
         </div>
         {canAdd && !showAddForm && (
@@ -417,10 +456,10 @@ export const AppBlueprintVisuals: React.FC<AppBlueprintVisualsProps> = ({
             type="button"
             onClick={() => setShowAddForm(true)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
-            aria-label="Add visual"
+            aria-label={t("blueprint.addVisual")}
           >
             <Plus size={13} />
-            Add
+            {t("add")}
           </button>
         )}
       </div>

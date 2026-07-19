@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Code2, FileText } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
 import {
   DyadCard,
   DyadCardHeader,
@@ -23,6 +24,7 @@ interface DyadCodebaseContextProps {
 export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
   node,
 }) => {
+  const { t } = useTranslation("chat");
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
@@ -42,10 +44,12 @@ export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
       isExpanded={isExpanded}
     >
       <DyadCardHeader icon={<Code2 size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Codebase Context</DyadBadge>
+        <DyadBadge color="blue">{t("codebaseContext")}</DyadBadge>
         {files.length > 0 && (
           <span className="text-xs text-muted-foreground">
-            Using {files.length} file{files.length !== 1 ? "s" : ""}
+            {t(files.length === 1 ? "usingFiles_one" : "usingFiles_other", {
+              count: files.length,
+            })}
           </span>
         )}
         {inProgress && <DyadStateIndicator state="pending" />}

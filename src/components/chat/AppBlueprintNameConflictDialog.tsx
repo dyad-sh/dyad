@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useCheckName } from "@/hooks/useCheckName";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useTranslation } from "react-i18next";
 
 interface AppBlueprintNameConflictDialogProps {
   /** The rejected app name that is already in use, pre-filled into the input. */
@@ -29,6 +30,7 @@ export function AppBlueprintNameConflictDialog({
   onOpenChange,
   onSubmit,
 }: AppBlueprintNameConflictDialogProps) {
+  const { t } = useTranslation("chat");
   const [name, setName] = useState(rejectedName);
 
   // Re-seed the input whenever the dialog opens for a (potentially new)
@@ -74,20 +76,21 @@ export function AppBlueprintNameConflictDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertCircle size={18} className="text-amber-500" />
-            App name already in use
+            {t("blueprint.nameConflictTitle")}
           </DialogTitle>
           <DialogDescription>
-            An app named &ldquo;{rejectedName}&rdquo; already exists. Please
-            choose a different name to continue approving this blueprint.
+            {t("blueprint.nameConflictDescription", { name: rejectedName })}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 py-4">
-          <Label htmlFor="blueprint-conflict-name">App name</Label>
+          <Label htmlFor="blueprint-conflict-name">
+            {t("blueprint.appName")}
+          </Label>
           <Input
             id="blueprint-conflict-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Enter a new app name"
+            placeholder={t("blueprint.enterNewAppName")}
             className={nameExists ? "border-red-500" : ""}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSubmit();
@@ -96,16 +99,16 @@ export function AppBlueprintNameConflictDialog({
           />
           {nameExists && (
             <p className="text-sm text-red-500">
-              That name is also already in use. Try another one.
+              {t("blueprint.nameConflictMessage")}
             </p>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit}>
-            Use name &amp; approve
+            {t("blueprint.useNameAndApprove")}
           </Button>
         </DialogFooter>
       </DialogContent>

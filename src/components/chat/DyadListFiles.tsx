@@ -9,6 +9,7 @@ import {
   DyadStateIndicator,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadListFilesProps {
   node: {
@@ -24,6 +25,7 @@ interface DyadListFilesProps {
 }
 
 export function DyadListFiles({ node, children }: DyadListFilesProps) {
+  const { t } = useTranslation("chat");
   const { directory, recursive, include_ignored, state, appName } =
     node.properties;
   const isLoading = state === "pending";
@@ -32,7 +34,7 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
   const content = typeof children === "string" ? children : "";
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const title = directory ? directory : "List Files";
+  const title = directory || t("listFiles");
 
   return (
     <DyadCard
@@ -47,12 +49,12 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
           {title}
         </span>
         {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
-        {isRecursive && <DyadBadge color="slate">recursive</DyadBadge>}
+        {isRecursive && <DyadBadge color="slate">{t("recursive")}</DyadBadge>}
         {isIncludeIgnored && (
-          <DyadBadge color="slate">include ignored</DyadBadge>
+          <DyadBadge color="slate">{t("includeIgnored")}</DyadBadge>
         )}
         {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Listing..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("listing")} />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isExpanded} />

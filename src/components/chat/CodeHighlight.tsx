@@ -29,6 +29,7 @@ import sql from "@shikijs/langs/sql";
 import tsx from "@shikijs/langs/tsx";
 import typescript from "@shikijs/langs/typescript";
 import vue from "@shikijs/langs/vue";
+import { useTranslation } from "react-i18next";
 
 type HighlighterCore = Awaited<ReturnType<typeof createHighlighterCore>>;
 
@@ -95,6 +96,7 @@ export const CodeHighlight = memo(
     };
 
     const { isDarkMode } = useTheme();
+    const { t } = useTranslation("chat");
     const highlighter = useHighlighter();
 
     return !isInline ? (
@@ -118,7 +120,9 @@ export const CodeHighlight = memo(
               type="button"
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
-              <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
+              <span className="ml-1">
+                {copied ? t("copied") : t("copy")}
+              </span>
             </button>
           </div>
         )}

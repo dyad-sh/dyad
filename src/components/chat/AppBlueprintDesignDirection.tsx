@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { Compass, Pencil, Check, X, Plus } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
+import { useTranslation } from "react-i18next";
 
 interface AppBlueprintDesignDirectionProps {
   direction: string;
@@ -11,6 +12,7 @@ interface AppBlueprintDesignDirectionProps {
 export const AppBlueprintDesignDirection: React.FC<
   AppBlueprintDesignDirectionProps
 > = ({ direction, isApproved, onEdit }) => {
+  const { t } = useTranslation("chat");
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(direction);
   const canEdit = !isApproved && !!onEdit;
@@ -48,19 +50,19 @@ export const AppBlueprintDesignDirection: React.FC<
             type="button"
             onClick={handleCancel}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded transition-colors"
-            aria-label="Cancel editing"
+            aria-label={t("blueprint.cancelEditing")}
           >
             <X size={12} />
-            Cancel
+            {t("cancel")}
           </button>
           <button
             type="button"
             onClick={handleSave}
             className="flex items-center gap-1 text-xs text-primary-foreground bg-primary hover:bg-primary/90 px-2 py-0.5 rounded transition-colors"
-            aria-label="Save design direction"
+            aria-label={t("blueprint.saveDesignDirection")}
           >
             <Check size={12} />
-            Save
+            {t("save")}
           </button>
         </div>
       </div>
@@ -77,10 +79,10 @@ export const AppBlueprintDesignDirection: React.FC<
           setIsEditing(true);
         }}
         className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
-        aria-label="Add design direction"
+        aria-label={t("blueprint.addDesignDirection")}
       >
         <Plus size={13} />
-        Add design direction
+        {t("blueprint.addDesignDirection")}
       </button>
     );
   }
@@ -99,7 +101,7 @@ export const AppBlueprintDesignDirection: React.FC<
             setIsEditing(true);
           }}
           className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 rounded"
-          aria-label="Edit design direction"
+          aria-label={t("blueprint.editDesignDirection")}
         >
           <Pencil size={12} />
         </button>

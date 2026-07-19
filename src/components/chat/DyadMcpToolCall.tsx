@@ -84,7 +84,9 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
       onClick={() => setExpanded((v) => !v)}
     >
       <DyadCardHeader icon={<Wrench size={15} />} accentColor="blue">
-        <DyadBadge color="blue">{merged ? "Tool" : "Tool Call"}</DyadBadge>
+        <DyadBadge color="blue">
+          {merged ? t("tool") : t("toolCall")}
+        </DyadBadge>
         {serverName && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-200 dark:ring-blue-800">
             {serverName}
@@ -104,8 +106,8 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
           {merged && (
             <DyadStateIndicator
               state={state}
-              pendingLabel="Running"
-              abortedLabel={isError ? "Failed" : "No result"}
+              pendingLabel={t("running")}
+              abortedLabel={isError ? t("failed") : t("noResult")}
             />
           )}
           <DyadExpandIcon isExpanded={expanded} />
@@ -120,13 +122,13 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
         {merged ? (
           <>
             <div className="text-[11px] font-semibold text-muted-foreground mb-1">
-              Input
+              {t("input")}
             </div>
             <CodeHighlight className="language-json">
               {prettyInput}
             </CodeHighlight>
             <div className="text-[11px] font-semibold text-muted-foreground mt-3 mb-1">
-              Result
+              {t("result")}
             </div>
             {result ? (
               <CodeHighlight className={`language-${result.language}`}>
@@ -136,7 +138,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
               <CodeHighlight className="language-json">{""}</CodeHighlight>
             ) : (
               <div className="text-xs text-muted-foreground italic">
-                {state === "aborted" ? "No result." : "Running…"}
+                {state === "aborted" ? t("noResult") : t("running")}
               </div>
             )}
           </>

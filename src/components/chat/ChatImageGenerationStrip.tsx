@@ -13,6 +13,7 @@ import {
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
 import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
+import { useTranslation } from "react-i18next";
 
 interface ChatImageGenerationStripProps {
   onGenerateImage: () => void;
@@ -21,6 +22,7 @@ interface ChatImageGenerationStripProps {
 export function ChatImageGenerationStrip({
   onGenerateImage,
 }: ChatImageGenerationStripProps) {
+  const { t } = useTranslation("chat");
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const cancelImageGeneration = useCancelImageGeneration();
@@ -99,13 +101,13 @@ export function ChatImageGenerationStrip({
                     {job.prompt}
                   </span>
                   <span className="text-muted-foreground/60 text-[10px]">
-                    Generating...
+                    {t("generating")}
                   </span>
                 </div>
                 <button
                   onClick={() => handleCancel(job.id)}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
-                  aria-label="Cancel generation"
+                  aria-label={t("cancelGeneration")}
                 >
                   <X size={12} />
                 </button>
@@ -121,23 +123,23 @@ export function ChatImageGenerationStrip({
                 <div className="min-w-0 flex-1">
                   <span
                     className="text-destructive-foreground truncate block max-w-[120px]"
-                    title={job.error ?? "Generation failed"}
+                    title={job.error ?? t("generationFailed")}
                   >
-                    {job.error ?? "Generation failed"}
+                    {job.error ?? t("generationFailed")}
                   </span>
                 </div>
                 <button
                   onClick={() => handleRetry(job)}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
-                  aria-label="Retry generation"
-                  title="Retry"
+                  aria-label={t("retryGeneration")}
+                  title={t("retry")}
                 >
                   <RotateCcw size={12} />
                 </button>
                 <button
                   onClick={() => handleDismiss(job.id)}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
-                  aria-label="Dismiss"
+                  aria-label={t("dismiss")}
                 >
                   <X size={12} />
                 </button>
@@ -157,13 +159,13 @@ export function ChatImageGenerationStrip({
                 )}
                 <div className="min-w-0 flex-1">
                   <span className="truncate block max-w-[120px]">
-                    {job.result?.fileName ?? "Generated image"}
+                    {job.result?.fileName ?? t("generatedImage")}
                   </span>
                 </div>
                 <button
                   onClick={() => handleDismiss(job.id)}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
-                  aria-label="Dismiss"
+                  aria-label={t("dismiss")}
                 >
                   <X size={12} />
                 </button>
@@ -174,8 +176,8 @@ export function ChatImageGenerationStrip({
         <button
           onClick={onGenerateImage}
           className="group flex items-center justify-center w-12 h-12 shrink-0 cursor-pointer"
-          aria-label="Generate another image"
-          title="Generate another image"
+          aria-label={t("generateAnotherImage")}
+          title={t("generateAnotherImage")}
         >
           <Plus
             size={18}

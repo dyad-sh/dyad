@@ -16,6 +16,7 @@ import {
   DyadDescription,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadGenerateTestProps {
   children?: ReactNode;
@@ -30,6 +31,7 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
   path: pathProp,
   description: descriptionProp,
 }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -61,7 +63,7 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
     >
       <DyadCardHeader icon={<FlaskConical size={15} />} accentColor="teal">
         <div className="min-w-0 truncate flex items-center gap-2">
-          <DyadBadge color="teal">TEST</DyadBadge>
+          <DyadBadge color="teal">{t("test")}</DyadBadge>
           <div className="min-w-0 truncate">
             {fileName && (
               <span className="font-medium text-sm text-foreground truncate block">
@@ -76,10 +78,10 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
           </div>
         </div>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Writing test..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("writing")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
         )}
         <div className="ml-auto flex items-center gap-1">
           {/* Hide the deep-link when the write didn't finish — an aborted tag
@@ -89,10 +91,10 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
             <button
               onClick={openTestsPanel}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors cursor-pointer"
-              aria-label="View in Tests panel"
+              aria-label={t("viewInTestsPanel")}
             >
               <ExternalLink size={14} />
-              View in Tests
+              {t("viewInTests")}
             </button>
           )}
           <DyadExpandIcon isExpanded={isContentVisible} />
@@ -101,7 +103,7 @@ export const DyadGenerateTest: React.FC<DyadGenerateTestProps> = ({
       {description && (
         <DyadDescription>
           <span className={!isContentVisible ? "line-clamp-2" : undefined}>
-            <span className="font-medium">Test: </span>
+            <span className="font-medium">{t("test")}: </span>
             {description}
           </span>
         </DyadDescription>

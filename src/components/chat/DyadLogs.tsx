@@ -12,6 +12,7 @@ import {
   DyadStateIndicator,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadLogsProps {
   children?: ReactNode;
@@ -19,6 +20,7 @@ interface DyadLogsProps {
 }
 
 export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   const state = node?.properties?.state as CustomTagState;
@@ -31,11 +33,18 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
   const logType = node?.properties?.type || "all";
   const logLevel = node?.properties?.level || "all";
   const filters: string[] = [];
-  if (logType !== "all") filters.push(`type: ${logType}`);
-  if (logLevel !== "all") filters.push(`level: ${logLevel}`);
+  if (logType !== "all") {
+    filters.push(t("logFilterType", { value: logType }));
+  }
+  if (logLevel !== "all") {
+    filters.push(t("logFilterLevel", { value: logLevel }));
+  }
   const filterDesc = filters.length > 0 ? ` (${filters.join(", ")})` : "";
 
-  const displayText = `Reading ${hasResults ? `${logCount} ` : ""}logs${filterDesc}`;
+  const displayText = t("readingLogs", {
+    count: hasResults ? `${logCount} ` : "",
+    filters: filterDesc,
+  });
 
   return (
     <DyadCard
@@ -45,15 +54,15 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <DyadCardHeader icon={<FileText size={15} />} accentColor="slate">
-        <DyadBadge color="slate">LOGS</DyadBadge>
+        <DyadBadge color="slate">{t("logs")}</DyadBadge>
         <span className="font-medium text-sm text-foreground truncate">
           {displayText}
         </span>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Reading..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("reading")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />

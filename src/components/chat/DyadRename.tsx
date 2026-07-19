@@ -9,6 +9,7 @@ import {
   DyadDescription,
 } from "./DyadCardPrimitives";
 import { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
 
 interface DyadRenameProps {
   children?: ReactNode;
@@ -23,6 +24,7 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
   from: fromProp,
   to: toProp,
 }) => {
+  const { t } = useTranslation("chat");
   const from = fromProp || node?.properties?.from || "";
   const to = toProp || node?.properties?.to || "";
   const state = node?.properties?.state as CustomTagState;
@@ -43,10 +45,10 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
             {displayTitle}
           </span>
         )}
-        <DyadBadge color="amber">Rename</DyadBadge>
+        <DyadBadge color="amber">{t("rename")}</DyadBadge>
       </DyadCardHeader>
-      {from && <DyadFilePath path={`From: ${from}`} />}
-      {to && <DyadFilePath path={`To: ${to}`} />}
+      {from && <DyadFilePath path={`${t("from")}: ${from}`} />}
+      {to && <DyadFilePath path={`${t("to")}: ${to}`} />}
       {children && <DyadDescription>{children}</DyadDescription>}
     </DyadCard>
   );

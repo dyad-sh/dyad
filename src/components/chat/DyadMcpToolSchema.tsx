@@ -10,6 +10,7 @@ import {
   DyadStateIndicator,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadMcpToolSchemaProps {
   children?: ReactNode;
@@ -23,6 +24,7 @@ export const DyadMcpToolSchema: React.FC<DyadMcpToolSchemaProps> = ({
   children,
   node,
 }) => {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(false);
   const tools = node?.properties?.tools || "";
   const state = node?.properties?.state as CustomTagState;
@@ -37,7 +39,7 @@ export const DyadMcpToolSchema: React.FC<DyadMcpToolSchemaProps> = ({
       isExpanded={isExpanded}
     >
       <DyadCardHeader icon={<ScrollText size={15} />} accentColor="indigo">
-        <DyadBadge color="indigo">MCP Tool Schema</DyadBadge>
+        <DyadBadge color="indigo">{t("mcpToolSchema")}</DyadBadge>
         {!isExpanded && tools && (
           <span className="text-sm text-muted-foreground italic truncate min-w-0">
             {tools}
@@ -46,7 +48,7 @@ export const DyadMcpToolSchema: React.FC<DyadMcpToolSchemaProps> = ({
         {inProgress && (
           <DyadStateIndicator
             state="pending"
-            pendingLabel="Loading schema..."
+            pendingLabel={t("loading")}
           />
         )}
         <div className="ml-auto">
@@ -58,7 +60,7 @@ export const DyadMcpToolSchema: React.FC<DyadMcpToolSchemaProps> = ({
           {tools && (
             <div>
               <span className="text-xs font-medium text-muted-foreground">
-                Tools:
+                {t("mcpTools")}:
               </span>
               <div className="italic mt-0.5 text-foreground">{tools}</div>
             </div>
@@ -66,7 +68,7 @@ export const DyadMcpToolSchema: React.FC<DyadMcpToolSchemaProps> = ({
           {children && (
             <div>
               <span className="text-xs font-medium text-muted-foreground">
-                Signatures:
+                {t("signatures")}:
               </span>
               <pre className="mt-0.5 whitespace-pre-wrap font-mono text-xs text-foreground overflow-x-auto">
                 {resultText || children}

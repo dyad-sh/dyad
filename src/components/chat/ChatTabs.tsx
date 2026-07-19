@@ -804,7 +804,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         })
                       : t("reopenClosedTab")}
                     <ContextMenuShortcut title={t("reopenClosedTabTooltip")}>
-                      {isMac ? "⇧⌘T" : "Ctrl+⇧+T"}
+                      {isMac ? t("shortcutMac") : t("shortcutWindows")}
                     </ContextMenuShortcut>
                   </ContextMenuItem>
                 </ContextMenuContent>

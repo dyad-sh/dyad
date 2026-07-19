@@ -12,6 +12,7 @@ import {
   DyadExpandIcon,
   DyadStateIndicator,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadExploreCodeProps {
   children?: ReactNode;
@@ -33,6 +34,7 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
   children,
   node,
 }) => {
+  const { t } = useTranslation("chat");
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isContentVisible, setIsContentVisible] = useState(inProgress);
@@ -54,11 +56,17 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
 
   const resultSummary =
     files || symbols
-      ? `${files || "0"} file${files === "1" ? "" : "s"}, ${symbols || "0"} symbol${symbols === "1" ? "" : "s"}`
+      ? t("exploreSummary", {
+          files: files || "0",
+          symbols: symbols || "0",
+        })
       : "";
   const timing =
     indexMs || searchMs
-      ? `${indexMs || "0"}ms index, ${searchMs || "0"}ms search`
+      ? t("searchTiming", {
+          index: indexMs || "0",
+          search: searchMs || "0",
+        })
       : "";
 
   return (
@@ -70,15 +78,15 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
       data-testid="dyad-explore-code"
     >
       <DyadCardHeader icon={<ScanSearch size={15} />} accentColor="teal">
-        <DyadBadge color="teal">CODE</DyadBadge>
+        <DyadBadge color="teal">{t("code")}</DyadBadge>
         {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         <span className="font-medium text-sm text-foreground truncate">
-          {query ? `"${query}"` : "Explore code"}
+          {query ? `"${query}"` : t("exploreCode")}
         </span>
         {resultSummary && (
           <span className="text-xs text-muted-foreground shrink-0">
             ({resultSummary}
-            {truncated ? ", truncated" : ""})
+            {truncated ? `, ${t("truncated")}` : ""})
           </span>
         )}
         {timing && (
@@ -87,12 +95,12 @@ export const DyadExploreCode: React.FC<DyadExploreCodeProps> = ({
           </span>
         )}
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Exploring..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("exploring")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
         )}
-        {errored && <DyadStateIndicator state="error" errorLabel="Failed" />}
+        {errored && <DyadStateIndicator state="error" errorLabel={t("failed")} />}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>

@@ -10,6 +10,7 @@ import {
   DyadStateIndicator,
 } from "./DyadCardPrimitives";
 import { CustomTagState } from "./stateTypes";
+import { useTranslation } from "react-i18next";
 
 interface DyadCopyProps {
   children?: ReactNode;
@@ -17,6 +18,7 @@ interface DyadCopyProps {
 }
 
 export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
+  const { t } = useTranslation("chat");
   const from = node?.properties?.from || "";
   const to = node?.properties?.to || "";
   const description = node?.properties?.description || "";
@@ -36,21 +38,23 @@ export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
             {toFileName}
           </span>
         )}
-        <DyadBadge color="teal">Copy</DyadBadge>
+        <DyadBadge color="teal">{t("copy")}</DyadBadge>
         <span className="ml-auto">
           {state === "pending" && (
-            <DyadStateIndicator state="pending" pendingLabel="Copying..." />
+            <DyadStateIndicator state="pending" pendingLabel={t("copying")} />
           )}
           {state === "aborted" && (
-            <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+            <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
           )}
           {state === "finished" && (
-            <DyadStateIndicator state="finished" finishedLabel="Copied" />
+            <DyadStateIndicator state="finished" finishedLabel={t("copied")} />
           )}
         </span>
       </DyadCardHeader>
-      {from && !isTempAttachment && <DyadFilePath path={`From: ${from}`} />}
-      {to && <DyadFilePath path={`To: ${to}`} />}
+      {from && !isTempAttachment && (
+        <DyadFilePath path={`${t("from")}: ${from}`} />
+      )}
+      {to && <DyadFilePath path={`${t("to")}: ${to}`} />}
       {description && <DyadDescription>{description}</DyadDescription>}
       {children && <DyadDescription>{children}</DyadDescription>}
     </DyadCard>

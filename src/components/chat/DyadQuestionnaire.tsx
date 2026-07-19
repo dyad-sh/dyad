@@ -9,6 +9,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { unescapeXmlAttr, unescapeXmlContent } from "../../../shared/xmlEscape";
+import { useTranslation } from "react-i18next";
 
 interface QAEntry {
   question: string;
@@ -34,22 +35,23 @@ function parseQAEntries(content: string): QAEntry[] {
   return entries;
 }
 
-const TYPE_META: Record<string, { icon: React.ReactNode; label: string }> = {
+const TYPE_META: Record<string, { icon: React.ReactNode; key: "freeText" | "singleChoice" | "multipleChoice" }> = {
   text: {
     icon: <MessageSquareText size={12} />,
-    label: "Free text",
+    key: "freeText",
   },
   radio: {
     icon: <CircleDot size={12} />,
-    label: "Single choice",
+    key: "singleChoice",
   },
   checkbox: {
     icon: <ListChecks size={12} />,
-    label: "Multiple choice",
+    key: "multipleChoice",
   },
 };
 
 export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
+  const { t } = useTranslation("chat");
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const entries = useMemo(
@@ -71,10 +73,10 @@ export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
         <div className="flex items-center gap-2">
           <ClipboardList className="text-primary" size={20} />
           <span className="font-semibold text-foreground">
-            Questionnaire Responses
+            {t("questionnaireResponses")}
           </span>
           <span className="flex items-center text-xs text-primary px-2 py-0.5 bg-primary/10 rounded-md font-medium">
-            {entries.length} answered
+            {entries.length} {t("answered")}
           </span>
         </div>
         <CheckCircle2 className="size-4 text-green-600 dark:text-green-500 shrink-0" />
@@ -89,7 +91,7 @@ export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
               {meta && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   {meta.icon}
-                  {meta.label}
+                  {t(meta.key)}
                 </span>
               )}
             </div>
@@ -103,7 +105,7 @@ export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
           {/* Answer */}
           <div className="px-3.5 pt-2.5 pb-3">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1">
-              Answer
+              {t("answer")}
             </p>
             <p className="text-sm text-foreground/90 leading-relaxed">
               {current.answer}
@@ -125,7 +127,7 @@ export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
                       ? "w-5 h-1.5 bg-primary"
                       : "w-1.5 h-1.5 bg-primary/25 hover:bg-primary/40"
                   }`}
-                  aria-label={`Go to question ${i + 1}`}
+                  aria-label={t("goToQuestion", { number: i + 1 })}
                 />
               ))}
             </div>
@@ -136,7 +138,7 @@ export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
                 onClick={() => setCurrentIndex((i) => i - 1)}
                 disabled={!hasPrev}
                 className="p-1 rounded-md hover:bg-primary/10 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
-                aria-label="Previous question"
+                aria-label={t("previousQuestion")}
               >
                 <ChevronLeft size={16} className="text-muted-foreground" />
               </button>
@@ -147,7 +149,7 @@ export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
                 onClick={() => setCurrentIndex((i) => i + 1)}
                 disabled={!hasNext}
                 className="p-1 rounded-md hover:bg-primary/10 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
-                aria-label="Next question"
+                aria-label={t("nextQuestion")}
               >
                 <ChevronRight size={16} className="text-muted-foreground" />
               </button>

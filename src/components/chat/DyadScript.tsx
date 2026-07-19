@@ -11,6 +11,7 @@ import {
   DyadCardHeader,
   DyadExpandIcon,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadScriptProps {
   node?: any;
@@ -23,7 +24,8 @@ interface ScriptPayload {
 }
 
 export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
-  const description: string = node?.properties?.description || "Ran a script";
+  const { t } = useTranslation("chat");
+  const description: string = node?.properties?.description || t("ranScript");
   const truncated = node?.properties?.truncated === "true";
   const executionMs: string = node?.properties?.executionMs || "";
   const fullOutputPath: string = node?.properties?.fullOutputPath || "";
@@ -47,16 +49,16 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
       data-testid="dyad-script-card"
     >
       <DyadCardHeader icon={<ScrollText size={15} />} accentColor="amber">
-        <DyadBadge color="amber">Script</DyadBadge>
+        <DyadBadge color="amber">{t("script")}</DyadBadge>
         <span className="text-sm text-foreground truncate">{description}</span>
         {executionMs && (
           <span className="text-xs text-muted-foreground shrink-0">
-            {executionMs}ms
+            {t("executionTime", { milliseconds: executionMs })}
           </span>
         )}
         {truncated && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-200 dark:ring-amber-800 shrink-0">
-            Truncated
+            {t("truncatedCapitalized")}
           </span>
         )}
         <div className="ml-auto">
@@ -76,11 +78,11 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
               <TabsList className="h-8 p-0.5">
                 {payload.script && (
                   <TabsTrigger value="script" className="h-7 px-2.5 text-xs">
-                    Script
+                    {t("script")}
                   </TabsTrigger>
                 )}
                 <TabsTrigger value="output" className="h-7 px-2.5 text-xs">
-                  Output
+                  {t("output")}
                 </TabsTrigger>
               </TabsList>
               {fullOutputPath && (
@@ -95,7 +97,7 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
                   }}
                 >
                   <FolderOpen className="size-3.5 mr-1.5" />
-                  Open full output
+                  {t("openFullOutput")}
                 </Button>
               )}
             </div>
@@ -106,8 +108,7 @@ export const DyadScript: React.FC<DyadScriptProps> = ({ node, children }) => {
                 </CodeHighlight>
               ) : (
                 <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
-                  Script produced no output. The model may try a different
-                  approach.
+                  {t("scriptNoOutput")}
                 </div>
               )}
             </TabsContent>

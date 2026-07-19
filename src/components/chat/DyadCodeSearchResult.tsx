@@ -7,6 +7,7 @@ import {
   DyadExpandIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadCodeSearchResultProps {
   node?: any;
@@ -16,6 +17,7 @@ interface DyadCodeSearchResultProps {
 export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
   children,
 }) => {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(false);
 
   const files = useMemo(() => {
@@ -47,10 +49,12 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
       onClick={() => setIsExpanded(!isExpanded)}
     >
       <DyadCardHeader icon={<FileCode size={15} />} accentColor="indigo">
-        <DyadBadge color="indigo">Code Search Result</DyadBadge>
+        <DyadBadge color="indigo">{t("codeSearchResult")}</DyadBadge>
         {files.length > 0 && (
           <span className="text-xs text-muted-foreground">
-            Found {files.length} file{files.length !== 1 ? "s" : ""}
+            {t(files.length === 1 ? "foundFiles_one" : "foundFiles_other", {
+              count: files.length,
+            })}
           </span>
         )}
         <div className="ml-auto">

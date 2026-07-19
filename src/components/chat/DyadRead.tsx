@@ -2,6 +2,7 @@ import type React from "react";
 import type { ReactNode } from "react";
 import { FileText } from "lucide-react";
 import { DyadBadge } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadReadProps {
   children?: ReactNode;
@@ -18,6 +19,7 @@ export const DyadRead: React.FC<DyadReadProps> = ({
   startLine: startLineProp,
   endLine: endLineProp,
 }) => {
+  const { t } = useTranslation("chat");
   const path = pathProp || node?.properties?.path || "";
   const startLine = startLineProp || node?.properties?.startLine || "";
   const endLine = endLineProp || node?.properties?.endLine || "";
@@ -44,7 +46,9 @@ export const DyadRead: React.FC<DyadReadProps> = ({
     <div className="my-1">
       <div className="flex items-center gap-1 py-1">
         <FileText size={14} className="shrink-0 text-muted-foreground/50" />
-        <span className="text-[13px] font-medium text-foreground/70">Read</span>
+        <span className="text-[13px] font-medium text-foreground/70">
+          {t("read")}
+        </span>
         {appName && <DyadBadge color="sky">{appName}</DyadBadge>}
         {path && (
           <span

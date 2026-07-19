@@ -11,6 +11,7 @@ import {
   DyadExpandIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadOutputProps {
   type: "error" | "warning";
@@ -23,6 +24,7 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
   message,
   children,
 }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
@@ -35,7 +37,7 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
   const isError = type !== "warning";
   const accentColor = isError ? "red" : "amber";
   const icon = isError ? <XCircle size={15} /> : <AlertTriangle size={15} />;
-  const label = isError ? "Error" : "Warning";
+  const label = isError ? t("error") : t("warning");
 
   const handleAIFix = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -86,7 +88,7 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
               className="cursor-pointer flex items-center justify-center bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white rounded-md text-xs px-2.5 py-1 h-6 transition-colors"
             >
               <Sparkles size={13} className="mr-1" />
-              <span>Fix with AI</span>
+              <span>{t("fixWithAi")}</span>
             </button>
           )}
         </div>

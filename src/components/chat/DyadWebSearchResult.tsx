@@ -10,6 +10,7 @@ import {
   DyadStateIndicator,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadWebSearchResultProps {
   node?: any;
@@ -20,6 +21,7 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
   children,
   node,
 }) => {
+  const { t } = useTranslation("chat");
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
@@ -38,9 +40,9 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
       isExpanded={isExpanded}
     >
       <DyadCardHeader icon={<Globe size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Web Search Result</DyadBadge>
+        <DyadBadge color="blue">{t("webSearchResult")}</DyadBadge>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Loading..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("loading")} />
         )}
         <div className="ml-auto">
           <DyadExpandIcon isExpanded={isExpanded} />

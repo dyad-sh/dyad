@@ -15,6 +15,7 @@ import {
   DyadDescription,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { useTranslation } from "react-i18next";
 
 interface DyadWriteProps {
   children?: ReactNode;
@@ -29,6 +30,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   path: pathProp,
   description: descriptionProp,
 }) => {
+  const { t } = useTranslation("chat");
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   const path = pathProp || node?.properties?.path || "";
@@ -72,10 +74,10 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           )}
         </div>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Writing..." />
+          <DyadStateIndicator state="pending" pendingLabel={t("writing")} />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <DyadStateIndicator state="aborted" abortedLabel={t("didNotFinish")} />
         )}
         <div className="ml-auto flex items-center gap-1">
           {!inProgress && (
@@ -89,7 +91,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors cursor-pointer"
                 >
                   <X size={14} />
-                  Cancel
+                  {t("cancel")}
                 </button>
               ) : (
                 <button
@@ -100,7 +102,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors cursor-pointer"
                 >
                   <Edit size={14} />
-                  Edit
+                  {t("edit")}
                 </button>
               )}
             </>
@@ -111,7 +113,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
       {description && (
         <DyadDescription>
           <span className={!isContentVisible ? "line-clamp-2" : undefined}>
-            <span className="font-medium">Summary: </span>
+            <span className="font-medium">{t("summary")} </span>
             {description}
           </span>
         </DyadDescription>

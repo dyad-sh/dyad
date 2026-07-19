@@ -100,7 +100,8 @@ export function ForceCloseDialog() {
                             {t("home:memory")}
                           </span>
                           <span className="font-mono">
-                            {performanceData.memoryUsageMB} MB
+                            {performanceData.memoryUsageMB}{" "}
+                            {t("common:megabytes")}
                           </span>
                         </div>
                         {performanceData.cpuUsagePercent !== undefined && (
@@ -133,7 +134,8 @@ export function ForceCloseDialog() {
                                 </span>
                                 <span className="font-mono">
                                   {performanceData.systemMemoryUsageMB} /{" "}
-                                  {performanceData.systemMemoryTotalMB} MB
+                                  {performanceData.systemMemoryTotalMB}{" "}
+                                  {t("common:megabytes")}
                                 </span>
                               </div>
                             )}

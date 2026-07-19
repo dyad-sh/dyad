@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { X, Copy, Check, ExternalLink } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ export function CustomErrorToast({
   onCopy,
   action,
 }: CustomErrorToastProps) {
+  const { t } = useTranslation("common");
   const handleClose = () => {
     toast.dismiss(toastId);
   };
@@ -47,7 +49,9 @@ export function CustomErrorToast({
                   <X className="w-3 h-3 text-white" />
                 </div>
               </div>
-              <h3 className="ml-3 text-sm font-medium text-red-900">Error</h3>
+              <h3 className="ml-3 text-sm font-medium text-red-900">
+                {t("error")}
+              </h3>
 
               {/* Action buttons */}
               <div className="flex items-center space-x-1.5 ml-auto">
@@ -67,7 +71,7 @@ export function CustomErrorToast({
                       )}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>Copy to clipboard</TooltipContent>
+                  <TooltipContent>{t("copyToClipboard")}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger>
@@ -81,7 +85,7 @@ export function CustomErrorToast({
                       <X className="w-4 h-4" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent>Close</TooltipContent>
+                  <TooltipContent>{t("close")}</TooltipContent>
                 </Tooltip>
               </div>
             </div>

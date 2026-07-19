@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ interface Message {
 }
 
 export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
+  const { t } = useTranslation(["home", "common"]);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -163,18 +165,19 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Dyad Help Bot</DialogTitle>
+          <DialogTitle>{t("home:help.helpBotTitle")}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-3 h-[480px]">
           {error && (
             <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
               <div className="flex items-start gap-2">
                 <div className="text-destructive text-sm font-medium">
-                  Error:
+                  {t("common:error")}:
                 </div>
                 <div className="text-destructive text-sm flex-1">{error}</div>
                 <button
                   onClick={() => setError(null)}
+                  aria-label={t("common:close")}
                   className="text-destructive hover:text-destructive/80 text-xs"
                 >
                   ✕
@@ -186,11 +189,10 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
             {messages.length === 0 ? (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">
-                  Ask a question about using Dyad.
+                  {t("home:help.askQuestion")}
                 </div>
                 <div className="text-xs text-muted-foreground/70 bg-muted/50 rounded-md p-3">
-                  This conversation may be logged and used to improve the
-                  product. Please do not put any sensitive information in here.
+                  {t("home:help.conversationLogged")}
                 </div>
               </div>
             ) : (
@@ -228,7 +230,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
               className="flex-1 h-10 rounded-md border bg-background px-3 text-sm"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question..."
+              placeholder={t("home:help.typeQuestion")}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -237,7 +239,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
               }}
             />
             <Button onClick={handleSend} disabled={streaming || !input.trim()}>
-              {streaming ? "Sending..." : "Send"}
+              {streaming ? t("home:help.sending") : t("home:help.send")}
             </Button>
           </div>
         </div>

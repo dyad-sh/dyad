@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
@@ -33,6 +34,7 @@ interface CapacitorControlsProps {
 type CapacitorStatus = "idle" | "syncing" | "opening";
 
 export function CapacitorControls({ appId }: CapacitorControlsProps) {
+  const { t } = useTranslation("common");
   const [errorDialogOpen, setErrorDialogOpen] = useState(false);
   const [errorDetails, setErrorDetails] = useState<{
     title: string;
@@ -66,11 +68,11 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
     },
     onSuccess: () => {
       setIosStatus("idle");
-      showSuccess("Synced and opened iOS project in Xcode");
+      showSuccess(t("common:capacitor.syncedIos"));
     },
     onError: (error) => {
       setIosStatus("idle");
-      showErrorDialog("Failed to sync and open iOS project", error);
+      showErrorDialog(t("common:capacitor.syncFailedIos"), error);
     },
   });
 
@@ -86,11 +88,11 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
     },
     onSuccess: () => {
       setAndroidStatus("idle");
-      showSuccess("Synced and opened Android project in Android Studio");
+      showSuccess(t("common:capacitor.syncedAndroid"));
     },
     onError: (error) => {
       setAndroidStatus("idle");
-      showErrorDialog("Failed to sync and open Android project", error);
+      showErrorDialog(t("common:capacitor.syncFailedAndroid"), error);
     },
   });
 
@@ -98,22 +100,40 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
   const getIosButtonText = () => {
     switch (iosStatus) {
       case "syncing":
-        return { main: "Syncing...", sub: "Building app" };
+        return {
+          main: t("common:capacitor.syncing"),
+          sub: t("common:capacitor.buildingApp"),
+        };
       case "opening":
-        return { main: "Opening...", sub: "Launching Xcode" };
+        return {
+          main: t("common:capacitor.opening"),
+          sub: t("common:capacitor.launchingXcode"),
+        };
       default:
-        return { main: "Sync & Open iOS", sub: "Xcode" };
+        return {
+          main: t("common:capacitor.syncOpenIos"),
+          sub: "Xcode",
+        };
     }
   };
 
   const getAndroidButtonText = () => {
     switch (androidStatus) {
       case "syncing":
-        return { main: "Syncing...", sub: "Building app" };
+        return {
+          main: t("common:capacitor.syncing"),
+          sub: t("common:capacitor.buildingApp"),
+        };
       case "opening":
-        return { main: "Opening...", sub: "Launching Android Studio" };
+        return {
+          main: t("common:capacitor.opening"),
+          sub: t("common:capacitor.launchingAndroidStudio"),
+        };
       default:
-        return { main: "Sync & Open Android", sub: "Android Studio" };
+        return {
+          main: t("common:capacitor.syncOpenAndroid"),
+          sub: "Android Studio",
+        };
     }
   };
 
@@ -130,7 +150,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
       <Card className="mt-1" data-testid="capacitor-controls">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            Mobile Development
+            {t("common:capacitor.title")}
             <Button
               variant="ghost"
               size="sm"
@@ -142,13 +162,11 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               }}
               className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-1"
             >
-              Need help?
+              {t("common:capacitor.needHelp")}
               <ExternalLink className="h-3 w-3" />
             </Button>
           </CardTitle>
-          <CardDescription>
-            Sync and open your Capacitor mobile projects
-          </CardDescription>
+          <CardDescription>{t("common:capacitor.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-2">
@@ -203,8 +221,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               {errorDetails?.title}
             </DialogTitle>
             <DialogDescription>
-              An error occurred while running the Capacitor command. See details
-              below:
+              {t("common:capacitor.commandError")}
             </DialogDescription>
           </DialogHeader>
 
@@ -218,7 +235,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               <Button
                 onClick={() => {
                   navigator.clipboard.writeText(errorDetails.message);
-                  showSuccess("Error details copied to clipboard");
+                  showSuccess(t("common:capacitor.errorDetailsCopied"));
                 }}
                 variant="ghost"
                 size="sm"
@@ -234,7 +251,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               onClick={() => {
                 if (errorDetails) {
                   navigator.clipboard.writeText(errorDetails.message);
-                  showSuccess("Error details copied to clipboard");
+                  showSuccess(t("common:capacitor.errorDetailsCopied"));
                 }
               }}
               variant="outline"
@@ -242,14 +259,14 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               className="flex items-center gap-2"
             >
               <Copy className="h-4 w-4" />
-              Copy Error
+              {t("common:capacitor.copyError")}
             </Button>
             <Button
               onClick={() => setErrorDialogOpen(false)}
               variant="outline"
               size="sm"
             >
-              Close
+              {t("common:close")}
             </Button>
           </div>
         </DialogContent>

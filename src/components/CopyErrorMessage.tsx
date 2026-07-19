@@ -1,5 +1,6 @@
 import { Copy, Check } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipTrigger,
@@ -15,6 +16,7 @@ export const CopyErrorMessage = ({
   errorMessage,
   className = "",
 }: CopyErrorMessageProps) => {
+  const { t } = useTranslation("common");
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
@@ -45,17 +47,17 @@ export const CopyErrorMessage = ({
         {isCopied ? (
           <>
             <Check size={14} />
-            <span>Copied</span>
+            <span>{t("copied")}</span>
           </>
         ) : (
           <>
             <Copy size={14} />
-            <span>Copy</span>
+            <span>{t("copy")}</span>
           </>
         )}
       </TooltipTrigger>
       <TooltipContent>
-        {isCopied ? "Copied!" : "Copy error message"}
+        {isCopied ? t("copied") : t("copyErrorMessage")}
       </TooltipContent>
     </Tooltip>
   );

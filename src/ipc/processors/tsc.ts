@@ -1,31 +1,32 @@
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { utilityProcess } from "electron";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { ProblemReport } from "@/ipc/types";
+import type { Problem, ProblemReport } from "@/ipc/types";
 import log from "electron-log";
-import {
-  TscWorkerErrorKind,
-  WorkerInput,
-  WorkerOutput,
-} from "../../../shared/tsc_types";
-
-import {
-  getDyadDeleteTags,
-  getDyadRenameTags,
-  getDyadWriteTags,
-} from "../utils/dyad_tag_parser";
 import { getTypeScriptCachePath } from "@/paths/paths";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
+import { prependPathSegment } from "@/ipc/utils/managed_tools";
+import {
+  BufferedProcessSpawnError,
+  runBufferedProcess,
+  type BufferedProcessResult,
+} from "@/ipc/utils/buffered_process";
 import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
 
 const logger = log.scope("tsc");
 
+export type TypeCheckPreconditionKind =
+  | "typescript-not-found"
+  | "tsconfig-not-found";
+
 export class TypeCheckPreconditionError extends DyadError {
-  readonly typeCheckKind: TscWorkerErrorKind;
+  readonly typeCheckKind: TypeCheckPreconditionKind;
 
   constructor(
-    typeCheckKind: TscWorkerErrorKind,
+    typeCheckKind: TypeCheckPreconditionKind,
     message: string,
     options?: { cause?: unknown },
   ) {
@@ -37,10 +38,11 @@ export class TypeCheckPreconditionError extends DyadError {
 
 function getStringMatchedTypeCheckPreconditionKind(
   message: string,
-): TscWorkerErrorKind | undefined {
+): TypeCheckPreconditionKind | undefined {
   if (
     message.startsWith("Failed to load TypeScript from") ||
-    message.includes("Cannot find module 'typescript'")
+    message.includes("Cannot find module 'typescript'") ||
+    message.startsWith("No local TypeScript CLI found")
   ) {
     return "typescript-not-found";
   }
@@ -54,7 +56,7 @@ function getStringMatchedTypeCheckPreconditionKind(
 
 export function getTypeCheckPreconditionKind(
   error: unknown,
-): TscWorkerErrorKind | undefined {
+): TypeCheckPreconditionKind | undefined {
   if (error instanceof TypeCheckPreconditionError) {
     return error.typeCheckKind;
   }
@@ -89,7 +91,7 @@ export async function getTypeCheckPreconditionGuidance({
   appPath,
   includeAgentInstructions,
 }: {
-  kind: TscWorkerErrorKind;
+  kind: TypeCheckPreconditionKind;
   appPath: string;
   includeAgentInstructions?: boolean;
 }): Promise<string> {
@@ -109,19 +111,14 @@ export async function getTypeCheckPreconditionGuidance({
 
   return includeAgentInstructions
     ? 'Type checking is unavailable: this project does not use TypeScript (no `typescript` entry in package.json). Do not call `run_type_checks` again in this conversation. Verify your changes by reading the files instead. At the end of your reply, recommend that the user add TypeScript to the project so you can automatically catch and fix type errors, and include `<dyad-command type="add-typescript"></dyad-command>` so they can accept with one click.'
-    : "Type checking is unavailable: this project does not use TypeScript (no `typescript` entry in package.json). Add TypeScript to enable automatic type checking.";
+    : "Type checking is unavailable: this project does not use TypeScript (no `typescript` entry in package.json). Add TypeScript to enable type checking.";
 }
 
-/**
- * Map expected type-check setup failures to DyadError so they are not sent to
- * PostHog as `$exception` events (missing deps, no tsconfig, etc.).
- */
 export function toProblemReportError(
   error: unknown,
-  errorKind?: TscWorkerErrorKind,
+  errorKind?: TypeCheckPreconditionKind,
 ): Error {
   if (error instanceof DyadError) {
-    // Already classified; keep the original kind rather than re-wrapping.
     return error;
   }
 
@@ -139,180 +136,394 @@ export function toProblemReportError(
   return error instanceof Error ? error : new Error(message);
 }
 
-const TSC_WORKER_TIMEOUT_MS = 5 * 60 * 1000;
+const TSC_TIMEOUT_MS = 5 * 60 * 1000;
+const TSC_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const CONFIG_NAMES = ["tsconfig.app.json", "tsconfig.json"] as const;
+const versionCache = new Map<string, string>();
 
-export async function generateProblemReport({
-  fullResponse,
-  appPath,
-}: {
-  fullResponse: string;
-  appPath: string;
-}): Promise<ProblemReport> {
-  return typescriptUtilityProcessScheduler.runExclusive("tsc", () =>
-    runProblemReportWorker({ fullResponse, appPath }),
+interface ParsedDiagnostic extends Problem {
+  absoluteFilePath: string;
+}
+
+interface ParsedDiagnostics {
+  problems: ParsedDiagnostic[];
+  skippedLines: string[];
+}
+
+interface TypeScriptCli {
+  entryPath: string;
+}
+
+function normalizePath(filePath: string): string {
+  return filePath.replaceAll("\\", "/");
+}
+
+function isWindowsPath(filePath: string): boolean {
+  return /^(?:[A-Za-z]:[\\/]|\\\\)/.test(filePath);
+}
+
+function getPathApi(filePath: string): typeof path.posix | typeof path.win32 {
+  return isWindowsPath(filePath) ? path.win32 : path.posix;
+}
+
+function isPathInside(rootPath: string, candidatePath: string): boolean {
+  const pathApi = getPathApi(rootPath);
+  const relative = pathApi.relative(rootPath, candidatePath);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${pathApi.sep}`) &&
+      relative !== ".." &&
+      !pathApi.isAbsolute(relative))
   );
 }
 
-function runProblemReportWorker({
-  fullResponse,
+function parseTypeScriptDiagnosticsDetailed(
+  output: string,
+  appPath: string,
+  configPath?: string,
+): ParsedDiagnostics {
+  const problems: ParsedDiagnostic[] = [];
+  const skippedLines: string[] = [];
+  let current: ParsedDiagnostic | undefined;
+
+  for (const rawLine of output.replaceAll("\r\n", "\n").split("\n")) {
+    if (!rawLine.trim()) {
+      continue;
+    }
+
+    const match = rawLine.match(/^(.*)\((\d+),(\d+)\): error TS(\d+):\s*(.*)$/);
+    if (match) {
+      const reportedPath = match[1];
+      const pathApi = getPathApi(
+        isWindowsPath(reportedPath) ? reportedPath : appPath,
+      );
+      const absoluteFilePath = pathApi.isAbsolute(reportedPath)
+        ? pathApi.normalize(reportedPath)
+        : pathApi.resolve(appPath, reportedPath);
+      const relativePath = isPathInside(appPath, absoluteFilePath)
+        ? pathApi.relative(appPath, absoluteFilePath)
+        : absoluteFilePath;
+      current = {
+        file: normalizePath(relativePath),
+        line: Number(match[2]),
+        column: Number(match[3]),
+        code: Number(match[4]),
+        message: match[5],
+        snippet: "",
+        absoluteFilePath,
+      };
+      problems.push(current);
+      continue;
+    }
+
+    const globalMatch = rawLine.match(/^error TS(\d+):\s*(.*)$/);
+    if (globalMatch) {
+      const diagnosticPath = configPath ?? path.join(appPath, "tsconfig.json");
+      const pathApi = getPathApi(diagnosticPath);
+      current = {
+        file: normalizePath(pathApi.relative(appPath, diagnosticPath)),
+        line: 1,
+        column: 1,
+        code: Number(globalMatch[1]),
+        message: globalMatch[2],
+        snippet: "",
+        absoluteFilePath: diagnosticPath,
+      };
+      problems.push(current);
+      continue;
+    }
+
+    if (/^\s+/.test(rawLine) && current) {
+      current.message += `\n${rawLine.trimEnd()}`;
+      continue;
+    }
+
+    if (/^(?:Found \d+ errors?|Errors\s+Files\s*$)/.test(rawLine)) {
+      current = undefined;
+      continue;
+    }
+
+    current = undefined;
+    skippedLines.push(rawLine);
+  }
+
+  if (problems.length === 0) {
+    if (skippedLines.length > 0) {
+      throw new Error(
+        `Unrecognized TypeScript diagnostic output: ${skippedLines[0]}`,
+      );
+    }
+    throw new Error("TypeScript exited with no parseable file diagnostics");
+  }
+
+  return { problems, skippedLines };
+}
+
+export function parseTypeScriptDiagnostics(
+  output: string,
+  appPath: string,
+  configPath?: string,
+): ParsedDiagnostic[] {
+  return parseTypeScriptDiagnosticsDetailed(output, appPath, configPath)
+    .problems;
+}
+
+async function addSnippets(
+  problems: ParsedDiagnostic[],
+  appPath: string,
+): Promise<ProblemReport> {
+  const withSnippets = await Promise.all(
+    problems.map(async ({ absoluteFilePath, ...problem }) => {
+      if (!isPathInside(appPath, absoluteFilePath)) {
+        return problem;
+      }
+
+      try {
+        const lines = (await fs.readFile(absoluteFilePath, "utf8")).split(
+          /\r?\n/,
+        );
+        const lineIndex = problem.line - 1;
+        if (lineIndex < 0 || lineIndex >= lines.length) {
+          return problem;
+        }
+        const snippetLines = [];
+        if (lineIndex > 0) {
+          snippetLines.push(lines[lineIndex - 1]);
+        }
+        snippetLines.push(
+          `${lines[lineIndex]} // <-- TypeScript compiler error here`,
+        );
+        if (lineIndex + 1 < lines.length) {
+          snippetLines.push(lines[lineIndex + 1]);
+        }
+        return { ...problem, snippet: snippetLines.join("\n").trim() };
+      } catch {
+        return problem;
+      }
+    }),
+  );
+
+  return { problems: withSnippets };
+}
+
+async function findTypeScriptConfig(appPath: string): Promise<string> {
+  for (const configName of CONFIG_NAMES) {
+    const configPath = path.join(appPath, configName);
+    try {
+      await fs.access(configPath);
+      return configPath;
+    } catch {
+      // Try the next supported config name.
+    }
+  }
+
+  throw new TypeCheckPreconditionError(
+    "tsconfig-not-found",
+    `No TypeScript configuration file found in ${appPath}. Expected one of: ${CONFIG_NAMES.join(", ")}`,
+  );
+}
+
+async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
+  // Resolve through Node's algorithm (walking ancestor node_modules) so
+  // hoisted workspace installs are found, matching the Code Explorer gate.
+  let packageJsonPath: string;
+  try {
+    packageJsonPath = createRequire(path.join(appPath, "package.json")).resolve(
+      "typescript/package.json",
+    );
+  } catch (error) {
+    throw new TypeCheckPreconditionError(
+      "typescript-not-found",
+      `Failed to load TypeScript from ${appPath}: package is not installed`,
+      { cause: error },
+    );
+  }
+
+  const entryPath = path.join(path.dirname(packageJsonPath), "lib", "tsc.js");
+  try {
+    await fs.access(entryPath);
+  } catch (error) {
+    throw new TypeCheckPreconditionError(
+      "typescript-not-found",
+      `No local TypeScript CLI found at ${entryPath}`,
+      { cause: error },
+    );
+  }
+
+  return { entryPath };
+}
+
+function getTypeScriptCommandEnv(appPath: string): NodeJS.ProcessEnv {
+  return prependPathSegment(
+    getPackageManagerCommandEnv(),
+    path.join(appPath, "node_modules", ".bin"),
+  );
+}
+
+async function runCli(
+  cli: TypeScriptCli,
+  appPath: string,
+  args: string[],
+): Promise<BufferedProcessResult> {
+  // Run the TypeScript JS entry point with the user's selected Node runtime,
+  // resolved from PATH like every other app child process (reloadNodePath
+  // keeps the custom/managed/system choice at its front). Not our own binary:
+  // packaged builds disable the RunAsNode fuse. Not the node_modules/.bin
+  // shim either: it needs cmd.exe on Windows, whose argument quoting breaks
+  // for paths containing spaces.
+  return runBufferedProcess({
+    command: "node",
+    args: [cli.entryPath, ...args],
+    cwd: appPath,
+    env: getTypeScriptCommandEnv(appPath),
+    shell: false,
+    timeoutMs: TSC_TIMEOUT_MS,
+    maxOutputBytes: TSC_MAX_OUTPUT_BYTES,
+    // The scheduler must not release its memory-heavy-work slot until the
+    // process and its stdio have actually closed.
+    waitForCloseAfterForceKill: true,
+  });
+}
+
+async function getTypeScriptVersion(
+  cli: TypeScriptCli,
+  appPath: string,
+): Promise<string> {
+  const realEntryPath = await fs.realpath(cli.entryPath);
+  const stats = await fs.stat(realEntryPath);
+  const cacheKey = `${realEntryPath}:${stats.mtimeMs}`;
+  const cached = versionCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const result = await runCli(cli, appPath, ["--version"]);
+  if (
+    result.code !== 0 ||
+    result.signal ||
+    result.timedOut ||
+    result.stdoutTruncated ||
+    result.stderrTruncated
+  ) {
+    throw new Error(
+      `Failed to determine local TypeScript version: ${result.stderr || result.stdout || `exit code ${result.code}`}`,
+    );
+  }
+  const match = result.stdout.trim().match(/^Version\s+(.+)$/);
+  if (!match) {
+    throw new Error(
+      `Unexpected output from local TypeScript --version: ${result.stdout.trim()}`,
+    );
+  }
+  versionCache.set(cacheKey, match[1]);
+  return match[1];
+}
+
+function getBuildInfoPath({
+  appPath,
+  configPath,
+  version,
+}: {
+  appPath: string;
+  configPath: string;
+  version: string;
+}): string {
+  const key = createHash("sha256")
+    .update(`${appPath}\0${configPath}\0${version}`)
+    .digest("hex");
+  return path.join(getTypeScriptCachePath(), `${key}.tsbuildinfo`);
+}
+
+export async function runTypeScriptCheck({
   appPath,
 }: {
-  fullResponse: string;
   appPath: string;
 }): Promise<ProblemReport> {
-  return new Promise((resolve, reject) => {
-    // Determine the worker script path. The worker is emitted next to main.js
-    // (`.vite/build`), so this resolves in both dev and packaged (ASAR) builds.
-    const workerPath = path.join(__dirname, "tsc_worker.js");
-
-    logger.info(`Starting TSC worker for app ${appPath}`);
-
-    // Run the type check in a utility process rather than a worker thread:
-    // Electron builds V8 with pointer compression, so every worker thread
-    // shares a single ~4GB heap cage with the main process, and a worker
-    // hitting that limit aborts the whole process. A utility process gets its
-    // own cage and an OOM there degrades to a failed type check instead.
-    const child = utilityProcess.fork(workerPath, [], {
-      serviceName: "dyad-tsc-worker",
-    });
-
-    let resolveExit!: () => void;
-    const exitPromise = new Promise<void>((exitResolve) => {
-      resolveExit = exitResolve;
-    });
-    let killRequested = false;
-    const registration =
-      typescriptUtilityProcessScheduler.registerResidentProcess({
-        kind: "tsc",
-        reusable: false,
-        token: child,
-        stop: async () => {
-          if (!killRequested) {
-            if (!child.kill()) {
-              throw new Error("Failed to terminate TSC worker");
-            }
-            killRequested = true;
-          }
-          await exitPromise;
-        },
+  return typescriptUtilityProcessScheduler.runExclusive("tsc", async () => {
+    try {
+      const cli = await resolveTypeScriptCli(appPath);
+      const configPath = await findTypeScriptConfig(appPath);
+      const version = await getTypeScriptVersion(cli, appPath);
+      const buildInfoPath = getBuildInfoPath({
+        appPath,
+        configPath,
+        version,
       });
+      await fs.mkdir(path.dirname(buildInfoPath), { recursive: true });
 
-    const stopChild = () => {
-      void registration.stop().catch((error) => {
-        logger.error(`Failed to stop TSC worker for app ${appPath}:`, error);
-      });
-    };
+      logger.info(`Starting TypeScript ${version} CLI check for ${appPath}`);
+      const result = await runCli(cli, appPath, [
+        "--pretty",
+        "false",
+        "--diagnostics",
+        "false",
+        "--extendedDiagnostics",
+        "false",
+        "--listFiles",
+        "false",
+        "--listEmittedFiles",
+        "false",
+        "--explainFiles",
+        "false",
+        "--traceResolution",
+        "false",
+        "--noEmit",
+        "--incremental",
+        "--tsBuildInfoFile",
+        buildInfoPath,
+        "--project",
+        configPath,
+      ]);
 
-    // The child settles the promise at most once (message, error, timeout, or
-    // exit — whichever comes first).
-    let settled = false;
-    const settle = (fn: () => void) => {
-      if (settled) {
-        return;
+      if (result.timedOut) {
+        throw new Error(`Type check timed out after ${TSC_TIMEOUT_MS / 1000}s`);
       }
-      settled = true;
-      clearTimeout(timeout);
-      fn();
-    };
-
-    const timeout = setTimeout(() => {
-      settle(() => {
-        logger.error(
-          `TSC worker timed out after ${TSC_WORKER_TIMEOUT_MS}ms for app ${appPath}`,
+      if (result.aborted || result.signal) {
+        throw new Error(
+          `Type check process terminated${result.signal ? ` with ${result.signal}` : ""}`,
         );
-        reject(
-          toProblemReportError(
-            new Error(
-              `Type check timed out after ${TSC_WORKER_TIMEOUT_MS / 1000}s`,
-            ),
-          ),
+      }
+      if (result.stdoutTruncated || result.stderrTruncated) {
+        throw new Error(
+          `TypeScript diagnostic output exceeded ${TSC_MAX_OUTPUT_BYTES} bytes`,
         );
-      });
-      stopChild();
-    }, TSC_WORKER_TIMEOUT_MS);
+      }
+      if (result.code === 0) {
+        return { problems: [] };
+      }
+      if (result.code === null) {
+        throw new Error("TypeScript process exited without a status code");
+      }
 
-    // Handle worker messages (the worker sends a single reply)
-    child.on("message", (output: WorkerOutput) => {
-      settle(() => {
-        if (output.success && output.data) {
-          logger.info(`TSC worker completed successfully for app ${appPath}`);
-          resolve(output.data);
-        } else {
-          logger.error(`TSC worker failed for app ${appPath}: ${output.error}`);
-          reject(
-            toProblemReportError(
-              new Error(output.error || "Unknown worker error"),
-              output.errorKind,
-            ),
-          );
-        }
-      });
-      stopChild();
-    });
-
-    // Handle fatal V8 errors in the worker (e.g. heap OOM). The exit event
-    // still fires afterwards, but settle() guards against double rejection.
-    // NOTE: Electron's UtilityProcess "error" event is currently experimental.
-    child.on("error", (type, location, report) => {
-      logger.error(
-        `TSC worker fatal error for app ${appPath}: ${type} at ${location}`,
-        report,
+      const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+      const parsed = parseTypeScriptDiagnosticsDetailed(
+        output,
+        appPath,
+        configPath,
       );
-      // A V8 FatalError in the worker is almost always heap exhaustion while
-      // type-checking a very large app; surface that instead of the raw type.
-      const message: string =
-        type === "FatalError"
-          ? "Type check failed: the TypeScript worker ran out of memory. This can happen with very large apps."
-          : `Worker error: ${type}`;
-      settle(() => reject(toProblemReportError(new Error(message))));
-      stopChild();
-    });
-
-    // Handle worker exit. Any exit before we received a reply is unexpected
-    // (including an OOM abort) and must fail the type check rather than hang.
-    child.on("exit", (code) => {
-      registration.clear();
-      resolveExit();
-      settle(() => {
-        logger.error(`TSC worker exited with code ${code} for app ${appPath}`);
-        reject(
-          toProblemReportError(new Error(`Worker exited with code ${code}`)),
+      if (parsed.skippedLines.length > 0) {
+        const preview = parsed.skippedLines
+          .slice(0, 3)
+          .map((line) => line.slice(0, 300));
+        logger.warn(
+          `Ignored ${parsed.skippedLines.length} unrecognized line(s) after parsing TypeScript diagnostics:`,
+          preview,
         );
-      });
-    });
-
-    // Send the request only after the child's IPC channel is established.
-    // Electron happens to buffer messages posted before "spawn", but that
-    // buffering is not documented API, so wait for the documented event. If
-    // the child fails to spawn, the "exit" handler above rejects instead.
-    child.on("spawn", () => {
-      if (settled) {
-        return;
       }
-      try {
-        const writeTags = getDyadWriteTags(fullResponse);
-        const renameTags = getDyadRenameTags(fullResponse);
-        const deletePaths = getDyadDeleteTags(fullResponse);
-        const virtualChanges = {
-          deletePaths,
-          renameTags,
-          writeTags,
-        };
-
-        // Send input to worker
-        const input: WorkerInput = {
-          virtualChanges,
-          appPath,
-          tsBuildInfoCacheDir: getTypeScriptCachePath(),
-        };
-
-        logger.info(`Sending input to TSC worker for app ${appPath}`);
-
-        child.postMessage(input);
-      } catch (error) {
-        settle(() => reject(toProblemReportError(error)));
-        stopChild();
+      return await addSnippets(parsed.problems, appPath);
+    } catch (error) {
+      if (error instanceof BufferedProcessSpawnError) {
+        throw new TypeCheckPreconditionError(
+          "typescript-not-found",
+          `Failed to start local TypeScript CLI: ${error.message}`,
+          { cause: error },
+        );
       }
-    });
+      throw toProblemReportError(error);
+    }
   });
+}
+
+export function clearTypeScriptVersionCacheForTests(): void {
+  versionCache.clear();
 }

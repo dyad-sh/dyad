@@ -7,7 +7,6 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
 import { AppChatContext } from "../lib/schemas";
 import { readSettings } from "@/main/settings";
-import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
 import {
   extractCodebaseStarted,
   extractCodebaseFinished,
@@ -137,17 +136,8 @@ const fileContentCache = new Map<string, FileCache>();
  */
 export async function readFileWithCache(
   filePath: string,
-  virtualFileSystem?: AsyncVirtualFileSystem,
 ): Promise<string | undefined> {
   try {
-    // Check virtual filesystem first if provided
-    if (virtualFileSystem) {
-      const virtualContent = await virtualFileSystem.readFile(filePath);
-      if (virtualContent != null) {
-        return virtualContent;
-      }
-    }
-
     // Get file stats to check the modification time
     const stats = await fsAsync.stat(filePath);
     const currentMtime = stats.mtimeMs;
@@ -367,11 +357,9 @@ function shouldReadFileContentsForSmartContext({
 async function formatFile({
   filePath,
   normalizedRelativePath,
-  virtualFileSystem,
 }: {
   filePath: string;
   normalizedRelativePath: string;
-  virtualFileSystem?: AsyncVirtualFileSystem;
 }): Promise<string> {
   try {
     // Check if we should read file contents
@@ -383,7 +371,7 @@ ${OMITTED_FILE_CONTENT}
 `;
     }
 
-    const content = await readFileWithCache(filePath, virtualFileSystem);
+    const content = await readFileWithCache(filePath);
 
     if (content == null) {
       return `<dyad-file path="${normalizedRelativePath}">
@@ -429,11 +417,9 @@ interface PreparedCodebaseFile extends BaseFile {
 async function prepareCodebaseFiles({
   appPath,
   chatContext,
-  virtualFileSystem,
 }: {
   appPath: string;
   chatContext: AppChatContext;
-  virtualFileSystem?: AsyncVirtualFileSystem;
 }): Promise<PreparedCodebaseFile[] | undefined> {
   const settings = readSettings();
   const isSmartContextEnabled =
@@ -446,22 +432,6 @@ async function prepareCodebaseFiles({
   }
 
   let files = await collectFilesNativeGit(appPath);
-
-  if (virtualFileSystem) {
-    const deletedFiles = new Set(
-      virtualFileSystem
-        .getDeletedFiles()
-        .map((relativePath) => path.resolve(appPath, relativePath)),
-    );
-    files = files.filter((file) => !deletedFiles.has(file));
-
-    for (const virtualFile of virtualFileSystem.getVirtualFiles()) {
-      const absolutePath = path.resolve(appPath, virtualFile.path);
-      if (!files.includes(absolutePath)) {
-        files.push(absolutePath);
-      }
-    }
-  }
 
   const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
   const includedFiles = new Set<string>();
@@ -565,13 +535,11 @@ export async function listCodebaseFileMetadata({
  * Extract and format codebase files as a string to be included in prompts
  * @param params.appPath - Path to the codebase to extract
  * @param params.chatContext - Chat context selecting which paths to include
- * @param params.virtualFileSystem - Optional virtual filesystem to apply modifications
  * @returns Object containing formatted output and individual files
  */
 export async function extractCodebase(params: {
   appPath: string;
   chatContext: AppChatContext;
-  virtualFileSystem?: AsyncVirtualFileSystem;
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
@@ -588,11 +556,9 @@ export async function extractCodebase(params: {
 async function extractCodebaseInner({
   appPath,
   chatContext,
-  virtualFileSystem,
 }: {
   appPath: string;
   chatContext: AppChatContext;
-  virtualFileSystem?: AsyncVirtualFileSystem;
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
@@ -601,7 +567,6 @@ async function extractCodebaseInner({
   const preparedFiles = await prepareCodebaseFiles({
     appPath,
     chatContext,
-    virtualFileSystem,
   });
   if (!preparedFiles) {
     return {
@@ -617,7 +582,6 @@ async function extractCodebaseInner({
     const formattedContent = await formatFile({
       filePath: file,
       normalizedRelativePath,
-      virtualFileSystem,
     });
 
     // Determine file content based on whether we should read it
@@ -630,7 +594,7 @@ async function extractCodebaseInner({
     ) {
       fileContent = OMITTED_FILE_CONTENT;
     } else {
-      const readContent = await readFileWithCache(file, virtualFileSystem);
+      const readContent = await readFileWithCache(file);
       fileContent = readContent ?? "// Error reading file";
     }
 

@@ -2,7 +2,7 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import {
-  generateProblemReport,
+  runTypeScriptCheck,
   getTypeCheckPreconditionGuidance,
   getTypeCheckPreconditionKind,
 } from "../processors/tsc";
@@ -32,11 +32,7 @@ export function registerProblemsHandlers() {
 
       appPath = getDyadAppPath(app.path);
 
-      // Call autofix with empty full response to just run TypeScript checking
-      const problemReport = await generateProblemReport({
-        fullResponse: "",
-        appPath,
-      });
+      const problemReport = await runTypeScriptCheck({ appPath });
 
       return problemReport;
     } catch (error) {

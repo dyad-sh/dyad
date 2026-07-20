@@ -259,11 +259,6 @@ const config: ForgeConfig = {
           target: "preload",
         },
         {
-          entry: "workers/tsc/tsc_worker.ts",
-          config: "vite.worker.config.mts",
-          target: "main",
-        },
-        {
           entry: "workers/code_explorer/code_explorer_worker.ts",
           config: "vite.code-explorer-worker.config.mts",
           target: "main",

@@ -40,7 +40,7 @@ vi.mock("@/ipc/processors/tsc", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/ipc/processors/tsc")>();
   return {
     ...actual,
-    generateProblemReport: async () => ({ problems: [] }),
+    runTypeScriptCheck: async () => ({ problems: [] }),
   };
 });
 

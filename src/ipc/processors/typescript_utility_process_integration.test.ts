@@ -1,7 +1,13 @@
 import { EventEmitter } from "node:events";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { forkMock } = vi.hoisted(() => ({ forkMock: vi.fn() }));
+const { forkMock, runBufferedProcessMock } = vi.hoisted(() => ({
+  forkMock: vi.fn(),
+  runBufferedProcessMock: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
   utilityProcess: {
@@ -19,9 +25,20 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("@/paths/paths", () => ({
-  getTypeScriptCachePath: () => "/tmp/typescript-utility-test-cache",
-}));
+vi.mock("@/paths/paths", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/paths/paths")>();
+  return {
+    ...actual,
+    getTypeScriptCachePath: () => "/tmp/typescript-utility-test-cache",
+    getUserDataPath: () => "/tmp/typescript-utility-test-user-data",
+  };
+});
+
+vi.mock("@/ipc/utils/buffered_process", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/utils/buffered_process")>();
+  return { ...actual, runBufferedProcess: runBufferedProcessMock };
+});
 
 vi.mock("@/ipc/utils/telemetry", () => ({
   sendTelemetryEvent: vi.fn(),
@@ -29,7 +46,7 @@ vi.mock("@/ipc/utils/telemetry", () => ({
 
 import type { CodeExplorerResult } from "../../../shared/code_explorer_types";
 import { runCodeExplorer } from "./code_explorer";
-import { generateProblemReport } from "./tsc";
+import { clearTypeScriptVersionCacheForTests, runTypeScriptCheck } from "./tsc";
 
 class FakeUtilityProcess extends EventEmitter {
   postMessage = vi.fn();
@@ -48,12 +65,43 @@ const explorerResult: CodeExplorerResult = {
   notes: [],
 };
 
+function processResult(overrides: Record<string, unknown> = {}) {
+  return {
+    code: 0,
+    signal: null,
+    stdout: "",
+    stderr: "",
+    stdoutTruncated: false,
+    stderrTruncated: false,
+    aborted: false,
+    timedOut: false,
+    ...overrides,
+  };
+}
+
 describe("TypeScript utility process exclusion", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
   it("fully exits each resident process before starting the other kind", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-ts-scheduler-"),
+    );
+    await fs.mkdir(path.join(appPath, "node_modules", "typescript", "lib"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(appPath, "node_modules", "typescript", "package.json"),
+      "{}",
+    );
+    await fs.writeFile(
+      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+      "",
+    );
+    await fs.writeFile(path.join(appPath, "tsconfig.json"), "{}");
+    clearTypeScriptVersionCacheForTests();
+
     const children: FakeUtilityProcess[] = [];
     forkMock.mockImplementation(() => {
       const child = new FakeUtilityProcess();
@@ -62,7 +110,7 @@ describe("TypeScript utility process exclusion", () => {
     });
 
     const firstExplorerRequest = runCodeExplorer({
-      appPath: "/tmp/example-app",
+      appPath,
       query: "entry point",
     });
     await vi.waitFor(() => expect(children).toHaveLength(1));
@@ -79,37 +127,41 @@ describe("TypeScript utility process exclusion", () => {
     });
     await expect(firstExplorerRequest).resolves.toEqual(explorerResult);
 
-    // The idle explorer remains cached until TSC needs the shared slot. TSC
-    // requests its termination but must not fork until the exit event arrives.
-    const typeCheck = generateProblemReport({
-      fullResponse: "",
-      appPath: "/tmp/example-app",
-    });
+    // The idle explorer remains cached until the CLI needs the shared slot.
+    // The CLI must not launch until the explorer's exit event arrives.
+    let finishTypeCheck!: (value: ReturnType<typeof processResult>) => void;
+    runBufferedProcessMock
+      .mockResolvedValueOnce(processResult({ stdout: "Version 7.0.0\n" }))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishTypeCheck = resolve;
+          }),
+      );
+    const typeCheck = runTypeScriptCheck({ appPath });
     await vi.waitFor(() => expect(firstExplorer.kill).toHaveBeenCalledOnce());
     expect(children).toHaveLength(1);
+    expect(runBufferedProcessMock).not.toHaveBeenCalled();
 
     firstExplorer.emit("exit", 0);
-    await vi.waitFor(() => expect(children).toHaveLength(2));
-    const tsc = children[1];
-    tsc.emit("spawn");
-    expect(tsc.postMessage).toHaveBeenCalledOnce();
-    tsc.emit("message", { success: true, data: { problems: [] } });
-    await expect(typeCheck).resolves.toEqual({ problems: [] });
-    expect(tsc.kill).toHaveBeenCalledOnce();
+    await vi.waitFor(() =>
+      expect(runBufferedProcessMock).toHaveBeenCalledTimes(2),
+    );
 
-    // The TSC result can resolve while its process is shutting down, but no
-    // explorer replacement may fork until that process has fully exited.
+    // No explorer replacement may launch until the CLI has fully exited and
+    // its scheduled operation resolves.
     const secondExplorerRequest = runCodeExplorer({
-      appPath: "/tmp/example-app",
+      appPath,
       query: "entry point again",
     });
     await Promise.resolve();
     await Promise.resolve();
-    expect(children).toHaveLength(2);
+    expect(children).toHaveLength(1);
 
-    tsc.emit("exit", 0);
-    await vi.waitFor(() => expect(children).toHaveLength(3));
-    const secondExplorer = children[2];
+    finishTypeCheck(processResult());
+    await expect(typeCheck).resolves.toEqual({ problems: [] });
+    await vi.waitFor(() => expect(children).toHaveLength(2));
+    const secondExplorer = children[1];
     secondExplorer.emit("spawn");
     await vi.waitFor(() =>
       expect(secondExplorer.postMessage).toHaveBeenCalledOnce(),
@@ -128,6 +180,7 @@ describe("TypeScript utility process exclusion", () => {
 
     // Clear the reusable resident and its idle timer for test isolation.
     secondExplorer.emit("exit", 0);
+    await fs.rm(appPath, { recursive: true, force: true });
   });
 
   it("waits for an idle explorer to exit before starting its replacement", async () => {

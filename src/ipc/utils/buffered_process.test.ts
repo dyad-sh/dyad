@@ -103,7 +103,28 @@ describe("runBufferedProcess", () => {
       code: 1,
       stdout: OUTPUT_TRUNCATION_MARKER + "-TAILOUT",
       stderr: OUTPUT_TRUNCATION_MARKER + "-TAILERR",
+      stdoutTruncated: true,
+      stderrTruncated: true,
     });
+  });
+
+  it("passes explicit arguments without a shell", async () => {
+    const controller = createMockChildController();
+    spawnMock.mockReturnValue(controller.child);
+
+    const promise = runBufferedProcess({
+      command: "/tmp/app/node_modules/.bin/tsc",
+      args: ["--pretty", "false"],
+      cwd: "/tmp/app",
+    });
+    controller.close(0);
+    await promise;
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/tmp/app/node_modules/.bin/tsc",
+      ["--pretty", "false"],
+      expect.objectContaining({ shell: false }),
+    );
   });
 
   it("decodes split multi-byte chunks for callbacks and returned output", async () => {
@@ -188,6 +209,41 @@ describe("runBufferedProcess", () => {
     expect(controller.stderr.listenerCount("data")).toBe(0);
     expect(controller.child.listenerCount("close")).toBe(0);
     expect(controller.child.listenerCount("error")).toBe(0);
+  });
+
+  it("can keep a timed-out command pending until process close", async () => {
+    vi.useFakeTimers();
+    const controller = createMockChildController();
+    spawnMock.mockReturnValue(controller.child);
+
+    const promise = runBufferedProcess({
+      command: "npm test",
+      cwd: "/tmp/app",
+      timeoutMs: 25,
+      waitForCloseAfterForceKill: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      25 + BUFFERED_PROCESS_FORCE_KILL_GRACE_MS,
+    );
+    let settled = false;
+    void promise.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+    expect(treeKillMock).toHaveBeenLastCalledWith(
+      4321,
+      "SIGKILL",
+      expect.any(Function),
+    );
+
+    controller.close(null, "SIGKILL");
+    await expect(promise).resolves.toMatchObject({
+      signal: "SIGKILL",
+      timedOut: true,
+    });
   });
 
   it("aborts a running process and unregisters the AbortSignal listener", async () => {

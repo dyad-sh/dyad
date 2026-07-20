@@ -123,12 +123,25 @@ describe("parseTypeScriptDiagnostics", () => {
     expect(problem.file).toBe("src/main.ts");
   });
 
-  it("rejects config and otherwise unrecognized output", () => {
+  it("surfaces project-level diagnostics against the active config", () => {
+    const [problem] = parseTypeScriptDiagnostics(
+      "error TS18003: No inputs were found in config file '/app/tsconfig.app.json'.",
+      "/app",
+      "/app/tsconfig.app.json",
+    );
+
+    expect(problem).toMatchObject({
+      file: "tsconfig.app.json",
+      line: 1,
+      column: 1,
+      code: 18003,
+      message: "No inputs were found in config file '/app/tsconfig.app.json'.",
+    });
+  });
+
+  it("rejects otherwise unrecognized output", () => {
     expect(() =>
-      parseTypeScriptDiagnostics(
-        "error TS5058: The specified path does not exist",
-        "/app",
-      ),
+      parseTypeScriptDiagnostics("unexpected output", "/app"),
     ).toThrow("Unrecognized TypeScript diagnostic output");
   });
 });
@@ -221,6 +234,29 @@ describe("runTypeScriptCheck", () => {
 
     await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
       problems: [],
+    });
+  });
+
+  it("returns project-level diagnostics instead of failing the check", async () => {
+    mockVersion();
+    runBufferedProcessMock.mockResolvedValueOnce(
+      processResult({
+        code: 2,
+        stdout:
+          "error TS18003: No inputs were found in config file 'tsconfig.app.json'.\n",
+      }),
+    );
+
+    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+      problems: [
+        {
+          file: "tsconfig.app.json",
+          line: 1,
+          column: 1,
+          code: 18003,
+          message: "No inputs were found in config file 'tsconfig.app.json'.",
+        },
+      ],
     });
   });
 

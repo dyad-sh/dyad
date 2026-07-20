@@ -6,7 +6,10 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { Problem, ProblemReport } from "@/ipc/types";
 import log from "electron-log";
 import { getTypeScriptCachePath } from "@/paths/paths";
-import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
+import {
+  buildPtyInvocation,
+  getPackageManagerCommandEnv,
+} from "@/ipc/utils/socket_firewall";
 import { prependPathSegment } from "@/ipc/utils/managed_tools";
 import {
   BufferedProcessSpawnError,
@@ -146,7 +149,6 @@ interface ParsedDiagnostic extends Problem {
 
 interface TypeScriptCli {
   command: string;
-  argsPrefix: string[];
   shimPath: string;
 }
 
@@ -172,6 +174,7 @@ function isPathInside(rootPath: string, candidatePath: string): boolean {
 export function parseTypeScriptDiagnostics(
   output: string,
   appPath: string,
+  configPath?: string,
 ): ParsedDiagnostic[] {
   const problems: ParsedDiagnostic[] = [];
   let current: ParsedDiagnostic | undefined;
@@ -201,6 +204,23 @@ export function parseTypeScriptDiagnostics(
         message: match[5],
         snippet: "",
         absoluteFilePath,
+      };
+      problems.push(current);
+      continue;
+    }
+
+    const globalMatch = rawLine.match(/^error TS(\d+):\s*(.*)$/);
+    if (globalMatch) {
+      const diagnosticPath = configPath ?? path.join(appPath, "tsconfig.json");
+      const pathApi = getPathApi(diagnosticPath);
+      current = {
+        file: normalizePath(pathApi.relative(appPath, diagnosticPath)),
+        line: 1,
+        column: 1,
+        code: Number(globalMatch[1]),
+        message: globalMatch[2],
+        snippet: "",
+        absoluteFilePath: diagnosticPath,
       };
       problems.push(current);
       continue;
@@ -309,15 +329,7 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
     );
   }
 
-  if (process.platform === "win32") {
-    return {
-      command: process.env.ComSpec ?? "cmd.exe",
-      argsPrefix: ["/d", "/s", "/c", shimPath],
-      shimPath,
-    };
-  }
-
-  return { command: shimPath, argsPrefix: [], shimPath };
+  return { command: shimPath, shimPath };
 }
 
 function getTypeScriptCommandEnv(appPath: string): NodeJS.ProcessEnv {
@@ -332,9 +344,10 @@ async function runCli(
   appPath: string,
   args: string[],
 ): Promise<BufferedProcessResult> {
+  const invocation = buildPtyInvocation(cli.command, args);
   return runBufferedProcess({
-    command: cli.command,
-    args: [...cli.argsPrefix, ...args],
+    command: invocation.command,
+    args: invocation.args,
     cwd: appPath,
     env: getTypeScriptCommandEnv(appPath),
     shell: false,
@@ -443,7 +456,7 @@ export async function runTypeScriptCheck({
 
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
       return await addSnippets(
-        parseTypeScriptDiagnostics(output, appPath),
+        parseTypeScriptDiagnostics(output, appPath, configPath),
         appPath,
       );
     } catch (error) {

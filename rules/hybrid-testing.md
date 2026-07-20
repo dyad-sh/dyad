@@ -54,8 +54,8 @@ module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
   Calling a logger method the mock omits fails with e.g. "logger.debug is not
   a function" — grep `vi.mock("electron-log"` when changing log levels.
 - `runTypeScriptCheck` is stubbed to `{ problems: [] }` in
-  `hybrid.setup.ts`: the tsc worker needs a compiled worker script and
-  Electron paths that don't exist under vitest. Integration tests cannot
+  `hybrid.setup.ts`: the app-local TypeScript CLI needs a real app path and
+  `node_modules` tree that don't exist under vitest. Integration tests cannot
   assert on real TypeScript problem reports.
 - Suppress known-noisy test console output (React `act(...)` warnings,
   TanStack `useRouter` provider warnings) via `noisyConsolePatterns` in

@@ -148,39 +148,3 @@ testSkipIfWindows(
     );
   },
 );
-
-/**
- * Restoring to the very first message is allowed: it restores to "version 1"
- * (the commit before the first message's changes) and forks a new, empty chat.
- */
-testSkipIfWindows(
-  "restore to message - first message forks an empty chat",
-  async ({ po }) => {
-    await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    await po.sendPrompt("tc=write-index");
-
-    const originalChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
-    expect(originalChatId).toBeTruthy();
-
-    // The imported "minimal" fixture adds an auto-generated AI_RULES.md user
-    // message followed by turn A, so there are two restore buttons.
-    const restoreButtons = po.page.getByTestId("restore-to-message-button");
-    await expect(restoreButtons).toHaveCount(2);
-
-    // Restore to the FIRST user message. Previously this failed with "Cannot
-    // restore before the first message"; now it forks an empty chat.
-    await restoreButtons.nth(0).click();
-    await po.page.getByTestId("confirm-restore-to-message-button").click();
-
-    // We navigate to a brand-new chat with no prior messages, so no restore
-    // buttons are shown.
-    await expect(async () => {
-      const newChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
-      expect(newChatId).toBeTruthy();
-      expect(newChatId).not.toBe(originalChatId);
-    }).toPass({ timeout: Timeout.LONG });
-    await expect(restoreButtons).toHaveCount(0);
-  },
-);

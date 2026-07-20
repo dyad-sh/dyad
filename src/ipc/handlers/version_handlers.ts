@@ -47,7 +47,10 @@ import {
   DIFF_BINARY_PLACEHOLDER,
   DIFF_TOO_LARGE_PLACEHOLDER,
 } from "@/shared/diff_placeholders";
-import { cancelActiveStreamsForApp } from "./chat_stream_handlers";
+import {
+  blockNewStreamsForApp,
+  cancelActiveStreamsForApp,
+} from "./chat_stream_handlers";
 
 const logger = log.scope("version_handlers");
 
@@ -317,12 +320,11 @@ async function revertCodebaseToVersion({
     });
   }
 
-  await gitStageToRevert({
+  const hasStagedRevertChanges = await gitStageToRevert({
     path: appPath,
     targetOid: previousVersionId,
   });
-  const isClean = await isGitStatusClean({ path: appPath });
-  if (!isClean) {
+  if (hasStagedRevertChanges) {
     await gitCommit({
       path: appPath,
       message: `Reverted all changes back to version ${previousVersionId}`,
@@ -745,7 +747,13 @@ export function registerVersionHandlers() {
   createTypedHandler(
     versionContracts.restoreToMessageVersion,
     async (event, params) => {
-      const { appId, chatId, messageId, restoreCodebase = true } = params;
+      const {
+        appId,
+        chatId,
+        messageId,
+        restoreCodebase = true,
+        targetBranchName,
+      } = params;
 
       // Phase 1: validate the request and resolve the restore target under the
       // app lock WITHOUT cancelling any streams. Chat/message deletion endpoints
@@ -885,7 +893,7 @@ export function registerVersionHandlers() {
       if (prepared.status === "warn") {
         return { warningMessage: prepared.warningMessage };
       }
-      const { app, appPath, chat, messagesBefore, targetCommitHash } = prepared;
+      const { appPath } = prepared;
 
       // Phase 2: cancel in-flight streams for this app OUTSIDE the lock. The
       // cancellation helper aborts each stream and then awaits its handler
@@ -894,18 +902,120 @@ export function registerVersionHandlers() {
       // holding the app lock would deadlock, so cancellation must run before we
       // re-acquire it — this matches the lock ordering documented on
       // `cancelActiveStreamsForApp`.
-      const preserveDirtyTree = restoreCodebase
-        ? await cancelActiveStreamsForApp(appId, event.sender)
-        : false;
+      const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
+
+      let preserveDirtyTree = false;
+      try {
+        preserveDirtyTree = restoreCodebase
+          ? await cancelActiveStreamsForApp(appId, event.sender)
+          : false;
+      } catch (error) {
+        releaseStreamAdmissionBlock?.();
+        throw error;
+      }
 
       // Phase 3: perform the codebase revert and create the forked chat under
       // the lock. Holding it across the whole mutation serializes the revert
-      // against other version/deletion operations, and any post-cancel write
-      // that takes the app lock (copy_file) is ordered after this revert instead
-      // of racing it. `gitStageToRevert` additionally refuses to run — or
-      // commits a recoverable checkpoint when preserving an interrupted turn —
-      // if the work tree is dirty, so a stray write can't be silently clobbered.
+      // against other version/deletion operations. The stream admission block
+      // above also prevents new turns from entering through file tools that do
+      // not take this lock. `gitStageToRevert` additionally refuses to run —
+      // or commits a recoverable checkpoint when preserving an interrupted
+      // turn — if the work tree is dirty, so a stray write can't be silently
+      // clobbered.
       return withLock(appId, async () => {
+        const latestApp = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+        if (!latestApp) {
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+
+        const latestChat = await db.query.chats.findFirst({
+          where: eq(chats.id, chatId),
+          with: {
+            messages: {
+              orderBy: (messages, { asc }) => [
+                asc(messages.createdAt),
+                asc(messages.id),
+              ],
+            },
+          },
+        });
+        if (!latestChat) {
+          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+        }
+        if (latestChat.appId !== appId) {
+          throw new DyadError(
+            "Chat does not belong to this app",
+            DyadErrorKind.Validation,
+          );
+        }
+
+        const latestTargetIndex = latestChat.messages.findIndex(
+          (m) => m.id === messageId,
+        );
+        if (latestTargetIndex === -1) {
+          throw new DyadError("Message not found", DyadErrorKind.NotFound);
+        }
+
+        const latestMessagesBefore = latestChat.messages
+          .slice(0, latestTargetIndex)
+          .filter(
+            (message) =>
+              !(message.isCompactionSummary && message.id > messageId),
+          );
+
+        let latestTargetCommitHash: string | null = null;
+        for (
+          let index = latestTargetIndex + 1;
+          index < latestChat.messages.length;
+          index++
+        ) {
+          const message = latestChat.messages[index];
+          if (message.role === "assistant") {
+            latestTargetCommitHash = message.sourceCommitHash ?? null;
+            break;
+          }
+        }
+        if (!latestTargetCommitHash) {
+          for (let index = latestTargetIndex - 1; index >= 0; index--) {
+            const message = latestChat.messages[index];
+            if (message.role === "assistant" && message.commitHash) {
+              latestTargetCommitHash = message.commitHash;
+              break;
+            }
+          }
+        }
+        if (!latestTargetCommitHash) {
+          latestTargetCommitHash = latestChat.initialCommitHash ?? null;
+        }
+
+        if (restoreCodebase && !latestTargetCommitHash) {
+          return {
+            warningMessage:
+              "Could not determine a version to restore to for this message.",
+          };
+        }
+        if (restoreCodebase && latestTargetCommitHash) {
+          try {
+            await assertVersionExists({
+              appPath,
+              versionId: latestTargetCommitHash,
+            });
+          } catch (error) {
+            if (
+              error instanceof DyadError &&
+              error.kind === DyadErrorKind.NotFound
+            ) {
+              return {
+                warningMessage:
+                  "Could not restore the codebase because the target version no longer exists in the repository.",
+              };
+            }
+            throw error;
+          }
+        }
+
         // When the user chose to also restore the codebase, we need a concrete
         // version to revert to. Revert the codebase first: if this throws (e.g.
         // a Git or Neon error), we bail out before touching the database so we
@@ -916,40 +1026,46 @@ export function registerVersionHandlers() {
         let successMessage = "Forked the chat into a new chat.";
         let warningMessage = "";
 
-        if (restoreCodebase && targetCommitHash) {
+        if (restoreCodebase && latestTargetCommitHash) {
           const result = await revertCodebaseToVersion({
             appId,
-            app,
+            app: latestApp,
             appPath,
-            previousVersionId: targetCommitHash,
+            previousVersionId: latestTargetCommitHash,
+            targetBranchName,
             preserveDirtyTree,
           });
           successMessage = result.successMessage;
           warningMessage = result.warningMessage;
         }
 
-        // Carry over the original chat's title (with a suffix) so the forked
-        // chat is identifiable in the sidebar instead of showing up as another
-        // indistinguishable "untitled" entry after one or more restores. When
-        // the original is untitled we still apply a bare "(restored)" label so
-        // the fork isn't rendered as a generic "New Chat" entry. Strip any
-        // existing "(restored)" suffix first so repeated restores don't pile up
-        // (e.g. "My App (restored) (restored)") and clutter the sidebar.
-        const baseTitle = chat.title?.replace(/ \(restored\)$/, "") ?? null;
-        const restoredTitle = baseTitle
-          ? `${baseTitle} (restored)`
-          : "(restored)";
+        // Carry over the original chat's title so the forked chat is tied to
+        // the conversation it came from without storing an English-only suffix
+        // in the database. If the original is untitled, keep the fork untitled
+        // and let the renderer's localized fallback title handle display.
+        const restoredTitle = latestChat.title;
 
         // Anchor the forked chat to the version it actually starts from. When we
         // restored the codebase, that's the target version. When we only forked
         // the chat (codebase left untouched), the new chat starts from the
-        // current tree, so use the current commit instead of the historical
-        // target — otherwise "changes since chat started" would incorrectly span
-        // everything between the old target and HEAD.
+        // live branch's current commit, so use that instead of the historical
+        // target. If the Version pane has a detached historical preview checked
+        // out, `targetBranchName` points at the branch the pane will restore on
+        // close; anchoring to that branch avoids leaving the fork attached to an
+        // abandoned preview commit.
         const forkInitialCommitHash = restoreCodebase
-          ? targetCommitHash
-          : await getCurrentCommitHash({ path: appPath }).catch(
-              () => targetCommitHash,
+          ? latestTargetCommitHash
+          : await (async () => {
+              const currentBranch = await gitCurrentBranch({
+                path: appPath,
+              }).catch(() => null);
+              const forkRef = currentBranch || targetBranchName;
+              if (forkRef) {
+                return getCurrentCommitHash({ path: appPath, ref: forkRef });
+              }
+              return latestChat.initialCommitHash ?? latestTargetCommitHash;
+            })().catch(
+              () => latestChat.initialCommitHash ?? latestTargetCommitHash,
             );
 
         // Compile-time guard so a new column added to the `messages` schema in
@@ -988,7 +1104,7 @@ export function registerVersionHandlers() {
           : never = true;
         void _assertAllMessageColumnsHandled;
 
-        const messagesBeforeInInsertOrder = [...messagesBefore].sort(
+        const messagesBeforeInInsertOrder = [...latestMessagesBefore].sort(
           (a, b) => a.id - b.id,
         );
 
@@ -997,7 +1113,7 @@ export function registerVersionHandlers() {
         // createChat handler) so `initialCommitHash` is the intended version
         // rather than whatever the createChat handler would capture. Wrapping
         // both inserts in a transaction ensures we never leave behind an
-        // orphaned, empty "(restored)" chat if the messages insert fails after
+        // orphaned, empty forked chat if the messages insert fails after
         // the chat insert. better-sqlite3 transactions are synchronous, so the
         // callback uses the sync query API (`.get()`/`.run()`) rather than
         // `await`.
@@ -1007,7 +1123,7 @@ export function registerVersionHandlers() {
             .values({
               appId,
               title: restoredTitle,
-              chatMode: chat.chatMode,
+              chatMode: latestChat.chatMode,
               initialCommitHash: forkInitialCommitHash,
             })
             .returning()
@@ -1058,7 +1174,7 @@ export function registerVersionHandlers() {
           return { newChatId: newChat.id, warningMessage };
         }
         return { newChatId: newChat.id, successMessage };
-      });
+      }).finally(() => releaseStreamAdmissionBlock?.());
     },
   );
 

@@ -123,6 +123,16 @@ export const RestoreToMessageParamsSchema = z.object({
   // reverted to the version before this message in addition to forking the
   // chat. When false, only the chat is forked and the codebase is left as-is.
   restoreCodebase: z.boolean().optional(),
+  // When invoked while the Version pane is previewing a historical commit,
+  // HEAD is detached. The renderer passes the branch it will return to so
+  // fork-only chats can be anchored to the live branch instead of the preview.
+  targetBranchName: z
+    .string()
+    .refine(
+      (v) => !v.startsWith("-"),
+      "targetBranchName must not start with '-'",
+    )
+    .optional(),
 });
 
 export type RestoreToMessageParams = z.infer<

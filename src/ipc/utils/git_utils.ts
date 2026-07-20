@@ -60,13 +60,14 @@ function unquotePorcelainPath(filePath: string): string {
   const inner = filePath.slice(1, -1);
   const bytes: number[] = [];
   for (let index = 0; index < inner.length; index++) {
-    const char = inner[index];
+    const char = String.fromCodePoint(inner.codePointAt(index)!);
     if (char !== "\\") {
       // Push the (already-decoded) character's UTF-8 bytes so it round-trips
       // through the TextDecoder below alongside any octal-escaped bytes.
       for (const byte of Buffer.from(char, "utf8")) {
         bytes.push(byte);
       }
+      index += char.length - 1;
       continue;
     }
     const next = inner[index + 1];
@@ -562,7 +563,7 @@ export async function gitCheckout({
 export async function gitStageToRevert({
   path,
   targetOid,
-}: GitStageToRevertParams): Promise<void> {
+}: GitStageToRevertParams): Promise<boolean> {
   // Get the current HEAD commit hash
   const currentHeadResult = await execGit(["rev-parse", "HEAD"], path);
   if (currentHeadResult.exitCode !== 0) {
@@ -574,12 +575,10 @@ export async function gitStageToRevert({
 
   const currentCommit = currentHeadResult.stdout.trim();
 
-  // If we're already at the target commit, nothing to do
-  if (currentCommit === targetOid) {
-    return;
-  }
-
-  // Safety: refuse to run if the work-tree isn't clean.
+  // Safety: refuse to run if user-visible files are dirty. Do this before the
+  // currentCommit === targetOid no-op return too; otherwise a no-op restore
+  // with staged manual edits could be committed by the caller as a restore
+  // commit, and untracked runtime files could trigger an empty commit failure.
   const statusResult = await execGit(["status", "--porcelain"], path);
   if (statusResult.exitCode !== 0) {
     throw new DyadError(
@@ -604,6 +603,13 @@ export async function gitStageToRevert({
     );
   }
 
+  // If we're already at the target commit, nothing to stage. Managed runtime
+  // files are intentionally ignored by the guard above and must not make the
+  // caller attempt an empty revert commit.
+  if (currentCommit === targetOid) {
+    return false;
+  }
+
   // Reset the working directory and index to match the target commit state
   // This effectively undoes all changes since the target commit
   await execOrThrow(
@@ -619,6 +625,7 @@ export async function gitStageToRevert({
     path,
     "Failed to reset back to original HEAD",
   );
+  return hasStagedChanges({ path });
 }
 
 export async function gitAddAll({ path }: GitBaseParams): Promise<void> {

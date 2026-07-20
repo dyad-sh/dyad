@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 
@@ -15,6 +16,7 @@ import { h } from "@/testing/hybrid.setup";
 import { chats, messages } from "@/db/schema";
 import { getCurrentCommitHash } from "@/ipc/utils/git_utils";
 import { ipc } from "@/ipc/types";
+import { blockNewStreamsForApp } from "@/ipc/handlers/chat_stream_handlers";
 
 describe("local-agent cancel todos (integration)", () => {
   let harness: HybridChatHarness;
@@ -178,4 +180,43 @@ describe("local-agent cancel todos (integration)", () => {
       new Set([selectedChat.id, backgroundChat.id]),
     );
   }, 60_000);
+
+  it("waits streams admitted while an app restore barrier is active", async () => {
+    const chatId = await harness.createChat();
+    const releaseBarrier = blockNewStreamsForApp(harness.appId);
+    let streamSettled = false;
+    const blockedStreamPromise = harness
+      .streamChat("tc=local-agent/simple-response", {
+        chatId,
+      })
+      .finally(() => {
+        streamSettled = true;
+      });
+
+    try {
+      await delay(50);
+      expect(streamSettled).toBe(false);
+    } finally {
+      releaseBarrier();
+    }
+
+    const blockedStream = await blockedStreamPromise;
+    expect(blockedStream.result).not.toBe("error");
+    expect(blockedStream.event("chat:stream:start")?.payload).toMatchObject({
+      chatId,
+    });
+    expect(blockedStream.event("chat:response:error")).toBeUndefined();
+
+    const persistedMessages = await harness.db.query.messages.findMany({
+      where: (message, { eq }) => eq(message.chatId, chatId),
+      orderBy: (message, { asc }) => [asc(message.id)],
+    });
+    expect(persistedMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(persistedMessages[0].content).toContain(
+      "tc=local-agent/simple-response",
+    );
+  });
 });

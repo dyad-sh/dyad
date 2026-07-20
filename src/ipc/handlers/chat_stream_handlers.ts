@@ -69,7 +69,10 @@ import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { clearPendingMcpConsentsForChat } from "../utils/mcp_consent";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
-import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
+import {
+  clearPendingLocalAgentInputsForChat,
+  handleLocalAgentStream,
+} from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
@@ -156,6 +159,7 @@ const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
+const admissionPendingChatIds = new Set<number>();
 
 // How many chats are currently streaming a response. Used by the
 // performance monitor to record activity alongside memory snapshots.
@@ -168,6 +172,110 @@ export function getActiveStreamCount(): number {
 // after aborting so callers like restore-to-message don't touch the working
 // tree while a cancelled turn is still flushing partial file writes.
 const streamCompletions = new Map<number, Promise<void>>();
+
+// A restore must drain existing streams and prevent new ones from entering the
+// same app until its Git/database mutation has finished. Counts (rather than a
+// Set) make nested/queued guards safe: releasing one guard cannot unblock an
+// app while another guard still owns it.
+const streamAdmissionBlockCounts = new Map<number, number>();
+const chatStreamAdmissionBlockCounts = new Map<number, number>();
+const streamAdmissionWaiters = new Map<number, Set<() => void>>();
+const chatStreamAdmissionWaiters = new Map<number, Set<() => void>>();
+
+function incrementAdmissionBlock(
+  blockCounts: Map<number, number>,
+  waiters: Map<number, Set<() => void>>,
+  key: number,
+): () => void {
+  blockCounts.set(key, (blockCounts.get(key) ?? 0) + 1);
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+
+    const remaining = (blockCounts.get(key) ?? 1) - 1;
+    if (remaining <= 0) {
+      blockCounts.delete(key);
+      const keyWaiters = waiters.get(key);
+      waiters.delete(key);
+      keyWaiters?.forEach((resolve) => resolve());
+    } else {
+      blockCounts.set(key, remaining);
+    }
+  };
+}
+
+export function blockNewStreamsForApp(appId: number): () => void {
+  return incrementAdmissionBlock(
+    streamAdmissionBlockCounts,
+    streamAdmissionWaiters,
+    appId,
+  );
+}
+
+export function blockNewStreamsForChat(chatId: number): () => void {
+  return incrementAdmissionBlock(
+    chatStreamAdmissionBlockCounts,
+    chatStreamAdmissionWaiters,
+    chatId,
+  );
+}
+
+function resolveAllAdmissionWaiters(waiters: Map<number, Set<() => void>>) {
+  for (const keyWaiters of waiters.values()) {
+    keyWaiters.forEach((resolve) => resolve());
+  }
+  waiters.clear();
+}
+
+async function waitForAdmissionBlockToClear({
+  blockCounts,
+  waiters,
+  key,
+  signal,
+}: {
+  blockCounts: Map<number, number>;
+  waiters: Map<number, Set<() => void>>;
+  key: number;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  if ((blockCounts.get(key) ?? 0) === 0) {
+    return true;
+  }
+  if (signal.aborted) {
+    return false;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+      const keyWaiters = waiters.get(key);
+      keyWaiters?.delete(onRelease);
+      if (keyWaiters?.size === 0) {
+        waiters.delete(key);
+      }
+    };
+    const settle = (admitted: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(admitted);
+    };
+    const onRelease = () => settle(!signal.aborted);
+    const onAbort = () => settle(false);
+
+    const keyWaiters = waiters.get(key) ?? new Set<() => void>();
+    keyWaiters.add(onRelease);
+    waiters.set(key, keyWaiters);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
@@ -192,6 +300,7 @@ async function cancelTrackedStreams(
   // consent prompt cannot unwind until that prompt is resolved.
   for (const { chatId, abortController } of trackedStreams) {
     abortController?.abort();
+    clearPendingLocalAgentInputsForChat(chatId);
     clearPendingMcpConsentsForChat(chatId);
     logger.log(`Aborted stream for chat ${chatId}`);
   }
@@ -239,7 +348,7 @@ export async function cancelActiveStreamsForApp(
 ): Promise<boolean> {
   const inFlightChatIds = [
     ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
-  ];
+  ].filter((chatId) => !admissionPendingChatIds.has(chatId));
   if (inFlightChatIds.length === 0) {
     return false;
   }
@@ -385,6 +494,11 @@ export function registerChatStreamHandlers() {
     activeStreams.clear();
     partialResponses.clear();
     streamCompletions.clear();
+    streamAdmissionBlockCounts.clear();
+    chatStreamAdmissionBlockCounts.clear();
+    admissionPendingChatIds.clear();
+    resolveAllAdmissionWaiters(streamAdmissionWaiters);
+    resolveAllAdmissionWaiters(chatStreamAdmissionWaiters);
   });
 
   createTypedHandler(
@@ -423,20 +537,28 @@ export function registerChatStreamHandlers() {
 
       let dyadRequestId: string | undefined;
       activeStreams.set(req.chatId, abortController);
+      admissionPendingChatIds.add(req.chatId);
 
-      // Notify renderer that stream is starting
-      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
+      const loadChatForStream = () =>
+        db.query.chats.findFirst({
+          where: eq(chats.id, req.chatId),
+          with: {
+            messages: {
+              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+            },
+            app: true, // Include app information
+          },
+        });
 
       // Get the chat to check for existing messages
-      const chat = await db.query.chats.findFirst({
-        where: eq(chats.id, req.chatId),
-        with: {
-          messages: {
-            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
-          },
-          app: true, // Include app information
-        },
-      });
+      let chat = await loadChatForStream();
+
+      // Cancellation can arrive while the initial chat lookup is pending. Let
+      // cancelTrackedStreams remain the sole sender of the cancelled end events
+      // instead of also surfacing an admission/not-found error for this request.
+      if (abortController.signal.aborted) {
+        return req.chatId;
+      }
 
       if (!chat) {
         throw new DyadError(
@@ -444,6 +566,54 @@ export function registerChatStreamHandlers() {
           DyadErrorKind.NotFound,
         );
       }
+
+      while (true) {
+        if ((chatStreamAdmissionBlockCounts.get(req.chatId) ?? 0) > 0) {
+          const admitted = await waitForAdmissionBlockToClear({
+            blockCounts: chatStreamAdmissionBlockCounts,
+            waiters: chatStreamAdmissionWaiters,
+            key: req.chatId,
+            signal: abortController.signal,
+          });
+          if (!admitted) {
+            return req.chatId;
+          }
+          chat = await loadChatForStream();
+        }
+
+        if (abortController.signal.aborted) {
+          return req.chatId;
+        }
+
+        if (!chat) {
+          throw new DyadError(
+            `Chat not found: ${req.chatId}`,
+            DyadErrorKind.NotFound,
+          );
+        }
+
+        if ((streamAdmissionBlockCounts.get(chat.appId) ?? 0) > 0) {
+          const admitted = await waitForAdmissionBlockToClear({
+            blockCounts: streamAdmissionBlockCounts,
+            waiters: streamAdmissionWaiters,
+            key: chat.appId,
+            signal: abortController.signal,
+          });
+          if (!admitted) {
+            return req.chatId;
+          }
+          chat = await loadChatForStream();
+          continue;
+        }
+
+        break;
+      }
+
+      // Notify the renderer only after admission succeeds. Requests that arrive
+      // during an in-progress restore wait here and then start normally, keeping
+      // the submitted prompt owned by the stream instead of dropping it.
+      admissionPendingChatIds.delete(req.chatId);
+      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
       // Record the streaming chat in the crash sentinel so a later force-close
       // can offer to upload it. We intentionally don't clear this when the
@@ -1955,6 +2125,7 @@ This conversation includes one or more image attachments. When the user uploads 
     } finally {
       // Clean up the abort controller
       activeStreams.delete(req.chatId);
+      admissionPendingChatIds.delete(req.chatId);
 
       // Notify renderer that stream has ended. When the stream was cancelled,
       // `cancelTrackedStreams` is the sole sender of the end events (it emits

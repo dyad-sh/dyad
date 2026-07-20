@@ -1,5 +1,9 @@
-import { useAtom, useAtomValue } from "jotai";
-import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import {
+  selectedAppIdAtom,
+  selectedVersionIdAtom,
+  selectedVersionReturnBranchAtom,
+} from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -365,6 +369,9 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
   const [selectedVersionId, setSelectedVersionId] = useAtom(
     selectedVersionIdAtom,
   );
+  const setSelectedVersionReturnBranch = useSetAtom(
+    selectedVersionReturnBranchAtom,
+  );
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const { refetchBranchInfo } = useCurrentBranch(appId);
   const wasVisibleRef = useRef(false);
@@ -509,6 +516,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       // When pane becomes visible after being closed
       if (isVisible && !wasVisibleRef.current) {
         returnBranchRef.current = null;
+        setSelectedVersionReturnBranch(null);
         checkedOutVersionIdRef.current = null;
         isResolvingPreviewBranchRef.current = false;
         setIsResolvingPreviewBranch(false);
@@ -535,6 +543,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
           if (wasResolvingPreviewBranch && !returnBranch) {
             checkedOutVersionIdRef.current = null;
             returnBranchRef.current = null;
+            setSelectedVersionReturnBranch(null);
             wasVisibleRef.current = isVisible;
             return;
           }
@@ -562,6 +571,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
             } finally {
               checkedOutVersionIdRef.current = null;
               returnBranchRef.current = null;
+              setSelectedVersionReturnBranch(null);
             }
             if (returnedToBranch && app?.neonProjectId) {
               await restartApp();
@@ -595,6 +605,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     onOpen,
     refreshVersions,
     restartApp,
+    setSelectedVersionReturnBranch,
   ]);
 
   useEffect(() => {
@@ -613,7 +624,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     setShowFavoritesOnly(false);
     setExpandedNoteVersionIds(new Set());
     setAutoFocusNoteVersionIds(new Set());
-  }, [appId, flushPendingNoteSaves]);
+    setSelectedVersionReturnBranch(null);
+  }, [appId, flushPendingNoteSaves, setSelectedVersionReturnBranch]);
 
   useEffect(() => {
     return () => {
@@ -676,6 +688,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       const latestBranch = latestBranchResult.data?.branch;
       if (latestBranch && latestBranch !== "<no-branch>") {
         returnBranchRef.current = { appId, branch: latestBranch };
+        setSelectedVersionReturnBranch(latestBranch);
       }
       const returnBranch = getReturnBranch();
       if (!returnBranch) {
@@ -882,6 +895,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       });
       checkedOutVersionIdRef.current = null;
       returnBranchRef.current = null;
+      setSelectedVersionReturnBranch(null);
       setSelectedVersionId(null);
       // Close the pane after revert to force a refresh on next open
       onClose();

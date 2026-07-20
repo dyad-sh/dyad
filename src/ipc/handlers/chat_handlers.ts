@@ -11,7 +11,10 @@ import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
 import { normalizeStoredChatMode } from "./chat_mode_resolution";
-import { cancelActiveStreamsForChat } from "./chat_stream_handlers";
+import {
+  blockNewStreamsForChat,
+  cancelActiveStreamsForChat,
+} from "./chat_stream_handlers";
 import {
   rendererMessageColumns,
   toRendererMessage,
@@ -131,15 +134,21 @@ export function registerChatHandlers() {
     if (!chat) {
       return;
     }
-    // Cancel any in-flight stream for this chat BEFORE taking the app lock and
-    // deleting rows, otherwise a still-running generation could re-insert
-    // messages after the delete and resurrect the chat. Cancellation must run
-    // outside the lock because the aborted stream may take the same app lock for
-    // its own writes (e.g. copy_file).
-    await cancelActiveStreamsForChat(chatId, event.sender);
-    await withLock(chat.appId, async () => {
-      await db.delete(chats).where(eq(chats.id, chatId));
-    });
+    const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
+    try {
+      // Cancel any in-flight stream for this chat BEFORE taking the app lock and
+      // deleting rows, otherwise a still-running generation could re-insert
+      // messages after the delete and resurrect the chat. Cancellation must run
+      // outside the lock because the aborted stream may take the same app lock
+      // for its own writes (e.g. copy_file). The admission block closes the
+      // post-cancellation window so a new stream can't start before deletion.
+      await cancelActiveStreamsForChat(chatId, event.sender);
+      await withLock(chat.appId, async () => {
+        await db.delete(chats).where(eq(chats.id, chatId));
+      });
+    } finally {
+      releaseStreamAdmissionBlock();
+    }
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
@@ -179,15 +188,22 @@ export function registerChatHandlers() {
     if (!chat) {
       return;
     }
-    // Cancel any in-flight stream for this chat BEFORE taking the app lock and
-    // clearing messages, otherwise a still-running generation could insert new
-    // messages after the delete and leave the chat non-empty. Cancellation must
-    // run outside the lock because the aborted stream may take the same app lock
-    // for its own writes (e.g. copy_file).
-    await cancelActiveStreamsForChat(chatId, event.sender);
-    await withLock(chat.appId, async () => {
-      await db.delete(messages).where(eq(messages.chatId, chatId));
-    });
+    const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
+    try {
+      // Cancel any in-flight stream for this chat BEFORE taking the app lock and
+      // clearing messages, otherwise a still-running generation could insert
+      // new messages after the delete and leave the chat non-empty.
+      // Cancellation must run outside the lock because the aborted stream may
+      // take the same app lock for its own writes (e.g. copy_file). The
+      // admission block closes the post-cancellation window so a new stream
+      // can't start before the delete completes.
+      await cancelActiveStreamsForChat(chatId, event.sender);
+      await withLock(chat.appId, async () => {
+        await db.delete(messages).where(eq(messages.chatId, chatId));
+      });
+    } finally {
+      releaseStreamAdmissionBlock();
+    }
   });
 
   createTypedHandler(chatContracts.searchChats, async (_, params) => {

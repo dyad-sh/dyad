@@ -269,6 +269,37 @@ describe("getGitUncommittedFiles", () => {
       { path: "src.ts", status: "modified", additions: 2, deletions: 2 },
     ]);
   });
+
+  it("decodes git's octal-escaped non-ASCII paths in native git status", async () => {
+    const nextRepoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-utils-"),
+    );
+    repoDir = nextRepoDir;
+
+    await runGit(nextRepoDir, ["init"]);
+    await fs.promises.mkdir(path.join(nextRepoDir, ".dyad"), {
+      recursive: true,
+    });
+    // Git quotes these non-ASCII names with `\NNN` octal escapes in porcelain
+    // output; both must be decoded back to their real UTF-8 paths so the
+    // user-visible file is reported and the `.dyad/` one is still filtered out.
+    await fs.promises.writeFile(
+      path.join(nextRepoDir, "café.txt"),
+      "user change",
+    );
+    await fs.promises.writeFile(
+      path.join(nextRepoDir, "emoji-😀.txt"),
+      "user change",
+    );
+    await fs.promises.writeFile(
+      path.join(nextRepoDir, ".dyad", "naïve.png"),
+      "generated",
+    );
+
+    await expect(
+      getGitUncommittedFiles({ path: nextRepoDir }),
+    ).resolves.toEqual(["café.txt", "emoji-😀.txt"]);
+  });
 });
 
 describe("countChangedLines", () => {
@@ -299,26 +330,6 @@ describe("countChangedLines", () => {
       deletions: 0,
     });
   });
-
-  it("decodes git's octal-escaped non-ASCII paths in native git status", async () => {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
-    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
-
-    await runGit(repoDir, ["init"]);
-    await fs.promises.mkdir(path.join(repoDir, ".dyad"), { recursive: true });
-    // Git quotes these non-ASCII names with `\NNN` octal escapes in porcelain
-    // output; both must be decoded back to their real UTF-8 paths so the
-    // user-visible file is reported and the `.dyad/` one is still filtered out.
-    await fs.promises.writeFile(path.join(repoDir, "café.txt"), "user change");
-    await fs.promises.writeFile(
-      path.join(repoDir, ".dyad", "naïve.png"),
-      "generated",
-    );
-
-    await expect(getGitUncommittedFiles({ path: repoDir })).resolves.toEqual([
-      "café.txt",
-    ]);
-  });
 });
 
 describe("gitStageToRevert", () => {
@@ -332,7 +343,6 @@ describe("gitStageToRevert", () => {
   });
 
   async function createTwoVersionRepo() {
-    vi.mocked(readSettings).mockReturnValue({ enableNativeGit: true } as any);
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
     await runGit(repoDir, ["init"]);
     await fs.promises.writeFile(path.join(repoDir, "app.ts"), "version 1\n");
@@ -363,7 +373,7 @@ describe("gitStageToRevert", () => {
 
     await expect(
       gitStageToRevert({ path: repo.repoDir, targetOid: repo.targetOid }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(true);
   });
 
   it("still rejects user-visible uncommitted files", async () => {
@@ -379,4 +389,34 @@ describe("gitStageToRevert", () => {
       message: "Cannot revert: working tree has uncommitted changes.",
     });
   });
+
+  it("treats current-HEAD restores with only managed runtime files as no-ops", async () => {
+    const repo = await createTwoVersionRepo();
+    const currentOid = await runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]);
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "pnpm-workspace.yaml"),
+      'packages: ["."]\n',
+    );
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: currentOid }),
+    ).resolves.toBe(false);
+  });
+
+  it("rejects current-HEAD restores with staged user-visible files", async () => {
+    const repo = await createTwoVersionRepo();
+    const currentOid = await runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]);
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "manual-notes.txt"),
+      "unfinished work",
+    );
+    await runGit(repo.repoDir, ["add", "manual-notes.txt"]);
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: currentOid }),
+    ).rejects.toMatchObject({
+      message: "Cannot revert: working tree has uncommitted changes.",
+    });
+  });
+
 });

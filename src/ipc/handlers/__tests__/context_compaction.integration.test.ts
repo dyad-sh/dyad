@@ -28,6 +28,12 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 import { ipc } from "@/ipc/types";
+import { chats, messages } from "@/db/schema";
+import {
+  getCurrentCommitHash,
+  gitCheckout,
+  gitCurrentBranch,
+} from "@/ipc/utils/git_utils";
 
 describe("context compaction (integration)", () => {
   let harness: HybridChatHarness;
@@ -206,7 +212,6 @@ describe("context compaction (integration)", () => {
 
   it("compaction can run mid-turn", async () => {
     // Fresh chat, mirroring the e2e's separate test app.
-    const { chats } = await import("@/db/schema");
     const [chatRow] = await harness.db
       .insert(chats)
       .values({ appId: harness.appId, chatMode: "local-agent" })
@@ -247,4 +252,96 @@ describe("context compaction (integration)", () => {
     expect(dump.text).toContain("END OF COMPACTED TURN.");
     expect(dump.text).toMatchSnapshot("compaction-mid-turn-transcript");
   }, 60_000);
+
+  it("restore to the first message forks an empty chat", async () => {
+    const initialCommitHash = await getCurrentCommitHash({
+      path: harness.appDir,
+    });
+    const [chatRow] = await harness.db
+      .insert(chats)
+      .values({
+        appId: harness.appId,
+        chatMode: "local-agent",
+        initialCommitHash,
+      })
+      .returning();
+    const [firstMessage] = await harness.db
+      .insert(messages)
+      .values({
+        chatId: chatRow.id,
+        role: "user",
+        content: "First prompt",
+      })
+      .returning();
+
+    const result = await ipc.version.restoreToMessageVersion({
+      appId: harness.appId,
+      chatId: chatRow.id,
+      messageId: firstMessage.id,
+      restoreCodebase: true,
+    });
+
+    expect(result).toHaveProperty("newChatId");
+    const newChatId = "newChatId" in result ? result.newChatId : -1;
+    await expect(loadChatMessages(newChatId)).resolves.toEqual([]);
+    await expect(
+      harness.db.query.chats.findFirst({
+        where: (chats, { eq }) => eq(chats.id, newChatId),
+      }),
+    ).resolves.toMatchObject({
+      appId: harness.appId,
+      initialCommitHash,
+    });
+  });
+
+  it("restore to message uses the target branch while previewing detached history", async () => {
+    const targetBranchName = await gitCurrentBranch({
+      path: harness.appDir,
+    });
+    expect(targetBranchName).toBeTruthy();
+
+    const initialCommitHash = await getCurrentCommitHash({
+      path: harness.appDir,
+      ref: targetBranchName!,
+    });
+    const [chatRow] = await harness.db
+      .insert(chats)
+      .values({
+        appId: harness.appId,
+        chatMode: "local-agent",
+        initialCommitHash,
+      })
+      .returning();
+    const [firstMessage] = await harness.db
+      .insert(messages)
+      .values({
+        chatId: chatRow.id,
+        role: "user",
+        content: "First prompt from detached preview",
+      })
+      .returning();
+
+    await gitCheckout({ path: harness.appDir, ref: initialCommitHash });
+    expect(await gitCurrentBranch({ path: harness.appDir })).toBeNull();
+
+    try {
+      const result = await ipc.version.restoreToMessageVersion({
+        appId: harness.appId,
+        chatId: chatRow.id,
+        messageId: firstMessage.id,
+        restoreCodebase: true,
+        targetBranchName: targetBranchName!,
+      });
+
+      expect(result).toHaveProperty("newChatId");
+      await expect(gitCurrentBranch({ path: harness.appDir })).resolves.toBe(
+        targetBranchName,
+      );
+    } finally {
+      await gitCheckout({
+        path: harness.appDir,
+        ref: targetBranchName!,
+      }).catch(() => {});
+    }
+  });
 });

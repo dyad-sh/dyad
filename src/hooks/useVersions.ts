@@ -19,18 +19,6 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useRunApp } from "./useRunApp";
 import { useSettings } from "./useSettings";
 
-// Shared, per-app keys so every `useVersions` instance for the *same app* can
-// observe whether a version-modifying operation is in flight (via
-// `useIsMutating`), not just its own. The keys include `appId` so a
-// restore/revert running against one app does not disable version actions
-// (message restore arrows, undo/retry) in an unrelated app. Both operations are
-// serialized by `withLock(appId)` on the backend, but we also want to prevent
-// the UI from kicking off a second one against state left by the first.
-const restoreToMessageMutationKey = (appId: number | null) =>
-  ["restoreToMessageVersion", appId] as const;
-const revertVersionMutationKey = (appId: number | null) =>
-  ["revertVersion", appId] as const;
-
 export function useVersions(appId: number | null) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
@@ -79,7 +67,7 @@ export function useVersions(appId: number | null) {
       targetBranchName?: string;
     }
   >({
-    mutationKey: revertVersionMutationKey(appId),
+    mutationKey: queryKeys.versions.revertMutation({ appId }),
     mutationFn: async ({
       versionId,
       currentChatMessageId,
@@ -185,16 +173,26 @@ export function useVersions(appId: number | null) {
   const restoreToMessageMutation = useMutation<
     RestoreToMessageResponse,
     Error,
-    { chatId: number; messageId: number; restoreCodebase: boolean },
+    {
+      chatId: number;
+      messageId: number;
+      restoreCodebase: boolean;
+      targetBranchName?: string;
+    },
     { mutationAppId: number | null }
   >({
-    mutationKey: restoreToMessageMutationKey(appId),
+    mutationKey: queryKeys.versions.restoreToMessageMutation({ appId }),
     // Capture the app the mutation targets so `onSuccess` invalidates *that*
     // app's caches. If the user switches apps while the IPC call is in flight,
     // the hook's `appId` closure would point at the newly selected app, leaving
     // the restored app's version/branch/problem caches stale.
     onMutate: () => ({ mutationAppId: appId }),
-    mutationFn: async ({ chatId, messageId, restoreCodebase }) => {
+    mutationFn: async ({
+      chatId,
+      messageId,
+      restoreCodebase,
+      targetBranchName,
+    }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
         throw new DyadError("App ID is null", DyadErrorKind.External);
@@ -204,6 +202,7 @@ export function useVersions(appId: number | null) {
         chatId,
         messageId,
         restoreCodebase,
+        targetBranchName,
       });
     },
     onSuccess: async (result, variables, context) => {
@@ -268,10 +267,10 @@ export function useVersions(appId: number | null) {
   // `||` directly would short-circuit and skip the second hook whenever the
   // first is truthy, violating the rules of hooks ("Should have a queue").
   const restoreToMessagePending = useIsMutating({
-    mutationKey: restoreToMessageMutationKey(appId),
+    mutationKey: queryKeys.versions.restoreToMessageMutation({ appId }),
   });
   const revertVersionPending = useIsMutating({
-    mutationKey: revertVersionMutationKey(appId),
+    mutationKey: queryKeys.versions.revertMutation({ appId }),
   });
   const isAnyVersionMutationPending =
     restoreToMessagePending > 0 || revertVersionPending > 0;

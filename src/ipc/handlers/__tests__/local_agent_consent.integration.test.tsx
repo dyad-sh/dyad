@@ -196,4 +196,36 @@ describe("local-agent consent banner (integration)", () => {
     expect(content).toContain("User denied permission for add_dependency");
     expect(content).not.toContain("Successfully installed");
   }, 60_000);
+
+  it("cancels promptly while a streamed tool is waiting for consent", async () => {
+    writeSettings({ agentToolConsents: { add_dependency: "ask" } });
+
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+    await harness.selectChatMode("local-agent");
+
+    const { send } = await harness.typeInChat("tc=local-agent/add-dependency", {
+      chatId,
+    });
+    send();
+
+    // Prove the real tool loop is parked on its unresolved consent promise.
+    await screen.findByRole("button", { name: "Decline" }, { timeout: 20_000 });
+    const cancelButton = await screen.findByLabelText(
+      /^(cancelGeneration|Cancel generation)$/,
+      {},
+      { timeout: 20_000 },
+    );
+
+    fireEvent.click(cancelButton);
+
+    const endEvent = await harness.waitForStreamEnd(chatId, 10_000);
+    expect(endEvent.payload).toMatchObject({
+      chatId,
+      wasCancelled: true,
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Decline" })).toBeNull(),
+    );
+  }, 30_000);
 });

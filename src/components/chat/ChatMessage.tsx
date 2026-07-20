@@ -25,7 +25,10 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { showError } from "@/lib/toast";
 import { useAtomValue } from "jotai";
 import { selectAtom } from "jotai/utils";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  selectedAppIdAtom,
+  selectedVersionReturnBranchAtom,
+} from "@/atoms/appAtoms";
 import {
   selectedChatIdAtom,
   streamingPreviewByChatIdAtom,
@@ -111,6 +114,9 @@ const ChatMessage = ({
 }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
+  const selectedVersionReturnBranch = useAtomValue(
+    selectedVersionReturnBranchAtom,
+  );
   const {
     versions: liveVersions,
     restoreToMessage,
@@ -232,6 +238,7 @@ const ChatMessage = ({
         chatId: selectedChatId,
         messageId: message.id,
         restoreCodebase,
+        targetBranchName: selectedVersionReturnBranch ?? undefined,
       });
       // A `newChatId` is only returned when a new chat was actually created. If
       // no version could be determined, we stay on the current chat (the user
@@ -290,6 +297,12 @@ const ChatMessage = ({
               it was before this message, or "Fork chat only" to leave your
               files untouched.
             </AlertDialogDescription>
+            {isStreaming && (
+              <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
+                A generation is in progress. "Restore code & fork chat" will
+                stop it first; "Fork chat only" leaves it running.
+              </p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-col sm:justify-normal">
             <AlertDialogAction

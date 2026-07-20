@@ -235,6 +235,11 @@ export function parseTypeScriptDiagnostics(
       continue;
     }
 
+    if (/^(?:Found \d+ errors?|Errors\s+Files\s*$)/.test(rawLine)) {
+      current = undefined;
+      continue;
+    }
+
     throw new Error(`Unrecognized TypeScript diagnostic output: ${rawLine}`);
   }
 
@@ -433,6 +438,18 @@ export async function runTypeScriptCheck({
       const result = await runCli(cli, appPath, [
         "--pretty",
         "false",
+        "--diagnostics",
+        "false",
+        "--extendedDiagnostics",
+        "false",
+        "--listFiles",
+        "false",
+        "--listEmittedFiles",
+        "false",
+        "--explainFiles",
+        "false",
+        "--traceResolution",
+        "false",
         "--noEmit",
         "--incremental",
         "--tsBuildInfoFile",
@@ -468,8 +485,10 @@ export async function runTypeScriptCheck({
       );
     } catch (error) {
       if (error instanceof BufferedProcessSpawnError) {
-        throw new Error(
+        throw new TypeCheckPreconditionError(
+          "typescript-not-found",
           `Failed to start local TypeScript CLI: ${error.message}`,
+          { cause: error },
         );
       }
       throw toProblemReportError(error);

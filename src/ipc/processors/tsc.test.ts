@@ -4,7 +4,10 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
-import type { BufferedProcessResult } from "@/ipc/utils/buffered_process";
+import {
+  BufferedProcessSpawnError,
+  type BufferedProcessResult,
+} from "@/ipc/utils/buffered_process";
 import {
   clearTypeScriptVersionCacheForTests,
   parseTypeScriptDiagnostics,
@@ -177,6 +180,20 @@ describe("parseTypeScriptDiagnostics", () => {
       parseTypeScriptDiagnostics("unexpected output", "/app"),
     ).toThrow("Unrecognized TypeScript diagnostic output");
   });
+
+  it("ignores standard non-pretty diagnostic summaries", () => {
+    const result = parseTypeScriptDiagnostics(
+      "src/App.ts(1,7): error TS2322: Type mismatch\nFound 1 error in src/App.ts:1\n",
+      "/app",
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      file: "src/App.ts",
+      code: 2322,
+      message: "Type mismatch",
+    });
+  });
 });
 
 describe("runTypeScriptCheck", () => {
@@ -246,6 +263,18 @@ describe("runTypeScriptCheck", () => {
         args: expect.arrayContaining([
           "--pretty",
           "false",
+          "--diagnostics",
+          "false",
+          "--extendedDiagnostics",
+          "false",
+          "--listFiles",
+          "false",
+          "--listEmittedFiles",
+          "false",
+          "--explainFiles",
+          "false",
+          "--traceResolution",
+          "false",
           "--noEmit",
           "--incremental",
           "--project",
@@ -312,6 +341,17 @@ describe("runTypeScriptCheck", () => {
       typeCheckKind: "typescript-not-found",
     });
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a shim that disappears before spawn as an install precondition", async () => {
+    runBufferedProcessMock.mockRejectedValueOnce(
+      new BufferedProcessSpawnError("spawn ENOENT", "", ""),
+    );
+
+    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
+      typeCheckKind: "typescript-not-found",
+      kind: DyadErrorKind.Precondition,
+    });
   });
 
   it("prefers tsconfig.app.json and reports missing configs", async () => {

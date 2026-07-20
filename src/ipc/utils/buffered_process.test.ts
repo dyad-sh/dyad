@@ -211,6 +211,41 @@ describe("runBufferedProcess", () => {
     expect(controller.child.listenerCount("error")).toBe(0);
   });
 
+  it("can keep a timed-out command pending until process close", async () => {
+    vi.useFakeTimers();
+    const controller = createMockChildController();
+    spawnMock.mockReturnValue(controller.child);
+
+    const promise = runBufferedProcess({
+      command: "npm test",
+      cwd: "/tmp/app",
+      timeoutMs: 25,
+      waitForCloseAfterForceKill: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      25 + BUFFERED_PROCESS_FORCE_KILL_GRACE_MS,
+    );
+    let settled = false;
+    void promise.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+    expect(treeKillMock).toHaveBeenLastCalledWith(
+      4321,
+      "SIGKILL",
+      expect.any(Function),
+    );
+
+    controller.close(null, "SIGKILL");
+    await expect(promise).resolves.toMatchObject({
+      signal: "SIGKILL",
+      timedOut: true,
+    });
+  });
+
   it("aborts a running process and unregisters the AbortSignal listener", async () => {
     vi.useFakeTimers();
     const controller = createMockChildController();

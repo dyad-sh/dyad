@@ -156,8 +156,12 @@ function normalizePath(filePath: string): string {
   return filePath.replaceAll("\\", "/");
 }
 
+function isWindowsPath(filePath: string): boolean {
+  return /^(?:[A-Za-z]:[\\/]|\\\\)/.test(filePath);
+}
+
 function getPathApi(filePath: string): typeof path.posix | typeof path.win32 {
-  return /^[A-Za-z]:[\\/]/.test(filePath) ? path.win32 : path.posix;
+  return isWindowsPath(filePath) ? path.win32 : path.posix;
 }
 
 function isPathInside(rootPath: string, candidatePath: string): boolean {
@@ -188,7 +192,7 @@ export function parseTypeScriptDiagnostics(
     if (match) {
       const reportedPath = match[1];
       const pathApi = getPathApi(
-        /^[A-Za-z]:[\\/]/.test(reportedPath) ? reportedPath : appPath,
+        isWindowsPath(reportedPath) ? reportedPath : appPath,
       );
       const absoluteFilePath = pathApi.isAbsolute(reportedPath)
         ? pathApi.normalize(reportedPath)
@@ -353,6 +357,9 @@ async function runCli(
     shell: false,
     timeoutMs: TSC_TIMEOUT_MS,
     maxOutputBytes: TSC_MAX_OUTPUT_BYTES,
+    // The scheduler must not release its memory-heavy-work slot until the
+    // process and its stdio have actually closed.
+    waitForCloseAfterForceKill: true,
   });
 }
 

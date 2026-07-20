@@ -123,6 +123,39 @@ describe("parseTypeScriptDiagnostics", () => {
     expect(problem.file).toBe("src/main.ts");
   });
 
+  it("uses Windows path semantics for UNC-hosted projects", () => {
+    const appPath = String.raw`\\server\share\app`;
+    const configPath = String.raw`\\server\share\app\tsconfig.app.json`;
+    const [relativeProblem] = parseTypeScriptDiagnostics(
+      String.raw`src\main.ts(3,4): error TS7006: Parameter is implicit`,
+      appPath,
+      configPath,
+    );
+    const [absoluteProblem] = parseTypeScriptDiagnostics(
+      String.raw`\\server\share\app\src\main.ts(3,4): error TS7006: Parameter is implicit`,
+      appPath,
+      configPath,
+    );
+    const [projectProblem] = parseTypeScriptDiagnostics(
+      "error TS18003: No inputs were found",
+      appPath,
+      configPath,
+    );
+
+    expect(relativeProblem).toMatchObject({
+      file: "src/main.ts",
+      absoluteFilePath: String.raw`\\server\share\app\src\main.ts`,
+    });
+    expect(absoluteProblem).toMatchObject({
+      file: "src/main.ts",
+      absoluteFilePath: String.raw`\\server\share\app\src\main.ts`,
+    });
+    expect(projectProblem).toMatchObject({
+      file: "tsconfig.app.json",
+      absoluteFilePath: configPath,
+    });
+  });
+
   it("surfaces project-level diagnostics against the active config", () => {
     const [problem] = parseTypeScriptDiagnostics(
       "error TS18003: No inputs were found in config file '/app/tsconfig.app.json'.",
@@ -220,6 +253,7 @@ describe("runTypeScriptCheck", () => {
         ]),
         cwd: appPath,
         shell: false,
+        waitForCloseAfterForceKill: true,
       }),
     );
     const args = runBufferedProcessMock.mock.calls[1][0].args as string[];

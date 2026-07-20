@@ -34,6 +34,7 @@ const REQUIRED_TYPESCRIPT_FUNCTIONS = [
   "createProgram",
   "flattenDiagnosticMessageText",
   "forEachChild",
+  "getConfigFileParsingDiagnostics",
   "getParsedCommandLineOfConfigFile",
   "isCallExpression",
   "isClassDeclaration",
@@ -162,7 +163,7 @@ export function resolveCodeExplorerCompiler(
     assertCompatibleCompiler(bundledCandidate, "Bundled TypeScript 6");
   } catch (error) {
     throw new Error(
-      `Local TypeScript ${localVersion} is incompatible with Code Explorer (${fallbackReason}), and the bundled TypeScript 6 fallback failed to load: ${error}`,
+      `Failed to load TypeScript from ${appPath}: local TypeScript ${localVersion} is incompatible with Code Explorer (${fallbackReason}), and the bundled TypeScript 6 fallback failed to load: ${error}`,
     );
   }
 
@@ -207,7 +208,7 @@ export async function processCodeExplorer(
     if (!output.success && compiler.source === "bundled-ts6") {
       return {
         success: false,
-        error: `Code Explorer used bundled TypeScript ${compiler.version} because the local compiler API was incompatible. ${output.error}`,
+        error: `${output.error} (Code Explorer used bundled TypeScript ${compiler.version} because the local compiler API was incompatible)`,
       };
     }
     return output;

@@ -111,6 +111,28 @@ describe("exploreCode", () => {
     }
   });
 
+  it("preserves the original error prefix when bundled TypeScript 6 cannot build an index", async () => {
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        exports: { "./package.json": "./package.json" },
+      }),
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      query: "missing config",
+    });
+
+    expect(output.success).toBe(false);
+    if (!output.success) {
+      expect(output.error).toMatch(
+        /^No TypeScript configuration file found.* \(Code Explorer used bundled TypeScript .* because the local compiler API was incompatible\)$/,
+      );
+    }
+  });
+
   it("indexes module-suffixed source files while excluding declarations", () => {
     const appPath = createTempProject({
       "tsconfig.json": JSON.stringify(

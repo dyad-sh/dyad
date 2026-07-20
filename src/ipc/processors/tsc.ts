@@ -147,6 +147,11 @@ interface ParsedDiagnostic extends Problem {
   absoluteFilePath: string;
 }
 
+interface ParsedDiagnostics {
+  problems: ParsedDiagnostic[];
+  skippedLines: string[];
+}
+
 interface TypeScriptCli {
   command: string;
   shimPath: string;
@@ -175,12 +180,13 @@ function isPathInside(rootPath: string, candidatePath: string): boolean {
   );
 }
 
-export function parseTypeScriptDiagnostics(
+function parseTypeScriptDiagnosticsDetailed(
   output: string,
   appPath: string,
   configPath?: string,
-): ParsedDiagnostic[] {
+): ParsedDiagnostics {
   const problems: ParsedDiagnostic[] = [];
+  const skippedLines: string[] = [];
   let current: ParsedDiagnostic | undefined;
 
   for (const rawLine of output.replaceAll("\r\n", "\n").split("\n")) {
@@ -240,14 +246,29 @@ export function parseTypeScriptDiagnostics(
       continue;
     }
 
-    throw new Error(`Unrecognized TypeScript diagnostic output: ${rawLine}`);
+    current = undefined;
+    skippedLines.push(rawLine);
   }
 
   if (problems.length === 0) {
+    if (skippedLines.length > 0) {
+      throw new Error(
+        `Unrecognized TypeScript diagnostic output: ${skippedLines[0]}`,
+      );
+    }
     throw new Error("TypeScript exited with no parseable file diagnostics");
   }
 
-  return problems;
+  return { problems, skippedLines };
+}
+
+export function parseTypeScriptDiagnostics(
+  output: string,
+  appPath: string,
+  configPath?: string,
+): ParsedDiagnostic[] {
+  return parseTypeScriptDiagnosticsDetailed(output, appPath, configPath)
+    .problems;
 }
 
 async function addSnippets(
@@ -479,10 +500,21 @@ export async function runTypeScriptCheck({
       }
 
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-      return await addSnippets(
-        parseTypeScriptDiagnostics(output, appPath, configPath),
+      const parsed = parseTypeScriptDiagnosticsDetailed(
+        output,
         appPath,
+        configPath,
       );
+      if (parsed.skippedLines.length > 0) {
+        const preview = parsed.skippedLines
+          .slice(0, 3)
+          .map((line) => line.slice(0, 300));
+        logger.warn(
+          `Ignored ${parsed.skippedLines.length} unrecognized line(s) after parsing TypeScript diagnostics:`,
+          preview,
+        );
+      }
+      return await addSnippets(parsed.problems, appPath);
     } catch (error) {
       if (error instanceof BufferedProcessSpawnError) {
         throw new TypeCheckPreconditionError(

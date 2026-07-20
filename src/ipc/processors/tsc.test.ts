@@ -194,6 +194,20 @@ describe("parseTypeScriptDiagnostics", () => {
       message: "Type mismatch",
     });
   });
+
+  it("returns parsed diagnostics despite unknown supplemental output", () => {
+    const result = parseTypeScriptDiagnostics(
+      "compiler plugin banner\nsrc/App.ts(1,7): error TS2322: Type mismatch\nplugin footer\n  footer detail\n",
+      "/app",
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      file: "src/App.ts",
+      code: 2322,
+      message: "Type mismatch",
+    });
+  });
 });
 
 describe("runTypeScriptCheck", () => {

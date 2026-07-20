@@ -20,6 +20,7 @@ interface ModifiedFilesCardProps {
   isUndoLoading: boolean;
   onRetry: () => void;
   isRetryLoading: boolean;
+  isAnyVersionMutationPending: boolean;
 }
 
 function splitPath(filePath: string): { dir: string; name: string } {
@@ -46,6 +47,7 @@ export function ModifiedFilesCard({
   isUndoLoading,
   onRetry,
   isRetryLoading,
+  isAnyVersionMutationPending,
 }: ModifiedFilesCardProps) {
   const { changes, loading, error } = useVersionChanges(appId, commitHash);
   const setPreviewMode = useSetAtom(previewModeAtom);
@@ -79,7 +81,8 @@ export function ModifiedFilesCard({
 
   // Undo and Retry both revert/replace the same last generation, so while either
   // is in flight both are disabled to prevent overlapping operations.
-  const actionsDisabled = isUndoLoading || isRetryLoading;
+  const actionsDisabled =
+    isUndoLoading || isRetryLoading || isAnyVersionMutationPending;
 
   const footer = (
     <div className="px-3 py-2 flex justify-end gap-2">

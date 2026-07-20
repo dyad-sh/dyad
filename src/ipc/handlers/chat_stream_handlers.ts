@@ -158,8 +158,8 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
-const activeStreams = new Map<number, AbortController>();
-const admissionPendingChatIds = new Set<number>();
+const activeStreams = new Map<number, Set<AbortController>>();
+const admissionPendingStreams = new Set<AbortController>();
 
 // How many chats are currently streaming a response. Used by the
 // performance monitor to record activity alongside memory snapshots.
@@ -171,7 +171,32 @@ export function getActiveStreamCount(): number {
 // so any in-flight tool/file writes have settled). `cancelStream` awaits this
 // after aborting so callers like restore-to-message don't touch the working
 // tree while a cancelled turn is still flushing partial file writes.
-const streamCompletions = new Map<number, Promise<void>>();
+const streamCompletions = new Map<number, Set<Promise<void>>>();
+
+export function addTrackedValue<T>(
+  trackedValues: Map<number, Set<T>>,
+  chatId: number,
+  value: T,
+): void {
+  const values = trackedValues.get(chatId) ?? new Set<T>();
+  values.add(value);
+  trackedValues.set(chatId, values);
+}
+
+export function removeTrackedValue<T>(
+  trackedValues: Map<number, Set<T>>,
+  chatId: number,
+  value: T,
+): void {
+  const values = trackedValues.get(chatId);
+  if (!values) {
+    return;
+  }
+  values.delete(value);
+  if (values.size === 0) {
+    trackedValues.delete(chatId);
+  }
+}
 
 // A restore must drain existing streams and prevent new ones from entering the
 // same app until its Git/database mutation has finished. Counts (rather than a
@@ -287,10 +312,13 @@ async function cancelTrackedStreams(
   const trackedStreams = chatIds
     .map((chatId) => ({
       chatId,
-      abortController: activeStreams.get(chatId),
-      completion: streamCompletions.get(chatId),
+      abortControllers: [...(activeStreams.get(chatId) ?? [])],
+      completions: [...(streamCompletions.get(chatId) ?? [])],
     }))
-    .filter(({ abortController, completion }) => abortController || completion);
+    .filter(
+      ({ abortControllers, completions }) =>
+        abortControllers.length > 0 || completions.length > 0,
+    );
 
   if (trackedStreams.length === 0) {
     return false;
@@ -298,15 +326,19 @@ async function cancelTrackedStreams(
 
   // Resolve consent prompts before awaiting completion. A stream parked on a
   // consent prompt cannot unwind until that prompt is resolved.
-  for (const { chatId, abortController } of trackedStreams) {
-    abortController?.abort();
+  for (const { chatId, abortControllers } of trackedStreams) {
+    abortControllers.forEach((controller) => controller.abort());
     clearPendingLocalAgentInputsForChat(chatId);
     clearPendingMcpConsentsForChat(chatId);
-    logger.log(`Aborted stream for chat ${chatId}`);
+    logger.log(
+      `Aborted ${abortControllers.length} stream(s) for chat ${chatId}`,
+    );
   }
 
   await Promise.all(
-    trackedStreams.map(({ completion }) => completion?.catch(() => {})),
+    trackedStreams.flatMap(({ completions }) =>
+      completions.map((completion) => completion.catch(() => {})),
+    ),
   );
 
   for (const { chatId } of trackedStreams) {
@@ -348,7 +380,11 @@ export async function cancelActiveStreamsForApp(
 ): Promise<boolean> {
   const inFlightChatIds = [
     ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
-  ].filter((chatId) => !admissionPendingChatIds.has(chatId));
+  ].filter((chatId) =>
+    [...(activeStreams.get(chatId) ?? [])].some(
+      (controller) => !admissionPendingStreams.has(controller),
+    ),
+  );
   if (inFlightChatIds.length === 0) {
     return false;
   }
@@ -488,15 +524,15 @@ export function registerChatStreamHandlers() {
   // the module-level stream-tracking maps don't outlive their renderer.
   // (Guarded: `app` is undefined when this module is imported in unit tests.)
   app?.on?.("before-quit", () => {
-    for (const controller of activeStreams.values()) {
-      controller.abort();
+    for (const controllers of activeStreams.values()) {
+      controllers.forEach((controller) => controller.abort());
     }
     activeStreams.clear();
     partialResponses.clear();
     streamCompletions.clear();
     streamAdmissionBlockCounts.clear();
     chatStreamAdmissionBlockCounts.clear();
-    admissionPendingChatIds.clear();
+    admissionPendingStreams.clear();
     resolveAllAdmissionWaiters(streamAdmissionWaiters);
     resolveAllAdmissionWaiters(chatStreamAdmissionWaiters);
   });
@@ -517,12 +553,10 @@ export function registerChatStreamHandlers() {
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
-    streamCompletions.set(
-      req.chatId,
-      new Promise<void>((resolve) => {
-        resolveCompletion = resolve;
-      }),
-    );
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    addTrackedValue(streamCompletions, req.chatId, completion);
     try {
       // This legacy stream handler predates createTypedHandler, so enforce the
       // contract explicitly before any attachment string is decoded.
@@ -536,8 +570,8 @@ export function registerChatStreamHandlers() {
       req = parsedRequest.data;
 
       let dyadRequestId: string | undefined;
-      activeStreams.set(req.chatId, abortController);
-      admissionPendingChatIds.add(req.chatId);
+      addTrackedValue(activeStreams, req.chatId, abortController);
+      admissionPendingStreams.add(abortController);
 
       const loadChatForStream = () =>
         db.query.chats.findFirst({
@@ -612,7 +646,7 @@ export function registerChatStreamHandlers() {
       // Notify the renderer only after admission succeeds. Requests that arrive
       // during an in-progress restore wait here and then start normally, keeping
       // the submitted prompt owned by the stream instead of dropping it.
-      admissionPendingChatIds.delete(req.chatId);
+      admissionPendingStreams.delete(abortController);
       safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
       // Record the streaming chat in the crash sentinel so a later force-close
@@ -1615,8 +1649,6 @@ This conversation includes one or more image attachments. When the user uploads 
                 chatId: req.chatId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
-              // Clean up the abort controller
-              activeStreams.delete(req.chatId);
             },
             abortSignal: abortController.signal,
           });
@@ -2124,8 +2156,8 @@ This conversation includes one or more image attachments. When the user uploads 
       return "error";
     } finally {
       // Clean up the abort controller
-      activeStreams.delete(req.chatId);
-      admissionPendingChatIds.delete(req.chatId);
+      removeTrackedValue(activeStreams, req.chatId, abortController);
+      admissionPendingStreams.delete(abortController);
 
       // Notify renderer that stream has ended. When the stream was cancelled,
       // `cancelTrackedStreams` is the sole sender of the end events (it emits
@@ -2137,14 +2169,16 @@ This conversation includes one or more image attachments. When the user uploads 
         safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
       }
       // Unblock any pending MCP consents (their banners are cleared on stream end).
-      clearPendingMcpConsentsForChat(req.chatId);
+      if (!activeStreams.has(req.chatId)) {
+        clearPendingMcpConsentsForChat(req.chatId);
+      }
 
       // Signal any awaiting `cancelStream` call that all writes have settled,
       // then drop the (now-resolved) completion promise for this chat. Resolve
       // before deleting so a reader that consults the map after the abort still
       // observes a settled promise rather than a missing entry.
       resolveCompletion();
-      streamCompletions.delete(req.chatId);
+      removeTrackedValue(streamCompletions, req.chatId, completion);
     }
   };
   registerTrustedIpcHandler("chat:stream", chatStreamHandler);

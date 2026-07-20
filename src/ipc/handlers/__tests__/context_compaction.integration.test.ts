@@ -18,7 +18,9 @@
 // (not the chatId), so success is asserted via the stored messages / absence
 // of a stream error. Dyad Engine calls are routed to the harness fake server
 // via `engine: true`.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 
 import { screen, waitFor } from "@testing-library/react";
 
@@ -31,8 +33,11 @@ import { ipc } from "@/ipc/types";
 import { chats, messages } from "@/db/schema";
 import {
   getCurrentCommitHash,
+  gitAddAll,
   gitCheckout,
+  gitCommit,
   gitCurrentBranch,
+  gitLog,
 } from "@/ipc/utils/git_utils";
 
 describe("context compaction (integration)", () => {
@@ -344,4 +349,168 @@ describe("context compaction (integration)", () => {
       }).catch(() => {});
     }
   });
+
+  it("anchors a fork-only chat to the detached preview commit", async () => {
+    const targetBranchName = await gitCurrentBranch({ path: harness.appDir });
+    expect(targetBranchName).toBeTruthy();
+    const chatInitialCommitHash = await getCurrentCommitHash({
+      path: harness.appDir,
+    });
+    const previewFile = path.join(harness.appDir, "detached-preview.txt");
+    await fs.promises.writeFile(previewFile, "preview commit\n");
+    await gitAddAll({ path: harness.appDir });
+    const previewCommitHash = await gitCommit({
+      path: harness.appDir,
+      message: "Create detached fork preview fixture",
+    });
+    const [chatRow] = await harness.db
+      .insert(chats)
+      .values({
+        appId: harness.appId,
+        chatMode: "local-agent",
+        initialCommitHash: chatInitialCommitHash,
+      })
+      .returning();
+    const [firstMessage] = await harness.db
+      .insert(messages)
+      .values({
+        chatId: chatRow.id,
+        role: "user",
+        content: "Fork from this detached preview",
+      })
+      .returning();
+
+    await gitCheckout({ path: harness.appDir, ref: previewCommitHash });
+    try {
+      const result = await ipc.version.restoreToMessageVersion({
+        appId: harness.appId,
+        chatId: chatRow.id,
+        messageId: firstMessage.id,
+        restoreCodebase: false,
+      });
+
+      expect(result).toHaveProperty("newChatId");
+      const forkedChat = await harness.db.query.chats.findFirst({
+        where: (chat, { eq }) =>
+          eq(chat.id, "newChatId" in result ? result.newChatId : -1),
+      });
+      expect(forkedChat?.initialCommitHash).toBe(previewCommitHash);
+    } finally {
+      await gitCheckout({
+        path: harness.appDir,
+        ref: targetBranchName!,
+      }).catch(() => {});
+    }
+  });
+
+  it("preflights detached restores and checkpoints dirty preview writes before switching branches", async () => {
+    const targetBranchName = await gitCurrentBranch({ path: harness.appDir });
+    expect(targetBranchName).toBeTruthy();
+    const conflictFile = path.join(harness.appDir, "detached-conflict.txt");
+    await fs.promises.writeFile(conflictFile, "restore target\n");
+    await gitAddAll({ path: harness.appDir });
+    const restoreTargetHash = await gitCommit({
+      path: harness.appDir,
+      message: "Create detached restore target fixture",
+    });
+    await fs.promises.writeFile(conflictFile, "live branch\n");
+    await gitAddAll({ path: harness.appDir });
+    await gitCommit({
+      path: harness.appDir,
+      message: "Advance detached restore branch fixture",
+    });
+
+    const [restoreChat, backgroundChat] = await harness.db
+      .insert(chats)
+      .values([
+        {
+          appId: harness.appId,
+          chatMode: "local-agent",
+          initialCommitHash: restoreTargetHash,
+        },
+        {
+          appId: harness.appId,
+          chatMode: "local-agent",
+          initialCommitHash: restoreTargetHash,
+        },
+      ])
+      .returning();
+    const [restoreMessage] = await harness.db
+      .insert(messages)
+      .values({
+        chatId: restoreChat.id,
+        role: "user",
+        content: "Restore while detached and dirty",
+      })
+      .returning();
+
+    await gitCheckout({ path: harness.appDir, ref: restoreTargetHash });
+    let backgroundSettled = false;
+    const backgroundStream = harness
+      .streamChat("tc=local-agent/cancel-todos", {
+        chatId: backgroundChat.id,
+      })
+      .finally(() => {
+        backgroundSettled = true;
+      });
+
+    try {
+      await vi.waitFor(
+        async () => {
+          const activeMessages = await harness.db.query.messages.findMany({
+            where: (message, { and, eq }) =>
+              and(
+                eq(message.chatId, backgroundChat.id),
+                eq(message.role, "assistant"),
+              ),
+          });
+          expect(activeMessages.length).toBeGreaterThan(0);
+        },
+        { timeout: 20_000 },
+      );
+      await fs.promises.writeFile(conflictFile, "interrupted generation\n");
+
+      await expect(
+        ipc.version.restoreToMessageVersion({
+          appId: harness.appId,
+          chatId: restoreChat.id,
+          messageId: restoreMessage.id,
+          restoreCodebase: true,
+        }),
+      ).rejects.toThrow("Cannot restore while viewing a historical version");
+      expect(backgroundSettled).toBe(false);
+
+      const result = await ipc.version.restoreToMessageVersion({
+        appId: harness.appId,
+        chatId: restoreChat.id,
+        messageId: restoreMessage.id,
+        restoreCodebase: true,
+        targetBranchName: targetBranchName!,
+      });
+      await backgroundStream;
+
+      expect(result).toHaveProperty("newChatId");
+      await expect(gitCurrentBranch({ path: harness.appDir })).resolves.toBe(
+        targetBranchName,
+      );
+      await expect(fs.promises.readFile(conflictFile, "utf8")).resolves.toBe(
+        "restore target\n",
+      );
+      const versions = await gitLog({ path: harness.appDir });
+      expect(
+        versions.some((version) =>
+          version.commit.message.includes("Saved partial changes"),
+        ),
+      ).toBe(true);
+    } finally {
+      if (!backgroundSettled) {
+        await ipc.chat.cancelStream(backgroundChat.id).catch(() => {});
+        await backgroundStream.catch(() => {});
+      }
+      await gitCheckout({
+        path: harness.appDir,
+        ref: targetBranchName!,
+      }).catch(() => {});
+    }
+  }, 60_000);
 });

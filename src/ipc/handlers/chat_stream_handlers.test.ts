@@ -9,7 +9,9 @@ import {
 
 import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import {
+  addTrackedValue,
   removeDyadTags,
+  removeTrackedValue,
   hasUnclosedDyadWrite,
   processStreamChunks,
 } from "@/ipc/handlers/chat_stream_handlers";
@@ -24,6 +26,20 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const MOCK_APP_PATH = "/mock/user/data/path/mock-app-path";
 const appPath = (...segments: string[]) =>
   path.join(MOCK_APP_PATH, ...segments);
+
+describe("stream invocation tracking", () => {
+  it("keeps a newer invocation tracked when an older one finishes", () => {
+    const trackedInvocations = new Map<number, Set<object>>();
+    const olderInvocation = {};
+    const newerInvocation = {};
+
+    addTrackedValue(trackedInvocations, 42, olderInvocation);
+    addTrackedValue(trackedInvocations, 42, newerInvocation);
+    removeTrackedValue(trackedInvocations, 42, olderInvocation);
+
+    expect(trackedInvocations.get(42)).toEqual(new Set([newerInvocation]));
+  });
+});
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {

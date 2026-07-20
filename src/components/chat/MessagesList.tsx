@@ -230,6 +230,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           isUndoLoading={isUndoLoading}
           onRetry={handleRetry}
           isRetryLoading={isRetryLoading}
+          isAnyVersionMutationPending={isAnyVersionMutationPending}
         />
       )}
       {!isStreaming && !showModifiedFilesCard && (

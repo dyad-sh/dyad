@@ -307,15 +307,16 @@ export async function requireAgentToolConsent(
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
+  const { abortSignal, ...rendererParams } = params;
   (event.sender as any).send("agent-tool:consent-request", {
     requestId,
-    ...params,
+    ...rendererParams,
   });
 
   const response = await waitForAgentToolConsent(
     requestId,
     params.chatId,
-    params.abortSignal,
+    abortSignal,
   );
 
   if (response === "accept-always") {

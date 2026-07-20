@@ -32,6 +32,13 @@ rows, IPC events, or LLM request dumps. Use the renderer+IPC hybrid harness only
 when assertions are about rendered UI or a flow that must be driven through a
 real UI event in the mounted React tree.
 
+Do not drive overlapping `chat:stream` calls for the same chat through the
+chat-flow or hybrid harness. Both invocations read and write the same persisted
+conversation, so one stream's user/tool messages can change the other stream's
+fake-fixture routing or turn count and make timing-based tests hang. Cover
+per-invocation tracking with a focused unit test, and use separate chats for
+integration coverage of app-wide cancellation.
+
 When a renderer+IPC hybrid or chat-flow harness test passes `engine: true`,
 production code must read Dyad Engine/Gateway URLs at call time. If a test still
 logs `POST https://engine.dyad.sh/v1/... 401 (Unauthorized)`, search for

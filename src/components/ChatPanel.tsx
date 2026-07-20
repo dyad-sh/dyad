@@ -95,9 +95,17 @@ export function ChatPanel({
   // Ref to track previous streaming state for stream-complete scroll
   const prevIsStreamingRef = useRef(false);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
-  }, []);
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth"): boolean => {
+      const messagesEnd = messagesEndRef.current;
+      if (!messagesEnd) {
+        return false;
+      }
+      messagesEnd.scrollIntoView({ behavior });
+      return true;
+    },
+    [],
+  );
 
   // Called by Virtuoso's atBottomStateChange (production) or scroll handler (test mode).
   // Pure position-based: no timeouts, no debounce.
@@ -188,7 +196,12 @@ export function ChatPanel({
     let innerRaf = 0;
     const outerRaf = requestAnimationFrame(() => {
       innerRaf = requestAnimationFrame(() => {
-        scrollToBottom("instant");
+        // The message list is unmounted while Version History is open. Keep the
+        // per-chat request queued until the list is visible and its end marker
+        // exists, then consume it after the scroll actually runs.
+        if (!scrollToBottom("instant")) {
+          return;
+        }
         setScrollToBottomRequestedChatIds((prev) => {
           if (!prev.has(chatId)) {
             return prev;
@@ -208,6 +221,7 @@ export function ChatPanel({
     chatId,
     messages.length,
     messagesById,
+    isVersionPaneOpen,
     scrollToBottom,
     scrollToBottomRequestedChatIds,
     setScrollToBottomRequestedChatIds,

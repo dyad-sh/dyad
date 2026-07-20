@@ -108,6 +108,31 @@ describe("local-agent consent banner (integration)", () => {
     ).toEqual([{ requestId: expect.any(String), decision: "decline" }]);
   });
 
+  it("keeps the local abort signal out of the renderer IPC payload", async () => {
+    writeSettings({ agentToolConsents: { add_dependency: "ask" } });
+    const abortController = new AbortController();
+    const eventBaseline = harness.bridge.sentEvents.length;
+
+    const consent = requireAgentToolConsent(harness.bridge.fakeEvent as any, {
+      chatId: harness.chatId,
+      toolName: "add_dependency",
+      toolDescription: "Install npm packages",
+      abortSignal: abortController.signal,
+    });
+
+    const requestEvent = harness.bridge.sentEvents
+      .slice(eventBaseline)
+      .find((event) => event.channel === "agent-tool:consent-request");
+    expect(requestEvent?.args[0]).toMatchObject({
+      chatId: harness.chatId,
+      toolName: "add_dependency",
+    });
+    expect(requestEvent?.args[0]).not.toHaveProperty("abortSignal");
+
+    abortController.abort();
+    await expect(consent).resolves.toBe(false);
+  });
+
   async function lastAssistantContent(chatId: number) {
     const stored = await harness.db.query.messages.findMany({
       where: eq(messages.chatId, chatId),

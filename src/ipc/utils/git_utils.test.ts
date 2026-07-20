@@ -24,6 +24,7 @@ import {
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
   countChangedLines,
+  unquoteGitPath,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
@@ -299,6 +300,12 @@ describe("getGitUncommittedFiles", () => {
     await expect(
       getGitUncommittedFiles({ path: nextRepoDir }),
     ).resolves.toEqual(["café.txt", "emoji-😀.txt"]);
+  });
+});
+
+describe("unquoteGitPath", () => {
+  it("decodes octal bytes and preserves literal astral code points", () => {
+    expect(unquoteGitPath('"caf\\303\\251-😀.txt"')).toBe("café-😀.txt");
   });
 });
 

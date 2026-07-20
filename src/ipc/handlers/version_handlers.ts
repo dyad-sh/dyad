@@ -104,6 +104,83 @@ function appendWarning(existing: string, addition: string): string {
   return existing ? `${existing}\n${addition}` : addition;
 }
 
+const INTERRUPTED_GENERATION_WARNING =
+  "An in-progress generation was cancelled during this restore attempt. Re-submit its prompt to continue.";
+
+function appendInterruptedGenerationWarning(
+  warningMessage: string,
+  didCancelStreams: boolean,
+): string {
+  return didCancelStreams
+    ? appendWarning(warningMessage, INTERRUPTED_GENERATION_WARNING)
+    : warningMessage;
+}
+
+type RestoreMessageCommitMetadata = Pick<
+  typeof messages.$inferSelect,
+  "role" | "sourceCommitHash" | "commitHash"
+>;
+
+function resolveTargetCommitHash({
+  chatMessages,
+  targetIndex,
+  initialCommitHash,
+}: {
+  chatMessages: RestoreMessageCommitMetadata[];
+  targetIndex: number;
+  initialCommitHash: string | null;
+}): string | null {
+  // Primary signal: the assistant response stores the commit that was current
+  // when the target turn started.
+  for (let index = targetIndex + 1; index < chatMessages.length; index++) {
+    const message = chatMessages[index];
+    if (message.role === "assistant") {
+      if (message.sourceCommitHash) {
+        return message.sourceCommitHash;
+      }
+      break;
+    }
+  }
+
+  // Fallback: the preceding assistant's final commit is the state immediately
+  // before the target user message.
+  for (let index = targetIndex - 1; index >= 0; index--) {
+    const message = chatMessages[index];
+    if (message.role === "assistant" && message.commitHash) {
+      return message.commitHash;
+    }
+  }
+
+  return initialCommitHash;
+}
+
+async function resolveRestoreRef({
+  appPath,
+  targetBranchName,
+}: {
+  appPath: string;
+  targetBranchName?: string;
+}): Promise<{
+  currentBranch: string | null;
+  revertRef: string;
+  currentCommitHash: string;
+}> {
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+  if (!currentBranch && !targetBranchName) {
+    throw new DyadError(
+      "Cannot restore while viewing a historical version. Close the version " +
+        "preview to return to your branch, then try again.",
+      DyadErrorKind.Conflict,
+    );
+  }
+  const revertRef = currentBranch ?? targetBranchName!;
+  const currentCommitHash = await getCurrentCommitHash({
+    path: appPath,
+    ref: revertRef,
+  });
+  return { currentBranch, revertRef, currentCommitHash };
+}
+
 async function syncCloudSandboxSnapshotBestEffort(appId: number) {
   try {
     await syncCloudSandboxSnapshot({ appId });
@@ -247,7 +324,11 @@ async function revertCodebaseToVersion({
   let successMessage = "Restored version";
   let warningMessage = "";
 
-  const currentBranch = await gitCurrentBranch({ path: appPath });
+  const { currentBranch, revertRef, currentCommitHash } =
+    await resolveRestoreRef({
+      appPath,
+      targetBranchName,
+    });
   // Detached HEAD (e.g. the Version pane has a historical version checked out)
   // has no branch to anchor the revert commit to. Callers that legitimately
   // operate while detached (the Version-pane restore) pass an explicit
@@ -255,29 +336,11 @@ async function revertCodebaseToVersion({
   // revert commit would be created on the detached HEAD and then abandoned when
   // the saved branch is checked out again, silently discarding the restore. Bail
   // out with a clear message instead of doing the work only to throw it away.
-  if (!currentBranch && !targetBranchName) {
-    throw new DyadError(
-      "Cannot restore while viewing a historical version. Close the version " +
-        "preview to return to your branch, then try again.",
-      DyadErrorKind.Conflict,
-    );
-  }
-  const revertRef = currentBranch ?? targetBranchName ?? "HEAD";
-  // Get the current commit hash before reverting
-  const currentCommitHash = await getCurrentCommitHash({
-    path: appPath,
-    ref: revertRef,
-  });
-
-  await gitCheckout({
-    path: appPath,
-    ref: revertRef,
-  });
-
   // A stream cancelled specifically for restore-to-message may leave partial
   // writes behind. Preserve that interrupted turn before reverting. Existing
   // Restore, Undo, Retry, and checkout paths intentionally keep their prior
   // dirty-tree conflict behavior instead of silently committing manual edits.
+  let detachedCheckpointCommit: string | null = null;
   if (preserveDirtyTree && !(await isGitStatusClean({ path: appPath }))) {
     // Stage everything first so untracked files (e.g. a newly added
     // pnpm-workspace.yaml) are included. With native git, `git commit` only
@@ -305,11 +368,37 @@ async function revertCodebaseToVersion({
         ". Dyad-managed runtime files may also be included in the checkpoint.",
     );
     await gitAddAll({ path: appPath });
-    await gitCommit({
+    const checkpointCommit = await gitCommit({
       path: appPath,
       message:
         "Saved partial changes (from an interrupted generation) before restoring to an earlier version",
     });
+    if (!currentBranch) {
+      detachedCheckpointCommit = checkpointCommit;
+    }
+  }
+
+  await gitCheckout({
+    path: appPath,
+    ref: revertRef,
+  });
+
+  // When the interrupted writes were checkpointed from a detached historical
+  // preview, carry that exact tree onto the live branch before restoring. This
+  // keeps the checkpoint discoverable in Version History and avoids asking Git
+  // to checkout the branch over conflicting dirty files.
+  if (detachedCheckpointCommit) {
+    const hasStagedCheckpointChanges = await gitStageToRevert({
+      path: appPath,
+      targetOid: detachedCheckpointCommit,
+    });
+    if (hasStagedCheckpointChanges) {
+      await gitCommit({
+        path: appPath,
+        message:
+          "Saved partial changes (from an interrupted generation) before restoring to an earlier version",
+      });
+    }
   }
 
   if (app.neonProjectId && app.neonDevelopmentBranchId) {
@@ -768,6 +857,12 @@ export function registerVersionHandlers() {
           throw new DyadError("App not found", DyadErrorKind.NotFound);
         }
         const appPath = getDyadAppPath(app.path);
+        if (restoreCodebase) {
+          // Validate the branch anchor before cancelling any streams. The same
+          // check runs again during the mutation to protect against a ref change
+          // in the cancellation window.
+          await resolveRestoreRef({ appPath, targetBranchName });
+        }
 
         const chat = await db.query.chats.findFirst({
           where: eq(chats.id, chatId),
@@ -810,36 +905,11 @@ export function registerVersionHandlers() {
         // so we restore to that version and fork an empty chat (no prior
         // messages to copy). The empty chat starts from the restored version.
 
-        // Determine the version that existed right before the target message.
-        // Primary signal: the assistant message that responded to the target
-        // user message stores `sourceCommitHash` = the commit current when that
-        // turn started (i.e. before its code changes). Walk forward past any
-        // intervening user messages (e.g. consecutive prompts or compaction
-        // summaries) to find that responding assistant message.
-        let targetCommitHash: string | null = null;
-        for (let i = targetIndex + 1; i < chat.messages.length; i++) {
-          const m = chat.messages[i];
-          if (m.role === "assistant") {
-            targetCommitHash = m.sourceCommitHash ?? null;
-            break;
-          }
-        }
-        // Fallback: the assistant message preceding the target user message
-        // stores `commitHash` = the version that existed when it finished, which
-        // is the state right before the target message was sent.
-        if (!targetCommitHash) {
-          for (let i = targetIndex - 1; i >= 0; i--) {
-            const m = chat.messages[i];
-            if (m.role === "assistant" && m.commitHash) {
-              targetCommitHash = m.commitHash;
-              break;
-            }
-          }
-        }
-        // Final fallback: the commit the chat started from.
-        if (!targetCommitHash) {
-          targetCommitHash = chat.initialCommitHash ?? null;
-        }
+        const targetCommitHash = resolveTargetCommitHash({
+          chatMessages: chat.messages,
+          targetIndex,
+          initialCommitHash: chat.initialCommitHash,
+        });
 
         if (restoreCodebase) {
           if (!targetCommitHash) {
@@ -965,35 +1035,18 @@ export function registerVersionHandlers() {
               !(message.isCompactionSummary && message.id > messageId),
           );
 
-        let latestTargetCommitHash: string | null = null;
-        for (
-          let index = latestTargetIndex + 1;
-          index < latestChat.messages.length;
-          index++
-        ) {
-          const message = latestChat.messages[index];
-          if (message.role === "assistant") {
-            latestTargetCommitHash = message.sourceCommitHash ?? null;
-            break;
-          }
-        }
-        if (!latestTargetCommitHash) {
-          for (let index = latestTargetIndex - 1; index >= 0; index--) {
-            const message = latestChat.messages[index];
-            if (message.role === "assistant" && message.commitHash) {
-              latestTargetCommitHash = message.commitHash;
-              break;
-            }
-          }
-        }
-        if (!latestTargetCommitHash) {
-          latestTargetCommitHash = latestChat.initialCommitHash ?? null;
-        }
+        const latestTargetCommitHash = resolveTargetCommitHash({
+          chatMessages: latestChat.messages,
+          targetIndex: latestTargetIndex,
+          initialCommitHash: latestChat.initialCommitHash,
+        });
 
         if (restoreCodebase && !latestTargetCommitHash) {
           return {
-            warningMessage:
+            warningMessage: appendInterruptedGenerationWarning(
               "Could not determine a version to restore to for this message.",
+              preserveDirtyTree,
+            ),
           };
         }
         if (restoreCodebase && latestTargetCommitHash) {
@@ -1008,8 +1061,10 @@ export function registerVersionHandlers() {
               error.kind === DyadErrorKind.NotFound
             ) {
               return {
-                warningMessage:
+                warningMessage: appendInterruptedGenerationWarning(
                   "Could not restore the codebase because the target version no longer exists in the repository.",
+                  preserveDirtyTree,
+                ),
               };
             }
             throw error;
@@ -1059,11 +1114,8 @@ export function registerVersionHandlers() {
               const currentBranch = await gitCurrentBranch({
                 path: appPath,
               }).catch(() => null);
-              const forkRef = currentBranch || targetBranchName;
-              if (forkRef) {
-                return getCurrentCommitHash({ path: appPath, ref: forkRef });
-              }
-              return latestChat.initialCommitHash ?? latestTargetCommitHash;
+              const forkRef = currentBranch || targetBranchName || "HEAD";
+              return getCurrentCommitHash({ path: appPath, ref: forkRef });
             })().catch(
               () => latestChat.initialCommitHash ?? latestTargetCommitHash,
             );

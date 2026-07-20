@@ -13,6 +13,7 @@ import {
   blockNewStreamsForChat,
   cancelActiveStreamsForChat,
 } from "./chat_stream_handlers";
+import type { WebContents } from "electron";
 import {
   rendererMessageColumns,
   toRendererMessage,
@@ -20,6 +21,35 @@ import {
 import { createChatForApp } from "../utils/chat_creation_utils";
 
 const logger = log.scope("chat_handlers");
+
+async function mutateChatAfterDrainingStreams({
+  chatId,
+  sender,
+  mutation,
+}: {
+  chatId: number;
+  sender: WebContents;
+  mutation: () => Promise<void>;
+}): Promise<void> {
+  const chat = await db.query.chats.findFirst({
+    columns: { appId: true },
+    where: eq(chats.id, chatId),
+  });
+  if (!chat) {
+    return;
+  }
+
+  const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
+  try {
+    // Drain outside the app lock: an aborted stream may need the same lock to
+    // finish a file write. The admission block closes the gap between draining
+    // and mutating so another stream cannot enter the chat in between.
+    await cancelActiveStreamsForChat(chatId, sender);
+    await withLock(chat.appId, mutation);
+  } finally {
+    releaseStreamAdmissionBlock();
+  }
+}
 
 export function registerChatHandlers() {
   createTypedHandler(chatContracts.createChat, async (_, input) => {
@@ -125,28 +155,13 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.deleteChat, async (event, chatId) => {
-    const chat = await db.query.chats.findFirst({
-      columns: { appId: true },
-      where: eq(chats.id, chatId),
-    });
-    if (!chat) {
-      return;
-    }
-    const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
-    try {
-      // Cancel any in-flight stream for this chat BEFORE taking the app lock and
-      // deleting rows, otherwise a still-running generation could re-insert
-      // messages after the delete and resurrect the chat. Cancellation must run
-      // outside the lock because the aborted stream may take the same app lock
-      // for its own writes (e.g. copy_file). The admission block closes the
-      // post-cancellation window so a new stream can't start before deletion.
-      await cancelActiveStreamsForChat(chatId, event.sender);
-      await withLock(chat.appId, async () => {
+    await mutateChatAfterDrainingStreams({
+      chatId,
+      sender: event.sender,
+      mutation: async () => {
         await db.delete(chats).where(eq(chats.id, chatId));
-      });
-    } finally {
-      releaseStreamAdmissionBlock();
-    }
+      },
+    });
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
@@ -179,29 +194,13 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.deleteMessages, async (event, chatId) => {
-    const chat = await db.query.chats.findFirst({
-      columns: { appId: true },
-      where: eq(chats.id, chatId),
-    });
-    if (!chat) {
-      return;
-    }
-    const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
-    try {
-      // Cancel any in-flight stream for this chat BEFORE taking the app lock and
-      // clearing messages, otherwise a still-running generation could insert
-      // new messages after the delete and leave the chat non-empty.
-      // Cancellation must run outside the lock because the aborted stream may
-      // take the same app lock for its own writes (e.g. copy_file). The
-      // admission block closes the post-cancellation window so a new stream
-      // can't start before the delete completes.
-      await cancelActiveStreamsForChat(chatId, event.sender);
-      await withLock(chat.appId, async () => {
+    await mutateChatAfterDrainingStreams({
+      chatId,
+      sender: event.sender,
+      mutation: async () => {
         await db.delete(messages).where(eq(messages.chatId, chatId));
-      });
-    } finally {
-      releaseStreamAdmissionBlock();
-    }
+      },
+    });
   });
 
   createTypedHandler(chatContracts.searchChats, async (_, params) => {

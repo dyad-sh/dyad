@@ -580,4 +580,23 @@ describe("useAppOutputSubscription", () => {
 
     unmount();
   });
+
+  it("can restart an explicitly targeted app after selection changes", async () => {
+    const { Wrapper } = makeWrapper(1);
+    restartAppMock.mockResolvedValue(undefined);
+    clearLogsMock.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useRunApp(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await result.current.restartApp({ appId: 2 });
+    });
+
+    expect(clearLogsMock).toHaveBeenCalledWith({ appId: 2 });
+    expect(restartAppMock).toHaveBeenCalledWith({
+      appId: 2,
+      removeNodeModules: false,
+      recreateSandbox: false,
+    });
+  });
 });

@@ -243,8 +243,12 @@ export function useVersions(appId: number | null) {
         }),
       ]);
       const didRestoreCode = variables.restoreCodebase && "newChatId" in result;
-      if (didRestoreCode && settings?.runtimeMode2 === "cloud") {
-        await restartApp();
+      if (
+        didRestoreCode &&
+        restoredAppId !== null &&
+        settings?.runtimeMode2 === "cloud"
+      ) {
+        await restartApp({ appId: restoredAppId });
       }
     },
     // No `meta.showErrorToast` here: `handleRestoreToMessage` in

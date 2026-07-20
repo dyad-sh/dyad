@@ -715,6 +715,13 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         console.error("Could not checkout version, unselecting version", error);
         if (isCurrentPreviewRequest()) {
           setSelectedVersionId(checkedOutVersionIdRef.current);
+          // A failed first preview never detached the repository, so no return
+          // branch should remain globally visible to restore-to-message. Keep
+          // it only when another historical preview is still active.
+          if (checkedOutVersionIdRef.current === null) {
+            returnBranchRef.current = null;
+            setSelectedVersionReturnBranch(null);
+          }
         }
         return;
       } finally {

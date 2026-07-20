@@ -45,50 +45,6 @@ const PORCELAIN_C_ESCAPES: Record<string, number> = {
   "\\": 0x5c,
 };
 
-// Git quotes paths in `--porcelain`/`status` output whenever they contain
-// non-ASCII bytes or control characters (the default `core.quotePath=true`
-// behavior). Bytes >= 0x80 and control characters are emitted as `\NNN` octal
-// escapes, so a UTF-8 name like `café.txt` becomes `"caf\303\251.txt"`. The
-// previous implementation only unescaped `\"` and `\\`, leaving those octal
-// sequences intact, so consumers couldn't use the returned path to locate the
-// file and `.dyad/` filtering could misclassify non-ASCII paths. Decode the
-// full C-style quoting into raw bytes and re-interpret them as UTF-8.
-function unquotePorcelainPath(filePath: string): string {
-  if (!(filePath.startsWith('"') && filePath.endsWith('"'))) {
-    return filePath;
-  }
-  const inner = filePath.slice(1, -1);
-  const bytes: number[] = [];
-  for (let index = 0; index < inner.length; index++) {
-    const char = String.fromCodePoint(inner.codePointAt(index)!);
-    if (char !== "\\") {
-      // Push the (already-decoded) character's UTF-8 bytes so it round-trips
-      // through the TextDecoder below alongside any octal-escaped bytes.
-      for (const byte of Buffer.from(char, "utf8")) {
-        bytes.push(byte);
-      }
-      index += char.length - 1;
-      continue;
-    }
-    const next = inner[index + 1];
-    if (next !== undefined && next in PORCELAIN_C_ESCAPES) {
-      bytes.push(PORCELAIN_C_ESCAPES[next]);
-      index += 1;
-      continue;
-    }
-    // Octal escape: `\NNN` with 1-3 octal digits (git always emits 3).
-    const octal = /^[0-7]{1,3}/.exec(inner.slice(index + 1, index + 4));
-    if (octal) {
-      bytes.push(parseInt(octal[0], 8) & 0xff);
-      index += octal[0].length;
-      continue;
-    }
-    // Unrecognized escape: keep the backslash literally rather than dropping it.
-    bytes.push(0x5c);
-  }
-  return Buffer.from(bytes).toString("utf8");
-}
-
 function splitQuotedPorcelainRename(filePath: string): [string, string] | null {
   if (!filePath.startsWith('"')) {
     return null;
@@ -112,7 +68,7 @@ function splitQuotedPorcelainRename(filePath: string): [string, string] | null {
       }
       const oldPath = filePath.slice(0, index + 1);
       const newPath = filePath.slice(index + 1 + separator.length);
-      return [unquotePorcelainPath(oldPath), unquotePorcelainPath(newPath)];
+      return [unquoteGitPath(oldPath), unquoteGitPath(newPath)];
     }
   }
 
@@ -123,7 +79,7 @@ function getPorcelainPaths(line: string): string[] {
   const statusCode = line.substring(0, 2);
   const filePath = line.slice(3).trim();
   if (!statusCode.includes("R")) {
-    return [unquotePorcelainPath(filePath)];
+    return [unquoteGitPath(filePath)];
   }
 
   const quotedRename = splitQuotedPorcelainRename(filePath);
@@ -133,10 +89,10 @@ function getPorcelainPaths(line: string): string[] {
 
   const renameIndex = filePath.indexOf(" -> ");
   return renameIndex === -1
-    ? [unquotePorcelainPath(filePath)]
+    ? [unquoteGitPath(filePath)]
     : [
-        unquotePorcelainPath(filePath.slice(0, renameIndex)),
-        unquotePorcelainPath(filePath.slice(renameIndex + 4)),
+        unquoteGitPath(filePath.slice(0, renameIndex)),
+        unquoteGitPath(filePath.slice(renameIndex + 4)),
       ];
 }
 
@@ -963,21 +919,11 @@ export function unquoteGitPath(raw: string): string {
   }
   const body = raw.slice(1, -1);
   const bytes: number[] = [];
-  const simpleEscapes: Record<string, number> = {
-    a: 0x07,
-    b: 0x08,
-    t: 0x09,
-    n: 0x0a,
-    v: 0x0b,
-    f: 0x0c,
-    r: 0x0d,
-    '"': 0x22,
-    "\\": 0x5c,
-  };
   for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
+    const ch = String.fromCodePoint(body.codePointAt(i)!);
     if (ch !== "\\") {
       bytes.push(...Buffer.from(ch, "utf-8"));
+      i += ch.length - 1;
       continue;
     }
     const next = body[i + 1];
@@ -999,8 +945,8 @@ export function unquoteGitPath(raw: string): string {
       i = j - 1;
       continue;
     }
-    if (next in simpleEscapes) {
-      bytes.push(simpleEscapes[next]);
+    if (next in PORCELAIN_C_ESCAPES) {
+      bytes.push(PORCELAIN_C_ESCAPES[next]);
     } else {
       bytes.push(...Buffer.from(next, "utf-8"));
     }

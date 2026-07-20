@@ -10,7 +10,11 @@ import { Provider, createStore } from "jotai";
 import type React from "react";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
+import {
+  selectedAppIdAtom,
+  selectedVersionIdAtom,
+  selectedVersionReturnBranchAtom,
+} from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
 import { VersionPane } from "./VersionPane";
 
@@ -617,8 +621,9 @@ describe("VersionPane", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
+    const store = createStore();
     render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
-      wrapper: makeWrapper(),
+      wrapper: makeWrapper(store),
     });
 
     fireEvent.click(await screen.findByTestId("version-row-1"));
@@ -634,6 +639,7 @@ describe("VersionPane", () => {
 
     expect(refreshAppMock).not.toHaveBeenCalled();
     expect(restartAppMock).not.toHaveBeenCalled();
+    expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();
     consoleErrorSpy.mockRestore();
   });
 

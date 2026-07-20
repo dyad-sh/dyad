@@ -14,25 +14,30 @@ testSkipIfWindows(
     await po.appManagement.ensureCodeExplorerReady();
 
     const appPath = await po.appManagement.getCurrentAppPath();
-    const binPath = path.join(appPath, "node_modules", ".bin");
-    const typeScriptShimPath = path.join(binPath, "tsc");
-    const originalShimName = "tsc-dyad-e2e-original";
-    const originalShimPath = path.join(binPath, originalShimName);
+    const typeScriptLibPath = path.join(
+      appPath,
+      "node_modules",
+      "typescript",
+      "lib",
+    );
+    const typeScriptEntryPath = path.join(typeScriptLibPath, "tsc.js");
+    const originalEntryName = "tsc-dyad-e2e-original.js";
+    const originalEntryPath = path.join(typeScriptLibPath, originalEntryName);
     const invocationLogName = ".dyad-tsc-cli-invocations";
-    const invocationLogPath = path.join(binPath, invocationLogName);
+    const invocationLogPath = path.join(typeScriptLibPath, invocationLogName);
     const badFilePath = path.join(appPath, "src", "tsc-cli-error.ts");
-    let shimMoved = false;
+    let entryMoved = false;
 
     try {
-      fs.renameSync(typeScriptShimPath, originalShimPath);
-      shimMoved = true;
+      fs.renameSync(typeScriptEntryPath, originalEntryPath);
+      entryMoved = true;
       fs.writeFileSync(
-        typeScriptShimPath,
-        `#!/bin/sh
-printf '%s\\n' "$*" >> "$(dirname "$0")/${invocationLogName}"
-exec "$(dirname "$0")/${originalShimName}" "$@"
+        typeScriptEntryPath,
+        `const fs = require("node:fs");
+const path = require("node:path");
+fs.appendFileSync(path.join(__dirname, "${invocationLogName}"), process.argv.slice(2).join(" ") + "\\n");
+module.exports = require("./${originalEntryName}");
 `,
-        { mode: 0o755 },
       );
       fs.writeFileSync(badFilePath, "const mustBeString: string = 42;\n");
 
@@ -46,17 +51,25 @@ exec "$(dirname "$0")/${originalShimName}" "$@"
         "Type 'number' is not assignable to type 'string'",
       );
 
-      const invocations = fs.readFileSync(invocationLogPath, "utf8");
+      const invocations = fs
+        .readFileSync(invocationLogPath, "utf8")
+        .trim()
+        .split("\n");
       expect(invocations).toContain("--version");
-      expect(invocations).toContain("--pretty false --noEmit --incremental");
-      expect(invocations).toContain("--project");
-      expect(invocations).toContain("tsconfig.app.json");
+
+      const typeCheckInvocation =
+        invocations.find((invocation) => invocation.includes("--noEmit")) ?? "";
+      expect(typeCheckInvocation).toContain("--pretty false");
+      expect(typeCheckInvocation).toContain("--noEmit");
+      expect(typeCheckInvocation).toContain("--incremental");
+      expect(typeCheckInvocation).toContain("--project");
+      expect(typeCheckInvocation).toContain("tsconfig.app.json");
     } finally {
       fs.rmSync(badFilePath, { force: true });
       fs.rmSync(invocationLogPath, { force: true });
-      if (shimMoved) {
-        fs.rmSync(typeScriptShimPath, { force: true });
-        fs.renameSync(originalShimPath, typeScriptShimPath);
+      if (entryMoved) {
+        fs.rmSync(typeScriptEntryPath, { force: true });
+        fs.renameSync(originalEntryPath, typeScriptEntryPath);
       }
     }
   },

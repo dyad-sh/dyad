@@ -28,10 +28,10 @@ export interface ResidentProcessRegistration {
  * Serializes the memory-heavy TypeScript utility processes.
  *
  * Code Explorer keeps a reusable process alive between requests so its index
- * cache survives. TSC processes are one-shot and non-reusable. Before an
- * operation starts, any incompatible (or already-stopping) resident process
- * is stopped and must emit `exit`; only then may the next operation fork or
- * reuse a process.
+ * cache survives. Type checks run an external CLI inside the scheduled
+ * operation. Before an operation starts, any incompatible (or
+ * already-stopping) resident process is stopped and must emit `exit`; only
+ * then may the next operation start or reuse a process.
  */
 export class TypeScriptUtilityProcessScheduler {
   private readonly queue: QueuedOperation[] = [];

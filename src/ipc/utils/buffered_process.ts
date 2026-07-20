@@ -11,6 +11,7 @@ export const BUFFERED_PROCESS_FORCE_KILL_GRACE_MS = 5_000;
 
 export interface BufferedProcessOptions {
   command: string;
+  args?: string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
   shell?: boolean;
@@ -27,6 +28,8 @@ export interface BufferedProcessResult {
   signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
   aborted: boolean;
   timedOut: boolean;
 }
@@ -70,6 +73,8 @@ export async function runBufferedProcess(
       signal: null,
       stdout: "",
       stderr: "",
+      stdoutTruncated: false,
+      stderrTruncated: false,
       aborted: true,
       timedOut: false,
     };
@@ -91,12 +96,15 @@ export async function runBufferedProcess(
 
     let child: ChildProcess;
     try {
-      child = spawn(options.command, {
+      const spawnOptions = {
         cwd: options.cwd,
-        shell: options.shell ?? true,
-        stdio: "pipe",
+        shell: options.shell ?? options.args === undefined,
+        stdio: "pipe" as const,
         env: options.env,
-      });
+      };
+      child = options.args
+        ? spawn(options.command, options.args, spawnOptions)
+        : spawn(options.command, spawnOptions);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       reject(new BufferedProcessSpawnError(message, "", ""));
@@ -110,11 +118,13 @@ export async function runBufferedProcess(
     let forceKillId: NodeJS.Timeout | undefined;
 
     const snapshotOutput = (capture: boolean) => {
+      const stdoutTruncated = stdoutBuffer.wasTruncated;
+      const stderrTruncated = stderrBuffer.wasTruncated;
       const stdout = capture ? stdoutBuffer.toString() : "";
       const stderr = capture ? stderrBuffer.toString() : "";
       stdoutBuffer.clear();
       stderrBuffer.clear();
-      return { stdout, stderr };
+      return { stdout, stderr, stdoutTruncated, stderrTruncated };
     };
 
     const cleanup = () => {

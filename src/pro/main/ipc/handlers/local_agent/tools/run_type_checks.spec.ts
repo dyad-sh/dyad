@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentContext } from "./types";
 import {
-  generateProblemReport,
+  runTypeScriptCheck,
   TypeCheckPreconditionError,
 } from "@/ipc/processors/tsc";
 import { safeSend } from "@/ipc/utils/safe_sender";
@@ -19,7 +19,7 @@ vi.mock("@/ipc/processors/tsc", async () => {
 
   return {
     ...actual,
-    generateProblemReport: vi.fn(),
+    runTypeScriptCheck: vi.fn(),
   };
 });
 
@@ -31,7 +31,7 @@ describe("runTypeChecksTool precondition guidance", () => {
   let tempDirs: string[] = [];
 
   beforeEach(() => {
-    vi.mocked(generateProblemReport).mockReset();
+    vi.mocked(runTypeScriptCheck).mockReset();
     vi.mocked(safeSend).mockReset();
   });
 
@@ -78,7 +78,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       devDependencies: { typescript: "^5.0.0" },
     });
     const ctx = makeCtx(appPath);
-    vi.mocked(generateProblemReport).mockRejectedValue(
+    vi.mocked(runTypeScriptCheck).mockRejectedValue(
       new TypeCheckPreconditionError(
         "typescript-not-found",
         "Failed to load TypeScript from app",
@@ -112,7 +112,7 @@ describe("runTypeChecksTool precondition guidance", () => {
   it("tells the agent not to retry and to suggest adding TypeScript for plain JavaScript projects", async () => {
     const appPath = await makeApp({ dependencies: { react: "^19.0.0" } });
     const ctx = makeCtx(appPath);
-    vi.mocked(generateProblemReport).mockRejectedValue(
+    vi.mocked(runTypeScriptCheck).mockRejectedValue(
       new TypeCheckPreconditionError(
         "typescript-not-found",
         "Failed to load TypeScript from app",
@@ -135,7 +135,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       devDependencies: { typescript: "^5.0.0" },
     });
     const ctx = makeCtx(appPath);
-    vi.mocked(generateProblemReport).mockRejectedValue(
+    vi.mocked(runTypeScriptCheck).mockRejectedValue(
       new TypeCheckPreconditionError(
         "tsconfig-not-found",
         "No TypeScript configuration file found in app",
@@ -156,7 +156,7 @@ describe("runTypeChecksTool precondition guidance", () => {
       devDependencies: { typescript: "^5.0.0" },
     });
     const ctx = makeCtx(appPath);
-    vi.mocked(generateProblemReport).mockRejectedValue(
+    vi.mocked(runTypeScriptCheck).mockRejectedValue(
       new Error("worker exploded"),
     );
 

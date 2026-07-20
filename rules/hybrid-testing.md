@@ -53,7 +53,7 @@ module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
   (`vi.mock("electron-log", ... { scope: () => ({ info, log, warn, error }) })`).
   Calling a logger method the mock omits fails with e.g. "logger.debug is not
   a function" — grep `vi.mock("electron-log"` when changing log levels.
-- `generateProblemReport` is stubbed to `{ problems: [] }` in
+- `runTypeScriptCheck` is stubbed to `{ problems: [] }` in
   `hybrid.setup.ts`: the tsc worker needs a compiled worker script and
   Electron paths that don't exist under vitest. Integration tests cannot
   assert on real TypeScript problem reports.

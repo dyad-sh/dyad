@@ -13,7 +13,7 @@ Read this when spawning `worker_threads` or `utilityProcess` children, moving he
 ## utilityProcess conversion checklist
 
 - `ELECTRON_RUN_AS_NODE` fork is **not** available in this app: the `RunAsNode` fuse is disabled in `forge.config.ts`. Use `utilityProcess.fork` (available only after app ready).
-- No build-config changes are needed for worker entrypoints: the forge VitePlugin already emits worker files (e.g. `tsc_worker.js`, `code_explorer_worker.js`) next to `main.js`, and `path.join(__dirname, "<worker>.js")` resolves both in dev and inside `app.asar`.
+- Worker entrypoints must be listed in the forge VitePlugin build config. It emits files such as `code_explorer_worker.js` next to `main.js`, and `path.join(__dirname, "<worker>.js")` resolves both in dev and inside `app.asar`.
 - Worker side: use `process.parentPort`; messages arrive as a `MessageEvent` — read `event.data`, not the raw argument. The `workers/` tsconfig has no Electron typings; declare a minimal local `UtilityProcessParentPort` interface instead of importing `electron`.
 - Send only after `spawn`: calling `child.postMessage()` before the `spawn` event relies on undocumented buffering. Construct the input and post it inside `child.on("spawn", ...)`.
 - Settle-once discipline: exactly one of message/error/exit/timeout may settle a request. Reject on **any** pre-reply exit, including exit code 0 (a clean early exit otherwise hangs the caller forever). Always `child.kill()` on every settle path, and add a hard timeout.

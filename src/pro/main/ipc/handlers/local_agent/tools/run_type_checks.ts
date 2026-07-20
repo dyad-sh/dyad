@@ -6,7 +6,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import {
-  generateProblemReport,
+  runTypeScriptCheck,
   getTypeCheckPreconditionGuidance,
   getTypeCheckPreconditionKind,
 } from "@/ipc/processors/tsc";
@@ -100,11 +100,7 @@ export const runTypeChecksTool: ToolDefinition<
 
     let problemReport: ProblemReport;
     try {
-      // Run TypeScript type checking using existing infrastructure
-      problemReport = await generateProblemReport({
-        fullResponse: "",
-        appPath: ctx.appPath,
-      });
+      problemReport = await runTypeScriptCheck({ appPath: ctx.appPath });
     } catch (error) {
       if (!isDyadError(error) || error.kind !== DyadErrorKind.Precondition) {
         throw error;

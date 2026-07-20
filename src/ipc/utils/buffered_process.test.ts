@@ -103,7 +103,28 @@ describe("runBufferedProcess", () => {
       code: 1,
       stdout: OUTPUT_TRUNCATION_MARKER + "-TAILOUT",
       stderr: OUTPUT_TRUNCATION_MARKER + "-TAILERR",
+      stdoutTruncated: true,
+      stderrTruncated: true,
     });
+  });
+
+  it("passes explicit arguments without a shell", async () => {
+    const controller = createMockChildController();
+    spawnMock.mockReturnValue(controller.child);
+
+    const promise = runBufferedProcess({
+      command: "/tmp/app/node_modules/.bin/tsc",
+      args: ["--pretty", "false"],
+      cwd: "/tmp/app",
+    });
+    controller.close(0);
+    await promise;
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/tmp/app/node_modules/.bin/tsc",
+      ["--pretty", "false"],
+      expect.objectContaining({ shell: false }),
+    );
   });
 
   it("decodes split multi-byte chunks for callbacks and returned output", async () => {

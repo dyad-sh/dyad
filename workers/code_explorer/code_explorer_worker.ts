@@ -16,6 +16,7 @@ import {
 } from "./core";
 import { resolveProjectFileSet } from "./core/program";
 import { evictionPlan } from "./eviction";
+import type { TypeScriptModule } from "./core/types";
 
 // This process's heap is bounded by the V8 pointer-compression cage (~4GB;
 // Electron 40 ignores a lower --max-old-space-size passed via execArgv).
@@ -26,15 +27,156 @@ const INDEX_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 // Secondary cap so many tiny projects don't accumulate unbounded metadata.
 const INDEX_CACHE_MAX_ENTRIES = 4;
 
-function loadLocalTypeScript(appPath: string): typeof import("typescript") {
+const REQUIRED_TYPESCRIPT_FUNCTIONS = [
+  "createCompilerHost",
+  "createIncrementalCompilerHost",
+  "createIncrementalProgram",
+  "createProgram",
+  "flattenDiagnosticMessageText",
+  "forEachChild",
+  "getConfigFileParsingDiagnostics",
+  "getParsedCommandLineOfConfigFile",
+  "isCallExpression",
+  "isClassDeclaration",
+  "isEnumDeclaration",
+  "isFunctionDeclaration",
+  "isIdentifier",
+  "isImportDeclaration",
+  "isImportSpecifier",
+  "isInterfaceDeclaration",
+  "isMethodDeclaration",
+  "isMethodSignature",
+  "isPropertyDeclaration",
+  "isPropertySignature",
+  "isStringLiteral",
+  "isTypeAliasDeclaration",
+  "isVariableDeclaration",
+] as const;
+
+export type CodeExplorerCompilerSource = "local" | "bundled-ts6";
+
+export interface ResolvedCodeExplorerCompiler {
+  module: TypeScriptModule;
+  source: CodeExplorerCompilerSource;
+  version: string;
+  fallbackReason?: string;
+}
+
+export interface CodeExplorerCompilerLoaders {
+  resolveLocalPackage(appPath: string): string;
+  loadPackageVersion(packageJsonPath: string): string;
+  loadLocal(appPath: string): unknown;
+  loadBundled(): unknown;
+}
+
+const defaultCompilerLoaders: CodeExplorerCompilerLoaders = {
+  resolveLocalPackage: (appPath) =>
+    require.resolve("typescript/package.json", { paths: [appPath] }),
+  loadPackageVersion: (packageJsonPath) =>
+    String(
+      (require(packageJsonPath) as { version?: unknown }).version ?? "unknown",
+    ),
+  loadLocal: (appPath) =>
+    require(require.resolve("typescript", { paths: [appPath] })),
+  loadBundled: () => require("@typescript/typescript6"),
+};
+
+function compilerVersion(candidate: unknown): string {
+  if (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    "version" in candidate &&
+    typeof candidate.version === "string"
+  ) {
+    return candidate.version;
+  }
+  return "unknown";
+}
+
+export function getMissingCodeExplorerCompilerApis(
+  candidate: unknown,
+): string[] {
+  if (typeof candidate !== "object" || candidate === null) {
+    return ["module"];
+  }
+
+  const compiler = candidate as Record<string, unknown>;
+  const missing: string[] = REQUIRED_TYPESCRIPT_FUNCTIONS.filter(
+    (name) => typeof compiler[name] !== "function",
+  );
+  for (const name of ["SymbolFlags", "SyntaxKind", "sys"] as const) {
+    if (typeof compiler[name] !== "object" || compiler[name] === null) {
+      missing.push(name);
+    }
+  }
+  return missing;
+}
+
+function assertCompatibleCompiler(
+  candidate: unknown,
+  label: string,
+): asserts candidate is TypeScriptModule {
+  const missing = getMissingCodeExplorerCompilerApis(candidate);
+  if (missing.length > 0) {
+    throw new Error(`${label} is missing compiler APIs: ${missing.join(", ")}`);
+  }
+}
+
+export function resolveCodeExplorerCompiler(
+  appPath: string,
+  loaders: CodeExplorerCompilerLoaders = defaultCompilerLoaders,
+): ResolvedCodeExplorerCompiler {
+  let localPackagePath: string;
   try {
-    const requirePath = require.resolve("typescript", { paths: [appPath] });
-    return require(requirePath);
+    // Resolve first so a project without TypeScript never receives the fallback.
+    localPackagePath = loaders.resolveLocalPackage(appPath);
   } catch (error) {
     throw new Error(
-      `Failed to load TypeScript from ${appPath} because of ${error}`,
+      `Failed to load TypeScript from ${appPath} because it is not installed: ${error}`,
     );
   }
+
+  let localCandidate: unknown;
+  let localVersion = "unknown";
+  try {
+    localVersion = loaders.loadPackageVersion(localPackagePath);
+  } catch {
+    // Loading the compiler below remains authoritative; version is for logs.
+  }
+  let fallbackReason: string;
+  try {
+    localCandidate = loaders.loadLocal(appPath);
+    localVersion = compilerVersion(localCandidate);
+    assertCompatibleCompiler(localCandidate, "Local TypeScript");
+    return {
+      module: localCandidate,
+      source: "local",
+      version: compilerVersion(localCandidate),
+    };
+  } catch (error) {
+    fallbackReason = error instanceof Error ? error.message : String(error);
+  }
+
+  let bundledCandidate: unknown;
+  try {
+    bundledCandidate = loaders.loadBundled();
+    assertCompatibleCompiler(bundledCandidate, "Bundled TypeScript 6");
+  } catch (error) {
+    throw new Error(
+      `Failed to load TypeScript from ${appPath}: local TypeScript ${localVersion} is incompatible with Code Explorer (${fallbackReason}), and the bundled TypeScript 6 fallback failed to load: ${error}`,
+    );
+  }
+
+  const version = compilerVersion(bundledCandidate);
+  console.warn(
+    `[code-explorer] local TypeScript ${localVersion} is incompatible (${fallbackReason}); using bundled TypeScript ${version}`,
+  );
+  return {
+    module: bundledCandidate,
+    source: "bundled-ts6",
+    version,
+    fallbackReason,
+  };
 }
 
 interface CachedIndex {
@@ -51,15 +193,26 @@ interface CachedIndex {
 // One host process serves every explorer session, so both caches are keyed —
 // different apps may resolve different TypeScript installs, and the index
 // cache holds one entry per appPath+tsconfig within the byte budget above.
-const typeScriptCache = new Map<string, typeof import("typescript")>();
+const typeScriptCache = new Map<string, ResolvedCodeExplorerCompiler>();
 const indexCache = new Map<string, CachedIndex>();
 
 export async function processCodeExplorer(
   input: CodeExplorerWorkerInput,
 ): Promise<CodeExplorerWorkerOutput> {
   try {
-    const ts = loadCachedTypeScript(input.appPath);
-    return processCodeExplorerWithTypeScript(ts, input);
+    const compiler = loadCachedTypeScript(input.appPath);
+    const output = await processCodeExplorerWithTypeScript(
+      compiler.module,
+      input,
+      compiler,
+    );
+    if (!output.success && compiler.source === "bundled-ts6") {
+      return {
+        success: false,
+        error: `${output.error} (Code Explorer used bundled TypeScript ${compiler.version} because the local compiler API was incompatible)`,
+      };
+    }
+    return output;
   } catch (error) {
     return codeExplorerErrorOutput(error);
   }
@@ -68,10 +221,14 @@ export async function processCodeExplorer(
 export async function processCodeExplorerWithTypeScript(
   ts: typeof import("typescript"),
   input: CodeExplorerWorkerInput,
+  compiler?: ResolvedCodeExplorerCompiler,
 ): Promise<CodeExplorerWorkerOutput> {
   try {
     const built = getCachedIndex(ts, input);
     const result = searchCodeExplorerIndex(built, input);
+    if (compiler?.source === "bundled-ts6") {
+      result.notes.unshift(...getBundledCompilerNotes(compiler, built));
+    }
     return {
       success: true,
       data: result,
@@ -79,6 +236,36 @@ export async function processCodeExplorerWithTypeScript(
   } catch (error) {
     return codeExplorerErrorOutput(error);
   }
+}
+
+const MAX_CONFIG_DIAGNOSTICS_IN_NOTE = 3;
+
+function getBundledCompilerNotes(
+  compiler: ResolvedCodeExplorerCompiler,
+  built: BuiltCodeExplorerIndex,
+): string[] {
+  const notes = [
+    `Warning: Code Explorer used bundled TypeScript ${compiler.version} because the app-local compiler API was incompatible. Results are best-effort.`,
+  ];
+  if (built.configDiagnostics.length === 0) {
+    return notes;
+  }
+
+  const shownDiagnostics = built.configDiagnostics
+    .slice(0, MAX_CONFIG_DIAGNOSTICS_IN_NOTE)
+    .map((diagnostic) => {
+      const configPath = path.relative(
+        built.index.appPath,
+        diagnostic.tsconfigPath,
+      );
+      const message = diagnostic.message.replaceAll("\n", " ").slice(0, 240);
+      return `${configPath || path.basename(diagnostic.tsconfigPath)} TS${diagnostic.code}: ${message}`;
+    });
+  const omittedCount = built.configDiagnostics.length - shownDiagnostics.length;
+  notes.push(
+    `Warning: Bundled TypeScript ${compiler.version} continued after ${built.configDiagnostics.length} project configuration diagnostic${built.configDiagnostics.length === 1 ? "" : "s"}: ${shownDiagnostics.join("; ")}${omittedCount > 0 ? `; and ${omittedCount} more` : ""}. Some configuration was ignored, so results may be incomplete.`,
+  );
+  return notes;
 }
 
 function codeExplorerErrorOutput(error: unknown): CodeExplorerWorkerOutput {
@@ -93,14 +280,14 @@ export function clearCodeExplorerWorkerCachesForTests(): void {
   indexCache.clear();
 }
 
-function loadCachedTypeScript(appPath: string): typeof import("typescript") {
+function loadCachedTypeScript(appPath: string): ResolvedCodeExplorerCompiler {
   const cached = typeScriptCache.get(appPath);
   if (cached) {
     return cached;
   }
-  const ts = loadLocalTypeScript(appPath);
-  typeScriptCache.set(appPath, ts);
-  return ts;
+  const compiler = resolveCodeExplorerCompiler(appPath);
+  typeScriptCache.set(appPath, compiler);
+  return compiler;
 }
 
 function getCachedIndex(

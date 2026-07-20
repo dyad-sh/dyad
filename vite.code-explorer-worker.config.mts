@@ -22,7 +22,12 @@ export default defineConfig({
       formats: ["cjs"],
     },
     rollupOptions: {
-      external: [...nodeBuiltins, "typescript"],
+      external: [
+        ...nodeBuiltins,
+        "typescript",
+        "@typescript/typescript6",
+        "@typescript/old",
+      ],
     },
   },
 });

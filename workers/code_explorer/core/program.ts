@@ -21,6 +21,7 @@ export interface ProjectProgram {
   projectRoot: string;
   tsconfigPath: string;
   program: import("typescript").Program;
+  configFileParsingDiagnostics: readonly import("typescript").Diagnostic[];
 }
 
 export interface ProjectFileSet {
@@ -163,13 +164,22 @@ export function createProjectPrograms(
   },
 ): ProjectProgram[] {
   const fileSet = resolveProjectFileSet(ts, { appPath, tsconfigPath });
-  const programs = fileSet.tsconfigPaths.map((configPath) => ({
-    projectRoot: fileSet.projectRoot,
-    tsconfigPath: configPath,
-    program: createProgramFromConfig(ts, fileSet.projectRoot, configPath, {
-      tsBuildInfoCacheDir,
-    }),
-  }));
+  const programs = fileSet.tsconfigPaths.map((configPath) => {
+    const { program, configFileParsingDiagnostics } = createProgramFromConfig(
+      ts,
+      fileSet.projectRoot,
+      configPath,
+      {
+        tsBuildInfoCacheDir,
+      },
+    );
+    return {
+      projectRoot: fileSet.projectRoot,
+      tsconfigPath: configPath,
+      program,
+      configFileParsingDiagnostics,
+    };
+  });
 
   if (fileSet.rootFileNames.length === 0) {
     throw new Error(
@@ -252,9 +262,14 @@ function createProgramFromConfig(
   }: {
     tsBuildInfoCacheDir?: string;
   },
-): import("typescript").Program {
+): {
+  program: import("typescript").Program;
+  configFileParsingDiagnostics: readonly import("typescript").Diagnostic[];
+} {
   const parsed = readConfig(ts, tsconfigPath);
   const options = { ...parsed.options, noEmit: true };
+  const configFileParsingDiagnostics =
+    ts.getConfigFileParsingDiagnostics(parsed);
 
   if (
     tsBuildInfoCacheDir &&
@@ -304,19 +319,25 @@ function createProgramFromConfig(
       options,
       host,
       projectReferences: parsed.projectReferences,
-      configFileParsingDiagnostics: ts.getConfigFileParsingDiagnostics(parsed),
+      configFileParsingDiagnostics,
     });
     builderProgram.emit();
-    return builderProgram.getProgram();
+    return {
+      program: builderProgram.getProgram(),
+      configFileParsingDiagnostics,
+    };
   }
 
-  return ts.createProgram({
-    rootNames: parsed.fileNames,
-    options,
-    host,
-    projectReferences: parsed.projectReferences,
-    configFileParsingDiagnostics: ts.getConfigFileParsingDiagnostics(parsed),
-  });
+  return {
+    program: ts.createProgram({
+      rootNames: parsed.fileNames,
+      options,
+      host,
+      projectReferences: parsed.projectReferences,
+      configFileParsingDiagnostics,
+    }),
+    configFileParsingDiagnostics,
+  };
 }
 
 function safePathHash(filePath: string): string {

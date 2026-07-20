@@ -178,6 +178,23 @@ describe("runExploreCodeSubagent", () => {
     expect(report).toContain('"path":"src/widget/saveWidget.ts"');
   });
 
+  it("preserves Code Explorer fallback warnings in the final report", async () => {
+    mocks.runRawExploreCode.mockResolvedValue({
+      ...buildRawExploreResult(),
+      notes: [
+        "Warning: Code Explorer used bundled TypeScript 6.0.3 because the app-local compiler API was incompatible. Results are best-effort.",
+      ],
+    });
+
+    const report = await runExploreCodeSubagent({
+      args: { query: "widget save flow", intent: "locate" },
+      ctx: createMockContext(),
+    });
+
+    expect(report).toContain("Warnings:");
+    expect(report).toContain("used bundled TypeScript 6.0.3");
+  });
+
   it("uses a domain-neutral system prompt with no benchmark vocabulary", async () => {
     await runExploreCodeSubagent({
       args: { query: "widget save flow", intent: "locate" },

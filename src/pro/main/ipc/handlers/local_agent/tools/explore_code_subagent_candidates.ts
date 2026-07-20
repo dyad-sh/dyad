@@ -50,6 +50,7 @@ export interface SubagentObservation {
   args: unknown;
   result: string;
   candidates: ExplorerCandidate[];
+  warnings?: string[];
 }
 
 export const candidateIdSchema = z

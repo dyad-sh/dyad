@@ -10,6 +10,7 @@ import {
 } from "../../../workers/code_explorer/core";
 import {
   clearCodeExplorerWorkerCachesForTests,
+  processCodeExplorer,
   processCodeExplorerWithTypeScript,
 } from "../../../workers/code_explorer/code_explorer_worker";
 
@@ -81,6 +82,93 @@ describe("exploreCode", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("indexes with bundled TypeScript 6 when an installed TS7 package has no legacy API", async () => {
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        exports: { "./package.json": "./package.json" },
+      }),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { target: "ES2022", module: "ESNext" },
+        include: ["src/**/*.ts"],
+      }),
+      "src/fallback.ts": "export function bundledFallbackSymbol() {}\n",
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      query: "bundled fallback symbol",
+    });
+
+    expect(output.success).toBe(true);
+    if (output.success) {
+      expect(output.data.files.map((file) => file.path)).toContain(
+        "src/fallback.ts",
+      );
+      expect(output.data.notes).toContainEqual(
+        expect.stringContaining("used bundled TypeScript"),
+      );
+    }
+  });
+
+  it("keeps a useful bundled-compiler index and warns about unsupported TS7 configuration", async () => {
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        exports: { "./package.json": "./package.json" },
+      }),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          target: "ES2022",
+          module: "ESNext",
+          deduplicatePackages: false,
+        },
+        include: ["src/**/*.ts"],
+      }),
+      "src/fallback.ts": "export function bundledFallbackSymbol() {}\n",
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      query: "bundled fallback symbol",
+    });
+
+    expect(output.success).toBe(true);
+    if (output.success) {
+      expect(output.data.files.map((file) => file.path)).toContain(
+        "src/fallback.ts",
+      );
+      const configWarning = output.data.notes.find((note) =>
+        note.includes("Some configuration was ignored"),
+      );
+      expect(configWarning).toContain("deduplicatePackages");
+    }
+  });
+
+  it("preserves the original error prefix when bundled TypeScript 6 cannot build an index", async () => {
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        exports: { "./package.json": "./package.json" },
+      }),
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      query: "missing config",
+    });
+
+    expect(output.success).toBe(false);
+    if (!output.success) {
+      expect(output.error).toMatch(
+        /^No TypeScript configuration file found.* \(Code Explorer used bundled TypeScript .* because the local compiler API was incompatible\)$/,
+      );
+    }
   });
 
   it("indexes module-suffixed source files while excluding declarations", () => {

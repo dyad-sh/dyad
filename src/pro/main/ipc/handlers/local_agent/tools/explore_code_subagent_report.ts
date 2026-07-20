@@ -36,6 +36,8 @@ const MAX_PURPOSE_CHARS = 64;
 const MAX_REPORT_QUERY_CHARS = 110;
 const MAX_REPORT_MISSING_CHARS = 220;
 const MAX_REPORT_SEARCH_TARGET_CHARS = 140;
+const MAX_REPORT_WARNINGS = 3;
+const MAX_REPORT_WARNING_CHARS = 420;
 
 // What the model submits. It only points at observed candidate IDs and supplies
 // the narrative (role/fact). It does NOT supply quotes (the report builder
@@ -370,17 +372,20 @@ export function buildReport({
   intent,
   resolved,
   outcome,
+  warnings = [],
 }: {
   query: string;
   intent: ExploreIntent;
   resolved: ResolvedSelection;
   outcome: Outcome;
+  warnings?: string[];
 }): { text: string; machine: ReportMachine } {
   const renderedFlow = getRenderedFlowLinks(resolved.flow);
   const renderedPathSet = new Set<string>();
   const lines: string[] = [
     "## explore_code report",
     `Query: "${truncateInline(query, MAX_REPORT_QUERY_CHARS)}" | Intent: ${intent} | Confidence: ${outcome.confidence} | Action: ${outcome.action}`,
+    ...renderWarnings(warnings),
     "",
     "Flow:",
   ];
@@ -495,10 +500,12 @@ export function buildDeterministicReport({
   query,
   intent,
   observations,
+  warnings = [],
 }: {
   query: string;
   intent: ExploreIntent;
   observations: SubagentObservation[];
+  warnings?: string[];
 }): string {
   const candidates = getRankedCandidates(observations, query);
   const primary = candidates.slice(0, MAX_PRIMARY_FILES);
@@ -523,6 +530,7 @@ export function buildDeterministicReport({
     [
       "## explore_code report",
       `Query: "${query}" | Intent: ${intent} | Confidence: low | Action: ${action}`,
+      ...renderWarnings(warnings),
       "",
       "Flow:",
       primary.length > 0
@@ -559,6 +567,13 @@ export function buildDeterministicReport({
       .filter((line) => line !== "")
       .join("\n"),
   );
+}
+
+function renderWarnings(warnings: string[]): string[] {
+  const rendered = [...new Set(warnings)]
+    .slice(0, MAX_REPORT_WARNINGS)
+    .map((warning) => `- ${truncateInline(warning, MAX_REPORT_WARNING_CHARS)}`);
+  return rendered.length > 0 ? ["", "Warnings:", ...rendered] : [];
 }
 
 function getRenderedFlowLinks(flow: ResolvedFlowLink[]): RenderedFlowLink[] {

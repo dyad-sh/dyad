@@ -5,6 +5,76 @@ import path from "path";
 
 const MINIMAL_APP = "minimal-with-ai-rules";
 
+testSkipIfWindows(
+  "problems - runs app-local TypeScript CLI",
+  async ({ po }) => {
+    await po.setUp();
+    await po.importApp(MINIMAL_APP);
+    await po.appManagement.ensurePnpmInstall();
+    await po.appManagement.ensureCodeExplorerReady();
+
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const typeScriptLibPath = path.join(
+      appPath,
+      "node_modules",
+      "typescript",
+      "lib",
+    );
+    const typeScriptEntryPath = path.join(typeScriptLibPath, "tsc.js");
+    const originalEntryName = "tsc-dyad-e2e-original.js";
+    const originalEntryPath = path.join(typeScriptLibPath, originalEntryName);
+    const invocationLogName = ".dyad-tsc-cli-invocations";
+    const invocationLogPath = path.join(typeScriptLibPath, invocationLogName);
+    const badFilePath = path.join(appPath, "src", "tsc-cli-error.ts");
+    let entryMoved = false;
+
+    try {
+      fs.renameSync(typeScriptEntryPath, originalEntryPath);
+      entryMoved = true;
+      fs.writeFileSync(
+        typeScriptEntryPath,
+        `const fs = require("node:fs");
+const path = require("node:path");
+fs.appendFileSync(path.join(__dirname, "${invocationLogName}"), process.argv.slice(2).join(" ") + "\\n");
+module.exports = require("./${originalEntryName}");
+`,
+      );
+      fs.writeFileSync(badFilePath, "const mustBeString: string = 42;\n");
+
+      await po.previewPanel.selectPreviewMode("problems");
+      await po.previewPanel.clickRecheckProblems();
+
+      const problemRows = po.page.getByTestId("problem-row");
+      await expect(problemRows).toHaveCount(1, { timeout: Timeout.LONG });
+      await expect(problemRows.first()).toContainText("tsc-cli-error.ts");
+      await expect(problemRows.first()).toContainText(
+        "Type 'number' is not assignable to type 'string'",
+      );
+
+      const invocations = fs
+        .readFileSync(invocationLogPath, "utf8")
+        .trim()
+        .split("\n");
+      expect(invocations).toContain("--version");
+
+      const typeCheckInvocation =
+        invocations.find((invocation) => invocation.includes("--noEmit")) ?? "";
+      expect(typeCheckInvocation).toContain("--pretty false");
+      expect(typeCheckInvocation).toContain("--noEmit");
+      expect(typeCheckInvocation).toContain("--incremental");
+      expect(typeCheckInvocation).toContain("--project");
+      expect(typeCheckInvocation).toContain("tsconfig.app.json");
+    } finally {
+      fs.rmSync(badFilePath, { force: true });
+      fs.rmSync(invocationLogPath, { force: true });
+      if (entryMoved) {
+        fs.rmSync(typeScriptEntryPath, { force: true });
+        fs.renameSync(originalEntryPath, typeScriptEntryPath);
+      }
+    }
+  },
+);
+
 testSkipIfWindows("problems - fix all", async ({ po }) => {
   await po.setUp();
   await po.importApp(MINIMAL_APP);

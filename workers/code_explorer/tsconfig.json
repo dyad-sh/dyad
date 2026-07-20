@@ -1,8 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "ignoreDeprecations": "6.0",
     "module": "System",
     "lib": ["ES2022"],
+    "types": ["node"],
     "outFile": "./dist/code_explorer_worker.js",
     "rootDir": "../../",
     "strict": true,

@@ -24,6 +24,11 @@ Read this when spawning `worker_threads` or `utilityProcess` children, moving he
 - Give children a `serviceName` so they are identifiable in `app.getAppMetrics()` and Activity Monitor.
 - Unit-test the child lifecycle with a file-scoped `vi.mock("electron")` whose `utilityProcess.fork` returns an EventEmitter-backed fake child (emit spawn/message/error/exit; spy on postMessage/kill). The shared inert mock in `src/testing/electron_mock.ts` cannot emit events, and the AGENTS.md test mandate applies: cover the timeout, pre-reply-exit, fatal-error, and settle-once paths, not just the happy path.
 
+## External worker runtime dependencies
+
+- When a worker keeps a scoped runtime package external to its Vite bundle, Forge's `ignore` filter must allow the scope directory (for example `/node_modules/@typescript`) as well as the exact package directories. Electron Packager prunes the parent before visiting allowed descendants otherwise. Verify the built ASAR contains both the worker and every external package entrypoint.
+- npm alias dependencies can expose a transitive `bin` at the root `.bin` directory and replace another package's same-named shim. Build/type-check scripts that require a particular package version should invoke that package's JavaScript entrypoint directly instead of relying on the shared shim.
+
 ## Measuring memory honestly
 
 - Logged main-process RSS **includes** all worker_threads — they are threads, not processes. Renderer/GPU/utility processes are separate; enumerate them with `app.getAppMetrics()`.

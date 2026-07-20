@@ -15,7 +15,6 @@ Skills are invoked with `/dyad:<skill>`. Available skills:
 | `/dyad:pr-fix:actions`             | Fix failing CI checks and GitHub Actions                       | `e2e-rebase`, `pr-push`             |
 | `/dyad:pr-rebase`                  | Rebase the current branch                                      | `pr-push`                           |
 | `/dyad:pr-push`                    | Push changes and create/update a PR                            | `remember-learnings`                |
-| `/dyad:fast-push`                  | Fast push via haiku sub-agent                                  | -                                   |
 | `/dyad:lint`                       | Run all pre-commit checks (formatting, linting, type-checking) | -                                   |
 | `/dyad:e2e-rebase`                 | Rebase E2E test snapshots                                      | -                                   |
 | `/dyad:deflake-e2e`                | Deflake flaky E2E tests                                        | -                                   |

@@ -255,6 +255,7 @@ async function collectRawExploreObservation({
       args: effectiveArgs,
       result: annotateObservationResult(resultText, candidates),
       candidates,
+      warnings: rawResult.notes.filter((note) => note.startsWith("Warning:")),
     },
     onProgress,
   );
@@ -281,15 +282,26 @@ function renderFinalReport({
   observations: SubagentObservation[];
 }): string {
   const accepted = acceptedRef.current;
+  const warnings = [
+    ...new Set(
+      observations.flatMap((observation) => observation.warnings ?? []),
+    ),
+  ];
   if (accepted) {
     return buildReport({
       query: args.query,
       intent,
       resolved: accepted.resolved,
       outcome: accepted.outcome,
+      warnings,
     }).text;
   }
-  return buildDeterministicReport({ query: args.query, intent, observations });
+  return buildDeterministicReport({
+    query: args.query,
+    intent,
+    observations,
+    warnings,
+  });
 }
 
 function assertDyadValueAvailable(settings: UserSettings): void {
@@ -462,6 +474,9 @@ function buildObservedExploreCodeTool({
             args: effectiveToolArgs,
             result: annotatedResult,
             candidates,
+            warnings: rawResult.notes.filter((note) =>
+              note.startsWith("Warning:"),
+            ),
           },
           onProgress,
         );

@@ -108,6 +108,44 @@ describe("exploreCode", () => {
       expect(output.data.files.map((file) => file.path)).toContain(
         "src/fallback.ts",
       );
+      expect(output.data.notes).toContainEqual(
+        expect.stringContaining("used bundled TypeScript"),
+      );
+    }
+  });
+
+  it("keeps a useful bundled-compiler index and warns about unsupported TS7 configuration", async () => {
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        exports: { "./package.json": "./package.json" },
+      }),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: {
+          target: "ES2022",
+          module: "ESNext",
+          deduplicatePackages: false,
+        },
+        include: ["src/**/*.ts"],
+      }),
+      "src/fallback.ts": "export function bundledFallbackSymbol() {}\n",
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      query: "bundled fallback symbol",
+    });
+
+    expect(output.success).toBe(true);
+    if (output.success) {
+      expect(output.data.files.map((file) => file.path)).toContain(
+        "src/fallback.ts",
+      );
+      const configWarning = output.data.notes.find((note) =>
+        note.includes("Some configuration was ignored"),
+      );
+      expect(configWarning).toContain("deduplicatePackages");
     }
   });
 

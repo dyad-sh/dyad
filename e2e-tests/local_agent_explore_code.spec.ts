@@ -71,6 +71,8 @@ testSkipIfWindows("local-agent - explore_code experiment", async ({ po }) => {
     await expect(card).toBeVisible({ timeout: Timeout.LONG });
     await card.click();
     await expect(card).toContainText("explore_code report");
+    await expect(card).toContainText("used bundled TypeScript");
+    await expect(card).toContainText("Results are best-effort");
     await expect(card).toContainText("src/App.tsx");
     await expect(card).toContainText("compiler-backed symbol window");
     await expect(card).toContainText("Read targets");

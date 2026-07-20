@@ -53,7 +53,7 @@ The Problems panel remains available through its explicit **Run checks** and **F
   4. Use the local module when compatible; if loading fails or the required API is missing, load Dyad’s packaged `@typescript/typescript6` module and log the local version/reason and fallback version.
 - Keep `getCodeExplorerAvailability` based on an installed local TypeScript package plus a discoverable tsconfig. A TS7 app therefore remains eligible and uses the fallback; an app with a tsconfig but no TypeScript installation remains ineligible.
 - Cache compiler resolution per app as today, recording `{ module, source: "local" | "bundled-ts6", version }` so logs and failures identify the active engine. Clear this cache with existing worker test-cache cleanup.
-- Use the chosen compiler for config discovery, program construction, cache freshness checks, and indexing. Do not silently remove unsupported TS7-only config options or syntax; if bundled TS6 cannot parse the project, return a concise compatibility precondition/error that identifies the fallback compiler.
+- Use the chosen compiler for config discovery, program construction, cache freshness checks, and indexing. When bundled TS6 reports recoverable configuration diagnostics for TS7-only options, continue with a best-effort index and surface a warning that identifies the fallback compiler, the ignored configuration, and the possibility of incomplete results. Fail only when the incompatibility prevents a meaningful index, such as an unreadable configuration or no resolved source files.
 - Keep the TypeScript 7 unstable API and LSP out of scope. The resolver is the seam for a future stable TS7 API adapter.
 
 ## Public/Internal Interface Changes
@@ -71,6 +71,7 @@ The Problems panel remains available through its explicit **Run checks** and **F
 - **Diagnostic parser unit tests:** cover POSIX and Windows paths, multiline messages, multiple files/codes, CRLF output, source snippets at first/middle/last lines, external-file snippet suppression, config/global diagnostics, and unrecognized output.
 - **Scheduler tests:** adapt the existing TSC/Code Explorer exclusion test to a mocked CLI child; prove Code Explorer fully exits before CLI launch, the CLI fully exits before Code Explorer restarts, and queued checks remain serialized.
 - **Code Explorer resolver tests:** cover compatible local TS selection, a TS7-like/version-only module selecting bundled TS6, local load failure selecting bundled TS6, no local TypeScript refusing fallback, missing bundled package failure, and cache reset. Retain existing injected-compiler core/index tests.
+- **Code Explorer compatibility tests:** cover a TS7-only compiler option that bundled TS6 does not recognize, proving that useful files and symbols are still returned together with a bounded degradation warning; retain hard failures for unreadable configuration and zero resolved source files.
 - **Packaging verification:** build the packaged app and assert the Code Explorer worker plus `@typescript/typescript6`/`@typescript/old` runtime files are present and loadable from ASAR on the target platform.
 - **Integration/E2E:**
   - run manual Problems checks and Local Agent `run_type_checks` against a normal TS5/6 fixture;

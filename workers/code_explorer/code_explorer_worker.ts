@@ -204,6 +204,7 @@ export async function processCodeExplorer(
     const output = await processCodeExplorerWithTypeScript(
       compiler.module,
       input,
+      compiler,
     );
     if (!output.success && compiler.source === "bundled-ts6") {
       return {
@@ -220,10 +221,14 @@ export async function processCodeExplorer(
 export async function processCodeExplorerWithTypeScript(
   ts: typeof import("typescript"),
   input: CodeExplorerWorkerInput,
+  compiler?: ResolvedCodeExplorerCompiler,
 ): Promise<CodeExplorerWorkerOutput> {
   try {
     const built = getCachedIndex(ts, input);
     const result = searchCodeExplorerIndex(built, input);
+    if (compiler?.source === "bundled-ts6") {
+      result.notes.unshift(...getBundledCompilerNotes(compiler, built));
+    }
     return {
       success: true,
       data: result,
@@ -231,6 +236,36 @@ export async function processCodeExplorerWithTypeScript(
   } catch (error) {
     return codeExplorerErrorOutput(error);
   }
+}
+
+const MAX_CONFIG_DIAGNOSTICS_IN_NOTE = 3;
+
+function getBundledCompilerNotes(
+  compiler: ResolvedCodeExplorerCompiler,
+  built: BuiltCodeExplorerIndex,
+): string[] {
+  const notes = [
+    `Warning: Code Explorer used bundled TypeScript ${compiler.version} because the app-local compiler API was incompatible. Results are best-effort.`,
+  ];
+  if (built.configDiagnostics.length === 0) {
+    return notes;
+  }
+
+  const shownDiagnostics = built.configDiagnostics
+    .slice(0, MAX_CONFIG_DIAGNOSTICS_IN_NOTE)
+    .map((diagnostic) => {
+      const configPath = path.relative(
+        built.index.appPath,
+        diagnostic.tsconfigPath,
+      );
+      const message = diagnostic.message.replaceAll("\n", " ").slice(0, 240);
+      return `${configPath || path.basename(diagnostic.tsconfigPath)} TS${diagnostic.code}: ${message}`;
+    });
+  const omittedCount = built.configDiagnostics.length - shownDiagnostics.length;
+  notes.push(
+    `Warning: Bundled TypeScript ${compiler.version} continued after ${built.configDiagnostics.length} project configuration diagnostic${built.configDiagnostics.length === 1 ? "" : "s"}: ${shownDiagnostics.join("; ")}${omittedCount > 0 ? `; and ${omittedCount} more` : ""}. Some configuration was ignored, so results may be incomplete.`,
+  );
+  return notes;
 }
 
 function codeExplorerErrorOutput(error: unknown): CodeExplorerWorkerOutput {

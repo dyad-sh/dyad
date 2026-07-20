@@ -29,6 +29,13 @@ export interface BuiltCodeExplorerIndex {
   indexMs: number;
   tsconfigPaths: string[];
   rootFileNames: string[];
+  configDiagnostics: CodeExplorerConfigDiagnostic[];
+}
+
+export interface CodeExplorerConfigDiagnostic {
+  code: number;
+  message: string;
+  tsconfigPath: string;
 }
 
 export function buildCodeExplorerIndex(
@@ -52,6 +59,13 @@ export function buildCodeExplorerIndex(
     tsconfigPaths: projects.map((project) => project.tsconfigPath),
     rootFileNames: projects.flatMap((project) =>
       project.program.getRootFileNames(),
+    ),
+    configDiagnostics: projects.flatMap((project) =>
+      project.configFileParsingDiagnostics.map((diagnostic) => ({
+        code: diagnostic.code,
+        message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+        tsconfigPath: project.tsconfigPath,
+      })),
     ),
   };
 }

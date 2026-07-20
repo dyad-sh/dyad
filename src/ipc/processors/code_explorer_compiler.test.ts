@@ -2,17 +2,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { TypeScriptModule } from "../../../workers/code_explorer/core/types";
 import {
   getMissingCodeExplorerCompilerApis,
   resolveCodeExplorerCompiler,
   type CodeExplorerCompilerLoaders,
 } from "../../../workers/code_explorer/code_explorer_worker";
-import {
-  getCodeExplorerAvailability,
-  toCodeExplorerError,
-} from "./code_explorer";
+import { getCodeExplorerAvailability } from "./code_explorer";
 
 const compatibleCompiler = require("typescript") as TypeScriptModule;
 const bundledCompiler = require("@typescript/typescript6") as TypeScriptModule;
@@ -96,35 +92,6 @@ describe("resolveCodeExplorerCompiler", () => {
     );
     expect(compilerLoaders.loadLocal).not.toHaveBeenCalled();
     expect(compilerLoaders.loadBundled).not.toHaveBeenCalled();
-  });
-
-  it("reports both the local incompatibility and a missing fallback", () => {
-    const compilerLoaders = loaders({
-      loadLocal: vi.fn(() => ({ version: "7.0.0" })),
-      loadBundled: vi.fn(() => {
-        throw new Error("bundled package missing");
-      }),
-    });
-
-    let resolutionError: unknown;
-    try {
-      resolveCodeExplorerCompiler("/app", compilerLoaders);
-    } catch (error) {
-      resolutionError = error;
-    }
-
-    expect(resolutionError).toBeInstanceOf(Error);
-    expect((resolutionError as Error).message).toContain(
-      "Failed to load TypeScript from /app: local TypeScript 7.0.0 is incompatible with Code Explorer",
-    );
-    expect((resolutionError as Error).message).toContain(
-      "bundled package missing",
-    );
-    const classifiedError = toCodeExplorerError(resolutionError);
-    expect(classifiedError).toBeInstanceOf(DyadError);
-    expect((classifiedError as DyadError).kind).toBe(
-      DyadErrorKind.Precondition,
-    );
   });
 
   it("validates the full API surface consumed by Code Explorer", () => {

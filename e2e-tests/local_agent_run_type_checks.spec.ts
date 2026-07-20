@@ -50,3 +50,29 @@ testSkipIfWindows(
     await po.previewPanel.snapshotProblemsPane();
   },
 );
+
+testSkipIfWindows(
+  "local-agent - run_type_checks succeeds for a clean app",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
+
+    await po.appManagement.ensurePnpmInstall();
+    await po.appManagement.ensureCodeExplorerReady();
+
+    await po.sendPrompt("tc=local-agent/run-type-checks-happy-path");
+
+    const typeCheckCard = po.page.getByRole("button", {
+      name: /Type checking all files/,
+    });
+    await expect(typeCheckCard).toBeVisible({ timeout: Timeout.LONG });
+    await typeCheckCard.click();
+    await expect(typeCheckCard).toContainText("No type errors found.");
+
+    await po.previewPanel.selectPreviewMode("problems");
+    await expect(
+      po.page.getByText(/No problems found|No Problems Report/),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);

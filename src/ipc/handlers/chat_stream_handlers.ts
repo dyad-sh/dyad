@@ -640,13 +640,27 @@ export function registerChatStreamHandlers() {
           continue;
         }
 
+        // Both admission blocks are clear. Remove the pending marker HERE, in
+        // the same synchronous frame as the block checks above and before any
+        // further `await`, so admission is atomic with barrier installation.
+        // `cancelActiveStreamsForApp` deliberately skips controllers still in
+        // `admissionPendingStreams`; a restore that installs its app barrier
+        // (`blockNewStreamsForApp`) after this stream last checked the block but
+        // before the marker is cleared would therefore neither cancel this
+        // stream nor make it re-observe the new barrier, letting it start
+        // mid-restore and dirty the freshly reverted tree after the revert
+        // releases the app lock. Keeping the check-then-clear free of any
+        // intervening `await` closes that window: the stream either observes the
+        // barrier above and waits, or clears its marker before the barrier is
+        // installed and is then a plain in-flight stream the restore cancels.
+        // Do NOT introduce an `await` between the checks above and this line.
+        admissionPendingStreams.delete(abortController);
         break;
       }
 
       // Notify the renderer only after admission succeeds. Requests that arrive
-      // during an in-progress restore wait here and then start normally, keeping
-      // the submitted prompt owned by the stream instead of dropping it.
-      admissionPendingStreams.delete(abortController);
+      // during an in-progress restore wait above and then start normally,
+      // keeping the submitted prompt owned by the stream instead of dropping it.
       safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
       // Record the streaming chat in the crash sentinel so a later force-close

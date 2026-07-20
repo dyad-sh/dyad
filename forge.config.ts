@@ -102,6 +102,15 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/file-uri-to-path")) {
     return false;
   }
+  if (file === "/node_modules/@typescript") {
+    return false;
+  }
+  if (file.startsWith("/node_modules/@typescript/typescript6")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/@typescript/old")) {
+    return false;
+  }
   if (isPgRuntimeDependency(file)) {
     return false;
   }

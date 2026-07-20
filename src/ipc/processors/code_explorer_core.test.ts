@@ -10,6 +10,7 @@ import {
 } from "../../../workers/code_explorer/core";
 import {
   clearCodeExplorerWorkerCachesForTests,
+  processCodeExplorer,
   processCodeExplorerWithTypeScript,
 } from "../../../workers/code_explorer/code_explorer_worker";
 
@@ -81,6 +82,33 @@ describe("exploreCode", () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  it("indexes with bundled TypeScript 6 when an installed TS7 package has no legacy API", async () => {
+    const appPath = createTempProject({
+      "node_modules/typescript/package.json": JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        exports: { "./package.json": "./package.json" },
+      }),
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { target: "ES2022", module: "ESNext" },
+        include: ["src/**/*.ts"],
+      }),
+      "src/fallback.ts": "export function bundledFallbackSymbol() {}\n",
+    });
+
+    const output = await processCodeExplorer({
+      appPath,
+      query: "bundled fallback symbol",
+    });
+
+    expect(output.success).toBe(true);
+    if (output.success) {
+      expect(output.data.files.map((file) => file.path)).toContain(
+        "src/fallback.ts",
+      );
+    }
   });
 
   it("indexes module-suffixed source files while excluding declarations", () => {

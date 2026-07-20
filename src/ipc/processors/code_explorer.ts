@@ -42,7 +42,7 @@ export function getCodeExplorerAvailability(
   appPath: string,
 ): CodeExplorerAvailability {
   try {
-    require.resolve("typescript", { paths: [appPath] });
+    require.resolve("typescript/package.json", { paths: [appPath] });
   } catch {
     return {
       ready: false,

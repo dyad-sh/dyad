@@ -194,6 +194,13 @@ If broker-backed commands fail with `Unexpected token '<', "<!DOCTYPE "... is no
 
 If `git fetch --all` fails on a contributor remote with `would clobber existing tag`, but the output shows `Fetching upstream` completed first, do not treat the rebase as blocked. Run `git fetch upstream` to confirm the base remote is current, then rebase onto `upstream/main`.
 
+For stacked PRs, upstream may contain a squashed or hardened version of an
+earlier stack commit even when Git cannot detect it as an already-applied
+patch. If replaying that commit conflicts against newer upstream code, compare
+the upstream merge commit and final branch diff; skip the stale commit when
+reapplying it would regress the merged implementation, then continue with the
+stack's genuinely new commits.
+
 ### Handling unstaged changes during rebase
 
 If `git rebase` fails with "You have unstaged changes" (common with spurious `package-lock.json` changes):

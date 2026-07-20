@@ -5,6 +5,63 @@ import path from "path";
 
 const MINIMAL_APP = "minimal-with-ai-rules";
 
+testSkipIfWindows(
+  "problems - runs app-local TypeScript CLI",
+  async ({ po }) => {
+    await po.setUp();
+    await po.importApp(MINIMAL_APP);
+    await po.appManagement.ensurePnpmInstall();
+    await po.appManagement.ensureCodeExplorerReady();
+
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const binPath = path.join(appPath, "node_modules", ".bin");
+    const typeScriptShimPath = path.join(binPath, "tsc");
+    const originalShimName = "tsc-dyad-e2e-original";
+    const originalShimPath = path.join(binPath, originalShimName);
+    const invocationLogName = ".dyad-tsc-cli-invocations";
+    const invocationLogPath = path.join(binPath, invocationLogName);
+    const badFilePath = path.join(appPath, "src", "tsc-cli-error.ts");
+    let shimMoved = false;
+
+    try {
+      fs.renameSync(typeScriptShimPath, originalShimPath);
+      shimMoved = true;
+      fs.writeFileSync(
+        typeScriptShimPath,
+        `#!/bin/sh
+printf '%s\\n' "$*" >> "$(dirname "$0")/${invocationLogName}"
+exec "$(dirname "$0")/${originalShimName}" "$@"
+`,
+        { mode: 0o755 },
+      );
+      fs.writeFileSync(badFilePath, "const mustBeString: string = 42;\n");
+
+      await po.previewPanel.selectPreviewMode("problems");
+      await po.previewPanel.clickRecheckProblems();
+
+      const problemRows = po.page.getByTestId("problem-row");
+      await expect(problemRows).toHaveCount(1, { timeout: Timeout.LONG });
+      await expect(problemRows.first()).toContainText("tsc-cli-error.ts");
+      await expect(problemRows.first()).toContainText(
+        "Type 'number' is not assignable to type 'string'",
+      );
+
+      const invocations = fs.readFileSync(invocationLogPath, "utf8");
+      expect(invocations).toContain("--version");
+      expect(invocations).toContain("--pretty false --noEmit --incremental");
+      expect(invocations).toContain("--project");
+      expect(invocations).toContain("tsconfig.app.json");
+    } finally {
+      fs.rmSync(badFilePath, { force: true });
+      fs.rmSync(invocationLogPath, { force: true });
+      if (shimMoved) {
+        fs.rmSync(typeScriptShimPath, { force: true });
+        fs.renameSync(originalShimPath, typeScriptShimPath);
+      }
+    }
+  },
+);
+
 testSkipIfWindows("problems - fix all", async ({ po }) => {
   await po.setUp();
   await po.importApp(MINIMAL_APP);

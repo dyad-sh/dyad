@@ -21,6 +21,7 @@ export default App;
 `,
   );
   await po.appManagement.ensurePnpmInstall();
+  await po.appManagement.ensureCodeExplorerReady();
 
   await po.sendPrompt("tc=create-ts-errors");
   await po.previewPanel.selectPreviewMode("problems");

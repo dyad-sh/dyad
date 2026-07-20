@@ -1,11 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ipc, type ProblemReport } from "@/ipc/types";
-import { useSettings } from "./useSettings";
 import { queryKeys } from "@/lib/queryKeys";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function useCheckProblems(appId: number | null) {
-  const { settings } = useSettings();
   const {
     data: problemReport,
     isLoading: isChecking,
@@ -19,7 +17,7 @@ export function useCheckProblems(appId: number | null) {
       }
       return ipc.misc.checkProblems({ appId });
     },
-    enabled: !!appId && settings?.enableAutoFixProblems,
+    enabled: false,
     // DO NOT SHOW ERROR TOAST.
   });
 

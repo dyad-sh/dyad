@@ -92,8 +92,6 @@ const DebugSettingsSchema = z.object({
   thinkingBudget: z.string().nullable(),
   /** Max chat turns kept in context window */
   maxChatTurnsInContext: z.number().nullable(),
-  /** Whether auto-fix problems is enabled */
-  enableAutoFixProblems: z.boolean().nullable(),
   /** Whether auto-update is enabled */
   enableAutoUpdate: z.boolean(),
   /** Release channel: "stable" | "beta" */

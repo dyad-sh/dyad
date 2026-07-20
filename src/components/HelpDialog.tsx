@@ -85,7 +85,6 @@ function formatSettingsLines(settings: UserSettings | null): string {
     `- Thinking Budget: ${settings.thinkingBudget ?? "n/a"}`,
     `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
     `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
-    `- Auto Fix Problems: ${settings.enableAutoFixProblems ?? "n/a"}`,
   ].join("\n");
 }
 

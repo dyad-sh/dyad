@@ -47,10 +47,7 @@ import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCanc
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
 import { resolveAppIdForChat } from "@/lib/chatUtils";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
-import {
-  shouldShowPnpmMinimumReleaseAgeWarning,
-  type ChatMode,
-} from "@/lib/schemas";
+import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
 import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
@@ -243,11 +240,6 @@ export function useStreamChat({
       });
 
       let hasIncrementedStreamCount = false;
-      // The mode this turn actually ran in, as resolved by the main process
-      // (sent as a dedicated chunk at the start of every stream). Chat mode
-      // is stored per-chat, so `settings.selectedChatMode` alone can't tell
-      // us how the turn ran.
-      let effectiveChatModeForTurn: ChatMode | undefined;
       const shouldInvalidateFreeModelQuota = isFreeProModel(
         settings?.selectedModel,
       );
@@ -319,7 +311,6 @@ export function useStreamChat({
                   chatId,
                 )
               ) {
-                effectiveChatModeForTurn = effectiveChatMode;
                 if (chatModeFallbackReason) {
                   queryClient.invalidateQueries({
                     queryKey: queryKeys.chats.detail({ chatId }),
@@ -428,32 +419,6 @@ export function useStreamChat({
                   refreshAppIframe();
                   if (targetAppId) {
                     setPendingScreenshotAppId(targetAppId);
-                  }
-                  // Skip the automatic problems refresh for local-agent turns:
-                  // the agent runs its own type checks (run_type_checks), so a
-                  // renderer-side re-scan would duplicate the same full
-                  // TypeScript build moments later. The Problems panel is
-                  // refreshed manually in agent mode.
-                  // The effective-mode chunk always arrives before onEnd, so
-                  // the fallbacks are defensive only; prefer the per-chat
-                  // stored mode over the global selection (chat mode is
-                  // per-chat, see effectiveChatModeForTurn above).
-                  const ranAsLocalAgent =
-                    (effectiveChatModeForTurn ??
-                      queryClient.getQueryData<Chat>(
-                        queryKeys.chats.detail({ chatId }),
-                      )?.chatMode ??
-                      settings?.selectedChatMode) === "local-agent";
-                  if (
-                    settings?.enableAutoFixProblems &&
-                    targetAppId &&
-                    !ranAsLocalAgent
-                  ) {
-                    queryClient.invalidateQueries({
-                      queryKey: queryKeys.problems.byApp({
-                        appId: targetAppId,
-                      }),
-                    });
                   }
                 }
                 if (response.extraFiles) {

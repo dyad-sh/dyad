@@ -399,7 +399,6 @@ const BaseUserSettingsFields = {
   language: LanguageSchema.optional(),
   previewDeviceMode: DeviceModeSchema.optional(),
 
-  enableAutoFixProblems: z.boolean().optional(),
   enableAppBlueprint: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
@@ -439,6 +438,8 @@ export const StoredUserSettingsSchema = z
     enableChatCompletionNotifications: z.boolean().optional(),
     // Deprecated: Dyad always uses the bundled Dugite Git backend.
     enableNativeGit: z.boolean().optional(),
+    // Deprecated: Problems checks are manual-only.
+    enableAutoFixProblems: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -491,6 +492,7 @@ export function migrateStoredSettings(
 ): UserSettings {
   const activeSettings = { ...stored };
   delete activeSettings.enableNativeGit;
+  delete activeSettings.enableAutoFixProblems;
 
   return {
     ...activeSettings,

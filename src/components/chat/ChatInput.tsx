@@ -76,7 +76,6 @@ import {
   isRestoringQueuedSelectionAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
-import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import {
@@ -240,7 +239,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
-  const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
@@ -740,9 +738,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         setIsPreviewOpen(true);
       }
       refreshVersions();
-      if (settings?.enableAutoFixProblems) {
-        checkProblems();
-      }
 
       // Keep same as handleReject
       refreshProposal();

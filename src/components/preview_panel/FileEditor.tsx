@@ -9,8 +9,6 @@ import { ipc } from "@/ipc/types";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSettings } from "@/hooks/useSettings";
-import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { getLanguage } from "@/utils/get_language";
 import { queryKeys } from "@/lib/queryKeys";
 import {
@@ -145,7 +143,6 @@ export const FileEditor = ({
   const [value, setValue] = useState<string | undefined>(undefined);
   const [displayUnsavedChanges, setDisplayUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const { settings } = useSettings();
   // Use refs for values that need to be current in event handlers
   const originalValueRef = useRef<string | undefined>(undefined);
   const editorRef = useRef<any>(null);
@@ -157,7 +154,6 @@ export const FileEditor = ({
   const releaseModelRef = useRef<(() => void) | null>(null);
 
   const queryClient = useQueryClient();
-  const { checkProblems } = useCheckProblems(appId);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -286,9 +282,6 @@ export const FileEditor = ({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.uncommittedFiles.byApp({ appId: saveAppId }),
       });
-      if (settings?.enableAutoFixProblems) {
-        checkProblems();
-      }
       if (warning) {
         showWarning(warning);
       } else {

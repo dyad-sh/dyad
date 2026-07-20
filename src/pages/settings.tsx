@@ -18,7 +18,6 @@ import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { CustomAppsFolderSelector } from "@/components/CustomAppsFolderSelector";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AppBlueprintSwitch } from "@/components/AppBlueprintSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { KeepPreviewsRunningSwitch } from "@/components/KeepPreviewsRunningSwitch";
@@ -485,14 +484,6 @@ export function WorkflowSettings() {
         <AutoApproveSwitch showToast={false} />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically approve code changes and run them.
-        </div>
-      </div>
-
-      <div id={SETTING_IDS.autoFix} className="space-y-1 mt-4">
-        <AutoFixProblemsSwitch />
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          This will automatically fix TypeScript errors in Build mode. In Agent
-          mode, the agent runs its own type checks instead.
         </div>
       </div>
 

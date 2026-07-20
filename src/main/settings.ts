@@ -56,7 +56,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableProLazyEditsMode: true,
   enableProSmartFilesContextMode: true,
   selectedChatMode: "build",
-  enableAutoFixProblems: false,
   enableAppBlueprint: true,
   enableAutoUpdate: true,
   releaseChannel: "stable",

@@ -108,7 +108,6 @@ describe("readSettings", () => {
           "autoExpandPreviewPanel": true,
           "disablePreviewNodeAutoInstall": false,
           "enableAppBlueprint": true,
-          "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableCodeExplorer": true,
           "enableContextCompaction": true,
@@ -507,6 +506,23 @@ describe("readSettings", () => {
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
     });
+
+    it("should remove the deprecated auto-fix problems setting", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          selectedModel: {
+            name: "gpt-4",
+            provider: "openai",
+          },
+          enableAutoFixProblems: true,
+        }),
+      );
+
+      const result = readSettings();
+
+      expect(result).not.toHaveProperty("enableAutoFixProblems");
+    });
   });
 
   describe("error handling", () => {
@@ -524,7 +540,6 @@ describe("readSettings", () => {
           "autoExpandPreviewPanel": true,
           "disablePreviewNodeAutoInstall": false,
           "enableAppBlueprint": true,
-          "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableCodeExplorer": true,
           "enableContextCompaction": true,

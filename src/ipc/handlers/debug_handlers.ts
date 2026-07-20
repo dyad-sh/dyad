@@ -207,7 +207,6 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     enableDyadPro: settings.enableDyadPro ?? null,
     thinkingBudget: settings.thinkingBudget ?? null,
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
-    enableAutoFixProblems: settings.enableAutoFixProblems ?? null,
     enableAutoUpdate: settings.enableAutoUpdate,
     releaseChannel: settings.releaseChannel,
     runtimeMode2: settings.runtimeMode2 ?? null,

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
@@ -323,14 +324,13 @@ async function findTypeScriptConfig(appPath: string): Promise<string> {
 }
 
 async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
-  const packageJsonPath = path.join(
-    appPath,
-    "node_modules",
-    "typescript",
-    "package.json",
-  );
+  // Resolve through Node's algorithm (walking ancestor node_modules) so
+  // hoisted workspace installs are found, matching the Code Explorer gate.
+  let packageJsonPath: string;
   try {
-    await fs.realpath(packageJsonPath);
+    packageJsonPath = createRequire(path.join(appPath, "package.json")).resolve(
+      "typescript/package.json",
+    );
   } catch (error) {
     throw new TypeCheckPreconditionError(
       "typescript-not-found",
@@ -339,13 +339,7 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
     );
   }
 
-  const entryPath = path.join(
-    appPath,
-    "node_modules",
-    "typescript",
-    "lib",
-    "tsc.js",
-  );
+  const entryPath = path.join(path.dirname(packageJsonPath), "lib", "tsc.js");
   try {
     await fs.access(entryPath);
   } catch (error) {

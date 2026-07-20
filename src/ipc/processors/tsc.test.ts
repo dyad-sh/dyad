@@ -216,7 +216,11 @@ describe("runTypeScriptCheck", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     clearTypeScriptVersionCacheForTests();
-    appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-cli-"));
+    // realpath: the resolver returns resolved paths, and macOS tmpdirs are
+    // symlinks (/var -> /private/var).
+    appPath = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-cli-")),
+    );
     await fs.mkdir(path.join(appPath, "node_modules", "typescript", "lib"), {
       recursive: true,
     });
@@ -308,6 +312,42 @@ describe("runTypeScriptCheck", () => {
     expect(args[args.indexOf("--tsBuildInfoFile") + 1]).toMatch(
       /^\/tmp\/dyad-tsc-test-cache\/[a-f0-9]{64}\.tsbuildinfo$/,
     );
+  });
+
+  it("resolves a TypeScript install hoisted to an ancestor node_modules", async () => {
+    const workspaceRoot = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-hoist-")),
+    );
+    try {
+      const packagePath = path.join(workspaceRoot, "packages", "web");
+      await fs.mkdir(packagePath, { recursive: true });
+      await fs.mkdir(
+        path.join(workspaceRoot, "node_modules", "typescript", "lib"),
+        { recursive: true },
+      );
+      await fs.writeFile(
+        path.join(workspaceRoot, "node_modules", "typescript", "package.json"),
+        JSON.stringify({ name: "typescript", version: "7.0.0" }),
+      );
+      await fs.writeFile(
+        path.join(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js"),
+        "",
+      );
+      await fs.writeFile(path.join(packagePath, "tsconfig.json"), "{}");
+
+      mockVersion();
+      runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+      await expect(
+        runTypeScriptCheck({ appPath: packagePath }),
+      ).resolves.toEqual({ problems: [] });
+      const args = runBufferedProcessMock.mock.calls[1][0].args as string[];
+      expect(args[0]).toBe(
+        path.join(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js"),
+      );
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it("returns an empty report on a successful compiler exit", async () => {

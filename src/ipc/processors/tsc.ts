@@ -365,14 +365,17 @@ async function runCli(
   appPath: string,
   args: string[],
 ): Promise<BufferedProcessResult> {
-  // Run the TypeScript JS entry point directly with our own binary as Node
-  // instead of the node_modules/.bin shim: the shim needs cmd.exe on Windows,
-  // whose argument quoting breaks for paths containing spaces.
+  // Run the TypeScript JS entry point with the user's selected Node runtime,
+  // resolved from PATH like every other app child process (reloadNodePath
+  // keeps the custom/managed/system choice at its front). Not our own binary:
+  // packaged builds disable the RunAsNode fuse. Not the node_modules/.bin
+  // shim either: it needs cmd.exe on Windows, whose argument quoting breaks
+  // for paths containing spaces.
   return runBufferedProcess({
-    command: process.execPath,
+    command: "node",
     args: [cli.entryPath, ...args],
     cwd: appPath,
-    env: { ...getTypeScriptCommandEnv(appPath), ELECTRON_RUN_AS_NODE: "1" },
+    env: getTypeScriptCommandEnv(appPath),
     shell: false,
     timeoutMs: TSC_TIMEOUT_MS,
     maxOutputBytes: TSC_MAX_OUTPUT_BYTES,

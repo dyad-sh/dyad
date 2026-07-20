@@ -277,8 +277,7 @@ describe("runTypeScriptCheck", () => {
     expect(runBufferedProcessMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        command: process.execPath,
-        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: "1" }),
+        command: "node",
         args: expect.arrayContaining([
           path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
           "--pretty",

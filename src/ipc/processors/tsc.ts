@@ -6,10 +6,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { Problem, ProblemReport } from "@/ipc/types";
 import log from "electron-log";
 import { getTypeScriptCachePath } from "@/paths/paths";
-import {
-  buildPtyInvocation,
-  getPackageManagerCommandEnv,
-} from "@/ipc/utils/socket_firewall";
+import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import { prependPathSegment } from "@/ipc/utils/managed_tools";
 import {
   BufferedProcessSpawnError,
@@ -153,8 +150,7 @@ interface ParsedDiagnostics {
 }
 
 interface TypeScriptCli {
-  command: string;
-  shimPath: string;
+  entryPath: string;
 }
 
 function normalizePath(filePath: string): string {
@@ -343,23 +339,24 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
     );
   }
 
-  const shimPath = path.join(
+  const entryPath = path.join(
     appPath,
     "node_modules",
-    ".bin",
-    process.platform === "win32" ? "tsc.cmd" : "tsc",
+    "typescript",
+    "lib",
+    "tsc.js",
   );
   try {
-    await fs.access(shimPath);
+    await fs.access(entryPath);
   } catch (error) {
     throw new TypeCheckPreconditionError(
       "typescript-not-found",
-      `No local TypeScript CLI found at ${shimPath}`,
+      `No local TypeScript CLI found at ${entryPath}`,
       { cause: error },
     );
   }
 
-  return { command: shimPath, shimPath };
+  return { entryPath };
 }
 
 function getTypeScriptCommandEnv(appPath: string): NodeJS.ProcessEnv {
@@ -374,12 +371,14 @@ async function runCli(
   appPath: string,
   args: string[],
 ): Promise<BufferedProcessResult> {
-  const invocation = buildPtyInvocation(cli.command, args);
+  // Run the TypeScript JS entry point directly with our own binary as Node
+  // instead of the node_modules/.bin shim: the shim needs cmd.exe on Windows,
+  // whose argument quoting breaks for paths containing spaces.
   return runBufferedProcess({
-    command: invocation.command,
-    args: invocation.args,
+    command: process.execPath,
+    args: [cli.entryPath, ...args],
     cwd: appPath,
-    env: getTypeScriptCommandEnv(appPath),
+    env: { ...getTypeScriptCommandEnv(appPath), ELECTRON_RUN_AS_NODE: "1" },
     shell: false,
     timeoutMs: TSC_TIMEOUT_MS,
     maxOutputBytes: TSC_MAX_OUTPUT_BYTES,
@@ -393,9 +392,9 @@ async function getTypeScriptVersion(
   cli: TypeScriptCli,
   appPath: string,
 ): Promise<string> {
-  const realShimPath = await fs.realpath(cli.shimPath);
-  const stats = await fs.stat(realShimPath);
-  const cacheKey = `${realShimPath}:${stats.mtimeMs}`;
+  const realEntryPath = await fs.realpath(cli.entryPath);
+  const stats = await fs.stat(realEntryPath);
+  const cacheKey = `${realEntryPath}:${stats.mtimeMs}`;
   const cached = versionCache.get(cacheKey);
   if (cached) {
     return cached;

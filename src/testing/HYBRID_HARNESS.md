@@ -336,9 +336,10 @@ before the active one fully disposes.
   fine for purely local git/fs commands.
 - **`get-proposal` / `checkProblems` / cloud-sandbox / desktop-config log lines**
   are benign. Registering the full handler set means the UI polls handlers that
-  have nothing to do (no tsc worker in the vitest bundle, no Pro key, a
-  CORS-blocked `api.dyad.sh/v1/desktop-config`). They are caught and logged, not
-  failures. The act, pnpm-install, and DB-teardown noise **is** handled (§6, §8).
+  have nothing to do (`runTypeScriptCheck` is stubbed to `{ problems: [] }` in
+  `hybrid.setup.ts` because the app-local TypeScript CLI needs a real app
+  node_modules tree, no Pro key, a CORS-blocked
+  `api.dyad.sh/v1/desktop-config`). They are caught and logged, not failures. The act, pnpm-install, and DB-teardown noise **is** handled (§6, §8).
 
 ---
 

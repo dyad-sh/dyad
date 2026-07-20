@@ -217,17 +217,17 @@ describe("runTypeScriptCheck", () => {
     vi.clearAllMocks();
     clearTypeScriptVersionCacheForTests();
     appPath = await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-cli-"));
-    await fs.mkdir(path.join(appPath, "node_modules", "typescript"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(appPath, "node_modules", ".bin"), {
+    await fs.mkdir(path.join(appPath, "node_modules", "typescript", "lib"), {
       recursive: true,
     });
     await fs.writeFile(
       path.join(appPath, "node_modules", "typescript", "package.json"),
       JSON.stringify({ name: "typescript", version: "7.0.0" }),
     );
-    await fs.writeFile(path.join(appPath, "node_modules", ".bin", "tsc"), "");
+    await fs.writeFile(
+      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+      "",
+    );
     await fs.writeFile(path.join(appPath, "tsconfig.app.json"), "{}");
     await fs.mkdir(path.join(appPath, "src"));
     await fs.writeFile(
@@ -246,7 +246,7 @@ describe("runTypeScriptCheck", () => {
     );
   }
 
-  it("runs the local shim with fixed arguments and parses diagnostics", async () => {
+  it("runs the local CLI entry as Node with fixed arguments and parses diagnostics", async () => {
     mockVersion();
     runBufferedProcessMock.mockResolvedValueOnce(
       processResult({
@@ -273,8 +273,10 @@ describe("runTypeScriptCheck", () => {
     expect(runBufferedProcessMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        command: path.join(appPath, "node_modules", ".bin", "tsc"),
+        command: process.execPath,
+        env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: "1" }),
         args: expect.arrayContaining([
+          path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
           "--pretty",
           "false",
           "--diagnostics",
@@ -300,6 +302,9 @@ describe("runTypeScriptCheck", () => {
       }),
     );
     const args = runBufferedProcessMock.mock.calls[1][0].args as string[];
+    expect(args[0]).toBe(
+      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+    );
     expect(args[args.indexOf("--tsBuildInfoFile") + 1]).toMatch(
       /^\/tmp\/dyad-tsc-test-cache\/[a-f0-9]{64}\.tsbuildinfo$/,
     );
@@ -348,8 +353,10 @@ describe("runTypeScriptCheck", () => {
     );
   });
 
-  it("reports a missing local shim as an install precondition", async () => {
-    await fs.rm(path.join(appPath, "node_modules", ".bin", "tsc"));
+  it("reports a missing local CLI entry as an install precondition", async () => {
+    await fs.rm(
+      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+    );
 
     await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
       typeCheckKind: "typescript-not-found",
@@ -357,7 +364,7 @@ describe("runTypeScriptCheck", () => {
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
   });
 
-  it("reports a shim that disappears before spawn as an install precondition", async () => {
+  it("reports a spawn failure as an install precondition", async () => {
     runBufferedProcessMock.mockRejectedValueOnce(
       new BufferedProcessSpawnError("spawn ENOENT", "", ""),
     );

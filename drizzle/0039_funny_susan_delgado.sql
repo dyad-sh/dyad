@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX `uniq_mcp_catalog_slug` ON `mcp_servers` (`catalog_slug`);

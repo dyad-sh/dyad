@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "422400fb-b87b-40c2-aa89-9d447d99a5d2",
+  "id": "9c0a3bbc-3bd4-4e5a-8929-6287aa43c511",
   "prevId": "8a9995c9-aebb-4447-be0b-b59a40d921a8",
   "tables": {
     "app_collections": {
@@ -739,7 +739,15 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "uniq_mcp_catalog_slug": {
+          "name": "uniq_mcp_catalog_slug",
+          "columns": [
+            "catalog_slug"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

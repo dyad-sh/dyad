@@ -231,6 +231,7 @@ let hostGeneration = 0;
 let nextRequestId = 1;
 let idleTimer: NodeJS.Timeout | undefined;
 const pendingRequests = new Map<number, PendingRequest>();
+const typeScriptFingerprintByAppPath = new Map<string, string>();
 // Per-key serial queues preserve the previous per-session semantics: queries
 // against the same app+tsconfig never overlap (a rebuild-heavy query would
 // just make the second one redo the same work).
@@ -257,8 +258,12 @@ export async function runCodeExplorer(
   const run = prior
     .catch(() => undefined)
     .then(() =>
-      typescriptUtilityProcessScheduler.runExclusive("code-explorer", () =>
-        sendToHost(key, workerInput),
+      typescriptUtilityProcessScheduler.runExclusive(
+        "code-explorer",
+        async () => {
+          await recycleHostIfTypeScriptChanged(workerInput.appPath);
+          return sendToHost(key, workerInput);
+        },
       ),
     );
   const tail = run.catch(() => undefined);
@@ -269,6 +274,62 @@ export async function runCodeExplorer(
     }
   });
   return run;
+}
+
+export function getTypeScriptInstallationFingerprint(appPath: string): string {
+  try {
+    const packageJsonPath = fs.realpathSync(
+      require.resolve("typescript/package.json", { paths: [appPath] }),
+    );
+    const compilerPath = fs.realpathSync(
+      require.resolve("typescript", { paths: [appPath] }),
+    );
+    const packageJson = fs.readFileSync(packageJsonPath, "utf8");
+    const packageVersion = String(
+      (JSON.parse(packageJson) as { version?: unknown }).version ?? "unknown",
+    );
+    const packageStats = fs.statSync(packageJsonPath);
+    const compilerStats = fs.statSync(compilerPath);
+
+    return JSON.stringify({
+      packageJsonPath,
+      packageVersion,
+      packageMtimeMs: packageStats.mtimeMs,
+      packageCtimeMs: packageStats.ctimeMs,
+      packageSize: packageStats.size,
+      compilerPath,
+      compilerMtimeMs: compilerStats.mtimeMs,
+      compilerCtimeMs: compilerStats.ctimeMs,
+      compilerSize: compilerStats.size,
+    });
+  } catch {
+    // A dependency install can briefly remove TypeScript or leave a partial
+    // package on disk. Treat that state as a fingerprint too: the worker will
+    // report the normal precondition error, and a completed install changes
+    // the fingerprint again on the next request.
+    return "typescript-unavailable";
+  }
+}
+
+async function recycleHostIfTypeScriptChanged(appPath: string): Promise<void> {
+  const normalizedAppPath = path.resolve(appPath);
+  const nextFingerprint = getTypeScriptInstallationFingerprint(appPath);
+  const previousFingerprint =
+    typeScriptFingerprintByAppPath.get(normalizedAppPath);
+  typeScriptFingerprintByAppPath.set(normalizedAppPath, nextFingerprint);
+
+  if (
+    previousFingerprint === undefined ||
+    previousFingerprint === nextFingerprint ||
+    !host
+  ) {
+    return;
+  }
+
+  logger.info(
+    `Recycling code explorer host after the TypeScript installation changed for ${normalizedAppPath}`,
+  );
+  await host.stop();
 }
 
 function explorerKey(input: CodeExplorerWorkerInput): string {

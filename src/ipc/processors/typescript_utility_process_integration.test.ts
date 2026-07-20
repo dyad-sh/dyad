@@ -247,4 +247,106 @@ describe("TypeScript utility process exclusion", () => {
     });
     secondExplorer.emit("exit", 0);
   });
+
+  it("recycles the explorer host when the app TypeScript installation changes", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-ts-fingerprint-"),
+    );
+    const typeScriptPath = path.join(appPath, "node_modules", "typescript");
+    await fs.mkdir(path.join(typeScriptPath, "lib"), { recursive: true });
+    const writePackage = (version: string) =>
+      fs.writeFile(
+        path.join(typeScriptPath, "package.json"),
+        JSON.stringify({
+          name: "typescript",
+          version,
+          main: "lib/typescript.js",
+        }),
+      );
+    await writePackage("7.0.0");
+    await fs.writeFile(
+      path.join(typeScriptPath, "lib", "typescript.js"),
+      "module.exports = {};\n",
+    );
+
+    const children: FakeUtilityProcess[] = [];
+    forkMock.mockImplementation(() => {
+      const child = new FakeUtilityProcess();
+      children.push(child);
+      return child;
+    });
+
+    const runRequest = async (
+      child: FakeUtilityProcess,
+      query: string,
+      expectedPostCount: number,
+    ) => {
+      const request = runCodeExplorer({ appPath, query });
+      await vi.waitFor(() =>
+        expect(child.postMessage).toHaveBeenCalledTimes(expectedPostCount),
+      );
+      const requestId =
+        child.postMessage.mock.calls[expectedPostCount - 1][0].requestId;
+      child.emit("message", {
+        requestId,
+        success: true,
+        data: { ...explorerResult, query },
+      });
+      await expect(request).resolves.toEqual({ ...explorerResult, query });
+    };
+
+    const firstRequest = runCodeExplorer({ appPath, query: "first query" });
+    await vi.waitFor(() => expect(children).toHaveLength(1));
+    const firstExplorer = children[0];
+    firstExplorer.emit("spawn");
+    await vi.waitFor(() =>
+      expect(firstExplorer.postMessage).toHaveBeenCalledOnce(),
+    );
+    const firstRequestId = firstExplorer.postMessage.mock.calls[0][0].requestId;
+    firstExplorer.emit("message", {
+      requestId: firstRequestId,
+      success: true,
+      data: { ...explorerResult, query: "first query" },
+    });
+    await expect(firstRequest).resolves.toEqual({
+      ...explorerResult,
+      query: "first query",
+    });
+
+    // An unchanged installation keeps the resident process and its indexes.
+    await runRequest(firstExplorer, "same compiler", 2);
+    expect(children).toHaveLength(1);
+    expect(firstExplorer.kill).not.toHaveBeenCalled();
+
+    await writePackage("6.0.3");
+    const upgradedRequest = runCodeExplorer({
+      appPath,
+      query: "new compiler",
+    });
+    await vi.waitFor(() => expect(firstExplorer.kill).toHaveBeenCalledOnce());
+    expect(children).toHaveLength(1);
+
+    // Replacement waits for the old resident's real exit event.
+    firstExplorer.emit("exit", 0);
+    await vi.waitFor(() => expect(children).toHaveLength(2));
+    const secondExplorer = children[1];
+    secondExplorer.emit("spawn");
+    await vi.waitFor(() =>
+      expect(secondExplorer.postMessage).toHaveBeenCalledOnce(),
+    );
+    const upgradedRequestId =
+      secondExplorer.postMessage.mock.calls[0][0].requestId;
+    secondExplorer.emit("message", {
+      requestId: upgradedRequestId,
+      success: true,
+      data: { ...explorerResult, query: "new compiler" },
+    });
+    await expect(upgradedRequest).resolves.toEqual({
+      ...explorerResult,
+      query: "new compiler",
+    });
+
+    secondExplorer.emit("exit", 0);
+    await fs.rm(appPath, { recursive: true, force: true });
+  });
 });

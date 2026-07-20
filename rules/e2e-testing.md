@@ -166,6 +166,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 ## Common flaky test patterns and fixes
 
+- **TypeScript-dependent actions in freshly generated apps**: After `ensurePnpmInstall()`, also call `ensureCodeExplorerReady()` before triggering a manual Problems check or another action that loads the app-local `typescript` module. The package-manager listing can report all dependencies while the local TypeScript module is not yet resolvable, making the first check fail as an incomplete install.
 - **After `po.importApp(...)`**: Some imports trigger an initial assistant turn (for example `minimal` generating `AI_RULES.md`) that can leave a visible `Retry` button in the chat. If the test is about a later prompt, first wait for that import-time turn to finish, then start a new chat before calling `sendPrompt()`, or helper methods that wait on `Retry` visibility may return too early.
 - **Context Files Picker add/remove actions**: After clicking `Add` for manual, auto-include, or exclude paths, wait for the new row text to appear before adding or removing another path. Likewise, after clicking a remove button, wait for the row count to drop before the next click. Chained clicks can race React state updates and only fail on later `--repeat-each` runs.
 - **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.

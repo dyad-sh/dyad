@@ -343,12 +343,10 @@ export class PageObject {
 
   async setUp({
     autoApprove = false,
-    enableAutoFixProblems = false,
     enableBasicAgent = false,
     enableSelectAppFromHomeChatInput = false,
   }: {
     autoApprove?: boolean;
-    enableAutoFixProblems?: boolean;
     enableBasicAgent?: boolean;
     enableSelectAppFromHomeChatInput?: boolean;
   } = {}) {
@@ -356,9 +354,6 @@ export class PageObject {
     await this.navigation.goToSettingsTab();
     if (autoApprove) {
       await this.settings.toggleAutoApprove();
-    }
-    if (enableAutoFixProblems) {
-      await this.settings.toggleAutoFixProblems();
     }
     if (enableSelectAppFromHomeChatInput) {
       await this.settings.toggleEnableSelectAppFromHomeChatInput();

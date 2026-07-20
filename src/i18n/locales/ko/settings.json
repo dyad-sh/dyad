@@ -81,8 +81,6 @@
     "selectDefaultChatMode": "기본 채팅 모드 선택",
     "autoApprove": "변경 사항 자동 승인",
     "autoApproveDescription": "코드 변경 사항을 자동으로 승인하고 실행합니다.",
-    "autoFixProblems": "문제 자동 수정",
-    "autoFixProblemsDescription": "TypeScript 오류를 자동으로 수정합니다.",
     "appBlueprint": "앱 청사진",
     "appBlueprintDescription": "새 앱을 만들 때 빌드 전에 가벼운 앱 청사진(이름, 디자인, 색상, 템플릿)을 생성합니다."
   },

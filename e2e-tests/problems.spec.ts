@@ -1,68 +1,12 @@
-import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 
 const MINIMAL_APP = "minimal-with-ai-rules";
 
-test("problems auto-fix - enabled", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  await po.previewPanel.expectPreviewIframeIsVisible();
-
-  await po.sendPrompt("tc=create-ts-errors");
-
-  await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
-  await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
-
-  await po.snapshotMessages({ replaceDumpPath: true });
-});
-
-test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  await po.previewPanel.expectPreviewIframeIsVisible();
-
-  await po.sendPrompt("tc=create-unfixable-ts-errors");
-
-  await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
-  await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
-
-  await po.page.getByTestId("problem-summary").last().click();
-  await expect(
-    po.page.getByTestId("problem-summary").last(),
-  ).toMatchAriaSnapshot();
-  await po.snapshotMessages({
-    name: "problems-auto-fix---gives-up-after-2-attempts-messages",
-    replaceDumpPath: true,
-  });
-});
-
-test("problems auto-fix - complex delete-rename-write", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  await po.previewPanel.expectPreviewIframeIsVisible();
-
-  await po.sendPrompt("tc=create-ts-errors-complex");
-
-  await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
-  await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
-
-  await po.snapshotMessages({ replaceDumpPath: true });
-});
-
-test("problems auto-fix - disabled", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: false });
-  await po.importApp(MINIMAL_APP);
-  await po.previewPanel.expectPreviewIframeIsVisible();
-
-  await po.sendPrompt("tc=create-ts-errors");
-
-  await po.snapshotMessages();
-});
-
 testSkipIfWindows("problems - fix all", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: true });
+  await po.setUp();
   await po.importApp(MINIMAL_APP);
   const appPath = await po.appManagement.getCurrentAppPath();
   const badFilePath = path.join(appPath, "src", "bad-file.tsx");
@@ -77,9 +21,11 @@ export default App;
 `,
   );
   await po.appManagement.ensurePnpmInstall();
+  await po.appManagement.ensureCodeExplorerReady();
 
   await po.sendPrompt("tc=create-ts-errors");
   await po.previewPanel.selectPreviewMode("problems");
+  await po.previewPanel.clickRecheckProblems();
   await po.previewPanel.clickFixAllProblems();
   await po.chatActions.waitForChatCompletion();
 
@@ -154,7 +100,7 @@ export default App;
 );
 
 testSkipIfWindows("problems - manual edit (react/vite)", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: true });
+  await po.setUp();
   await po.sendPrompt("tc=1");
 
   const appPath = await po.appManagement.getCurrentAppPath();
@@ -168,9 +114,11 @@ export default App;
 `,
   );
   await po.appManagement.ensurePnpmInstall();
+  await po.appManagement.ensureCodeExplorerReady();
   await po.previewPanel.clickTogglePreviewPanel();
 
   await po.previewPanel.selectPreviewMode("problems");
+  await po.previewPanel.clickRecheckProblems();
   const fixButton = po.page.getByTestId("fix-all-button");
   await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 1 problem\(s\)/);
@@ -183,7 +131,7 @@ export default App;
 });
 
 testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
-  await po.setUp({ enableAutoFixProblems: true });
+  await po.setUp();
   await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
   await po.sendPrompt("tc=1");
 
@@ -198,9 +146,11 @@ testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   `,
   );
   await po.appManagement.ensurePnpmInstall();
+  await po.appManagement.ensureCodeExplorerReady();
   await po.previewPanel.clickTogglePreviewPanel();
 
   await po.previewPanel.selectPreviewMode("problems");
+  await po.previewPanel.clickRecheckProblems();
   const fixButton = po.page.getByTestId("fix-all-button");
   await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 1 problem\(s\)/);

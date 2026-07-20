@@ -81,8 +81,6 @@
     "selectDefaultChatMode": "Select default chat mode",
     "autoApprove": "Auto-approve changes",
     "autoApproveDescription": "This will automatically approve code changes and run them.",
-    "autoFixProblems": "Auto-fix problems",
-    "autoFixProblemsDescription": "This will automatically fix TypeScript errors in Build mode. In Agent mode, the agent runs its own type checks instead.",
     "appBlueprint": "App Blueprint",
     "appBlueprintDescription": "When creating a new app, generate a lightweight app blueprint (name, design, color, template) before building."
   },

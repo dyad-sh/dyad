@@ -80,9 +80,7 @@
     "defaultChatModeDescription": "Controla o modo de chat padrão ao abrir um novo chat.",
     "selectDefaultChatMode": "Selecionar modo de chat padrão",
     "autoApprove": "Aprovar alterações automaticamente",
-    "autoApproveDescription": "Aprova automaticamente as alterações de código e as executa.",
-    "autoFixProblems": "Corrigir problemas automaticamente",
-    "autoFixProblemsDescription": "Corrige automaticamente erros de TypeScript no modo Construir. No modo Agente, o agente executa suas próprias verificações de tipos."
+    "autoApproveDescription": "Aprova automaticamente as alterações de código e as executa."
   },
   "ai": {
     "title": "Configurações de IA",

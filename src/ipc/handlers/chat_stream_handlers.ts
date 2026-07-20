@@ -37,11 +37,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import {
-  CodebaseFile,
-  extractCodebase,
-  readFileWithCache,
-} from "../../utils/codebase";
+import { CodebaseFile, extractCodebase } from "../../utils/codebase";
 import {
   dryRunSearchReplace,
   processFullResponseActions,
@@ -78,20 +74,7 @@ import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/
 import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
-import {
-  generateProblemReport,
-  getTypeCheckPreconditionKind,
-} from "../processors/tsc";
-import { createProblemFixPrompt } from "@/shared/problem_prompt";
-import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
-import {
-  getDyadAddDependencyTags,
-  getDyadWriteTags,
-  getDyadDeleteTags,
-  getDyadRenameTags,
-} from "../utils/dyad_tag_parser";
-import { fileExists } from "../utils/file_utils";
 import { isCodeExplorerReady } from "../processors/code_explorer";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import {
@@ -1730,141 +1713,6 @@ This conversation includes one or more image attachments. When the user uploads 
               if (result.modelRefused) {
                 modelRefused = true;
                 break;
-              }
-            }
-          }
-          const addDependencies = getDyadAddDependencyTags(fullResponse);
-          if (
-            !modelRefused &&
-            !abortController.signal.aborted &&
-            // If there are dependencies, we don't want to auto-fix problems
-            // because there's going to be type errors since the packages aren't
-            // installed yet.
-            addDependencies.length === 0 &&
-            settings.enableAutoFixProblems
-          ) {
-            try {
-              // IF auto-fix is enabled
-              let problemReport = await generateProblemReport({
-                fullResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
-              });
-
-              let autoFixAttempts = 0;
-              const originalFullResponse = fullResponse;
-              const previousAttempts: ModelMessage[] = [];
-              while (
-                problemReport.problems.length > 0 &&
-                autoFixAttempts < 2 &&
-                !abortController.signal.aborted
-              ) {
-                fullResponse += `<dyad-problem-report summary="${problemReport.problems.length} problems">
-${problemReport.problems
-  .map(
-    (problem) =>
-      `<problem file="${escapeXmlAttr(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXmlContent(problem.message)}</problem>`,
-  )
-  .join("\n")}
-</dyad-problem-report>`;
-
-                logger.info(
-                  `Attempting to auto-fix problems, attempt #${autoFixAttempts + 1}`,
-                );
-                autoFixAttempts++;
-                const problemFixPrompt = createProblemFixPrompt(problemReport);
-
-                const virtualFileSystem = new AsyncVirtualFileSystem(
-                  getDyadAppPath(updatedChat.app.path),
-                  {
-                    fileExists: (fileName: string) => fileExists(fileName),
-                    readFile: (fileName: string) => readFileWithCache(fileName),
-                  },
-                );
-                const writeTags = getDyadWriteTags(fullResponse);
-                const renameTags = getDyadRenameTags(fullResponse);
-                const deletePaths = getDyadDeleteTags(fullResponse);
-                virtualFileSystem.applyResponseChanges({
-                  deletePaths,
-                  renameTags,
-                  writeTags,
-                });
-
-                const { formattedOutput: codebaseInfo, files } =
-                  await extractCodebase({
-                    appPath,
-                    chatContext,
-                    virtualFileSystem,
-                  });
-                const { modelClient } = await getModelClient(
-                  settings.selectedModel,
-                  settings,
-                );
-
-                const { fullStream } = await simpleStreamText({
-                  modelClient,
-                  files: files,
-                  chatMessages: [
-                    ...chatMessages.map((msg, index) => {
-                      if (
-                        index === 0 &&
-                        msg.role === "user" &&
-                        typeof msg.content === "string" &&
-                        msg.content.startsWith(CODEBASE_PROMPT_PREFIX)
-                      ) {
-                        return {
-                          role: "user",
-                          content: createCodebasePrompt(codebaseInfo),
-                        } as const;
-                      }
-                      return msg;
-                    }),
-                    {
-                      role: "assistant",
-                      content: removeNonEssentialTags(originalFullResponse),
-                    },
-                    ...previousAttempts,
-                    { role: "user", content: problemFixPrompt },
-                  ],
-                });
-                previousAttempts.push({
-                  role: "user",
-                  content: problemFixPrompt,
-                });
-                const result = await processStreamChunks({
-                  fullStream,
-                  fullResponse,
-                  abortController,
-                  chatId: req.chatId,
-                  processResponseChunkUpdate,
-                });
-                fullResponse = result.fullResponse;
-                if (result.modelRefused) {
-                  modelRefused = true;
-                  break;
-                }
-                previousAttempts.push({
-                  role: "assistant",
-                  content: removeNonEssentialTags(result.incrementalResponse),
-                });
-
-                problemReport = await generateProblemReport({
-                  fullResponse,
-                  appPath: getDyadAppPath(updatedChat.app.path),
-                });
-              }
-            } catch (error) {
-              const preconditionKind = getTypeCheckPreconditionKind(error);
-              if (preconditionKind) {
-                logger.info(
-                  "Skipping auto-fix because type checking is unavailable:",
-                  preconditionKind,
-                );
-              } else {
-                logger.error(
-                  "Error generating problem report or auto-fixing:",
-                  settings.enableAutoFixProblems,
-                  error,
-                );
               }
             }
           }

@@ -222,6 +222,20 @@ describe("isMissingPathError", () => {
 
 describe("runTypeScriptCheck", () => {
   let appPath: string;
+  const typeScriptBinPath = path.join("bin", "tsc");
+
+  async function writeTypeScriptPackage(packagePath: string) {
+    await fs.mkdir(path.join(packagePath, "bin"), { recursive: true });
+    await fs.writeFile(
+      path.join(packagePath, "package.json"),
+      JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        bin: { tsc: "./bin/tsc" },
+      }),
+    );
+    await fs.writeFile(path.join(packagePath, typeScriptBinPath), "");
+  }
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -231,16 +245,8 @@ describe("runTypeScriptCheck", () => {
     appPath = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "dyad-tsc-cli-")),
     );
-    await fs.mkdir(path.join(appPath, "node_modules", "typescript", "lib"), {
-      recursive: true,
-    });
-    await fs.writeFile(
-      path.join(appPath, "node_modules", "typescript", "package.json"),
-      JSON.stringify({ name: "typescript", version: "7.0.0" }),
-    );
-    await fs.writeFile(
-      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
-      "",
+    await writeTypeScriptPackage(
+      path.join(appPath, "node_modules", "typescript"),
     );
     await fs.writeFile(path.join(appPath, "tsconfig.app.json"), "{}");
     await fs.mkdir(path.join(appPath, "src"));
@@ -290,7 +296,7 @@ describe("runTypeScriptCheck", () => {
       expect.objectContaining({
         command: "node",
         args: expect.arrayContaining([
-          path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+          path.join(appPath, "node_modules", "typescript", typeScriptBinPath),
           "--pretty",
           "false",
           "--diagnostics",
@@ -317,7 +323,7 @@ describe("runTypeScriptCheck", () => {
     );
     const args = runBufferedProcessMock.mock.calls[1][0].args as string[];
     expect(args[0]).toBe(
-      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+      path.join(appPath, "node_modules", "typescript", typeScriptBinPath),
     );
     const tsBuildInfoPath = args[args.indexOf("--tsBuildInfoFile") + 1];
     expect(path.dirname(tsBuildInfoPath)).toBe(
@@ -335,17 +341,8 @@ describe("runTypeScriptCheck", () => {
     try {
       const packagePath = path.join(workspaceRoot, "packages", "web");
       await fs.mkdir(packagePath, { recursive: true });
-      await fs.mkdir(
-        path.join(workspaceRoot, "node_modules", "typescript", "lib"),
-        { recursive: true },
-      );
-      await fs.writeFile(
-        path.join(workspaceRoot, "node_modules", "typescript", "package.json"),
-        JSON.stringify({ name: "typescript", version: "7.0.0" }),
-      );
-      await fs.writeFile(
-        path.join(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js"),
-        "",
+      await writeTypeScriptPackage(
+        path.join(workspaceRoot, "node_modules", "typescript"),
       );
       await fs.writeFile(path.join(packagePath, "tsconfig.json"), "{}");
 
@@ -357,7 +354,12 @@ describe("runTypeScriptCheck", () => {
       ).resolves.toEqual({ problems: [], outcome: "passed" });
       const args = runBufferedProcessMock.mock.calls[1][0].args as string[];
       expect(args[0]).toBe(
-        path.join(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js"),
+        path.join(
+          workspaceRoot,
+          "node_modules",
+          "typescript",
+          typeScriptBinPath,
+        ),
       );
     } finally {
       await fs.rm(workspaceRoot, { recursive: true, force: true });
@@ -379,12 +381,16 @@ describe("runTypeScriptCheck", () => {
         "node_modules",
         "typescript",
       );
-      await fs.mkdir(path.join(packagePath, "lib"), { recursive: true });
+      await fs.mkdir(path.join(packagePath, "bin"), { recursive: true });
       await fs.writeFile(
         path.join(packagePath, "package.json"),
-        JSON.stringify({ name: "typescript", version }),
+        JSON.stringify({
+          name: "typescript",
+          version,
+          bin: { tsc: "./bin/tsc" },
+        }),
       );
-      await fs.writeFile(path.join(packagePath, "lib", "tsc.js"), "");
+      await fs.writeFile(path.join(packagePath, typeScriptBinPath), "");
       const linkTarget =
         process.platform === "win32"
           ? packagePath
@@ -416,9 +422,35 @@ describe("runTypeScriptCheck", () => {
     expect(runBufferedProcessMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         args: expect.arrayContaining([
-          path.join(nodeModulesPath, "typescript", "lib", "tsc.js"),
+          path.join(nodeModulesPath, "typescript", typeScriptBinPath),
         ]),
       }),
+    );
+  });
+
+  it("uses the CLI path declared by the TypeScript package", async () => {
+    const packagePath = path.join(appPath, "node_modules", "typescript");
+    const customBinPath = path.join("cli", "typescript.js");
+    await fs.mkdir(path.join(packagePath, "cli"));
+    await fs.writeFile(
+      path.join(packagePath, "package.json"),
+      JSON.stringify({
+        name: "typescript",
+        version: "7.0.0",
+        bin: { tsc: "./cli/typescript.js" },
+      }),
+    );
+    await fs.writeFile(path.join(packagePath, customBinPath), "");
+
+    mockVersion();
+    runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+    await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
+      problems: [],
+      outcome: "passed",
+    });
+    expect(runBufferedProcessMock.mock.calls[1][0].args[0]).toBe(
+      path.join(packagePath, customBinPath),
     );
   });
 
@@ -490,7 +522,7 @@ describe("runTypeScriptCheck", () => {
 
   it("reports a missing local CLI entry as an install precondition", async () => {
     await fs.rm(
-      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+      path.join(appPath, "node_modules", "typescript", typeScriptBinPath),
     );
 
     await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({

@@ -13,7 +13,6 @@ import {
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
 import {
-  getTypeScriptCliPath,
   isMissingPathError,
   resolveTypeScriptPackageJsonPath,
 } from "../../../shared/node_module_resolution";
@@ -157,6 +156,10 @@ interface ParsedDiagnostics {
 
 interface TypeScriptCli {
   entryPath: string;
+}
+
+interface TypeScriptPackageJson {
+  bin?: Record<string, unknown>;
 }
 
 function normalizePath(filePath: string): string {
@@ -367,7 +370,36 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
     );
   }
 
-  const entryPath = getTypeScriptCliPath(packageJsonPath);
+  const packagePath = path.dirname(packageJsonPath);
+  let binPath: unknown;
+  try {
+    const packageJson = JSON.parse(
+      await fs.readFile(packageJsonPath, "utf8"),
+    ) as TypeScriptPackageJson;
+    binPath = packageJson.bin?.tsc;
+  } catch (error) {
+    throw new TypeCheckPreconditionError(
+      "typescript-not-found",
+      `Failed to read TypeScript package metadata at ${packageJsonPath}`,
+      { cause: error },
+    );
+  }
+
+  if (typeof binPath !== "string") {
+    throw new TypeCheckPreconditionError(
+      "typescript-not-found",
+      `No local TypeScript CLI declared in ${packageJsonPath}`,
+    );
+  }
+
+  const entryPath = path.resolve(packagePath, binPath);
+  if (!isPathInside(packagePath, entryPath)) {
+    throw new TypeCheckPreconditionError(
+      "typescript-not-found",
+      `Local TypeScript CLI path escapes its package: ${binPath}`,
+    );
+  }
+
   try {
     await fs.access(entryPath);
   } catch (error) {

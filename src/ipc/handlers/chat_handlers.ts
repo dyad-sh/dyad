@@ -5,8 +5,6 @@ import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { getDyadAppPath } from "../../paths/paths";
-import { getCurrentCommitHash } from "../utils/git_utils";
 import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";

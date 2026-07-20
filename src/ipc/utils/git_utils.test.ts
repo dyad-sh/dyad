@@ -418,5 +418,4 @@ describe("gitStageToRevert", () => {
       message: "Cannot revert: working tree has uncommitted changes.",
     });
   });
-
 });

@@ -159,7 +159,14 @@ function VersionRow({
           "opacity-50 cursor-not-allowed",
       )}
       onClick={() => {
-        if (!isCheckingOutVersion) {
+        // Block the preview click while a cross-instance version mutation is
+        // pending. Otherwise a click during a restore-to-message cancellation
+        // window (`isAnyVersionMutationPending`) could detach HEAD via
+        // `checkoutVersion` between the restore's phase-1 branch preflight and
+        // its phase-3 revert, turning the restore into a detached-HEAD failure.
+        // `isResolvingPreviewBranch` is deliberately NOT gated here so a user
+        // can still supersede an in-flight preview with another version.
+        if (!isCheckingOutVersion && !isAnyVersionMutationPending) {
           onVersionClick(version);
         }
       }}

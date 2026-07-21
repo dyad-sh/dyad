@@ -49,6 +49,7 @@ import {
 } from "@/shared/diff_placeholders";
 import {
   blockNewStreamsForApp,
+  blockNewStreamsForChat,
   cancelActiveStreamsForApp,
 } from "./chat_stream_handlers";
 
@@ -965,268 +966,280 @@ export function registerVersionHandlers() {
       }
       const { appPath } = prepared;
 
-      // Phase 2: cancel in-flight streams for this app OUTSIDE the lock. The
-      // cancellation helper aborts each stream and then awaits its handler
-      // unwinding, and those handlers can take the same app lock for their own
-      // writes (e.g. the copy_file tool). Awaiting stream completion while
-      // holding the app lock would deadlock, so cancellation must run before we
-      // re-acquire it — this matches the lock ordering documented on
-      // `cancelActiveStreamsForApp`.
-      const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
+      // Install the stream admission block that keeps new turns out while we
+      // cancel and mutate. Only the codebase-restoring path mutates git/the
+      // filesystem, so it needs an app-wide block to keep new turns in any chat
+      // from writing into the tree mid-revert. The fork-only path just inserts a
+      // new chat via an atomic DB transaction; blocking every chat in the app
+      // would be unnecessarily aggressive, so scope its block to the source
+      // chat.
+      const releaseStreamAdmissionBlock = restoreCodebase
+        ? blockNewStreamsForApp(appId)
+        : blockNewStreamsForChat(chatId);
 
-      let preserveDirtyTree = false;
+      // Wrap phases 2 and 3 in a single try/finally so the admission block is
+      // always released, even if `withLock` were to throw synchronously before
+      // returning its promise (which would skip a `.finally()` attached to that
+      // promise). Leaking the block would permanently stall new streams for the
+      // app/chat until the process restarts.
       try {
-        preserveDirtyTree = restoreCodebase
+        // Phase 2: cancel in-flight streams for this app OUTSIDE the lock. The
+        // cancellation helper aborts each stream and then awaits its handler
+        // unwinding, and those handlers can take the same app lock for their own
+        // writes (e.g. the copy_file tool). Awaiting stream completion while
+        // holding the app lock would deadlock, so cancellation must run before
+        // we re-acquire it — this matches the lock ordering documented on
+        // `cancelActiveStreamsForApp`.
+        const preserveDirtyTree = restoreCodebase
           ? await cancelActiveStreamsForApp(appId, event.sender)
           : false;
-      } catch (error) {
-        releaseStreamAdmissionBlock?.();
-        throw error;
-      }
 
-      // Phase 3: perform the codebase revert and create the forked chat under
-      // the lock. Holding it across the whole mutation serializes the revert
-      // against other version/deletion operations. The stream admission block
-      // above also prevents new turns from entering through file tools that do
-      // not take this lock. `gitStageToRevert` additionally refuses to run —
-      // or commits a recoverable checkpoint when preserving an interrupted
-      // turn — if the work tree is dirty, so a stray write can't be silently
-      // clobbered.
-      return withLock(appId, async () => {
-        const latestApp = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-        if (!latestApp) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-
-        const latestChat = await db.query.chats.findFirst({
-          where: eq(chats.id, chatId),
-          with: {
-            messages: {
-              orderBy: (messages, { asc }) => [
-                asc(messages.createdAt),
-                asc(messages.id),
-              ],
-            },
-          },
-        });
-        if (!latestChat) {
-          throw new DyadError("Chat not found", DyadErrorKind.NotFound);
-        }
-        if (latestChat.appId !== appId) {
-          throw new DyadError(
-            "Chat does not belong to this app",
-            DyadErrorKind.Validation,
-          );
-        }
-
-        const latestTargetIndex = latestChat.messages.findIndex(
-          (m) => m.id === messageId,
-        );
-        if (latestTargetIndex === -1) {
-          throw new DyadError("Message not found", DyadErrorKind.NotFound);
-        }
-
-        const latestMessagesBefore = latestChat.messages
-          .slice(0, latestTargetIndex)
-          .filter(
-            (message) =>
-              !(message.isCompactionSummary && message.id > messageId),
-          );
-
-        const latestTargetCommitHash = resolveTargetCommitHash({
-          chatMessages: latestChat.messages,
-          targetIndex: latestTargetIndex,
-          initialCommitHash: latestChat.initialCommitHash,
-        });
-
-        if (restoreCodebase && !latestTargetCommitHash) {
-          return {
-            warningMessage: appendInterruptedGenerationWarning(
-              "Could not determine a version to restore to for this message.",
-              preserveDirtyTree,
-            ),
-          };
-        }
-        if (restoreCodebase && latestTargetCommitHash) {
-          try {
-            await assertVersionExists({
-              appPath,
-              versionId: latestTargetCommitHash,
-            });
-          } catch (error) {
-            if (
-              error instanceof DyadError &&
-              error.kind === DyadErrorKind.NotFound
-            ) {
-              return {
-                warningMessage: appendInterruptedGenerationWarning(
-                  "Could not restore the codebase because the target version no longer exists in the repository.",
-                  preserveDirtyTree,
-                ),
-              };
-            }
-            throw error;
-          }
-        }
-
-        // When the user chose to also restore the codebase, we need a concrete
-        // version to revert to. Revert the codebase first: if this throws (e.g.
-        // a Git or Neon error), we bail out before touching the database so we
-        // don't leave an orphaned, partially-created chat behind. A
-        // `warningMessage` still means the codebase was reverted (only a
-        // secondary step failed), so we go on to create the new chat in that
-        // case. When the user only forks the chat, we skip the revert entirely.
-        let successMessage = "Forked the chat into a new chat.";
-        let warningMessage = "";
-
-        if (restoreCodebase && latestTargetCommitHash) {
-          const result = await revertCodebaseToVersion({
-            appId,
-            app: latestApp,
-            appPath,
-            previousVersionId: latestTargetCommitHash,
-            targetBranchName,
-            preserveDirtyTree,
+        // Phase 3: perform the codebase revert and create the forked chat under
+        // the lock. Holding it across the whole mutation serializes the revert
+        // against other version/deletion operations. The stream admission block
+        // above also prevents new turns from entering through file tools that do
+        // not take this lock. `gitStageToRevert` additionally refuses to run —
+        // or commits a recoverable checkpoint when preserving an interrupted
+        // turn — if the work tree is dirty, so a stray write can't be silently
+        // clobbered.
+        return await withLock(appId, async () => {
+          const latestApp = await db.query.apps.findFirst({
+            where: eq(apps.id, appId),
           });
-          successMessage = result.successMessage;
-          warningMessage = result.warningMessage;
-        }
+          if (!latestApp) {
+            throw new DyadError("App not found", DyadErrorKind.NotFound);
+          }
 
-        // Carry over the original chat's title so the forked chat is tied to
-        // the conversation it came from without storing an English-only suffix
-        // in the database. If the original is untitled, keep the fork untitled
-        // and let the renderer's localized fallback title handle display.
-        const restoredTitle = latestChat.title;
+          const latestChat = await db.query.chats.findFirst({
+            where: eq(chats.id, chatId),
+            with: {
+              messages: {
+                orderBy: (messages, { asc }) => [
+                  asc(messages.createdAt),
+                  asc(messages.id),
+                ],
+              },
+            },
+          });
+          if (!latestChat) {
+            throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+          }
+          if (latestChat.appId !== appId) {
+            throw new DyadError(
+              "Chat does not belong to this app",
+              DyadErrorKind.Validation,
+            );
+          }
 
-        // Anchor the forked chat to the version it actually starts from. When we
-        // restored the codebase, that's the target version. When we only forked
-        // the chat (codebase left untouched), the new chat starts from the
-        // live branch's current commit, so use that instead of the historical
-        // target. If the Version pane has a detached historical preview checked
-        // out, `targetBranchName` points at the branch the pane will restore on
-        // close; anchoring to that branch avoids leaving the fork attached to an
-        // abandoned preview commit.
-        const forkInitialCommitHash = restoreCodebase
-          ? latestTargetCommitHash
-          : await (async () => {
-              const currentBranch = await gitCurrentBranch({
-                path: appPath,
-              }).catch(() => null);
-              const forkRef = currentBranch || targetBranchName || "HEAD";
-              return getCurrentCommitHash({ path: appPath, ref: forkRef });
-            })().catch(
-              () => latestChat.initialCommitHash ?? latestTargetCommitHash,
+          const latestTargetIndex = latestChat.messages.findIndex(
+            (m) => m.id === messageId,
+          );
+          if (latestTargetIndex === -1) {
+            throw new DyadError("Message not found", DyadErrorKind.NotFound);
+          }
+
+          const latestMessagesBefore = latestChat.messages
+            .slice(0, latestTargetIndex)
+            .filter(
+              (message) =>
+                !(message.isCompactionSummary && message.id > messageId),
             );
 
-        // Compile-time guard so a new column added to the `messages` schema in
-        // db/schema.ts isn't silently dropped when copying messages into the
-        // forked chat. Every column must be classified below as either copied
-        // (in the `.map` further down) or intentionally excluded; adding a
-        // column to the schema without listing it here becomes a type error.
-        type CopiedMessageColumn =
-          | "role"
-          | "content"
-          | "approvalState"
-          | "sourceCommitHash"
-          | "commitHash"
-          | "requestId"
-          | "maxTokensUsed"
-          | "model"
-          | "aiMessagesJson"
-          | "isCompactionSummary"
-          | "createdAt";
-        // Deliberately not copied from the source message:
-        //  - `id`: autoIncrement primary key, generated per inserted row.
-        //  - `chatId`: set to the newly created chat below.
-        //  - `usingFreeAgentModeQuota`: reset to false (see note below).
-        type ExcludedMessageColumn =
-          | "id"
-          | "chatId"
-          | "usingFreeAgentModeQuota";
-        // If a column is neither copied nor excluded, this `Exclude` is no
-        // longer `never` and the assignment fails to compile, flagging the
-        // unclassified column.
-        const _assertAllMessageColumnsHandled: Exclude<
-          keyof typeof messages.$inferSelect,
-          CopiedMessageColumn | ExcludedMessageColumn
-        > extends never
-          ? true
-          : never = true;
-        void _assertAllMessageColumnsHandled;
+          const latestTargetCommitHash = resolveTargetCommitHash({
+            chatMessages: latestChat.messages,
+            targetIndex: latestTargetIndex,
+            initialCommitHash: latestChat.initialCommitHash,
+          });
 
-        const messagesBeforeInInsertOrder = [...latestMessagesBefore].sort(
-          (a, b) => a.id - b.id,
-        );
-
-        // Create the new chat pointing at that version and copy over the earlier
-        // messages atomically. We insert directly (instead of using the
-        // createChat handler) so `initialCommitHash` is the intended version
-        // rather than whatever the createChat handler would capture. Wrapping
-        // both inserts in a transaction ensures we never leave behind an
-        // orphaned, empty forked chat if the messages insert fails after
-        // the chat insert. better-sqlite3 transactions are synchronous, so the
-        // callback uses the sync query API (`.get()`/`.run()`) rather than
-        // `await`.
-        const newChat = db.transaction((tx) => {
-          const createdChat = tx
-            .insert(chats)
-            .values({
-              appId,
-              title: restoredTitle,
-              chatMode: latestChat.chatMode,
-              initialCommitHash: forkInitialCommitHash,
-            })
-            .returning()
-            .get();
-
-          // Copy all messages that came before the target message into the new
-          // chat, preserving display ordering via `createdAt` while inserting
-          // in original ID order. Compaction summaries are deliberately
-          // backdated for display but must keep their identity boundary after
-          // the user turn that triggered them.
-          if (messagesBeforeInInsertOrder.length > 0) {
-            tx.insert(messages)
-              .values(
-                // IMPORTANT: keep this field list in sync with the `messages`
-                // table schema in db/schema.ts. New columns are NOT copied
-                // automatically — add them here (or make a conscious decision to
-                // omit them, like `usingFreeAgentModeQuota` below) when the
-                // schema changes. The `_assertAllMessageColumnsHandled` guard
-                // above enforces this classification at compile time.
-                messagesBeforeInInsertOrder.map((m) => ({
-                  chatId: createdChat.id,
-                  role: m.role,
-                  content: m.content,
-                  approvalState: m.approvalState,
-                  sourceCommitHash: m.sourceCommitHash,
-                  commitHash: m.commitHash,
-                  requestId: m.requestId,
-                  maxTokensUsed: m.maxTokensUsed,
-                  model: m.model,
-                  aiMessagesJson: m.aiMessagesJson,
-                  // Don't carry over the free-agent quota flag. The copied
-                  // messages represent already-completed turns; preserving the
-                  // flag would make getFreeAgentQuotaStatus (which counts every
-                  // row globally) double-count those past requests and could
-                  // exhaust a non-Pro user's quota without any new model call.
-                  usingFreeAgentModeQuota: false,
-                  isCompactionSummary: m.isCompactionSummary,
-                  createdAt: m.createdAt,
-                })),
-              )
-              .run();
+          if (restoreCodebase && !latestTargetCommitHash) {
+            return {
+              warningMessage: appendInterruptedGenerationWarning(
+                "Could not determine a version to restore to for this message.",
+                preserveDirtyTree,
+              ),
+            };
+          }
+          if (restoreCodebase && latestTargetCommitHash) {
+            try {
+              await assertVersionExists({
+                appPath,
+                versionId: latestTargetCommitHash,
+              });
+            } catch (error) {
+              if (
+                error instanceof DyadError &&
+                error.kind === DyadErrorKind.NotFound
+              ) {
+                return {
+                  warningMessage: appendInterruptedGenerationWarning(
+                    "Could not restore the codebase because the target version no longer exists in the repository.",
+                    preserveDirtyTree,
+                  ),
+                };
+              }
+              throw error;
+            }
           }
 
-          return createdChat;
-        });
+          // When the user chose to also restore the codebase, we need a concrete
+          // version to revert to. Revert the codebase first: if this throws (e.g.
+          // a Git or Neon error), we bail out before touching the database so we
+          // don't leave an orphaned, partially-created chat behind. A
+          // `warningMessage` still means the codebase was reverted (only a
+          // secondary step failed), so we go on to create the new chat in that
+          // case. When the user only forks the chat, we skip the revert entirely.
+          let successMessage = "Forked the chat into a new chat.";
+          let warningMessage = "";
 
-        if (warningMessage) {
-          return { newChatId: newChat.id, warningMessage };
-        }
-        return { newChatId: newChat.id, successMessage };
-      }).finally(() => releaseStreamAdmissionBlock?.());
+          if (restoreCodebase && latestTargetCommitHash) {
+            const result = await revertCodebaseToVersion({
+              appId,
+              app: latestApp,
+              appPath,
+              previousVersionId: latestTargetCommitHash,
+              targetBranchName,
+              preserveDirtyTree,
+            });
+            successMessage = result.successMessage;
+            warningMessage = result.warningMessage;
+          }
+
+          // Carry over the original chat's title so the forked chat is tied to
+          // the conversation it came from without storing an English-only suffix
+          // in the database. If the original is untitled, keep the fork untitled
+          // and let the renderer's localized fallback title handle display.
+          const restoredTitle = latestChat.title;
+
+          // Anchor the forked chat to the version it actually starts from. When we
+          // restored the codebase, that's the target version. When we only forked
+          // the chat (codebase left untouched), the new chat starts from the
+          // live branch's current commit, so use that instead of the historical
+          // target. If the Version pane has a detached historical preview checked
+          // out, `targetBranchName` points at the branch the pane will restore on
+          // close; anchoring to that branch avoids leaving the fork attached to an
+          // abandoned preview commit.
+          const forkInitialCommitHash = restoreCodebase
+            ? latestTargetCommitHash
+            : await (async () => {
+                const currentBranch = await gitCurrentBranch({
+                  path: appPath,
+                }).catch(() => null);
+                const forkRef = currentBranch || targetBranchName || "HEAD";
+                return getCurrentCommitHash({ path: appPath, ref: forkRef });
+              })().catch(
+                () => latestChat.initialCommitHash ?? latestTargetCommitHash,
+              );
+
+          // Compile-time guard so a new column added to the `messages` schema in
+          // db/schema.ts isn't silently dropped when copying messages into the
+          // forked chat. Every column must be classified below as either copied
+          // (in the `.map` further down) or intentionally excluded; adding a
+          // column to the schema without listing it here becomes a type error.
+          type CopiedMessageColumn =
+            | "role"
+            | "content"
+            | "approvalState"
+            | "sourceCommitHash"
+            | "commitHash"
+            | "requestId"
+            | "maxTokensUsed"
+            | "model"
+            | "aiMessagesJson"
+            | "isCompactionSummary"
+            | "createdAt";
+          // Deliberately not copied from the source message:
+          //  - `id`: autoIncrement primary key, generated per inserted row.
+          //  - `chatId`: set to the newly created chat below.
+          //  - `usingFreeAgentModeQuota`: reset to false (see note below).
+          type ExcludedMessageColumn =
+            | "id"
+            | "chatId"
+            | "usingFreeAgentModeQuota";
+          // If a column is neither copied nor excluded, this `Exclude` is no
+          // longer `never` and the assignment fails to compile, flagging the
+          // unclassified column.
+          const _assertAllMessageColumnsHandled: Exclude<
+            keyof typeof messages.$inferSelect,
+            CopiedMessageColumn | ExcludedMessageColumn
+          > extends never
+            ? true
+            : never = true;
+          void _assertAllMessageColumnsHandled;
+
+          const messagesBeforeInInsertOrder = [...latestMessagesBefore].sort(
+            (a, b) => a.id - b.id,
+          );
+
+          // Create the new chat pointing at that version and copy over the earlier
+          // messages atomically. We insert directly (instead of using the
+          // createChat handler) so `initialCommitHash` is the intended version
+          // rather than whatever the createChat handler would capture. Wrapping
+          // both inserts in a transaction ensures we never leave behind an
+          // orphaned, empty forked chat if the messages insert fails after
+          // the chat insert. better-sqlite3 transactions are synchronous, so the
+          // callback uses the sync query API (`.get()`/`.run()`) rather than
+          // `await`.
+          const newChat = db.transaction((tx) => {
+            const createdChat = tx
+              .insert(chats)
+              .values({
+                appId,
+                title: restoredTitle,
+                chatMode: latestChat.chatMode,
+                initialCommitHash: forkInitialCommitHash,
+              })
+              .returning()
+              .get();
+
+            // Copy all messages that came before the target message into the new
+            // chat, preserving display ordering via `createdAt` while inserting
+            // in original ID order. Compaction summaries are deliberately
+            // backdated for display but must keep their identity boundary after
+            // the user turn that triggered them.
+            if (messagesBeforeInInsertOrder.length > 0) {
+              tx.insert(messages)
+                .values(
+                  // IMPORTANT: keep this field list in sync with the `messages`
+                  // table schema in db/schema.ts. New columns are NOT copied
+                  // automatically — add them here (or make a conscious decision to
+                  // omit them, like `usingFreeAgentModeQuota` below) when the
+                  // schema changes. The `_assertAllMessageColumnsHandled` guard
+                  // above enforces this classification at compile time.
+                  messagesBeforeInInsertOrder.map((m) => ({
+                    chatId: createdChat.id,
+                    role: m.role,
+                    content: m.content,
+                    approvalState: m.approvalState,
+                    sourceCommitHash: m.sourceCommitHash,
+                    commitHash: m.commitHash,
+                    requestId: m.requestId,
+                    maxTokensUsed: m.maxTokensUsed,
+                    model: m.model,
+                    aiMessagesJson: m.aiMessagesJson,
+                    // Don't carry over the free-agent quota flag. The copied
+                    // messages represent already-completed turns; preserving the
+                    // flag would make getFreeAgentQuotaStatus (which counts every
+                    // row globally) double-count those past requests and could
+                    // exhaust a non-Pro user's quota without any new model call.
+                    usingFreeAgentModeQuota: false,
+                    isCompactionSummary: m.isCompactionSummary,
+                    createdAt: m.createdAt,
+                  })),
+                )
+                .run();
+            }
+
+            return createdChat;
+          });
+
+          if (warningMessage) {
+            return { newChatId: newChat.id, warningMessage };
+          }
+          return { newChatId: newChat.id, successMessage };
+        });
+      } finally {
+        releaseStreamAdmissionBlock?.();
+      }
     },
   );
 

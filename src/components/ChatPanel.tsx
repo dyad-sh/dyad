@@ -5,9 +5,11 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { selectAtom } from "jotai/utils";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import {
   chatErrorByIdAtom,
@@ -56,12 +58,22 @@ export function ChatPanel({
   const { t } = useTranslation("chat");
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatErrorById = useAtomValue(chatErrorByIdAtom);
-  const scrollToBottomRequestedChatIds = useAtomValue(
-    scrollToBottomRequestedChatIdsAtom,
-  );
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setScrollToBottomRequestedChatIds = useSetAtom(
     scrollToBottomRequestedChatIdsAtom,
+  );
+  // Subscribe only to whether THIS chat has a pending scroll request, not to the
+  // whole Set. Otherwise adding/removing any other chat id re-fires the
+  // scroll-to-bottom effect for the visible chat (running its double-RAF
+  // setup/cleanup) even though nothing about the current chat changed.
+  const isScrollToBottomRequestedForChat = useAtomValue(
+    useMemo(
+      () =>
+        selectAtom(scrollToBottomRequestedChatIdsAtom, (requested) =>
+          chatId != null ? requested.has(chatId) : false,
+        ),
+      [chatId],
+    ),
   );
   const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
     terminalOpenByChatIdAtom,
@@ -164,7 +176,7 @@ export function ChatPanel({
     if (
       chatId == null ||
       !messagesById.has(chatId) ||
-      !scrollToBottomRequestedChatIds.has(chatId)
+      !isScrollToBottomRequestedForChat
     ) {
       return;
     }
@@ -223,7 +235,7 @@ export function ChatPanel({
     messagesById,
     isVersionPaneOpen,
     scrollToBottom,
-    scrollToBottomRequestedChatIds,
+    isScrollToBottomRequestedForChat,
     setScrollToBottomRequestedChatIds,
   ]);
 

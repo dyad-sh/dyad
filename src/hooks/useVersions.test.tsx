@@ -193,6 +193,7 @@ describe("useVersions", () => {
       });
     });
 
+    expect(restartAppMock).toHaveBeenCalledTimes(1);
     expect(restartAppMock).toHaveBeenCalledWith({ appId: 42 });
   });
 });

@@ -113,10 +113,10 @@ export const VersionMetadataResultSchema = z.object({
 });
 
 export const RestoreToMessageParamsSchema = z.object({
-  appId: z.number(),
   // Constrain to positive integers: these are autoIncrement primary keys, so
   // negative, zero, and float values are always invalid and should fail fast
   // with a descriptive error rather than silently matching no row.
+  appId: z.number().int().positive(),
   chatId: z.number().int().positive(),
   messageId: z.number().int().positive(),
   // When true (the default), the codebase (and database, if applicable) is

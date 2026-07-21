@@ -12,7 +12,14 @@ import {
   runBufferedProcess,
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
+import {
+  getTypeScriptCliPath,
+  isMissingPathError,
+  resolveTypeScriptPackageJsonPath,
+} from "../../../shared/node_module_resolution";
 import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
+
+export { isMissingPathError } from "../../../shared/node_module_resolution";
 
 const logger = log.scope("tsc");
 
@@ -150,11 +157,6 @@ interface ParsedDiagnostics {
 
 interface TypeScriptCli {
   entryPath: string;
-}
-
-export function isMissingPathError(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException | null)?.code;
-  return code === "ENOENT" || code === "ENOTDIR";
 }
 
 function normalizePath(filePath: string): string {
@@ -351,46 +353,21 @@ async function findTypeScriptConfig(appPath: string): Promise<string> {
 }
 
 async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
-  // Walk the same ancestor node_modules locations Node would search, but do
-  // not use require.resolve here. Node caches successful resolutions for the
-  // life of the Electron main process, so a Rebuild that replaces a pnpm
-  // symlink can otherwise keep returning the deleted package's real path.
-  let currentPath = path.resolve(appPath);
-  let packageJsonPath: string | undefined;
-  let lastMissingPathError: unknown;
-  while (true) {
-    const candidate = path.join(
-      currentPath,
-      "node_modules",
-      "typescript",
-      "package.json",
-    );
-    try {
-      await fs.access(candidate);
-      packageJsonPath = candidate;
-      break;
-    } catch (error) {
-      if (!isMissingPathError(error)) {
-        throw error;
-      }
-      lastMissingPathError = error;
-      const parentPath = path.dirname(currentPath);
-      if (parentPath === currentPath) {
-        break;
-      }
-      currentPath = parentPath;
+  let packageJsonPath: string;
+  try {
+    packageJsonPath = await resolveTypeScriptPackageJsonPath(appPath);
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      throw error;
     }
-  }
-
-  if (!packageJsonPath) {
     throw new TypeCheckPreconditionError(
       "typescript-not-found",
       `Failed to load TypeScript from ${appPath}: package is not installed`,
-      { cause: lastMissingPathError },
+      { cause: error },
     );
   }
 
-  const entryPath = path.join(path.dirname(packageJsonPath), "lib", "tsc.js");
+  const entryPath = getTypeScriptCliPath(packageJsonPath);
   try {
     await fs.access(entryPath);
   } catch (error) {

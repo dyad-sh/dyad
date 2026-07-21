@@ -10,6 +10,10 @@ import type {
   CodeExplorerWorkerOutput,
 } from "../../shared/code_explorer_types";
 import {
+  getTypeScriptCompilerPath,
+  resolveTypeScriptPackageJsonPathSync,
+} from "../../shared/node_module_resolution";
+import {
   buildCodeExplorerIndex,
   searchCodeExplorerIndex,
   type BuiltCodeExplorerIndex,
@@ -65,19 +69,22 @@ export interface ResolvedCodeExplorerCompiler {
 export interface CodeExplorerCompilerLoaders {
   resolveLocalPackage(appPath: string): string;
   loadPackageVersion(packageJsonPath: string): string;
-  loadLocal(appPath: string): unknown;
+  loadLocal(packageJsonPath: string): unknown;
   loadBundled(): unknown;
 }
 
 const defaultCompilerLoaders: CodeExplorerCompilerLoaders = {
-  resolveLocalPackage: (appPath) =>
-    require.resolve("typescript/package.json", { paths: [appPath] }),
+  resolveLocalPackage: resolveTypeScriptPackageJsonPathSync,
   loadPackageVersion: (packageJsonPath) =>
     String(
-      (require(packageJsonPath) as { version?: unknown }).version ?? "unknown",
+      (
+        JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+          version?: unknown;
+        }
+      ).version ?? "unknown",
     ),
-  loadLocal: (appPath) =>
-    require(require.resolve("typescript", { paths: [appPath] })),
+  loadLocal: (packageJsonPath) =>
+    require(fs.realpathSync(getTypeScriptCompilerPath(packageJsonPath))),
   loadBundled: () => require("@typescript/typescript6"),
 };
 
@@ -145,7 +152,7 @@ export function resolveCodeExplorerCompiler(
   }
   let fallbackReason: string;
   try {
-    localCandidate = loaders.loadLocal(appPath);
+    localCandidate = loaders.loadLocal(localPackagePath);
     localVersion = compilerVersion(localCandidate);
     assertCompatibleCompiler(localCandidate, "Local TypeScript");
     return {

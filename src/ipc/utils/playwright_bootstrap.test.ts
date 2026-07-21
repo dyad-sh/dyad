@@ -114,4 +114,44 @@ describe("isPlaywrightBrowserInstalled", () => {
     expect(isPlaywrightBrowserInstalled(stale.appPath)).toBe(false);
     expect(isPlaywrightBrowserInstalled(legacy.appPath)).toBe(false);
   });
+
+  it("uses the replacement Playwright package after a symlink swap", () => {
+    const { appPath } = makeAppWithBrowserMarker({
+      packageVersion: "1.2.3",
+      markerText: JSON.stringify({ playwrightVersion: "1.2.3" }),
+    });
+    const playwrightLinkPath = path.join(appPath, "node_modules", "playwright");
+    const writePlaywrightTarget = (name: string) => {
+      const targetPath = path.join(appPath, name);
+      const executablePath = path.join(targetPath, "chromium");
+      fs.mkdirSync(targetPath);
+      fs.writeFileSync(
+        path.join(targetPath, "package.json"),
+        JSON.stringify({ main: "index.js" }),
+      );
+      fs.writeFileSync(
+        path.join(targetPath, "index.js"),
+        `module.exports = { chromium: { executablePath: () => ${JSON.stringify(executablePath)} } };`,
+      );
+      fs.writeFileSync(executablePath, "");
+      return { targetPath, executablePath };
+    };
+    const first = writePlaywrightTarget("playwright-1");
+    const second = writePlaywrightTarget("playwright-2");
+    const linkTarget = (targetPath: string) =>
+      fs.symlinkSync(
+        process.platform === "win32" ? path.resolve(targetPath) : targetPath,
+        playwrightLinkPath,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+
+    linkTarget(first.targetPath);
+    expect(isPlaywrightBrowserInstalled(appPath)).toBe(true);
+
+    fs.rmSync(playwrightLinkPath, { recursive: true });
+    fs.rmSync(first.executablePath);
+    linkTarget(second.targetPath);
+
+    expect(isPlaywrightBrowserInstalled(appPath)).toBe(true);
+  });
 });

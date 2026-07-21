@@ -67,6 +67,28 @@ function createTypeScriptInstallation(version: string): string {
   return appPath;
 }
 
+function writeTypeScriptTarget(rootPath: string, version: string): string {
+  const targetPath = path.join(rootPath, `typescript-${version}`);
+  fs.mkdirSync(path.join(targetPath, "lib"), { recursive: true });
+  fs.writeFileSync(
+    path.join(targetPath, "package.json"),
+    JSON.stringify({ name: "typescript", version }),
+  );
+  fs.writeFileSync(
+    path.join(targetPath, "lib", "typescript.js"),
+    `module.exports = { version: ${JSON.stringify(version)} };\n`,
+  );
+  return targetPath;
+}
+
+function linkTypeScript(targetPath: string, linkPath: string): void {
+  fs.symlinkSync(
+    process.platform === "win32" ? path.resolve(targetPath) : targetPath,
+    linkPath,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -110,6 +132,27 @@ describe("TypeScript installation fingerprints", () => {
     );
 
     expect(getTypeScriptInstallationFingerprint(appPath)).not.toBe(before);
+  });
+
+  it("changes when pnpm replaces the TypeScript symlink", () => {
+    const appPath = fs.mkdtempSync(
+      path.join(os.tmpdir(), "code-explorer-symlink-"),
+    );
+    tempDirs.push(appPath);
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    fs.mkdirSync(nodeModulesPath);
+    const typeScript5Path = writeTypeScriptTarget(appPath, "5.9.3");
+    const typeScript7Path = writeTypeScriptTarget(appPath, "7.0.2");
+    const typeScriptLinkPath = path.join(nodeModulesPath, "typescript");
+    linkTypeScript(typeScript5Path, typeScriptLinkPath);
+
+    const before = getTypeScriptInstallationFingerprint(appPath);
+    fs.rmSync(typeScriptLinkPath, { recursive: true });
+    linkTypeScript(typeScript7Path, typeScriptLinkPath);
+
+    const after = getTypeScriptInstallationFingerprint(appPath);
+    expect(after).not.toBe(before);
+    expect(JSON.parse(after)).toMatchObject({ packageVersion: "7.0.2" });
   });
 });
 

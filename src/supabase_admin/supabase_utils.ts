@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import log from "electron-log";
@@ -11,6 +12,11 @@ import {
 } from "./supabase_management_client";
 import { SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  clearNodeModuleCache,
+  getTypeScriptCompilerPath,
+  resolveTypeScriptPackageJsonPathSync,
+} from "../../shared/node_module_resolution";
 
 const logger = log.scope("supabase_utils");
 const require = createRequire(import.meta.url);
@@ -185,12 +191,17 @@ async function getValidSupabaseFunctionNames(
   return validFunctions;
 }
 
-function loadAppTypeScript(
+export function loadAppTypeScript(
   appPath: string,
 ): typeof import("typescript") | null {
   try {
-    const tsPath = require.resolve("typescript", { paths: [appPath] });
-    return require(tsPath) as typeof import("typescript");
+    const packageJsonPath = resolveTypeScriptPackageJsonPathSync(appPath);
+    const realPackageRootPath = realpathSync(path.dirname(packageJsonPath));
+    const compilerPath = realpathSync(
+      getTypeScriptCompilerPath(packageJsonPath),
+    );
+    clearNodeModuleCache(realPackageRootPath, require.cache);
+    return require(compilerPath) as typeof import("typescript");
   } catch {
     return null;
   }

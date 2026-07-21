@@ -106,6 +106,60 @@ describe("resolveCodeExplorerCompiler", () => {
       ]),
     );
   });
+
+  it("loads the replacement compiler after a pnpm-style symlink swap", async () => {
+    const appPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "dyad-code-explorer-compiler-swap-"),
+    );
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    const typeScriptLinkPath = path.join(nodeModulesPath, "typescript");
+    await fs.mkdir(nodeModulesPath);
+    const installedCompilerPath = require.resolve("typescript");
+    const writeCompilerTarget = async (version: string) => {
+      const targetPath = path.join(appPath, `typescript-${version}`);
+      await fs.mkdir(path.join(targetPath, "lib"), { recursive: true });
+      await fs.writeFile(
+        path.join(targetPath, "package.json"),
+        JSON.stringify({ name: "typescript", version }),
+      );
+      await fs.writeFile(
+        path.join(targetPath, "lib", "typescript.js"),
+        `const ts = require(${JSON.stringify(installedCompilerPath)}); module.exports = { ...ts, version: ${JSON.stringify(version)} };`,
+      );
+      return targetPath;
+    };
+    const typeScript5Path = await writeCompilerTarget("5.9.3");
+    const typeScript7Path = await writeCompilerTarget("7.0.2");
+    const symlinkType = process.platform === "win32" ? "junction" : "dir";
+
+    try {
+      await fs.symlink(
+        process.platform === "win32"
+          ? path.resolve(typeScript5Path)
+          : typeScript5Path,
+        typeScriptLinkPath,
+        symlinkType,
+      );
+      const first = resolveCodeExplorerCompiler(appPath);
+
+      await fs.rm(typeScriptLinkPath, { recursive: true });
+      await fs.symlink(
+        process.platform === "win32"
+          ? path.resolve(typeScript7Path)
+          : typeScript7Path,
+        typeScriptLinkPath,
+        symlinkType,
+      );
+      const second = resolveCodeExplorerCompiler(appPath);
+
+      expect(first.source).toBe("local");
+      expect(second.source).toBe("local");
+      expect(first.version).toBe("5.9.3");
+      expect(second.version).toBe("7.0.2");
+    } finally {
+      await fs.rm(appPath, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("getCodeExplorerAvailability", () => {

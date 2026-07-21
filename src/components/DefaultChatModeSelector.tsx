@@ -1,5 +1,6 @@
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -73,52 +74,49 @@ export function DefaultChatModeSelector() {
   };
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center space-x-2">
-        <label
-          htmlFor="default-chat-mode"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
+    <SettingField
+      htmlFor="default-chat-mode"
+      label={t("workflow.defaultChatMode")}
+      description={t("workflow.defaultChatModeDescription")}
+    >
+      <Select
+        value={effectiveDefault}
+        onValueChange={(v) => v && handleDefaultChatModeChange(v)}
+      >
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="default-chat-mode"
+          aria-describedby="default-chat-mode-description"
         >
-          {t("workflow.defaultChatMode")}
-        </label>
-        <Select
-          value={effectiveDefault}
-          onValueChange={(v) => v && handleDefaultChatModeChange(v)}
-        >
-          <SelectTrigger className="w-40" id="default-chat-mode">
-            <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {showBasicAgentOption && (
-              <SelectItem value="local-agent">
-                <div className="flex flex-col items-start">
-                  <span className="font-medium">
-                    {isProEnabled ? "Agent" : "Basic Agent"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {isProEnabled
-                      ? "Better at bigger tasks"
-                      : "Free tier (10 messages/day)"}
-                  </span>
-                </div>
-              </SelectItem>
-            )}
-            <SelectItem value="build" disabled={isDyadFreeSelected}>
+          <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {showBasicAgentOption && (
+            <SelectItem value="local-agent">
               <div className="flex flex-col items-start">
-                <span className="font-medium">Build</span>
+                <span className="font-medium">
+                  {isProEnabled ? "Agent" : "Basic Agent"}
+                </span>
                 <span className="text-xs text-muted-foreground">
-                  {isDyadFreeSelected
-                    ? "Use Agent with Dyad Free"
-                    : "Generate and edit code"}
+                  {isProEnabled
+                    ? "Better at bigger tasks"
+                    : "Free tier (10 messages/day)"}
                 </span>
               </div>
             </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        {t("workflow.defaultChatModeDescription")}
-      </div>
-    </div>
+          )}
+          <SelectItem value="build" disabled={isDyadFreeSelected}>
+            <div className="flex flex-col items-start">
+              <span className="font-medium">Build</span>
+              <span className="text-xs text-muted-foreground">
+                {isDyadFreeSelected
+                  ? "Use Agent with Dyad Free"
+                  : "Generate and edit code"}
+              </span>
+            </div>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </SettingField>
   );
 }

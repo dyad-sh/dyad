@@ -1,5 +1,6 @@
 import React from "react";
 import { useSettings } from "@/hooks/useSettings";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -70,33 +71,30 @@ export const MaxChatTurnsSelector: React.FC = () => {
     options.find((opt) => opt.value === currentValue) || options[1];
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-4">
-        <label
-          htmlFor="max-chat-turns"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
+    <SettingField
+      htmlFor="max-chat-turns"
+      label={t("ai.maxChatTurns")}
+      description={currentOption.description}
+    >
+      <Select
+        value={currentValue}
+        onValueChange={(v) => v && handleValueChange(v)}
+      >
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="max-chat-turns"
+          aria-describedby="max-chat-turns-description"
         >
-          {t("ai.maxChatTurns")}
-        </label>
-        <Select
-          value={currentValue}
-          onValueChange={(v) => v && handleValueChange(v)}
-        >
-          <SelectTrigger className="w-[180px]" id="max-chat-turns">
-            <SelectValue placeholder={t("ai.selectMaxChatTurns")} />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        {currentOption.description}
-      </div>
-    </div>
+          <SelectValue placeholder={t("ai.selectMaxChatTurns")} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingField>
   );
 };

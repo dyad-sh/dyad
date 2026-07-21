@@ -1,5 +1,6 @@
 import { useSettings } from "@/hooks/useSettings";
 
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -48,30 +49,27 @@ export function ReleaseChannelSelector() {
   };
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center space-x-2">
-        <label
-          htmlFor="release-channel"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
+    <SettingField
+      htmlFor="release-channel"
+      label={t("general.releaseChannel")}
+      description={t("general.releaseChannelDescription")}
+    >
+      <Select
+        value={settings.releaseChannel}
+        onValueChange={(v) => v && handleReleaseChannelChange(v)}
+      >
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="release-channel"
+          aria-describedby="release-channel-description"
         >
-          {t("general.releaseChannel")}
-        </label>
-        <Select
-          value={settings.releaseChannel}
-          onValueChange={(v) => v && handleReleaseChannelChange(v)}
-        >
-          <SelectTrigger className="w-32" id="release-channel">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="stable">{t("general.stable")}</SelectItem>
-            <SelectItem value="beta">{t("general.beta")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        <p>{t("general.releaseChannelDescription")}</p>
-      </div>
-    </div>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="stable">{t("general.stable")}</SelectItem>
+          <SelectItem value="beta">{t("general.beta")}</SelectItem>
+        </SelectContent>
+      </Select>
+    </SettingField>
   );
 }

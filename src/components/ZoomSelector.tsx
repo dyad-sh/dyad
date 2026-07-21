@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useSettings } from "@/hooks/useSettings";
 import { ZoomLevel, ZoomLevelSchema, DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
-import { Label } from "@/components/ui/label";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -38,20 +38,22 @@ export function ZoomSelector() {
   }, [settings?.zoomLevel]);
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="zoom-level">{t("general.zoom")}</Label>
-        <p className="text-sm text-muted-foreground">
-          {t("general.zoomDescription")}
-        </p>
-      </div>
+    <SettingField
+      htmlFor="zoom-level"
+      label={t("general.zoom")}
+      description={t("general.zoomDescription")}
+    >
       <Select
         value={currentZoomLevel}
         onValueChange={(value) =>
           updateSettings({ zoomLevel: value as ZoomLevel })
         }
       >
-        <SelectTrigger id="zoom-level" className="w-[220px]">
+        <SelectTrigger
+          id="zoom-level"
+          className="w-full sm:w-[240px]"
+          aria-describedby="zoom-level-description"
+        >
           <SelectValue placeholder={t("general.selectZoom")} />
         </SelectTrigger>
         <SelectContent>
@@ -67,6 +69,6 @@ export function ZoomSelector() {
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </SettingField>
   );
 }

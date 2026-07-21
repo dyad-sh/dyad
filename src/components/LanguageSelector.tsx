@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "@/hooks/useSettings";
 import { Language, LanguageSchema } from "@/lib/schemas";
-import { Label } from "@/components/ui/label";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -52,15 +52,17 @@ export function LanguageSelector() {
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="language">{t("general.language")}</Label>
-        <p className="text-sm text-muted-foreground">
-          {t("general.languageDescription")}
-        </p>
-      </div>
+    <SettingField
+      htmlFor="language"
+      label={t("general.language")}
+      description={t("general.languageDescription")}
+    >
       <Select value={currentLanguage} onValueChange={handleChange}>
-        <SelectTrigger id="language" className="w-[220px]">
+        <SelectTrigger
+          id="language"
+          className="w-full sm:w-[240px]"
+          aria-describedby="language-description"
+        >
           <SelectValue placeholder="Select language" />
         </SelectTrigger>
         <SelectContent>
@@ -71,6 +73,6 @@ export function LanguageSelector() {
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </SettingField>
   );
 }

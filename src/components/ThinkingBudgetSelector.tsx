@@ -1,5 +1,6 @@
 import React from "react";
 import { useSettings } from "@/hooks/useSettings";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -30,35 +31,32 @@ export const ThinkingBudgetSelector: React.FC = () => {
   const currentOption = getThinkingEffortOption(currentValue);
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-4">
-        <label
-          htmlFor="thinking-budget"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300"
+    <SettingField
+      htmlFor="thinking-budget"
+      label={t("ai.thinkingBudget")}
+      description={currentOption.description}
+    >
+      <Select
+        value={currentValue}
+        onValueChange={(v) => v && handleValueChange(v)}
+      >
+        <SelectTrigger
+          className="w-full sm:w-[240px]"
+          id="thinking-budget"
+          aria-describedby="thinking-budget-description"
         >
-          {t("ai.thinkingBudget")}
-        </label>
-        <Select
-          value={currentValue}
-          onValueChange={(v) => v && handleValueChange(v)}
-        >
-          <SelectTrigger className="w-[180px]" id="thinking-budget">
-            <SelectValue placeholder={t("ai.selectThinkingBudget")} />
-          </SelectTrigger>
-          <SelectContent>
-            {THINKING_EFFORT_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.value === THINKING_EFFORT_DEFAULT
-                  ? `${option.label} (default)`
-                  : option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        {currentOption.description}
-      </div>
-    </div>
+          <SelectValue placeholder={t("ai.selectThinkingBudget")} />
+        </SelectTrigger>
+        <SelectContent>
+          {THINKING_EFFORT_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.value === THINKING_EFFORT_DEFAULT
+                ? `${option.label} (default)`
+                : option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingField>
   );
 };

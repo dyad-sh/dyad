@@ -1,4 +1,4 @@
-import { Label } from "@/components/ui/label";
+import { SettingField } from "@/components/settings/SettingField";
 import {
   Select,
   SelectContent,
@@ -83,34 +83,34 @@ export function RuntimeModeSelector() {
   };
 
   return (
-    <div className="space-y-2">
-      <div className="space-y-1">
-        <div className="flex items-center space-x-2">
-          <Label className="text-sm font-medium" htmlFor="runtime-mode">
-            {t("general.runtimeMode")}
-          </Label>
-          <Select
-            value={settings.runtimeMode2 ?? "host"}
-            onValueChange={(v) => v && handleRuntimeModeChange(v)}
+    <div className="space-y-3">
+      <SettingField
+        htmlFor="runtime-mode"
+        label={t("general.runtimeMode")}
+        description={t("general.runtimeModeDescription")}
+      >
+        <Select
+          value={settings.runtimeMode2 ?? "host"}
+          onValueChange={(v) => v && handleRuntimeModeChange(v)}
+        >
+          <SelectTrigger
+            className="w-full sm:w-[240px]"
+            id="runtime-mode"
+            aria-describedby="runtime-mode-description"
           >
-            <SelectTrigger className="w-48" id="runtime-mode">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="host">Local (default)</SelectItem>
-              <SelectItem value="docker">Docker (experimental)</SelectItem>
-              {showCloudSandboxOption && (
-                <SelectItem disabled={!hasCloudSandboxAccess} value="cloud">
-                  Cloud Sandbox (Pro)
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          {t("general.runtimeModeDescription")}
-        </div>
-      </div>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="host">Local (default)</SelectItem>
+            <SelectItem value="docker">Docker (experimental)</SelectItem>
+            {showCloudSandboxOption && (
+              <SelectItem disabled={!hasCloudSandboxAccess} value="cloud">
+                Cloud Sandbox (Pro)
+              </SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+      </SettingField>
       {showCloudSandboxOption && !hasCloudSandboxAccess && (
         <div className="text-sm text-muted-foreground bg-muted/40 p-2 rounded">
           Cloud sandboxes are a Dyad Pro feature.{" "}

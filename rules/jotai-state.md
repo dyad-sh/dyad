@@ -2,6 +2,24 @@
 
 Use Jotai for client-only state, not as a second cache for IPC data.
 
+## No root Provider: production uses the default store
+
+The renderer mounts no root Jotai `<Provider>`, so production components and
+`useStore()` resolve to jotai's default store, while tests wrap components in
+`<Provider store={createStore()}>`. Module-scope services that read/write
+atoms outside React (e.g. the version preview command adapter in
+`src/version_preview/commands.ts`) must receive the store from `useStore()`
+at initialization instead of importing `getDefaultStore()`, or test stores
+will silently diverge from the store the service writes to.
+
+## Version preview repository state is machine-owned
+
+Git preview orchestration (checkout/return/restore, recovery) lives in the
+state machine under `src/version_preview/`; `selectedVersionIdAtom` is
+presentation-only (which diff CodeView shows). Never infer or drive Git
+transitions from that atom or from pane visibility — send events to the
+machine instead (see plans/version-preview-state-machine.md).
+
 ## Ownership
 
 - React Query owns server/IPC-backed data such as apps, chats, versions,

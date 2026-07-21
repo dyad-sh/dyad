@@ -8,6 +8,7 @@ import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
+import { disposeVersionPreviewController } from "@/version_preview/registry";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
@@ -193,6 +194,7 @@ export default function AppDetailsPage() {
       setIsDeleting(true);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
+      disposeVersionPreviewController(appId);
       clearPreviewRuntimeForApp(appId);
       setSelectedAppId(null);
       setSelectedChatId(null);

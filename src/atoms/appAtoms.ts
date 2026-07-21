@@ -12,6 +12,10 @@ export type PreviewMode =
   | "plan";
 
 export const previewModeAtom = atom<PreviewMode>("preview");
+// Presentation-only: which version's diff CodeView displays. Repository
+// preview state (checkouts, return branch, recovery) is owned by the version
+// preview machine in src/version_preview/ and must never be inferred from
+// this atom. See plans/version-preview-state-machine.md.
 export const selectedVersionIdAtom = atom<string | null>(null);
 // The changed file the version diff view should open at, scoped to the version
 // it belongs to. Set when navigating to a specific file (e.g. from the

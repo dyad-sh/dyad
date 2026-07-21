@@ -10,6 +10,10 @@ If `npm run ts` fails because installed dependency types are missing APIs the re
 
 If `npm run ts` crashes with a Go `SIGSEGV`/segmentation fault inside `tsgo` instead of reporting TypeScript diagnostics, remove the stale incremental build cache and retry: `rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo && npm run ts`. This can happen after package/alias changes and is not necessarily a source type error.
 
+## `import.meta.env` is not typed in renderer source
+
+`import.meta.env?.DEV` in `src/` fails `npm run ts` with `TS2339: Property 'env' does not exist on type 'ImportMeta'` (tsconfig.app.json does not load Vite client types; `renderer.tsx` uses `// @ts-ignore` for its one access). For dev/prod branching use `process.env.NODE_ENV !== "production"` instead — Vite statically replaces it in renderer builds and it works in vitest. Also note `npx tsc --noEmit -p tsconfig.json` can pass while `npm run ts` fails; only `npm run ts` is authoritative.
+
 ## `useRef` requires an explicit initial value
 
 `useRef<number>()` with no argument fails `npm run ts` with `TS2554: Expected 1 arguments, but got 0` (the React types in this repo have no argless overload). Write `useRef<number | undefined>(undefined)` instead.

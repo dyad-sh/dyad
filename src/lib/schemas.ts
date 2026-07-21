@@ -303,6 +303,7 @@ export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 // The kinds of TypeScript utility process the scheduler can run.
 export const TypeScriptUtilityProcessKindSchema = z.enum([
   "code-explorer",
+  "supabase-dependency-analysis",
   "tsc",
 ]);
 export type TypeScriptUtilityProcessKind = z.infer<

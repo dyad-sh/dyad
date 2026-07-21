@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,8 +15,6 @@ import {
   listSupabaseFunctions,
 } from "@/supabase_admin/supabase_management_client";
 
-const require = createRequire(import.meta.url);
-
 vi.mock("@/supabase_admin/supabase_management_client", async () => {
   const actual = await vi.importActual<
     typeof import("@/supabase_admin/supabase_management_client")
@@ -31,6 +28,13 @@ vi.mock("@/supabase_admin/supabase_management_client", async () => {
     listSupabaseFunctions: vi.fn(),
   };
 });
+
+vi.mock("@/ipc/processors/supabase_dependency_analysis", () => ({
+  runSupabaseDependencyAnalysis: vi.fn(async () => ({
+    kind: "partial" as const,
+    functionNames: ["alpha"],
+  })),
+}));
 
 async function waitForAssertion(assertion: () => void) {
   const startedAt = Date.now();
@@ -323,13 +327,6 @@ describe("deployAllSupabaseFunctions progress", () => {
   });
 
   it("deploys the union of shared-affected functions and pending functions", async () => {
-    const nodeModulesPath = path.join(appPath, "node_modules");
-    await fs.mkdir(nodeModulesPath, { recursive: true });
-    await fs.symlink(
-      path.dirname(require.resolve("typescript/package.json")),
-      path.join(nodeModulesPath, "typescript"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
     await fs.mkdir(path.join(appPath, "supabase", "functions", "_shared"), {
       recursive: true,
     });

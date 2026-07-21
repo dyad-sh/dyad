@@ -174,6 +174,16 @@ describe("executeSqlTool.shouldTrackMutation", () => {
     );
     // A plain read whose alias merely starts with "into" must not trip it.
     expect(tracks("SELECT count(*) AS into_total FROM users;")).toBe(false);
+    // Keywords/calls inside string literals must not be mistaken for the real
+    // thing: a read returning the text "into staging_users" is still read-only.
+    expect(tracks("SELECT 'into staging_users';")).toBe(false);
+    expect(tracks("SELECT * FROM users WHERE note = 'seed_demo_data()';")).toBe(
+      false,
+    );
+    // A genuine SELECT ... INTO alongside a literal still counts.
+    expect(tracks("SELECT 'label' AS tag INTO staging_users FROM users;")).toBe(
+      true,
+    );
   });
 
   it("still treats plain reads as no-ops", () => {

@@ -23,6 +23,20 @@ function stripSqlComments(sql: string): string {
 }
 
 /**
+ * Blank out string literals so tokens *inside* them aren't misread as SQL
+ * keywords or function calls by the read-only classifier. Without this a plain
+ * read like `SELECT 'into staging_users'` matches the `into` mutation check and
+ * is wrongly recorded as a mutation, letting run_tests rerun with no app change.
+ * Dollar-quoted strings are stripped before single-quoted ones because their
+ * body can itself contain single quotes.
+ */
+function stripSqlStringLiterals(statement: string): string {
+  return statement
+    .replace(/\$([a-z_]\w*)?\$[\s\S]*?\$\1\$/gi, " ")
+    .replace(/'(?:[^']|'')*'/g, " ");
+}
+
+/**
  * Identifiers that may precede a `(` in a read-only `select` without implying a
  * function call that could mutate: SQL keywords (`where (a or b)`, `in (...)`)
  * plus well-known read-only builtins. Anything else — e.g. `SELECT seed()` —
@@ -102,20 +116,23 @@ function doesSelectCallUnknownFunction(statement: string): boolean {
 }
 
 function doesStatementLikelyMutateState(statement: string): boolean {
-  if (/^with\b/i.test(statement)) {
-    return /\b(insert|update|delete|merge)\b/i.test(statement);
+  // Classify against a copy with string literals blanked out so keywords and
+  // function calls appearing inside literals don't skew the result.
+  const scannable = stripSqlStringLiterals(statement);
+  if (/^with\b/i.test(scannable)) {
+    return /\b(insert|update|delete|merge)\b/i.test(scannable);
   }
-  const explained = statement.match(/^explain(?:\s+analyze)?\s+(.+)$/i);
+  const explained = scannable.match(/^explain(?:\s+analyze)?\s+(.+)$/i);
   if (explained) {
     return doesStatementLikelyMutateState(explained[1].trim());
   }
   // Treat clearly read-only statements as no-ops for run_tests gating. Unknown
   // SQL is counted conservatively because function calls and procedural blocks
   // can mutate data even when static analysis cannot prove it.
-  if (!/^(?:select|show|describe|desc)\b/i.test(statement)) {
+  if (!/^(?:select|show|describe|desc)\b/i.test(scannable)) {
     return true;
   }
-  if (!/^select\b/i.test(statement)) {
+  if (!/^select\b/i.test(scannable)) {
     // show / describe / desc are read-only.
     return false;
   }
@@ -124,10 +141,10 @@ function doesStatementLikelyMutateState(statement: string): boolean {
   // read-only classification below would otherwise miss it and leave run_tests
   // refusing the verifying rerun. `(?!@)` skips `SELECT ... INTO @var` variable
   // assignment, which doesn't create a table.
-  if (/\binto\s+(?!@)/i.test(statement)) {
+  if (/\binto\s+(?!@)/i.test(scannable)) {
     return true;
   }
-  return doesSelectCallUnknownFunction(statement);
+  return doesSelectCallUnknownFunction(scannable);
 }
 
 /**

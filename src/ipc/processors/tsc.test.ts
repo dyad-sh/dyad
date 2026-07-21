@@ -403,15 +403,17 @@ describe("runTypeScriptCheck", () => {
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
   });
 
-  it("reports a spawn failure as an install precondition", async () => {
-    runBufferedProcessMock.mockRejectedValueOnce(
-      new BufferedProcessSpawnError("spawn ENOENT", "", ""),
+  it("preserves a spawn failure instead of reporting a missing installation", async () => {
+    const spawnError = new BufferedProcessSpawnError(
+      "spawn node ENOENT",
+      "",
+      "",
     );
+    runBufferedProcessMock.mockRejectedValueOnce(spawnError);
 
-    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
-      typeCheckKind: "typescript-not-found",
-      kind: DyadErrorKind.Precondition,
-    });
+    await expect(runTypeScriptCheck({ appPath })).rejects.toBe(spawnError);
+    expect(getTypeCheckPreconditionKind(spawnError)).toBeUndefined();
+    expect(shouldFilterTelemetryException(spawnError)).toBe(false);
   });
 
   it("prefers tsconfig.app.json and reports missing configs", async () => {

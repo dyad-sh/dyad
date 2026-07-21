@@ -412,7 +412,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
               className={cn(
                 "rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                 theme === option
-                  ? "border border-border/70 bg-background-lightest text-foreground"
+                  ? "border border-border/70 bg-(--background-lightest) text-foreground"
                   : "border border-transparent text-muted-foreground hover:text-foreground",
               )}
             >

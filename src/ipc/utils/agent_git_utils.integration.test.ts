@@ -28,6 +28,12 @@ import {
 } from "./git_utils";
 
 const execFileAsync = promisify(execFile);
+const TEMP_DIR_REMOVE_OPTIONS = {
+  recursive: true,
+  force: true,
+  maxRetries: 10,
+  retryDelay: 100,
+} as const;
 
 async function git(repo: string, ...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: repo });
@@ -49,7 +55,7 @@ describe("agent Git utilities", () => {
   });
 
   afterEach(async () => {
-    await fs.promises.rm(repo, { recursive: true, force: true });
+    await fs.promises.rm(repo, TEMP_DIR_REMOVE_OPTIONS);
   });
 
   it("reports structured status and each diff scope", async () => {
@@ -368,7 +374,8 @@ describe("agent Git utilities", () => {
   });
 
   it("rejects invalid revisions and missing paths while treating pathspecs literally", async () => {
-    const literalName = ":(glob)literal.txt";
+    const literalName =
+      process.platform === "win32" ? "literal[1].txt" : ":(glob)literal.txt";
     await fs.promises.writeFile(path.join(repo, literalName), "literal\n");
     await git(repo, "--literal-pathspecs", "add", "--", literalName);
     await git(repo, "commit", "-m", "literal path");
@@ -498,13 +505,14 @@ describe("agent Git utilities", () => {
     await fs.promises.chmod(executablePath, 0o755);
     await fs.promises.writeFile(binaryPath, Buffer.from([0, 1, 2, 255]));
     await git(repo, "add", "script.sh", "asset.bin");
+    await git(repo, "update-index", "--chmod=+x", "script.sh");
     await git(repo, "commit", "-m", "add executable and binary");
     const source = await git(repo, "rev-parse", "HEAD");
     await fs.promises.writeFile(executablePath, "changed\n", { mode: 0o644 });
     await fs.promises.chmod(executablePath, 0o644);
     await fs.promises.writeFile(binaryPath, Buffer.from([9, 9]));
 
-    await restoreAgentGitFile({
+    const restoredExecutable = await restoreAgentGitFile({
       path: repo,
       revision: source,
       filePath: "script.sh",
@@ -515,7 +523,10 @@ describe("agent Git utilities", () => {
       filePath: "asset.bin",
     });
 
-    expect((await fs.promises.stat(executablePath)).mode & 0o111).not.toBe(0);
+    expect(restoredExecutable.mode).toBe("100755");
+    if (process.platform !== "win32") {
+      expect((await fs.promises.stat(executablePath)).mode & 0o111).not.toBe(0);
+    }
     await expect(fs.promises.readFile(binaryPath)).resolves.toEqual(
       Buffer.from([0, 1, 2, 255]),
     );
@@ -629,7 +640,7 @@ describe("agent Git utilities", () => {
         }),
       ).rejects.toThrow("Only regular files can be restored");
     } finally {
-      await fs.promises.rm(moduleRepo, { recursive: true, force: true });
+      await fs.promises.rm(moduleRepo, TEMP_DIR_REMOVE_OPTIONS);
     }
   });
 

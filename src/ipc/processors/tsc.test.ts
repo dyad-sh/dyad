@@ -309,8 +309,12 @@ describe("runTypeScriptCheck", () => {
     expect(args[0]).toBe(
       path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
     );
-    expect(args[args.indexOf("--tsBuildInfoFile") + 1]).toMatch(
-      /^\/tmp\/dyad-tsc-test-cache\/[a-f0-9]{64}\.tsbuildinfo$/,
+    const tsBuildInfoPath = args[args.indexOf("--tsBuildInfoFile") + 1];
+    expect(path.dirname(tsBuildInfoPath)).toBe(
+      path.resolve("/tmp/dyad-tsc-test-cache"),
+    );
+    expect(path.basename(tsBuildInfoPath)).toMatch(
+      /^[a-f0-9]{64}\.tsbuildinfo$/,
     );
   });
 

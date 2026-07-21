@@ -92,6 +92,15 @@ the fixture repo's `git init` default branch. Either make production code use
 the current branch instead of assuming `main`, or force the fixture branch name
 in the test so local and CI exercise the same branch layout.
 
+Git integration fixtures must also use filenames that are valid on Windows.
+When testing literal pathspec handling, keep the POSIX `:(glob)` case on Unix
+and use a Windows-safe metacharacter filename such as `literal[1].txt` on
+Windows. For executable restores, assert the returned Git mode on every
+platform and assert filesystem execute bits only on POSIX. Temporary Git repos
+can retain handles briefly on Windows, so teardown should use bounded
+`fs.rm` retries (`maxRetries` plus `retryDelay`) rather than making successful
+test logic fail with a transient `EBUSY`.
+
 For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or

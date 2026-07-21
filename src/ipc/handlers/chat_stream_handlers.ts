@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { app, type IpcMainInvokeEvent } from "electron";
+import { app, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { createTypedHandler } from "./base";
 import {
   computeStreamingPatch,
@@ -69,7 +69,10 @@ import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { clearPendingMcpConsentsForChat } from "../utils/mcp_consent";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
-import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
+import {
+  clearPendingLocalAgentInputsForChat,
+  handleLocalAgentStream,
+} from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
@@ -155,7 +158,8 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
-const activeStreams = new Map<number, AbortController>();
+const activeStreams = new Map<number, Set<AbortController>>();
+const admissionPendingStreams = new Set<AbortController>();
 
 // How many chats are currently streaming a response. Used by the
 // performance monitor to record activity alongside memory snapshots.
@@ -163,8 +167,265 @@ export function getActiveStreamCount(): number {
   return activeStreams.size;
 }
 
-// Track partial responses for cancelled streams
-const partialResponses = new Map<number, string>();
+// Resolves when a stream's handler has fully unwound (its `finally` block ran,
+// so any in-flight tool/file writes have settled). `cancelStream` awaits this
+// after aborting so callers like restore-to-message don't touch the working
+// tree while a cancelled turn is still flushing partial file writes.
+const streamCompletions = new Map<number, Set<Promise<void>>>();
+
+export function addTrackedValue<T>(
+  trackedValues: Map<number, Set<T>>,
+  chatId: number,
+  value: T,
+): void {
+  const values = trackedValues.get(chatId) ?? new Set<T>();
+  values.add(value);
+  trackedValues.set(chatId, values);
+}
+
+export function removeTrackedValue<T>(
+  trackedValues: Map<number, Set<T>>,
+  chatId: number,
+  value: T,
+): void {
+  const values = trackedValues.get(chatId);
+  if (!values) {
+    return;
+  }
+  values.delete(value);
+  if (values.size === 0) {
+    trackedValues.delete(chatId);
+  }
+}
+
+// A restore must drain existing streams and prevent new ones from entering the
+// same app until its Git/database mutation has finished. Counts (rather than a
+// Set) make nested/queued guards safe: releasing one guard cannot unblock an
+// app while another guard still owns it.
+const streamAdmissionBlockCounts = new Map<number, number>();
+const chatStreamAdmissionBlockCounts = new Map<number, number>();
+const streamAdmissionWaiters = new Map<number, Set<() => void>>();
+const chatStreamAdmissionWaiters = new Map<number, Set<() => void>>();
+
+function incrementAdmissionBlock(
+  blockCounts: Map<number, number>,
+  waiters: Map<number, Set<() => void>>,
+  key: number,
+): () => void {
+  blockCounts.set(key, (blockCounts.get(key) ?? 0) + 1);
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+
+    const remaining = (blockCounts.get(key) ?? 1) - 1;
+    if (remaining <= 0) {
+      blockCounts.delete(key);
+      const keyWaiters = waiters.get(key);
+      waiters.delete(key);
+      keyWaiters?.forEach((resolve) => resolve());
+    } else {
+      blockCounts.set(key, remaining);
+    }
+  };
+}
+
+export function blockNewStreamsForApp(appId: number): () => void {
+  return incrementAdmissionBlock(
+    streamAdmissionBlockCounts,
+    streamAdmissionWaiters,
+    appId,
+  );
+}
+
+export function blockNewStreamsForChat(chatId: number): () => void {
+  return incrementAdmissionBlock(
+    chatStreamAdmissionBlockCounts,
+    chatStreamAdmissionWaiters,
+    chatId,
+  );
+}
+
+function resolveAllAdmissionWaiters(waiters: Map<number, Set<() => void>>) {
+  for (const keyWaiters of waiters.values()) {
+    keyWaiters.forEach((resolve) => resolve());
+  }
+  waiters.clear();
+}
+
+async function waitForAdmissionBlockToClear({
+  blockCounts,
+  waiters,
+  key,
+  signal,
+}: {
+  blockCounts: Map<number, number>;
+  waiters: Map<number, Set<() => void>>;
+  key: number;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  if ((blockCounts.get(key) ?? 0) === 0) {
+    return true;
+  }
+  if (signal.aborted) {
+    return false;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+      const keyWaiters = waiters.get(key);
+      keyWaiters?.delete(onRelease);
+      if (keyWaiters?.size === 0) {
+        waiters.delete(key);
+      }
+    };
+    const settle = (admitted: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(admitted);
+    };
+    const onRelease = () => settle(!signal.aborted);
+    const onAbort = () => settle(false);
+
+    const keyWaiters = waiters.get(key) ?? new Set<() => void>();
+    keyWaiters.add(onRelease);
+    waiters.set(key, keyWaiters);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// Track partial responses by invocation so concurrent streams for one chat do
+// not overwrite the content persisted into each assistant placeholder.
+const partialResponses = new Map<AbortController, string>();
+
+export function setPartialResponseForStream(
+  controller: AbortController,
+  response: string,
+): void {
+  partialResponses.set(controller, response);
+}
+
+export function takePartialResponseForStream(
+  controller: AbortController,
+): string {
+  const response = partialResponses.get(controller) ?? "";
+  partialResponses.delete(controller);
+  return response;
+}
+
+async function cancelTrackedStreams(
+  chatIds: number[],
+  sender: WebContents,
+): Promise<boolean> {
+  const trackedStreams = chatIds
+    .map((chatId) => ({
+      chatId,
+      abortControllers: [...(activeStreams.get(chatId) ?? [])],
+      completions: [...(streamCompletions.get(chatId) ?? [])],
+    }))
+    .filter(
+      ({ abortControllers, completions }) =>
+        abortControllers.length > 0 || completions.length > 0,
+    );
+
+  if (trackedStreams.length === 0) {
+    return false;
+  }
+
+  // Resolve consent prompts before awaiting completion. A stream parked on a
+  // consent prompt cannot unwind until that prompt is resolved.
+  for (const { chatId, abortControllers } of trackedStreams) {
+    abortControllers.forEach((controller) => controller.abort());
+    clearPendingLocalAgentInputsForChat(chatId);
+    clearPendingMcpConsentsForChat(chatId);
+    logger.log(
+      `Aborted ${abortControllers.length} stream(s) for chat ${chatId}`,
+    );
+  }
+
+  // Notify the renderer that the stream ended as soon as it is aborted, before
+  // awaiting the handler's completion. The renderer clears its streaming state
+  // (`isStreaming`, `pendingStreamChatIds`) off these events, so delaying them
+  // until after the handler fully unwinds leaves a window where a message the
+  // user submits (or a queue the user resumes) right after pressing Stop is
+  // treated as still-streaming — it gets queued instead of sent, or the resume
+  // never re-arms the queue processor. Callers that need writes to have settled
+  // (restore/delete) still await the completions below; only the renderer
+  // notification moves earlier, matching the pre-cancellation-refactor timing.
+  // A new stream the renderer starts for a chat under an active restore barrier
+  // simply waits at admission, so notifying early stays safe.
+  for (const { chatId } of trackedStreams) {
+    safeSend(sender, "chat:response:end", {
+      chatId,
+      updatedFiles: false,
+      wasCancelled: true,
+    } satisfies ChatResponseEnd);
+    safeSend(sender, "chat:stream:end", { chatId });
+  }
+
+  await Promise.all(
+    trackedStreams.flatMap(({ completions }) =>
+      completions.map((completion) => completion.catch(() => {})),
+    ),
+  );
+
+  return true;
+}
+
+/**
+ * Abort an in-flight stream for a single chat and wait until its handler has
+ * stopped writing. Deletion handlers call this before taking the app lock (and
+ * before deleting rows) so an in-flight generation can't re-insert messages
+ * into a chat that was just cleared or removed. Like
+ * {@link cancelActiveStreamsForApp}, it must run outside the app lock: the
+ * aborted handler can take the same lock for its own writes, so awaiting its
+ * completion while holding the lock would deadlock.
+ */
+export async function cancelActiveStreamsForChat(
+  chatId: number,
+  sender: WebContents,
+): Promise<boolean> {
+  return cancelTrackedStreams([chatId], sender);
+}
+
+/**
+ * Abort every in-flight stream whose chat belongs to an app and wait until all
+ * of their handlers have stopped writing. Version handlers call this before
+ * taking the app lock so cancellation cannot deadlock behind a stream write.
+ */
+export async function cancelActiveStreamsForApp(
+  appId: number,
+  sender: WebContents,
+): Promise<boolean> {
+  const inFlightChatIds = [
+    ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
+  ].filter((chatId) =>
+    [...(activeStreams.get(chatId) ?? [])].some(
+      (controller) => !admissionPendingStreams.has(controller),
+    ),
+  );
+  if (inFlightChatIds.length === 0) {
+    return false;
+  }
+
+  const appChats = await db.query.chats.findMany({
+    columns: { id: true },
+    where: and(eq(chats.appId, appId), inArray(chats.id, inFlightChatIds)),
+  });
+
+  return cancelTrackedStreams(
+    appChats.map(({ id }) => id),
+    sender,
+  );
+}
 
 // Use escapeXmlAttr from shared/xmlEscape for XML escaping
 
@@ -290,11 +551,17 @@ export function registerChatStreamHandlers() {
   // the module-level stream-tracking maps don't outlive their renderer.
   // (Guarded: `app` is undefined when this module is imported in unit tests.)
   app?.on?.("before-quit", () => {
-    for (const controller of activeStreams.values()) {
-      controller.abort();
+    for (const controllers of activeStreams.values()) {
+      controllers.forEach((controller) => controller.abort());
     }
     activeStreams.clear();
     partialResponses.clear();
+    streamCompletions.clear();
+    streamAdmissionBlockCounts.clear();
+    chatStreamAdmissionBlockCounts.clear();
+    admissionPendingStreams.clear();
+    resolveAllAdmissionWaiters(streamAdmissionWaiters);
+    resolveAllAdmissionWaiters(chatStreamAdmissionWaiters);
   });
 
   createTypedHandler(
@@ -309,6 +576,14 @@ export function registerChatStreamHandlers() {
     req: ChatStreamParams,
   ) => {
     let attachmentPaths: string[] = [];
+    const abortController = new AbortController();
+    // Expose a promise that resolves once this handler fully unwinds (see the
+    // `finally` block) so `cancelStream` can await in-flight tool/file writes.
+    let resolveCompletion: () => void = () => {};
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    addTrackedValue(streamCompletions, req.chatId, completion);
     try {
       // This legacy stream handler predates createTypedHandler, so enforce the
       // contract explicitly before any attachment string is decoded.
@@ -322,23 +597,29 @@ export function registerChatStreamHandlers() {
       req = parsedRequest.data;
 
       let dyadRequestId: string | undefined;
-      // Create an AbortController for this stream
-      const abortController = new AbortController();
-      activeStreams.set(req.chatId, abortController);
+      addTrackedValue(activeStreams, req.chatId, abortController);
+      admissionPendingStreams.add(abortController);
 
-      // Notify renderer that stream is starting
-      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
+      const loadChatForStream = () =>
+        db.query.chats.findFirst({
+          where: eq(chats.id, req.chatId),
+          with: {
+            messages: {
+              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+            },
+            app: true, // Include app information
+          },
+        });
 
       // Get the chat to check for existing messages
-      const chat = await db.query.chats.findFirst({
-        where: eq(chats.id, req.chatId),
-        with: {
-          messages: {
-            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
-          },
-          app: true, // Include app information
-        },
-      });
+      let chat = await loadChatForStream();
+
+      // Cancellation can arrive while the initial chat lookup is pending. Let
+      // cancelTrackedStreams remain the sole sender of the cancelled end events
+      // instead of also surfacing an admission/not-found error for this request.
+      if (abortController.signal.aborted) {
+        return req.chatId;
+      }
 
       if (!chat) {
         throw new DyadError(
@@ -346,6 +627,68 @@ export function registerChatStreamHandlers() {
           DyadErrorKind.NotFound,
         );
       }
+
+      while (true) {
+        if ((chatStreamAdmissionBlockCounts.get(req.chatId) ?? 0) > 0) {
+          const admitted = await waitForAdmissionBlockToClear({
+            blockCounts: chatStreamAdmissionBlockCounts,
+            waiters: chatStreamAdmissionWaiters,
+            key: req.chatId,
+            signal: abortController.signal,
+          });
+          if (!admitted) {
+            return req.chatId;
+          }
+          chat = await loadChatForStream();
+        }
+
+        if (abortController.signal.aborted) {
+          return req.chatId;
+        }
+
+        if (!chat) {
+          throw new DyadError(
+            `Chat not found: ${req.chatId}`,
+            DyadErrorKind.NotFound,
+          );
+        }
+
+        if ((streamAdmissionBlockCounts.get(chat.appId) ?? 0) > 0) {
+          const admitted = await waitForAdmissionBlockToClear({
+            blockCounts: streamAdmissionBlockCounts,
+            waiters: streamAdmissionWaiters,
+            key: chat.appId,
+            signal: abortController.signal,
+          });
+          if (!admitted) {
+            return req.chatId;
+          }
+          chat = await loadChatForStream();
+          continue;
+        }
+
+        // Both admission blocks are clear. Remove the pending marker HERE, in
+        // the same synchronous frame as the block checks above and before any
+        // further `await`, so admission is atomic with barrier installation.
+        // `cancelActiveStreamsForApp` deliberately skips controllers still in
+        // `admissionPendingStreams`; a restore that installs its app barrier
+        // (`blockNewStreamsForApp`) after this stream last checked the block but
+        // before the marker is cleared would therefore neither cancel this
+        // stream nor make it re-observe the new barrier, letting it start
+        // mid-restore and dirty the freshly reverted tree after the revert
+        // releases the app lock. Keeping the check-then-clear free of any
+        // intervening `await` closes that window: the stream either observes the
+        // barrier above and waits, or clears its marker before the barrier is
+        // installed and is then a plain in-flight stream the restore cancels.
+        // Do NOT introduce an `await` between the checks above and this line.
+        admissionPendingStreams.delete(abortController);
+        break;
+      }
+
+      // Notify the renderer only after admission succeeds. Requests that arrive
+      // during an in-progress restore wait above and then start normally,
+      // keeping the submitted prompt owned by the stream instead of dropping it.
+      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
       // Record the streaming chat in the crash sentinel so a later force-close
       // can offer to upload it. We intentionally don't clear this when the
@@ -1347,8 +1690,6 @@ This conversation includes one or more image attachments. When the user uploads 
                 chatId: req.chatId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
-              // Clean up the abort controller
-              activeStreams.delete(req.chatId);
             },
             abortSignal: abortController.signal,
           });
@@ -1384,7 +1725,7 @@ This conversation includes one or more image attachments. When the user uploads 
           fullResponse: string;
         }) => {
           // Store the current partial response
-          partialResponses.set(req.chatId, fullResponse);
+          setPartialResponseForStream(abortController, fullResponse);
           // Save to DB (in case user is switching chats during the stream)
           const now = Date.now();
           if (now - lastDbSaveAt >= 150) {
@@ -1720,7 +2061,8 @@ This conversation includes one or more image attachments. When the user uploads 
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            const partialResponse =
+              takePartialResponseForStream(abortController);
             try {
               // Update the placeholder assistant message with the partial content and cancellation note
               await db
@@ -1733,7 +2075,6 @@ This conversation includes one or more image attachments. When the user uploads 
               logger.log(
                 `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
               );
-              partialResponses.delete(req.chatId);
             } catch (error) {
               logger.error(
                 `Error saving partial response for chat ${chatId}:`,
@@ -1749,7 +2090,7 @@ This conversation includes one or more image attachments. When the user uploads 
       // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
       // save the cancellation notice to the placeholder message.
       if (abortController.signal.aborted) {
-        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        const partialResponse = takePartialResponseForStream(abortController);
         try {
           await db
             .update(messages)
@@ -1757,7 +2098,6 @@ This conversation includes one or more image attachments. When the user uploads 
               content: appendCancelledResponseNotice(partialResponse),
             })
             .where(eq(messages.id, placeholderAssistantMessage.id));
-          partialResponses.delete(req.chatId);
         } catch (error) {
           logger.error(
             `Error saving cancelled response for chat ${req.chatId}:`,
@@ -1856,40 +2196,40 @@ This conversation includes one or more image attachments. When the user uploads 
       return "error";
     } finally {
       // Clean up the abort controller
-      activeStreams.delete(req.chatId);
+      removeTrackedValue(activeStreams, req.chatId, abortController);
+      admissionPendingStreams.delete(abortController);
+      partialResponses.delete(abortController);
 
-      // Notify renderer that stream has ended
-      safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      // Notify renderer that stream has ended. When the stream was cancelled,
+      // `cancelTrackedStreams` is the sole sender of the end events (it emits
+      // both `chat:response:end` with `wasCancelled` and `chat:stream:end`
+      // as soon as it aborts this stream). Sending `chat:stream:end` here too
+      // would deliver a duplicate end event to the renderer, so skip it on the
+      // aborted path.
+      if (!abortController.signal.aborted) {
+        safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      }
       // Unblock any pending MCP consents (their banners are cleared on stream end).
-      clearPendingMcpConsentsForChat(req.chatId);
+      if (!activeStreams.has(req.chatId)) {
+        clearPendingMcpConsentsForChat(req.chatId);
+      }
+
+      // Signal any awaiting `cancelStream` call that all writes have settled,
+      // then drop the (now-resolved) completion promise for this chat. Resolve
+      // before deleting so a reader that consults the map after the abort still
+      // observes a settled promise rather than a missing entry.
+      resolveCompletion();
+      removeTrackedValue(streamCompletions, req.chatId, completion);
     }
   };
   registerTrustedIpcHandler("chat:stream", chatStreamHandler);
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
-    const abortController = activeStreams.get(chatId);
-
-    if (abortController) {
-      // Abort the stream
-      abortController.abort();
-      activeStreams.delete(chatId);
-      logger.log(`Aborted stream for chat ${chatId}`);
-    } else {
+    const cancelled = await cancelTrackedStreams([chatId], event.sender);
+    if (!cancelled) {
       logger.warn(`No active stream found for chat ${chatId}`);
     }
-
-    // Send the end event to the renderer with wasCancelled flag
-    safeSend(event.sender, "chat:response:end", {
-      chatId,
-      updatedFiles: false,
-      wasCancelled: true,
-    } satisfies ChatResponseEnd);
-
-    // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire
-    safeSend(event.sender, "chat:stream:end", { chatId });
-    // Unblock any pending MCP consents (their banners are cleared on stream end).
-    clearPendingMcpConsentsForChat(chatId);
 
     return true;
   });

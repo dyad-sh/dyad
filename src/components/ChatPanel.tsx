@@ -5,15 +5,18 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { selectAtom } from "jotai/utils";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
+  scrollToBottomRequestedChatIdsAtom,
 } from "../atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 
@@ -56,6 +59,22 @@ export function ChatPanel({
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatErrorById = useAtomValue(chatErrorByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+  const setScrollToBottomRequestedChatIds = useSetAtom(
+    scrollToBottomRequestedChatIdsAtom,
+  );
+  // Subscribe only to whether THIS chat has a pending scroll request, not to the
+  // whole Set. Otherwise adding/removing any other chat id re-fires the
+  // scroll-to-bottom effect for the visible chat (running its double-RAF
+  // setup/cleanup) even though nothing about the current chat changed.
+  const isScrollToBottomRequestedForChat = useAtomValue(
+    useMemo(
+      () =>
+        selectAtom(scrollToBottomRequestedChatIdsAtom, (requested) =>
+          chatId != null ? requested.has(chatId) : false,
+        ),
+      [chatId],
+    ),
+  );
   const [terminalOpenByChatId, setTerminalOpenByChatId] = useAtom(
     terminalOpenByChatIdAtom,
   );
@@ -88,9 +107,17 @@ export function ChatPanel({
   // Ref to track previous streaming state for stream-complete scroll
   const prevIsStreamingRef = useRef(false);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
-  }, []);
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth"): boolean => {
+      const messagesEnd = messagesEndRef.current;
+      if (!messagesEnd) {
+        return false;
+      }
+      messagesEnd.scrollIntoView({ behavior });
+      return true;
+    },
+    [],
+  );
 
   // Called by Virtuoso's atBottomStateChange (production) or scroll handler (test mode).
   // Pure position-based: no timeouts, no debounce.
@@ -144,6 +171,73 @@ export function ChatPanel({
     // Note: if isChatSwitch && messages.length === 0, we don't scroll yet.
     // The messages will be fetched and this effect will re-run with messages.length > 0.
   }, [chatId, streamCount, messages.length, scrollToBottom]);
+
+  useEffect(() => {
+    if (
+      chatId == null ||
+      !messagesById.has(chatId) ||
+      !isScrollToBottomRequestedForChat
+    ) {
+      return;
+    }
+
+    isAtBottomRef.current = true;
+    setShowScrollButton(false);
+
+    // Wait for messages to render before scrolling. If the chat is loaded and
+    // empty, there is nothing to scroll to, so clear the request instead of
+    // leaving stale per-chat state behind.
+    if (messages.length === 0) {
+      setScrollToBottomRequestedChatIds((prev) => {
+        if (!prev.has(chatId)) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(chatId);
+        return next;
+      });
+      return;
+    }
+
+    // Defer the scroll to after paint, but capture the RAF ids so a chat switch
+    // (which cleans up / re-runs this effect) cancels the pending scroll.
+    // scrollToBottom resolves the shared messagesEndRef at execution time, so
+    // an un-cancelled callback firing after a rapid switch would scroll whatever
+    // chat is now mounted. Clear the request only after the scroll actually
+    // runs, so the cleanup can't outrace the deferred scroll.
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        // The message list is unmounted while Version History is open. Keep the
+        // per-chat request queued until the list is visible and its end marker
+        // exists, then consume it after the scroll actually runs.
+        if (!scrollToBottom("instant")) {
+          return;
+        }
+        setScrollToBottomRequestedChatIds((prev) => {
+          if (!prev.has(chatId)) {
+            return prev;
+          }
+          const next = new Set(prev);
+          next.delete(chatId);
+          return next;
+        });
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+    };
+  }, [
+    chatId,
+    messages.length,
+    messagesById,
+    isVersionPaneOpen,
+    scrollToBottom,
+    isScrollToBottomRequestedForChat,
+    setScrollToBottomRequestedChatIds,
+  ]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {

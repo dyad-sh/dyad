@@ -32,6 +32,13 @@ rows, IPC events, or LLM request dumps. Use the renderer+IPC hybrid harness only
 when assertions are about rendered UI or a flow that must be driven through a
 real UI event in the mounted React tree.
 
+Do not drive overlapping `chat:stream` calls for the same chat through the
+chat-flow or hybrid harness. Both invocations read and write the same persisted
+conversation, so one stream's user/tool messages can change the other stream's
+fake-fixture routing or turn count and make timing-based tests hang. Cover
+per-invocation tracking with a focused unit test, and use separate chats for
+integration coverage of app-wide cancellation.
+
 When a renderer+IPC hybrid or chat-flow harness test passes `engine: true`,
 production code must read Dyad Engine/Gateway URLs at call time. If a test still
 logs `POST https://engine.dyad.sh/v1/... 401 (Unauthorized)`, search for
@@ -80,10 +87,10 @@ loaded Windows CI runners. Keep the large fixture when it proves bounded-memory
 behavior; raising that individual test's timeout is preferable to weakening the
 streaming regression coverage or raising the timeout suite-wide.
 
-If a hybrid suite fails before test logic with
-`better_sqlite3.node was compiled against a different Node.js version` and a
-`NODE_MODULE_VERSION` mismatch, run `npm rebuild better-sqlite3` in the worktree
-before debugging the suite.
+If the unsandboxed rerun reaches the harness but fails loading
+`better-sqlite3` with a `NODE_MODULE_VERSION` mismatch, follow the
+`npm rebuild better-sqlite3` recovery in `rules/native-modules.md` (single
+source of truth for native-module rebuild guidance) before debugging tests.
 
 When a hybrid test needs `IS_TEST_BUILD` behavior from modules that capture
 `process.env.E2E_TEST_BUILD` at import time, set it in a `vi.hoisted()` block

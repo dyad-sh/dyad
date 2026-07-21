@@ -1,9 +1,11 @@
+- button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
 - button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/persistent-todos
 - paragraph: I'll create a task list to track the work.Let me create the utility module first.
 - 'button "utils.ts src/lib/utils.ts Edit Summary: Create utility module"'
@@ -11,6 +13,7 @@
 - button "Copy"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
+- button "Restore to this point"
 - paragraph: tc=local-agent/persistent-todos-resume
 - paragraph: I see there are unfinished todos from last time. Let me continue.Adding error handling to the utility module.
 - 'button "utils.ts src/lib/utils.ts Edit Summary: Add error handling utility"'

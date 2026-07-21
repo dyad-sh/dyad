@@ -4,6 +4,7 @@ import {
   pushRecentViewedChatIdAtom,
   addSessionOpenedChatIdAtom,
   chatInputValueAtom,
+  scrollToBottomRequestedChatIdsAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useNavigate } from "@tanstack/react-router";
@@ -14,6 +15,9 @@ export function useSelectChat() {
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const addSessionOpenedChatId = useSetAtom(addSessionOpenedChatIdAtom);
   const setChatInputValue = useSetAtom(chatInputValueAtom);
+  const setScrollToBottomRequestedChatIds = useSetAtom(
+    scrollToBottomRequestedChatIdsAtom,
+  );
   const navigate = useNavigate();
 
   return {
@@ -22,12 +26,21 @@ export function useSelectChat() {
       appId,
       preserveTabOrder = false,
       prefillInput,
+      scrollToBottom = false,
     }: {
       chatId: number;
       appId: number;
       preserveTabOrder?: boolean;
       prefillInput?: string;
+      scrollToBottom?: boolean;
     }) => {
+      if (scrollToBottom) {
+        setScrollToBottomRequestedChatIds((prev) => {
+          const next = new Set(prev);
+          next.add(chatId);
+          return next;
+        });
+      }
       setSelectedChatId(chatId);
       setSelectedAppId(appId);
       // Track this chat as opened in the current session

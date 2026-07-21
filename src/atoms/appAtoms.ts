@@ -26,3 +26,4 @@ export interface SelectedVersionDiffFile {
 export const selectedVersionDiffFileAtom = atom<SelectedVersionDiffFile | null>(
   null,
 );
+export const selectedVersionReturnBranchAtom = atom<string | null>(null);

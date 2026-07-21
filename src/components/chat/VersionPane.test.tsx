@@ -10,7 +10,11 @@ import { Provider, createStore } from "jotai";
 import type React from "react";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
+import {
+  selectedAppIdAtom,
+  selectedVersionIdAtom,
+  selectedVersionReturnBranchAtom,
+} from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
 import { VersionPane } from "./VersionPane";
 
@@ -26,6 +30,7 @@ const {
   setVersionNoteMock,
   showErrorMock,
   versionsMock,
+  versionMutationStateMock,
 } = vi.hoisted(() => ({
   checkoutVersionMock: vi.fn(),
   listAppScreenshotsMock: vi.fn(),
@@ -38,6 +43,9 @@ const {
   setVersionNoteMock: vi.fn(),
   showErrorMock: vi.fn(),
   versionsMock: [] as Version[],
+  // Mutable holder so individual tests can flip the cross-instance mutation
+  // gate and assert the pane disables restore/preview while it is pending.
+  versionMutationStateMock: { isAnyVersionMutationPending: false },
 }));
 
 vi.mock("react-virtuoso", () => ({
@@ -81,6 +89,9 @@ vi.mock("@/hooks/useVersions", () => ({
     isSettingVersionFavorite: false,
     setVersionNote: setVersionNoteMock,
     isSettingVersionNote: false,
+    get isAnyVersionMutationPending() {
+      return versionMutationStateMock.isAnyVersionMutationPending;
+    },
   }),
 }));
 
@@ -163,6 +174,7 @@ describe("VersionPane", () => {
     showErrorMock.mockReset();
 
     versionsMock.length = 0;
+    versionMutationStateMock.isAnyVersionMutationPending = false;
     checkoutVersionMock.mockResolvedValue(undefined);
     listAppScreenshotsMock.mockResolvedValue({ screenshots: [] });
     refetchBranchInfoMock.mockResolvedValue({ data: { branch: "main" } });
@@ -607,6 +619,26 @@ describe("VersionPane", () => {
     });
   });
 
+  it("does not preview a version while another version mutation is pending", async () => {
+    versionMutationStateMock.isAnyVersionMutationPending = true;
+    const olderVersion = makeVersion(1);
+    const newerVersion = makeVersion(2);
+    versionsMock.push(olderVersion, newerVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+
+    // The row-level preview click is gated on the cross-instance mutation state,
+    // so it must not detach HEAD via a checkout while another version mutation
+    // (e.g. a restore-to-message) is in flight and could reuse HEAD.
+    fireEvent.click(await screen.findByTestId("version-row-2"));
+    fireEvent.click(screen.getByTestId("version-row-1"));
+
+    expect(checkoutVersionMock).not.toHaveBeenCalled();
+  });
+
   it("does not refresh the app after a preview checkout fails", async () => {
     checkoutVersionMock.mockRejectedValue(new Error("checkout failed"));
     const version = makeVersion(1);
@@ -617,8 +649,9 @@ describe("VersionPane", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
+    const store = createStore();
     render(<VersionPane isVisible onClose={vi.fn()} onOpen={vi.fn()} />, {
-      wrapper: makeWrapper(),
+      wrapper: makeWrapper(store),
     });
 
     fireEvent.click(await screen.findByTestId("version-row-1"));
@@ -634,6 +667,7 @@ describe("VersionPane", () => {
 
     expect(refreshAppMock).not.toHaveBeenCalled();
     expect(restartAppMock).not.toHaveBeenCalled();
+    expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();
     consoleErrorSpy.mockRestore();
   });
 

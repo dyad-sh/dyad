@@ -146,7 +146,11 @@ export const planningQuestionnaireTool: ToolDefinition<
       questions,
     });
 
-    const answers = await questionnaireResolver.wait(requestId, ctx.chatId);
+    const answers = await questionnaireResolver.wait(
+      requestId,
+      ctx.chatId,
+      ctx.abortSignal,
+    );
 
     if (!answers) {
       return "The user dismissed the questionnaire without answering. Ask them how they'd like to proceed, or try asking questions in regular chat text.";

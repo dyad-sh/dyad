@@ -31,6 +31,71 @@ function isAgentGitPatchVisiblePath(filePath: string) {
   return isUserVisibleGitPath(filePath) || filePath === "pnpm-workspace.yaml";
 }
 
+// Single-character C-style escapes emitted by git's `quote_c_style` (see
+// git's quote.c). Everything else is either a literal byte or an octal escape.
+const PORCELAIN_C_ESCAPES: Record<string, number> = {
+  a: 0x07,
+  b: 0x08,
+  t: 0x09,
+  n: 0x0a,
+  v: 0x0b,
+  f: 0x0c,
+  r: 0x0d,
+  '"': 0x22,
+  "\\": 0x5c,
+};
+
+function splitQuotedPorcelainRename(filePath: string): [string, string] | null {
+  if (!filePath.startsWith('"')) {
+    return null;
+  }
+
+  let escaped = false;
+  for (let index = 1; index < filePath.length; index++) {
+    const char = filePath[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      const separator = " -> ";
+      if (!filePath.startsWith(separator, index + 1)) {
+        return null;
+      }
+      const oldPath = filePath.slice(0, index + 1);
+      const newPath = filePath.slice(index + 1 + separator.length);
+      return [unquoteGitPath(oldPath), unquoteGitPath(newPath)];
+    }
+  }
+
+  return null;
+}
+
+function getPorcelainPaths(line: string): string[] {
+  const statusCode = line.substring(0, 2);
+  const filePath = line.slice(3).trim();
+  if (!statusCode.includes("R")) {
+    return [unquoteGitPath(filePath)];
+  }
+
+  const quotedRename = splitQuotedPorcelainRename(filePath);
+  if (quotedRename) {
+    return quotedRename;
+  }
+
+  const renameIndex = filePath.indexOf(" -> ");
+  return renameIndex === -1
+    ? [unquoteGitPath(filePath)]
+    : [
+        unquoteGitPath(filePath.slice(0, renameIndex)),
+        unquoteGitPath(filePath.slice(renameIndex + 4)),
+      ];
+}
+
 /**
  * Returns a sanitized environment for git commands on Windows.
  * Filters out WSL-related PATH entries that can cause WSL interop issues.
@@ -454,7 +519,7 @@ export async function gitCheckout({
 export async function gitStageToRevert({
   path,
   targetOid,
-}: GitStageToRevertParams): Promise<void> {
+}: GitStageToRevertParams): Promise<boolean> {
   // Get the current HEAD commit hash
   const currentHeadResult = await execGit(["rev-parse", "HEAD"], path);
   if (currentHeadResult.exitCode !== 0) {
@@ -466,12 +531,10 @@ export async function gitStageToRevert({
 
   const currentCommit = currentHeadResult.stdout.trim();
 
-  // If we're already at the target commit, nothing to do
-  if (currentCommit === targetOid) {
-    return;
-  }
-
-  // Safety: refuse to run if the work-tree isn't clean.
+  // Safety: refuse to run if user-visible files are dirty. Do this before the
+  // currentCommit === targetOid no-op return too; otherwise a no-op restore
+  // with staged manual edits could be committed by the caller as a restore
+  // commit, and untracked runtime files could trigger an empty commit failure.
   const statusResult = await execGit(["status", "--porcelain"], path);
   if (statusResult.exitCode !== 0) {
     throw new DyadError(
@@ -479,11 +542,28 @@ export async function gitStageToRevert({
       DyadErrorKind.Conflict,
     );
   }
-  if (statusResult.stdout.trim() !== "") {
+  const userVisibleChanges = statusResult.stdout
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    // A staged rename shows up as `old -> new`. Examine BOTH sides: a rename
+    // from a managed `.dyad/` file to a user-visible destination must still
+    // count as a user-visible change, otherwise the following `reset --hard`
+    // would silently destroy the destination file. Mirrors the rename
+    // handling in `getGitUncommittedFilesWithStatus`.
+    .flatMap(getPorcelainPaths)
+    .filter(isUserVisibleGitPath);
+  if (userVisibleChanges.length > 0) {
     throw new DyadError(
       "Cannot revert: working tree has uncommitted changes.",
       DyadErrorKind.Conflict,
     );
+  }
+
+  // If we're already at the target commit, nothing to stage. Managed runtime
+  // files are intentionally ignored by the guard above and must not make the
+  // caller attempt an empty revert commit.
+  if (currentCommit === targetOid) {
+    return false;
   }
 
   // Reset the working directory and index to match the target commit state
@@ -501,6 +581,7 @@ export async function gitStageToRevert({
     path,
     "Failed to reset back to original HEAD",
   );
+  return hasStagedChanges({ path });
 }
 
 export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
@@ -604,12 +685,17 @@ export async function getGitUncommittedFiles({
       DyadErrorKind.Conflict,
     );
   }
-  return result.stdout
-    .toString()
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => line.slice(3).trim())
-    .filter(isUserVisibleGitPath);
+  return (
+    result.stdout
+      .toString()
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      // Decode git's C-style path quoting (including `\NNN` octal escapes for
+      // non-ASCII/control bytes) and expand rename entries into both sides, so
+      // non-ASCII paths are returned verbatim and `.dyad/` filtering matches.
+      .flatMap(getPorcelainPaths)
+      .filter(isUserVisibleGitPath)
+  );
 }
 
 function countLines(content: string): number {
@@ -833,21 +919,11 @@ export function unquoteGitPath(raw: string): string {
   }
   const body = raw.slice(1, -1);
   const bytes: number[] = [];
-  const simpleEscapes: Record<string, number> = {
-    a: 0x07,
-    b: 0x08,
-    t: 0x09,
-    n: 0x0a,
-    v: 0x0b,
-    f: 0x0c,
-    r: 0x0d,
-    '"': 0x22,
-    "\\": 0x5c,
-  };
   for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
+    const ch = String.fromCodePoint(body.codePointAt(i)!);
     if (ch !== "\\") {
       bytes.push(...Buffer.from(ch, "utf-8"));
+      i += ch.length - 1;
       continue;
     }
     const next = body[i + 1];
@@ -869,8 +945,8 @@ export function unquoteGitPath(raw: string): string {
       i = j - 1;
       continue;
     }
-    if (next in simpleEscapes) {
-      bytes.push(simpleEscapes[next]);
+    if (next in PORCELAIN_C_ESCAPES) {
+      bytes.push(PORCELAIN_C_ESCAPES[next]);
     } else {
       bytes.push(...Buffer.from(next, "utf-8"));
     }

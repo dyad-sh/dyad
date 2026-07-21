@@ -5,9 +5,15 @@ import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
 import { normalizeStoredChatMode } from "./chat_mode_resolution";
+import {
+  blockNewStreamsForChat,
+  cancelActiveStreamsForChat,
+} from "./chat_stream_handlers";
+import type { WebContents } from "electron";
 import {
   rendererMessageColumns,
   toRendererMessage,
@@ -15,6 +21,35 @@ import {
 import { createChatForApp } from "../utils/chat_creation_utils";
 
 const logger = log.scope("chat_handlers");
+
+async function mutateChatAfterDrainingStreams({
+  chatId,
+  sender,
+  mutation,
+}: {
+  chatId: number;
+  sender: WebContents;
+  mutation: () => Promise<void>;
+}): Promise<void> {
+  const chat = await db.query.chats.findFirst({
+    columns: { appId: true },
+    where: eq(chats.id, chatId),
+  });
+  if (!chat) {
+    return;
+  }
+
+  const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
+  try {
+    // Drain outside the app lock: an aborted stream may need the same lock to
+    // finish a file write. The admission block closes the gap between draining
+    // and mutating so another stream cannot enter the chat in between.
+    await cancelActiveStreamsForChat(chatId, sender);
+    await withLock(chat.appId, mutation);
+  } finally {
+    releaseStreamAdmissionBlock();
+  }
+}
 
 export function registerChatHandlers() {
   createTypedHandler(chatContracts.createChat, async (_, input) => {
@@ -119,8 +154,14 @@ export function registerChatHandlers() {
     })) satisfies ChatSummary[];
   });
 
-  createTypedHandler(chatContracts.deleteChat, async (_, chatId) => {
-    await db.delete(chats).where(eq(chats.id, chatId));
+  createTypedHandler(chatContracts.deleteChat, async (event, chatId) => {
+    await mutateChatAfterDrainingStreams({
+      chatId,
+      sender: event.sender,
+      mutation: async () => {
+        await db.delete(chats).where(eq(chats.id, chatId));
+      },
+    });
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {
@@ -152,8 +193,14 @@ export function registerChatHandlers() {
     return updated[0];
   });
 
-  createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {
-    await db.delete(messages).where(eq(messages.chatId, chatId));
+  createTypedHandler(chatContracts.deleteMessages, async (event, chatId) => {
+    await mutateChatAfterDrainingStreams({
+      chatId,
+      sender: event.sender,
+      mutation: async () => {
+        await db.delete(messages).where(eq(messages.chatId, chatId));
+      },
+    });
   });
 
   createTypedHandler(chatContracts.searchChats, async (_, params) => {

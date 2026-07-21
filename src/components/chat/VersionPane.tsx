@@ -1,5 +1,9 @@
-import { useAtom, useAtomValue } from "jotai";
-import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import {
+  selectedAppIdAtom,
+  selectedVersionIdAtom,
+  selectedVersionReturnBranchAtom,
+} from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -90,6 +94,7 @@ interface VersionRowProps {
   isCheckingOutVersion: boolean;
   isResolvingPreviewBranch: boolean;
   isRevertingVersion: boolean;
+  isAnyVersionMutationPending: boolean;
   showNoteEditor: boolean;
   shouldAutoFocusNote: boolean;
   versionNumberByOid: Map<string, number>;
@@ -111,6 +116,7 @@ function VersionRow({
   isCheckingOutVersion,
   isResolvingPreviewBranch,
   isRevertingVersion,
+  isAnyVersionMutationPending,
   showNoteEditor,
   shouldAutoFocusNote,
   versionNumberByOid,
@@ -123,7 +129,10 @@ function VersionRow({
   onRestoreVersion,
 }: VersionRowProps) {
   const isRestoreDisabled =
-    isRevertingVersion || isCheckingOutVersion || isResolvingPreviewBranch;
+    isRevertingVersion ||
+    isCheckingOutVersion ||
+    isResolvingPreviewBranch ||
+    isAnyVersionMutationPending;
   const trimmedSearchQuery = searchQuery.trim();
   const displayMessage =
     version.message &&
@@ -150,7 +159,14 @@ function VersionRow({
           "opacity-50 cursor-not-allowed",
       )}
       onClick={() => {
-        if (!isCheckingOutVersion) {
+        // Block the preview click while a cross-instance version mutation is
+        // pending. Otherwise a click during a restore-to-message cancellation
+        // window (`isAnyVersionMutationPending`) could detach HEAD via
+        // `checkoutVersion` between the restore's phase-1 branch preflight and
+        // its phase-3 revert, turning the restore into a detached-HEAD failure.
+        // `isResolvingPreviewBranch` is deliberately NOT gated here so a user
+        // can still supersede an in-flight preview with another version.
+        if (!isCheckingOutVersion && !isAnyVersionMutationPending) {
           onVersionClick(version);
         }
       }}
@@ -354,10 +370,14 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     isRevertingVersion,
     setVersionFavorite,
     setVersionNote,
+    isAnyVersionMutationPending,
   } = useVersions(appId);
 
   const [selectedVersionId, setSelectedVersionId] = useAtom(
     selectedVersionIdAtom,
+  );
+  const setSelectedVersionReturnBranch = useSetAtom(
+    selectedVersionReturnBranchAtom,
   );
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const { refetchBranchInfo } = useCurrentBranch(appId);
@@ -503,6 +523,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       // When pane becomes visible after being closed
       if (isVisible && !wasVisibleRef.current) {
         returnBranchRef.current = null;
+        setSelectedVersionReturnBranch(null);
         checkedOutVersionIdRef.current = null;
         isResolvingPreviewBranchRef.current = false;
         setIsResolvingPreviewBranch(false);
@@ -529,6 +550,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
           if (wasResolvingPreviewBranch && !returnBranch) {
             checkedOutVersionIdRef.current = null;
             returnBranchRef.current = null;
+            setSelectedVersionReturnBranch(null);
             wasVisibleRef.current = isVisible;
             return;
           }
@@ -556,6 +578,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
             } finally {
               checkedOutVersionIdRef.current = null;
               returnBranchRef.current = null;
+              setSelectedVersionReturnBranch(null);
             }
             if (returnedToBranch && app?.neonProjectId) {
               await restartApp();
@@ -589,6 +612,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     onOpen,
     refreshVersions,
     restartApp,
+    setSelectedVersionReturnBranch,
   ]);
 
   useEffect(() => {
@@ -607,7 +631,8 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
     setShowFavoritesOnly(false);
     setExpandedNoteVersionIds(new Set());
     setAutoFocusNoteVersionIds(new Set());
-  }, [appId, flushPendingNoteSaves]);
+    setSelectedVersionReturnBranch(null);
+  }, [appId, flushPendingNoteSaves, setSelectedVersionReturnBranch]);
 
   useEffect(() => {
     return () => {
@@ -670,6 +695,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       const latestBranch = latestBranchResult.data?.branch;
       if (latestBranch && latestBranch !== "<no-branch>") {
         returnBranchRef.current = { appId, branch: latestBranch };
+        setSelectedVersionReturnBranch(latestBranch);
       }
       const returnBranch = getReturnBranch();
       if (!returnBranch) {
@@ -696,6 +722,13 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
         console.error("Could not checkout version, unselecting version", error);
         if (isCurrentPreviewRequest()) {
           setSelectedVersionId(checkedOutVersionIdRef.current);
+          // A failed first preview never detached the repository, so no return
+          // branch should remain globally visible to restore-to-message. Keep
+          // it only when another historical preview is still active.
+          if (checkedOutVersionIdRef.current === null) {
+            returnBranchRef.current = null;
+            setSelectedVersionReturnBranch(null);
+          }
         }
         return;
       } finally {
@@ -876,6 +909,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
       });
       checkedOutVersionIdRef.current = null;
       returnBranchRef.current = null;
+      setSelectedVersionReturnBranch(null);
       setSelectedVersionId(null);
       // Close the pane after revert to force a refresh on next open
       onClose();
@@ -980,6 +1014,7 @@ export function VersionPane({ isVisible, onClose, onOpen }: VersionPaneProps) {
                   isCheckingOutVersion={isCheckingOutVersion}
                   isResolvingPreviewBranch={isResolvingPreviewBranch}
                   isRevertingVersion={isRevertingVersion}
+                  isAnyVersionMutationPending={isAnyVersionMutationPending}
                   showNoteEditor={
                     expandedNoteVersionIds.has(version.oid) || !!version.note
                   }

@@ -108,6 +108,10 @@ export const queryKeys = {
       appId: number | null;
       versionId: string | null;
     }) => ["versions", appId, "changes", versionId] as const,
+    restoreToMessageMutation: ({ appId }: { appId: number | null }) =>
+      ["restoreToMessageVersion", appId] as const,
+    revertMutation: ({ appId }: { appId: number | null }) =>
+      ["revertVersion", appId] as const,
   },
 
   branches: {

@@ -161,9 +161,30 @@ const pendingConsentResolvers = new Map<string, PendingConsentEntry>();
 export function waitForAgentToolConsent(
   requestId: string,
   chatId: number,
+  abortSignal?: AbortSignal,
 ): Promise<"accept-once" | "accept-always" | "decline"> {
   return new Promise((resolve) => {
-    pendingConsentResolvers.set(requestId, { chatId, resolve });
+    if (abortSignal?.aborted) {
+      resolve("decline");
+      return;
+    }
+
+    const onAbort = () => {
+      const entry = pendingConsentResolvers.get(requestId);
+      if (entry) {
+        pendingConsentResolvers.delete(requestId);
+        entry.resolve("decline");
+      }
+    };
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+
+    pendingConsentResolvers.set(requestId, {
+      chatId,
+      resolve: (decision) => {
+        abortSignal?.removeEventListener("abort", onAbort);
+        resolve(decision);
+      },
+    });
   });
 }
 
@@ -262,6 +283,7 @@ export async function requireAgentToolConsent(
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
+    abortSignal?: AbortSignal;
   },
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);
@@ -285,12 +307,17 @@ export async function requireAgentToolConsent(
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
+  const { abortSignal, ...rendererParams } = params;
   (event.sender as any).send("agent-tool:consent-request", {
     requestId,
-    ...params,
+    ...rendererParams,
   });
 
-  const response = await waitForAgentToolConsent(requestId, params.chatId);
+  const response = await waitForAgentToolConsent(
+    requestId,
+    params.chatId,
+    abortSignal,
+  );
 
   if (response === "accept-always") {
     setAgentToolConsent(params.toolName, "always");

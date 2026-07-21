@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=turbo-edits-v2
 - paragraph: Example with turbo edit v2
 - button "Search & Replace Index.tsx src/pages/Index.tsx"

@@ -451,58 +451,68 @@ export function useRunApp() {
 
   const restartApp = useCallback(
     async ({
+      appId: requestedAppId,
       removeNodeModules = false,
       recreateSandbox = false,
-    }: { removeNodeModules?: boolean; recreateSandbox?: boolean } = {}) => {
-      if (appId === null) {
+    }: {
+      appId?: number;
+      removeNodeModules?: boolean;
+      recreateSandbox?: boolean;
+    } = {}) => {
+      const targetAppId = requestedAppId ?? appId;
+      if (targetAppId === null) {
         return;
       }
       const startedAt = Date.now();
       setPreviewRunState({
-        appId,
+        appId: targetAppId,
         state: { operation: "restart", startedAt },
       });
-      setPreviewAppExit({ appId, exit: null });
-      clearPackageManagerWarning(appId);
+      setPreviewAppExit({ appId: targetAppId, exit: null });
+      clearPackageManagerWarning(targetAppId);
       try {
         console.debug(
           "Restarting app",
-          appId,
+          targetAppId,
           recreateSandbox ? "with sandbox recreation" : "",
           removeNodeModules ? "with node_modules cleanup" : "",
         );
 
         setAppUrl({
-          appId,
+          appId: targetAppId,
           appUrl: { appUrl: null, appId: null, originalUrl: null, mode: null },
         });
 
         setPreservedUrls((prev) => {
           const next = new Map(prev);
-          next.delete(appId);
+          next.delete(targetAppId);
           return next;
         });
 
-        await ipc.misc.clearLogs({ appId });
-        setConsoleEntries({ appId, entries: [] });
+        await ipc.misc.clearLogs({ appId: targetAppId });
+        setConsoleEntries({ appId: targetAppId, entries: [] });
 
         const logEntry = {
           level: "info" as const,
           type: "server" as const,
           message: "Restarting app...",
-          appId,
+          appId: targetAppId,
           timestamp: startedAt,
         };
 
         ipc.misc.addLog(logEntry);
-        appendConsoleEntries({ appId, entries: [logEntry] });
+        appendConsoleEntries({ appId: targetAppId, entries: [logEntry] });
 
-        await ipc.app.restartApp({ appId, removeNodeModules, recreateSandbox });
-        setPreviewError({ appId, error: undefined });
+        await ipc.app.restartApp({
+          appId: targetAppId,
+          removeNodeModules,
+          recreateSandbox,
+        });
+        setPreviewError({ appId: targetAppId, error: undefined });
       } catch (error) {
-        console.error(`Error restarting app ${appId}:`, error);
+        console.error(`Error restarting app ${targetAppId}:`, error);
         setPreviewError({
-          appId,
+          appId: targetAppId,
           error:
             error instanceof Error
               ? { message: error.message, source: "dyad-app" }
@@ -512,8 +522,8 @@ export function useRunApp() {
                 },
         });
       } finally {
-        bumpPreviewReloadToken(appId);
-        setPreviewRunState({ appId, state: undefined });
+        bumpPreviewReloadToken(targetAppId);
+        setPreviewRunState({ appId: targetAppId, state: undefined });
       }
     },
     [

@@ -20,12 +20,27 @@ vi.mock("electron-log", () => ({
 import { gitListFilesNative } from "@/ipc/utils/git_utils";
 import {
   ensureGitLineEndingPolicy,
+  gitStageToRevert,
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
   countChangedLines,
+  unquoteGitPath,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
+
+async function commitAll(repoDir: string, message: string): Promise<void> {
+  await runGit(repoDir, ["add", "-A"]);
+  await runGit(repoDir, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test User",
+    "commit",
+    "-m",
+    message,
+  ]);
+}
 
 async function runGit(repoDir: string, args: string[]): Promise<void> {
   await execFileAsync("git", args, { cwd: repoDir });
@@ -223,6 +238,10 @@ describe("getGitUncommittedFiles", () => {
       path.join(repoDir, ".dyad", "screenshot.png"),
       "generated",
     );
+    await fs.promises.writeFile(
+      path.join(repoDir, ".dyad", "foo -> bar"),
+      "generated",
+    );
     await fs.promises.writeFile(path.join(repoDir, "src.ts"), "user change");
 
     await expect(
@@ -250,6 +269,43 @@ describe("getGitUncommittedFiles", () => {
     ).resolves.toEqual([
       { path: "src.ts", status: "modified", additions: 2, deletions: 2 },
     ]);
+  });
+
+  it("decodes git's octal-escaped non-ASCII paths in native git status", async () => {
+    const nextRepoDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "git-utils-"),
+    );
+    repoDir = nextRepoDir;
+
+    await runGit(nextRepoDir, ["init"]);
+    await fs.promises.mkdir(path.join(nextRepoDir, ".dyad"), {
+      recursive: true,
+    });
+    // Git quotes these non-ASCII names with `\NNN` octal escapes in porcelain
+    // output; both must be decoded back to their real UTF-8 paths so the
+    // user-visible file is reported and the `.dyad/` one is still filtered out.
+    await fs.promises.writeFile(
+      path.join(nextRepoDir, "café.txt"),
+      "user change",
+    );
+    await fs.promises.writeFile(
+      path.join(nextRepoDir, "emoji-😀.txt"),
+      "user change",
+    );
+    await fs.promises.writeFile(
+      path.join(nextRepoDir, ".dyad", "naïve.png"),
+      "generated",
+    );
+
+    await expect(
+      getGitUncommittedFiles({ path: nextRepoDir }),
+    ).resolves.toEqual(["café.txt", "emoji-😀.txt"]);
+  });
+});
+
+describe("unquoteGitPath", () => {
+  it("decodes octal bytes and preserves literal astral code points", () => {
+    expect(unquoteGitPath('"caf\\303\\251-😀.txt"')).toBe("café-😀.txt");
   });
 });
 
@@ -279,6 +335,94 @@ describe("countChangedLines", () => {
     expect(countChangedLines("same\n", "same\n")).toEqual({
       additions: 0,
       deletions: 0,
+    });
+  });
+});
+
+describe("gitStageToRevert", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  async function createTwoVersionRepo() {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-utils-"));
+    await runGit(repoDir, ["init"]);
+    await fs.promises.writeFile(path.join(repoDir, "app.ts"), "version 1\n");
+    await commitAll(repoDir, "version 1");
+    const targetOid = await runGitOutput(repoDir, ["rev-parse", "HEAD"]);
+    await fs.promises.writeFile(path.join(repoDir, "app.ts"), "version 2\n");
+    await commitAll(repoDir, "version 2");
+    return { repoDir, targetOid };
+  }
+
+  it("ignores untracked Dyad-managed runtime files", async () => {
+    const repo = await createTwoVersionRepo();
+    await fs.promises.mkdir(path.join(repo.repoDir, ".dyad"), {
+      recursive: true,
+    });
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, ".dyad", "screenshot.png"),
+      "generated",
+    );
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, ".dyad", "foo -> bar"),
+      "generated",
+    );
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "pnpm-workspace.yaml"),
+      'packages: ["."]\n',
+    );
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: repo.targetOid }),
+    ).resolves.toBe(true);
+  });
+
+  it("still rejects user-visible uncommitted files", async () => {
+    const repo = await createTwoVersionRepo();
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "manual-notes.txt"),
+      "unfinished work",
+    );
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: repo.targetOid }),
+    ).rejects.toMatchObject({
+      message: "Cannot revert: working tree has uncommitted changes.",
+    });
+  });
+
+  it("treats current-HEAD restores with only managed runtime files as no-ops", async () => {
+    const repo = await createTwoVersionRepo();
+    const currentOid = await runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]);
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "pnpm-workspace.yaml"),
+      'packages: ["."]\n',
+    );
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: currentOid }),
+    ).resolves.toBe(false);
+  });
+
+  it("rejects current-HEAD restores with staged user-visible files", async () => {
+    const repo = await createTwoVersionRepo();
+    const currentOid = await runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]);
+    await fs.promises.writeFile(
+      path.join(repo.repoDir, "manual-notes.txt"),
+      "unfinished work",
+    );
+    await runGit(repo.repoDir, ["add", "manual-notes.txt"]);
+
+    await expect(
+      gitStageToRevert({ path: repo.repoDir, targetOid: currentOid }),
+    ).rejects.toMatchObject({
+      message: "Cannot revert: working tree has uncommitted changes.",
     });
   });
 });

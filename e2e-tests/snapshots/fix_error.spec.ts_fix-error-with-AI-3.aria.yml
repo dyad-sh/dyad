@@ -1,8 +1,10 @@
+- button "Restore to this point"
 - paragraph: tc=create-error
 - paragraph: I will intentionally add an error
 - 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"'
 - button "Copy"
 - text: "[[Version 2: files changed]]"
+- button "Restore to this point"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
   - link "http://localhost:[[port]]/src/pages/Index.tsx:6:6":

@@ -112,6 +112,48 @@ export const VersionMetadataResultSchema = z.object({
   note: z.string().nullable(),
 });
 
+export const RestoreToMessageParamsSchema = z.object({
+  // Constrain to positive integers: these are autoIncrement primary keys, so
+  // negative, zero, and float values are always invalid and should fail fast
+  // with a descriptive error rather than silently matching no row.
+  appId: z.number().int().positive(),
+  chatId: z.number().int().positive(),
+  messageId: z.number().int().positive(),
+  // When true (the default), the codebase (and database, if applicable) is
+  // reverted to the version before this message in addition to forking the
+  // chat. When false, only the chat is forked and the codebase is left as-is.
+  restoreCodebase: z.boolean().optional(),
+  // When invoked while the Version pane is previewing a historical commit,
+  // HEAD is detached. The renderer passes the branch it will return to so
+  // fork-only chats can be anchored to the live branch instead of the preview.
+  targetBranchName: z
+    .string()
+    .refine(
+      (v) => !v.startsWith("-"),
+      "targetBranchName must not start with '-'",
+    )
+    .optional(),
+});
+
+export type RestoreToMessageParams = z.infer<
+  typeof RestoreToMessageParamsSchema
+>;
+
+export const RestoreToMessageResponseSchema = z.union([
+  z.object({ newChatId: z.number(), successMessage: z.string() }),
+  z.object({ newChatId: z.number(), warningMessage: z.string() }),
+  // No version could be determined, so no new chat was created. The renderer
+  // should stay on the current chat (there is no `newChatId` to navigate to).
+  // `.strict()` so a malformed response that still carries a `newChatId` is
+  // rejected rather than silently stripped down to this "no new chat" branch,
+  // which would strand the renderer on the wrong chat.
+  z.object({ warningMessage: z.string() }).strict(),
+]);
+
+export type RestoreToMessageResponse = z.infer<
+  typeof RestoreToMessageResponseSchema
+>;
+
 // =============================================================================
 // Version Contracts
 // =============================================================================
@@ -151,6 +193,12 @@ export const versionContracts = {
     channel: "set-version-note",
     input: SetVersionNoteParamsSchema,
     output: VersionMetadataResultSchema,
+  }),
+
+  restoreToMessageVersion: defineContract({
+    channel: "restore-to-message-version",
+    input: RestoreToMessageParamsSchema,
+    output: RestoreToMessageResponseSchema,
   }),
 
   getCurrentBranch: defineContract({

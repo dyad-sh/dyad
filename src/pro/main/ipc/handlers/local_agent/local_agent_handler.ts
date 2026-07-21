@@ -136,6 +136,12 @@ import {
   type RendererMessageRow,
 } from "@/ipc/utils/renderer_chat_message";
 
+export function clearPendingLocalAgentInputsForChat(chatId: number): void {
+  clearPendingConsentsForChat(chatId);
+  questionnaireResolver.abortChat(chatId);
+  integrationResolver.abortChat(chatId);
+}
+
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
 const MAX_TERMINATED_STREAM_RETRIES = 3;
@@ -740,6 +746,7 @@ export async function handleLocalAgentStream(
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
           metadata: params.metadata,
+          abortSignal: abortController.signal,
         });
       },
       appendUserMessage: (content: UserMessageContentPart[]) => {
@@ -1260,10 +1267,8 @@ export async function handleLocalAgentStream(
               if (abortController.signal.aborted) {
                 logger.log(`Stream aborted for chat ${req.chatId}`);
                 // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
-                clearPendingConsentsForChat(req.chatId);
+                clearPendingLocalAgentInputsForChat(req.chatId);
                 clearPendingMcpConsentsForChat(req.chatId);
-                questionnaireResolver.abortChat(req.chatId);
-                integrationResolver.abortChat(req.chatId);
                 deleteAppBlueprintForChat(req.chatId);
                 break;
               }
@@ -1776,10 +1781,8 @@ export async function handleLocalAgentStream(
   } catch (error) {
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
-    clearPendingConsentsForChat(req.chatId);
+    clearPendingLocalAgentInputsForChat(req.chatId);
     clearPendingMcpConsentsForChat(req.chatId);
-    questionnaireResolver.abortChat(req.chatId);
-    integrationResolver.abortChat(req.chatId);
     // Only drop the app blueprint itself on explicit cancellation — a transient
     // stream error should leave the plan around so the user can retry from
     // the same approval state instead of losing their edits.

@@ -273,6 +273,12 @@ const config: ForgeConfig = {
           target: "main",
         },
         {
+          entry:
+            "workers/supabase_dependency_analysis/supabase_dependency_analysis_worker.ts",
+          config: "vite.supabase-dependency-analysis-worker.config.mts",
+          target: "main",
+        },
+        {
           entry: "src/ipc/utils/sandbox/sandbox_worker.ts",
           config: "vite.sandbox-worker.config.mts",
           target: "main",

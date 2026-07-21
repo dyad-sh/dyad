@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
@@ -347,18 +346,36 @@ async function findTypeScriptConfig(appPath: string): Promise<string> {
 }
 
 async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
-  // Resolve through Node's algorithm (walking ancestor node_modules) so
-  // hoisted workspace installs are found, matching the Code Explorer gate.
-  let packageJsonPath: string;
-  try {
-    packageJsonPath = createRequire(path.join(appPath, "package.json")).resolve(
-      "typescript/package.json",
+  // Walk the same ancestor node_modules locations Node would search, but do
+  // not use require.resolve here. Node caches successful resolutions for the
+  // life of the Electron main process, so a Rebuild that replaces a pnpm
+  // symlink can otherwise keep returning the deleted package's real path.
+  let currentPath = path.resolve(appPath);
+  let packageJsonPath: string | undefined;
+  while (true) {
+    const candidate = path.join(
+      currentPath,
+      "node_modules",
+      "typescript",
+      "package.json",
     );
-  } catch (error) {
+    try {
+      await fs.access(candidate);
+      packageJsonPath = candidate;
+      break;
+    } catch {
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) {
+        break;
+      }
+      currentPath = parentPath;
+    }
+  }
+
+  if (!packageJsonPath) {
     throw new TypeCheckPreconditionError(
       "typescript-not-found",
       `Failed to load TypeScript from ${appPath}: package is not installed`,
-      { cause: error },
     );
   }
 

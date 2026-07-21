@@ -84,6 +84,9 @@ import { AppList } from "@/components/AppList";
 import { ChatList } from "@/components/ChatList";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
+import { createVersionPreviewRuntime } from "@/version_preview/commands";
+import { VersionPreviewManager } from "@/version_preview/manager";
+import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -836,24 +839,30 @@ export async function setupHybridChatHarness(
         },
       });
       queryClients.push(queryClient);
+      const versionPreviewManager = new VersionPreviewManager(
+        createVersionPreviewRuntime({ queryClient, store }),
+        store,
+      );
 
       const result = render(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
-            <ThemeProvider>
-              <DeepLinkProvider>
-                <SidebarProvider defaultOpen={false}>
-                  {opts.wireAppEvents !== false && (
-                    <HybridAppEventWiring
-                      store={store}
-                      queryClient={queryClient}
-                    />
-                  )}
-                  <RouterProvider router={router as never} />
-                  <Toaster richColors expand duration={500} />
-                </SidebarProvider>
-              </DeepLinkProvider>
-            </ThemeProvider>
+            <VersionPreviewProvider manager={versionPreviewManager}>
+              <ThemeProvider>
+                <DeepLinkProvider>
+                  <SidebarProvider defaultOpen={false}>
+                    {opts.wireAppEvents !== false && (
+                      <HybridAppEventWiring
+                        store={store}
+                        queryClient={queryClient}
+                      />
+                    )}
+                    <RouterProvider router={router as never} />
+                    <Toaster richColors expand duration={500} />
+                  </SidebarProvider>
+                </DeepLinkProvider>
+              </ThemeProvider>
+            </VersionPreviewProvider>
           </Provider>
         </QueryClientProvider>,
       );

@@ -12,13 +12,19 @@ atoms outside React (e.g. the version preview command adapter in
 at initialization instead of importing `getDefaultStore()`, or test stores
 will silently diverge from the store the service writes to.
 
-## Version preview repository state is machine-owned
+## Version preview state is machine-owned
 
-Git preview orchestration (checkout/return/restore, recovery) lives in the
-state machine under `src/version_preview/`; `selectedVersionIdAtom` is
-presentation-only (which diff CodeView shows). Never infer or drive Git
-transitions from that atom or from pane visibility — send events to the
-machine instead (see plans/version-preview-state-machine.md).
+Git preview orchestration and its ephemeral presentation selection live in
+the app-keyed state machine under `src/version_preview/`. Never add a parallel
+Jotai atom for the selected version, diff file, return branch, or mutation
+status; read the machine snapshot and send events through
+`useVersionPreview(appId)`. The command adapter is the only renderer caller of
+version-mutation IPC (see `plans/better-state-machine.md`).
+
+Derive UI visibility and action availability from the lifecycle state as well
+as retained session fields. Returning/recovery states may intentionally retain
+historical session data, but must hide stale presentation and consistently
+block events that those states reject.
 
 ## Ownership
 
@@ -83,12 +89,7 @@ When deleting an entity, prune any keyed Jotai state for that entity. Chat
 state already uses helper atoms such as `removeChatIdFromAllTrackingAtom`; app
 scoped runtime state should follow the same pattern.
 
-## Plan acceptance routing
-
-`planAcceptInNewChatByChatIdAtom` records whether Accept started a new chat
-(`true`) or continued here (`false`). Plan panel buttons set it; typed
-acceptance (e.g. "implement the plan" → `exit_plan`) does not. A `plan:update`
-for the chat must clear any prior choice so a new plan cannot inherit stale
-routing. When missing, `usePlanHandoff` / `DyadExitPlan` must default to
-**continue in the current chat** (`?? false`) — never create a new chat by
-default.
+For provider-owned disposable services, keep constructors side-effect-free and
+start external subscriptions only after the provider commits. React StrictMode
+replays effect setup/cleanup while retaining hook state, so cleanup must not
+permanently dispose an instance that the replayed setup will reuse.

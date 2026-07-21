@@ -21,7 +21,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { stagedDiffFileAtom } from "@/atoms/viewAtoms";
-import { selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { cn } from "@/lib/utils";
@@ -32,6 +31,7 @@ import {
   generateDefaultCommitMessage,
   LineStats,
 } from "@/components/chat/uncommittedFileStatus";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
 
 interface CommitMenuProps {
   appId: number;
@@ -47,14 +47,14 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
-  const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
+  const { send: sendPreviewEvent } = useVersionPreview(appId);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
 
   // Opening a staged file's diff must clear any selected version diff, since
   // CodeView suppresses staged-diff mode whenever a version diff is active.
   const openStagedDiff = (filePath: string) => {
-    setSelectedVersionId(null);
+    sendPreviewEvent({ type: "CLOSE" });
     setStagedDiffFile(filePath);
   };
 

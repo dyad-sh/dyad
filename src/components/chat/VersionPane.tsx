@@ -1,9 +1,5 @@
-import { useAtomValue, useSetAtom } from "jotai";
-import {
-  selectedAppIdAtom,
-  selectedVersionIdAtom,
-  selectedVersionReturnBranchAtom,
-} from "@/atoms/appAtoms";
+import { useAtomValue } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -32,6 +28,7 @@ import { Virtuoso } from "react-virtuoso";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import {
   diffVersionIdForState,
+  isMutatingState,
   isPaneVisibleState,
 } from "@/version_preview/state";
 
@@ -353,7 +350,6 @@ export function VersionPane() {
     refreshVersions,
     setVersionFavorite,
     setVersionNote,
-    isAnyVersionMutationPending,
   } = useVersions(appId);
 
   // Repository state lives in the version preview machine; this component
@@ -363,33 +359,8 @@ export function VersionPane() {
   const isResolvingPreviewBranch = previewState.type === "resolving-origin";
   const isCheckingOutVersion = previewState.type === "checking-out";
   const isRevertingVersion = previewState.type === "restoring";
+  const isAnyVersionMutationPending = isMutatingState(previewState);
   const selectedVersionId = diffVersionIdForState(previewState);
-
-  // Presentation-only: which version diff CodeView displays. Never used to
-  // decide Git transitions (see plans/version-preview-state-machine.md).
-  const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
-  const setSelectedVersionReturnBranch = useSetAtom(
-    selectedVersionReturnBranchAtom,
-  );
-  const previousPreviewStateTypeRef = useRef(previewState.type);
-  useEffect(() => {
-    const previousType = previousPreviewStateTypeRef.current;
-    previousPreviewStateTypeRef.current = previewState.type;
-    if (previewState.type !== "closed") {
-      setSelectedVersionId(diffVersionIdForState(previewState));
-    } else if (previousType !== "closed") {
-      setSelectedVersionId(null);
-    }
-  }, [previewState, setSelectedVersionId]);
-
-  useEffect(() => {
-    const returnBranch =
-      previewState.type !== "closed" &&
-      previewState.session.checkedOutVersionId !== null
-        ? previewState.session.originBranch
-        : null;
-    setSelectedVersionReturnBranch(returnBranch);
-  }, [previewState, setSelectedVersionReturnBranch]);
 
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -565,15 +536,15 @@ export function VersionPane() {
     send({
       type: "SELECT_VERSION",
       versionId: version.oid,
-      hasDbSnapshot: !!version.dbTimestamp,
     });
   };
 
   const handleRestoreVersion = (version: Version) => {
+    if (appId === null) return;
     send({
       type: "RESTORE",
+      appId,
       versionId: version.oid,
-      hasDbSnapshot: !!version.dbTimestamp,
     });
   };
 

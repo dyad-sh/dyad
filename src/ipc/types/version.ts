@@ -42,23 +42,39 @@ export const RevertVersionParamsSchema = z.object({
 
 export type RevertVersionParams = z.infer<typeof RevertVersionParamsSchema>;
 
-export const RevertVersionResponseSchema = z.union([
-  z.object({ successMessage: z.string() }),
-  z.object({ warningMessage: z.string() }),
-]);
-
-export type RevertVersionResponse = z.infer<typeof RevertVersionResponseSchema>;
-
-export const CheckoutVersionParamsSchema = z.object({
-  appId: z.number(),
-  // Unlike getVersionChanges, this accepts arbitrary git refs (e.g. the "main"
-  // branch for the restore-to-latest flow), so it can't be constrained to a hex
-  // SHA. We still reject leading-dash values so a ref can't be interpreted as a
-  // git option when passed to native `git checkout`.
-  versionId: z
-    .string()
-    .refine((v) => !v.startsWith("-"), "versionId must not start with '-'"),
+export const VersionCommandResultSchema = z.object({
+  repositoryOutcome: z.enum(["target-applied", "unchanged"]),
+  notification: z
+    .object({
+      kind: z.enum(["success", "warning"]),
+      message: z.string(),
+    })
+    .nullable(),
+  runtimeAction: z.enum(["none", "restart"]),
+  affectedChatId: z.number().nullable(),
+  createdChatId: z.number().nullable(),
 });
+
+export type VersionCommandResult = z.infer<typeof VersionCommandResultSchema>;
+export type RevertVersionResponse = VersionCommandResult;
+
+const SafeGitRefSchema = z
+  .string()
+  .min(1)
+  .refine((v) => !v.startsWith("-"), "git ref must not start with '-'");
+
+export const CheckoutVersionParamsSchema = z.discriminatedUnion("purpose", [
+  z.object({
+    purpose: z.literal("preview"),
+    appId: z.number(),
+    versionId: SafeGitRefSchema,
+  }),
+  z.object({
+    purpose: z.literal("return"),
+    appId: z.number(),
+    branch: SafeGitRefSchema,
+  }),
+]);
 
 export const VersionChangeTypeSchema = z.enum(["added", "modified", "deleted"]);
 
@@ -81,13 +97,8 @@ export const GetVersionChangesParamsSchema = z.object({
     .regex(/^[0-9a-fA-F]{4,64}$/, "versionId must be a hex commit SHA"),
 });
 
-export const CheckoutVersionResponseSchema = z.object({
-  warningMessage: z.string().optional(),
-});
-
-export type CheckoutVersionResponse = z.infer<
-  typeof CheckoutVersionResponseSchema
->;
+export const CheckoutVersionResponseSchema = VersionCommandResultSchema;
+export type CheckoutVersionResponse = VersionCommandResult;
 
 const CommitHashSchema = z
   .string()
@@ -139,16 +150,7 @@ export type RestoreToMessageParams = z.infer<
   typeof RestoreToMessageParamsSchema
 >;
 
-export const RestoreToMessageResponseSchema = z.union([
-  z.object({ newChatId: z.number(), successMessage: z.string() }),
-  z.object({ newChatId: z.number(), warningMessage: z.string() }),
-  // No version could be determined, so no new chat was created. The renderer
-  // should stay on the current chat (there is no `newChatId` to navigate to).
-  // `.strict()` so a malformed response that still carries a `newChatId` is
-  // rejected rather than silently stripped down to this "no new chat" branch,
-  // which would strand the renderer on the wrong chat.
-  z.object({ warningMessage: z.string() }).strict(),
-]);
+export const RestoreToMessageResponseSchema = VersionCommandResultSchema;
 
 export type RestoreToMessageResponse = z.infer<
   typeof RestoreToMessageResponseSchema
@@ -168,7 +170,7 @@ export const versionContracts = {
   revertVersion: defineContract({
     channel: "revert-version",
     input: RevertVersionParamsSchema,
-    output: RevertVersionResponseSchema,
+    output: VersionCommandResultSchema,
   }),
 
   checkoutVersion: defineContract({

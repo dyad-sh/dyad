@@ -29,7 +29,7 @@ import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { clearTestRuntimeForAppAtom } from "@/atoms/testRuntimeAtoms";
-import { disposeVersionPreviewController } from "@/version_preview/registry";
+import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -43,6 +43,7 @@ import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectio
 import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
 
 export default function AppsPage() {
+  const versionPreviewManager = useVersionPreviewManager();
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const { collections, isLoading: collectionsLoading } = useAppCollections();
@@ -157,7 +158,7 @@ export default function AppsPage() {
         setSelectedAppId(null);
       }
       for (const appId of succeededIds) {
-        disposeVersionPreviewController(appId);
+        versionPreviewManager.disposeApp(appId);
         clearPreviewRuntimeForApp(appId);
         clearTestRuntimeForApp(appId);
       }

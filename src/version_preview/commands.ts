@@ -1,76 +1,150 @@
-/**
- * Production adapter for VersionPreviewCommands.
- *
- * Calls ipc.version.* directly — not the React Query mutation hooks — so a
- * command can never capture the currently selected app or depend on a
- * mounted component. The adapter also absorbs the side effects the hooks
- * perform today (checkout counter atom, query invalidation, toasts,
- * cloud/db runtime restarts) so behavior is preserved.
- *
- * Only the Git IPC call decides success or failure. Post-success effects
- * (query invalidation, chat refresh, runtime restart) are best-effort and
- * never rewrite the machine's belief about the Git checkout.
- */
-
 import type { QueryClient } from "@tanstack/react-query";
 import type { createStore } from "jotai";
 import { toast } from "sonner";
-import { ipc, type App } from "@/ipc/types";
-import type { UserSettings } from "@/lib/schemas";
+import { ipc, type VersionCommandResult } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
-import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { restartAppWithStore } from "@/hooks/useRunApp";
 import type { VersionPreviewRuntime } from "./controller";
 
 type JotaiStore = ReturnType<typeof createStore>;
 
 const NO_BRANCH = "<no-branch>";
+const recoveryToastId = (appId: number) => `version-preview-recovery-${appId}`;
 
 export interface VersionPreviewAdapterDeps {
   queryClient: QueryClient;
   store: JotaiStore;
+  navigateToChat?: (input: { appId: number; chatId: number }) => void;
 }
 
 export function createVersionPreviewRuntime({
   queryClient,
   store,
+  navigateToChat,
 }: VersionPreviewAdapterDeps): VersionPreviewRuntime {
-  const getSettings = () =>
-    queryClient.getQueryData<UserSettings>(queryKeys.settings.user);
-
-  async function runGitCheckout(appId: number, versionId: string) {
-    // Keep isAnyCheckoutVersionInProgressAtom accurate for UI (e.g.
-    // ChatHeader) that gates on active checkouts.
+  async function runCheckout(
+    input:
+      | { purpose: "preview"; appId: number; versionId: string }
+      | { purpose: "return"; appId: number; branch: string },
+  ) {
     store.set(activeCheckoutCounterAtom, (count) => count + 1);
     try {
-      return await ipc.version.checkoutVersion({ appId, versionId });
+      return await ipc.version.checkoutVersion(input);
     } finally {
       store.set(activeCheckoutCounterAtom, (count) => count - 1);
     }
   }
 
   async function invalidateGitQueries(appId: number) {
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.branches.current({ appId }),
-    });
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.versions.list({ appId }),
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.branches.current({ appId }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apps.detail({ appId }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.problems.byApp({ appId }),
+      }),
+    ]);
   }
 
-  /** Post-success effects must never surface as a Git mutation failure. */
-  async function runPostEffects(label: string, effects: () => Promise<void>) {
+  async function applyVersionCommandResult(
+    appId: number,
+    result: VersionCommandResult,
+  ): Promise<void> {
+    if (result.notification?.kind === "success") {
+      toast.success(result.notification.message);
+    } else if (result.notification?.kind === "warning") {
+      toast.warning(result.notification.message, { duration: 8000 });
+    }
+
+    const effects: Promise<unknown>[] = [invalidateGitQueries(appId)];
+
+    if (result.affectedChatId !== null) {
+      effects.push(
+        ipc.chat.getChat(result.affectedChatId).then((chat) => {
+          store.set(chatMessagesByIdAtom, (previous) => {
+            const next = new Map(previous);
+            next.set(result.affectedChatId!, chat.messages);
+            return next;
+          });
+        }),
+      );
+    }
+
+    if (result.createdChatId !== null) {
+      navigateToChat?.({ appId, chatId: result.createdChatId });
+      effects.push(
+        queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }),
+      );
+    }
+
+    if (result.runtimeAction === "restart") {
+      effects.push(restartAppWithStore(store, appId));
+    }
+
+    const outcomes = await Promise.allSettled(effects);
+    const failure = outcomes.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === "rejected",
+    );
+    if (failure) {
+      throw failure.reason;
+    }
+  }
+
+  async function mutate(
+    appId: number,
+    label: string,
+    operation: () => Promise<VersionCommandResult>,
+  ): Promise<VersionCommandResult> {
+    let result: VersionCommandResult;
     try {
-      await effects();
+      result = await operation();
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+    try {
+      await applyVersionCommandResult(appId, result);
     } catch (error) {
       console.error(`version_preview: ${label} post-effects failed`, error);
+      toast.warning(
+        "The version operation completed, but Dyad could not refresh every related view.",
+      );
     }
+    return result;
+  }
+
+  async function mutateAndDiscard(
+    appId: number,
+    label: string,
+    operation: () => Promise<VersionCommandResult>,
+  ): Promise<void> {
+    await mutate(appId, label, operation);
   }
 
   return {
     notifyError: (message) => showError(message),
+    notifyRecovery: ({ appId, error, retry }) => {
+      toast.error(
+        "Unable to return to the branch that was active before previewing this version.",
+        {
+          id: recoveryToastId(appId),
+          description: error.message,
+          duration: Infinity,
+          action: { label: "Retry", onClick: retry },
+        },
+      );
+    },
+    dismissRecovery: (appId) => toast.dismiss(recoveryToastId(appId)),
     commands: {
       async resolveOriginBranch({ appId }) {
         const result = await queryClient.fetchQuery({
@@ -82,87 +156,52 @@ export function createVersionPreviewRuntime({
         return { branch: branch && branch !== NO_BRANCH ? branch : null };
       },
 
-      async checkoutVersion({ appId, versionId, hasDbSnapshot }) {
-        let result: Awaited<ReturnType<typeof runGitCheckout>>;
-        try {
-          result = await runGitCheckout(appId, versionId);
-        } catch (error) {
-          showError(error);
-          throw error;
-        }
-        await runPostEffects("checkout", async () => {
-          if (result?.warningMessage) {
-            toast.warning(result.warningMessage, { duration: 8000 });
-          }
-          await invalidateGitQueries(appId);
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.apps.detail({ appId }),
-          });
-          if (getSettings()?.runtimeMode2 === "cloud" || hasDbSnapshot) {
-            await restartAppWithStore(store, appId);
-          }
-        });
-      },
+      checkoutVersion: ({ appId, versionId }) =>
+        mutateAndDiscard(appId, "checkout", () =>
+          runCheckout({ purpose: "preview", appId, versionId }),
+        ),
 
-      async returnToBranch({ appId, branch }) {
-        let result: Awaited<ReturnType<typeof runGitCheckout>>;
-        try {
-          result = await runGitCheckout(appId, branch);
-        } catch (error) {
-          showError(error);
-          throw error;
-        }
-        await runPostEffects("return", async () => {
-          if (result?.warningMessage) {
-            toast.warning(result.warningMessage, { duration: 8000 });
-          }
-          await invalidateGitQueries(appId);
-          const app = await queryClient.fetchQuery<App | null>({
-            queryKey: queryKeys.apps.detail({ appId }),
-            queryFn: () => ipc.app.getApp(appId),
-          });
-          if (getSettings()?.runtimeMode2 === "cloud" || app?.neonProjectId) {
-            await restartAppWithStore(store, appId);
-          }
-        });
-      },
+      returnToBranch: ({ appId, branch }) =>
+        mutateAndDiscard(appId, "return", () =>
+          runCheckout({ purpose: "return", appId, branch }),
+        ),
 
-      async restoreVersion({ appId, versionId, targetBranch, hasDbSnapshot }) {
-        let result: Awaited<ReturnType<typeof ipc.version.revertVersion>>;
-        try {
-          result = await ipc.version.revertVersion({
+      switchBranch: ({ appId, branch }) =>
+        mutateAndDiscard(appId, "switch-branch", () =>
+          runCheckout({ purpose: "return", appId, branch }),
+        ),
+
+      restoreVersion: ({
+        appId,
+        versionId,
+        targetBranch,
+        currentChatMessageId,
+      }) =>
+        mutateAndDiscard(appId, "restore", () =>
+          ipc.version.revertVersion({
             appId,
             previousVersionId: versionId,
-            targetBranchName: targetBranch,
-          });
-        } catch (error) {
-          showError(error);
-          throw error;
-        }
-        await runPostEffects("restore", async () => {
-          if (result && "successMessage" in result) {
-            toast.success(result.successMessage);
-          } else if (result && "warningMessage" in result) {
-            toast.warning(result.warningMessage);
-          }
-          await invalidateGitQueries(appId);
-          const chatId = store.get(selectedChatIdAtom);
-          if (chatId) {
-            const chat = await ipc.chat.getChat(chatId);
-            store.set(chatMessagesByIdAtom, (prev) => {
-              const next = new Map(prev);
-              next.set(chatId, chat.messages);
-              return next;
-            });
-          }
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.problems.byApp({ appId }),
-          });
-          if (getSettings()?.runtimeMode2 === "cloud" || hasDbSnapshot) {
-            await restartAppWithStore(store, appId);
-          }
-        });
-      },
+            targetBranchName: targetBranch ?? undefined,
+            currentChatMessageId,
+          }),
+        ),
+
+      restoreToMessage: ({
+        appId,
+        chatId,
+        messageId,
+        restoreCodebase,
+        targetBranch,
+      }) =>
+        mutate(appId, "restore-to-message", () =>
+          ipc.version.restoreToMessageVersion({
+            appId,
+            chatId,
+            messageId,
+            restoreCodebase,
+            targetBranchName: targetBranch ?? undefined,
+          }),
+        ),
     },
   };
 }

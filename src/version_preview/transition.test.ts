@@ -5,7 +5,13 @@ import type {
   PreviewSession,
   PreviewState,
 } from "./state";
-import { CLOSED_STATE } from "./state";
+import {
+  CLOSED_STATE,
+  diffVersionIdForState,
+  isPaneVisibleState,
+  isVersionActionBlockedState,
+  selectedDiffFileForState,
+} from "./state";
 import {
   BRANCH_UNAVAILABLE_MESSAGE,
   transition,
@@ -19,9 +25,10 @@ function session(overrides: Partial<PreviewSession> = {}): PreviewSession {
     appId: APP_ID,
     originBranch: null,
     targetVersionId: null,
-    targetHasDbSnapshot: false,
     checkedOutVersionId: null,
     exitIntent: { type: "none" },
+    selectedDiffFile: null,
+    isDiffVisible: false,
     ...overrides,
   };
 }
@@ -31,22 +38,47 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   { type: "CLOSE" },
   { type: "APP_CHANGED", nextAppId: 8 },
   { type: "APP_CHANGED", nextAppId: null },
-  { type: "SELECT_VERSION", versionId: "v1", hasDbSnapshot: false },
-  { type: "SELECT_VERSION", versionId: "v2", hasDbSnapshot: true },
-  { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+  { type: "SELECT_VERSION", versionId: "v1" },
+  { type: "SELECT_VERSION", versionId: "v2" },
+  { type: "CLOSE_VERSION_DIFF" },
+  { type: "SWITCH_BRANCH", appId: APP_ID, branch: "main" },
+  {
+    type: "VIEW_VERSION_DIFF",
+    appId: APP_ID,
+    versionId: "v1",
+    file: { versionId: "v1", path: "src/a.ts" },
+  },
+  {
+    type: "SELECT_DIFF_FILE",
+    file: { versionId: "v1", path: "src/a.ts" },
+  },
+  { type: "RESTORE", appId: APP_ID, versionId: "v1" },
+  {
+    type: "RESTORE_TO_MESSAGE",
+    appId: APP_ID,
+    chatId: 2,
+    messageId: 3,
+    restoreCodebase: true,
+  },
   { type: "RETRY_RETURN" },
   { type: "ORIGIN_RESOLVED", branch: "feature/origin" },
   { type: "ORIGIN_RESOLUTION_FAILED" },
   { type: "CHECKOUT_SUCCEEDED" },
   { type: "CHECKOUT_FAILED", error: { message: "checkout failed" } },
-  { type: "RESTORE_SUCCEEDED" },
+  { type: "RESTORE_SUCCEEDED", repositoryOutcome: "target-applied" },
   { type: "RESTORE_FAILED", error: { message: "restore failed" } },
   { type: "RETURN_SUCCEEDED" },
   { type: "RETURN_FAILED", error: { message: "return failed" } },
+  { type: "SWITCH_BRANCH_SUCCEEDED" },
+  { type: "SWITCH_BRANCH_FAILED", error: { message: "switch failed" } },
 ];
 
 const STATE_SAMPLES: PreviewState[] = [
   CLOSED_STATE,
+  {
+    type: "viewing-diff",
+    session: session({ targetVersionId: "v1", isDiffVisible: true }),
+  },
   { type: "browsing", session: session() },
   { type: "resolving-origin", session: session({ targetVersionId: "v1" }) },
   {
@@ -88,6 +120,7 @@ const STATE_SAMPLES: PreviewState[] = [
       originBranch: "feature/origin",
       checkedOutVersionId: "v1",
     }),
+    fallback: "previewing",
   },
   {
     type: "returning",
@@ -108,9 +141,21 @@ const STATE_SAMPLES: PreviewState[] = [
     }),
     error: { message: "return failed" },
   },
+  {
+    type: "switching-branch",
+    appId: APP_ID,
+    branch: "main",
+    fallback: { type: "closed" },
+  },
 ];
 
-const MUTATING_COMMAND_TYPES = new Set(["checkout", "return", "restore"]);
+const MUTATING_COMMAND_TYPES = new Set([
+  "checkout",
+  "return",
+  "switch-branch",
+  "restore",
+  "restore-to-message",
+]);
 
 /**
  * Encodes the invariants from plans/version-preview-state-machine.md.
@@ -128,11 +173,11 @@ function assertInvariants(
   // pursuing a checkout. It is released (nulled) only when the session
   // falls back to browsing having never checked out, so the next selection
   // re-captures the live branch.
-  if (
-    prev.type !== "closed" &&
-    next.type !== "closed" &&
-    prev.session.originBranch !== null
-  ) {
+  const prevHasSession =
+    prev.type !== "closed" && prev.type !== "switching-branch";
+  const nextHasSession =
+    next.type !== "closed" && next.type !== "switching-branch";
+  if (prevHasSession && nextHasSession && prev.session.originBranch !== null) {
     if (next.type === "browsing" && next.session.checkedOutVersionId === null) {
       expect(next.session.originBranch, label).toBeNull();
     } else {
@@ -141,7 +186,7 @@ function assertInvariants(
   }
 
   // Invariant 3: the session never changes apps mid-flight.
-  if (prev.type !== "closed" && next.type !== "closed") {
+  if (prevHasSession && nextHasSession) {
     expect(next.session.appId, label).toBe(prev.session.appId);
   }
 
@@ -149,7 +194,7 @@ function assertInvariants(
   if (
     next.type === "checking-out" ||
     next.type === "previewing" ||
-    next.type === "restoring" ||
+    (next.type === "restoring" && next.fallback === "previewing") ||
     next.type === "returning" ||
     next.type === "recovery-required"
   ) {
@@ -158,7 +203,7 @@ function assertInvariants(
 
   // Invariant 8: closed is only reached when the session no longer owns a
   // historical checkout, or when the settlement event released it.
-  if (next.type === "closed" && prev.type !== "closed") {
+  if (next.type === "closed" && prevHasSession) {
     if (
       event.type !== "RETURN_SUCCEEDED" &&
       event.type !== "RESTORE_SUCCEEDED"
@@ -181,15 +226,22 @@ function assertInvariants(
       expect(next.type, label).toBe("returning");
       expect(command.branch, label).not.toBe("");
     }
+    if (command.type === "switch-branch") {
+      expect(next.type, label).toBe("switching-branch");
+    }
     if (command.type === "restore") {
       expect(next.type, label).toBe("restoring");
-      expect(command.targetBranch, label).not.toBe("");
+      if (prev.type === "previewing") {
+        expect(command.targetBranch, label).not.toBeNull();
+      }
     }
     if (command.type === "resolve-origin") {
       expect(next.type, label).toBe("resolving-origin");
     }
     if (command.type !== "notify-error" && next.type !== "closed") {
-      expect(command.appId, label).toBe(next.session.appId);
+      const nextAppId =
+        next.type === "switching-branch" ? next.appId : next.session.appId;
+      expect(command.appId, label).toBe(nextAppId);
     }
   }
 
@@ -221,12 +273,10 @@ const OPEN: PreviewEvent = { type: "OPEN", appId: APP_ID };
 const SELECT_V1: PreviewEvent = {
   type: "SELECT_VERSION",
   versionId: "v1",
-  hasDbSnapshot: false,
 };
 const SELECT_V2: PreviewEvent = {
   type: "SELECT_VERSION",
   versionId: "v2",
-  hasDbSnapshot: true,
 };
 const RESOLVED: PreviewEvent = {
   type: "ORIGIN_RESOLVED",
@@ -241,6 +291,11 @@ describe("transition totality", () => {
         expect(result).toBeDefined();
         expect(result.state).toBeDefined();
         expect(Array.isArray(result.commands)).toBe(true);
+        if (result.state !== state) {
+          expect(result.state, `${state.type} + ${event.type}`).not.toEqual(
+            state,
+          );
+        }
       }
     }
   });
@@ -263,7 +318,6 @@ describe("preview lifecycle", () => {
       type: "checkout",
       appId: APP_ID,
       versionId: "v1",
-      hasDbSnapshot: false,
     });
   });
 
@@ -289,7 +343,7 @@ describe("preview lifecycle", () => {
     if (state.type !== "checking-out") return;
     expect(state.session.targetVersionId).toBe("v2");
     expect(commands.filter((c) => c.type === "checkout")).toEqual([
-      { type: "checkout", appId: APP_ID, versionId: "v2", hasDbSnapshot: true },
+      { type: "checkout", appId: APP_ID, versionId: "v2" },
     ]);
   });
 
@@ -467,6 +521,149 @@ describe("close and app-switch handling", () => {
   });
 });
 
+describe("presentation selection", () => {
+  it("opens a read-only diff without emitting a Git command", () => {
+    const file = { versionId: "v1", path: "src/a.ts" };
+    const result = step(CLOSED_STATE, {
+      type: "VIEW_VERSION_DIFF",
+      appId: APP_ID,
+      versionId: "v1",
+      file,
+    });
+    expect(result.state).toMatchObject({
+      type: "viewing-diff",
+      session: {
+        targetVersionId: "v1",
+        selectedDiffFile: file,
+        isDiffVisible: true,
+      },
+    });
+    expect(result.commands).toEqual([]);
+    expect(isPaneVisibleState(result.state)).toBe(false);
+    expect(diffVersionIdForState(result.state)).toBe("v1");
+  });
+
+  it("closes a version diff without returning the checked-out branch", () => {
+    const previewing = run([
+      OPEN,
+      SELECT_V1,
+      RESOLVED,
+      { type: "CHECKOUT_SUCCEEDED" },
+    ]).state;
+    const result = step(previewing, { type: "CLOSE_VERSION_DIFF" });
+    expect(result.state.type).toBe("previewing");
+    expect(diffVersionIdForState(result.state)).toBeNull();
+    expect(result.commands).toEqual([]);
+  });
+
+  it("hides the historical diff while returning and during recovery", () => {
+    const selectedDiffFile = { versionId: "v1", path: "src/a.ts" };
+    const returning: PreviewState = {
+      type: "returning",
+      session: session({
+        targetVersionId: "v1",
+        selectedDiffFile,
+        isDiffVisible: true,
+      }),
+    };
+    const recovery: PreviewState = {
+      type: "recovery-required",
+      session: returning.session,
+      error: { message: "return failed" },
+    };
+
+    for (const state of [returning, recovery]) {
+      expect(diffVersionIdForState(state)).toBeNull();
+      expect(selectedDiffFileForState(state)).toBeNull();
+    }
+  });
+
+  it("blocks new version actions while recovery is required", () => {
+    const recovery: PreviewState = {
+      type: "recovery-required",
+      session: session(),
+      error: { message: "return failed" },
+    };
+
+    expect(isVersionActionBlockedState(recovery)).toBe(true);
+    expect(
+      isVersionActionBlockedState({
+        type: "browsing",
+        session: session(),
+      }),
+    ).toBe(false);
+  });
+
+  it("switches to an explicit branch from a closed machine", () => {
+    const result = step(CLOSED_STATE, {
+      type: "SWITCH_BRANCH",
+      appId: APP_ID,
+      branch: "main",
+    });
+    expect(result.state).toEqual({
+      type: "switching-branch",
+      appId: APP_ID,
+      branch: "main",
+      fallback: { type: "closed" },
+    });
+    expect(result.commands).toEqual([
+      { type: "switch-branch", appId: APP_ID, branch: "main" },
+    ]);
+  });
+
+  it("preserves an owned preview when an explicit branch switch fails", () => {
+    const previewing = run([
+      OPEN,
+      SELECT_V1,
+      RESOLVED,
+      { type: "CHECKOUT_SUCCEEDED" },
+    ]).state;
+    const switching = step(previewing, {
+      type: "SWITCH_BRANCH",
+      appId: APP_ID,
+      branch: "main",
+    }).state;
+    const failed = step(switching, {
+      type: "SWITCH_BRANCH_FAILED",
+      error: { message: "checkout failed" },
+    });
+    expect(failed.state).toBe(previewing);
+    expect(failed.commands).toEqual([]);
+  });
+
+  it("selects a diff file without changing phase or emitting commands", () => {
+    const viewingDiff = run([
+      {
+        type: "VIEW_VERSION_DIFF",
+        appId: APP_ID,
+        versionId: "v1",
+        file: null,
+      },
+    ]).state;
+    const result = step(viewingDiff, {
+      type: "SELECT_DIFF_FILE",
+      file: { versionId: "v1", path: "src/a.ts" },
+    });
+    expect(result.state.type).toBe("viewing-diff");
+    expect(result.commands).toEqual([]);
+  });
+
+  it("clears a diff-file selection when selecting a version", () => {
+    const browsing = run([
+      {
+        type: "VIEW_VERSION_DIFF",
+        appId: APP_ID,
+        versionId: "v1",
+        file: { versionId: "v1", path: "src/a.ts" },
+      },
+    ]).state;
+    const result = step(browsing, SELECT_V2);
+    expect(result.state.type).toBe("resolving-origin");
+    if (result.state.type !== "resolving-origin") return;
+    expect(result.state.session.selectedDiffFile).toBeNull();
+  });
+});
+
 describe("restore", () => {
   const toPreviewing: PreviewEvent[] = [
     OPEN,
@@ -478,8 +675,8 @@ describe("restore", () => {
   it("restores onto the origin branch and closes without an extra return", () => {
     const restored = run([
       ...toPreviewing,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
-      { type: "RESTORE_SUCCEEDED" },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
+      { type: "RESTORE_SUCCEEDED", repositoryOutcome: "target-applied" },
     ]);
     expect(restored.state.type).toBe("closed");
     expect(restored.commands.filter((c) => c.type === "return")).toHaveLength(
@@ -490,14 +687,73 @@ describe("restore", () => {
       appId: APP_ID,
       versionId: "v1",
       targetBranch: "feature/origin",
-      hasDbSnapshot: false,
     });
+  });
+
+  it("starts restore outside preview without inventing a return branch", () => {
+    const result = step(CLOSED_STATE, {
+      type: "RESTORE",
+      appId: APP_ID,
+      versionId: "v1",
+    });
+    expect(result.state).toMatchObject({
+      type: "restoring",
+      fallback: "closed",
+    });
+    expect(result.commands).toEqual([
+      {
+        type: "restore",
+        appId: APP_ID,
+        versionId: "v1",
+        targetBranch: null,
+        currentChatMessageId: undefined,
+      },
+    ]);
+  });
+
+  it("routes restore-to-message through the same preview branch", () => {
+    const previewing = run(toPreviewing).state;
+    const result = step(previewing, {
+      type: "RESTORE_TO_MESSAGE",
+      appId: APP_ID,
+      chatId: 2,
+      messageId: 3,
+      restoreCodebase: true,
+    });
+    expect(result.commands).toEqual([
+      {
+        type: "restore-to-message",
+        appId: APP_ID,
+        chatId: 2,
+        messageId: 3,
+        restoreCodebase: true,
+        targetBranch: "feature/origin",
+      },
+    ]);
+  });
+
+  it("retains preview ownership when restore-to-message leaves Git unchanged", () => {
+    const result = run([
+      ...toPreviewing,
+      {
+        type: "RESTORE_TO_MESSAGE",
+        appId: APP_ID,
+        chatId: 2,
+        messageId: 3,
+        restoreCodebase: false,
+      },
+      { type: "RESTORE_SUCCEEDED", repositoryOutcome: "unchanged" },
+    ]);
+    expect(result.state.type).toBe("previewing");
+    if (result.state.type !== "previewing") return;
+    expect(result.state.session.originBranch).toBe("feature/origin");
+    expect(result.state.session.checkedOutVersionId).toBe("v1");
   });
 
   it("stays recoverable when a restore fails", () => {
     const { state } = run([
       ...toPreviewing,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
       { type: "RESTORE_FAILED", error: { message: "nope" } },
     ]);
     expect(state.type).toBe("previewing");
@@ -509,7 +765,7 @@ describe("restore", () => {
   it("honors a close received during a restore that then fails", () => {
     const { state, commands } = run([
       ...toPreviewing,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
       { type: "CLOSE" },
       { type: "RESTORE_FAILED", error: { message: "nope" } },
     ]);
@@ -526,7 +782,7 @@ describe("restore", () => {
       OPEN,
       SELECT_V1,
       RESOLVED,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
     ]);
     expect(state.type).toBe("checking-out");
     expect(commands.filter((c) => c.type === "restore")).toHaveLength(0);
@@ -543,7 +799,7 @@ describe("return failure and recovery", () => {
   ];
 
   it("preserves every retry input when the return fails", () => {
-    const { state } = run([
+    const { state, commands } = run([
       ...toReturning,
       { type: "RETURN_FAILED", error: { message: "return failed" } },
     ]);
@@ -553,6 +809,11 @@ describe("return failure and recovery", () => {
     expect(state.session.originBranch).toBe("feature/origin");
     expect(state.session.checkedOutVersionId).toBe("v1");
     expect(state.error.message).toBe("return failed");
+    expect(commands).toContainEqual({
+      type: "notify-recovery",
+      appId: APP_ID,
+      error: { message: "return failed" },
+    });
   });
 
   it("retries the return with the retained session", () => {
@@ -563,6 +824,10 @@ describe("return failure and recovery", () => {
     ]);
     expect(state.type).toBe("returning");
     expect(commands.filter((c) => c.type === "return")).toHaveLength(2);
+    expect(commands).toContainEqual({
+      type: "dismiss-recovery",
+      appId: APP_ID,
+    });
   });
 
   it("only a successful retry clears the recovery session", () => {
@@ -591,17 +856,20 @@ describe("return failure and recovery", () => {
     expect(result.commands).toEqual([]);
   });
 
-  it("re-surfaces recovery (fresh snapshot, no commands) when OPEN arrives", () => {
+  it("re-surfaces recovery through a command without changing state", () => {
     const recovery = run([
       ...toReturning,
       { type: "RETURN_FAILED", error: { message: "return failed" } },
     ]);
     const result = step(recovery.state, OPEN);
-    // Equal content but a new reference, so subscribers are re-notified and
-    // a dismissed recovery toast reappears.
-    expect(result.state).not.toBe(recovery.state);
-    expect(result.state).toEqual(recovery.state);
-    expect(result.commands).toEqual([]);
+    expect(result.state).toBe(recovery.state);
+    expect(result.commands).toEqual([
+      {
+        type: "notify-recovery",
+        appId: APP_ID,
+        error: { message: "return failed" },
+      },
+    ]);
   });
 });
 

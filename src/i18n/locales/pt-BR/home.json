@@ -254,6 +254,7 @@
       "noProblemsFound": "Nenhum problema encontrado",
       "runChecks": "Executar verificações",
       "checkingProblems": "Verificando...",
+      "typeCheckIncomplete": "Verificação de tipos incompleta",
       "noAppSelectedTitle": "Nenhum App Selecionado",
       "noAppSelectedDescription": "Selecione um app para ver problemas de TypeScript e informações de diagnóstico.",
       "noProblemsReportTitle": "Nenhum Relatório de Problemas",

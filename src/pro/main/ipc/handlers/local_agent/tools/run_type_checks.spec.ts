@@ -74,6 +74,17 @@ describe("runTypeChecksTool precondition guidance", () => {
     return output;
   }
 
+  function problem(file: string, message = "Type mismatch") {
+    return {
+      file,
+      line: 1,
+      column: 1,
+      code: 2322,
+      message,
+      snippet: "",
+    };
+  }
+
   it("tells the agent to ask the user to rebuild when TypeScript is declared but missing", async () => {
     const appPath = await makeApp({
       devDependencies: { typescript: "^5.0.0" },
@@ -185,5 +196,104 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     expect(ctx.onXmlComplete).not.toHaveBeenCalled();
     expect(safeSend).not.toHaveBeenCalled();
+  });
+
+  it("warns that configuration errors prevented a complete scoped check", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^7.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    vi.mocked(runTypeScriptCheck).mockResolvedValue({
+      outcome: "incomplete",
+      problems: [
+        problem("tsconfig.app.json", "Option 'baseUrl' has been removed."),
+      ],
+    });
+
+    const result = await runTypeChecksTool.execute(
+      { paths: ["src/App.tsx"] },
+      ctx,
+    );
+
+    expect(result).toContain("Type checking could not complete");
+    expect(result).toContain("tsconfig.app.json:1:1");
+    expect(result).toContain("Fix the configuration error");
+    expect(result).toContain("rerun `run_type_checks`");
+    expect(result).not.toContain("No type errors found");
+    expect(ctx.onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '<dyad-status title="Type check incomplete" state="warning">',
+      ),
+    );
+  });
+
+  it("discloses project errors outside a requested path", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^7.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    vi.mocked(runTypeScriptCheck).mockResolvedValue({
+      outcome: "errors",
+      problems: [problem("src/Other.tsx")],
+    });
+
+    const result = await runTypeChecksTool.execute(
+      { paths: ["src/App.tsx"] },
+      ctx,
+    );
+
+    expect(result).toBe(
+      "No type errors found in `src/App.tsx`, but the project has 1 type error outside this scope.",
+    );
+    expect(ctx.onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '<dyad-status title="Type errors found" state="finished">',
+      ),
+    );
+  });
+
+  it("reports matching and out-of-scope errors separately", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^7.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    vi.mocked(runTypeScriptCheck).mockResolvedValue({
+      outcome: "errors",
+      problems: [problem("src/App.tsx"), problem("src/Other.tsx")],
+    });
+
+    const result = await runTypeChecksTool.execute(
+      { paths: ["src/App.tsx"] },
+      ctx,
+    );
+
+    expect(result).toContain("Found 1 type error in `src/App.tsx`");
+    expect(result).toContain(
+      "The project also has 1 type error outside this scope.",
+    );
+    expect(result).not.toContain("src/Other.tsx:1:1");
+  });
+
+  it("describes a clean scoped check without claiming a project-wide result", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^7.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    vi.mocked(runTypeScriptCheck).mockResolvedValue({
+      outcome: "passed",
+      problems: [],
+    });
+
+    const result = await runTypeChecksTool.execute(
+      { paths: ["src/App.tsx"] },
+      ctx,
+    );
+
+    expect(result).toBe("No type errors found in `src/App.tsx`.");
+    expect(ctx.onXmlComplete).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '<dyad-status title="Type check passed" state="finished">',
+      ),
+    );
   });
 });

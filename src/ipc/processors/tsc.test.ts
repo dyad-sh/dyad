@@ -261,6 +261,7 @@ describe("runTypeScriptCheck", () => {
     );
 
     await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
+      outcome: "errors",
       problems: [
         {
           file: "src/App.ts",
@@ -339,7 +340,7 @@ describe("runTypeScriptCheck", () => {
 
       await expect(
         runTypeScriptCheck({ appPath: packagePath }),
-      ).resolves.toEqual({ problems: [] });
+      ).resolves.toEqual({ problems: [], outcome: "passed" });
       const args = runBufferedProcessMock.mock.calls[1][0].args as string[];
       expect(args[0]).toBe(
         path.join(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js"),
@@ -355,6 +356,7 @@ describe("runTypeScriptCheck", () => {
 
     await expect(runTypeScriptCheck({ appPath })).resolves.toEqual({
       problems: [],
+      outcome: "passed",
     });
   });
 
@@ -369,6 +371,7 @@ describe("runTypeScriptCheck", () => {
     );
 
     await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+      outcome: "incomplete",
       problems: [
         {
           file: "tsconfig.app.json",
@@ -376,6 +379,27 @@ describe("runTypeScriptCheck", () => {
           column: 1,
           code: 18003,
           message: "No inputs were found in config file 'tsconfig.app.json'.",
+        },
+      ],
+    });
+  });
+
+  it("marks file-positioned tsconfig diagnostics as incomplete", async () => {
+    mockVersion();
+    runBufferedProcessMock.mockResolvedValueOnce(
+      processResult({
+        code: 2,
+        stdout:
+          "tsconfig.app.json(24,5): error TS5102: Option 'baseUrl' has been removed.\n",
+      }),
+    );
+
+    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+      outcome: "incomplete",
+      problems: [
+        {
+          file: "tsconfig.app.json",
+          code: 5102,
         },
       ],
     });

@@ -733,7 +733,7 @@
       },
       {
         "name": "run_type_checks",
-        "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
+        "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file and discloses whether the project has errors elsewhere\n- If a directory path is provided, returns diagnostics for that directory and discloses whether the project has errors elsewhere\n- If no path is provided, returns diagnostics for all files in the workspace\n- Project configuration errors are always returned because they can prevent the requested files from being checked\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ChevronRight, Loader2, CircleX, CheckCircle2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Loader2,
+  CircleX,
+  CheckCircle2,
+} from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 
 /**
@@ -227,18 +233,21 @@ export function DyadExpandIcon({ isExpanded }: DyadExpandIconProps) {
 interface DyadStateIndicatorProps {
   state: CustomTagState;
   pendingLabel?: string;
+  warningLabel?: string;
   abortedLabel?: string;
   errorLabel?: string;
   finishedLabel?: string;
 }
 
 /**
- * Renders a spinner (pending), X icon (aborted), or checkmark (finished).
+ * Renders a spinner (pending), warning triangle, X icon (aborted/error), or
+ * checkmark (finished).
  * Includes an optional text label for each state.
  */
 export function DyadStateIndicator({
   state,
   pendingLabel,
+  warningLabel,
   abortedLabel,
   errorLabel,
   finishedLabel,
@@ -248,6 +257,15 @@ export function DyadStateIndicator({
       <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs shrink-0">
         <Loader2 size={14} className="animate-spin" />
         {pendingLabel && <span>{pendingLabel}</span>}
+      </span>
+    );
+  }
+
+  if (state === "warning") {
+    return (
+      <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs shrink-0">
+        <AlertTriangle size={14} />
+        {warningLabel && <span>{warningLabel}</span>}
       </span>
     );
   }

@@ -277,6 +277,7 @@
       "noProblemsFound": "No problems found",
       "runChecks": "Run checks",
       "checkingProblems": "Checking...",
+      "typeCheckIncomplete": "Type check incomplete",
       "noAppSelectedTitle": "No App Selected",
       "noAppSelectedDescription": "Select an app to view TypeScript problems and diagnostic information.",
       "noProblemsReportTitle": "No Problems Report",

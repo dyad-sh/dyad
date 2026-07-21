@@ -7,7 +7,7 @@ import {
   DyadFinishedIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
-import { CircleX, Loader2 } from "lucide-react";
+import { AlertTriangle, CircleX, Loader2 } from "lucide-react";
 
 interface DyadStatusProps {
   node: {
@@ -23,18 +23,27 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
   const { title = "Processing...", state } = node.properties;
   const isInProgress = state === "pending";
   const isAborted = state === "aborted";
+  const isError = state === "error";
+  const isWarning = state === "warning";
   const isFinished = state === "finished";
   const content = typeof children === "string" ? children : "";
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   // Pick accent color based on state
-  const accentColor = isAborted ? "red" : isInProgress ? "amber" : "green";
+  const accentColor =
+    isAborted || isError
+      ? "red"
+      : isInProgress || isWarning
+        ? "amber"
+        : "green";
 
   // Pick the left icon based on state
   const icon = isInProgress ? (
     <Loader2 size={15} className="animate-spin" />
-  ) : isAborted ? (
+  ) : isAborted || isError ? (
     <CircleX size={15} />
+  ) : isWarning ? (
+    <AlertTriangle size={15} />
   ) : (
     <DyadFinishedIcon />
   );
@@ -43,6 +52,7 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
     <DyadCard
       state={state}
       accentColor={accentColor}
+      showAccent={isWarning || isError || undefined}
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
@@ -51,7 +61,7 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
           className={`font-medium text-sm ${
             isInProgress
               ? "bg-gradient-to-r from-foreground via-muted-foreground to-foreground bg-[length:200%_100%] animate-[shimmer_2s_ease-in-out_infinite] bg-clip-text text-transparent"
-              : isFinished
+              : isFinished || isWarning
                 ? "text-foreground"
                 : "text-muted-foreground"
           }`}

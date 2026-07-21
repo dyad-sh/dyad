@@ -159,7 +159,10 @@ describe("TypeScript utility process exclusion", () => {
     expect(children).toHaveLength(1);
 
     finishTypeCheck(processResult());
-    await expect(typeCheck).resolves.toEqual({ problems: [] });
+    await expect(typeCheck).resolves.toEqual({
+      problems: [],
+      outcome: "passed",
+    });
     await vi.waitFor(() => expect(children).toHaveLength(2));
     const secondExplorer = children[1];
     secondExplorer.emit("spawn");

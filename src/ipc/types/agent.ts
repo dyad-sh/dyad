@@ -95,6 +95,7 @@ export type Problem = z.infer<typeof ProblemSchema>;
  */
 export const ProblemReportSchema = z.object({
   problems: z.array(ProblemSchema),
+  outcome: z.enum(["passed", "errors", "incomplete"]).optional(),
 });
 
 export type ProblemReport = z.infer<typeof ProblemReportSchema>;

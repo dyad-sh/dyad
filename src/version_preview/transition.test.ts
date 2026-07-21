@@ -9,6 +9,8 @@ import {
   CLOSED_STATE,
   diffVersionIdForState,
   isPaneVisibleState,
+  isVersionActionBlockedState,
+  selectedDiffFileForState,
 } from "./state";
 import {
   BRANCH_UNAVAILABLE_MESSAGE,
@@ -552,6 +554,44 @@ describe("presentation selection", () => {
     expect(result.state.type).toBe("previewing");
     expect(diffVersionIdForState(result.state)).toBeNull();
     expect(result.commands).toEqual([]);
+  });
+
+  it("hides the historical diff while returning and during recovery", () => {
+    const selectedDiffFile = { versionId: "v1", path: "src/a.ts" };
+    const returning: PreviewState = {
+      type: "returning",
+      session: session({
+        targetVersionId: "v1",
+        selectedDiffFile,
+        isDiffVisible: true,
+      }),
+    };
+    const recovery: PreviewState = {
+      type: "recovery-required",
+      session: returning.session,
+      error: { message: "return failed" },
+    };
+
+    for (const state of [returning, recovery]) {
+      expect(diffVersionIdForState(state)).toBeNull();
+      expect(selectedDiffFileForState(state)).toBeNull();
+    }
+  });
+
+  it("blocks new version actions while recovery is required", () => {
+    const recovery: PreviewState = {
+      type: "recovery-required",
+      session: session(),
+      error: { message: "return failed" },
+    };
+
+    expect(isVersionActionBlockedState(recovery)).toBe(true);
+    expect(
+      isVersionActionBlockedState({
+        type: "browsing",
+        session: session(),
+      }),
+    ).toBe(false);
   });
 
   it("switches to an explicit branch from a closed machine", () => {

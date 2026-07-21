@@ -20,7 +20,10 @@ import { useSettings } from "@/hooks/useSettings";
 import { ModifiedFilesCard } from "./ModifiedFilesCard";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { isMutatingState, type PreviewEvent } from "@/version_preview/state";
+import {
+  isVersionActionBlockedState,
+  type PreviewEvent,
+} from "@/version_preview/state";
 
 interface MessagesListProps {
   messages: Message[];
@@ -296,8 +299,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const { state: previewState, sendAndWaitForMutation: sendPreviewMutation } =
       useVersionPreview(appId);
     const isAnyVersionMutationPending =
-      isMutatingState(previewState) ||
-      previewState.type === "recovery-required";
+      isVersionActionBlockedState(previewState);
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();

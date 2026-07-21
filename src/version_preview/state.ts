@@ -177,19 +177,39 @@ export function isMutatingState(state: PreviewState): boolean {
   }
 }
 
+/** States where starting another user-triggered version action is unsafe. */
+export function isVersionActionBlockedState(state: PreviewState): boolean {
+  return isMutatingState(state) || state.type === "recovery-required";
+}
+
+function canShowDiff(
+  state: PreviewState,
+): state is Exclude<
+  PreviewState,
+  | { type: "closed" }
+  | { type: "returning"; session: PreviewSession }
+  | { type: "switching-branch" }
+  | { type: "recovery-required"; session: PreviewSession; error: PreviewError }
+> {
+  return (
+    state.type !== "closed" &&
+    state.type !== "returning" &&
+    state.type !== "switching-branch" &&
+    state.type !== "recovery-required"
+  );
+}
+
 /**
  * The version whose diff the UI should display for this state, or null.
  * Presentation-only; never used to decide Git transitions.
  */
 export function diffVersionIdForState(state: PreviewState): string | null {
-  if (state.type === "closed" || state.type === "switching-branch") return null;
+  if (!canShowDiff(state)) return null;
   return state.session.isDiffVisible ? state.session.targetVersionId : null;
 }
 
 export function selectedDiffFileForState(
   state: PreviewState,
 ): PreviewSession["selectedDiffFile"] {
-  return state.type === "closed" || state.type === "switching-branch"
-    ? null
-    : state.session.selectedDiffFile;
+  return canShowDiff(state) ? state.session.selectedDiffFile : null;
 }

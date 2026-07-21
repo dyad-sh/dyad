@@ -21,6 +21,11 @@ status; read the machine snapshot and send events through
 `useVersionPreview(appId)`. The command adapter is the only renderer caller of
 version-mutation IPC (see `plans/better-state-machine.md`).
 
+Derive UI visibility and action availability from the lifecycle state as well
+as retained session fields. Returning/recovery states may intentionally retain
+historical session data, but must hide stale presentation and consistently
+block events that those states reject.
+
 ## Ownership
 
 - React Query owns server/IPC-backed data such as apps, chats, versions,

@@ -52,7 +52,7 @@ import {
   stripCancelledResponseNotice,
 } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { isMutatingState } from "@/version_preview/state";
+import { isVersionActionBlockedState } from "@/version_preview/state";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -114,7 +114,7 @@ const ChatMessage = ({
   const { versions: liveVersions } = useVersions(appId);
   const { state: previewState, send: sendPreviewEvent } =
     useVersionPreview(appId);
-  const isAnyVersionMutationPending = isMutatingState(previewState);
+  const isAnyVersionMutationPending = isVersionActionBlockedState(previewState);
   const isRestoringToMessage = previewState.type === "restoring";
   const assistantTextContent =
     message.role === "assistant"

@@ -30,7 +30,7 @@ jobs:
       - name: Strip any project Claude settings (defense in depth)
         run: rm -f .claude/settings.json .claude/settings.local.json
 
-      - uses: anthropics/claude-code-action@v1.0.96
+      - uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad35 # v1.0.179
         id: claude-decision
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

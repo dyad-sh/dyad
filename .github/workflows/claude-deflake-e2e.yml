@@ -69,14 +69,14 @@ jobs:
         run: cd testing/fake-llm-server && npm install && npm run build
 
       - name: Deflake E2E tests
-        uses: anthropics/claude-code-action@v1.0.96
+        uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad35 # v1.0.179
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
-          claude_args: --model claude-opus-4-6
+          claude_args: --model claude-opus-4-8
           display_report: true
           prompt: |
             /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}

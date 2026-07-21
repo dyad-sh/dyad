@@ -48,7 +48,7 @@ jobs:
         run: node scripts/issue-agent/render-template.mjs
 
       - name: Triage issue
-        uses: anthropics/claude-code-base-action@beta
+        uses: anthropics/claude-code-base-action@e8132bc5e637a42c27763fc757faa37e1ee43b34 # v0.0.63
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -58,7 +58,7 @@ jobs:
         with:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-opus-4-6
+          model: claude-opus-4-8
           allowed_tools: "Bash(echo:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Write"
           prompt: ${{ steps.render-prompt.outputs.prompt }}
 

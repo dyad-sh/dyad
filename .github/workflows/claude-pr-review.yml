@@ -77,7 +77,7 @@ jobs:
         run: node scripts/issue-agent/render-template.mjs
 
       - name: PR Review
-        uses: anthropics/claude-code-action@v1.0.96
+        uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad35 # v1.0.179
         env:
           # Default is 32,000 which Claude willl sometimes hit.
           # https://code.claude.com/docs/en/settings
@@ -98,7 +98,7 @@ jobs:
           prompt: ${{ steps.render-prompt.outputs.prompt }}
 
           claude_args: |
-            --model claude-opus-4-6
+            --model claude-opus-4-8
 
       - name: Upload Claude review artifact
         uses: actions/upload-artifact@v6

@@ -42,7 +42,7 @@ jobs:
         run: rm -f .claude/settings.json .claude/settings.local.json
 
       - name: Review AGENTS.md and rules/
-        uses: anthropics/claude-code-action@v1.0.96
+        uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad35 # v1.0.179
         env:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
@@ -51,7 +51,7 @@ jobs:
           display_report: true
           direct: true
           allowed_tools: "Read,Glob,Grep,Bash(git log:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue close:*),Bash(gh label:*)"
-          claude_args: --model claude-opus-4-6
+          claude_args: --model claude-opus-4-8
           prompt: |
             # Rules Documentation Review Agent
 

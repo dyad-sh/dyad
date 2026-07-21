@@ -14,6 +14,7 @@ import {
   deploySupabaseFunction,
   listSupabaseFunctions,
 } from "@/supabase_admin/supabase_management_client";
+import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
 
 vi.mock("@/supabase_admin/supabase_management_client", async () => {
   const actual = await vi.importActual<
@@ -314,6 +315,32 @@ describe("deployAllSupabaseFunctions progress", () => {
         sharedModulesChanged: true,
         changedSharedModulePaths: [],
         pendingFunctionDeploys: ["beta"],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(2);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "alpha" }),
+    );
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "beta" }),
+    );
+  });
+
+  it("falls back to all functions when dependency analysis fails", async () => {
+    vi.mocked(runSupabaseDependencyAnalysis).mockRejectedValueOnce(
+      new Error("worker crashed"),
+    );
+
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: [],
       }),
     ).resolves.toEqual([]);
 

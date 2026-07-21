@@ -8,6 +8,7 @@ import type {
 import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
 
 const TIMEOUT_MS = 60_000;
+const SHUTDOWN_GRACE_MS = 5_000;
 
 function runWorker(
   input: SupabaseDependencyAnalysisInput,
@@ -21,20 +22,63 @@ function runWorker(
     let response: SupabaseDependencyAnalysisOutput | undefined;
     let failure: Error | undefined;
     let killRequested = false;
+    let settled = false;
+    let shutdownTimeout: NodeJS.Timeout | undefined;
+    let resolveExit!: () => void;
+    const exitPromise = new Promise<void>((exitResolve) => {
+      resolveExit = exitResolve;
+    });
+
     const requestStop = () => {
       if (!killRequested) {
         killRequested = true;
-        if (!child.kill())
-          failure ??= new Error(
-            "Failed to stop Supabase dependency analysis worker",
-          );
+        child.kill();
       }
     };
-    const timeout = setTimeout(() => {
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(analysisTimeout);
+      if (shutdownTimeout) clearTimeout(shutdownTimeout);
+      if (failure) return reject(failure);
+      if (!response) {
+        return reject(
+          new Error("Supabase dependency analysis worker did not reply"),
+        );
+      }
+      if (!response.success) return reject(new Error(response.error));
+      resolve(response.data);
+    };
+
+    const finishAfterShutdownGrace = () => {
+      requestStop();
+      shutdownTimeout ??= setTimeout(finish, SHUTDOWN_GRACE_MS);
+    };
+
+    let registration: ReturnType<
+      typeof typescriptUtilityProcessScheduler.registerResidentProcess
+    >;
+    try {
+      registration = typescriptUtilityProcessScheduler.registerResidentProcess({
+        kind: "supabase-dependency-analysis",
+        reusable: false,
+        token: child,
+        stop: async () => {
+          requestStop();
+          await exitPromise;
+        },
+      });
+    } catch (error) {
+      child.kill();
+      throw error;
+    }
+
+    const analysisTimeout = setTimeout(() => {
       failure ??= new Error(
         `Supabase dependency analysis timed out after ${TIMEOUT_MS / 1000}s`,
       );
-      requestStop();
+      finishAfterShutdownGrace();
     }, TIMEOUT_MS);
 
     child.on("spawn", () => {
@@ -43,7 +87,8 @@ function runWorker(
     child.on("message", (message: SupabaseDependencyAnalysisOutput) => {
       if (response || failure) return;
       response = message;
-      requestStop();
+      clearTimeout(analysisTimeout);
+      finishAfterShutdownGrace();
     });
     child.on("error", (type, location) => {
       if (response || failure) return;
@@ -55,20 +100,18 @@ function runWorker(
           : new Error(
               `Supabase dependency analysis worker failed: ${type} at ${location}`,
             );
-      requestStop();
+      clearTimeout(analysisTimeout);
+      finishAfterShutdownGrace();
     });
     child.on("exit", (code) => {
-      clearTimeout(timeout);
-      if (failure) return reject(failure);
-      if (!response) {
-        return reject(
-          new Error(
-            `Supabase dependency analysis worker exited with code ${code} before replying`,
-          ),
+      registration.clear();
+      resolveExit();
+      if (!response && !failure) {
+        failure = new Error(
+          `Supabase dependency analysis worker exited with code ${code} before replying`,
         );
       }
-      if (!response.success) return reject(new Error(response.error));
-      resolve(response.data);
+      finish();
     });
   });
 }

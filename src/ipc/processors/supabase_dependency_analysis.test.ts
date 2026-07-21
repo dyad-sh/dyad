@@ -8,6 +8,7 @@ vi.mock("electron", () => ({
 }));
 
 import { runSupabaseDependencyAnalysis } from "./supabase_dependency_analysis";
+import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
 
 class FakeUtilityProcess extends EventEmitter {
   postMessage = vi.fn();
@@ -83,18 +84,53 @@ describe("runSupabaseDependencyAnalysis", () => {
     await expect(result).rejects.toThrow("ran out of memory");
   });
 
-  it("kills and rejects a worker that times out", async () => {
+  it("rejects after the timeout and shutdown grace even without exit", async () => {
     vi.useFakeTimers();
     const result = runSupabaseDependencyAnalysis({
       appPath: "/app",
       changedSharedModulePaths: [],
     });
+    await vi.advanceTimersByTimeAsync(0);
     child.emit("spawn");
-    await vi.advanceTimersByTimeAsync(60_000);
+    const rejection = expect(result).rejects.toThrow("timed out after 60s");
+    await vi.advanceTimersByTimeAsync(65_000);
     expect(child.kill).toHaveBeenCalledOnce();
-    child.emit("exit", 1);
+    await rejection;
 
-    await expect(result).rejects.toThrow("timed out after 60s");
+    const nextOperation = vi.fn(async () => "next");
+    const next = typescriptUtilityProcessScheduler.runExclusive(
+      "tsc",
+      nextOperation,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(nextOperation).not.toHaveBeenCalled();
+
+    // A late exit clears the non-reusable resident registration so later
+    // TypeScript workloads can proceed safely.
+    child.emit("exit", 1);
+    await expect(next).resolves.toBe("next");
+  });
+
+  it("returns a valid reply after shutdown grace instead of timing it out", async () => {
+    vi.useFakeTimers();
+    const result = runSupabaseDependencyAnalysis({
+      appPath: "/app",
+      changedSharedModulePaths: [],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    child.emit("spawn");
+    child.emit("message", {
+      success: true,
+      data: { kind: "partial", functionNames: ["alpha"] },
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(result).resolves.toEqual({
+      kind: "partial",
+      functionNames: ["alpha"],
+    });
+    child.emit("exit", 0);
   });
 
   it("uses the first reply if another message arrives before exit", async () => {

@@ -156,10 +156,18 @@ export async function getSupabaseFunctionsAffectedBySharedModules({
   appPath: string;
   changedSharedModulePaths: string[];
 }): Promise<SupabaseFunctionImpact> {
-  return runSupabaseDependencyAnalysis({
-    appPath,
-    changedSharedModulePaths,
-  });
+  try {
+    return await runSupabaseDependencyAnalysis({
+      appPath,
+      changedSharedModulePaths,
+    });
+  } catch (error) {
+    logger.warn(
+      "Supabase dependency analysis failed; deploying all functions",
+      error,
+    );
+    return { kind: "all", reason: "dependency_analysis_failed" };
+  }
 }
 
 /**

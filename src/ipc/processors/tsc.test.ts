@@ -405,6 +405,27 @@ describe("runTypeScriptCheck", () => {
     });
   });
 
+  it("does not treat an ordinary JSON module named like a tsconfig as project configuration", async () => {
+    mockVersion();
+    runBufferedProcessMock.mockResolvedValueOnce(
+      processResult({
+        code: 2,
+        stdout:
+          "src/tsconfig.defaults.json(2,3): error TS1328: Property value can only be string literal, numeric literal, 'true', 'false', 'null', object literal or array literal.\n",
+      }),
+    );
+
+    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+      outcome: "errors",
+      problems: [
+        {
+          file: "src/tsconfig.defaults.json",
+          code: 1328,
+        },
+      ],
+    });
+  });
+
   it("fails rather than returning partial diagnostics after truncation", async () => {
     mockVersion();
     runBufferedProcessMock.mockResolvedValueOnce(

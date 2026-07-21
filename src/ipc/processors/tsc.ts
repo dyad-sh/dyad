@@ -184,9 +184,7 @@ function isTypeScriptConfigDiagnostic(
     return true;
   }
 
-  return /^tsconfig(?:\..+)?\.json$/i.test(
-    pathApi.basename(normalizedProblemPath),
-  );
+  return false;
 }
 
 function isPathInside(rootPath: string, candidatePath: string): boolean {

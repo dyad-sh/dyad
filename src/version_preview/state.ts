@@ -31,10 +31,20 @@ export interface PreviewSession {
   exitIntent: ExitIntent;
   /** Presentation only. Never used to decide Git transitions. */
   selectedDiffFile: { versionId: string; path: string } | null;
+  /** Whether the Code panel should show the version diff for targetVersionId. */
+  isDiffVisible: boolean;
 }
+
+export type BranchSwitchFallback =
+  | { type: "closed" }
+  | { type: "viewing-diff"; session: PreviewSession }
+  | { type: "browsing"; session: PreviewSession }
+  | { type: "previewing"; session: PreviewSession }
+  | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
 
 export type PreviewState =
   | { type: "closed" }
+  | { type: "viewing-diff"; session: PreviewSession }
   | { type: "browsing"; session: PreviewSession }
   | { type: "resolving-origin"; session: PreviewSession }
   | { type: "checking-out"; session: PreviewSession }
@@ -45,6 +55,12 @@ export type PreviewState =
       fallback: "closed" | "browsing" | "previewing";
     }
   | { type: "returning"; session: PreviewSession }
+  | {
+      type: "switching-branch";
+      appId: number;
+      branch: string;
+      fallback: BranchSwitchFallback;
+    }
   | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
 
 export type PreviewEvent =
@@ -53,6 +69,8 @@ export type PreviewEvent =
   | { type: "CLOSE" }
   | { type: "APP_CHANGED"; nextAppId: number | null }
   | { type: "SELECT_VERSION"; versionId: string }
+  | { type: "CLOSE_VERSION_DIFF" }
+  | { type: "SWITCH_BRANCH"; appId: number; branch: string }
   | {
       type: "VIEW_VERSION_DIFF";
       appId: number;
@@ -82,10 +100,15 @@ export type PreviewEvent =
   | { type: "ORIGIN_RESOLUTION_FAILED" }
   | { type: "CHECKOUT_SUCCEEDED" }
   | { type: "CHECKOUT_FAILED"; error: PreviewError }
-  | { type: "RESTORE_SUCCEEDED" }
+  | {
+      type: "RESTORE_SUCCEEDED";
+      repositoryOutcome: "target-applied" | "unchanged";
+    }
   | { type: "RESTORE_FAILED"; error: PreviewError }
   | { type: "RETURN_SUCCEEDED" }
-  | { type: "RETURN_FAILED"; error: PreviewError };
+  | { type: "RETURN_FAILED"; error: PreviewError }
+  | { type: "SWITCH_BRANCH_SUCCEEDED" }
+  | { type: "SWITCH_BRANCH_FAILED"; error: PreviewError };
 
 export type PreviewCommand =
   | { type: "resolve-origin"; appId: number }
@@ -95,6 +118,7 @@ export type PreviewCommand =
       versionId: string;
     }
   | { type: "return"; appId: number; branch: string }
+  | { type: "switch-branch"; appId: number; branch: string }
   | {
       type: "restore";
       appId: number;
@@ -127,7 +151,9 @@ export function isPaneVisibleState(state: PreviewState): boolean {
     case "restoring":
       return true;
     case "closed":
+    case "viewing-diff":
     case "returning":
+    case "switching-branch":
     case "recovery-required":
       return false;
   }
@@ -139,8 +165,10 @@ export function isMutatingState(state: PreviewState): boolean {
     case "checking-out":
     case "restoring":
     case "returning":
+    case "switching-branch":
       return true;
     case "closed":
+    case "viewing-diff":
     case "browsing":
     case "resolving-origin":
     case "previewing":
@@ -154,22 +182,14 @@ export function isMutatingState(state: PreviewState): boolean {
  * Presentation-only; never used to decide Git transitions.
  */
 export function diffVersionIdForState(state: PreviewState): string | null {
-  switch (state.type) {
-    case "resolving-origin":
-    case "checking-out":
-    case "previewing":
-    case "restoring":
-      return state.session.targetVersionId;
-    case "closed":
-    case "browsing":
-    case "returning":
-    case "recovery-required":
-      return null;
-  }
+  if (state.type === "closed" || state.type === "switching-branch") return null;
+  return state.session.isDiffVisible ? state.session.targetVersionId : null;
 }
 
 export function selectedDiffFileForState(
   state: PreviewState,
 ): PreviewSession["selectedDiffFile"] {
-  return state.type === "closed" ? null : state.session.selectedDiffFile;
+  return state.type === "closed" || state.type === "switching-branch"
+    ? null
+    : state.session.selectedDiffFile;
 }

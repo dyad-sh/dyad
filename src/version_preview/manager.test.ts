@@ -15,8 +15,11 @@ function makeRuntime(): VersionPreviewRuntime {
       resolveOriginBranch: vi.fn().mockResolvedValue({ branch: "feature/a" }),
       checkoutVersion: vi.fn().mockResolvedValue(undefined),
       returnToBranch: vi.fn().mockResolvedValue(undefined),
+      switchBranch: vi.fn().mockResolvedValue(undefined),
       restoreVersion: vi.fn().mockResolvedValue(undefined),
-      restoreToMessage: vi.fn().mockResolvedValue(undefined),
+      restoreToMessage: vi
+        .fn()
+        .mockResolvedValue({ repositoryOutcome: "target-applied" }),
     },
   };
 }

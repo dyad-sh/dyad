@@ -46,7 +46,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // modified-files card) and returns to the live file tree. Without this the
   // Code tab would stay pinned to a commit diff with no in-context way back.
   const closeVersionDiff = () => {
-    sendPreviewEvent({ type: "CLOSE" });
+    sendPreviewEvent({ type: "CLOSE_VERSION_DIFF" });
   };
   const [isFullscreen, setIsFullscreen] = useState(false);
 

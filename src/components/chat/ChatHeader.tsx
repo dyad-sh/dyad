@@ -85,7 +85,7 @@ export function ChatHeader({
 
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
-    sendVersionPreviewEvent({ type: "CLOSE" });
+    sendVersionPreviewEvent({ type: "SWITCH_BRANCH", appId, branch: "main" });
   };
 
   const handleRenameMasterToMain = async () => {

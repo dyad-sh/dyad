@@ -69,6 +69,7 @@ describe("version mutation contracts", () => {
   it("validates the complete authoritative result envelope", () => {
     expect(
       VersionCommandResultSchema.safeParse({
+        repositoryOutcome: "target-applied",
         notification: null,
         runtimeAction: "restart",
         affectedChatId: 2,

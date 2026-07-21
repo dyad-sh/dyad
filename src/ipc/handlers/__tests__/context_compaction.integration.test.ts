@@ -339,6 +339,7 @@ describe("context compaction (integration)", () => {
       });
 
       expect(result).toHaveProperty("createdChatId");
+      expect(result.repositoryOutcome).toBe("target-applied");
       await expect(gitCurrentBranch({ path: harness.appDir })).resolves.toBe(
         targetBranchName,
       );
@@ -390,6 +391,7 @@ describe("context compaction (integration)", () => {
       });
 
       expect(result).toHaveProperty("createdChatId");
+      expect(result.repositoryOutcome).toBe("unchanged");
       const forkedChat = await harness.db.query.chats.findFirst({
         where: (chat, { eq }) => eq(chat.id, result.createdChatId ?? -1),
       });

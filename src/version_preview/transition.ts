@@ -11,12 +11,13 @@
 
 import type {
   ExitIntent,
+  BranchSwitchFallback,
   PreviewCommand,
   PreviewEvent,
   PreviewSession,
   PreviewState,
 } from "./state";
-import { CLOSED_STATE, isPaneVisibleState } from "./state";
+import { CLOSED_STATE } from "./state";
 
 export interface TransitionResult {
   state: PreviewState;
@@ -39,6 +40,7 @@ function freshSession(appId: number): PreviewSession {
     checkedOutVersionId: null,
     exitIntent: { type: "none" },
     selectedDiffFile: null,
+    isDiffVisible: false,
   };
 }
 
@@ -57,6 +59,7 @@ function beginRestore(
     targetVersionId:
       event.type === "RESTORE" ? event.versionId : session.targetVersionId,
     selectedDiffFile: null,
+    isDiffVisible: false,
   };
   const targetBranch =
     nextSession.checkedOutVersionId === null ? null : nextSession.originBranch;
@@ -112,6 +115,25 @@ function returnCommand(session: PreviewSession): PreviewCommand {
   };
 }
 
+function beginBranchSwitch(
+  fallback: BranchSwitchFallback,
+  event: Extract<PreviewEvent, { type: "SWITCH_BRANCH" }>,
+  commands: PreviewCommand[] = [],
+): TransitionResult {
+  return {
+    state: {
+      type: "switching-branch",
+      appId: event.appId,
+      branch: event.branch,
+      fallback,
+    },
+    commands: [
+      ...commands,
+      { type: "switch-branch", appId: event.appId, branch: event.branch },
+    ],
+  };
+}
+
 /**
  * Leaves a mutating state after the mutation settled, honoring a recorded
  * exit intent: return to the origin branch if this session owns a historical
@@ -137,8 +159,33 @@ export function transition(
   state: PreviewState,
   event: PreviewEvent,
 ): TransitionResult {
+  if (event.type === "CLOSE_VERSION_DIFF") {
+    if (state.type === "closed" || state.type === "switching-branch") {
+      return ignore(state);
+    }
+    if (!state.session.isDiffVisible) return ignore(state);
+    if (state.type === "viewing-diff") {
+      return { state: CLOSED_STATE, commands: [] };
+    }
+    return {
+      state: {
+        ...state,
+        session: {
+          ...state.session,
+          selectedDiffFile: null,
+          isDiffVisible: false,
+        },
+      },
+      commands: [],
+    };
+  }
+
   if (event.type === "SELECT_DIFF_FILE") {
-    if (!isPaneVisibleState(state) || state.type === "closed") {
+    if (
+      state.type === "closed" ||
+      state.type === "switching-branch" ||
+      !state.session.isDiffVisible
+    ) {
       return ignore(state);
     }
     const selected = state.session.selectedDiffFile;
@@ -171,14 +218,18 @@ export function transition(
       if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
         return beginRestore(freshSession(event.appId), event, "closed");
       }
+      if (event.type === "SWITCH_BRANCH") {
+        return beginBranchSwitch({ type: "closed" }, event);
+      }
       if (event.type === "VIEW_VERSION_DIFF") {
         return {
           state: {
-            type: "browsing",
+            type: "viewing-diff",
             session: {
               ...freshSession(event.appId),
               targetVersionId: event.versionId,
               selectedDiffFile: event.file,
+              isDiffVisible: true,
             },
           },
           commands: [],
@@ -187,15 +238,30 @@ export function transition(
       return ignore(state);
     }
 
-    case "browsing": {
+    case "viewing-diff": {
       if (event.type === "VIEW_VERSION_DIFF") {
+        return {
+          state: {
+            type: "viewing-diff",
+            session: {
+              ...state.session,
+              targetVersionId: event.versionId,
+              selectedDiffFile: event.file,
+              isDiffVisible: true,
+            },
+          },
+          commands: [],
+        };
+      }
+      if (event.type === "OPEN") {
         return {
           state: {
             type: "browsing",
             session: {
               ...state.session,
-              targetVersionId: event.versionId,
-              selectedDiffFile: event.file,
+              targetVersionId: null,
+              selectedDiffFile: null,
+              isDiffVisible: false,
             },
           },
           commands: [],
@@ -206,6 +272,44 @@ export function transition(
           ...state.session,
           targetVersionId: event.versionId,
           selectedDiffFile: null,
+          isDiffVisible: true,
+        };
+        return {
+          state: { type: "resolving-origin", session },
+          commands: [{ type: "resolve-origin", appId: session.appId }],
+        };
+      }
+      if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
+        return beginRestore(state.session, event, "closed");
+      }
+      if (event.type === "SWITCH_BRANCH") {
+        return beginBranchSwitch(state, event);
+      }
+      if (exitIntentFor(event)) return { state: CLOSED_STATE, commands: [] };
+      return ignore(state);
+    }
+
+    case "browsing": {
+      if (event.type === "VIEW_VERSION_DIFF") {
+        return {
+          state: {
+            type: "viewing-diff",
+            session: {
+              ...state.session,
+              targetVersionId: event.versionId,
+              selectedDiffFile: event.file,
+              isDiffVisible: true,
+            },
+          },
+          commands: [],
+        };
+      }
+      if (event.type === "SELECT_VERSION") {
+        const session: PreviewSession = {
+          ...state.session,
+          targetVersionId: event.versionId,
+          selectedDiffFile: null,
+          isDiffVisible: true,
         };
         return {
           state: { type: "resolving-origin", session },
@@ -214,6 +318,9 @@ export function transition(
       }
       if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
         return beginRestore(state.session, event, "browsing");
+      }
+      if (event.type === "SWITCH_BRANCH") {
+        return beginBranchSwitch(state, event);
       }
       if (exitIntentFor(event)) {
         return { state: CLOSED_STATE, commands: [] };
@@ -235,6 +342,7 @@ export function transition(
           ...state.session,
           targetVersionId: event.versionId,
           selectedDiffFile: null,
+          isDiffVisible: true,
         };
         return {
           state: { type: "resolving-origin", session },
@@ -265,6 +373,7 @@ export function transition(
           ...state.session,
           targetVersionId: state.session.checkedOutVersionId,
           selectedDiffFile: null,
+          isDiffVisible: false,
         };
         // Reachable resolving-origin states never own a checkout, but stay
         // defensive: fall back to previewing rather than losing one.
@@ -351,11 +460,20 @@ export function transition(
     case "previewing": {
       if (event.type === "SELECT_VERSION") {
         if (state.session.targetVersionId === event.versionId) {
-          if (state.session.selectedDiffFile === null) return ignore(state);
+          if (
+            state.session.selectedDiffFile === null &&
+            state.session.isDiffVisible
+          ) {
+            return ignore(state);
+          }
           return {
             state: {
               type: "previewing",
-              session: { ...state.session, selectedDiffFile: null },
+              session: {
+                ...state.session,
+                selectedDiffFile: null,
+                isDiffVisible: true,
+              },
             },
             commands: [],
           };
@@ -364,6 +482,7 @@ export function transition(
           ...state.session,
           targetVersionId: event.versionId,
           selectedDiffFile: null,
+          isDiffVisible: true,
         };
         return {
           state: { type: "checking-out", session },
@@ -378,6 +497,9 @@ export function transition(
       }
       if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
         return beginRestore(state.session, event, "previewing");
+      }
+      if (event.type === "SWITCH_BRANCH") {
+        return beginBranchSwitch(state, event);
       }
       const intent = exitIntentFor(event);
       if (intent) {
@@ -395,15 +517,31 @@ export function transition(
 
     case "restoring": {
       if (event.type === "RESTORE_SUCCEEDED") {
-        // The restore landed on the origin branch; the session no longer owns
-        // a historical checkout, so closing is safe regardless of intent.
-        return { state: CLOSED_STATE, commands: [] };
+        if (event.repositoryOutcome === "target-applied") {
+          // The restore landed on the requested branch/version; the session no
+          // longer owns a historical checkout, so closing is safe.
+          return { state: CLOSED_STATE, commands: [] };
+        }
+        const session: PreviewSession = {
+          ...state.session,
+          targetVersionId: state.session.checkedOutVersionId,
+          selectedDiffFile: null,
+          isDiffVisible: false,
+        };
+        return settleWithExitIntent(session, (s) => {
+          if (state.fallback === "closed") return CLOSED_STATE;
+          if (state.fallback === "browsing") {
+            return { type: "browsing", session: s };
+          }
+          return { type: "previewing", session: s };
+        });
       }
       if (event.type === "RESTORE_FAILED") {
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: state.session.checkedOutVersionId,
           selectedDiffFile: null,
+          isDiffVisible: false,
         };
         return settleWithExitIntent(session, (s) => {
           if (state.fallback === "closed") return CLOSED_STATE;
@@ -467,6 +605,31 @@ export function transition(
       return ignore(state);
     }
 
+    case "switching-branch": {
+      if (event.type === "SWITCH_BRANCH_SUCCEEDED") {
+        return { state: CLOSED_STATE, commands: [] };
+      }
+      if (event.type === "SWITCH_BRANCH_FAILED") {
+        if (state.fallback.type === "recovery-required") {
+          return {
+            state: state.fallback,
+            commands: [
+              {
+                type: "notify-recovery",
+                appId: state.fallback.session.appId,
+                error: state.fallback.error,
+              },
+            ],
+          };
+        }
+        return {
+          state: state.fallback,
+          commands: [],
+        };
+      }
+      return ignore(state);
+    }
+
     case "recovery-required": {
       if (event.type === "RETRY_RETURN") {
         return {
@@ -488,6 +651,11 @@ export function transition(
             },
           ],
         };
+      }
+      if (event.type === "SWITCH_BRANCH") {
+        return beginBranchSwitch(state, event, [
+          { type: "dismiss-recovery", appId: state.session.appId },
+        ]);
       }
       // SELECT_VERSION and completion events are deliberately ignored.
       return ignore(state);

@@ -43,6 +43,7 @@ export const RevertVersionParamsSchema = z.object({
 export type RevertVersionParams = z.infer<typeof RevertVersionParamsSchema>;
 
 export const VersionCommandResultSchema = z.object({
+  repositoryOutcome: z.enum(["target-applied", "unchanged"]),
   notification: z
     .object({
       kind: z.enum(["success", "warning"]),

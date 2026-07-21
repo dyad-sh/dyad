@@ -41,6 +41,9 @@ function makeFakeRuntime() {
       "checkout",
     ) as VersionPreviewCommands["checkoutVersion"],
     returnToBranch: track("return") as VersionPreviewCommands["returnToBranch"],
+    switchBranch: track(
+      "switch-branch",
+    ) as VersionPreviewCommands["switchBranch"],
     restoreVersion: track(
       "restore",
     ) as VersionPreviewCommands["restoreVersion"],
@@ -228,6 +231,67 @@ describe("VersionPreviewController", () => {
       branch: "feature/origin",
     });
     fake.last("return").deferred.resolve(undefined);
+    await flush();
+    expect(controller.getSnapshot().type).toBe("closed");
+  });
+
+  it("rejects a waited mutation when the event is ignored", async () => {
+    const { controller, fake } = makeController();
+    await driveToPreviewing(controller, fake);
+    controller.send({ type: "CLOSE" });
+    fake.last("return").deferred.reject(new Error("return failed"));
+    await flush();
+
+    await expect(
+      controller.sendAndWaitForMutation({
+        type: "RESTORE",
+        appId: APP_ID,
+        versionId: "v1",
+      }),
+    ).rejects.toThrow(/not accepted/);
+    expect(fake.ofType("restore")).toHaveLength(0);
+  });
+
+  it("does not attach a waiter to an already-running mutation", async () => {
+    const { controller, fake } = makeController();
+    await driveToPreviewing(controller, fake);
+    controller.send({ type: "SELECT_VERSION", versionId: "v2" });
+
+    await expect(
+      controller.sendAndWaitForMutation({
+        type: "RESTORE",
+        appId: APP_ID,
+        versionId: "v1",
+      }),
+    ).rejects.toThrow(/already pending/);
+  });
+
+  it("keeps ownership when restore-to-message reports Git unchanged", async () => {
+    const { controller, fake } = makeController();
+    await driveToPreviewing(controller, fake);
+    controller.send({
+      type: "RESTORE_TO_MESSAGE",
+      appId: APP_ID,
+      chatId: 2,
+      messageId: 3,
+      restoreCodebase: false,
+    });
+    fake
+      .last("restore-to-message")
+      .deferred.resolve({ repositoryOutcome: "unchanged" });
+    await flush();
+    expect(controller.getSnapshot().type).toBe("previewing");
+  });
+
+  it("routes an explicit branch switch through the controller", async () => {
+    const { controller, fake } = makeController();
+    controller.send({ type: "SWITCH_BRANCH", appId: APP_ID, branch: "main" });
+    expect(controller.getSnapshot().type).toBe("switching-branch");
+    expect(fake.last("switch-branch").input).toEqual({
+      appId: APP_ID,
+      branch: "main",
+    });
+    fake.last("switch-branch").deferred.resolve(undefined);
     await flush();
     expect(controller.getSnapshot().type).toBe("closed");
   });

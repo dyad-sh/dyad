@@ -5,7 +5,11 @@ import type {
   PreviewSession,
   PreviewState,
 } from "./state";
-import { CLOSED_STATE } from "./state";
+import {
+  CLOSED_STATE,
+  diffVersionIdForState,
+  isPaneVisibleState,
+} from "./state";
 import {
   BRANCH_UNAVAILABLE_MESSAGE,
   transition,
@@ -22,6 +26,7 @@ function session(overrides: Partial<PreviewSession> = {}): PreviewSession {
     checkedOutVersionId: null,
     exitIntent: { type: "none" },
     selectedDiffFile: null,
+    isDiffVisible: false,
     ...overrides,
   };
 }
@@ -33,6 +38,8 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   { type: "APP_CHANGED", nextAppId: null },
   { type: "SELECT_VERSION", versionId: "v1" },
   { type: "SELECT_VERSION", versionId: "v2" },
+  { type: "CLOSE_VERSION_DIFF" },
+  { type: "SWITCH_BRANCH", appId: APP_ID, branch: "main" },
   {
     type: "VIEW_VERSION_DIFF",
     appId: APP_ID,
@@ -56,14 +63,20 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   { type: "ORIGIN_RESOLUTION_FAILED" },
   { type: "CHECKOUT_SUCCEEDED" },
   { type: "CHECKOUT_FAILED", error: { message: "checkout failed" } },
-  { type: "RESTORE_SUCCEEDED" },
+  { type: "RESTORE_SUCCEEDED", repositoryOutcome: "target-applied" },
   { type: "RESTORE_FAILED", error: { message: "restore failed" } },
   { type: "RETURN_SUCCEEDED" },
   { type: "RETURN_FAILED", error: { message: "return failed" } },
+  { type: "SWITCH_BRANCH_SUCCEEDED" },
+  { type: "SWITCH_BRANCH_FAILED", error: { message: "switch failed" } },
 ];
 
 const STATE_SAMPLES: PreviewState[] = [
   CLOSED_STATE,
+  {
+    type: "viewing-diff",
+    session: session({ targetVersionId: "v1", isDiffVisible: true }),
+  },
   { type: "browsing", session: session() },
   { type: "resolving-origin", session: session({ targetVersionId: "v1" }) },
   {
@@ -126,11 +139,18 @@ const STATE_SAMPLES: PreviewState[] = [
     }),
     error: { message: "return failed" },
   },
+  {
+    type: "switching-branch",
+    appId: APP_ID,
+    branch: "main",
+    fallback: { type: "closed" },
+  },
 ];
 
 const MUTATING_COMMAND_TYPES = new Set([
   "checkout",
   "return",
+  "switch-branch",
   "restore",
   "restore-to-message",
 ]);
@@ -151,11 +171,11 @@ function assertInvariants(
   // pursuing a checkout. It is released (nulled) only when the session
   // falls back to browsing having never checked out, so the next selection
   // re-captures the live branch.
-  if (
-    prev.type !== "closed" &&
-    next.type !== "closed" &&
-    prev.session.originBranch !== null
-  ) {
+  const prevHasSession =
+    prev.type !== "closed" && prev.type !== "switching-branch";
+  const nextHasSession =
+    next.type !== "closed" && next.type !== "switching-branch";
+  if (prevHasSession && nextHasSession && prev.session.originBranch !== null) {
     if (next.type === "browsing" && next.session.checkedOutVersionId === null) {
       expect(next.session.originBranch, label).toBeNull();
     } else {
@@ -164,7 +184,7 @@ function assertInvariants(
   }
 
   // Invariant 3: the session never changes apps mid-flight.
-  if (prev.type !== "closed" && next.type !== "closed") {
+  if (prevHasSession && nextHasSession) {
     expect(next.session.appId, label).toBe(prev.session.appId);
   }
 
@@ -181,7 +201,7 @@ function assertInvariants(
 
   // Invariant 8: closed is only reached when the session no longer owns a
   // historical checkout, or when the settlement event released it.
-  if (next.type === "closed" && prev.type !== "closed") {
+  if (next.type === "closed" && prevHasSession) {
     if (
       event.type !== "RETURN_SUCCEEDED" &&
       event.type !== "RESTORE_SUCCEEDED"
@@ -204,6 +224,9 @@ function assertInvariants(
       expect(next.type, label).toBe("returning");
       expect(command.branch, label).not.toBe("");
     }
+    if (command.type === "switch-branch") {
+      expect(next.type, label).toBe("switching-branch");
+    }
     if (command.type === "restore") {
       expect(next.type, label).toBe("restoring");
       if (prev.type === "previewing") {
@@ -214,7 +237,9 @@ function assertInvariants(
       expect(next.type, label).toBe("resolving-origin");
     }
     if (command.type !== "notify-error" && next.type !== "closed") {
-      expect(command.appId, label).toBe(next.session.appId);
+      const nextAppId =
+        next.type === "switching-branch" ? next.appId : next.session.appId;
+      expect(command.appId, label).toBe(nextAppId);
     }
   }
 
@@ -504,19 +529,82 @@ describe("presentation selection", () => {
       file,
     });
     expect(result.state).toMatchObject({
-      type: "browsing",
-      session: { targetVersionId: "v1", selectedDiffFile: file },
+      type: "viewing-diff",
+      session: {
+        targetVersionId: "v1",
+        selectedDiffFile: file,
+        isDiffVisible: true,
+      },
     });
+    expect(result.commands).toEqual([]);
+    expect(isPaneVisibleState(result.state)).toBe(false);
+    expect(diffVersionIdForState(result.state)).toBe("v1");
+  });
+
+  it("closes a version diff without returning the checked-out branch", () => {
+    const previewing = run([
+      OPEN,
+      SELECT_V1,
+      RESOLVED,
+      { type: "CHECKOUT_SUCCEEDED" },
+    ]).state;
+    const result = step(previewing, { type: "CLOSE_VERSION_DIFF" });
+    expect(result.state.type).toBe("previewing");
+    expect(diffVersionIdForState(result.state)).toBeNull();
     expect(result.commands).toEqual([]);
   });
 
+  it("switches to an explicit branch from a closed machine", () => {
+    const result = step(CLOSED_STATE, {
+      type: "SWITCH_BRANCH",
+      appId: APP_ID,
+      branch: "main",
+    });
+    expect(result.state).toEqual({
+      type: "switching-branch",
+      appId: APP_ID,
+      branch: "main",
+      fallback: { type: "closed" },
+    });
+    expect(result.commands).toEqual([
+      { type: "switch-branch", appId: APP_ID, branch: "main" },
+    ]);
+  });
+
+  it("preserves an owned preview when an explicit branch switch fails", () => {
+    const previewing = run([
+      OPEN,
+      SELECT_V1,
+      RESOLVED,
+      { type: "CHECKOUT_SUCCEEDED" },
+    ]).state;
+    const switching = step(previewing, {
+      type: "SWITCH_BRANCH",
+      appId: APP_ID,
+      branch: "main",
+    }).state;
+    const failed = step(switching, {
+      type: "SWITCH_BRANCH_FAILED",
+      error: { message: "checkout failed" },
+    });
+    expect(failed.state).toBe(previewing);
+    expect(failed.commands).toEqual([]);
+  });
+
   it("selects a diff file without changing phase or emitting commands", () => {
-    const browsing = run([OPEN]).state;
-    const result = step(browsing, {
+    const viewingDiff = run([
+      {
+        type: "VIEW_VERSION_DIFF",
+        appId: APP_ID,
+        versionId: "v1",
+        file: null,
+      },
+    ]).state;
+    const result = step(viewingDiff, {
       type: "SELECT_DIFF_FILE",
       file: { versionId: "v1", path: "src/a.ts" },
     });
-    expect(result.state.type).toBe("browsing");
+    expect(result.state.type).toBe("viewing-diff");
     expect(result.commands).toEqual([]);
   });
 
@@ -548,7 +636,7 @@ describe("restore", () => {
     const restored = run([
       ...toPreviewing,
       { type: "RESTORE", appId: APP_ID, versionId: "v1" },
-      { type: "RESTORE_SUCCEEDED" },
+      { type: "RESTORE_SUCCEEDED", repositoryOutcome: "target-applied" },
     ]);
     expect(restored.state.type).toBe("closed");
     expect(restored.commands.filter((c) => c.type === "return")).toHaveLength(
@@ -602,6 +690,24 @@ describe("restore", () => {
         targetBranch: "feature/origin",
       },
     ]);
+  });
+
+  it("retains preview ownership when restore-to-message leaves Git unchanged", () => {
+    const result = run([
+      ...toPreviewing,
+      {
+        type: "RESTORE_TO_MESSAGE",
+        appId: APP_ID,
+        chatId: 2,
+        messageId: 3,
+        restoreCodebase: false,
+      },
+      { type: "RESTORE_SUCCEEDED", repositoryOutcome: "unchanged" },
+    ]);
+    expect(result.state.type).toBe("previewing");
+    if (result.state.type !== "previewing") return;
+    expect(result.state.session.originBranch).toBe("feature/origin");
+    expect(result.state.session.checkedOutVersionId).toBe("v1");
   });
 
   it("stays recoverable when a restore fails", () => {

@@ -23,8 +23,9 @@ export class VersionPreviewManager {
   private recoveryEntries: VersionPreviewRecoveryEntry[] =
     EMPTY_RECOVERY_ENTRIES;
   private readonly unsubscribeHost: () => void;
-  private readonly unsubscribeStore: () => void;
+  private unsubscribeStore: (() => void) | null = null;
   private previousAppId: number | null;
+  private disposed = false;
 
   constructor(
     private readonly runtime: VersionPreviewRuntime,
@@ -42,8 +43,17 @@ export class VersionPreviewManager {
         for (const listener of this.recoveryListeners) listener();
       }
     });
-    this.unsubscribeStore = store.sub(selectedAppIdAtom, () => {
-      const nextAppId = store.get(selectedAppIdAtom);
+  }
+
+  /** Connects external subscriptions after React has committed the provider. */
+  start(): void {
+    if (this.disposed) {
+      throw new Error("Cannot start a disposed version preview manager");
+    }
+    if (this.unsubscribeStore) return;
+    this.previousAppId = this.store.get(selectedAppIdAtom);
+    this.unsubscribeStore = this.store.sub(selectedAppIdAtom, () => {
+      const nextAppId = this.store.get(selectedAppIdAtom);
       const previousAppId = this.previousAppId;
       this.previousAppId = nextAppId;
       if (previousAppId !== null && previousAppId !== nextAppId) {
@@ -59,10 +69,12 @@ export class VersionPreviewManager {
     this.host.subscribeKey(appId, listener);
 
   send(appId: number, event: PreviewEvent): void {
+    this.start();
     this.host.ensure(appId).send(event);
   }
 
   sendAndWaitForMutation(appId: number, event: PreviewEvent): Promise<void> {
+    this.start();
     return this.host.ensure(appId).sendAndWaitForMutation(event);
   }
 
@@ -83,7 +95,10 @@ export class VersionPreviewManager {
   }
 
   dispose(): void {
-    this.unsubscribeStore();
+    if (this.disposed) return;
+    this.disposed = true;
+    this.unsubscribeStore?.();
+    this.unsubscribeStore = null;
     this.unsubscribeHost();
     this.host.dispose();
     this.recoveryListeners.clear();

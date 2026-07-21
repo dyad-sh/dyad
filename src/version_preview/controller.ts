@@ -29,6 +29,7 @@ export interface VersionPreviewCommands {
   }>;
   checkoutVersion(input: { appId: number; versionId: string }): Promise<void>;
   returnToBranch(input: { appId: number; branch: string }): Promise<void>;
+  switchBranch(input: { appId: number; branch: string }): Promise<void>;
   restoreVersion(input: {
     appId: number;
     versionId: string;
@@ -41,7 +42,7 @@ export interface VersionPreviewCommands {
     messageId: number;
     restoreCodebase: boolean;
     targetBranch: string | null;
-  }): Promise<void>;
+  }): Promise<{ repositoryOutcome: "target-applied" | "unchanged" }>;
 }
 
 export interface VersionPreviewRuntime {
@@ -93,8 +94,12 @@ export class VersionPreviewController {
   };
 
   send = (event: PreviewEvent): void => {
+    this.dispatch(event);
+  };
+
+  private dispatch(event: PreviewEvent): boolean {
     if (this.disposed) {
-      return;
+      return false;
     }
     const previous = this.state;
     const result = transition(previous, event);
@@ -114,18 +119,27 @@ export class VersionPreviewController {
         listener();
       }
     }
-  };
+    return result.commands.some((command) =>
+      [
+        "checkout",
+        "return",
+        "switch-branch",
+        "restore",
+        "restore-to-message",
+      ].includes(command.type),
+    );
+  }
 
   sendAndWaitForMutation(event: PreviewEvent): Promise<void> {
-    if (this.mutationWaiter) {
+    if (this.mutationInFlight || this.mutationWaiter) {
       return Promise.reject(new Error("A version mutation is already pending"));
     }
     return new Promise<void>((resolve, reject) => {
       this.mutationWaiter = { resolve, reject };
-      this.send(event);
-      if (!this.mutationInFlight) {
+      const startedMutation = this.dispatch(event);
+      if (!startedMutation) {
         this.mutationWaiter = null;
-        resolve();
+        reject(new Error("The version mutation was not accepted"));
       }
     });
   }
@@ -187,6 +201,17 @@ export class VersionPreviewController {
         );
         return;
       }
+      case "switch-branch": {
+        this.runMutation(
+          this.runtime.commands.switchBranch({
+            appId: command.appId,
+            branch: command.branch,
+          }),
+          { type: "SWITCH_BRANCH_SUCCEEDED" },
+          (error) => ({ type: "SWITCH_BRANCH_FAILED", error }),
+        );
+        return;
+      }
       case "restore": {
         this.runMutation(
           this.runtime.commands.restoreVersion({
@@ -195,7 +220,10 @@ export class VersionPreviewController {
             targetBranch: command.targetBranch,
             currentChatMessageId: command.currentChatMessageId,
           }),
-          { type: "RESTORE_SUCCEEDED" },
+          {
+            type: "RESTORE_SUCCEEDED",
+            repositoryOutcome: "target-applied",
+          },
           (error) => ({ type: "RESTORE_FAILED", error }),
         );
         return;
@@ -209,7 +237,10 @@ export class VersionPreviewController {
             restoreCodebase: command.restoreCodebase,
             targetBranch: command.targetBranch,
           }),
-          { type: "RESTORE_SUCCEEDED" },
+          (result) => ({
+            type: "RESTORE_SUCCEEDED",
+            repositoryOutcome: result.repositoryOutcome,
+          }),
           (error) => ({ type: "RESTORE_FAILED", error }),
         );
         return;
@@ -233,9 +264,9 @@ export class VersionPreviewController {
     }
   }
 
-  private runMutation(
-    operation: Promise<void>,
-    successEvent: PreviewEvent,
+  private runMutation<T>(
+    operation: Promise<T>,
+    successEvent: PreviewEvent | ((result: T) => PreviewEvent),
     failureEvent: (error: PreviewError) => PreviewEvent,
   ): void {
     if (this.mutationInFlight) {
@@ -250,11 +281,17 @@ export class VersionPreviewController {
     }
     this.mutationInFlight = true;
     void operation.then(
-      () => {
+      (result) => {
         this.mutationInFlight = false;
-        this.send(successEvent);
-        this.mutationWaiter?.resolve();
-        this.mutationWaiter = null;
+        this.send(
+          typeof successEvent === "function"
+            ? successEvent(result)
+            : successEvent,
+        );
+        if (!this.mutationInFlight) {
+          this.mutationWaiter?.resolve();
+          this.mutationWaiter = null;
+        }
       },
       (error) => {
         this.mutationInFlight = false;

@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -37,7 +38,7 @@ function ProvidedVersionPreviewProvider({
   children: ReactNode;
   manager: VersionPreviewManager;
 }) {
-  useEffect(() => () => manager.dispose(), [manager]);
+  useManagerLifecycle(manager);
   return (
     <VersionPreviewContext.Provider value={manager}>
       {children}
@@ -62,13 +63,28 @@ function OwnedVersionPreviewProvider({ children }: { children: ReactNode }) {
       ),
   );
 
-  useEffect(() => () => manager.dispose(), [manager]);
+  useManagerLifecycle(manager);
 
   return (
     <VersionPreviewContext.Provider value={manager}>
       {children}
     </VersionPreviewContext.Provider>
   );
+}
+
+function useManagerLifecycle(manager: VersionPreviewManager) {
+  const generation = useRef(0);
+  useEffect(() => {
+    const currentGeneration = ++generation.current;
+    manager.start();
+    return () => {
+      // React StrictMode immediately replays effects without recreating state.
+      // Defer irreversible disposal so the replay setup can claim the manager.
+      queueMicrotask(() => {
+        if (generation.current === currentGeneration) manager.dispose();
+      });
+    };
+  }, [manager]);
 }
 
 export function useVersionPreviewManager(): VersionPreviewManager {

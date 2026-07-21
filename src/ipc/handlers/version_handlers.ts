@@ -119,11 +119,13 @@ function versionRuntimeAction(
 }
 
 function versionCommandResult({
+  repositoryOutcome = "target-applied",
   notification = null,
   runtimeAction = "none",
   affectedChatId = null,
   createdChatId = null,
 }: {
+  repositoryOutcome?: "target-applied" | "unchanged";
   notification?: {
     kind: "success" | "warning";
     message: string;
@@ -132,7 +134,13 @@ function versionCommandResult({
   affectedChatId?: number | null;
   createdChatId?: number | null;
 }) {
-  return { notification, runtimeAction, affectedChatId, createdChatId };
+  return {
+    repositoryOutcome,
+    notification,
+    runtimeAction,
+    affectedChatId,
+    createdChatId,
+  };
 }
 
 function appendInterruptedGenerationWarning(
@@ -997,6 +1005,7 @@ export function registerVersionHandlers() {
       // cancelling streams (see phase 1 above).
       if (prepared.status === "warn") {
         return versionCommandResult({
+          repositoryOutcome: "unchanged",
           notification: {
             kind: "warning",
             message: prepared.warningMessage,
@@ -1092,6 +1101,7 @@ export function registerVersionHandlers() {
 
           if (restoreCodebase && !latestTargetCommitHash) {
             return versionCommandResult({
+              repositoryOutcome: "unchanged",
               notification: {
                 kind: "warning",
                 message: appendInterruptedGenerationWarning(
@@ -1113,6 +1123,7 @@ export function registerVersionHandlers() {
                 error.kind === DyadErrorKind.NotFound
               ) {
                 return versionCommandResult({
+                  repositoryOutcome: "unchanged",
                   notification: {
                     kind: "warning",
                     message: appendInterruptedGenerationWarning(
@@ -1278,6 +1289,7 @@ export function registerVersionHandlers() {
           });
 
           return versionCommandResult({
+            repositoryOutcome: restoreCodebase ? "target-applied" : "unchanged",
             notification: warningMessage
               ? {
                   kind: "warning",

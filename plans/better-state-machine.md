@@ -306,19 +306,27 @@ export interface PreviewSession {
   exitIntent: ExitIntent;
   /** Presentation only. Never used to decide Git transitions. */
   selectedDiffFile: { versionId: string; path: string } | null;
+  /** Presentation only; closing it never returns or checks out a branch. */
+  isDiffVisible: boolean;
 }
 ```
 
-One new event mutates it:
+Presentation events mutate these fields without emitting repository commands:
 
 ```ts
 | { type: "SELECT_DIFF_FILE"; file: { versionId: string; path: string } | null }
+| { type: "CLOSE_VERSION_DIFF" }
+| { type: "VIEW_VERSION_DIFF"; appId: number; versionId: string; file: ... }
 ```
 
 Rules:
 
-- `SELECT_DIFF_FILE` is honored in pane-visible states and ignored elsewhere.
+- `SELECT_DIFF_FILE` is honored while a diff is visible and ignored elsewhere.
   It emits no commands, ever.
+- Read-only diffs opened from chat use a non-pane-visible `viewing-diff` state,
+  so chat stays mounted while the Code panel shows the requested commit.
+- `CLOSE_VERSION_DIFF` only clears diff presentation; `CLOSE` remains the
+  repository-workflow exit that returns an owned historical checkout.
 - Selecting a different version clears `selectedDiffFile`.
 - The "selected version" is already in the machine (`targetVersionId` /
   `diffVersionIdForState()`); consumers read it from the snapshot instead of
@@ -381,6 +389,7 @@ version-preview mutations:
 
 ```ts
 const VersionCommandResultSchema = z.object({
+  repositoryOutcome: z.enum(["target-applied", "unchanged"]),
   notification: z
     .object({
       kind: z.enum(["success", "warning"]),
@@ -396,7 +405,9 @@ const VersionCommandResultSchema = z.object({
 
 The contract is capability-oriented: `runtimeAction: "restart"` tells the
 renderer what to do without exposing Neon- or cloud-specific logic across the
-IPC boundary.
+IPC boundary. `repositoryOutcome` lets the machine distinguish a completed
+restore from fork-only or warning/no-op restore-to-message results; it must not
+discard an owned preview session unless main confirms the target was applied.
 
 ### Make checkout intent semantic
 
@@ -657,8 +668,13 @@ new events:
 - `RESTORE` and `RESTORE_TO_MESSAGE` from `closed`, `browsing`, and
   `previewing`, including `targetBranch` null versus origin;
 - both events ignored in every mutating and recovery state;
-- `SELECT_DIFF_FILE` honored only in pane-visible states, never emitting
-  commands, cleared on version change;
+- `SELECT_DIFF_FILE` honored only while a version diff is visible, never emitting
+  commands, cleared on version change; read-only `viewing-diff` presentation
+  stays outside Version History and `CLOSE_VERSION_DIFF` never emits Git work;
+- explicit branch switching works from a closed machine and preserves the
+  previous owned session if checkout fails;
+- restore-to-message completion distinguishes `target-applied` from
+  `unchanged`, retaining preview ownership for fork-only and warning outcomes;
 - `RETURN_FAILED` emits `notify-recovery`; `OPEN` in `recovery-required`
   returns the same state reference and emits `notify-recovery`;
   `RETRY_RETURN` emits `dismiss-recovery` with the return command;
@@ -682,6 +698,8 @@ new events:
   reset helper;
 - provider unmount/remount constructs a fresh manager and disposes the old
   one.
+- React StrictMode effect replay does not dispose the live manager or leak the
+  discarded render initializer's store subscription.
 
 ### Command adapter tests
 

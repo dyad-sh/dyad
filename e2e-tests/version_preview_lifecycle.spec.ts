@@ -24,9 +24,14 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.importApp("minimal");
+    await po.chatActions.waitForChatCompletion();
+    await po.chatActions.clickNewChat();
     const appAName = await po.appManagement.getCurrentAppName();
     const appAPath = await po.appManagement.getCurrentAppPath();
     await po.sendPrompt("tc=write-index");
+    await expect(
+      po.previewPanel.getPreviewIframeElement().contentFrame().locator("body"),
+    ).toBeVisible({ timeout: Timeout.LONG });
     await makeRuntimeTreeClean(po, appAPath);
     const originBranch = git(appAPath, "branch", "--show-current");
     const versionButton = po.page.getByRole("button", {
@@ -58,7 +63,10 @@ testSkipIfWindows(
       )
       .toEqual({ branch: originBranch, status: "" });
 
-    await po.page.getByRole("button", { name: `${appAName} New Chat` }).click();
+    await po.page
+      .getByRole("button", { name: `${appAName} New Chat` })
+      .first()
+      .click();
     await expect(po.page.getByTestId("version-diff-view")).not.toBeVisible();
     await expect(
       po.page.getByRole("button", { name: currentVersionLabel! }),

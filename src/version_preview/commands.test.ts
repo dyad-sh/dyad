@@ -54,6 +54,7 @@ vi.mock("sonner", () => ({
 const result = (
   overrides: Partial<VersionCommandResult> = {},
 ): VersionCommandResult => ({
+  repositoryOutcome: "target-applied",
   notification: null,
   runtimeAction: "none",
   affectedChatId: null,
@@ -88,6 +89,7 @@ describe("createVersionPreviewRuntime", () => {
     const { runtime, store } = setup();
     await runtime.commands.checkoutVersion({ appId: 7, versionId: "abc" });
     await runtime.commands.returnToBranch({ appId: 7, branch: "feature/x" });
+    await runtime.commands.switchBranch({ appId: 7, branch: "main" });
 
     expect(checkoutVersionMock).toHaveBeenNthCalledWith(1, {
       purpose: "preview",
@@ -98,6 +100,11 @@ describe("createVersionPreviewRuntime", () => {
       purpose: "return",
       appId: 7,
       branch: "feature/x",
+    });
+    expect(checkoutVersionMock).toHaveBeenNthCalledWith(3, {
+      purpose: "return",
+      appId: 7,
+      branch: "main",
     });
     expect(store.get(activeCheckoutCounterAtom)).toBe(0);
   });
@@ -113,7 +120,7 @@ describe("createVersionPreviewRuntime", () => {
     getChatMock.mockResolvedValue({ messages: [{ id: 1 }] });
     const { runtime, store, navigateToChat } = setup();
 
-    await runtime.commands.restoreToMessage({
+    const commandOutcome = await runtime.commands.restoreToMessage({
       appId: 7,
       chatId: 11,
       messageId: 22,
@@ -127,6 +134,23 @@ describe("createVersionPreviewRuntime", () => {
     expect(store.get(chatMessagesByIdAtom).get(11)).toEqual([{ id: 1 }]);
     expect(navigateToChat).toHaveBeenCalledWith({ appId: 7, chatId: 12 });
     expect(restartAppWithStoreMock).toHaveBeenCalledWith(store, 7);
+    expect(commandOutcome.repositoryOutcome).toBe("target-applied");
+  });
+
+  it("preserves an authoritative unchanged restore outcome", async () => {
+    restoreToMessageVersionMock.mockResolvedValue(
+      result({ repositoryOutcome: "unchanged" }),
+    );
+    const { runtime } = setup();
+    await expect(
+      runtime.commands.restoreToMessage({
+        appId: 7,
+        chatId: 11,
+        messageId: 22,
+        restoreCodebase: false,
+        targetBranch: "feature/x",
+      }),
+    ).resolves.toMatchObject({ repositoryOutcome: "unchanged" });
   });
 
   it("refreshes the affected chat returned by main, independent of UI selection", async () => {

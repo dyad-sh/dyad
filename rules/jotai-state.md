@@ -83,3 +83,8 @@ Components should usually read `currentPreviewErrorAtom` rather than repeat
 When deleting an entity, prune any keyed Jotai state for that entity. Chat
 state already uses helper atoms such as `removeChatIdFromAllTrackingAtom`; app
 scoped runtime state should follow the same pattern.
+
+For provider-owned disposable services, keep constructors side-effect-free and
+start external subscriptions only after the provider commits. React StrictMode
+replays effect setup/cleanup while retaining hook state, so cleanup must not
+permanently dispose an instance that the replayed setup will reuse.

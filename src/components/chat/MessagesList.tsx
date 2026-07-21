@@ -295,7 +295,9 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const { versions } = useVersions(appId);
     const { state: previewState, sendAndWaitForMutation: sendPreviewMutation } =
       useVersionPreview(appId);
-    const isAnyVersionMutationPending = isMutatingState(previewState);
+    const isAnyVersionMutationPending =
+      isMutatingState(previewState) ||
+      previewState.type === "recovery-required";
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();

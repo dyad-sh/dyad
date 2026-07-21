@@ -104,7 +104,7 @@ export function createVersionPreviewRuntime({
     appId: number,
     label: string,
     operation: () => Promise<VersionCommandResult>,
-  ): Promise<void> {
+  ): Promise<VersionCommandResult> {
     let result: VersionCommandResult;
     try {
       result = await operation();
@@ -120,6 +120,15 @@ export function createVersionPreviewRuntime({
         "The version operation completed, but Dyad could not refresh every related view.",
       );
     }
+    return result;
+  }
+
+  async function mutateAndDiscard(
+    appId: number,
+    label: string,
+    operation: () => Promise<VersionCommandResult>,
+  ): Promise<void> {
+    await mutate(appId, label, operation);
   }
 
   return {
@@ -148,12 +157,17 @@ export function createVersionPreviewRuntime({
       },
 
       checkoutVersion: ({ appId, versionId }) =>
-        mutate(appId, "checkout", () =>
+        mutateAndDiscard(appId, "checkout", () =>
           runCheckout({ purpose: "preview", appId, versionId }),
         ),
 
       returnToBranch: ({ appId, branch }) =>
-        mutate(appId, "return", () =>
+        mutateAndDiscard(appId, "return", () =>
+          runCheckout({ purpose: "return", appId, branch }),
+        ),
+
+      switchBranch: ({ appId, branch }) =>
+        mutateAndDiscard(appId, "switch-branch", () =>
           runCheckout({ purpose: "return", appId, branch }),
         ),
 
@@ -163,7 +177,7 @@ export function createVersionPreviewRuntime({
         targetBranch,
         currentChatMessageId,
       }) =>
-        mutate(appId, "restore", () =>
+        mutateAndDiscard(appId, "restore", () =>
           ipc.version.revertVersion({
             appId,
             previousVersionId: versionId,

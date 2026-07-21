@@ -49,6 +49,7 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 ## Stream client notes
 
 - `createStreamClient(...).start()` returns `void`, not a cleanup/unsubscribe function. You cannot capture a handle to abort or clean up an active stream from the caller side.
+- Terminal stream callbacks may synchronously start a replacement stream with the same key. Cleanup after `onEnd`/`onError` (including invoke rejection) must delete callbacks only when the map still points to the generation that ended; an unconditional keyed delete can orphan the replacement stream.
 - To guard against duplicate streams, use a module-level `Set` (like `pendingStreamChatIds` in `useStreamChat.ts`) or a React state/ref-based lock, not the return value.
 - **Never gate global-state cleanup in `onEnd`/`onError` on a local `isMountedRef`.** Stream callbacks outlive the component that started them. If the user navigates away mid-stream, an unmount-guarded `onEnd` skips `setIsStreamingByIdAtom(false)` and `syncChatFromDb`, leaving the chat permanently `isStreaming=true` — `ChatPanel.fetchChatMessages` then skips IPC fetches forever and only a page refresh recovers. Always run global Jotai state writes and DB syncs unconditionally; only guard UI-only side effects (toasts, console logs, local React state) on mount. See `useStreamChat.ts` for the no-guard pattern.
 

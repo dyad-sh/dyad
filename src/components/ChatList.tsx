@@ -54,6 +54,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSetChatFavorite } from "@/hooks/useSetChatFavorite";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
+import { disposePlanHandoffController } from "@/plan_handoff/usePlanHandoff";
 
 const CHAT_ACTION_SPRING = {
   type: "spring" as const,
@@ -237,6 +238,7 @@ export function ChatList({
   const handleDeleteChat = async (chatId: number) => {
     try {
       await ipc.chat.deleteChat(chatId);
+      disposePlanHandoffController(chatId);
       showSuccess(t("chatDeleted"));
 
       // Remove from tab tracking to prevent stale IDs

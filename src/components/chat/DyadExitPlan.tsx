@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 import { CheckCircle, ArrowRight } from "lucide-react";
-import {
-  planAcceptInNewChatByChatIdAtom,
-  planStateAtom,
-} from "@/atoms/planAtoms";
+import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { usePlanHandoffState } from "@/plan_handoff/usePlanHandoff";
 
 interface DyadExitPlanProps {
   node: {
@@ -18,11 +16,9 @@ interface DyadExitPlanProps {
 export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
   const { notes } = node.properties;
   const chatId = useAtomValue(selectedChatIdAtom);
-  const planState = useAtomValue(planStateAtom);
   const acceptInNewChatByChatId = useAtomValue(planAcceptInNewChatByChatIdAtom);
-  const isTransitioning = chatId
-    ? planState.transitioningChatIds.has(chatId)
-    : false;
+  const handoffState = usePlanHandoffState(chatId);
+  const isTransitioning = handoffState.type === "transitioning";
   // Defaults to a new chat when the choice is unknown (e.g. after a reload),
   // matching the historical behavior.
   const useNewChat = chatId

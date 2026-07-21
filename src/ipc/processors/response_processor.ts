@@ -89,11 +89,6 @@ function formatSkippedActionSummary(fullResponse: string): string {
       "search-replaces",
     ],
     [getDyadCopyTags(fullResponse).length, "copy", "copies"],
-    [
-      getDyadGenerateTestTags(fullResponse).length,
-      "test generation",
-      "test generations",
-    ],
   ];
 
   return counts

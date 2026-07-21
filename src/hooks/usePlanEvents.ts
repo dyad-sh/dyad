@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import { useSetAtom } from "jotai";
-import { planStateAtom, pendingQuestionnaireAtom } from "@/atoms/planAtoms";
+import {
+  planAcceptInNewChatByChatIdAtom,
+  planStateAtom,
+  pendingQuestionnaireAtom,
+} from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import {
   planEventClient,
@@ -20,6 +24,7 @@ import { usePlanHandoff } from "@/plan_handoff/usePlanHandoff";
  */
 export function usePlanEvents() {
   const setPlanState = useSetAtom(planStateAtom);
+  const setPlanAcceptInNewChat = useSetAtom(planAcceptInNewChatByChatIdAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const { acceptPlan } = usePlanHandoff();
@@ -28,6 +33,16 @@ export function usePlanEvents() {
     // Handle plan updates
     const unsubscribeUpdate = planEventClient.onUpdate(
       (payload: PlanUpdatePayload) => {
+        // A choice belongs to the plan that was accepted, not the chat
+        // forever. Clear it when a new draft arrives so typed acceptance of
+        // that draft cannot inherit an earlier button choice.
+        setPlanAcceptInNewChat((prev) => {
+          if (!prev.has(payload.chatId)) return prev;
+          const next = new Map(prev);
+          next.delete(payload.chatId);
+          return next;
+        });
+
         // Update plan state
         setPlanState((prev) => {
           const nextPlans = new Map(prev.plansByChatId);
@@ -70,5 +85,11 @@ export function usePlanEvents() {
       unsubscribeExit();
       unsubscribeQuestionnaire();
     };
-  }, [setPlanState, setPreviewMode, setPendingQuestionnaire, acceptPlan]);
+  }, [
+    setPlanState,
+    setPlanAcceptInNewChat,
+    setPreviewMode,
+    setPendingQuestionnaire,
+    acceptPlan,
+  ]);
 }

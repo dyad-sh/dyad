@@ -87,6 +87,8 @@ scoped runtime state should follow the same pattern.
 
 `planAcceptInNewChatByChatIdAtom` records whether Accept started a new chat
 (`true`) or continued here (`false`). Plan panel buttons set it; typed
-acceptance (e.g. "implement the plan" → `exit_plan`) does not. When missing,
-`usePlanHandoff` / `DyadExitPlan` must default to **continue in the current
-chat** (`?? false`) — never create a new chat by default.
+acceptance (e.g. "implement the plan" → `exit_plan`) does not. A `plan:update`
+for the chat must clear any prior choice so a new plan cannot inherit stale
+routing. When missing, `usePlanHandoff` / `DyadExitPlan` must default to
+**continue in the current chat** (`?? false`) — never create a new chat by
+default.

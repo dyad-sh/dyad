@@ -74,6 +74,7 @@ import {
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
@@ -272,6 +273,10 @@ export interface HybridChatHarness extends ChatFlowHarness {
 
   /** Set the active selected app in the mounted Jotai store. */
   setSelectedAppId: (appId: number | null) => void;
+
+  /** Seed/read a chat's transient plan-acceptance routing choice. */
+  setPlanAcceptInNewChat: (chatId: number, value: boolean) => void;
+  getPlanAcceptInNewChat: (chatId: number) => boolean | undefined;
 
   /** Drive a Base UI popover/menu trigger in happy-dom. */
   openPopover: (trigger: HTMLElement) => Promise<void>;
@@ -865,6 +870,18 @@ export async function setupHybridChatHarness(
       });
     };
 
+    const setPlanAcceptInNewChat = (chatId: number, value: boolean) => {
+      const store = getActiveStore();
+      act(() => {
+        const next = new Map(store.get(planAcceptInNewChatByChatIdAtom));
+        next.set(chatId, value);
+        store.set(planAcceptInNewChatByChatIdAtom, next);
+      });
+    };
+
+    const getPlanAcceptInNewChat = (chatId: number) =>
+      getActiveStore().get(planAcceptInNewChatByChatIdAtom).get(chatId);
+
     const setChatAttachments = (attachments: ChatAttachmentSeed[]) => {
       const store = getActiveStore();
       const fileAttachments = attachments.map(
@@ -1407,6 +1424,8 @@ export async function setupHybridChatHarness(
       router: getActiveRouter,
       currentLocation: () => getActiveRouter().state.location,
       setSelectedAppId,
+      setPlanAcceptInNewChat,
+      getPlanAcceptInNewChat,
       openPopover,
       clickMenuItem,
       findDialog,

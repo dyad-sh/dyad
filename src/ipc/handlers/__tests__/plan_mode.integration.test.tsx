@@ -233,10 +233,15 @@ describe("plan mode (integration)", () => {
       withPlanPanel: true,
     });
     await waitForChatSurface();
-    await streamRealPlan(app.chatId);
 
-    // Free-text acceptance never records planAcceptInNewChatByChatIdAtom.
-    // Routing must still continue here instead of creating a surprise chat.
+    // Simulate this chat having previously accepted a plan with the explicit
+    // "new chat" button. The next plan update must clear that stale choice.
+    harness.setPlanAcceptInNewChat(app.chatId, true);
+    await streamRealPlan(app.chatId);
+    expect(harness.getPlanAcceptInNewChat(app.chatId)).toBeUndefined();
+
+    // Free-text acceptance does not record a new choice. Routing must still
+    // continue here instead of reusing the stale choice and creating a chat.
     const { send } = await harness.typeInChat(
       "I accept this plan. Call the exit_plan tool now with confirmation: true to begin implementation.",
       { chatId: app.chatId },

@@ -27,6 +27,10 @@ Base UI dropdown actions have `role="menuitem"`, while
 dropdown tests, query the open menu with `within(...).getByRole("menuitem")`
 unless the harness helper has been expanded to support both roles.
 
+`HybridChatHarness` keeps its mounted Jotai store private. When a regression
+test must seed or inspect atom state, add a narrow domain helper to the harness
+instead of assuming a public `harness.store` property.
+
 Default to the node chat-flow harness when assertions are about files, git, db
 rows, IPC events, or LLM request dumps. Use the renderer+IPC hybrid harness only
 when assertions are about rendered UI or a flow that must be driven through a

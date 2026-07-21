@@ -495,6 +495,18 @@ describe("runTypeScriptCheck", () => {
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
   });
 
+  it("preserves the filesystem cause when TypeScript is not installed", async () => {
+    await fs.rm(path.join(appPath, "node_modules", "typescript"), {
+      recursive: true,
+    });
+
+    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
+      typeCheckKind: "typescript-not-found",
+      cause: { code: "ENOENT" },
+    });
+    expect(runBufferedProcessMock).not.toHaveBeenCalled();
+  });
+
   it("preserves a spawn failure instead of reporting a missing installation", async () => {
     const spawnError = new BufferedProcessSpawnError(
       "spawn node ENOENT",

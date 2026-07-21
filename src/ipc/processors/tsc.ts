@@ -357,6 +357,7 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
   // symlink can otherwise keep returning the deleted package's real path.
   let currentPath = path.resolve(appPath);
   let packageJsonPath: string | undefined;
+  let lastMissingPathError: unknown;
   while (true) {
     const candidate = path.join(
       currentPath,
@@ -372,6 +373,7 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
       if (!isMissingPathError(error)) {
         throw error;
       }
+      lastMissingPathError = error;
       const parentPath = path.dirname(currentPath);
       if (parentPath === currentPath) {
         break;
@@ -384,6 +386,7 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
     throw new TypeCheckPreconditionError(
       "typescript-not-found",
       `Failed to load TypeScript from ${appPath}: package is not installed`,
+      { cause: lastMissingPathError },
     );
   }
 

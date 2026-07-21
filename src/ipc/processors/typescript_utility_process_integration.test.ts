@@ -88,15 +88,15 @@ describe("TypeScript utility process exclusion", () => {
     const appPath = await fs.mkdtemp(
       path.join(os.tmpdir(), "dyad-ts-scheduler-"),
     );
-    await fs.mkdir(path.join(appPath, "node_modules", "typescript", "lib"), {
+    await fs.mkdir(path.join(appPath, "node_modules", "typescript", "bin"), {
       recursive: true,
     });
     await fs.writeFile(
       path.join(appPath, "node_modules", "typescript", "package.json"),
-      "{}",
+      JSON.stringify({ bin: { tsc: "./bin/tsc" } }),
     );
     await fs.writeFile(
-      path.join(appPath, "node_modules", "typescript", "lib", "tsc.js"),
+      path.join(appPath, "node_modules", "typescript", "bin", "tsc"),
       "",
     );
     await fs.writeFile(path.join(appPath, "tsconfig.json"), "{}");

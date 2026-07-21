@@ -349,16 +349,16 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
             </AlertDescription>
           </Alert>
           <Tabs defaultValue="local-folder" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 h-auto">
+            <TabsList className="grid w-full grid-cols-4 h-auto gap-1">
               <TabsTrigger
                 value="local-folder"
-                className="text-xs sm:text-sm px-2 py-2"
+                className="text-xs sm:text-sm px-1.5 py-2 h-full min-w-0 whitespace-normal text-center leading-tight"
               >
                 {t("home:localFolder")}
               </TabsTrigger>
               <TabsTrigger
                 value="github-repos"
-                className="text-xs sm:text-sm px-2 py-2"
+                className="text-xs sm:text-sm px-1.5 py-2 h-full min-w-0 whitespace-normal text-center leading-tight"
               >
                 <span className="hidden sm:inline">
                   {t("home:yourGithubRepos")}
@@ -367,13 +367,13 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
               </TabsTrigger>
               <TabsTrigger
                 value="github-url"
-                className="text-xs sm:text-sm px-2 py-2"
+                className="text-xs sm:text-sm px-1.5 py-2 h-full min-w-0 whitespace-normal text-center leading-tight"
               >
                 {t("home:githubUrl")}
               </TabsTrigger>
               <TabsTrigger
                 value="dyad-apps"
-                className="text-xs sm:text-sm px-2 py-2"
+                className="text-xs sm:text-sm px-1.5 py-2 h-full min-w-0 whitespace-normal text-center leading-tight"
               >
                 {t("home:dyadApps")}
               </TabsTrigger>

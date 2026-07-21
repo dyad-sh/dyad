@@ -2,7 +2,6 @@
   "body": {
     "model": "gemini/gemini-2.5-pro",
     "max_tokens": 65535,
-    "temperature": 0,
     "messages": [
       {
         "role": "system",

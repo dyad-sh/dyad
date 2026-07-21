@@ -19,9 +19,9 @@ function session(overrides: Partial<PreviewSession> = {}): PreviewSession {
     appId: APP_ID,
     originBranch: null,
     targetVersionId: null,
-    targetHasDbSnapshot: false,
     checkedOutVersionId: null,
     exitIntent: { type: "none" },
+    selectedDiffFile: null,
     ...overrides,
   };
 }
@@ -31,9 +31,26 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   { type: "CLOSE" },
   { type: "APP_CHANGED", nextAppId: 8 },
   { type: "APP_CHANGED", nextAppId: null },
-  { type: "SELECT_VERSION", versionId: "v1", hasDbSnapshot: false },
-  { type: "SELECT_VERSION", versionId: "v2", hasDbSnapshot: true },
-  { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+  { type: "SELECT_VERSION", versionId: "v1" },
+  { type: "SELECT_VERSION", versionId: "v2" },
+  {
+    type: "VIEW_VERSION_DIFF",
+    appId: APP_ID,
+    versionId: "v1",
+    file: { versionId: "v1", path: "src/a.ts" },
+  },
+  {
+    type: "SELECT_DIFF_FILE",
+    file: { versionId: "v1", path: "src/a.ts" },
+  },
+  { type: "RESTORE", appId: APP_ID, versionId: "v1" },
+  {
+    type: "RESTORE_TO_MESSAGE",
+    appId: APP_ID,
+    chatId: 2,
+    messageId: 3,
+    restoreCodebase: true,
+  },
   { type: "RETRY_RETURN" },
   { type: "ORIGIN_RESOLVED", branch: "feature/origin" },
   { type: "ORIGIN_RESOLUTION_FAILED" },
@@ -88,6 +105,7 @@ const STATE_SAMPLES: PreviewState[] = [
       originBranch: "feature/origin",
       checkedOutVersionId: "v1",
     }),
+    fallback: "previewing",
   },
   {
     type: "returning",
@@ -110,7 +128,12 @@ const STATE_SAMPLES: PreviewState[] = [
   },
 ];
 
-const MUTATING_COMMAND_TYPES = new Set(["checkout", "return", "restore"]);
+const MUTATING_COMMAND_TYPES = new Set([
+  "checkout",
+  "return",
+  "restore",
+  "restore-to-message",
+]);
 
 /**
  * Encodes the invariants from plans/version-preview-state-machine.md.
@@ -149,7 +172,7 @@ function assertInvariants(
   if (
     next.type === "checking-out" ||
     next.type === "previewing" ||
-    next.type === "restoring" ||
+    (next.type === "restoring" && next.fallback === "previewing") ||
     next.type === "returning" ||
     next.type === "recovery-required"
   ) {
@@ -183,7 +206,9 @@ function assertInvariants(
     }
     if (command.type === "restore") {
       expect(next.type, label).toBe("restoring");
-      expect(command.targetBranch, label).not.toBe("");
+      if (prev.type === "previewing") {
+        expect(command.targetBranch, label).not.toBeNull();
+      }
     }
     if (command.type === "resolve-origin") {
       expect(next.type, label).toBe("resolving-origin");
@@ -221,12 +246,10 @@ const OPEN: PreviewEvent = { type: "OPEN", appId: APP_ID };
 const SELECT_V1: PreviewEvent = {
   type: "SELECT_VERSION",
   versionId: "v1",
-  hasDbSnapshot: false,
 };
 const SELECT_V2: PreviewEvent = {
   type: "SELECT_VERSION",
   versionId: "v2",
-  hasDbSnapshot: true,
 };
 const RESOLVED: PreviewEvent = {
   type: "ORIGIN_RESOLVED",
@@ -241,6 +264,11 @@ describe("transition totality", () => {
         expect(result).toBeDefined();
         expect(result.state).toBeDefined();
         expect(Array.isArray(result.commands)).toBe(true);
+        if (result.state !== state) {
+          expect(result.state, `${state.type} + ${event.type}`).not.toEqual(
+            state,
+          );
+        }
       }
     }
   });
@@ -263,7 +291,6 @@ describe("preview lifecycle", () => {
       type: "checkout",
       appId: APP_ID,
       versionId: "v1",
-      hasDbSnapshot: false,
     });
   });
 
@@ -289,7 +316,7 @@ describe("preview lifecycle", () => {
     if (state.type !== "checking-out") return;
     expect(state.session.targetVersionId).toBe("v2");
     expect(commands.filter((c) => c.type === "checkout")).toEqual([
-      { type: "checkout", appId: APP_ID, versionId: "v2", hasDbSnapshot: true },
+      { type: "checkout", appId: APP_ID, versionId: "v2" },
     ]);
   });
 
@@ -467,6 +494,48 @@ describe("close and app-switch handling", () => {
   });
 });
 
+describe("presentation selection", () => {
+  it("opens a read-only diff without emitting a Git command", () => {
+    const file = { versionId: "v1", path: "src/a.ts" };
+    const result = step(CLOSED_STATE, {
+      type: "VIEW_VERSION_DIFF",
+      appId: APP_ID,
+      versionId: "v1",
+      file,
+    });
+    expect(result.state).toMatchObject({
+      type: "browsing",
+      session: { targetVersionId: "v1", selectedDiffFile: file },
+    });
+    expect(result.commands).toEqual([]);
+  });
+
+  it("selects a diff file without changing phase or emitting commands", () => {
+    const browsing = run([OPEN]).state;
+    const result = step(browsing, {
+      type: "SELECT_DIFF_FILE",
+      file: { versionId: "v1", path: "src/a.ts" },
+    });
+    expect(result.state.type).toBe("browsing");
+    expect(result.commands).toEqual([]);
+  });
+
+  it("clears a diff-file selection when selecting a version", () => {
+    const browsing = run([
+      {
+        type: "VIEW_VERSION_DIFF",
+        appId: APP_ID,
+        versionId: "v1",
+        file: { versionId: "v1", path: "src/a.ts" },
+      },
+    ]).state;
+    const result = step(browsing, SELECT_V2);
+    expect(result.state.type).toBe("resolving-origin");
+    if (result.state.type !== "resolving-origin") return;
+    expect(result.state.session.selectedDiffFile).toBeNull();
+  });
+});
+
 describe("restore", () => {
   const toPreviewing: PreviewEvent[] = [
     OPEN,
@@ -478,7 +547,7 @@ describe("restore", () => {
   it("restores onto the origin branch and closes without an extra return", () => {
     const restored = run([
       ...toPreviewing,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
       { type: "RESTORE_SUCCEEDED" },
     ]);
     expect(restored.state.type).toBe("closed");
@@ -490,14 +559,55 @@ describe("restore", () => {
       appId: APP_ID,
       versionId: "v1",
       targetBranch: "feature/origin",
-      hasDbSnapshot: false,
     });
+  });
+
+  it("starts restore outside preview without inventing a return branch", () => {
+    const result = step(CLOSED_STATE, {
+      type: "RESTORE",
+      appId: APP_ID,
+      versionId: "v1",
+    });
+    expect(result.state).toMatchObject({
+      type: "restoring",
+      fallback: "closed",
+    });
+    expect(result.commands).toEqual([
+      {
+        type: "restore",
+        appId: APP_ID,
+        versionId: "v1",
+        targetBranch: null,
+        currentChatMessageId: undefined,
+      },
+    ]);
+  });
+
+  it("routes restore-to-message through the same preview branch", () => {
+    const previewing = run(toPreviewing).state;
+    const result = step(previewing, {
+      type: "RESTORE_TO_MESSAGE",
+      appId: APP_ID,
+      chatId: 2,
+      messageId: 3,
+      restoreCodebase: true,
+    });
+    expect(result.commands).toEqual([
+      {
+        type: "restore-to-message",
+        appId: APP_ID,
+        chatId: 2,
+        messageId: 3,
+        restoreCodebase: true,
+        targetBranch: "feature/origin",
+      },
+    ]);
   });
 
   it("stays recoverable when a restore fails", () => {
     const { state } = run([
       ...toPreviewing,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
       { type: "RESTORE_FAILED", error: { message: "nope" } },
     ]);
     expect(state.type).toBe("previewing");
@@ -509,7 +619,7 @@ describe("restore", () => {
   it("honors a close received during a restore that then fails", () => {
     const { state, commands } = run([
       ...toPreviewing,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
       { type: "CLOSE" },
       { type: "RESTORE_FAILED", error: { message: "nope" } },
     ]);
@@ -526,7 +636,7 @@ describe("restore", () => {
       OPEN,
       SELECT_V1,
       RESOLVED,
-      { type: "RESTORE", versionId: "v1", hasDbSnapshot: false },
+      { type: "RESTORE", appId: APP_ID, versionId: "v1" },
     ]);
     expect(state.type).toBe("checking-out");
     expect(commands.filter((c) => c.type === "restore")).toHaveLength(0);
@@ -543,7 +653,7 @@ describe("return failure and recovery", () => {
   ];
 
   it("preserves every retry input when the return fails", () => {
-    const { state } = run([
+    const { state, commands } = run([
       ...toReturning,
       { type: "RETURN_FAILED", error: { message: "return failed" } },
     ]);
@@ -553,6 +663,11 @@ describe("return failure and recovery", () => {
     expect(state.session.originBranch).toBe("feature/origin");
     expect(state.session.checkedOutVersionId).toBe("v1");
     expect(state.error.message).toBe("return failed");
+    expect(commands).toContainEqual({
+      type: "notify-recovery",
+      appId: APP_ID,
+      error: { message: "return failed" },
+    });
   });
 
   it("retries the return with the retained session", () => {
@@ -563,6 +678,10 @@ describe("return failure and recovery", () => {
     ]);
     expect(state.type).toBe("returning");
     expect(commands.filter((c) => c.type === "return")).toHaveLength(2);
+    expect(commands).toContainEqual({
+      type: "dismiss-recovery",
+      appId: APP_ID,
+    });
   });
 
   it("only a successful retry clears the recovery session", () => {
@@ -591,17 +710,20 @@ describe("return failure and recovery", () => {
     expect(result.commands).toEqual([]);
   });
 
-  it("re-surfaces recovery (fresh snapshot, no commands) when OPEN arrives", () => {
+  it("re-surfaces recovery through a command without changing state", () => {
     const recovery = run([
       ...toReturning,
       { type: "RETURN_FAILED", error: { message: "return failed" } },
     ]);
     const result = step(recovery.state, OPEN);
-    // Equal content but a new reference, so subscribers are re-notified and
-    // a dismissed recovery toast reappears.
-    expect(result.state).not.toBe(recovery.state);
-    expect(result.state).toEqual(recovery.state);
-    expect(result.commands).toEqual([]);
+    expect(result.state).toBe(recovery.state);
+    expect(result.commands).toEqual([
+      {
+        type: "notify-recovery",
+        appId: APP_ID,
+        error: { message: "return failed" },
+      },
+    ]);
   });
 });
 

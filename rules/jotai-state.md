@@ -12,13 +12,14 @@ atoms outside React (e.g. the version preview command adapter in
 at initialization instead of importing `getDefaultStore()`, or test stores
 will silently diverge from the store the service writes to.
 
-## Version preview repository state is machine-owned
+## Version preview state is machine-owned
 
-Git preview orchestration (checkout/return/restore, recovery) lives in the
-state machine under `src/version_preview/`; `selectedVersionIdAtom` is
-presentation-only (which diff CodeView shows). Never infer or drive Git
-transitions from that atom or from pane visibility — send events to the
-machine instead (see plans/version-preview-state-machine.md).
+Git preview orchestration and its ephemeral presentation selection live in
+the app-keyed state machine under `src/version_preview/`. Never add a parallel
+Jotai atom for the selected version, diff file, return branch, or mutation
+status; read the machine snapshot and send events through
+`useVersionPreview(appId)`. The command adapter is the only renderer caller of
+version-mutation IPC (see `plans/better-state-machine.md`).
 
 ## Ownership
 

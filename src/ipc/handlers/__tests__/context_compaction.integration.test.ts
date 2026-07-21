@@ -160,9 +160,9 @@ describe("context compaction (integration)", () => {
       messageId: targetPrompt!.id,
       restoreCodebase: false,
     });
-    expect(restoreResult).toHaveProperty("newChatId");
+    expect(restoreResult).toHaveProperty("createdChatId");
     const restoredMessages = await loadChatMessages(
-      "newChatId" in restoreResult ? restoreResult.newChatId : -1,
+      restoreResult.createdChatId ?? -1,
     );
     expect(
       restoredMessages.some(
@@ -195,9 +195,9 @@ describe("context compaction (integration)", () => {
       messageId: laterPrompt!.id,
       restoreCodebase: false,
     });
-    expect(laterRestoreResult).toHaveProperty("newChatId");
+    expect(laterRestoreResult).toHaveProperty("createdChatId");
     const laterRestoredMessages = await loadChatMessages(
-      "newChatId" in laterRestoreResult ? laterRestoreResult.newChatId : -1,
+      laterRestoreResult.createdChatId ?? -1,
     );
     const copiedTrigger = laterRestoredMessages.find(
       (message) =>
@@ -286,12 +286,12 @@ describe("context compaction (integration)", () => {
       restoreCodebase: true,
     });
 
-    expect(result).toHaveProperty("newChatId");
-    const newChatId = "newChatId" in result ? result.newChatId : -1;
-    await expect(loadChatMessages(newChatId)).resolves.toEqual([]);
+    expect(result).toHaveProperty("createdChatId");
+    const createdChatId = result.createdChatId ?? -1;
+    await expect(loadChatMessages(createdChatId)).resolves.toEqual([]);
     await expect(
       harness.db.query.chats.findFirst({
-        where: (chats, { eq }) => eq(chats.id, newChatId),
+        where: (chats, { eq }) => eq(chats.id, createdChatId),
       }),
     ).resolves.toMatchObject({
       appId: harness.appId,
@@ -338,7 +338,7 @@ describe("context compaction (integration)", () => {
         targetBranchName: targetBranchName!,
       });
 
-      expect(result).toHaveProperty("newChatId");
+      expect(result).toHaveProperty("createdChatId");
       await expect(gitCurrentBranch({ path: harness.appDir })).resolves.toBe(
         targetBranchName,
       );
@@ -389,10 +389,9 @@ describe("context compaction (integration)", () => {
         restoreCodebase: false,
       });
 
-      expect(result).toHaveProperty("newChatId");
+      expect(result).toHaveProperty("createdChatId");
       const forkedChat = await harness.db.query.chats.findFirst({
-        where: (chat, { eq }) =>
-          eq(chat.id, "newChatId" in result ? result.newChatId : -1),
+        where: (chat, { eq }) => eq(chat.id, result.createdChatId ?? -1),
       });
       expect(forkedChat?.initialCommitHash).toBe(previewCommitHash);
     } finally {
@@ -489,7 +488,7 @@ describe("context compaction (integration)", () => {
       });
       await backgroundStream;
 
-      expect(result).toHaveProperty("newChatId");
+      expect(result).toHaveProperty("createdChatId");
       await expect(gitCurrentBranch({ path: harness.appDir })).resolves.toBe(
         targetBranchName,
       );

@@ -16,7 +16,7 @@ import type {
   PreviewSession,
   PreviewState,
 } from "./state";
-import { CLOSED_STATE } from "./state";
+import { CLOSED_STATE, isPaneVisibleState } from "./state";
 
 export interface TransitionResult {
   state: PreviewState;
@@ -36,9 +36,50 @@ function freshSession(appId: number): PreviewSession {
     appId,
     originBranch: null,
     targetVersionId: null,
-    targetHasDbSnapshot: false,
     checkedOutVersionId: null,
     exitIntent: { type: "none" },
+    selectedDiffFile: null,
+  };
+}
+
+type RestoreIntent = Extract<
+  PreviewEvent,
+  { type: "RESTORE" | "RESTORE_TO_MESSAGE" }
+>;
+
+function beginRestore(
+  session: PreviewSession,
+  event: RestoreIntent,
+  fallback: Extract<PreviewState, { type: "restoring" }>["fallback"],
+): TransitionResult {
+  const nextSession: PreviewSession = {
+    ...session,
+    targetVersionId:
+      event.type === "RESTORE" ? event.versionId : session.targetVersionId,
+    selectedDiffFile: null,
+  };
+  const targetBranch =
+    nextSession.checkedOutVersionId === null ? null : nextSession.originBranch;
+  const command: PreviewCommand =
+    event.type === "RESTORE"
+      ? {
+          type: "restore",
+          appId: nextSession.appId,
+          versionId: event.versionId,
+          targetBranch,
+          currentChatMessageId: event.currentChatMessageId,
+        }
+      : {
+          type: "restore-to-message",
+          appId: nextSession.appId,
+          chatId: event.chatId,
+          messageId: event.messageId,
+          restoreCodebase: event.restoreCodebase,
+          targetBranch,
+        };
+  return {
+    state: { type: "restoring", session: nextSession, fallback },
+    commands: [command],
   };
 }
 
@@ -51,6 +92,14 @@ function exitIntentFor(event: PreviewEvent): ExitIntent | null {
     return { type: "switch-app", nextAppId: event.nextAppId };
   }
   return null;
+}
+
+function sameExitIntent(a: ExitIntent, b: ExitIntent): boolean {
+  if (a.type !== b.type) return false;
+  return (
+    a.type !== "switch-app" ||
+    (b.type === "switch-app" && a.nextAppId === b.nextAppId)
+  );
 }
 
 function returnCommand(session: PreviewSession): PreviewCommand {
@@ -88,6 +137,29 @@ export function transition(
   state: PreviewState,
   event: PreviewEvent,
 ): TransitionResult {
+  if (event.type === "SELECT_DIFF_FILE") {
+    if (!isPaneVisibleState(state) || state.type === "closed") {
+      return ignore(state);
+    }
+    const selected = state.session.selectedDiffFile;
+    if (
+      selected === event.file ||
+      (selected !== null &&
+        event.file !== null &&
+        selected.versionId === event.file.versionId &&
+        selected.path === event.file.path)
+    ) {
+      return ignore(state);
+    }
+    return {
+      state: {
+        ...state,
+        session: { ...state.session, selectedDiffFile: event.file },
+      },
+      commands: [],
+    };
+  }
+
   switch (state.type) {
     case "closed": {
       if (event.type === "OPEN") {
@@ -96,20 +168,52 @@ export function transition(
           commands: [],
         };
       }
+      if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
+        return beginRestore(freshSession(event.appId), event, "closed");
+      }
+      if (event.type === "VIEW_VERSION_DIFF") {
+        return {
+          state: {
+            type: "browsing",
+            session: {
+              ...freshSession(event.appId),
+              targetVersionId: event.versionId,
+              selectedDiffFile: event.file,
+            },
+          },
+          commands: [],
+        };
+      }
       return ignore(state);
     }
 
     case "browsing": {
+      if (event.type === "VIEW_VERSION_DIFF") {
+        return {
+          state: {
+            type: "browsing",
+            session: {
+              ...state.session,
+              targetVersionId: event.versionId,
+              selectedDiffFile: event.file,
+            },
+          },
+          commands: [],
+        };
+      }
       if (event.type === "SELECT_VERSION") {
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: event.versionId,
-          targetHasDbSnapshot: event.hasDbSnapshot,
+          selectedDiffFile: null,
         };
         return {
           state: { type: "resolving-origin", session },
           commands: [{ type: "resolve-origin", appId: session.appId }],
         };
+      }
+      if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
+        return beginRestore(state.session, event, "browsing");
       }
       if (exitIntentFor(event)) {
         return { state: CLOSED_STATE, commands: [] };
@@ -119,12 +223,18 @@ export function transition(
 
     case "resolving-origin": {
       if (event.type === "SELECT_VERSION") {
+        if (
+          state.session.targetVersionId === event.versionId &&
+          state.session.selectedDiffFile === null
+        ) {
+          return ignore(state);
+        }
         // Latest selection wins; the superseded resolve is dropped by the
         // controller's epoch check.
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: event.versionId,
-          targetHasDbSnapshot: event.hasDbSnapshot,
+          selectedDiffFile: null,
         };
         return {
           state: { type: "resolving-origin", session },
@@ -146,7 +256,6 @@ export function transition(
               type: "checkout",
               appId: session.appId,
               versionId: session.targetVersionId!,
-              hasDbSnapshot: session.targetHasDbSnapshot,
             },
           ],
         };
@@ -155,7 +264,7 @@ export function transition(
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: state.session.checkedOutVersionId,
-          targetHasDbSnapshot: false,
+          selectedDiffFile: null,
         };
         // Reachable resolving-origin states never own a checkout, but stay
         // defensive: fall back to previewing rather than losing one.
@@ -208,7 +317,7 @@ export function transition(
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: state.session.checkedOutVersionId,
-          targetHasDbSnapshot: false,
+          selectedDiffFile: null,
         };
         return settleWithExitIntent(session, (s) =>
           s.checkedOutVersionId === null
@@ -225,6 +334,9 @@ export function transition(
       }
       const intent = exitIntentFor(event);
       if (intent) {
+        if (sameExitIntent(state.session.exitIntent, intent)) {
+          return ignore(state);
+        }
         return {
           state: {
             type: "checking-out",
@@ -238,10 +350,20 @@ export function transition(
 
     case "previewing": {
       if (event.type === "SELECT_VERSION") {
+        if (state.session.targetVersionId === event.versionId) {
+          if (state.session.selectedDiffFile === null) return ignore(state);
+          return {
+            state: {
+              type: "previewing",
+              session: { ...state.session, selectedDiffFile: null },
+            },
+            commands: [],
+          };
+        }
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: event.versionId,
-          targetHasDbSnapshot: event.hasDbSnapshot,
+          selectedDiffFile: null,
         };
         return {
           state: { type: "checking-out", session },
@@ -250,29 +372,12 @@ export function transition(
               type: "checkout",
               appId: session.appId,
               versionId: event.versionId,
-              hasDbSnapshot: event.hasDbSnapshot,
             },
           ],
         };
       }
-      if (event.type === "RESTORE") {
-        const session: PreviewSession = {
-          ...state.session,
-          targetVersionId: event.versionId,
-          targetHasDbSnapshot: event.hasDbSnapshot,
-        };
-        return {
-          state: { type: "restoring", session },
-          commands: [
-            {
-              type: "restore",
-              appId: session.appId,
-              versionId: event.versionId,
-              targetBranch: session.originBranch ?? "",
-              hasDbSnapshot: event.hasDbSnapshot,
-            },
-          ],
-        };
+      if (event.type === "RESTORE" || event.type === "RESTORE_TO_MESSAGE") {
+        return beginRestore(state.session, event, "previewing");
       }
       const intent = exitIntentFor(event);
       if (intent) {
@@ -298,19 +403,26 @@ export function transition(
         const session: PreviewSession = {
           ...state.session,
           targetVersionId: state.session.checkedOutVersionId,
-          targetHasDbSnapshot: false,
+          selectedDiffFile: null,
         };
-        return settleWithExitIntent(session, (s) => ({
-          type: "previewing",
-          session: s,
-        }));
+        return settleWithExitIntent(session, (s) => {
+          if (state.fallback === "closed") return CLOSED_STATE;
+          if (state.fallback === "browsing") {
+            return { type: "browsing", session: s };
+          }
+          return { type: "previewing", session: s };
+        });
       }
       const intent = exitIntentFor(event);
       if (intent) {
+        if (sameExitIntent(state.session.exitIntent, intent)) {
+          return ignore(state);
+        }
         return {
           state: {
             type: "restoring",
             session: { ...state.session, exitIntent: intent },
+            fallback: state.fallback,
           },
           commands: [],
         };
@@ -329,12 +441,21 @@ export function transition(
             session: state.session,
             error: event.error,
           },
-          commands: [],
+          commands: [
+            {
+              type: "notify-recovery",
+              appId: state.session.appId,
+              error: event.error,
+            },
+          ],
         };
       }
       const intent = exitIntentFor(event);
       if (intent) {
         // Already exiting; just record the most recent intent.
+        if (sameExitIntent(state.session.exitIntent, intent)) {
+          return ignore(state);
+        }
         return {
           state: {
             type: "returning",
@@ -350,15 +471,23 @@ export function transition(
       if (event.type === "RETRY_RETURN") {
         return {
           state: { type: "returning", session: state.session },
-          commands: [returnCommand(state.session)],
+          commands: [
+            { type: "dismiss-recovery", appId: state.session.appId },
+            returnCommand(state.session),
+          ],
         };
       }
       if (event.type === "OPEN") {
-        // Recovery must resolve before a new session can start, but an OPEN
-        // attempt returns a fresh (equal) state object so subscribers are
-        // re-notified and the recovery toast re-surfaces even if the user
-        // dismissed it.
-        return { state: { ...state }, commands: [] };
+        return {
+          state,
+          commands: [
+            {
+              type: "notify-recovery",
+              appId: state.session.appId,
+              error: state.error,
+            },
+          ],
+        };
       }
       // SELECT_VERSION and completion events are deliberately ignored.
       return ignore(state);

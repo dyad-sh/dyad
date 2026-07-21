@@ -262,6 +262,7 @@ export type {
   CheckoutVersionResponse,
   RestoreToMessageParams,
   RestoreToMessageResponse,
+  VersionCommandResult,
 } from "./version";
 
 // Language model types

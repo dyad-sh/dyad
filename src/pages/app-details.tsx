@@ -8,7 +8,7 @@ import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
-import { disposeVersionPreviewController } from "@/version_preview/registry";
+import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
@@ -98,6 +98,7 @@ function UnavailableIntegrationCard({
 }
 
 export default function AppDetailsPage() {
+  const versionPreviewManager = useVersionPreviewManager();
   const navigate = useNavigate();
   const search = useSearch({ from: "/app-details" as const });
   const appId = search.appId ? Number(search.appId) : null;
@@ -194,7 +195,7 @@ export default function AppDetailsPage() {
       setIsDeleting(true);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
-      disposeVersionPreviewController(appId);
+      versionPreviewManager.disposeApp(appId);
       clearPreviewRuntimeForApp(appId);
       setSelectedAppId(null);
       setSelectedChatId(null);

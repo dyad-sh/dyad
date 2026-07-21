@@ -27,23 +27,32 @@ export interface VersionPreviewCommands {
   resolveOriginBranch(input: { appId: number }): Promise<{
     branch: string | null;
   }>;
-  checkoutVersion(input: {
-    appId: number;
-    versionId: string;
-    hasDbSnapshot: boolean;
-  }): Promise<void>;
+  checkoutVersion(input: { appId: number; versionId: string }): Promise<void>;
   returnToBranch(input: { appId: number; branch: string }): Promise<void>;
   restoreVersion(input: {
     appId: number;
     versionId: string;
-    targetBranch: string;
-    hasDbSnapshot: boolean;
+    targetBranch: string | null;
+    currentChatMessageId?: { chatId: number; messageId: number };
+  }): Promise<void>;
+  restoreToMessage(input: {
+    appId: number;
+    chatId: number;
+    messageId: number;
+    restoreCodebase: boolean;
+    targetBranch: string | null;
   }): Promise<void>;
 }
 
 export interface VersionPreviewRuntime {
   commands: VersionPreviewCommands;
   notifyError(message: string): void;
+  notifyRecovery(input: {
+    appId: number;
+    error: PreviewError;
+    retry: () => void;
+  }): void;
+  dismissRecovery(appId: number): void;
 }
 
 function toPreviewError(error: unknown): PreviewError {
@@ -61,6 +70,10 @@ export class VersionPreviewController {
   private resolveEpoch = 0;
   /** Defense in depth: the state graph already serializes mutations. */
   private mutationInFlight = false;
+  private mutationWaiter: {
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  } | null = null;
 
   constructor(
     readonly appId: number,
@@ -103,11 +116,27 @@ export class VersionPreviewController {
     }
   };
 
+  sendAndWaitForMutation(event: PreviewEvent): Promise<void> {
+    if (this.mutationWaiter) {
+      return Promise.reject(new Error("A version mutation is already pending"));
+    }
+    return new Promise<void>((resolve, reject) => {
+      this.mutationWaiter = { resolve, reject };
+      this.send(event);
+      if (!this.mutationInFlight) {
+        this.mutationWaiter = null;
+        resolve();
+      }
+    });
+  }
+
   /** Permanently detaches this controller from late async completions. */
   dispose(): void {
     this.disposed = true;
     this.resolveEpoch += 1;
     this.listeners.clear();
+    this.mutationWaiter?.reject(new Error("Version preview was disposed"));
+    this.mutationWaiter = null;
   }
 
   private execute(command: PreviewCommand): void {
@@ -141,7 +170,6 @@ export class VersionPreviewController {
           this.runtime.commands.checkoutVersion({
             appId: command.appId,
             versionId: command.versionId,
-            hasDbSnapshot: command.hasDbSnapshot,
           }),
           { type: "CHECKOUT_SUCCEEDED" },
           (error) => ({ type: "CHECKOUT_FAILED", error }),
@@ -165,7 +193,21 @@ export class VersionPreviewController {
             appId: command.appId,
             versionId: command.versionId,
             targetBranch: command.targetBranch,
-            hasDbSnapshot: command.hasDbSnapshot,
+            currentChatMessageId: command.currentChatMessageId,
+          }),
+          { type: "RESTORE_SUCCEEDED" },
+          (error) => ({ type: "RESTORE_FAILED", error }),
+        );
+        return;
+      }
+      case "restore-to-message": {
+        this.runMutation(
+          this.runtime.commands.restoreToMessage({
+            appId: command.appId,
+            chatId: command.chatId,
+            messageId: command.messageId,
+            restoreCodebase: command.restoreCodebase,
+            targetBranch: command.targetBranch,
           }),
           { type: "RESTORE_SUCCEEDED" },
           (error) => ({ type: "RESTORE_FAILED", error }),
@@ -174,6 +216,18 @@ export class VersionPreviewController {
       }
       case "notify-error": {
         this.runtime.notifyError(command.message);
+        return;
+      }
+      case "notify-recovery": {
+        this.runtime.notifyRecovery({
+          appId: command.appId,
+          error: command.error,
+          retry: () => this.send({ type: "RETRY_RETURN" }),
+        });
+        return;
+      }
+      case "dismiss-recovery": {
+        this.runtime.dismissRecovery(command.appId);
         return;
       }
     }
@@ -199,10 +253,14 @@ export class VersionPreviewController {
       () => {
         this.mutationInFlight = false;
         this.send(successEvent);
+        this.mutationWaiter?.resolve();
+        this.mutationWaiter = null;
       },
       (error) => {
         this.mutationInFlight = false;
         this.send(failureEvent(toPreviewError(error)));
+        this.mutationWaiter?.reject(error);
+        this.mutationWaiter = null;
       },
     );
   }

@@ -108,6 +108,33 @@ function appendWarning(existing: string, addition: string): string {
 const INTERRUPTED_GENERATION_WARNING =
   "An in-progress generation was cancelled during this restore attempt. Re-submit its prompt to continue.";
 
+function versionRuntimeAction(
+  app: typeof apps.$inferSelect,
+  changedCodebase: boolean,
+): "none" | "restart" {
+  if (!changedCodebase) return "none";
+  return readSettings().runtimeMode2 === "cloud" || app.neonProjectId
+    ? "restart"
+    : "none";
+}
+
+function versionCommandResult({
+  notification = null,
+  runtimeAction = "none",
+  affectedChatId = null,
+  createdChatId = null,
+}: {
+  notification?: {
+    kind: "success" | "warning";
+    message: string;
+  } | null;
+  runtimeAction?: "none" | "restart";
+  affectedChatId?: number | null;
+  createdChatId?: number | null;
+}) {
+  return { notification, runtimeAction, affectedChatId, createdChatId };
+}
+
 function appendInterruptedGenerationWarning(
   warningMessage: string,
   didCancelStreams: boolean,
@@ -766,10 +793,13 @@ export function registerVersionHandlers() {
         targetBranchName,
       });
 
+      let affectedChatId: number | null = null;
+
       // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
       if (currentChatMessageId) {
         // Delete all messages including and after the specified message
         const { chatId, messageId } = currentChatMessageId;
+        affectedChatId = chatId;
 
         const messagesToDelete = await db.query.messages.findMany({
           where: and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
@@ -799,6 +829,7 @@ export function registerVersionHandlers() {
         // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
         if (messageWithCommit) {
           const chatId = messageWithCommit.chatId;
+          affectedChatId = chatId;
 
           // Find all messages in this chat with IDs > the one with our commit hash
           const messagesToDelete = await db.query.messages.findMany({
@@ -827,10 +858,13 @@ export function registerVersionHandlers() {
         }
       }
 
-      if (warningMessage) {
-        return { warningMessage };
-      }
-      return { successMessage };
+      return versionCommandResult({
+        notification: warningMessage
+          ? { kind: "warning", message: warningMessage }
+          : { kind: "success", message: successMessage },
+        runtimeAction: versionRuntimeAction(app, true),
+        affectedChatId,
+      });
     });
   });
 
@@ -962,7 +996,12 @@ export function registerVersionHandlers() {
       // A validated request that cannot proceed returns a warning without ever
       // cancelling streams (see phase 1 above).
       if (prepared.status === "warn") {
-        return { warningMessage: prepared.warningMessage };
+        return versionCommandResult({
+          notification: {
+            kind: "warning",
+            message: prepared.warningMessage,
+          },
+        });
       }
       const { appPath } = prepared;
 
@@ -1052,12 +1091,15 @@ export function registerVersionHandlers() {
           });
 
           if (restoreCodebase && !latestTargetCommitHash) {
-            return {
-              warningMessage: appendInterruptedGenerationWarning(
-                "Could not determine a version to restore to for this message.",
-                preserveDirtyTree,
-              ),
-            };
+            return versionCommandResult({
+              notification: {
+                kind: "warning",
+                message: appendInterruptedGenerationWarning(
+                  "Could not determine a version to restore to for this message.",
+                  preserveDirtyTree,
+                ),
+              },
+            });
           }
           if (restoreCodebase && latestTargetCommitHash) {
             try {
@@ -1070,12 +1112,15 @@ export function registerVersionHandlers() {
                 error instanceof DyadError &&
                 error.kind === DyadErrorKind.NotFound
               ) {
-                return {
-                  warningMessage: appendInterruptedGenerationWarning(
-                    "Could not restore the codebase because the target version no longer exists in the repository.",
-                    preserveDirtyTree,
-                  ),
-                };
+                return versionCommandResult({
+                  notification: {
+                    kind: "warning",
+                    message: appendInterruptedGenerationWarning(
+                      "Could not restore the codebase because the target version no longer exists in the repository.",
+                      preserveDirtyTree,
+                    ),
+                  },
+                });
               }
               throw error;
             }
@@ -1232,10 +1277,18 @@ export function registerVersionHandlers() {
             return createdChat;
           });
 
-          if (warningMessage) {
-            return { newChatId: newChat.id, warningMessage };
-          }
-          return { newChatId: newChat.id, successMessage };
+          return versionCommandResult({
+            notification: warningMessage
+              ? {
+                  kind: "warning",
+                  message: restoreCodebase
+                    ? `Code restored, but: ${warningMessage}`
+                    : warningMessage,
+                }
+              : { kind: "success", message: successMessage },
+            runtimeAction: versionRuntimeAction(latestApp, restoreCodebase),
+            createdChatId: newChat.id,
+          });
         });
       } finally {
         releaseStreamAdmissionBlock?.();
@@ -1244,7 +1297,9 @@ export function registerVersionHandlers() {
   );
 
   createTypedHandler(versionContracts.checkoutVersion, async (_, params) => {
-    const { appId, versionId: gitRef } = params;
+    const { appId } = params;
+    const gitRef =
+      params.purpose === "preview" ? params.versionId : params.branch;
     return withLock(appId, async () => {
       let warningMessage = "";
       const app = await db.query.apps.findFirst({
@@ -1260,7 +1315,7 @@ export function registerVersionHandlers() {
         app.neonDevelopmentBranchId &&
         app.neonPreviewBranchId
       ) {
-        if (gitRef === "main") {
+        if (params.purpose === "return") {
           logger.info(
             `Switching Postgres to development branch for app ${appId}`,
           );
@@ -1356,10 +1411,12 @@ export function registerVersionHandlers() {
         ref: gitRef,
       });
       await syncCloudSandboxSnapshotBestEffort(appId);
-      if (warningMessage) {
-        return { warningMessage };
-      }
-      return {};
+      return versionCommandResult({
+        notification: warningMessage
+          ? { kind: "warning", message: warningMessage }
+          : null,
+        runtimeAction: versionRuntimeAction(app, true),
+      });
     });
   });
 }

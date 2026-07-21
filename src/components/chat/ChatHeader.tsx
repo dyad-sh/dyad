@@ -27,7 +27,8 @@ import { showError, showSuccess } from "@/lib/toast";
 import { useEffect } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
-import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { isMutatingState } from "@/version_preview/state";
 import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
@@ -71,7 +72,9 @@ export function ChatHeader({
     refetchBranchInfo,
   } = useCurrentBranch(appId);
 
-  const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
+  const { state: versionPreviewState, send: sendVersionPreviewEvent } =
+    useVersionPreview(appId);
+  const isCheckingOutVersion = isMutatingState(versionPreviewState);
   const { renameBranch, isRenamingBranch } = useRenameBranch();
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export function ChatHeader({
 
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
-    await checkoutVersion({ appId, versionId: "main" });
+    sendVersionPreviewEvent({ type: "CLOSE" });
   };
 
   const handleRenameMasterToMain = async () => {

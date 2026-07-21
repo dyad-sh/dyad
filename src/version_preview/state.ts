@@ -25,12 +25,12 @@ export interface PreviewSession {
   originBranch: string | null;
   /** The version the user most recently asked to preview or restore. */
   targetVersionId: string | null;
-  /** Whether the target version has a database snapshot to restore. */
-  targetHasDbSnapshot: boolean;
   /** The version the machine believes is checked out in Git. */
   checkedOutVersionId: string | null;
   /** A close/app-switch request received while a mutation was in flight. */
   exitIntent: ExitIntent;
+  /** Presentation only. Never used to decide Git transitions. */
+  selectedDiffFile: { versionId: string; path: string } | null;
 }
 
 export type PreviewState =
@@ -39,7 +39,11 @@ export type PreviewState =
   | { type: "resolving-origin"; session: PreviewSession }
   | { type: "checking-out"; session: PreviewSession }
   | { type: "previewing"; session: PreviewSession }
-  | { type: "restoring"; session: PreviewSession }
+  | {
+      type: "restoring";
+      session: PreviewSession;
+      fallback: "closed" | "browsing" | "previewing";
+    }
   | { type: "returning"; session: PreviewSession }
   | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
 
@@ -48,8 +52,30 @@ export type PreviewEvent =
   | { type: "OPEN"; appId: number }
   | { type: "CLOSE" }
   | { type: "APP_CHANGED"; nextAppId: number | null }
-  | { type: "SELECT_VERSION"; versionId: string; hasDbSnapshot: boolean }
-  | { type: "RESTORE"; versionId: string; hasDbSnapshot: boolean }
+  | { type: "SELECT_VERSION"; versionId: string }
+  | {
+      type: "VIEW_VERSION_DIFF";
+      appId: number;
+      versionId: string;
+      file: { versionId: string; path: string } | null;
+    }
+  | {
+      type: "SELECT_DIFF_FILE";
+      file: { versionId: string; path: string } | null;
+    }
+  | {
+      type: "RESTORE";
+      appId: number;
+      versionId: string;
+      currentChatMessageId?: { chatId: number; messageId: number };
+    }
+  | {
+      type: "RESTORE_TO_MESSAGE";
+      appId: number;
+      chatId: number;
+      messageId: number;
+      restoreCodebase: boolean;
+    }
   | { type: "RETRY_RETURN" }
   // Command completions (dispatched only by the controller)
   | { type: "ORIGIN_RESOLVED"; branch: string }
@@ -67,17 +93,26 @@ export type PreviewCommand =
       type: "checkout";
       appId: number;
       versionId: string;
-      hasDbSnapshot: boolean;
     }
   | { type: "return"; appId: number; branch: string }
   | {
       type: "restore";
       appId: number;
       versionId: string;
-      targetBranch: string;
-      hasDbSnapshot: boolean;
+      targetBranch: string | null;
+      currentChatMessageId?: { chatId: number; messageId: number };
     }
-  | { type: "notify-error"; message: string };
+  | {
+      type: "restore-to-message";
+      appId: number;
+      chatId: number;
+      messageId: number;
+      restoreCodebase: boolean;
+      targetBranch: string | null;
+    }
+  | { type: "notify-error"; message: string }
+  | { type: "notify-recovery"; appId: number; error: PreviewError }
+  | { type: "dismiss-recovery"; appId: number };
 
 /** Stable singleton for the closed state so snapshots compare by identity. */
 export const CLOSED_STATE: PreviewState = { type: "closed" };
@@ -131,4 +166,10 @@ export function diffVersionIdForState(state: PreviewState): string | null {
     case "recovery-required":
       return null;
   }
+}
+
+export function selectedDiffFileForState(
+  state: PreviewState,
+): PreviewSession["selectedDiffFile"] {
+  return state.type === "closed" ? null : state.session.selectedDiffFile;
 }

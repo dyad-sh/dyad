@@ -8,18 +8,19 @@ import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { questionnaireSubmittedChatIdsAtom } from "@/atoms/planAtoms";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { CheckCircle2, Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
-import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { ModifiedFilesCard } from "./ModifiedFilesCard";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { isMutatingState, type PreviewEvent } from "@/version_preview/state";
 
 interface MessagesListProps {
   messages: Message[];
@@ -41,11 +42,10 @@ interface FooterContext {
   setIsUndoLoading: (loading: boolean) => void;
   setIsRetryLoading: (loading: boolean) => void;
   versions: ReturnType<typeof useVersions>["versions"];
-  revertVersion: ReturnType<typeof useVersions>["revertVersion"];
+  sendPreviewMutation: (event: PreviewEvent) => Promise<void>;
   streamMessage: ReturnType<typeof useStreamChat>["streamMessage"];
   selectedChatId: number | null;
   appId: number | null;
-  setMessagesById: ReturnType<typeof useSetAtom<typeof chatMessagesByIdAtom>>;
   renderSetupBanner: () => React.ReactNode;
 }
 
@@ -64,11 +64,10 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     setIsUndoLoading,
     setIsRetryLoading,
     versions,
-    revertVersion,
+    sendPreviewMutation,
     streamMessage,
     selectedChatId,
     appId,
-    setMessagesById,
     renderSetupBanner,
   } = context;
 
@@ -110,7 +109,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
       if (revertTargetVersionId) {
         console.debug("Reverting to previous version", revertTargetVersionId);
-        await revertVersion({
+        await sendPreviewMutation({
+          type: "RESTORE",
+          appId,
           versionId: revertTargetVersionId,
           currentChatMessageId: userMessage
             ? {
@@ -118,12 +119,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                 messageId: userMessage.id,
               }
             : undefined,
-        });
-        const chat = await ipc.chat.getChat(selectedChatId);
-        setMessagesById((prev) => {
-          const next = new Map(prev);
-          next.set(selectedChatId, chat.messages);
-          return next;
         });
       } else {
         showWarning(
@@ -144,8 +139,8 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // standalone Retry button below.
   const handleRetry = async () => {
     if (isAnyVersionMutationPending) return;
-    if (!selectedChatId) {
-      console.error("No chat selected");
+    if (!selectedChatId || !appId) {
+      console.error("No chat selected or app ID not available");
       return;
     }
 
@@ -167,7 +162,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           previousAssistantMessage?.commitHash
         ) {
           console.debug("Reverting to previous assistant version");
-          await revertVersion({
+          await sendPreviewMutation({
+            type: "RESTORE",
+            appId,
             versionId: previousAssistantMessage.commitHash,
           });
           shouldRedo = false;
@@ -178,7 +175,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
               "Reverting to initial commit hash",
               chat.initialCommitHash,
             );
-            await revertVersion({
+            await sendPreviewMutation({
+              type: "RESTORE",
+              appId,
               versionId: chat.initialCommitHash,
             });
           } else {
@@ -293,12 +292,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
-    const { versions, revertVersion, isAnyVersionMutationPending } =
-      useVersions(appId);
+    const { versions } = useVersions(appId);
+    const { state: previewState, sendAndWaitForMutation: sendPreviewMutation } =
+      useVersionPreview(appId);
+    const isAnyVersionMutationPending = isMutatingState(previewState);
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
-    const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -385,11 +385,10 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         setIsUndoLoading: handleSetIsUndoLoading,
         setIsRetryLoading: handleSetIsRetryLoading,
         versions,
-        revertVersion,
+        sendPreviewMutation,
         streamMessage,
         selectedChatId,
         appId,
-        setMessagesById,
         renderSetupBanner,
       }),
       [
@@ -402,11 +401,10 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         handleSetIsUndoLoading,
         handleSetIsRetryLoading,
         versions,
-        revertVersion,
+        sendPreviewMutation,
         streamMessage,
         selectedChatId,
         appId,
-        setMessagesById,
         renderSetupBanner,
       ],
     );

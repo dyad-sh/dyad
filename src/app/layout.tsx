@@ -20,7 +20,7 @@ import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
-import { useVersionPreviewGlobalBridge } from "@/hooks/useVersionPreview";
+import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -50,10 +50,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   // Consume agent test-run lifecycle events at the root so the terminal
   // "finished" event is never dropped by a TestsPanel unmount mid-run.
   useTestRunEvents();
-
-  // Drain version preview sessions on app switch and surface recovery
-  // toasts, independent of which pane is mounted.
-  useVersionPreviewGlobalBridge();
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();
@@ -141,30 +137,32 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <ThemeProvider>
-        <DeepLinkProvider>
-          <SidebarProvider defaultOpen={false}>
-            <TitleBar />
-            <AppSidebar />
-            <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
-              <SubscriptionStatusBanner />
-              <div
-                id="layout-main-content-container"
-                className="flex min-h-0 w-full flex-1 overflow-x-hidden"
-              >
-                {children}
+      <VersionPreviewProvider>
+        <ThemeProvider>
+          <DeepLinkProvider>
+            <SidebarProvider defaultOpen={false}>
+              <TitleBar />
+              <AppSidebar />
+              <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
+                <SubscriptionStatusBanner />
+                <div
+                  id="layout-main-content-container"
+                  className="flex min-h-0 w-full flex-1 overflow-x-hidden"
+                >
+                  {children}
+                </div>
               </div>
-            </div>
-            <Toaster
-              richColors
-              expand
-              duration={settings?.isTestMode ? 500 : undefined}
-            />
-            <ReleaseNotesDialog />
-            <ForceCloseDialog />
-          </SidebarProvider>
-        </DeepLinkProvider>
-      </ThemeProvider>
+              <Toaster
+                richColors
+                expand
+                duration={settings?.isTestMode ? 500 : undefined}
+              />
+              <ReleaseNotesDialog />
+              <ForceCloseDialog />
+            </SidebarProvider>
+          </DeepLinkProvider>
+        </ThemeProvider>
+      </VersionPreviewProvider>
     </>
   );
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CheckoutVersionParamsSchema,
   SetVersionFavoriteParamsSchema,
   SetVersionNoteParamsSchema,
+  VersionCommandResultSchema,
 } from "./version";
 
 describe("version metadata schemas", () => {
@@ -38,6 +40,44 @@ describe("version metadata schemas", () => {
         versionId: "abcd",
         note: "release candidate",
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("version mutation contracts", () => {
+  it("requires explicit preview versus return checkout intent", () => {
+    expect(
+      CheckoutVersionParamsSchema.safeParse({
+        purpose: "preview",
+        appId: 1,
+        versionId: "abc123",
+      }).success,
+    ).toBe(true);
+    expect(
+      CheckoutVersionParamsSchema.safeParse({
+        purpose: "return",
+        appId: 1,
+        branch: "feature/live",
+      }).success,
+    ).toBe(true);
+    expect(
+      CheckoutVersionParamsSchema.safeParse({ appId: 1, versionId: "main" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("validates the complete authoritative result envelope", () => {
+    expect(
+      VersionCommandResultSchema.safeParse({
+        notification: null,
+        runtimeAction: "restart",
+        affectedChatId: 2,
+        createdChatId: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      VersionCommandResultSchema.safeParse({ runtimeAction: "restart" })
+        .success,
     ).toBe(false);
   });
 });

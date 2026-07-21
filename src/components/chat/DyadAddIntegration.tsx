@@ -69,14 +69,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
         "integrations.databaseSetup.providers.supabase.description",
       ),
       url: "https://supabase.com",
-      experimental: false,
     },
     {
       id: "neon" as const,
       name: t("integrations.databaseSetup.providers.neon.name"),
       description: t("integrations.databaseSetup.providers.neon.description"),
       url: "https://neon.tech",
-      experimental: true,
     },
   ];
 
@@ -349,11 +347,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
                       <span className="text-sm font-semibold text-foreground">
                         {option.name}
                       </span>
-                      {option.experimental && (
-                        <DyadBadge color="amber">
-                          {t("integrations.databaseSetup.experimental")}
-                        </DyadBadge>
-                      )}
                       <span
                         onClick={(e) => {
                           e.stopPropagation();

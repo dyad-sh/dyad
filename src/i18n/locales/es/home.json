@@ -630,7 +630,6 @@
       "chooseProvider": "Elige un proveedor de base de datos",
       "setUpProvider": "Configurar {{provider}}",
       "setUpDatabase": "Configurar base de datos",
-      "experimental": "Experimental",
       "providers": {
         "supabase": {
           "name": "Supabase",

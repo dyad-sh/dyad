@@ -630,7 +630,6 @@
       "chooseProvider": "Escolha um provedor de banco de dados",
       "configureInPanelTitle": "Conclua a configuração no painel Configurar",
       "configureInPanelDescription": "Conclua a configuração do {{provider}} no painel à direita e depois volte aqui.",
-      "experimental": "Experimental",
       "providers": {
         "supabase": {
           "name": "Supabase",

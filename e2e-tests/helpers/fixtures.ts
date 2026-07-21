@@ -28,9 +28,9 @@ export interface ElectronConfig {
   showPnpmMinimumReleaseAgeWarning?: boolean;
 }
 
-// Some Electron states emit the Playwright close event but leave
-// electronApp.close() pending until the worker timeout. Terminating the process
-// tree keeps teardown bounded and also cleans up preview dev-server children.
+// Close through Playwright first so it tears down its Electron protocol
+// connections as well as the OS process. Some Electron states can still leave
+// close() pending, so retain a bounded process-tree kill as a fallback.
 async function terminateElectronApp(electronApp: ElectronApplication) {
   const childProcess = electronApp.process();
   const pid = childProcess.pid;
@@ -53,6 +53,30 @@ async function terminateElectronApp(electronApp: ElectronApplication) {
     childProcess.once("exit", done);
   });
 
+  const playwrightClose = electronApp
+    .close()
+    .then(() => {
+      closed = true;
+    })
+    .catch((error) => {
+      console.warn("Playwright Electron close error:", error);
+    });
+
+  await Promise.race([
+    playwrightClose,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 5_000);
+    }),
+  ]);
+
+  if (closed) {
+    console.log("[cleanup:end] Electron app closed through Playwright");
+    return;
+  }
+
+  console.warn(
+    `[cleanup:timeout] Playwright close did not finish; terminating process tree ${pid}`,
+  );
   await new Promise<void>((resolve) => {
     treeKill(pid, "SIGTERM", (error) => {
       if (error) {
@@ -63,6 +87,7 @@ async function terminateElectronApp(electronApp: ElectronApplication) {
   });
 
   await Promise.race([
+    playwrightClose,
     waitForClose,
     new Promise<void>((resolve) => {
       setTimeout(resolve, 5_000);
@@ -86,9 +111,10 @@ async function terminateElectronApp(electronApp: ElectronApplication) {
     });
 
     await Promise.race([
+      playwrightClose,
       waitForClose,
       new Promise<void>((resolve) => {
-        setTimeout(resolve, 2_000);
+        setTimeout(resolve, 5_000);
       }),
     ]);
   }

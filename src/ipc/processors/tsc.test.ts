@@ -311,7 +311,7 @@ describe("runTypeScriptCheck", () => {
     );
     const tsBuildInfoPath = args[args.indexOf("--tsBuildInfoFile") + 1];
     expect(path.dirname(tsBuildInfoPath)).toBe(
-      path.resolve("/tmp/dyad-tsc-test-cache"),
+      path.normalize("/tmp/dyad-tsc-test-cache"),
     );
     expect(path.basename(tsBuildInfoPath)).toMatch(
       /^[a-f0-9]{64}\.tsbuildinfo$/,

@@ -101,6 +101,11 @@ can retain handles briefly on Windows, so teardown should use bounded
 `fs.rm` retries (`maxRetries` plus `retryDelay`) rather than making successful
 test logic fail with a transient `EBUSY`.
 
+For cross-platform path assertions, match the path contract being exercised.
+Use `path.normalize()` when the code preserves a rooted path such as `/tmp/...`;
+`path.resolve()` adds the runner's current drive on Windows and is only correct
+when production code also resolves the path to an absolute drive-qualified one.
+
 For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or

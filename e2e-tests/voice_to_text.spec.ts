@@ -49,4 +49,11 @@ test("voice-to-text button changes state when recording", async ({ po }) => {
   await expect(stopButton.or(voiceButton)).toBeVisible({
     timeout: Timeout.SHORT,
   });
+
+  // If recording started, stop it explicitly so Chromium releases the audio
+  // service before the Electron fixture begins process teardown.
+  if (await stopButton.isVisible()) {
+    await stopButton.click();
+    await expect(stopButton).toBeHidden({ timeout: Timeout.SHORT });
+  }
 });

@@ -70,6 +70,22 @@ describe("runSupabaseDependencyAnalysis", () => {
     await expect(result).rejects.toThrow("before replying");
   });
 
+  it("rejects with the error reported by the worker", async () => {
+    const result = runSupabaseDependencyAnalysis({
+      appPath: "/app",
+      changedSharedModulePaths: [],
+    });
+    await vi.waitFor(() => expect(forkMock).toHaveBeenCalledOnce());
+    child.emit("spawn");
+    child.emit("message", {
+      success: false,
+      error: "dependency parser failed",
+    });
+    child.emit("exit", 1);
+
+    await expect(result).rejects.toThrow("dependency parser failed");
+  });
+
   it("maps a fatal utility-process error to a useful memory message", async () => {
     const result = runSupabaseDependencyAnalysis({
       appPath: "/app",

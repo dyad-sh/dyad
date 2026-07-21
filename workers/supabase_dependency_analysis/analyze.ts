@@ -124,6 +124,12 @@ async function collectDependencies(
   } catch {
     return { kind: "all", reason: `parse_failure:${filePath}` };
   }
+  const parseDiagnostics = (
+    sourceFile as unknown as { parseDiagnostics?: readonly unknown[] }
+  ).parseDiagnostics;
+  if (!parseDiagnostics || parseDiagnostics.length > 0) {
+    return { kind: "all", reason: `parse_failure:${filePath}` };
+  }
   const specifiers: string[] = [];
   let unsafeReason: string | undefined;
   const addSpecifier = (node: import("typescript").Expression) => {

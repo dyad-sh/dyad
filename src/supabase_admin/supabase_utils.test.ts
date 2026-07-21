@@ -398,6 +398,24 @@ describe("getSupabaseFunctionsAffectedBySharedModules", () => {
     expect(impact.kind).toBe("all");
   });
 
+  it("falls back when a function contains invalid syntax", async () => {
+    await writeAppFile(
+      "supabase/functions/_shared/foo.ts",
+      "export const foo = 1;",
+    );
+    await writeFunction("alpha", "import { from '../_shared/foo.ts';");
+
+    const impact = await getSupabaseFunctionsAffectedBySharedModules({
+      appPath,
+      changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+    });
+
+    expect(impact).toEqual({
+      kind: "all",
+      reason: expect.stringContaining("parse_failure:"),
+    });
+  });
+
   it("falls back for unsupported changed shared file extensions", async () => {
     await writeAppFile("supabase/functions/_shared/data.json", "{}");
     await writeFunction("alpha", "export const alpha = 1;");

@@ -26,11 +26,13 @@ function isCompatible(
 ): candidate is typeof import("typescript") {
   if (typeof candidate !== "object" || candidate === null) return false;
   const compiler = candidate as Record<string, unknown>;
+  const isEnumObject = (value: unknown) =>
+    typeof value === "object" && value !== null;
   return (
     REQUIRED_APIS.every((name) => typeof compiler[name] === "function") &&
-    typeof compiler.ScriptKind === "object" &&
-    typeof compiler.ScriptTarget === "object" &&
-    typeof compiler.SyntaxKind === "object"
+    isEnumObject(compiler.ScriptKind) &&
+    isEnumObject(compiler.ScriptTarget) &&
+    isEnumObject(compiler.SyntaxKind)
   );
 }
 

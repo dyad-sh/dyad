@@ -12,8 +12,10 @@ import {
   addTrackedValue,
   removeDyadTags,
   removeTrackedValue,
+  setPartialResponseForStream,
   hasUnclosedDyadWrite,
   processStreamChunks,
+  takePartialResponseForStream,
 } from "@/ipc/handlers/chat_stream_handlers";
 import type { AsyncIterableStream, TextStreamPart, ToolSet } from "ai";
 import fs from "node:fs";
@@ -38,6 +40,21 @@ describe("stream invocation tracking", () => {
     removeTrackedValue(trackedInvocations, 42, olderInvocation);
 
     expect(trackedInvocations.get(42)).toEqual(new Set([newerInvocation]));
+  });
+
+  it("keeps partial responses isolated between concurrent streams", () => {
+    const olderStream = new AbortController();
+    const newerStream = new AbortController();
+
+    setPartialResponseForStream(olderStream, "older partial response");
+    setPartialResponseForStream(newerStream, "newer partial response");
+
+    expect(takePartialResponseForStream(olderStream)).toBe(
+      "older partial response",
+    );
+    expect(takePartialResponseForStream(newerStream)).toBe(
+      "newer partial response",
+    );
   });
 });
 

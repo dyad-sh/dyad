@@ -302,8 +302,24 @@ async function waitForAdmissionBlockToClear({
   });
 }
 
-// Track partial responses for cancelled streams
-const partialResponses = new Map<number, string>();
+// Track partial responses by invocation so concurrent streams for one chat do
+// not overwrite the content persisted into each assistant placeholder.
+const partialResponses = new Map<AbortController, string>();
+
+export function setPartialResponseForStream(
+  controller: AbortController,
+  response: string,
+): void {
+  partialResponses.set(controller, response);
+}
+
+export function takePartialResponseForStream(
+  controller: AbortController,
+): string {
+  const response = partialResponses.get(controller) ?? "";
+  partialResponses.delete(controller);
+  return response;
+}
 
 async function cancelTrackedStreams(
   chatIds: number[],
@@ -1698,7 +1714,7 @@ This conversation includes one or more image attachments. When the user uploads 
           fullResponse: string;
         }) => {
           // Store the current partial response
-          partialResponses.set(req.chatId, fullResponse);
+          setPartialResponseForStream(abortController, fullResponse);
           // Save to DB (in case user is switching chats during the stream)
           const now = Date.now();
           if (now - lastDbSaveAt >= 150) {
@@ -2034,7 +2050,8 @@ This conversation includes one or more image attachments. When the user uploads 
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            const partialResponse =
+              takePartialResponseForStream(abortController);
             try {
               // Update the placeholder assistant message with the partial content and cancellation note
               await db
@@ -2047,7 +2064,6 @@ This conversation includes one or more image attachments. When the user uploads 
               logger.log(
                 `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
               );
-              partialResponses.delete(req.chatId);
             } catch (error) {
               logger.error(
                 `Error saving partial response for chat ${chatId}:`,
@@ -2063,7 +2079,7 @@ This conversation includes one or more image attachments. When the user uploads 
       // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
       // save the cancellation notice to the placeholder message.
       if (abortController.signal.aborted) {
-        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        const partialResponse = takePartialResponseForStream(abortController);
         try {
           await db
             .update(messages)
@@ -2071,7 +2087,6 @@ This conversation includes one or more image attachments. When the user uploads 
               content: appendCancelledResponseNotice(partialResponse),
             })
             .where(eq(messages.id, placeholderAssistantMessage.id));
-          partialResponses.delete(req.chatId);
         } catch (error) {
           logger.error(
             `Error saving cancelled response for chat ${req.chatId}:`,
@@ -2172,6 +2187,7 @@ This conversation includes one or more image attachments. When the user uploads 
       // Clean up the abort controller
       removeTrackedValue(activeStreams, req.chatId, abortController);
       admissionPendingStreams.delete(abortController);
+      partialResponses.delete(abortController);
 
       // Notify renderer that stream has ended. When the stream was cancelled,
       // `cancelTrackedStreams` is the sole sender of the end events (it emits

@@ -157,7 +157,9 @@ export class PreviewPanel {
 
   async clickRebuild() {
     await this.clickPreviewMoreOptions();
-    await this.page.getByText("Rebuild").click();
+    // The preview can rerender this animated menu while Playwright waits for
+    // the item to become stable, closing it before the click is dispatched.
+    await this.page.getByText("Rebuild").click({ force: true });
   }
 
   async clickTogglePreviewPanel() {

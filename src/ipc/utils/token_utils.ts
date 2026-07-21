@@ -35,7 +35,7 @@ export async function getTemperature(
   model: LargeLanguageModel,
 ): Promise<number | undefined> {
   const modelOption = await findLanguageModel(model);
-  return modelOption?.temperature;
+  return modelOption?.temperature ?? undefined;
 }
 
 /**

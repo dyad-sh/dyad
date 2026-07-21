@@ -49,6 +49,10 @@ module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
   `fakeLlmLog` from `./log` (silenced by `FAKE_LLM_QUIET=1`, which the vitest
   harnesses set). Reserve raw `console.error` for genuine failures — it is
   never suppressed.
+- TypeScript fixtures under `e2e-tests/fixtures/` are loaded by the fake LLM
+  server through `ts-node` with its default library target. Avoid newer built-in
+  methods such as `String.prototype.padStart`, which can fail type-checking
+  before the fixture runs even though the main Vitest compiler accepts them.
 - Some unit tests mock electron-log with an explicit method object
   (`vi.mock("electron-log", ... { scope: () => ({ info, log, warn, error }) })`).
   Calling a logger method the mock omits fails with e.g. "logger.debug is not
@@ -65,6 +69,16 @@ Full `npm test` runs can fail inside the Codex sandbox before test logic runs
 when OAuth, proxy, or hybrid harness suites bind/connect to loopback ports. If
 the failure is `listen EPERM` or `connect EPERM` for `127.0.0.1`, `localhost`,
 or `::1`, re-run the same command outside the sandbox before debugging tests.
+
+OAuth integration callback listeners must use OS-assigned available ports, not
+fixed high ports. Windows commonly assigns dynamic ports in the 49152-65535
+range, so a fixed callback port there can collide only under CI load and make
+`runOAuthFlow` return immediately with a misleading authentication failure.
+
+Tests that intentionally stream large files should declare a timeout sized for
+loaded Windows CI runners. Keep the large fixture when it proves bounded-memory
+behavior; raising that individual test's timeout is preferable to weakening the
+streaming regression coverage or raising the timeout suite-wide.
 
 If a hybrid suite fails before test logic with
 `better_sqlite3.node was compiled against a different Node.js version` and a
@@ -87,6 +101,20 @@ like `Failed to resolve ref 'main'` or a branch banner showing `master`, check
 the fixture repo's `git init` default branch. Either make production code use
 the current branch instead of assuming `main`, or force the fixture branch name
 in the test so local and CI exercise the same branch layout.
+
+Git integration fixtures must also use filenames that are valid on Windows.
+When testing literal pathspec handling, keep the POSIX `:(glob)` case on Unix
+and use a Windows-safe metacharacter filename such as `literal[1].txt` on
+Windows. For executable restores, assert the returned Git mode on every
+platform and assert filesystem execute bits only on POSIX. Temporary Git repos
+can retain handles briefly on Windows, so teardown should use bounded
+`fs.rm` retries (`maxRetries` plus `retryDelay`) rather than making successful
+test logic fail with a transient `EBUSY`.
+
+For cross-platform path assertions, match the path contract being exercised.
+Use `path.normalize()` when the code preserves a rooted path such as `/tmp/...`;
+`path.resolve()` adds the runner's current drive on Windows and is only correct
+when production code also resolves the path to an absolute drive-qualified one.
 
 For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected

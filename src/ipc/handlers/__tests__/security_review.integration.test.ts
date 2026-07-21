@@ -38,6 +38,8 @@ import { messages as messagesTable, security_fix_chats } from "@/db/schema";
 import type { SecurityFinding } from "@/ipc/types/security";
 import { and, asc, desc, eq } from "drizzle-orm";
 
+const LARGE_REVIEW_STREAM_TIMEOUT_MS = 90_000;
+
 describe("security review (integration)", () => {
   let harness: HybridChatHarness;
   let findings: SecurityFinding[] = [];
@@ -90,7 +92,13 @@ describe("security review (integration)", () => {
 
     // Type + send "/security-review" through the real UI. Baseline-aware wait:
     // the beforeAll turn already emitted a chat:response:end.
-    const reviewEnd = harness.waitForNextStreamEnd(reviewChatId);
+    // The 6 KB findings response streams through the full renderer/IPC stack.
+    // Loaded Windows runners can exceed the harness's 20-second default while
+    // still making steady chunk progress, so give this large turn headroom.
+    const reviewEnd = harness.waitForNextStreamEnd(
+      reviewChatId,
+      LARGE_REVIEW_STREAM_TIMEOUT_MS,
+    );
     const { send } = await harness.typeInChat("/security-review", {
       chatId: reviewChatId,
     });
@@ -155,7 +163,7 @@ describe("security review (integration)", () => {
       expect(finding.description).toBeTruthy();
     }
     findings = review.findings;
-  }, 60_000);
+  }, 120_000);
 
   it("fix issue: streams the fix prompt in a new chat and commits the change", async () => {
     expect(findings.length).toBeGreaterThan(0);
@@ -352,7 +360,10 @@ ${finding.description}`;
       { timeout: 15_000 },
     );
 
-    const reviewEnd = harness.waitForNextStreamEnd(reviewChatId);
+    const reviewEnd = harness.waitForNextStreamEnd(
+      reviewChatId,
+      LARGE_REVIEW_STREAM_TIMEOUT_MS,
+    );
     const { send } = await harness.typeInChat("/security-review", {
       chatId: reviewChatId,
     });
@@ -382,5 +393,5 @@ ${finding.description}`;
       "# Project-specific security rules:",
     );
     expect(systemMessage.content).toContain("rules123");
-  }, 60_000);
+  }, 120_000);
 });

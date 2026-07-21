@@ -9,7 +9,6 @@ import { ElectronApplication, _electron as electron } from "playwright";
 import os from "os";
 import path from "path";
 import { execSync } from "child_process";
-import treeKill from "tree-kill";
 
 import { showDebugLogs } from "./constants";
 import { PageObject } from "./page-objects";
@@ -28,9 +27,9 @@ export interface ElectronConfig {
   showPnpmMinimumReleaseAgeWarning?: boolean;
 }
 
-// Some Electron states emit the Playwright close event but leave
-// electronApp.close() pending until the worker timeout. Terminating the process
-// tree keeps teardown bounded and also cleans up preview dev-server children.
+// Close through Playwright first so it tears down its Electron protocol
+// connections as well as the OS process. Some Electron states can still leave
+// close() pending, so retain a bounded process-group kill as a fallback.
 async function terminateElectronApp(electronApp: ElectronApplication) {
   const childProcess = electronApp.process();
   const pid = childProcess.pid;
@@ -43,55 +42,57 @@ async function terminateElectronApp(electronApp: ElectronApplication) {
     return;
   }
 
-  let closed = false;
-  const waitForClose = new Promise<void>((resolve) => {
+  let processExited = false;
+  const waitForProcessExit = new Promise<void>((resolve) => {
     const done = () => {
-      closed = true;
+      processExited = true;
       resolve();
     };
-    electronApp.once("close", done);
     childProcess.once("exit", done);
+    childProcess.once("close", done);
   });
 
-  await new Promise<void>((resolve) => {
-    treeKill(pid, "SIGTERM", (error) => {
-      if (error) {
-        console.warn(`tree-kill SIGTERM error for Electron PID ${pid}:`, error);
-      }
-      resolve();
+  let playwrightCloseSucceeded = false;
+  const playwrightClose = electronApp
+    .close()
+    .then(() => {
+      playwrightCloseSucceeded = true;
+    })
+    .catch((error) => {
+      console.warn("Playwright Electron close error:", error);
     });
-  });
 
   await Promise.race([
-    waitForClose,
+    Promise.all([playwrightClose, waitForProcessExit]),
     new Promise<void>((resolve) => {
       setTimeout(resolve, 5_000);
     }),
   ]);
 
-  if (!closed) {
-    console.warn(
-      `[cleanup:timeout] Electron app did not exit after SIGTERM; killing process tree ${pid}`,
-    );
-    await new Promise<void>((resolve) => {
-      treeKill(pid, "SIGKILL", (error) => {
-        if (error) {
-          console.warn(
-            `tree-kill SIGKILL error for Electron PID ${pid}:`,
-            error,
-          );
-        }
-        resolve();
-      });
-    });
-
-    await Promise.race([
-      waitForClose,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 2_000);
-      }),
-    ]);
+  if (playwrightCloseSucceeded && processExited) {
+    console.log("[cleanup:end] Electron app closed through Playwright");
+    return;
   }
+
+  console.warn(
+    `[cleanup:timeout] Playwright close did not finish; killing process group ${pid}`,
+  );
+  try {
+    // Playwright launches Electron as a process-group leader and uses the same
+    // negative-PID kill internally. Killing the whole group also terminates
+    // preview servers that can otherwise keep the launch process alive.
+    process.kill(-pid, "SIGKILL");
+  } catch (error) {
+    console.warn(`Process-group kill error for Electron PID ${pid}:`, error);
+    childProcess.kill("SIGKILL");
+  }
+
+  await Promise.race([
+    Promise.all([playwrightClose, waitForProcessExit]),
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 5_000);
+    }),
+  ]);
 
   console.log("[cleanup:end] Electron app terminated");
 }

@@ -49,7 +49,7 @@ describe("calculateFileChecksum", () => {
     const checksum = await calculateFileChecksum(file);
     expect(checksum).toMatch(/^[a-f0-9]{64}$/);
     expect(fs.statSync(file).size).toBe(128 * 1024 * 1024);
-  });
+  }, 30_000);
 
   it("closes the stream when hashing fails", async () => {
     const missing = path.join(dir, "missing.sqlite");

@@ -137,11 +137,12 @@ export function usePlanEvents() {
         }
 
         // The user chooses at accept time whether to implement in a fresh chat
-        // or continue in the current one. Default to a new chat when unknown.
-        // The choice stays recorded so DyadExitPlan can word its confirmation
-        // message correctly.
+        // or continue in the current one. When unknown (typed acceptance like
+        // "implement the plan", or after a reload), default to continuing here
+        // so we don't surprise-create a chat. The choice stays recorded so
+        // DyadExitPlan can word its confirmation message correctly.
         const useNewChat =
-          acceptInNewChatByChatIdRef.current.get(payload.chatId) ?? true;
+          acceptInNewChatByChatIdRef.current.get(payload.chatId) ?? false;
 
         try {
           let implementationChatId = payload.chatId;

@@ -23,11 +23,11 @@ export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
   const isTransitioning = chatId
     ? planState.transitioningChatIds.has(chatId)
     : false;
-  // Defaults to a new chat when the choice is unknown (e.g. after a reload),
-  // matching the historical behavior.
+  // Defaults to continuing in the current chat when the choice is unknown
+  // (typed acceptance, or after a reload), matching usePlanEvents routing.
   const useNewChat = chatId
-    ? (acceptInNewChatByChatId.get(chatId) ?? true)
-    : true;
+    ? (acceptInNewChatByChatId.get(chatId) ?? false)
+    : false;
 
   const [dotCount, setDotCount] = useState(0);
   useEffect(() => {

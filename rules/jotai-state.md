@@ -82,3 +82,11 @@ Components should usually read `currentPreviewErrorAtom` rather than repeat
 When deleting an entity, prune any keyed Jotai state for that entity. Chat
 state already uses helper atoms such as `removeChatIdFromAllTrackingAtom`; app
 scoped runtime state should follow the same pattern.
+
+## Plan acceptance routing
+
+`planAcceptInNewChatByChatIdAtom` records whether Accept started a new chat
+(`true`) or continued here (`false`). Plan panel buttons set it; typed
+acceptance (e.g. "implement the plan" → `exit_plan`) does not. When missing,
+`usePlanEvents` / `DyadExitPlan` must default to **continue in the current
+chat** (`?? false`) — never create a new chat by default.

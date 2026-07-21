@@ -351,12 +351,17 @@ async function cancelTrackedStreams(
     );
   }
 
-  await Promise.all(
-    trackedStreams.flatMap(({ completions }) =>
-      completions.map((completion) => completion.catch(() => {})),
-    ),
-  );
-
+  // Notify the renderer that the stream ended as soon as it is aborted, before
+  // awaiting the handler's completion. The renderer clears its streaming state
+  // (`isStreaming`, `pendingStreamChatIds`) off these events, so delaying them
+  // until after the handler fully unwinds leaves a window where a message the
+  // user submits (or a queue the user resumes) right after pressing Stop is
+  // treated as still-streaming — it gets queued instead of sent, or the resume
+  // never re-arms the queue processor. Callers that need writes to have settled
+  // (restore/delete) still await the completions below; only the renderer
+  // notification moves earlier, matching the pre-cancellation-refactor timing.
+  // A new stream the renderer starts for a chat under an active restore barrier
+  // simply waits at admission, so notifying early stays safe.
   for (const { chatId } of trackedStreams) {
     safeSend(sender, "chat:response:end", {
       chatId,
@@ -365,6 +370,12 @@ async function cancelTrackedStreams(
     } satisfies ChatResponseEnd);
     safeSend(sender, "chat:stream:end", { chatId });
   }
+
+  await Promise.all(
+    trackedStreams.flatMap(({ completions }) =>
+      completions.map((completion) => completion.catch(() => {})),
+    ),
+  );
 
   return true;
 }
@@ -2192,9 +2203,9 @@ This conversation includes one or more image attachments. When the user uploads 
       // Notify renderer that stream has ended. When the stream was cancelled,
       // `cancelTrackedStreams` is the sole sender of the end events (it emits
       // both `chat:response:end` with `wasCancelled` and `chat:stream:end`
-      // after awaiting this handler's completion). Sending `chat:stream:end`
-      // here too would deliver a duplicate end event to the renderer, so skip
-      // it on the aborted path.
+      // as soon as it aborts this stream). Sending `chat:stream:end` here too
+      // would deliver a duplicate end event to the renderer, so skip it on the
+      // aborted path.
       if (!abortController.signal.aborted) {
         safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
       }

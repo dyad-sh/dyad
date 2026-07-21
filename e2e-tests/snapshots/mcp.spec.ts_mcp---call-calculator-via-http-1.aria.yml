@@ -1,3 +1,4 @@
+- button "Restore to this point"
 - paragraph: tc=local-agent/mcp-calculator
 - paragraph: I'll calculate the sum of 5 and 3 using the calculator.
 - button "Copy Request ID"

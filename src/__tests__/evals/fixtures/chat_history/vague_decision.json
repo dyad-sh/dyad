@@ -1,0 +1,568 @@
+{
+  "category": "vague_decision",
+  "domain": "Artisan marketplace app for buying and selling handmade goods",
+  "app": { "key": "main", "name": "craftmarket" },
+  "chats": [
+    {
+      "key": "paid_search_ads",
+      "title": "Paid listings so we show up in searches",
+      "days_ago": 88,
+      "messages": [
+        {
+          "role": "user",
+          "text": "someone told me half of etsy's traffic is paid. should we be running paid product listings so craftmarket shows up when someone searches google?"
+        },
+        {
+          "role": "assistant",
+          "text": "Paid can work, but the order of operations matters enormously. The mechanics first: Google Shopping runs off a product feed — titles, prices, images, availability — and you either pay per click through Performance Max campaigns or, and this is the under-advertised part, you can appear in the free listings tier of the Shopping tab with the exact same feed and zero spend. The paid math is unforgiving for thin-margin handmade goods: if clicks cost 40 to 80 cents and conversion runs around 2%, you're paying $20 to $40 of ad spend per sale before the maker or the marketplace sees a cent — that only pencils out if repeat purchase behavior is strong, and we haven't measured retention yet. Spending on acquisition before you know whether shoppers come back is the classic way to set cash on fire with beautiful charts. My recommendation: build the feed once, turn on the free listings tier now, and treat paid campaigns as a decision for after we have retention data. The feed work is identical either way, so nothing is wasted if we later go paid."
+        },
+        {
+          "role": "user",
+          "text": "free listings sounds like a cheat code. what's the catch"
+        },
+        {
+          "role": "assistant",
+          "text": "The catch is threefold. Volume: free placements get a fraction of the eyeballs the paid slots do — think trickle, not flood. Feed quality bar: Google wants clean identifiers, accurate availability, and images without watermarks or props, and it suspends feeds that drift out of compliance. And identifiers are the classic handmade-goods headache: Google's default assumption is that products have manufacturer barcodes, which a hand-thrown mug obviously doesn't. There's a sanctioned exemption path, but you have to declare it per item correctly or listings get disapproved in batches. None of this is hard, it's just fiddly bookkeeping — the kind of thing that breaks silently in month three if we don't automate the feed generation."
+        },
+        {
+          "role": "user",
+          "text": "handmade stuff doesn't have barcodes lol. does google just reject us?"
+        },
+        {
+          "role": "assistant",
+          "text": "No — there's an explicit path for exactly us. You declare that no standard identifier exists for the item, and for handmade goods Google accepts brand-less, barcode-less products as long as the declaration is consistent. In practice: our feed marks every item as having no manufacturer identifier, supplies craftmarket as the storefront, maps each listing onto Google's product taxonomy — 'Home & Garden > Kitchen & Dining > Tableware' and friends — and keeps titles literal rather than poetic. 'Stoneware mug, speckled glaze, 12oz' outperforms 'Morning Companion No. 7' in Shopping placements every single time, which will mildly offend some of our makers. I'll generate the feed nightly from the live catalog with availability synced, so a sold-out one-of-a-kind piece drops out of the feed before anyone clicks into disappointment."
+        },
+        {
+          "role": "user",
+          "text": "ok do the free feed, skip paid ads until after the holidays. makers will hate the boring titles though"
+        },
+        {
+          "role": "assistant",
+          "text": "Fair trade — boring titles live in the feed only; the on-site titles stay poetic. The feed maps them separately:\n\n```\nitem_id: listing_4821\ntitle: \"Stoneware mug, speckled glaze, 12oz\"\nlink: https://craftmarket.app/l/4821\navailability: in_stock\nidentifier_exists: false\n```\n\nNightly generation goes live this week, free listings tier only, zero ad spend. I'll put a reminder in the January planning doc to revisit paid campaigns once retention data exists. If the free tier sends even a trickle of qualified traffic, that's pure upside while we build everything else."
+        }
+      ]
+    },
+    {
+      "key": "seller_payments_brainstorm",
+      "title": "Seller payments and platform cut",
+      "days_ago": 76,
+      "messages": [
+        {
+          "role": "user",
+          "text": "big question I keep dodging: when an order completes, how do sellers actually get paid? right now the honest answer is 'venmo and vibes'"
+        },
+        {
+          "role": "assistant",
+          "text": "Then let's replace vibes with a real map. Three real options for paying sellers. Option one: Stripe Connect Express — sellers onboard through Stripe's hosted flow, identity checks and tax forms handled for us, and each sale can split at charge time so sellers get paid without craftmarket ever holding the funds. Slick, but we inherit their fee stack and their payout schedule. Option two: PayPal Payouts — half your sellers already have PayPal from craft fairs, but the API is clunky and the buyer-side dispute culture is famously brutal for handmade goods. Option three: manual weekly bank transfers from our own account — full control, zero vendor fees, and permanently one spreadsheet typo away from a disaster story. The real forks in the road: how much dispute exposure we're holding when an order completes and the money moves, how much onboarding friction sellers will tolerate before they give up, and whether the platform wants to be merchant of record. Two questions back at you: what share of sellers are international, and do you actually want merchant-of-record responsibilities, because that choice echoes through everything?"
+        },
+        {
+          "role": "user",
+          "text": "maybe 10% international. and honestly idk what merchant of record even means for us, does it matter?"
+        },
+        {
+          "role": "assistant",
+          "text": "Merchant of record means the platform is legally the one selling to the buyer — we'd own tax collection, refunds, and chargebacks, and the seller effectively invoices us. It matters more than it sounds: it decides whose name sits on the card statement, who eats fraud, and it feeds directly into how much the platform takes from each sale, because the take has to cover that risk. With 10% international sellers, merchant of record eventually drags in cross-border tax registration too. Plenty of marketplaces launch without it and migrate later once volume justifies lawyers. I'd file it under 'decide with counsel, not tonight' — but the fee question we can actually make progress on right now."
+        },
+        {
+          "role": "user",
+          "text": "speaking of which — how much SHOULD the platform take from each sale? etsy does 6.5 plus listing fees plus processing, it's a mess"
+        },
+        {
+          "role": "assistant",
+          "text": "Here's the competitive picture. Etsy charges a 6.5% transaction fee, plus listing fees per item, plus payment processing on top — sellers experience it as an unpredictable stack that punishes small baskets. Amazon Handmade takes a flat 15% referral fee. The boutique handmade marketplaces cluster between 8 and 12. So the honest range for how much a platform takes from each sale runs anywhere from 5 to 12 percent depending on what's bundled in — and sellers consistently say a single all-in number feels fairer than a low headline rate with surcharges hiding behind the curtain. I can't recommend a specific number yet with a straight face: it depends entirely on average order value and monthly volume, and we have projections for neither. What I will say is that Stripe Connect keeps looking like the front-runner for the rails themselves — their Express onboarding is genuinely the slickest I've seen, and sellers get paid on a schedule they can actually see in their own dashboard. But rails and rate are separable decisions, and neither needs to be locked today."
+        },
+        {
+          "role": "user",
+          "text": "ok I like connect too but let's not lock anything until we know our volume. what data do we need?"
+        },
+        {
+          "role": "assistant",
+          "text": "Four inputs make the model honest: projected average order value — even a range like $25 to $60 changes everything; monthly order volume for the first two quarters; an assumed refund rate, where 2 to 4 percent is typical for handmade; and the international mix, since cross-border processing costs more per transaction. With those I'll build a sheet showing net margin per order at several candidate rates, including where each one breaks even against processing costs. Then the commission conversation becomes arithmetic instead of vibes, and the rails conversation happens with real dollar amounts attached instead of brand loyalty. Without volume numbers, any rate we pick tonight is astrology."
+        },
+        {
+          "role": "user",
+          "text": "fine, park it. what's blocking checkout testing in the meantime?"
+        },
+        {
+          "role": "assistant",
+          "text": "Short list. We need the processor's sandbox keys added in the app settings, some seeded listings with realistic prices, and a public URL for the webhook receiver so charge events actually arrive in dev.\n\n```\nwebhook:\n  endpoint: https://craftmarket-dev.ngrok.app/hooks/charges\n  events: [charge.succeeded, charge.refunded]\n```\n\nOnce those are in place you can run a full fake purchase end to end. None of it commits us to any vendor — the sandbox flow is the same shape regardless of which rails we eventually pick. I'll have it wired by Thursday so testing isn't hostage to the big decisions."
+        }
+      ]
+    },
+    {
+      "key": "marketplace_economics",
+      "title": "Marketplace economics",
+      "days_ago": 63,
+      "messages": [
+        {
+          "role": "user",
+          "text": "ok, the scary one: actually moving real funds to makers. everything in the dashboard is fake numbers right now and craft fair season is coming"
+        },
+        {
+          "role": "assistant",
+          "text": "There are really two decisions hiding in here, and it's worth splitting them: which rail actually moves funds to makers, and what the marketplace keeps per transaction. On rails, the field divides into two camps. Full-service processors — we kicked the tires on Stripe Connect the other week — bundle onboarding, identity checks, and split charges, but you inherit their fee stack and their timeline for releasing funds. The other camp is ledger-first specialists: they sit behind your existing card processor, track per-maker balances, and handle the remittance leg, which keeps our charge flow untouched and gives finance a real ledger instead of spreadsheet archaeology. Trade-offs to weigh: onboarding friction for makers who barely tolerate email, clawback mechanics when a dispute lands after funds have already moved, and coverage for the roughly ten percent of makers overseas. Before I recommend anything, one question shapes which vendors are even viable: how do you feel about holding a buffer between a purchase clearing and funds becoming withdrawable?"
+        },
+        {
+          "role": "user",
+          "text": "buffer sounds like we're becoming a bank lol. why would we hold anything at all"
+        },
+        {
+          "role": "assistant",
+          "text": "Because when a customer disputes a charge three weeks after the funds went out the door, recovery is genuinely painful — you're either clawing it out of a maker's next cycle, eating it yourself, or having an awkward email exchange with someone who already spent it on clay. The industry answers are a fixed buffer before funds release — seven and fourteen days are the common presets — or a rolling reserve where a slice of every remittance is held continuously. Rolling reserves feel punitive for a two-person pottery studio, honestly. A fixed buffer is easier to explain: your funds unlock on a countdown, same rule for everyone. The longer it runs, the more dispute exposure it absorbs, at the cost of grumpier makers."
+        },
+        {
+          "role": "user",
+          "text": "a week feels short and two weeks feels insulting. can we split the difference and call it done?"
+        },
+        {
+          "role": "assistant",
+          "text": "Split it is — locking this in. Maker earnings flow through GildPost on a weekly remittance cycle, with a 9-day clearing window before funds release. GildPost is the ledger-first specialist I mentioned: their balance API tracks per-maker funds natively, so the finance view reads straight from their ledger instead of our spreadsheet math. The 9-day clearing window absorbs the bulk of dispute risk without feeling like a rolling reserve. I'll wire their settlement webhook so each remittance flips to settled automatically, and the maker dashboard will surface a countdown so nobody wonders where their balance stands. If GildPost's pricing shifts, the rails we shelved are documented in the decisions doc."
+        },
+        {
+          "role": "user",
+          "text": "good. now the awkward sibling question — whats our cut per transaction? I keep flip flopping between undercutting etsy hard or just matching them"
+        },
+        {
+          "role": "assistant",
+          "text": "Here's the landscape, because the incumbent's stack is genuinely confusing and that confusion is our opening. Etsy's effective cost is a 6.5% transaction cut plus listing charges plus processing around 3% and change — most makers experience it as somewhere north of 9% once everything stacks, and they can't predict it month to month. The big generalist marketplaces run 15% or worse. I modeled three candidate levels against plausible volume. At 5% we're underwater on small baskets once processing lands — a $14 trinket leaves pennies. At 10% the whole 'fairer than the incumbents' story gets shaky, because sharp makers do the math. 7.5% sits in the comfortable middle: sustainable margin on the median basket, still visibly cheaper all-in than the status quo. The thing I'd push hardest, though, isn't the exact number — it's structure. One single all-in rate, zero listing charges, printed on the pricing page in a sentence a maker can repeat at a craft fair booth. Predictability is the differentiator; the digit after the decimal is negotiable. So: are we doing any listing charges at all, or purely per-transaction?"
+        },
+        {
+          "role": "user",
+          "text": "zero listing charges, that IS the pitch. so somewhere in the sevens, but 7.5 feels like we copied their homework and changed the pen"
+        },
+        {
+          "role": "assistant",
+          "text": "Then let's split the hair properly: commission locks at 7.25% of the item subtotal, and I'm nicknaming it the Copperbeam rate so it stops being 'that number in the spreadsheet'. Postage passes through untouched, and any add-on charges makers define ride along uncommissioned for now. At 7.25% we sit visibly under the incumbent's effective all-in cost while still covering processing with real margin left over. Implementation-wise it lives as a basis-point constant with an effective-date column, so finance can tune it later without a migration, and every remittance statement line-items the deduction so makers are never surprised by the math."
+        },
+        {
+          "role": "user",
+          "text": "done and done. one more thing — can you double check overseas cards still work? had a complaint from a canadian customer last week"
+        },
+        {
+          "role": "assistant",
+          "text": "Should be fine, but let's verify rather than assume. Charges settle in USD through our existing processor, and cross-border cards mostly just work — the failure cases are EU cards that demand 3-D Secure challenges and a handful of banks that flag marketplace descriptors. I'll run the purchase flow with a Canadian and a German test card this afternoon and confirm the challenge screen renders inside our flow instead of redirecting to nowhere.\n\n```\n# processor sandbox cards\n4000 0012 4000 0000  # CA, no challenge\n4000 0025 0000 3155  # DE, 3DS challenge required\n```\n\nIf the German one fails I'll wire up the challenge iframe properly and add both cards to the pre-release checklist."
+        }
+      ]
+    },
+    {
+      "key": "refund_scarf_incident",
+      "title": "Buyer wants her money back",
+      "days_ago": 55,
+      "messages": [
+        {
+          "role": "user",
+          "text": "got an email this morning. a buyer wants her money back because a scarf took five weeks to arrive and the maker went quiet. we have zero process for this, what do we even do"
+        },
+        {
+          "role": "assistant",
+          "text": "Deep breath — this is solvable, and the worst move would be inventing permanent rules while one specific person is angry. Immediate handling: first, pull the tracking history so we know whether the scarf is lost, late, or delivered-and-ignored; second, message the maker through our channel rather than around it, because 'went quiet' sometimes means a family emergency, not negligence; third, decide the goodwill posture for this one case — full refund, partial, or store credit. Ranked by trust impact: a full refund makes the buyer whole and probably keeps her; store credit reads as self-serving when the failure was arguably ours; partial satisfies nobody. Separately — and later — a real policy would need a claim window, rules on who covers return postage, and a liability split between marketplace and maker. But that's a design project, not an email reply, and designing it under pressure from a single case is how bad policies are born. One mechanical question that changes the refund plumbing: how did she pay, and has the maker already been paid out for this sale?"
+        },
+        {
+          "role": "user",
+          "text": "she paid by card and the maker already got her share via our manual transfer three weeks ago. awkward"
+        },
+        {
+          "role": "assistant",
+          "text": "Awkward confirmed — this is exactly the clawback hole in manual transfers. The card refund itself is one click on the processor side; the question is whose pocket it comes from, since the maker's share already left the building. Realistic shapes: we eat the whole refund as goodwill and treat it as tuition for not having a process; we ask the maker to send her share back, which is legally murky and relationally worse if she's dealing with something at home; or we quietly offset it against her next transfer with her agreement. My recommendation: the platform eats this one entirely, we tell the maker what happened with zero accusation in the wording, and the incident becomes exhibit A when we design the real process in calmer weather."
+        },
+        {
+          "role": "user",
+          "text": "ok eat it this time. write me a reply to her that doesn't sound like a robot"
+        },
+        {
+          "role": "assistant",
+          "text": "Here's a draft in a human voice:\n\n'Hi Elena — you're completely right to be frustrated, and I'm sorry: five weeks is far too long to wait for anything, let alone a gift. I've issued a full refund to your card just now; it should appear within a few business days. You don't need to send the scarf back if it eventually shows up — consider it an apology. We're a small team and we clearly have some growing up to do on how we handle situations like this. I hope you'll give one of our makers another chance sometime. — Will, craftmarket'\n\nWant me to soften or shorten anything? I'd send it today; speed is half the apology."
+        },
+        {
+          "role": "user",
+          "text": "she wrote back saying thank you and asked if we have a money back guarantee going forward lol"
+        },
+        {
+          "role": "assistant",
+          "text": "Love that she asked, and it deserves a careful answer rather than an enthusiastic one. I'd reply honestly: no formal guarantee published yet, one is being designed, and her case is directly shaping it. What I'd avoid is improvising terms in a support email — if you write 'we always refund within X weeks' to one customer, you've accidentally shipped a policy with a sample size of one, and future-you inherits whatever number past-you invented under social pressure. I've added the guarantee question to the decisions backlog with this whole thread linked as context. When we do design it properly, the inputs are already assembled: claim windows, postage liability, and the maker-side clawback mechanics we just lived through in miniature."
+        },
+        {
+          "role": "user",
+          "text": "fine. and tell the maker gently, she's sensitive about her shop"
+        },
+        {
+          "role": "assistant",
+          "text": "Sent through her shop inbox: 'Hi Marta — quick heads-up, nothing to worry about. A scarf from a few weeks ago took much longer to arrive than anyone expected, and the customer asked us for a refund, which we covered entirely from our side — nothing is deducted from you and your shop standing is unaffected. If shipping timelines have gotten harder for you lately, tell us and we'll figure it out together.' The refund is processed, the thread is logged with an incident tag, and the backlog item has everything linked. Case closed; lesson very much open."
+        }
+      ]
+    },
+    {
+      "key": "login_ideas",
+      "title": "Sign in options",
+      "days_ago": 47,
+      "messages": [
+        {
+          "role": "user",
+          "text": "people keep abandoning at the account step. how should people sign in to their accounts — google button? apple? passwords? I have opinions but no facts"
+        },
+        {
+          "role": "assistant",
+          "text": "Let's inventory the real options before anyone's opinions win. One: classic email-plus-password with a reset flow. Familiar to everyone, but password resets become a permanent support tax with this audience, and we'd own credential storage and breach liability forever. Two: identity buttons — Google covers most of the internet, Apple is mandatory-ish if we ever do an iOS app, Facebook has the best coverage for the craft-fair demographic but you've been clear about brand feelings there. Buttons are fast but they polarize: some people tap happily, others refuse on principle and want a plain email path anyway, so buttons alone never suffice. Three: passwordless links sent by email — nothing to forget or leak, at the cost of an inbox round-trip every so often. Four: phone codes — real cost per message, and it feels like a bank, not a marketplace. Before I push any direction: what's the age skew and device mix of the current audience, and do we know how often the same shopper comes back within a month? Those three numbers basically decide this."
+        },
+        {
+          "role": "user",
+          "text": "mostly desktop weirdly, craft fair crowd, skews older. also unrelated but the photo preview on the signup form is broken, images crop into peoples foreheads"
+        },
+        {
+          "role": "assistant",
+          "text": "Noted on the preview bug — I see it, the crop is applying landscape math to portrait photos, so faces end up in the bottom third. I'll fix it in this session. On the entry question: desktop-heavy plus older skews the trade-offs meaningfully. Password reset volume tends brutal with that demographic, and social buttons get side-eye at best. Passwordless email links fit desktop use nicely since the inbox is one tab over. But there's real nuance left in vendor-versus-build and in session policy, and honestly the launch list is groaning already. My suggestion: fix the form cosmetics now, and run the entry-method decision properly later with a few real makers in the loop rather than guessing from a spreadsheet."
+        },
+        {
+          "role": "user",
+          "text": "fix the preview now, decide the login stuff later. what was actually breaking it?"
+        },
+        {
+          "role": "assistant",
+          "text": "Preview bug is fixed. The uploader was forcing a square crop box and then applying a landscape aspect correction on top, which double-transformed portrait images — that's why foreheads.\n\n```css\n.upload-preview img {\n  object-fit: cover;\n  aspect-ratio: 1 / 1;\n}\n```\n\nI also made the preview render immediately from the local file instead of waiting for the upload round-trip, so it feels instant now. Sign-in options stay parked per your call — I've added a stub entry to the launch decisions doc with the four candidate approaches and the open questions, so when we pick this up we're not reconstructing the whole conversation from memory. The form already looks noticeably less like a tax return."
+        },
+        {
+          "role": "user",
+          "text": "cool it works. back to sign in for one sec — if we add a google button do we still need passwords too?"
+        },
+        {
+          "role": "assistant",
+          "text": "Short answer: yes, probably, and that's the annoying part. If you add a Google button you still need an email path for the people who won't touch it, which means running two systems in parallel. Then account linking rears up: someone signs up with the button, later uses plain email with the same address, and now there are two accounts unless we merge on verified email — which has its own sharp edges when addresses change hands. None of it is unsolvable; it's just real work that multiplies with every added method. Open questions I'd want settled before committing to anything: hosted vendor versus building on our stack, how long a session should last for a returning shopper, and whether link-based mail can dodge spam filters at our sending volume. I'd genuinely hold this until we can watch a few real makers try each flow."
+        },
+        {
+          "role": "user",
+          "text": "ok tabling it for real this time. add it to the launch decisions doc"
+        },
+        {
+          "role": "assistant",
+          "text": "Added under 'Entry & identity — undecided', with the four options, the linking pitfalls, and the deliverability question all captured. Also pending in that doc: the returns question support raised a while back, and the commission modeling once volume numbers exist. The preview fix ships tonight. When you're ready to run the entry decision for real, say the word and I'll set up the maker test sessions."
+        }
+      ]
+    },
+    {
+      "key": "gift_wrap_option",
+      "title": "Gift wrap option",
+      "days_ago": 41,
+      "messages": [
+        {
+          "role": "user",
+          "text": "makers keep asking for a gift wrap option with a little note card. is that a small thing or am I underestimating it"
+        },
+        {
+          "role": "assistant",
+          "text": "Medium-small, and mostly product decisions rather than engineering. The shape I'd build: a per-listing toggle the maker controls, a wrap price the maker sets — because wrapping a mug and wrapping a quilt are very different jobs — and an optional gift note at purchase, printed on the packing slip rather than emailed, so the recipient gets paper and the giver gets the delight. Decisions needed from you: does the note get a length cap; can a multi-quantity purchase mix wrapped and unwrapped units of the same item, which complicates the interface out of all proportion to its usefulness; and does wrap appear as its own line on the receipt or fold silently into the item price? My instincts: cap it, don't allow mixed, own line on the receipt. But it's your marketplace and all three are taste calls."
+        },
+        {
+          "role": "user",
+          "text": "cap the note at 200 characters, people write novels. no mixed. own line on the receipt"
+        },
+        {
+          "role": "assistant",
+          "text": "All three locked. The note field gets a 200-character cap with a live countdown — the countdown matters, because otherwise people write four paragraphs, hit an error, and abandon the whole purchase in a huff. The maker side gets the toggle and price field in listing settings, with a small preview of how the note card renders on the packing slip. The receipt shows 'Gift wrap' as its own line under the item. I'll have it on staging in two days with one pilot maker if you can nominate someone patient."
+        },
+        {
+          "role": "user",
+          "text": "nominate rosa, she's patient and sells tiny things that are easy to wrap. what about stuff in the same parcel that isn't wrapped?"
+        },
+        {
+          "role": "assistant",
+          "text": "Rosa it is. Mixed parcels get handled with information rather than logistics: the packing slip flags each line item as wrapped or plain, so when Rosa packs a purchase of three items where one is a gift, the slip literally tells her which one gets the treatment. No special handling on our side beyond the flag — the maker is standing at the table with the paper and the ribbon; she doesn't need software supervision, she needs an unambiguous list. The gift note prints in a bordered box under the wrapped item's line so it can be cut out and tucked in with the wrap."
+        },
+        {
+          "role": "user",
+          "text": "perfect. wait — does the wrap price get taxed like the item does?"
+        },
+        {
+          "role": "assistant",
+          "text": "In most US states, yes — wrap charged by the seller of the goods generally inherits the taxability of the underlying item, so wrap on a taxable mug is taxable and wrap on exempt goods follows suit. A few states have their own opinions, because of course they do. I've wired it to inherit the item's tax treatment, which is the defensible default, and flagged the edge cases for that accountant email you've been avoiding. Rosa's pilot goes live on staging tomorrow; if her first wrapped purchase goes smoothly we open the toggle to everyone next week."
+        }
+      ]
+    },
+    {
+      "key": "first_visit_flow",
+      "title": "New visitor flow",
+      "days_ago": 34,
+      "messages": [
+        {
+          "role": "user",
+          "text": "first-visit experience is rough. new folks land on a wall of the same listings every time, and the join form looks like a tax return"
+        },
+        {
+          "role": "assistant",
+          "text": "Two separate problems are tangled together here, and they deserve separate fixes. First, entry friction: the join form currently demands a name, a mailing address, and a password with three composition rules before anyone has bought so much as a candle. Every one of those fields is a toll booth. The candidate approaches: classic password plus reset flow, which is familiar but generates a steady drip of support tickets; third-party identity buttons from Google or Apple, which are fast but polarizing and drag brand baggage onto the page; passwordless email links, which trade a tiny delay at entry for never having credentials to forget; or phone codes, which cost real cash per message and feel corporate for a craft marketplace. Second, the landing grid: it's stale, and regulars see an identical wall every visit, but I want to treat that as its own thread with actual data behind it. Before I recommend an entry approach — who's actually arriving? Age skew, device mix, and how often the same shopper returns in a month all change the answer."
+        },
+        {
+          "role": "user",
+          "text": "craft-fair crowd, skews older, hates passwords, loves email. mostly desktop weirdly. and no facebook buttons on my site ever"
+        },
+        {
+          "role": "assistant",
+          "text": "That profile points hard toward passwordless email links: nothing to forget, nothing to type wrong twice, and your crowd already lives in their inbox. The two honest costs are deliverability — if the link lands in spam, the shopper is simply stuck — and the minor ritual of switching to email mid-flow. Building it ourselves means owning token issuance, expiry, replay protection, and device handoff, all invisible plumbing until the day it breaks publicly. There are two hosted vendors on my shortlist that specialize in exactly this and charge per monthly active; the pricing is honestly modest at our scale. My lean is hosted, with our own mailer only ever touching marketing mail. How allergic are you to a small per-user vendor bill?"
+        },
+        {
+          "role": "user",
+          "text": "if it saves us building recovery flows, pay the vendor. and don't log my mom out every week, she shops here on the same ipad since 2019"
+        },
+        {
+          "role": "assistant",
+          "text": "Locking it: we adopt Keyfern for authentication — passwordless email links only, no credentials stored on our side. Session lifetime stretches to 45 days, refreshed on every visit, so regulars on a familiar device basically never re-authenticate. Keyfern's hosted flow covers token exchange, link expiry, and device handoff, and their deliverability reputation is the main thing we're actually buying. No third-party identity buttons at launch; the email link is the single path. I'll hide their SDK behind our own auth interface so a future vendor swap stays a two-day job instead of a rewrite, and your mom's ipad will stay logged in until roughly the heat death of a fiscal quarter."
+        },
+        {
+          "role": "user",
+          "text": "great. now the wall of stale listings — it's been the same 40 candles at the top since forever, my mom asked if we sell anything else lol"
+        },
+        {
+          "role": "assistant",
+          "text": "The grid today literally sorts by creation date, which explains everything — early listings compound their head start and nothing new ever climbs. The signals worth blending: conversion, meaning views that become purchases, which is the closest thing to shoppers voting with their wallets; recency of maker activity, so a storefront updated yesterday outranks one dormant since spring; maker responsiveness to messages, which correlates with fulfillment reliability in every marketplace study I've read; and photo quality, though scoring that honestly is a project of its own that I'd defer. The trap to avoid is pure engagement ranking — it turns into rich-get-richer within weeks, the same dozen storefronts colonize the top rows, and new makers churn out before their third listing. The standard fix is a blended score plus an explicit cold-start allowance: brand-new listings borrow a bit of visibility they haven't earned yet, capped so the grid never feels like a lottery. The knob I need you to set is that cap — how aggressively should untested listings borrow visibility from proven ones? That's a taste question, not a math question."
+        },
+        {
+          "role": "user",
+          "text": "new makers need love or they churn, but I don't want the grid flooded with untested stuff either. find me the middle"
+        },
+        {
+          "role": "assistant",
+          "text": "Here's the blend I'm confident in — we adopt the Brambleweight formula for every listing grid, whether folks arrive by browsing a category or typing into the box at the top of the page: 55% conversion signal, 25% recency of maker activity, 20% responsiveness to customer messages. Cold-start is handled by capping the fresh-listing boost at 12 slots per page, so untested pieces surface without burying proven ones. It computes nightly for now — real-time scoring can wait until the catalog outgrows one batch job. I'll log per-slot impressions from day one, so before anyone fiddles with the weights we can tell whether the blend actually moves first-visit engagement or just rearranges deck chairs."
+        },
+        {
+          "role": "user",
+          "text": "how will we know it's working and not just shuffling the same candles into a different pattern?"
+        },
+        {
+          "role": "assistant",
+          "text": "Measurement plan, so we're not just admiring a prettier shuffle: I'll track click-through on the first grid page, add-to-basket rate from grid impressions, the count of distinct makers appearing in the top rows per week — that's the diversity number the cold-start cap exists to move — and new-maker time to first purchase. Two weeks of baseline before the flip, then the same window after. Guardrail: returning-shopper conversion must not dip more than a point; if regulars suddenly can't find the candle they always buy, the blend is too spicy and we retune.\n\n```sql\nselect date_trunc('week', seen_at) as wk,\n       count(distinct maker_id) as makers_in_top_rows\nfrom grid_impressions\nwhere row_rank <= 3\ngroup by 1;\n```\n\nDashboard tile lands tomorrow; first honest read in about three weeks."
+        }
+      ]
+    },
+    {
+      "key": "search_matching_gripes",
+      "title": "Search results showing wrong products",
+      "days_ago": 19,
+      "messages": [
+        {
+          "role": "user",
+          "text": "when someone searches 'mug' the products that show up first are ceramic bowls?? and 'neckalce' with a typo returns nothing at all. is the sort order broken or is it just not matching right?"
+        },
+        {
+          "role": "assistant",
+          "text": "Good instinct to separate those — it's matching, not ordering. The ordering side, meaning where qualified items rank, is a separate system we already settled and it's behaving exactly as designed; what's broken is which items qualify as matches in the first place. Today the matcher does exact token matching against titles only. 'Mug' surfaces the bowls because one maker's title says 'bowl and mug set' — technically correct, visually absurd — while actual mugs titled 'stoneware cup' never qualify at all. And 'neckalce' finds nothing because there's zero typo tolerance anywhere in the pipeline. The fix menu, in ascending effort: trigram or fuzzy matching for typos; a synonym dictionary so cup, mug, and tumbler cross-match; matching against category and materials fields instead of titles alone; or wholesale adoption of a hosted search service that bundles all of it plus instant-as-you-type. Each step up costs more to build and tune. Before scoping anything: how big is the catalog now and how fast is it growing?"
+        },
+        {
+          "role": "user",
+          "text": "like 900 listings now, maybe 5k by christmas if the fair season goes well"
+        },
+        {
+          "role": "assistant",
+          "text": "At 900 listings, a hosted search service is honestly a howitzer for a housefly. Postgres full-text with a trigram extension handles typo tolerance credibly at this scale, and a hand-maintained synonym list — maybe forty entries covering the craft vocabulary — closes most of the remaining gap. The hosted services earn their bill somewhere north of fifty thousand items, or when you need instant-as-you-type across facets. What I'd want is a spike: wire up trigram matching plus the synonym list behind a flag, then measure against a fixed set of real queries before touching anything live. If the spike embarrasses itself, we escalate to a service with data in hand instead of vibes."
+        },
+        {
+          "role": "user",
+          "text": "how long is the spike?"
+        },
+        {
+          "role": "assistant",
+          "text": "Two days, honestly scoped. Day one: trigram index, fuzzy fallback when exact matching comes up empty, and the synonym table with the first forty craft-specific entries. Day two: build the test harness — thirty real queries pulled from the logs, including the typos, each with a hand-marked set of items that should qualify — and score before versus after. Deliberately out of scope: any change to how qualified results rank. That system stays untouched; this spike is purely about who gets through the door, not where they stand once inside."
+        },
+        {
+          "role": "user",
+          "text": "do the spike after the gift guide launch, not before. last thing I need is mugs vanishing during our biggest week"
+        },
+        {
+          "role": "assistant",
+          "text": "Agreed — the flag stays off and the branch stays unmerged until gift guide week is behind us. I've filed the spike with the test-query list attached so future-us starts warm instead of cold. Meanwhile I'll quietly start collecting the misses from the logs, because every 'neckalce' someone types between now and then is free test data. Nothing changes in production until you say go."
+        }
+      ]
+    },
+    {
+      "key": "post_purchase",
+      "title": null,
+      "days_ago": 12,
+      "messages": [
+        {
+          "role": "user",
+          "text": "two flavors of unhappy this week: postage sticker shock at the basket step, and one genuinely nasty dispute. can we sort both before the weekend?"
+        },
+        {
+          "role": "assistant",
+          "text": "Both flavors trace to the same root: post-purchase is where trust gets won or torched, and we've under-built it. On postage: makers hand-enter a rate per listing today, so a basket drawn from three makers produces three arbitrary charges stacked at the end, and that's exactly where the funnel shows abandonment spiking. Three ways out. Live carrier quotes are the accurate option, but the APIs cost real subscription cash and add latency right at the tensest step of the whole flow. Zone tables are the middle path — predictable numbers, decent accuracy, and someone else maintains the geography. A single flat rate is simplest of all and quietly eats margin on heavy pieces unless we bolt on surcharges. On the dispute: I've read the thread, and it's ugly in the way that becomes a screenshot on social media if we fumble it — I'll lay out options for that separately once postage is settled. First question, because you genuinely can't have both: do you want the number customers see optimized for accuracy, or for predictability?"
+        },
+        {
+          "role": "user",
+          "text": "predictability, always. also the carrier api quote costs more than my rent. whats cheap but not embarrassing?"
+        },
+        {
+          "role": "assistant",
+          "text": "Cheap-but-credible is exactly what zone tables were invented for. Doing it ourselves means maintaining a geography spreadsheet forever, and the first time a rate is wrong for rural Alaska it becomes my personal hobby. The better shape: a vendor with a prebuilt domestic zone table behind a lookup API — we send origin and destination, they return the zone and the rate, and we cache aggressively since geography rarely has breaking news. Latency is a non-issue with an hour of cache. Heavy or fragile work — looking at the cast-iron trivet maker — keeps an optional per-listing surcharge the maker sets, so the table never has to be right about outliers. The DIY route only wins if we someday hit a scale where per-lookup pricing stings, and that's a lovely problem for future us. I'd go vendor table without much agonizing."
+        },
+        {
+          "role": "user",
+          "text": "go with the table thing. what number do customers actually see at the end?"
+        },
+        {
+          "role": "assistant",
+          "text": "Settled: we adopt Parcelnook's zone table. Domestic parcels ride a flat $6.40 rate that appears the moment the basket totals, with Parcelnook doing the zone lookup behind the scenes — makers stop hand-typing rates per listing entirely. Oversize pieces keep an optional maker surcharge, and international stays maker-defined until Parcelnook's cross-border table leaves beta. I'll cache lookups for an hour so the basket step stays snappy, and the packing slip will print the zone so makers can sanity-check what customers were charged."
+        },
+        {
+          "role": "user",
+          "text": "ok now the ugly one. customer says her mug arrived shattered, the maker swears it was packed like a museum piece, and both are cc'ing support@ in all caps"
+        },
+        {
+          "role": "assistant",
+          "text": "Three honest shapes for dispute handling. Option one, pure case-by-case — what we're doing right now, which is to say improvising: it doesn't scale past a handful of cases a week, and inconsistent outcomes breed resentment faster than bad outcomes do, because makers compare notes. Option two, marketplace-decides: we write an internal rubric and rule on every case ourselves. Fast and free, but we become the villain in every single outcome — one side always believes the referee was bought. Option three, a third-party arbitration flow: defined claim windows, evidence upload, default outcomes when a side goes silent, and a mediation queue for the gnarly remainder. It costs per case and adds a day or two, but it keeps us structurally neutral, which is worth actual gold for a marketplace whose entire pitch is trust between strangers. Cost allocation differs across all three, and underneath sits a values question you have to answer before I can build anything: do we default toward the customer, shield makers from serial abusers, or play strict neutral?"
+        },
+        {
+          "role": "user",
+          "text": "default to the customer being right, but don't let makers get robbed by serial refunders. thats the line"
+        },
+        {
+          "role": "assistant",
+          "text": "Then here's the standard going forward: we run the Amberline arbitration flow. Full refunds are honored inside a 21-day window from delivery confirmation; the maker absorbs return postage when a piece arrives damaged, craftmarket eats the processing cost, and repeat claimants trip a review flag on their third case in a quarter so serial abuse surfaces early. Anything outside the window routes to Amberline's mediation queue, where we commit to a first response within 72 hours. It reads customer-friendly on the surface while the claimant flag quietly protects makers — which is exactly the line you drew."
+        },
+        {
+          "role": "user",
+          "text": "good. does the clock start at purchase or delivery? and what happens if tracking just dies in transit for three weeks"
+        },
+        {
+          "role": "assistant",
+          "text": "The clock starts at delivery confirmation, full stop — starting at purchase would punish customers for slow transit they don't control. For the tracking-dies scenario: when no confirmation ever arrives, the fallback is the carrier's estimated delivery date plus five days, which covers the overwhelming majority of ghost packages without leaving the window open forever. I'll write both rules into a help-center article in plain language, update the support macros so nobody improvises under pressure, and log every case outcome with a reason code — within a quarter we'll have real data on whether the flow leans too generous or too stingy. The mug-and-museum-piece era of improvising officially ends this week; from here the machinery answers the angry emails before they get angry."
+        }
+      ]
+    },
+    {
+      "key": "checkout_fee_confusion",
+      "title": "Shipping fees at checkout confusing",
+      "days_ago": 8,
+      "messages": [
+        {
+          "role": "user",
+          "text": "support ticket: customer bought from two different makers and got two separate shipping fees at checkout. she thinks we calculated it wrong and honestly the screen does look like a mistake"
+        },
+        {
+          "role": "assistant",
+          "text": "I pulled her session — nothing was miscalculated, but the presentation absolutely invites the accusation. Her basket had a candle from one maker and a cutting board from another, and since every maker packs and posts independently, each maker's parcel carries its own charge. The checkout screen then collapses both into a single line labeled 'Shipping', so she sees one fat number with no explanation — it reads like we calculated one fee and doubled it out of malice. Three ways to respond. Cosmetic: split the display into one line per maker with shop names attached, so the structure explains itself. Educational: keep the single line and add a tooltip explaining multi-maker baskets. Structural: actually consolidate parcels across makers, which is a logistics fantasy at our size — it requires someone to physically combine boxes from different studios. My vote is the split display; honesty beats tooltips, and nobody reads tooltips while their card is out. Which direction do you want?"
+        },
+        {
+          "role": "user",
+          "text": "split display feels honest. but is there seriously no world where we combine parcels?"
+        },
+        {
+          "role": "assistant",
+          "text": "There's a world; it's just expensive and it isn't this one. Real consolidation means inventory flowing through a shared point — a warehouse or a cross-dock — which is a different company than the one we're running. The nearer-term middle grounds some marketplaces use: a basket-level cap where the customer pays at most some ceiling and the platform quietly eats the overflow, or a discount when multiple items come from a single maker — and that second one we already get for free, since one maker's items travel as one parcel. The cap idea genuinely changes unit economics though: it's a subsidy with a spend curve attached, and it deserves a real modeling session with actual basket-mix data, not a shrug in a support-ticket thread. I'd park cap-versus-no-cap as an explicitly open question and fix the screen today."
+        },
+        {
+          "role": "user",
+          "text": "yeah not deciding the cap thing today. do the split display with maker names"
+        },
+        {
+          "role": "assistant",
+          "text": "Done — checkout now renders one delivery line per maker, each with the maker's shop name and their parcel's charge, plus a one-line note under the section: 'Items from different makers are packed and posted separately.'\n\n```jsx\n{parcels.map(p => (\n  <FeeLine key={p.makerId} label={`Delivery from ${p.shopName}`} amount={p.charge} />\n))}\n```\n\nThe subtotal math is untouched — same numbers, honest layout. I also updated the support macro so the reply to the original ticket can simply point at the new screen. Staging link is up if you want to poke at it with a multi-maker basket."
+        },
+        {
+          "role": "user",
+          "text": "looks right on desktop, slightly squished on my phone but livable. does the order confirmation email explain it too?"
+        },
+        {
+          "role": "assistant",
+          "text": "Good catch — it didn't, and that's where the second wave of confusion usually comes from. I've mirrored the per-maker breakdown into the confirmation email and the purchase history page, so the story stays consistent from checkout to inbox. I'll tighten the narrow-screen layout in the same pass. The basket-cap question stays parked in the decisions doc with a note to bring basket-mix data when we reopen it."
+        }
+      ]
+    },
+    {
+      "key": "maker_profiles",
+      "title": null,
+      "days_ago": 4,
+      "messages": [
+        {
+          "role": "user",
+          "text": "maker profile pages are embarrassing. sarah's page is literally her name and three mugs floating in white space"
+        },
+        {
+          "role": "assistant",
+          "text": "Agreed, and profiles are quietly load-bearing for a handmade marketplace — the maker's story is half of what the customer is buying. Proposed structure, top to bottom: a story section in the maker's own voice, two or three workshop photos showing hands and mess and tools, an at-a-glance strip — years making, town, typical turnaround — and then the listings grid, which currently sits there pretending to be the whole page. Optionally a short 'how it's made' blurb per craft type. The honest risk isn't design, it's supply: most makers will stare at an empty 'tell your story' box and close the tab, so whatever we build has to work with makers who write two sentences, not the imaginary ones who write essays with good lighting. What's your read on how much effort your makers will actually put in?"
+        },
+        {
+          "role": "user",
+          "text": "half of them won't upload anything. can we just pull from their instagram?"
+        },
+        {
+          "role": "assistant",
+          "text": "Tempting, and I'd steer away. The API surface for pulling personal content keeps shrinking — the current hoops involve business-account conversion and review processes that our craft-fair crowd will never complete — and scraping instead of integrating is a terms-of-service problem we don't need. The workable alternatives: a manual 'import a few photos' flow where the maker picks images off their phone, or — the one I actually like — onboarding questions. Ask each maker three specific questions in plain language, then auto-draft a story section from their answers that they can edit before publishing. People who freeze at a blank box will happily answer 'what's the first thing you ever made?'"
+        },
+        {
+          "role": "user",
+          "text": "the questions thing is clever. three max, make them good"
+        },
+        {
+          "role": "assistant",
+          "text": "Three, tuned for craft-fair honesty rather than LinkedIn energy: one — 'What's the first thing you ever made, and does it still exist?' Two — 'Walk us through where you work: what's on the table right now?' Three — 'What do you want someone to feel when they unwrap your work?' The draft assembles those answers into a first-person story section with light stitching text, clearly labeled as editable before anything publishes. Nobody's words get invented — if an answer is blank, the draft simply skips it. I'll run the flow with three real makers this week and we can read the output together before it goes wide."
+        },
+        {
+          "role": "user",
+          "text": "love it. do bios need review before going live? worried about someone pasting weird stuff"
+        },
+        {
+          "role": "assistant",
+          "text": "Light touch: first-time bios and any bio edit containing links go into a review queue with a one-tap approve; everything else publishes immediately with a report button on the public page. A basic word filter catches the obvious garbage without turning us into censors of colorful craft vocabulary — some of these potters swear like sailors and it's honestly part of the charm. The queue lands in the admin panel next to the photo moderation we already do, so it's one habit for you, not two. Realistic review load at the current signup rate: single digits per week."
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "vague_decision-1",
+      "question": "How do sellers get paid when an order completes?",
+      "expected": "found",
+      "gold_answer": "Maker earnings go out through GildPost on a weekly remittance cycle, with a 9-day clearing window before funds are released.",
+      "gold_atoms": [["GildPost"], ["9-day"]],
+      "gold_evidence": [
+        { "chat": "marketplace_economics", "message_index": 5 }
+      ],
+      "judge_notes": "Correct iff the answer names GildPost as the payout/remittance provider AND mentions the 9-day clearing window before funds release (the weekly cycle is a bonus, not required). Partial iff it gives exactly one of GildPost or the 9-day window, or hedges between GildPost and other rails. Incorrect iff it asserts Stripe Connect, PayPal Payouts, or manual bank transfers as the decision, or claims no decision was made (the Stripe Connect enthusiasm in the earlier brainstorm chat was never a commitment)."
+    },
+    {
+      "id": "vague_decision-2",
+      "question": "How do people sign in to their accounts?",
+      "expected": "found",
+      "gold_answer": "Authentication is handled by Keyfern using passwordless email links only — no passwords or social buttons — with sessions lasting 45 days.",
+      "gold_atoms": [["Keyfern"], ["45 days", "45-day"]],
+      "gold_evidence": [{ "chat": "first_visit_flow", "message_index": 5 }],
+      "judge_notes": "Correct iff the answer names Keyfern as the auth provider AND gives the 45-day session lifetime (mentioning passwordless/email links is a bonus). Partial iff exactly one of Keyfern or 45 days appears, or if passwordless email links are described with no provider named. Incorrect iff it asserts Google/Apple buttons or classic passwords as the decision, or claims sign-in is still undecided (the 'Sign in options' chat explicitly tabled the question, but a later chat decided it)."
+    },
+    {
+      "id": "vague_decision-3",
+      "question": "What order do products show up in when someone searches?",
+      "expected": "found",
+      "gold_answer": "All listing grids, including query results, are ranked by the Brambleweight formula (55% conversion, 25% maker-activity recency, 20% responsiveness), with the fresh-listing boost capped at 12 slots per page.",
+      "gold_atoms": [["Brambleweight"], ["12 slots"]],
+      "gold_evidence": [{ "chat": "first_visit_flow", "message_index": 9 }],
+      "judge_notes": "Correct iff the answer names the Brambleweight formula AND mentions the 12-slot cap on the fresh/new-listing boost (the exact 55/25/20 weights are a bonus). Partial iff exactly one of the two appears, or if the blend (conversion/recency/responsiveness) is described without the name or cap. Incorrect iff it says ordering is by creation date, claims ranking is undecided, or answers with the typo-tolerance/synonym matching spike from the search-matching chat (that chat was about which items match, explicitly not about ranking)."
+    },
+    {
+      "id": "vague_decision-4",
+      "question": "How are shipping fees calculated at checkout?",
+      "expected": "found",
+      "gold_answer": "Domestic shipping is a flat $6.40 per parcel taken from Parcelnook's zone table, looked up when the basket totals; international rates remain maker-defined, and multi-maker baskets get one charge per maker's parcel.",
+      "gold_atoms": [["Parcelnook"], ["$6.40", "6.40"]],
+      "gold_evidence": [{ "chat": "post_purchase", "message_index": 5 }],
+      "judge_notes": "Correct iff the answer names Parcelnook AND gives the flat $6.40 domestic per-parcel rate (zone-table mechanics and per-maker stacking are bonuses). Partial iff exactly one of Parcelnook or $6.40 appears, e.g. 'a flat rate from a zone-table vendor'. Incorrect iff it asserts live carrier quotes or maker-entered rates as the current scheme, claims no decision exists, or answers only with the per-maker display split from the checkout-confusion chat."
+    },
+    {
+      "id": "vague_decision-5",
+      "question": "What's our policy when a buyer wants their money back?",
+      "expected": "found",
+      "gold_answer": "Refunds follow the Amberline arbitration flow: full refunds within a 21-day window from delivery confirmation, makers absorb return postage on damaged items, and later cases route to Amberline's mediation queue.",
+      "gold_atoms": [["Amberline"], ["21-day"]],
+      "gold_evidence": [{ "chat": "post_purchase", "message_index": 9 }],
+      "judge_notes": "Correct iff the answer names the Amberline arbitration flow AND gives the 21-day refund window from delivery confirmation (return-postage and mediation-queue details are bonuses). Partial iff exactly one of Amberline or the 21-day window appears. Incorrect iff it says refunds are handled case-by-case with no standing policy (that was only true in the older scarf-incident chat, before the decision), or invents other terms."
+    },
+    {
+      "id": "vague_decision-6",
+      "question": "How much does the platform take from each sale?",
+      "expected": "found",
+      "gold_answer": "Commission is 7.25% of the item subtotal — internally nicknamed the Copperbeam rate — with postage and maker add-on charges passing through uncommissioned.",
+      "gold_atoms": [["7.25%", "7.25"], ["Copperbeam"]],
+      "gold_evidence": [
+        { "chat": "marketplace_economics", "message_index": 9 }
+      ],
+      "judge_notes": "Correct iff the answer gives the 7.25% commission AND the Copperbeam name (subtotal-only scope and postage pass-through are bonuses). Partial iff only the 7.25% figure or only the Copperbeam name appears. Incorrect iff it answers 6.5%, 7.5%, 15%, or a 5-12% range (those are competitor figures and explored candidates from other chats), or claims the rate is undecided."
+    }
+  ]
+}

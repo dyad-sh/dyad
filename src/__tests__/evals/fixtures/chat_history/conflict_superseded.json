@@ -1,0 +1,391 @@
+{
+  "category": "conflict_superseded",
+  "domain": "Restaurant point-of-sale app for tableside ordering, menu management, and kitchen order routing",
+  "app": { "key": "main", "name": "tableside" },
+  "chats": [
+    {
+      "key": "card_processor_pick",
+      "title": "Taking card payments",
+      "days_ago": 68,
+      "messages": [
+        {
+          "role": "user",
+          "text": "we're still cash only and it's killing us on weekends. want to start taking cards at the table, what do we actually need?"
+        },
+        {
+          "role": "assistant",
+          "text": "Good time to do it. Three pieces have to come together. First, a merchant account with a payment processor, which is the company that actually moves the money and takes a cut of each transaction. Second, card-present hardware: handheld readers that pair with the tableside tablets so servers can take payment at the table instead of walking cards to a register. Third, keeping our app out of PCI scope, which we get mostly for free if we use semi-integrated terminals, because the card data never touches our software; the reader talks to the processor directly and we just get back an approval. On pricing there are two broad models: flat-rate, where every transaction costs the same blended percentage and the statement is one line, and interchange-plus, where you pay the card networks' true cost plus a small markup. Flat is simpler, interchange-plus is usually cheaper once volume is real. Do you have any guess at monthly card volume?"
+        },
+        {
+          "role": "user",
+          "text": "no idea on volume, we've never taken cards lol. maybe start simple?"
+        },
+        {
+          "role": "assistant",
+          "text": "With zero history I'd start on flat-rate pricing. You'll know your real card mix after a quarter, and flat means one predictable line on the statement instead of a page of interchange codes. If volume grows we can renegotiate or move, processors expect that. For hardware, skip the countertop units entirely, handheld readers are the whole point of tableside ordering. The main decision left is just which flat-rate provider to onboard with, and honestly at your size the differences between them are small."
+        },
+        {
+          "role": "user",
+          "text": "ya lets not overthink it. just pick whichever is easiest to get live"
+        },
+        {
+          "role": "assistant",
+          "text": "Then let's lock it in: we'll go with CardHarbor as our card processor. Flat 2.9% on every card-present transaction, every brand, no monthly minimums, and their onboarding is a web form plus a terminal shipment that usually lands within the week. Their handheld readers pair over bluetooth with our tablets, and their semi-integrated mode means the card data never enters our stack, so PCI stays a questionnaire instead of an audit. Settlement is next business day into the restaurant account. On the app side I'll add a payment step to the order screen that hands the total to the reader and waits for the approval, plus a reconciliation view so end-of-night matches the processor's batch report. I'd rather have you live and taking cards this month than shopping quotes for six weeks."
+        },
+        {
+          "role": "user",
+          "text": "does that flat rate cover amex too? our brunch crowd is all amex"
+        },
+        {
+          "role": "assistant",
+          "text": "Yes, that's the main selling point of blended pricing: amex costs you the same as a debit card, the processor eats the difference. The only quirk is amex settlement sometimes lags a day behind the other brands, so the nightly reconciliation view will show it as pending rather than missing. I'll label that state clearly so nobody panics at close thinking money vanished."
+        },
+        { "role": "user", "text": "what about when we need to refund someone" },
+        {
+          "role": "assistant",
+          "text": "Two different flows, and staff mix them up constantly, so the app will make it obvious. If the batch hasn't closed yet it's a void: the charge just disappears and never hits the guest's statement. After batch close it becomes a true refund, which takes a few business days to show up on their card. In tableside I'll put both behind the order history screen with the right one enabled based on batch state, so servers can't pick wrong, and managers get a PIN prompt for anything over a threshold you set. The processor notifies us asynchronously when a refund settles, something like:\n\n```json\n{ \"event\": \"refund.settled\", \"order_ref\": \"ord_8842\", \"amount_cents\": 2600, \"status\": \"ok\" }\n```\n\nand the order timeline will show it as settled so the guest-facing story is always answerable from one screen."
+        },
+        { "role": "user", "text": "ok im sold, set it up this week" },
+        {
+          "role": "assistant",
+          "text": "Checklist: submit the merchant application today, readers arrive midweek, and I'll have the payment step and reconciliation view behind a flag by then. We run a lunch service as a live test before turning it on for dinner, and I'll seed a couple of staff training orders so the first real table isn't anyone's first swipe."
+        }
+      ]
+    },
+    {
+      "key": "processor_switch",
+      "title": "Card fees revisit",
+      "days_ago": 12,
+      "messages": [
+        {
+          "role": "user",
+          "text": "went thru last month's processing statement and the fees are genuinely brutal now. can we revisit the processor decision?"
+        },
+        {
+          "role": "assistant",
+          "text": "I pulled the statement and the story is pretty clear. When we signed up we had zero processing history, so a blended flat rate was the sane choice: one number, no surprises. But the mix has shifted under us. Volume is way up, it's nearly all card-present, and card-present debit and basic credit have low true interchange cost. On a blended rate you pay the same markup whether the underlying cost is low or high, which means our effective overpayment grows with exactly the kind of volume we now have. Interchange-plus pricing would charge us the networks' actual pass-through cost plus a fixed small markup, so cheap transactions get cheap. The downside is statements get ugly, forty interchange categories instead of one line, but the reconciliation view can absorb that complexity for you. Before I recommend anything specific, I want last month's gross card volume and the average check."
+        },
+        { "role": "user", "text": "ok so what would we even switch to" },
+        {
+          "role": "assistant",
+          "text": "A few interchange-plus shops specialize in restaurant card-present and will actually quote a merchant our size. The evaluation comes down to three things: whether they can re-provision the handheld readers we already own instead of forcing new hardware, whether their markup stays fixed as volume grows, and how their batch and tip-adjust flow compares to what the staff already knows. Give me the volume and average ticket numbers and I can run the comparison properly instead of hand-waving it."
+        },
+        {
+          "role": "user",
+          "text": "we did about 85k in cards last month, avg check around 42 bucks, almost all card present"
+        },
+        {
+          "role": "assistant",
+          "text": "At that volume the math stops being close, so I'm going to change course on our earlier call: let's switch off CardHarbor and move card processing to Fennwick Pay. They came back with interchange-plus pricing for card-present restaurants, a fixed markup that doesn't creep as volume grows, and, the part that makes this cheap to do, they can re-provision our existing handheld readers with a config push instead of shipping new hardware. Tip adjustment and batch close work the same way from the staff side, so there's no retraining beyond a heads-up. The plan: open the new merchant account now, underwriting takes about a week, run both processors in parallel over one full weekend to compare batches, then point all readers at the new account and wind the old one down. Reconciliation in the app already abstracts over the processor, so the nightly reports keep working untouched."
+        },
+        {
+          "role": "user",
+          "text": "what does the rate actually come out to with them?"
+        },
+        {
+          "role": "assistant",
+          "text": "With your card mix the quote pencils out to an effective 1.85% per card-present transaction, against the flat 2.9% we've been paying since launch. That's not a promotional teaser, it's pass-through interchange plus their fixed markup, so the effective number floats a little month to month with the card mix, but at your volume the swing is small. On last month's numbers the difference is worth roughly nine hundred dollars a month, which pays for a lot of patio furniture. The statement will look scarier, every interchange category itemized, but I'll roll it up in the reconciliation view so what you see is one effective rate and a trend line, not forty rows of network codes."
+        },
+        {
+          "role": "user",
+          "text": "how painful is the switch? we JUST got everyone trained"
+        },
+        {
+          "role": "assistant",
+          "text": "Less painful than you'd fear, because nothing changes at the table. The readers get re-provisioned remotely, servers see the same payment screen, same tip prompt, same batch close button. The real work is underwriting paperwork and one weekend of running both processors side by side, where new-account transactions go through the new rails while the old account stays live as a fallback. I'll compare both batch reports each night of that weekend and flag any mismatch before we commit. The reader cutover is literally a config change we can roll back in minutes:\n\n```\nterminal.profile = acquirer_b\nterminal.rollback_window_hours = 72\n```\n\nStaff-facing change is zero. The one thing I'd ask is that a manager spot-checks the tip adjustments on the first parallel night, since that's where processor quirks like to hide."
+        },
+        {
+          "role": "user",
+          "text": "fine, do it. but dont cancel the old account until the new one clears a full weekend"
+        },
+        {
+          "role": "assistant",
+          "text": "Agreed, nothing gets cancelled until the new account has cleared a full weekend cleanly, batches matched and deposits landed. I'll keep the old account dormant but alive for two more weeks after cutover as a rollback path, then close it once the final chargeback window is behind us."
+        }
+      ]
+    },
+    {
+      "key": "kitchen_ticket_printing",
+      "title": "Kitchen order flow",
+      "days_ago": 55,
+      "messages": [
+        {
+          "role": "user",
+          "text": "the kitchen keeps missing orders on the shared tablet. cooks are begging for paper tickets like the old days"
+        },
+        {
+          "role": "assistant",
+          "text": "The shared-tablet complaint is legitimate, so let's take it seriously instead of telling the cooks to scroll harder. A single screen for the whole line means one person owns looking at it, and during a rush nobody owns anything. The two credible fixes are per-station paper tickets or per-station screens. Paper is unglamorous but has real virtues: it's readable in glare, survives grease, and a cook can physically rail a ticket and see their queue at arm's length. Screens keep order state in sync, handle modifications cleanly, and never run out of paper mid-rush, but they cost more up front and the kitchen environment is hostile to hardware. Either way the actual fix is routing: grill items go to the grill station, fry to fry, instead of one undifferentiated feed everyone squints at. How many stations are we actually routing to, and does expo need its own view of everything?"
+        },
+        {
+          "role": "user",
+          "text": "grill, fry, salad, and expo. and yes everything back there is covered in grease"
+        },
+        {
+          "role": "assistant",
+          "text": "Four-way routing then, with expo as the aggregation point. Thermal printers are the standard here: no ink, cheap rolls, they just work. The app needs a print-routing layer where every item on the menu gets tagged with a station, and when an order fires each station prints only its items while expo can get the whole order for coordination. Modifications print as a chaser ticket referencing the original so the cook knows it amends something already on the rail. One question before I spec it: should expo get one consolidated ticket per order, or a ticket per course?"
+        },
+        { "role": "user", "text": "expo needs everything on one ticket ya" },
+        {
+          "role": "assistant",
+          "text": "Alright, committing to paper. We'll integrate TicketWhip for the thermal printer layer: one printer per station at grill, fry, and salad, plus a fourth at expo that prints the consolidated ticket for every order so one person can see the whole table at a glance. Items get station tags in the menu editor, the routing service fans each fired order out to the right printers, and modifications print as chasers that reference the original ticket number. For the missed-order problem, the expo tablet keeps a lightweight acknowledgment list, and any order that isn't acknowledged within 6 minutes automatically reprints at its station, so a lost ticket surfaces on its own instead of waiting for an angry table to flag it. Printers buffer and replay if the network hiccups. I'll wire up the menu station tags first since that's the part that needs your input."
+        },
+        {
+          "role": "user",
+          "text": "what happens when a printer jams mid rush?"
+        },
+        {
+          "role": "assistant",
+          "text": "Jams happen, so the routing layer treats every print as a job with an acknowledgment from the printer, not fire-and-forget. If a printer stops responding, its queue buffers and everything replays in order the moment it's back, and the expo consolidated ticket doubles as the safety net since it shows the items the jammed station hasn't confirmed. I'll also put a printer-health strip on the expo tablet so a dead printer is loud within seconds instead of discovered twenty covers later."
+        },
+        {
+          "role": "user",
+          "text": "and the paper, is that the annoying special kind"
+        },
+        {
+          "role": "assistant",
+          "text": "Standard 80mm thermal rolls, the same thing every receipt printer in every diner uses, and any restaurant supply place carries them by the case. No ink, no ribbons, the only consumable is paper. I'd keep four spare rolls taped under each station because the low-paper sensor on cheap printers is more of a suggestion than a promise. Station tagging in the menu editor will look roughly like this on the backend, one tag per item:\n\n```yaml\nitem: crispy_brussels\nstation: fry\nchaser_on_modify: true\n```\n\nbut you'll just see a dropdown per menu item. Give me a first pass at tagging the menu and I'll sanity-check it against a busy night's actual orders."
+        },
+        { "role": "user", "text": "ok lets try it, order the printers" },
+        {
+          "role": "assistant",
+          "text": "Ordering four printers plus mounts today. While they ship I'll build the routing service and the acknowledgment list on the expo tablet, then we tag the menu together and do a dry run on a slow lunch before trusting it on a weekend."
+        }
+      ]
+    },
+    {
+      "key": "kds_switch",
+      "title": "Expo flow round two",
+      "days_ago": 8,
+      "messages": [
+        {
+          "role": "user",
+          "text": "friday was chaos. tickets piling up, grill lost two, expo was reading them off the floor at one point"
+        },
+        {
+          "role": "assistant",
+          "text": "Friday was the failure mode paper was always going to have, we just hadn't hit the volume where it shows. The rail physics stop working past a certain order rate: tickets overlap, chasers get separated from their parents, and when something falls it's simply gone, there's no state anywhere saying grill still owes table twelve a ribeye. The auto-reprint helped with silent losses at normal volume, but during a rush it added paper to a rail that was already overflowing, which made the pile worse, and the cooks started ignoring duplicates on principle. I don't think tuning helps here, the ceiling is the medium itself. The honest question is whether we revisit the paper decision entirely, because per-station screens with shared order state is the fix for exactly the failure you watched happen, and secondhand it sounds like part of the line might not fight it this time."
+        },
+        {
+          "role": "user",
+          "text": "honestly the new line cooks keep asking for screens anyway. maybe the tablet haters lost the argument"
+        },
+        {
+          "role": "assistant",
+          "text": "A real kitchen display setup is a different animal from the shared tablet everyone hated. Each station gets its own mounted screen showing only its items, grill and fry get physical bump bars so nobody touches glass with wet hands, and expo sees every order with live state, fired, working, bumped, so nothing exists only as a piece of paper that can fall. Modifications update the ticket in place instead of printing a chaser someone has to match up mid-rush. Heat and grease are solved problems with the right enclosures. The two real questions are cost against the printers we already bought, and whether the crew actually uses the bump bars."
+        },
+        {
+          "role": "user",
+          "text": "ok whats it cost us compared to keeping the printers"
+        },
+        {
+          "role": "assistant",
+          "text": "Hardware quotes came back and the gap is smaller than I expected, close enough that reliability should make the call, so I'm going to reverse our earlier decision here: let's retire the TicketWhip printers and move the kitchen onto OrderGlow display screens. Four mounted screens replacing the four printers, bump bars at grill and fry, and expo keeps its aggregated view of every open order with live state instead of a paper pile. The part that makes this cheap to change: all the station-tagging work we did for print routing carries over untouched, the same tags now route items to screens instead of printers, so the menu side needs zero rework. Orders can't be physically lost anymore because there's nothing to drop, and a busy rail becomes a scrollable queue with all-day counts instead of overlapping paper. I'll keep the printers boxed for a month as an emergency fallback until the screens earn the crew's trust."
+        },
+        {
+          "role": "user",
+          "text": "what about a ticket that just sits there and nobody touches it? that was the whole problem"
+        },
+        {
+          "role": "assistant",
+          "text": "That's where screens genuinely beat paper, because a stale order gets loud instead of staying silent. Any ticket that sits untouched for 14 minutes gets flagged red on the expo screen and jumps to the top of the queue, so the person running the pass physically cannot miss it, and the station screen pulses the same order at the same moment. That replaces the old 6-minute auto-reprint rule, which in practice was just generating duplicate paper during exactly the rushes when nobody had time to reconcile duplicates. The threshold can become per-daypart configurable later if brunch needs something tighter, but I'd rather start with one number the whole crew internalizes. There's also an all-day aging view so a manager can spot a station that's drifting before anything actually goes red."
+        },
+        { "role": "user", "text": "do we keep any printers at all?" },
+        {
+          "role": "assistant",
+          "text": "Kitchen goes fully paperless, but we keep exactly one printer: the counter one for guest receipts and gift receipts, which was never part of the kitchen flow anyway. Everything else gets boxed up as the fallback kit. The screen layout is configurable per station, roughly:\n\n```json\n{ \"station\": \"grill\", \"columns\": 3, \"bump_bar\": true, \"aging_view\": false }\n```\n\nand I'll preload sensible defaults so nobody has to think about it during install week. If we ever do a second location the same config just clones over."
+        },
+        { "role": "user", "text": "ok. can we get it in before next friday?" },
+        {
+          "role": "assistant",
+          "text": "Tight but doable. Screens and mounts can be here in three days, install happens over two slow mornings, and we run one full dinner service with the fallback kit staged but unplugged. I'll train the crew during Thursday prep, the bump bar takes about ninety seconds to learn, and Friday runs on screens."
+        }
+      ]
+    },
+    {
+      "key": "gift_card_exploration",
+      "title": "Gift card program",
+      "days_ago": 40,
+      "messages": [
+        {
+          "role": "user",
+          "text": "regulars keep asking if they can buy gift cards. worth doing before the holidays?"
+        },
+        {
+          "role": "assistant",
+          "text": "Worth exploring, gift cards are basically an interest-free loan from your regulars plus a guaranteed future visit, and holiday timing matters since that's when most of them sell. There are two shapes this takes. Physical cards with stored value, which need card stock, a balance ledger somewhere, and a way for the terminals to redeem them as a tender type. Or digital codes sold from a link on the site and redeemed by the host typing a code in, which is uglier at the table but nearly free to stand up. The genuinely annoying parts are accounting, outstanding balances are a liability you carry on the books, and breakage reporting for cards that never get fully used. Before we pick a shape I'd want to know whether you care about physical cards sitting on the counter, or whether the money is the point and digital is fine."
+        },
+        { "role": "user", "text": "whats the third party route look like" },
+        {
+          "role": "assistant",
+          "text": "The third-party route means a platform like PlumCard runs the ledger for you: they host the balances, print and ship the physical cards, and give us a redemption API the order screen can call as a tender type. The demo I watched was genuinely slick, activation and redemption both land in under two seconds, decent reporting on outstanding liability, and they handle the multi-state escheatment rules that make gift card accounting scary. The cost is a per-redemption fee plus a cut of the card printing, and the integration is real work on our side, a new tender type in the payment flow plus a nightly liability sync. I'm not sold either way yet, it depends on how much this is a marketing gesture versus a real revenue line for you."
+        },
+        { "role": "user", "text": "hmm and if we build it ourselves?" },
+        {
+          "role": "assistant",
+          "text": "Building it ourselves means a balance ledger in our own database, a redemption tender type, an activation flow at the counter, and a liability report your accountant will actually accept. It's cheaper per transaction forever, no per-redemption fee, but it's weeks of careful work, and stored value has genuine compliance sharp edges that a vendor otherwise absorbs for you. My honest read: build only if gift cards become a serious revenue line. For a first holiday season, letting a platform carry the risk is defensible even if the demo enthusiasm wears off later."
+        },
+        {
+          "role": "user",
+          "text": "ugh. lets table this till after the patio opens, too much going on"
+        },
+        {
+          "role": "assistant",
+          "text": "Parked. I'll write up what we learned, the two shapes, the platform demo notes, and the liability questions for the accountant, so when the patio settles down we can pick this up without re-researching from zero. No commitments made anywhere, so there's nothing to unwind."
+        }
+      ]
+    },
+    {
+      "key": "bar_routing",
+      "title": null,
+      "days_ago": 33,
+      "messages": [
+        {
+          "role": "user",
+          "text": "bartenders say drink orders get buried in with the food orders. should the bar get its own routing?"
+        },
+        {
+          "role": "assistant",
+          "text": "Legitimate complaint, drinks have a completely different rhythm from food and mixing them in one stream hurts both. A margarita needs to land in three minutes, a ribeye in twenty, and when they share a queue the bartender is visually filtering every food item just to find their own work. Splitting beverage items into their own routing lane is straightforward on the app side since items already carry category tags. The open questions are physical: does the service well get its own display or a small ticket rail, who expedites drinks when it's slammed, and do server-rung drinks and bar-top orders merge into one queue or stay separate? Also worth knowing whether the pain is constant or concentrated in the friday happy hour spike, because that changes how fancy the fix needs to be."
+        },
+        { "role": "user", "text": "what do other spots do?" },
+        {
+          "role": "assistant",
+          "text": "Most places land in one of two patterns. Either the service well gets a compact screen showing only beverage items with type big enough to read from three feet, or a small rail at the well where drink chits land separately from the food flow. The screen wins when drink volume is high because state stays accurate as things get made, the rail wins in cramped wells where another piece of hardware physically won't fit. A few spots do neither and just have expo call drinks out loud, which works until it doesn't. Rather than guess, I'd measure: two weeks of drink-item counts by hour would tell us whether this is a friday-spike problem or an every-service problem, and that decides the hardware question basically by itself."
+        },
+        { "role": "user", "text": "ok can we get the volume numbers?" },
+        {
+          "role": "assistant",
+          "text": "I'll add a lightweight report bucketing beverage items by hour and day, split by server-rung versus bar-top. Something like:\n\n```sql\nselect date_trunc('hour', fired_at), count(*) from order_items where category = 'beverage' group by 1;\n```\n\nYou'll get a chart in the reports tab by tomorrow night, and after two normal weeks, no holidays skewing it, we'll have a real answer instead of vibes."
+        },
+        {
+          "role": "user",
+          "text": "cool lets look at it in a couple weeks then decide"
+        },
+        {
+          "role": "assistant",
+          "text": "Sounds right. Nothing changes for the bartenders yet, the data quietly collects, and we look at it together in two weeks and decide then. I'll drop a reminder on the board so it doesn't fall through the cracks."
+        }
+      ]
+    },
+    {
+      "key": "menu_redesign",
+      "title": "Dinner menu refresh",
+      "days_ago": 82,
+      "messages": [
+        {
+          "role": "user",
+          "text": "the physical dinner menus look so dated. since all our items live in the app now, can it help us lay out a new printed menu?"
+        },
+        {
+          "role": "assistant",
+          "text": "Yes, and this is a satisfying one because the hard part, the content, already exists. Item names, descriptions, and prices all live in the menu database, so a print layout is just a projection of data you already maintain, and reprints stop being a design project every time a price changes. I'd build an export that pulls current items into a print-ready PDF: you pick which sections appear, the order they appear in, and a page size, then every future edit is change-the-item, regenerate, send to the print shop. Things worth deciding upfront: how 86'd and seasonal items behave, whether long descriptions get truncated or you commit to keeping them short at the source, and whether wine gets its own insert since it churns so much faster than food. What's the shape you're imagining, single page, bifold, something else?"
+        },
+        { "role": "user", "text": "we want a one page layout, two columns" },
+        {
+          "role": "assistant",
+          "text": "One page, two columns gives you roughly thirty items comfortably before it gets cramped, which conveniently is about where menu consultants tell you to stop anyway. I'd order sections by how you want people to read: shareables top-left since that's where eyes land first, mains anchoring the right column, desserts at the bottom as the closer. Prices work best set flush against the item name rather than pushed to the margin with dot leaders, the dotted-line look is the single most dating element of the current menu. Long descriptions wrap to two lines max, and anything longer gets flagged during export so you shorten it at the source instead of shipping an ugly wrap to the print shop."
+        },
+        {
+          "role": "user",
+          "text": "prices with no dollar signs, thats the trend right"
+        },
+        {
+          "role": "assistant",
+          "text": "Whole-dollar, no symbol, just a clean number after the item name. It reads calmer and every menu redesign this decade has landed there. The export will format from the same price field the ordering screen uses, so the printed menu can't drift out of sync with what the register actually charges, which is the quiet embarrassment paper menus always develop after a few months."
+        },
+        {
+          "role": "user",
+          "text": "can it auto pull the descriptions we already wrote?"
+        },
+        {
+          "role": "assistant",
+          "text": "Already wired, descriptions come straight off the item records, and the export flags anything missing one so you can fill the gaps before printing. The template is a simple structure under the hood:\n\n```html\n<section class=\"mains\"><h2>{{ item.name }}</h2><p>{{ item.description }}</p></section>\n```\n\nbut you'll never touch that, you'll just see a preview. Eleven items are currently missing descriptions, mostly sides, so that's the homework before the first draft looks respectable."
+        },
+        { "role": "user", "text": "great, mock one up" },
+        {
+          "role": "assistant",
+          "text": "Draft PDF will be in your inbox tomorrow, generated straight from tonight's live menu data. Mark it up however you like, edits to items flow into the next export automatically, and the layout itself we can iterate on until it feels right in your hands."
+        }
+      ]
+    },
+    {
+      "key": "waitlist_feature",
+      "title": "Walk-in waitlist",
+      "days_ago": 4,
+      "messages": [
+        {
+          "role": "user",
+          "text": "hosts are still running walkins out of a paper notebook. can we get a simple waitlist into tableside before summer really hits?"
+        },
+        {
+          "role": "assistant",
+          "text": "Definitely, and it's a contained feature if we keep the scope honest. Core loop: host adds a party with a name, size, and quoted wait, the list lives on the host-stand tablet sorted by quote, and when a table opens the host taps the party and the guest gets a text that their table is ready. That last part needs an SMS provider account, which is a small monthly cost plus a fraction of a cent per message. Nice-to-haves that can wait: guests joining the list from their phone, automatic quote suggestions from historical turn times, and integration with the table map so seating a party marks the table occupied in one tap. The paper notebook actually has one virtue worth preserving, scribbled notes, so free-text notes per party stay in v1. What matters most to the hosts on day one?"
+        },
+        {
+          "role": "user",
+          "text": "text them when the table is ready, thats the main thing"
+        },
+        {
+          "role": "assistant",
+          "text": "The text flow needs a little design so it doesn't embarrass us. When the table's ready the guest gets one message with the restaurant name and a five-minute grace window, and the reply handling should be forgiving: anything that looks like a yes keeps the table held, a no or a cancel frees it immediately, and silence starts a no-show timer the host can see counting down on the tablet. After it expires the host decides, we never auto-remove a party, because the edge cases, guest parking the car, guest in the restroom, guest standing right there, all end with a human apologizing. I'd also track quoted-versus-actual wait quietly from day one, not to show guests yet, just so we learn how honest the quotes are before we ever automate them."
+        },
+        {
+          "role": "user",
+          "text": "keep it dumb for v1. add party, text, seat, done"
+        },
+        {
+          "role": "assistant",
+          "text": "Agreed, ruthless v1: add party, text when ready, seat, remove. No guest self-service, no predictive quotes, no table-map coupling yet. The data side is one list with a small state machine per party, waiting, notified, seated, gone, every transition timestamped so the reporting comes free later:\n\n```\nparty: { name, size, quoted_minutes, state, notes }\n```\n\nEverything in the notebook today maps onto those fields plus the free-text notes, which I confirmed against a photo of an actual notebook page from saturday."
+        },
+        { "role": "user", "text": "how long to build?" },
+        {
+          "role": "assistant",
+          "text": "About four days of build, one more for the SMS account setup and sender registration, which has an approval lag outside our control, so call it a week end to end. I'd start the SMS registration today since it's the long pole, and the hosts keep the notebook as backup for the first weekend while trust builds."
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "conflict_superseded-1",
+      "question": "Which company handles our card payment processing now? I remember there was some back and forth on this.",
+      "expected": "found",
+      "gold_answer": "Fennwick Pay. The restaurant originally signed with CardHarbor for flat-rate processing, but about two weeks ago the team explicitly changed course and switched processing to Fennwick Pay on interchange-plus pricing, re-provisioning the existing handheld readers.",
+      "gold_atoms": [["Fennwick Pay"]],
+      "gold_evidence": [{ "chat": "processor_switch", "message_index": 5 }],
+      "earlier_atoms": [["CardHarbor"]],
+      "judge_notes": "Rubric: correct iff the answer names Fennwick Pay as the current card processor (mentioning CardHarbor as the earlier, superseded choice is a bonus, not required); partial iff the answer surfaces both CardHarbor and Fennwick Pay without resolving which one is current now; incorrect iff it presents CardHarbor as the current processor, names some other vendor, or claims no decision was made."
+    },
+    {
+      "id": "conflict_superseded-2",
+      "question": "What effective rate are we paying per card transaction under the current processing deal?",
+      "expected": "found",
+      "gold_answer": "An effective 1.85% per card-present transaction under the new interchange-plus deal quoted about two weeks ago, replacing the flat 2.9% the restaurant had been paying since card payments launched.",
+      "gold_atoms": [["1.85%", "1.85"]],
+      "gold_evidence": [{ "chat": "processor_switch", "message_index": 7 }],
+      "earlier_atoms": [["2.9%", "2.9"]],
+      "judge_notes": "Rubric: correct iff the answer gives 1.85% (or about 1.85) as the current effective per-transaction rate (citing the old flat 2.9% as superseded history is a bonus); partial iff both 1.85% and 2.9% are reported without saying which one is current; incorrect iff 2.9% is presented as the current rate or a different number is asserted as current."
+    },
+    {
+      "id": "conflict_superseded-3",
+      "question": "How do orders reach the kitchen these days — are we still doing paper tickets?",
+      "expected": "found",
+      "gold_answer": "No. About a week ago the team reversed the earlier paper decision: the TicketWhip thermal printers are being retired and kitchen orders now route to OrderGlow display screens with bump bars, with the old station tags carrying over and the printers boxed as a fallback.",
+      "gold_atoms": [["OrderGlow"]],
+      "gold_evidence": [{ "chat": "kds_switch", "message_index": 5 }],
+      "earlier_atoms": [["TicketWhip"]],
+      "judge_notes": "Rubric: correct iff the answer says kitchen orders now go to OrderGlow kitchen display screens, i.e. the paper/printer approach was retired (mentioning the earlier TicketWhip printer decision as superseded history is a bonus); partial iff it presents both the TicketWhip printers and the OrderGlow screens without indicating which is the current state; incorrect iff it says orders currently print on paper or via TicketWhip, or names a different display vendor."
+    },
+    {
+      "id": "conflict_superseded-4",
+      "question": "If a kitchen order just sits there and nobody touches it, what's supposed to happen now?",
+      "expected": "found",
+      "gold_answer": "Under the current kitchen-screen setup, any ticket that sits untouched for 14 minutes gets flagged red on the expo screen and jumps to the top of the queue. This replaced the earlier rule that auto-reprinted an unacknowledged ticket at its station after 6 minutes.",
+      "gold_atoms": [["14 minutes", "14-minute"]],
+      "gold_evidence": [{ "chat": "kds_switch", "message_index": 7 }],
+      "earlier_atoms": [["6 minutes", "6-minute"]],
+      "judge_notes": "Rubric: correct iff the answer gives the current behavior — untouched tickets are flagged (red on the expo screen) after 14 minutes (mentioning the retired 6-minute auto-reprint rule as history is a bonus); partial iff both the 14-minute flag and the 6-minute reprint are described without saying which one is current; incorrect iff it gives the 6-minute auto-reprint as the current behavior or asserts some other threshold as current."
+    }
+  ]
+}

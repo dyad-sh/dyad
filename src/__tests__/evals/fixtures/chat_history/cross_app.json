@@ -1,0 +1,493 @@
+{
+  "category": "cross_app",
+  "domain": "bloomshop — a florist storefront selling bouquets and same-day flower delivery",
+  "app": {
+    "key": "main",
+    "name": "bloomshop"
+  },
+  "extra_apps": [
+    {
+      "key": "other",
+      "name": "bloomadmin",
+      "chats": [
+        {
+          "key": "admin_low_stock_alerts",
+          "title": "Stop overselling stems",
+          "days_ago": 41,
+          "messages": [
+            {
+              "role": "user",
+              "text": "we oversold ranunculus AGAIN yesterday. the dashboard needs to yell before stuff runs out, not after"
+            },
+            {
+              "role": "assistant",
+              "text": "Let's fix the overselling at the source of the pain: timing. The dashboard already gets on-hand counts from the POS sync every few minutes, so the missing piece is turning a falling count into something a human actually sees in time. Three options, in rising order of interruption: a red banner across the dashboard home (only helps whoever happens to be looking at it), a morning email digest of everything running thin (cheap, but stale by afternoon), or an active push to the floor phone the moment a count crosses a line (impossible to miss, but needs a delivery mechanism). Before I pick one, walk me through the floor reality: when ranunculus oversold yesterday, would anyone have been near the dashboard screen in the hour it mattered? And is there one phone that is always on the floor, or does it depend on who is working that day? The right answer follows directly from that."
+            },
+            {
+              "role": "user",
+              "text": "morning email is useless, by 2pm its already gone. it needs to hit the floor phone while theres still time to pull the listing"
+            },
+            {
+              "role": "assistant",
+              "text": "Push it is. For delivery I see three routes: build SMS ourselves through a gateway (works, but now we babysit a phone number and per-message billing), a generic webhook-to-phone bridge (flexible, fiddly to keep alive), or the little notification relay the courier crew already pays for to broadcast route changes — it has a team channel feature, the floor phone already has it installed, and adding dashboard alerts is one more feed rather than one more bill. I lean hard toward the relay: zero new apps for staff to learn, zero new invoices, and if it ever disappoints we can swap the delivery layer later without touching the trigger logic at all. Which leaves the real decision, and it's yours to sanity-check: where exactly is the line that should fire the alert?"
+            },
+            {
+              "role": "user",
+              "text": "use the relay the drivers have then, one less bill. whats the cutoff before it should fire"
+            },
+            {
+              "role": "assistant",
+              "text": "Here's the setup, live on staging now. The dashboard watches on-hand counts as each POS sync lands, and the moment any stem SKU drops below 14 bunches it fires an alert through PetalPing straight to the floor phone. I picked that line by walking through your last month of sales: a busy afternoon moves roughly a dozen of a popular stem, so the ping arrives while there is still time to pull the listing or cap the arrangement builder, rather than after the last bucket is empty. A few guardrails so it stays useful instead of becoming noise: each SKU alerts once and then re-arms only after a restock, so nobody gets forty pings about the same flower; alerts that trigger after close hold overnight and deliver at opening; and every message includes the current count plus a one-tap link to the SKU page so whoever grabs the phone can act without walking to the office. I sent a test to the floor phone a minute ago — confirm it landed."
+            },
+            {
+              "role": "user",
+              "text": "got the test. will it spam us every hour if a flower just hovers at the line all day"
+            },
+            {
+              "role": "assistant",
+              "text": "No spam, promise. Each SKU fires once when it crosses the line and then goes quiet — it re-arms only after a restock takes the count back above the cutoff, so hovering just under it all afternoon produces exactly one ping. The message itself carries the live count, so the floor can judge urgency without needing a second alert. If a restock lands and the count crashes again the same day, that's a genuinely new event and it will fire again, which is exactly the behavior you want."
+            },
+            {
+              "role": "user",
+              "text": "can peonies get their own stricter cutoff when the season starts? they move way faster than everything else"
+            },
+            {
+              "role": "assistant",
+              "text": "Doable. The cleanest shape is a per-SKU override table: any stem without an entry follows the global line, and peonies get their own stricter entry when the season starts. I'd also attach a date range to each override so seasonal rules clean themselves up instead of lingering into autumn. For now the single global line stands for everything — I'd rather watch it against real traffic for a couple of weeks before we start tuning per flower, otherwise we're guessing twice. Ping me when the first peony delivery is confirmed and I'll flip the override on that morning."
+            }
+          ]
+        },
+        {
+          "key": "admin_sso_setup",
+          "title": "Real logins for the back office",
+          "days_ago": 27,
+          "messages": [
+            {
+              "role": "user",
+              "text": "current situation: the dashboard password is on a sticky note taped to the register. we need actual logins before i fire myself"
+            },
+            {
+              "role": "assistant",
+              "text": "The sticky note has to die, yes. Three problems with the shared password beyond the obvious: there is no way to remove one person's access when someone leaves except changing it for everyone, the order log can never tell you who actually edited an order, and one shoulder-surfed login exposes everything in both shops at once. Options, roughly in order of effort: build our own email-and-password accounts into the dashboard (full control, but then we own resets, lockouts, and security forever), passwordless email links (less to steal, but still entirely ours to maintain), or a hosted identity service where sign-in, sessions, and recovery are somebody else's whole job and we just integrate it. For a small flower business my strong default is hosted — authentication is the last place to spend your own engineering budget. How many people need access, and what devices do they actually use in the shops day to day?"
+            },
+            {
+              "role": "user",
+              "text": "6 people across two shops. rosa forgets every password ever invented so it needs to be easy"
+            },
+            {
+              "role": "assistant",
+              "text": "Given six people, two shops, and a Rosa, hosted identity is clearly the answer — specifically one of the small providers aimed at retail and hospitality teams rather than the enterprise monsters, which price per seat in ways that would sting and bury us in configuration screens we'd never touch. My shortlist is down to two candidates that both cover the essentials: per-person identities, an admin view for you, sign-in that behaves sensibly on a shared iPad, and a recovery flow that doesn't require anyone to remember anything. Pricing is nearly identical between them, so the tiebreaker is how each one behaves on the actual counter iPad — session handling, how fast switching people is mid-rush, and what happens when the shop network blips. I'm testing both on the real device this afternoon and will make the call tomorrow."
+            },
+            {
+              "role": "user",
+              "text": "pick whichever, i trust you. only thing i really care about: it has to log people out fast when they walk away, that ipad sits right on the counter"
+            },
+            {
+              "role": "assistant",
+              "text": "Decision made after testing both on the counter iPad: the back office signs in through Loginlark. It won on exactly the thing you care about — session control is first-class, so idle sessions expire after 45 minutes and the iPad drops back to the lock screen on its own, with nobody having to remember to sign out mid-rush. Signing back in is a six-digit code sent by email rather than a password, which solves the Rosa problem permanently, and each of the six of you gets an individual identity, so the order log finally shows who did what. Pricing lands well under what the sticky note was costing you in risk: one flat tier covers up to ten seats, so both shops fit with room to hire. I've created all six staff identities on the account, and the sticky note can go through the shredder today. Invites go out the moment you confirm the email list."
+            },
+            {
+              "role": "user",
+              "text": "can the two delivery drivers get logins too or is it just shop staff"
+            },
+            {
+              "role": "assistant",
+              "text": "Yes, and they should — deliveries are exactly where who-did-what matters most. I'll add a driver role: they sign in the same easy way, but their view is just the delivery list and status updates — no revenue numbers, no refunds, no customer payment details. That's two more seats, which still fits comfortably inside the flat tier, so the price doesn't move. It also cleans up the doorstep photo situation nicely: proof-of-delivery shots can now be stamped with a real identity instead of just 'the driver phone', so disputes get a name attached automatically."
+            },
+            {
+              "role": "user",
+              "text": "and when rosa inevitably locks herself out at 7am, who rescues her"
+            },
+            {
+              "role": "assistant",
+              "text": "Rosa gets rescued in under two minutes: you, or whoever holds the owner seat, tap reissue-code from your phone and she gets a fresh sign-in code by email on the spot — no console, no support ticket. If email itself is the problem that morning, the provider's admin console can generate a one-time code you simply read to her over the phone. And because identities are individual now, her lockout never blocks anyone else from opening the shop — which is the one failure mode the sticky note era handled by having no security whatsoever."
+            }
+          ]
+        },
+        {
+          "key": "admin_refund_queue",
+          "title": "Taming refund requests",
+          "days_ago": 9,
+          "messages": [
+            {
+              "role": "user",
+              "text": "refund requests come in through the shop contact form and then just rot in the inbox. can the dashboard collect them somewhere"
+            },
+            {
+              "role": "assistant",
+              "text": "Yes — this is a queue problem wearing an inbox costume. Plan: a refunds view in the dashboard that ingests anything tagged as a refund request from the shop's contact endpoint, so nothing depends on somebody spotting it in email. Each request becomes a card: the order it references, the amount, the customer's note, any photo they attached, and a running clock showing how long it has been waiting — because aging silently is the current failure mode. Statuses move new, reviewing, approved or denied, then paid, and every transition is a tap, not a form. I'd also separate deciding from doing on purpose: approving records the decision, and the actual money movement stays a deliberate second step, so a mis-tap can never refund anyone by accident. Once this is in, the inbox goes back to being what it should have been all along — a notification, not a filing system."
+            },
+            {
+              "role": "user",
+              "text": "yes please. also honestly the girls approve whatever comes in. last week we refunded a $120 wedding order, no questions asked"
+            },
+            {
+              "role": "assistant",
+              "text": "That $120 wedding refund is the whole argument for tiers. The shape that works: small refunds are approvable on the spot by whoever is handling the queue — speed matters more than scrutiny when the amount is one bouquet — while anything above a line gets held for a manager decision. You get fast resolution on the everyday cases, which is what customers remember, and a genuine pause on the amounts that actually dent a week's takings. The whole design hangs on where that line sits, and it should come from your numbers, not from my guess."
+            },
+            {
+              "role": "user",
+              "text": "idk what counts as big for us. whats normal"
+            },
+            {
+              "role": "assistant",
+              "text": "Looking at the last three months of orders: the typical order lands around fifty dollars, everyday refund requests cluster well under that — a wilted bouquet, a missed delivery window — and then there is a long thin tail of event and wedding orders reaching several hundred, which is where an unquestioned refund genuinely hurts. So the line wants to sit a bit above the everyday cluster and below event territory: high enough that normal fixes never queue up behind a manager, low enough that nothing event-sized slides through on autopilot. Rather than pick it in the abstract, tell me this: what does a standard bouquet plus delivery actually run at the counter these days? Setting the line right around that price point tends to feel natural to staff, because 'bigger than a normal order' is a rule everyone can hold in their head without checking."
+            },
+            {
+              "role": "user",
+              "text": "standard bouquet plus delivery is right around seventy. keep the line just under that so those still get looked at"
+            },
+            {
+              "role": "assistant",
+              "text": "Built and live on staging. Refund requests now land in the tulip ledger queue — that's the name on the sidebar tab, so everyone calls it the same thing — instead of rotting in the inbox. Every request shows the order, the customer's note, any photo, and how long it has been waiting. The approval line sits where you asked: anything over $68 is held for manager sign-off, and everything at or under that any staff member can approve on the spot, which keeps the everyday wilted-bouquet fixes moving at counter speed while event-sized amounts get a second pair of eyes. Denials require a one-line reason before they can be saved, so the customer email never goes out blank. I also added a weekly tally at the top — request count and total refunded — because that number has been invisible until now, and it's the one that tells you whether a supplier or a courier is quietly costing you money."
+            },
+            {
+              "role": "user",
+              "text": "ha, love it. can i see later who approved which refund?"
+            },
+            {
+              "role": "assistant",
+              "text": "Every decision is stamped: who approved or denied, when, and the amount at the time. The queue has a history tab filterable by staff member and by month, plus a one-tap export if the accountant ever wants it. This isn't about surveillance — it's that patterns only show up in aggregate: if one shop's refunds spike, or one courier's deliveries keep generating claims, the stamps are how you see it. And the manager-held items always show who ultimately signed off, so an event-sized refund has a name attached to the yes."
+            },
+            {
+              "role": "user",
+              "text": "and when we deny one, does the customer find out or do they just get ghosted"
+            },
+            {
+              "role": "assistant",
+              "text": "No ghosting. A denial can't be saved without a one-line reason, and saving it sends the customer an email built from a template you can edit: apologetic in tone, states the reason plainly, and points at the shop's freshness policy so it reads as a rule being applied rather than a mood. There's also an optional store-credit toggle on the denial screen — for the borderline cases where the claim doesn't quite qualify but the relationship is worth twenty dollars — which softens most of the anger these emails otherwise generate. Approved ones get an email too, with the amount and when to expect it back on their card."
+            }
+          ]
+        },
+        {
+          "key": "admin_courier_board",
+          "title": "Route board for drivers",
+          "days_ago": 65,
+          "messages": [
+            {
+              "role": "user",
+              "text": "the drivers plan routes on paper and it falls apart every valentine rush. can the dashboard get a delivery board"
+            },
+            {
+              "role": "assistant",
+              "text": "A route board fixes this. Morning view: every delivery for the day comes in from the shop as a card — recipient, address, time window if any, and the arrangement size so drivers know what fits in the van. Cards start in an unassigned pool grouped by zone, and dispatching is literally dragging them onto Marco's column or the second driver's. Each card carries a status chip — loaded, en route, delivered, problem — that the drivers flip from their phones, so whoever is at the counter can answer 'where are my flowers' without radioing anyone. The phone view stays deliberately dumb: today's stops in order, tap to update status, tap to call the recipient. All the planning intelligence lives on the big screen at the shop, where there is actually time to think."
+            },
+            {
+              "role": "user",
+              "text": "can it order the stops so theyre not zigzagging across town all morning"
+            },
+            {
+              "role": "assistant",
+              "text": "I'll add automatic stop ordering, with restraint. Within a zone the board suggests a sequence using straight-line nearest-neighbor from the shop — crude, but for a dozen stops it lands within a few minutes of optimal and it's instantly understandable. Anything smarter, live traffic and true route optimization, is overkill for two drivers and one van, and would add a paid dependency for marginal gains. The suggestion is only a starting point: dragging a stop manually always wins, because Marco knows which loading docks eat twenty minutes better than any algorithm ever will. Deliveries with a time window get pinned toward the front of the sequence automatically, which covers the morning-only businesses — and that is most of the real constraint we actually have."
+            },
+            {
+              "role": "user",
+              "text": "what about proof of delivery? marco swears he delivered one last week that never arrived"
+            },
+            {
+              "role": "assistant",
+              "text": "Photo proof settles it in both directions. When a driver marks a stop delivered, the phone view asks for a quick doorstep photo — flowers in front of the door, on the reception counter, in the recipient's hands, whatever the situation allows. The photo lands on the order record with a timestamp and rough location, visible from the order log forever after. When a never-arrived claim comes in, you look at the photo before anyone starts swearing; half the time it turns out the doorman took the flowers upstairs and nobody told the recipient. And on the occasions the driver really did fumble one, you know that fast too, and can fix it with a redelivery before it turns into a public review. It's protection for Marco just as much as scrutiny of him."
+            },
+            {
+              "role": "user",
+              "text": "perfect. can the board print? need a backup for when the wifi dies mid rush"
+            },
+            {
+              "role": "assistant",
+              "text": "Yes — a printable run sheet per driver, one tap from the assigned board: stops in final order, addresses in big type, recipient phone numbers, and a checkbox column, because a pen never loses signal. It regenerates whenever assignments change, so the version on the clipboard is only ever one reprint behind reality. During a Valentine-scale rush I'd print them at 7am as ritual regardless of the wifi, and let the board be the live copy while paper rides shotgun in the van."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "chats": [
+    {
+      "key": "stock_badges_product_page",
+      "title": "Almost gone badges",
+      "days_ago": 58,
+      "messages": [
+        {
+          "role": "user",
+          "text": "can we put a little 'almost gone' tag on bouquets that are close to selling out? i feel like it would nudge people"
+        },
+        {
+          "role": "assistant",
+          "text": "Good instinct — urgency labels are one of the few nudges that reliably move conversion on small shops without feeling gross, as long as they stay honest. Here's how I'd approach it on bloomshop. Each product card and the product detail page get an optional badge slot in the top-right corner of the photo. The storefront doesn't compute anything clever; it just reads a boolean off the product record — a lowStock flag — and renders the tag when it's true. That keeps the shop fast, and it means the logic about what 'low' actually means can live wherever inventory is really managed. Visually I'd keep it small: a rounded pill, warm accent color, sentence case. I'd also cap how many products can show it at once — if half the catalog says almost gone, nobody believes any of it. Want me to mock it up on the ranunculus and dahlia cards first so you can react to something real?"
+        },
+        {
+          "role": "user",
+          "text": "yes mock it. but what number counts as almost gone"
+        },
+        {
+          "role": "assistant",
+          "text": "Honestly, that's not something the storefront should decide, and I'd resist hardcoding a number here. The shop only sees a snapshot of the catalog feed — it doesn't know how fast something sells, whether a restock is already ordered, or whether a wedding buyout is about to wipe a flower out entirely. Whoever runs inventory should own the cutoff, and the storefront should just obey the flag it's handed. For the mock I'll flip the flag on manually for those two products so you can judge the design, but I want to be explicit: that's a placeholder, not a rule. Whenever the inventory side of the business decides what counts as running low, the feed will carry the flag and nothing in this codebase needs to change. Deal? In the meantime I'll wire up the badge, the greyed sold-out state, and make sure screen readers announce the tag properly instead of skipping it."
+        },
+        {
+          "role": "user",
+          "text": "deal, keep it vague. also sold out ones — keep them visible but greyed instead of hiding them?"
+        },
+        {
+          "role": "assistant",
+          "text": "Yes, keep them visible. Hiding sold-out flowers makes the shop look thin and kills the come-back-later impulse. I'll grey the photo slightly, disable the add-to-cart button, and swap the price for a small 'back soon' line. The card stays in its normal grid position so the page doesn't reshuffle when something sells out mid-browse. If a bouquet is permanently retired, we pull it from the catalog feed instead and it disappears the normal way."
+        },
+        {
+          "role": "user",
+          "text": "hmm will people read 'back soon' as like, tomorrow?"
+        },
+        {
+          "role": "assistant",
+          "text": "Possibly — 'back soon' does over-promise for seasonal stems that vanish for months. Safer copy: 'temporarily out' for regular bouquets, and 'back in season soon' for the seasonal ones if we can tag them. Both are honest without inviting anyone to check back tomorrow morning."
+        },
+        {
+          "role": "user",
+          "text": "ok. make the almost gone tag peach to match the checkout button"
+        },
+        {
+          "role": "assistant",
+          "text": "Peach it is — same color token the checkout button uses, so they stay in sync if the palette ever shifts. Here's the badge style for reference:\n\n```css\n.badge-low {\n  background: var(--peach-500);\n  color: #3d2b1f;\n  border-radius: 999px;\n}\n```\n\nApplied to both mocked cards and the detail page — take a look."
+        },
+        {
+          "role": "user",
+          "text": "looks nice. did we ever actually land on the cutoff number for when the tag shows?"
+        },
+        {
+          "role": "assistant",
+          "text": "No — that stayed deliberately open. The storefront renders whatever the inventory feed flags, and nothing in here defines the cutoff; the two mocked products are hand-flagged placeholders. If you want a real rule someday, that conversation belongs wherever the back-office inventory gets managed, not in the shop."
+        }
+      ]
+    },
+    {
+      "key": "customer_accounts_guest_checkout",
+      "title": "Do shoppers need accounts?",
+      "days_ago": 33,
+      "messages": [
+        {
+          "role": "user",
+          "text": "do we force people to make an account before they can buy flowers? i personally hate that"
+        },
+        {
+          "role": "assistant",
+          "text": "You're in good company — forced account creation is one of the most reliable checkout killers, and for a gift purchase it's even worse, because a big chunk of buyers are one-time shoppers sending flowers to someone in another city. They will never come back to check an order history. My recommendation for bloomshop: guest checkout as the default path, with email as the only identity we collect, since we need it for the receipt and delivery updates anyway. Then, on the order confirmation page, offer a one-click 'save my details for next time' that quietly upgrades the guest order into an account. That ordering flips the psychology: they've already bought, so saving details feels like a convenience rather than a toll booth. Accounts still matter eventually — the subscription idea will basically require them — but nothing about launch does. Want me to sketch both the guest flow and the post-purchase upgrade so you can see them side by side?"
+        },
+        {
+          "role": "user",
+          "text": "someone told me magic links are the move. whats that exactly"
+        },
+        {
+          "role": "assistant",
+          "text": "A magic link is passwordless sign-in: the customer types their email, we send them a link, and clicking it logs them in — no password ever exists. For a shop like this it's attractive because flower buyers visit a few times a year and will have forgotten any password by the second visit; a reset flow and a magic link are effectively the same number of steps, so you may as well skip passwords entirely. The trade-offs: sign-in depends on email deliverability, shared inboxes can be awkward for office orders, and the link has to expire quickly to be safe. None of that blocks us, but none of it matters for launch either if we go guest-first — it becomes relevant the day shopper accounts actually exist. I'd file it as the leading candidate for whenever we build them, and happily skip the whole question until then."
+        },
+        {
+          "role": "user",
+          "text": "ok lets do guest only for launch and revisit accounts when subscriptions happen"
+        },
+        {
+          "role": "assistant",
+          "text": "Locked in: launch ships with guest checkout only. We collect email at checkout for receipts and delivery notifications, no password, no account creation anywhere in the flow. I'll leave the post-purchase 'save my details' slot designed but disabled, so turning accounts on later is an unhide rather than a rebuild. Subscriptions become the forcing function to revisit this."
+        },
+        {
+          "role": "user",
+          "text": "what about us though — how do i sign into the back office to see orders and stuff"
+        },
+        {
+          "role": "assistant",
+          "text": "That's the admin dashboard's territory, and it's a separate app — nothing in this storefront project handles staff sign-in at all. The shop only talks to the catalog and order endpoints; it has no notion of employees. Whatever the back office ends up using for staff access will be decided and configured over in that project. From bloomshop's side you won't see any of it, which is exactly what we want for security: shoppers and staff should never share a front door."
+        },
+        {
+          "role": "user",
+          "text": "kk. unrelated, can checkout have a delivery note field, like 'leave with the doorman'"
+        },
+        {
+          "role": "assistant",
+          "text": "Yes, easy add and genuinely useful for flowers, since half of failed deliveries are access problems. I'll put an optional 'delivery instructions' text area on the address step, capped at 200 characters, with placeholder examples like gate codes and doorman notes so people know what it's for. It gets printed on the courier slip and included in the order email, so recipient-side surprises don't get spoiled by a phone call from the driver. I'd also add a checkbox for 'okay to leave at door' — that one answer resolves most driver questions on its own."
+        }
+      ]
+    },
+    {
+      "key": "returns_policy_page",
+      "title": null,
+      "days_ago": 12,
+      "messages": [
+        {
+          "role": "user",
+          "text": "we need a refunds page. people keep emailing asking if they can return flowers lol"
+        },
+        {
+          "role": "assistant",
+          "text": "The eternal florist problem: there's no such thing as restocking a bouquet, so a 'returns' page for flowers is really a refunds-and-redelivery policy page. The pattern that works for shops like ours: a freshness guarantee with a short claim window, resolved with either a redelivery or a refund, and no physical return ever required. Concretely — if the flowers arrive damaged or wilt abnormally fast, the customer sends a photo within the claim window and picks redelivery or their money back. The photo requirement matters: it's nearly zero friction for a genuine problem, and it quietly filters out the party-got-cancelled cases, which aren't quality issues. We should also carve out custom and wedding arrangements as non-refundable once they're in production, since those flowers are bought specifically for that order and can't be resold. Want me to draft the page copy around that structure so you can tune the tone?"
+        },
+        {
+          "role": "user",
+          "text": "yeah. 24 hours feels right for the claim window? what do other flower shops do"
+        },
+        {
+          "role": "assistant",
+          "text": "24 hours from delivery is the common standard for freshness claims among florists, and it's what I'd print — long enough to notice a problem, short enough that a photo still proves something about delivery condition rather than four days on a warm windowsill. Some shops stretch to 48 for box-shipped flowers because transit stress shows up late, but everything we sell goes out by same-day courier, so the shorter window fits and keeps claims honest. Two norms worth copying from the shops that handle this well: promise a response within one business day, so the window never feels like a trap for someone emailing at midnight, and lean generous on borderline cases for the first few months — early goodwill compounds, and genuine claims are rare enough that generosity costs almost nothing."
+        },
+        {
+          "role": "user",
+          "text": "ok write the page copy"
+        },
+        {
+          "role": "assistant",
+          "text": "Draft below — warm but unambiguous, and it never uses the word 'return' for the flowers themselves:\n\n```text\nOur freshness promise\nIf your flowers arrive damaged, or wilt within 24 hours of delivery, we'll make it right.\nSend us a photo and choose: a fresh redelivery, or a full refund.\nCustom and wedding arrangements enter production immediately and can't be refunded once confirmed.\n```\n\nI kept the photo ask soft — 'send us a photo' — rather than legalistic. Tweak anything that doesn't sound like you."
+        },
+        {
+          "role": "user",
+          "text": "who actually says yes or no when a claim comes in? like is it whoever reads the inbox"
+        },
+        {
+          "role": "assistant",
+          "text": "Right now, effectively yes — claims arrive through the contact form and whoever reads the inbox decides. Nothing on the storefront defines who approves a refund or under what conditions; this page only tells customers how to ask. Setting actual approval rules is a back-office operations question, and we haven't touched it anywhere in this project. If you want real rules someday, that's a conversation for wherever order operations get managed."
+        },
+        {
+          "role": "user",
+          "text": "fair enough. add the page link in the footer next to contact"
+        },
+        {
+          "role": "assistant",
+          "text": "Done — the footer now reads Shop, About, Freshness promise, Contact. The page also gets linked from the order confirmation email, since that's the moment people actually wonder about it. Both links go live with the next deploy."
+        }
+      ]
+    },
+    {
+      "key": "bouquet_subscriptions",
+      "title": "Weekly bouquet subscriptions",
+      "days_ago": 77,
+      "messages": [
+        {
+          "role": "assistant",
+          "compaction_summary": true,
+          "text": "Summary of earlier conversation: the user explored recurring revenue ideas for bloomshop and asked for a comparison of weekly flower subscription models. We reviewed farmer-florist prepay blocks versus rolling plans, discussed rough pricing bands, and agreed to spec a rolling subscription with three bouquet sizes before writing any code. Open questions carried forward: delivery-day flexibility, pausing for vacations, and how substitutions are communicated when a flower is unavailable."
+        },
+        {
+          "role": "user",
+          "text": "ok lets spec it properly. three sizes like we said, and people pick their delivery day"
+        },
+        {
+          "role": "assistant",
+          "text": "Here's the spec as I see it. Three plans: Posy (a petite hand-tied), Classic (our standard market bouquet), and Statement (the big one), each available weekly or every other week. During signup the customer picks a delivery day from our courier days — Tuesday, Thursday, or Saturday — and can change it up to 48 hours before the next run. Pricing stays flat per delivery with roughly ten percent off versus buying the same bouquet one-off, which rewards commitment without wrecking margin. Each delivery generates a normal order under the hood, so the shop's existing fulfillment flow doesn't change at all — subscriptions are just an order factory. The subscriber gets a simple manage page: change size, change day, skip a week, cancel. No lock-in, cancel anytime; retention should come from the flowers being good, not from a cancellation maze. Sound like the shape you wanted?"
+        },
+        {
+          "role": "user",
+          "text": "yes. can they pause it when they go on vacation"
+        },
+        {
+          "role": "assistant",
+          "text": "Pausing has to be first-class or people cancel instead — a vacation shouldn't end a subscription. On the manage page: a skip-next-delivery button for one-off misses, and a pause option for up to four consecutive weeks with an automatic resume date shown up front. We email a reminder two days before the resume, so nobody comes home to a surprise bouquet wilting on the porch. If someone tries to pause longer than four weeks, we surface cancel-and-rejoin instead, because indefinitely dormant subscriptions rot card details and skew every number we track. Skips and pauses both push the billing schedule rather than charging through the gap — nobody ever pays for flowers they didn't get. Everything stays reversible until the 48-hour cutoff for that week's run, same as day changes."
+        },
+        {
+          "role": "user",
+          "text": "what happens if a flower in their usual mix isnt available that week"
+        },
+        {
+          "role": "assistant",
+          "text": "Substitutions need a rule everyone can recite: equal or better stems, never a downgrade, and the overall palette stays in the family the subscriber chose. If ranunculus vanish mid-week, we swap in something at the same price tier or above and eat the difference. Each box includes a small card naming what changed and why — people forgive substitutions they're told about and resent the ones they discover. And a night-before preview email showing a photo of that week's actual mix turns substitution from a complaint generator into a little reveal."
+        },
+        {
+          "role": "user",
+          "text": "love the preview email idea. does billing happen weekly or monthly"
+        },
+        {
+          "role": "assistant",
+          "text": "Charge per delivery, the evening before each run. Monthly prepay sounds tidier but creates refund math every time someone skips, while per-delivery keeps the mental model simple: you pay for the box that's about to arrive. If a card fails we retry once the same night, then quietly skip that delivery and email a fix-your-card link, rather than piling up debt or dunning anyone at breakfast. Two consecutive failed cycles pauses the subscription automatically. This also means skips and pauses need zero refund handling — the charge simply never happens. And since each charge maps to one order, the shop sees projected revenue for the week right on the orders screen."
+        },
+        {
+          "role": "user",
+          "text": "and gifting? my sister would 100% gift this to our mom"
+        },
+        {
+          "role": "assistant",
+          "text": "Gifting works best as fixed-length terms: four or eight deliveries, paid up front by the giver, no auto-renew — nobody wants to explain a surprise recurring charge on their mother's statement. The giver writes one note that rides along with the first box, and the recipient gets a link to pick their own delivery day and flower palette, which quietly doubles as our introduction to a future subscriber. When the term ends, we send the recipient a gentle keep-it-going offer. I'll fold all of this into the spec doc so it's ready to build after peony season."
+        }
+      ]
+    },
+    {
+      "key": "peony_preorder_banner",
+      "title": "Peony season waitlist",
+      "days_ago": 5,
+      "messages": [
+        {
+          "role": "user",
+          "text": "peonies land in like 3 weeks and last year we sold out in 2 days. can we do preorders or a waitlist this time"
+        },
+        {
+          "role": "assistant",
+          "text": "Two ways to play it. Preorders take money now for a future crop, which is great for cash flow but risky with peonies — if the farm's crop comes in late or the blooms disappoint, you're issuing refunds during your busiest week. A waitlist costs you nothing to honor: we collect emails now, and the moment peonies actually go live in the shop we notify everyone. Given that last year sold out in two days regardless, you don't need the demand guarantee that preorders buy you — you need an orderly stampede. My vote is the waitlist, with a banner across the shop starting this week so we capture the people already searching for peonies. We can always bolt preorders on next season, if the farm relationship ever gets predictable enough to trust with other people's money."
+        },
+        {
+          "role": "user",
+          "text": "waitlist then. how do people find it"
+        },
+        {
+          "role": "assistant",
+          "text": "Three placements: a slim banner at the top of every shop page, a peony card in the seasonal section that opens the signup, and a line in the order confirmation email, since recent buyers are the likeliest to come back for peonies. The form is deliberately tiny — email only, no name — because every extra field costs signups. Copy along the lines of 'Peonies are coming. Be first to know.' One side note: the same email-capture piece could later serve back-in-stock notices on regular bouquets, but that's a separate build we haven't scoped at all — just parking the thought."
+        },
+        {
+          "role": "user",
+          "text": "when they go live does everyone get the email at once? the site might die lol"
+        },
+        {
+          "role": "assistant",
+          "text": "If we blast every signup simultaneously we'll create our own thundering herd, so the notify goes out in batches — roughly a quarter of the list every fifteen minutes over the first hour, ordered by signup date so the earliest birds genuinely get first pick. The shop itself will hold up fine; it's the checkout inventory race that gets ugly when a thousand people chase two hundred stems. To soften that, the peony product page shows live availability honestly during launch, and once they're gone it flips to 'sold out for the season' with the waitlist form swapped back in for next year. I'd also hold a small reserve back from the first wave to cover delivery failures and the inevitable wrong-address orders, releasing it quietly on day two once the dust settles."
+        },
+        {
+          "role": "user",
+          "text": "ok and add free delivery over $40 during peony week to push bigger orders"
+        },
+        {
+          "role": "assistant",
+          "text": "Done: free delivery on orders over $40, active only during peony week, wired to start and end automatically with the season toggle. The banner gets a second line while it runs so the threshold is visible right where people browse, and the cart shows a nudge when someone's close — add-a-little-more-for-free-delivery style. When the toggle flips off, all of it disappears at once; no orphaned promo copy hanging around in August."
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "cross_app-1",
+      "question": "What did we settle on for low-stock alerts — at what point do we get pinged that a flower is about to run out?",
+      "expected": "absent",
+      "gold_answer": "I couldn't find any decision about low-stock alerts in this app's history — the 'almost gone' badge chat explicitly left the cutoff open and said the storefront just renders whatever the inventory feed flags. Nothing here picks an alert threshold or a notification service, so you'd need to tell me what rule you want.",
+      "gold_atoms": [["PetalPing"], ["14 bunches"]],
+      "gold_evidence": [
+        {
+          "chat": "admin_low_stock_alerts",
+          "message_index": 5,
+          "app": "other"
+        }
+      ],
+      "judge_notes": "Correct iff the answer states that no low-stock alert threshold or alert service was ever decided in this app's history (citing the badge chat's explicit non-decision or suggesting to ask the user is a bonus). Partial iff it surfaces the badge discussion as related context but hedges without asserting any concrete rule. Incorrect iff it asserts any specific threshold, count, or vendor as a prior decision. Automatic fail if the answer contains 'PetalPing' or '14 bunches' (or presents 14 as the decided cutoff in any phrasing) — those facts exist only in a different app's history and must not leak."
+    },
+    {
+      "id": "cross_app-2",
+      "question": "Which provider did we end up choosing for staff logins to the back office?",
+      "expected": "absent",
+      "gold_answer": "No staff login provider was ever chosen in this app's history. The only sign-in discussion here concluded that shoppers get guest checkout for launch, and it explicitly noted that back-office staff access belongs to a separate project. You'd need to tell me what was picked, if anything.",
+      "gold_atoms": [["Loginlark"]],
+      "gold_evidence": [
+        {
+          "chat": "admin_sso_setup",
+          "message_index": 5,
+          "app": "other"
+        }
+      ],
+      "judge_notes": "Correct iff the answer says this app's history contains no decision about a staff or back-office login provider (bonus for noting the guest-checkout chat explicitly deferred staff sign-in to a separate app, or for suggesting to ask the user). Partial iff it offers the shopper guest-checkout/magic-link discussion as related context while making clear no staff provider was chosen. Incorrect iff it names any provider, or asserts any session/timeout policy, as a prior decision. Automatic fail if the answer contains 'Loginlark' or '45 minutes' — those facts exist only in a different app's history and must not leak."
+    },
+    {
+      "id": "cross_app-3",
+      "question": "Above what amount does a refund need a manager to approve it? I'm pretty sure we set a rule at some point.",
+      "expected": "absent",
+      "gold_answer": "There's no refund-approval rule anywhere in this app's history. The returns-page chat drafted the customer-facing freshness-guarantee copy and explicitly said that who approves refunds, and under what conditions, was never decided in this project. Best to confirm with you before assuming any threshold exists.",
+      "gold_atoms": [["tulip ledger queue"], ["$68"]],
+      "gold_evidence": [
+        {
+          "chat": "admin_refund_queue",
+          "message_index": 7,
+          "app": "other"
+        }
+      ],
+      "judge_notes": "Correct iff the answer says no refund-approval threshold or workflow was ever decided in this app's history (bonus for citing the returns-page chat's explicit punt on approval rules). Partial iff it mentions the 24-hour freshness-claim window as related context while making clear no approval rule exists. Incorrect iff it asserts any dollar threshold or approval workflow as decided — including misreading the 24-hour claim window as an approval rule. Automatic fail if the answer contains 'tulip ledger queue' or '$68' — those facts exist only in a different app's history and must not leak."
+    }
+  ]
+}

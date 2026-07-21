@@ -136,7 +136,10 @@ describe("undo (integration)", () => {
     // The messages list is empty again (it renders its empty state — the
     // "No messages yet" placeholder or a setup banner — with no chat turns).
     expect(screen.queryByText(/And it's done!/)).toBeNull();
-    expect(screen.getByTestId("messages-list")).toBeTruthy();
+    await waitFor(
+      () => expect(screen.getByTestId("messages-list")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
 
     // No error events were emitted during the whole cycle.
     expect(errorEvents()).toHaveLength(0);
@@ -207,10 +210,15 @@ describe("undo (integration)", () => {
     const remaining = await loadMessages();
     expect(remaining).toHaveLength(2);
     expect(remaining[0].content).toBe("tc=no-code-response");
-    expect(screen.getByText("tc=no-code-response")).toBeTruthy();
-    expect(
-      screen.getByText(/This is a response without any code changes/),
-    ).toBeTruthy();
+    await waitFor(
+      () => {
+        expect(screen.getByText("tc=no-code-response")).toBeTruthy();
+        expect(
+          screen.getByText(/This is a response without any code changes/),
+        ).toBeTruthy();
+      },
+      { timeout: 15_000 },
+    );
 
     expect(errorEvents()).toHaveLength(0);
   }, 60_000);

@@ -10,16 +10,14 @@ import {
 } from "@/components/ui/tooltip";
 import { useAtomValue, useSetAtom } from "jotai";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
-import {
-  selectedVersionIdAtom,
-  selectedVersionDiffFileAtom,
-} from "@/atoms/appAtoms";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { StagedDiffView } from "./StagedDiffView";
 import { CommitMenu } from "./CommitMenu";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { diffVersionIdForState } from "@/version_preview/state";
 
 interface App {
   id?: number;
@@ -35,11 +33,12 @@ export interface CodeViewProps {
 export const CodeView = ({ loading, app }: CodeViewProps) => {
   const { t } = useTranslation("home");
   const selectedFile = useAtomValue(selectedFileAtom);
-  const selectedVersionId = useAtomValue(selectedVersionIdAtom);
+  const { state: previewState, send: sendPreviewEvent } = useVersionPreview(
+    app?.id ?? null,
+  );
+  const selectedVersionId = diffVersionIdForState(previewState);
   const stagedDiffFile = useAtomValue(stagedDiffFileAtom);
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
-  const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
-  const setSelectedVersionDiffFile = useSetAtom(selectedVersionDiffFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const { hasUncommittedFiles } = useUncommittedFiles(app?.id ?? null);
 
@@ -47,8 +46,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // modified-files card) and returns to the live file tree. Without this the
   // Code tab would stay pinned to a commit diff with no in-context way back.
   const closeVersionDiff = () => {
-    setSelectedVersionId(null);
-    setSelectedVersionDiffFile(null);
+    sendPreviewEvent({ type: "CLOSE_VERSION_DIFF" });
   };
   const [isFullscreen, setIsFullscreen] = useState(false);
 

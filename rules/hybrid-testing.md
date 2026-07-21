@@ -32,6 +32,11 @@ rows, IPC events, or LLM request dumps. Use the renderer+IPC hybrid harness only
 when assertions are about rendered UI or a flow that must be driven through a
 real UI event in the mounted React tree.
 
+When production UI gains a required root-scoped provider, mount that provider
+explicitly in `hybrid_chat_harness.tsx` with harness-owned dependencies. Do not
+add a module-global fallback just to keep hybrid tests working; it bypasses the
+same ownership and disposal semantics the test should exercise.
+
 Do not drive overlapping `chat:stream` calls for the same chat through the
 chat-flow or hybrid harness. Both invocations read and write the same persisted
 conversation, so one stream's user/tool messages can change the other stream's

@@ -166,7 +166,7 @@ describe("local-agent cancel todos (integration)", () => {
     });
     await Promise.all([selectedStream, backgroundStream]);
 
-    expect(result).toHaveProperty("newChatId");
+    expect(result).toHaveProperty("createdChatId");
     expect(Date.now() - restoreStartedAt).toBeLessThan(15_000);
     const cancelledChatIds = harness.bridge.sentEvents
       .slice(cancellationEventBaseline)

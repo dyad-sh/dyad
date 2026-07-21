@@ -3,7 +3,6 @@ import {
   type PreviewMode,
   previewModeAtom,
   selectedAppIdAtom,
-  selectedVersionIdAtom,
 } from "@/atoms/appAtoms";
 import { isChatPanelHiddenAtom, isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
@@ -36,6 +35,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { diffVersionIdForState } from "@/version_preview/state";
 
 type ToolbarMode = Exclude<PreviewMode, "plan">;
 
@@ -136,7 +137,8 @@ export const PreviewToolbar = () => {
     isChatPanelHiddenAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const selectedVersionId = useAtomValue(selectedVersionIdAtom);
+  const { state: previewState } = useVersionPreview(selectedAppId);
+  const selectedVersionId = diffVersionIdForState(previewState);
   const isVersionSelected = selectedVersionId != null;
   const { problemReport } = useCheckProblems(selectedAppId);
 

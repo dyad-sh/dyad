@@ -1,11 +1,11 @@
-import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useVersionChanges } from "@/hooks/useVersionChanges";
 import type { VersionChangedFile } from "@/ipc/types";
-import { selectedVersionDiffFileAtom } from "@/atoms/appAtoms";
 import { FileDiffEditor } from "./FileDiffEditor";
 import { STATUS_META } from "./versionChangeMeta";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { selectedDiffFileForState } from "@/version_preview/state";
 
 interface VersionDiffViewProps {
   appId: number;
@@ -39,9 +39,9 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
   // selection is scoped to a version, so it is only applied when it belongs to
   // the version being shown (see below); this avoids a stale path from another
   // version leaking in without needing an effect to reconcile it.
-  const [selectedDiffFile, setSelectedDiffFile] = useAtom(
-    selectedVersionDiffFileAtom,
-  );
+  const { state: previewState, send: sendPreviewEvent } =
+    useVersionPreview(appId);
+  const selectedDiffFile = selectedDiffFileForState(previewState);
   const selectedDiffPath =
     selectedDiffFile?.versionId === versionId ? selectedDiffFile.path : null;
 
@@ -92,7 +92,12 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
         {changes.map((file) => (
           <button
             key={file.path}
-            onClick={() => setSelectedDiffFile({ versionId, path: file.path })}
+            onClick={() =>
+              sendPreviewEvent({
+                type: "SELECT_DIFF_FILE",
+                file: { versionId, path: file.path },
+              })
+            }
             data-testid="version-diff-file"
             className={cn(
               "flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm hover:bg-[var(--background-darkest)]",

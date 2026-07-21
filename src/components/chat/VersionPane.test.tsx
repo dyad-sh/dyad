@@ -9,25 +9,16 @@ import {
 import { Provider, createStore } from "jotai";
 import type React from "react";
 import type { PropsWithChildren } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  selectedAppIdAtom,
-  selectedVersionDiffFileAtom,
-  selectedVersionIdAtom,
-  selectedVersionReturnBranchAtom,
-} from "@/atoms/appAtoms";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
 import type {
   VersionPreviewCommands,
   VersionPreviewRuntime,
 } from "@/version_preview/controller";
-import {
-  ensureVersionPreviewController,
-  initVersionPreviewRuntime,
-  resetVersionPreviewForTests,
-} from "@/version_preview/registry";
+import { VersionPreviewManager } from "@/version_preview/manager";
+import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { VersionPane } from "./VersionPane";
-import { useVersionPreviewGlobalBridge } from "@/hooks/useVersionPreview";
 
 const {
   listAppScreenshotsMock,
@@ -35,14 +26,12 @@ const {
   setVersionFavoriteMock,
   setVersionNoteMock,
   versionsMock,
-  versionMutationStateMock,
 } = vi.hoisted(() => ({
   listAppScreenshotsMock: vi.fn(),
   refreshVersionsMock: vi.fn(),
   setVersionFavoriteMock: vi.fn(),
   setVersionNoteMock: vi.fn(),
   versionsMock: [] as Version[],
-  versionMutationStateMock: { isAnyVersionMutationPending: false },
 }));
 
 vi.mock("react-virtuoso", () => ({
@@ -84,9 +73,6 @@ vi.mock("@/hooks/useVersions", () => ({
     isSettingVersionFavorite: false,
     setVersionNote: setVersionNoteMock,
     isSettingVersionNote: false,
-    get isAnyVersionMutationPending() {
-      return versionMutationStateMock.isAnyVersionMutationPending;
-    },
   }),
 }));
 
@@ -124,9 +110,15 @@ function makeFakeRuntime() {
     checkoutVersion: track("checkout"),
     returnToBranch: track("return"),
     restoreVersion: track("restore"),
+    restoreToMessage: track("restore-to-message"),
   } as unknown as VersionPreviewCommands;
   const notifyError = vi.fn();
-  const runtime: VersionPreviewRuntime = { commands, notifyError };
+  const runtime: VersionPreviewRuntime = {
+    commands,
+    notifyError,
+    notifyRecovery: vi.fn(),
+    dismissRecovery: vi.fn(),
+  };
   return {
     runtime,
     notifyError,
@@ -150,7 +142,10 @@ function makeVersion(index: number): Version {
   };
 }
 
-function makeWrapper(store = createStore()) {
+let manager: VersionPreviewManager;
+let testStore: ReturnType<typeof createStore>;
+
+function makeWrapper(store = testStore) {
   store.set(selectedAppIdAtom, APP_ID);
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -163,7 +158,9 @@ function makeWrapper(store = createStore()) {
     return (
       <Provider store={store}>
         <QueryClientProvider client={queryClient}>
-          {children}
+          <VersionPreviewProvider manager={manager}>
+            {children}
+          </VersionPreviewProvider>
         </QueryClientProvider>
       </Provider>
     );
@@ -172,16 +169,11 @@ function makeWrapper(store = createStore()) {
 
 function openPane() {
   act(() => {
-    ensureVersionPreviewController(APP_ID).send({
+    manager.send(APP_ID, {
       type: "OPEN",
       appId: APP_ID,
     });
   });
-}
-
-function GlobalPreviewBridge() {
-  useVersionPreviewGlobalBridge();
-  return null;
 }
 
 const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
@@ -210,13 +202,15 @@ describe("VersionPane", () => {
     setVersionNoteMock.mockReset();
 
     versionsMock.length = 0;
-    versionMutationStateMock.isAnyVersionMutationPending = false;
     listAppScreenshotsMock.mockResolvedValue({ screenshots: [] });
 
-    resetVersionPreviewForTests();
     fake = makeFakeRuntime();
-    initVersionPreviewRuntime(fake.runtime);
+    testStore = createStore();
+    testStore.set(selectedAppIdAtom, APP_ID);
+    manager = new VersionPreviewManager(fake.runtime, testStore);
   });
+
+  afterEach(() => manager.dispose());
 
   it("renders nothing until the machine opens the pane", async () => {
     versionsMock.push(makeVersion(1));
@@ -275,71 +269,28 @@ describe("VersionPane", () => {
     expect(fake.last("checkout").input).toEqual({
       appId: APP_ID,
       versionId: version.oid,
-      hasDbSnapshot: false,
     });
   });
 
-  it("does not preview while another version mutation is pending", async () => {
-    versionMutationStateMock.isAnyVersionMutationPending = true;
-    versionsMock.push(makeVersion(1));
-    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
-
-    render(<VersionPane />, { wrapper: makeWrapper() });
-    openPane();
-
-    fireEvent.click(await screen.findByTestId("version-row-1"));
-    expect(fake.ofType("resolve")).toHaveLength(0);
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Restore to this version",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-  });
-
-  it("mirrors the machine's diff selection into the presentation atom", async () => {
+  it("keeps diff selection in the app-scoped machine session", async () => {
     const version = makeVersion(1);
     versionsMock.push(version);
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
-    const store = createStore();
-
-    render(<VersionPane />, { wrapper: makeWrapper(store) });
+    render(<VersionPane />, { wrapper: makeWrapper() });
     openPane();
 
     await previewFirstVersion(fake);
-    expect(store.get(selectedVersionIdAtom)).toBe(version.oid);
-    expect(store.get(selectedVersionReturnBranchAtom)).toBe("feature/test");
+    const snapshot = manager.getSnapshot(APP_ID);
+    expect(snapshot.type).toBe("previewing");
+    if (snapshot.type !== "previewing") return;
+    expect(snapshot.session.targetVersionId).toBe(version.oid);
+    expect(snapshot.session.originBranch).toBe("feature/test");
 
     fireEvent.click(screen.getByRole("button", { name: "Close version pane" }));
     await act(async () => {
       fake.last("return").deferred.resolve(undefined);
     });
-    await waitFor(() => {
-      expect(store.get(selectedVersionIdAtom)).toBeNull();
-      expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();
-    });
-  });
-
-  it("clears global version-diff presentation state on app switch", async () => {
-    const store = createStore();
-    store.set(selectedVersionIdAtom, "old-version");
-    store.set(selectedVersionDiffFileAtom, {
-      versionId: "old-version",
-      path: "src/old.ts",
-    });
-    store.set(selectedVersionReturnBranchAtom, "feature/old");
-
-    render(<GlobalPreviewBridge />, { wrapper: makeWrapper(store) });
-    act(() => {
-      store.set(selectedAppIdAtom, 2);
-    });
-
-    await waitFor(() => {
-      expect(store.get(selectedVersionIdAtom)).toBeNull();
-      expect(store.get(selectedVersionDiffFileAtom)).toBeNull();
-      expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();
-    });
+    expect(manager.getSnapshot(APP_ID).type).toBe("closed");
   });
 
   it("returns to the captured branch when the pane closes", async () => {
@@ -376,7 +327,7 @@ describe("VersionPane", () => {
       appId: APP_ID,
       versionId: version.oid,
       targetBranch: "feature/test",
-      hasDbSnapshot: false,
+      currentChatMessageId: undefined,
     });
     // Restoring UI while the mutation is pending.
     expect(screen.getByText("Restoring...")).toBeDefined();
@@ -393,9 +344,7 @@ describe("VersionPane", () => {
     const version = makeVersion(1);
     versionsMock.push(version);
     refreshVersionsMock.mockResolvedValue({ data: versionsMock });
-    const store = createStore();
-
-    render(<VersionPane />, { wrapper: makeWrapper(store) });
+    render(<VersionPane />, { wrapper: makeWrapper() });
     openPane();
 
     fireEvent.click(await screen.findByTestId("version-row-1"));
@@ -407,7 +356,6 @@ describe("VersionPane", () => {
       expect.stringContaining("Unable to determine the current Git branch"),
     );
     expect(fake.ofType("checkout")).toHaveLength(0);
-    expect(store.get(selectedVersionIdAtom)).toBeNull();
     const restoreButton = screen.getByRole("button", {
       name: "Restore to this version",
     });

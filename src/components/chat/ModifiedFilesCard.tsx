@@ -5,13 +5,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useVersionChanges } from "@/hooks/useVersionChanges";
 import { computeLineDiffStats } from "@/lib/lineDiffStats";
-import {
-  previewModeAtom,
-  selectedVersionIdAtom,
-  selectedVersionDiffFileAtom,
-} from "@/atoms/appAtoms";
+import { previewModeAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { STATUS_META } from "@/components/preview_panel/versionChangeMeta";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
 
 interface ModifiedFilesCardProps {
   appId: number;
@@ -51,8 +48,7 @@ export function ModifiedFilesCard({
 }: ModifiedFilesCardProps) {
   const { changes, loading, error } = useVersionChanges(appId, commitHash);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setSelectedVersionId = useSetAtom(selectedVersionIdAtom);
-  const setSelectedVersionDiffFile = useSetAtom(selectedVersionDiffFileAtom);
+  const { send: sendPreviewEvent } = useVersionPreview(appId);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
 
   const statsByPath = useMemo(() => {
@@ -67,8 +63,12 @@ export function ModifiedFilesCard({
   }, [changes]);
 
   const openDiff = (filePath: string) => {
-    setSelectedVersionDiffFile({ versionId: commitHash, path: filePath });
-    setSelectedVersionId(commitHash);
+    sendPreviewEvent({
+      type: "VIEW_VERSION_DIFF",
+      appId,
+      versionId: commitHash,
+      file: { versionId: commitHash, path: filePath },
+    });
     setPreviewMode("code");
     setIsPreviewOpen(true);
   };

@@ -25,22 +25,42 @@ export interface PreviewSession {
   originBranch: string | null;
   /** The version the user most recently asked to preview or restore. */
   targetVersionId: string | null;
-  /** Whether the target version has a database snapshot to restore. */
-  targetHasDbSnapshot: boolean;
   /** The version the machine believes is checked out in Git. */
   checkedOutVersionId: string | null;
   /** A close/app-switch request received while a mutation was in flight. */
   exitIntent: ExitIntent;
+  /** Presentation only. Never used to decide Git transitions. */
+  selectedDiffFile: { versionId: string; path: string } | null;
+  /** Whether the Code panel should show the version diff for targetVersionId. */
+  isDiffVisible: boolean;
 }
+
+export type BranchSwitchFallback =
+  | { type: "closed" }
+  | { type: "viewing-diff"; session: PreviewSession }
+  | { type: "browsing"; session: PreviewSession }
+  | { type: "previewing"; session: PreviewSession }
+  | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
 
 export type PreviewState =
   | { type: "closed" }
+  | { type: "viewing-diff"; session: PreviewSession }
   | { type: "browsing"; session: PreviewSession }
   | { type: "resolving-origin"; session: PreviewSession }
   | { type: "checking-out"; session: PreviewSession }
   | { type: "previewing"; session: PreviewSession }
-  | { type: "restoring"; session: PreviewSession }
+  | {
+      type: "restoring";
+      session: PreviewSession;
+      fallback: "closed" | "browsing" | "previewing";
+    }
   | { type: "returning"; session: PreviewSession }
+  | {
+      type: "switching-branch";
+      appId: number;
+      branch: string;
+      fallback: BranchSwitchFallback;
+    }
   | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
 
 export type PreviewEvent =
@@ -48,18 +68,47 @@ export type PreviewEvent =
   | { type: "OPEN"; appId: number }
   | { type: "CLOSE" }
   | { type: "APP_CHANGED"; nextAppId: number | null }
-  | { type: "SELECT_VERSION"; versionId: string; hasDbSnapshot: boolean }
-  | { type: "RESTORE"; versionId: string; hasDbSnapshot: boolean }
+  | { type: "SELECT_VERSION"; versionId: string }
+  | { type: "CLOSE_VERSION_DIFF" }
+  | { type: "SWITCH_BRANCH"; appId: number; branch: string }
+  | {
+      type: "VIEW_VERSION_DIFF";
+      appId: number;
+      versionId: string;
+      file: { versionId: string; path: string } | null;
+    }
+  | {
+      type: "SELECT_DIFF_FILE";
+      file: { versionId: string; path: string } | null;
+    }
+  | {
+      type: "RESTORE";
+      appId: number;
+      versionId: string;
+      currentChatMessageId?: { chatId: number; messageId: number };
+    }
+  | {
+      type: "RESTORE_TO_MESSAGE";
+      appId: number;
+      chatId: number;
+      messageId: number;
+      restoreCodebase: boolean;
+    }
   | { type: "RETRY_RETURN" }
   // Command completions (dispatched only by the controller)
   | { type: "ORIGIN_RESOLVED"; branch: string }
   | { type: "ORIGIN_RESOLUTION_FAILED" }
   | { type: "CHECKOUT_SUCCEEDED" }
   | { type: "CHECKOUT_FAILED"; error: PreviewError }
-  | { type: "RESTORE_SUCCEEDED" }
+  | {
+      type: "RESTORE_SUCCEEDED";
+      repositoryOutcome: "target-applied" | "unchanged";
+    }
   | { type: "RESTORE_FAILED"; error: PreviewError }
   | { type: "RETURN_SUCCEEDED" }
-  | { type: "RETURN_FAILED"; error: PreviewError };
+  | { type: "RETURN_FAILED"; error: PreviewError }
+  | { type: "SWITCH_BRANCH_SUCCEEDED" }
+  | { type: "SWITCH_BRANCH_FAILED"; error: PreviewError };
 
 export type PreviewCommand =
   | { type: "resolve-origin"; appId: number }
@@ -67,17 +116,27 @@ export type PreviewCommand =
       type: "checkout";
       appId: number;
       versionId: string;
-      hasDbSnapshot: boolean;
     }
   | { type: "return"; appId: number; branch: string }
+  | { type: "switch-branch"; appId: number; branch: string }
   | {
       type: "restore";
       appId: number;
       versionId: string;
-      targetBranch: string;
-      hasDbSnapshot: boolean;
+      targetBranch: string | null;
+      currentChatMessageId?: { chatId: number; messageId: number };
     }
-  | { type: "notify-error"; message: string };
+  | {
+      type: "restore-to-message";
+      appId: number;
+      chatId: number;
+      messageId: number;
+      restoreCodebase: boolean;
+      targetBranch: string | null;
+    }
+  | { type: "notify-error"; message: string }
+  | { type: "notify-recovery"; appId: number; error: PreviewError }
+  | { type: "dismiss-recovery"; appId: number };
 
 /** Stable singleton for the closed state so snapshots compare by identity. */
 export const CLOSED_STATE: PreviewState = { type: "closed" };
@@ -92,7 +151,9 @@ export function isPaneVisibleState(state: PreviewState): boolean {
     case "restoring":
       return true;
     case "closed":
+    case "viewing-diff":
     case "returning":
+    case "switching-branch":
     case "recovery-required":
       return false;
   }
@@ -104,8 +165,10 @@ export function isMutatingState(state: PreviewState): boolean {
     case "checking-out":
     case "restoring":
     case "returning":
+    case "switching-branch":
       return true;
     case "closed":
+    case "viewing-diff":
     case "browsing":
     case "resolving-origin":
     case "previewing":
@@ -114,21 +177,39 @@ export function isMutatingState(state: PreviewState): boolean {
   }
 }
 
+/** States where starting another user-triggered version action is unsafe. */
+export function isVersionActionBlockedState(state: PreviewState): boolean {
+  return isMutatingState(state) || state.type === "recovery-required";
+}
+
+function canShowDiff(
+  state: PreviewState,
+): state is Exclude<
+  PreviewState,
+  | { type: "closed" }
+  | { type: "returning"; session: PreviewSession }
+  | { type: "switching-branch" }
+  | { type: "recovery-required"; session: PreviewSession; error: PreviewError }
+> {
+  return (
+    state.type !== "closed" &&
+    state.type !== "returning" &&
+    state.type !== "switching-branch" &&
+    state.type !== "recovery-required"
+  );
+}
+
 /**
  * The version whose diff the UI should display for this state, or null.
  * Presentation-only; never used to decide Git transitions.
  */
 export function diffVersionIdForState(state: PreviewState): string | null {
-  switch (state.type) {
-    case "resolving-origin":
-    case "checking-out":
-    case "previewing":
-    case "restoring":
-      return state.session.targetVersionId;
-    case "closed":
-    case "browsing":
-    case "returning":
-    case "recovery-required":
-      return null;
-  }
+  if (!canShowDiff(state)) return null;
+  return state.session.isDiffVisible ? state.session.targetVersionId : null;
+}
+
+export function selectedDiffFileForState(
+  state: PreviewState,
+): PreviewSession["selectedDiffFile"] {
+  return canShowDiff(state) ? state.session.selectedDiffFile : null;
 }

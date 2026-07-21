@@ -21,14 +21,9 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
-import { useSelectChat } from "@/hooks/useSelectChat";
-import { showError } from "@/lib/toast";
 import { useAtomValue } from "jotai";
 import { selectAtom } from "jotai/utils";
-import {
-  selectedAppIdAtom,
-  selectedVersionReturnBranchAtom,
-} from "@/atoms/appAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   selectedChatIdAtom,
   streamingPreviewByChatIdAtom,
@@ -56,6 +51,8 @@ import {
   isCancelledResponseContent,
   stripCancelledResponseNotice,
 } from "@/shared/chatCancellation";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { isVersionActionBlockedState } from "@/version_preview/state";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -114,16 +111,11 @@ const ChatMessage = ({
 }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
-  const selectedVersionReturnBranch = useAtomValue(
-    selectedVersionReturnBranchAtom,
-  );
-  const {
-    versions: liveVersions,
-    restoreToMessage,
-    isRestoringToMessage,
-    isAnyVersionMutationPending,
-  } = useVersions(appId);
-  const { selectChat } = useSelectChat();
+  const { versions: liveVersions } = useVersions(appId);
+  const { state: previewState, send: sendPreviewEvent } =
+    useVersionPreview(appId);
+  const isAnyVersionMutationPending = isVersionActionBlockedState(previewState);
+  const isRestoringToMessage = previewState.type === "restoring";
   const assistantTextContent =
     message.role === "assistant"
       ? stripCancelledResponseNotice(message.content)
@@ -228,31 +220,18 @@ const ChatMessage = ({
     (hasUserText || attachments.length > 0) &&
     !isCancelled;
 
-  const handleRestoreToMessage = async (restoreCodebase: boolean) => {
+  const handleRestoreToMessage = (restoreCodebase: boolean) => {
     if (appId == null || selectedChatId == null) {
       return;
     }
     setShowRestoreConfirm(false);
-    try {
-      const result = await restoreToMessage({
-        chatId: selectedChatId,
-        messageId: message.id,
-        restoreCodebase,
-        targetBranchName: selectedVersionReturnBranch ?? undefined,
-      });
-      // A `newChatId` is only returned when a new chat was actually created. If
-      // no version could be determined, we stay on the current chat (the user
-      // still sees the warning toast).
-      if ("newChatId" in result) {
-        selectChat({
-          chatId: result.newChatId,
-          appId,
-          scrollToBottom: true,
-        });
-      }
-    } catch (error) {
-      showError(error);
-    }
+    sendPreviewEvent({
+      type: "RESTORE_TO_MESSAGE",
+      appId,
+      chatId: selectedChatId,
+      messageId: message.id,
+      restoreCodebase,
+    });
   };
 
   // The restore button + confirmation dialog, anchored absolutely to the

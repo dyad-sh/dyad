@@ -93,6 +93,7 @@ export function makeAgentContext(
     dyadRequestId: "test-request",
     fileEditTracker: {},
     testingEnabled: false,
+    testRunAttempts: new Map(),
     onXmlStream: vi.fn(),
     onXmlComplete: vi.fn(),
     requireConsent: vi.fn().mockResolvedValue(true),

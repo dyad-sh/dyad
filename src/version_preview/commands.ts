@@ -117,9 +117,10 @@ export function createVersionPreviewRuntime({
             toast.warning(result.warningMessage, { duration: 8000 });
           }
           await invalidateGitQueries(appId);
-          const app = queryClient.getQueryData<App | null>(
-            queryKeys.apps.detail({ appId }),
-          );
+          const app = await queryClient.fetchQuery<App | null>({
+            queryKey: queryKeys.apps.detail({ appId }),
+            queryFn: () => ipc.app.getApp(appId),
+          });
           if (getSettings()?.runtimeMode2 === "cloud" || app?.neonProjectId) {
             await restartAppWithStore(store, appId);
           }

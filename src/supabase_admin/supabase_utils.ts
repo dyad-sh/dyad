@@ -1,6 +1,4 @@
 import fs from "node:fs/promises";
-import { realpathSync } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import log from "electron-log";
 import {
@@ -12,14 +10,12 @@ import {
 } from "./supabase_management_client";
 import { SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY } from "./supabase_deploy_queue";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import {
-  clearNodeModuleCache,
-  getTypeScriptCompilerPath,
-  resolveTypeScriptPackageJsonPathSync,
-} from "../../shared/node_module_resolution";
+import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
+import type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
+
+export type { SupabaseFunctionImpact } from "../../shared/supabase_dependency_analysis_types";
 
 const logger = log.scope("supabase_utils");
-const require = createRequire(import.meta.url);
 
 export interface SupabaseDeployProgress {
   phase: "deploying" | "finished" | "failed";
@@ -130,44 +126,6 @@ export function extractFunctionNameFromPath(filePath: string): string {
   return functionName;
 }
 
-export type SupabaseFunctionImpact =
-  | { kind: "partial"; functionNames: string[] }
-  | { kind: "all"; reason: string };
-
-const SUPPORTED_SOURCE_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-]);
-
-const RESOLUTION_EXTENSIONS = [
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-];
-
-function normalizeRelativePath(filePath: string): string {
-  return filePath.replace(/\\/g, "/").replace(/^\.\/+/, "");
-}
-
-function isPathWithin(parent: string, child: string): boolean {
-  const relative = path.relative(parent, child);
-  return (
-    relative === "" ||
-    (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
-  );
-}
-
 async function getValidSupabaseFunctionNames(
   functionsDir: string,
 ): Promise<string[]> {
@@ -191,215 +149,6 @@ async function getValidSupabaseFunctionNames(
   return validFunctions;
 }
 
-export function loadAppTypeScript(
-  appPath: string,
-): typeof import("typescript") | null {
-  try {
-    const packageJsonPath = resolveTypeScriptPackageJsonPathSync(appPath);
-    const realPackageRootPath = realpathSync(path.dirname(packageJsonPath));
-    const compilerPath = realpathSync(
-      getTypeScriptCompilerPath(packageJsonPath),
-    );
-    clearNodeModuleCache(realPackageRootPath, require.cache);
-    return require(compilerPath) as typeof import("typescript");
-  } catch {
-    return null;
-  }
-}
-
-function scriptKindForPath(ts: typeof import("typescript"), filePath: string) {
-  switch (path.extname(filePath)) {
-    case ".tsx":
-      return ts.ScriptKind.TSX;
-    case ".js":
-    case ".mjs":
-    case ".cjs":
-      return ts.ScriptKind.JS;
-    case ".jsx":
-      return ts.ScriptKind.JSX;
-    default:
-      return ts.ScriptKind.TS;
-  }
-}
-
-function isClearlyExternalSpecifier(specifier: string): boolean {
-  return (
-    specifier.startsWith("npm:") ||
-    specifier.startsWith("jsr:") ||
-    specifier.startsWith("node:") ||
-    specifier.startsWith("http://") ||
-    specifier.startsWith("https://") ||
-    specifier.startsWith("@supabase/")
-  );
-}
-
-async function resolveLocalImport({
-  fromFile,
-  specifier,
-  functionsDir,
-}: {
-  fromFile: string;
-  specifier: string;
-  functionsDir: string;
-}): Promise<string | SupabaseFunctionImpact> {
-  const resolvedBase = path.resolve(path.dirname(fromFile), specifier);
-
-  if (!isPathWithin(functionsDir, resolvedBase)) {
-    return {
-      kind: "all",
-      reason: `relative_import_outside_supabase_functions:${specifier}`,
-    };
-  }
-
-  const ext = path.extname(resolvedBase);
-  const candidates =
-    ext.length > 0
-      ? [resolvedBase]
-      : [
-          resolvedBase,
-          ...RESOLUTION_EXTENSIONS.map(
-            (candidateExt) => resolvedBase + candidateExt,
-          ),
-          ...RESOLUTION_EXTENSIONS.map((candidateExt) =>
-            path.join(resolvedBase, `index${candidateExt}`),
-          ),
-        ];
-
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate);
-      if (stat.isFile()) {
-        if (!isPathWithin(functionsDir, candidate)) {
-          return {
-            kind: "all",
-            reason: `resolved_import_outside_supabase_functions:${specifier}`,
-          };
-        }
-        return candidate;
-      }
-    } catch {
-      // Try the next supported resolution candidate.
-    }
-  }
-
-  return { kind: "all", reason: `unresolved_relative_import:${specifier}` };
-}
-
-async function collectLocalDependencies({
-  ts,
-  filePath,
-  functionsDir,
-}: {
-  ts: typeof import("typescript");
-  filePath: string;
-  functionsDir: string;
-}): Promise<string[] | SupabaseFunctionImpact> {
-  let sourceText: string;
-  try {
-    sourceText = await fs.readFile(filePath, "utf8");
-  } catch {
-    return { kind: "all", reason: `unable_to_read_source:${filePath}` };
-  }
-
-  let sourceFile: import("typescript").SourceFile;
-  try {
-    sourceFile = ts.createSourceFile(
-      filePath,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      scriptKindForPath(ts, filePath),
-    );
-  } catch {
-    return { kind: "all", reason: `parse_failure:${filePath}` };
-  }
-
-  const specifiers: string[] = [];
-  let unsafeReason: string | undefined;
-
-  function addSpecifier(specifierNode: import("typescript").Expression) {
-    if (ts.isStringLiteralLike(specifierNode)) {
-      specifiers.push(specifierNode.text);
-    } else {
-      unsafeReason = `non_literal_dynamic_import:${filePath}`;
-    }
-  }
-
-  function visit(node: import("typescript").Node) {
-    if (unsafeReason) {
-      return;
-    }
-
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier
-    ) {
-      addSpecifier(node.moduleSpecifier);
-      return;
-    }
-
-    if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword
-    ) {
-      const [specifier] = node.arguments;
-      if (!specifier) {
-        unsafeReason = `missing_dynamic_import_specifier:${filePath}`;
-        return;
-      }
-      addSpecifier(specifier);
-      return;
-    }
-
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "require"
-    ) {
-      unsafeReason = `commonjs_require:${filePath}`;
-      return;
-    }
-
-    if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference)
-    ) {
-      unsafeReason = `import_equals_require:${filePath}`;
-      return;
-    }
-
-    ts.forEachChild(node, visit);
-  }
-
-  visit(sourceFile);
-
-  if (unsafeReason) {
-    return { kind: "all", reason: unsafeReason };
-  }
-
-  const dependencies: string[] = [];
-  for (const specifier of specifiers) {
-    if (specifier.startsWith("./") || specifier.startsWith("../")) {
-      const resolved = await resolveLocalImport({
-        fromFile: filePath,
-        specifier,
-        functionsDir,
-      });
-      if (typeof resolved !== "string") {
-        return resolved;
-      }
-      dependencies.push(resolved);
-      continue;
-    }
-
-    if (!isClearlyExternalSpecifier(specifier)) {
-      return { kind: "all", reason: `unknown_bare_specifier:${specifier}` };
-    }
-  }
-
-  return dependencies;
-}
-
 export async function getSupabaseFunctionsAffectedBySharedModules({
   appPath,
   changedSharedModulePaths,
@@ -407,112 +156,18 @@ export async function getSupabaseFunctionsAffectedBySharedModules({
   appPath: string;
   changedSharedModulePaths: string[];
 }): Promise<SupabaseFunctionImpact> {
-  const functionsDir = path.join(appPath, "supabase", "functions");
   try {
-    await fs.access(functionsDir);
-  } catch {
-    return { kind: "partial", functionNames: [] };
+    return await runSupabaseDependencyAnalysis({
+      appPath,
+      changedSharedModulePaths,
+    });
+  } catch (error) {
+    logger.warn(
+      "Supabase dependency analysis failed; deploying all functions",
+      error,
+    );
+    return { kind: "all", reason: "dependency_analysis_failed" };
   }
-
-  const ts = loadAppTypeScript(appPath);
-  if (!ts) {
-    return { kind: "all", reason: "typescript_not_installed" };
-  }
-
-  const changedSharedPaths = new Set<string>();
-  for (const changedPath of changedSharedModulePaths) {
-    const normalized = normalizeRelativePath(changedPath);
-    const ext = path.extname(normalized);
-    if (!SUPPORTED_SOURCE_EXTENSIONS.has(ext)) {
-      return {
-        kind: "all",
-        reason: `unsupported_changed_shared_path:${changedPath}`,
-      };
-    }
-
-    const absolutePath = path.resolve(appPath, normalized);
-    if (!isPathWithin(functionsDir, absolutePath)) {
-      return {
-        kind: "all",
-        reason: `changed_shared_path_outside_functions:${changedPath}`,
-      };
-    }
-
-    try {
-      const stat = await fs.stat(absolutePath);
-      if (stat.isDirectory()) {
-        return {
-          kind: "all",
-          reason: `changed_shared_directory:${changedPath}`,
-        };
-      }
-    } catch {
-      // Deleted or renamed files may no longer exist. Keep the exact source-like
-      // path in the impact set; unresolved imports will force fallback.
-    }
-
-    changedSharedPaths.add(absolutePath);
-  }
-
-  if (changedSharedPaths.size === 0) {
-    return { kind: "partial", functionNames: [] };
-  }
-
-  let validFunctions: string[];
-  try {
-    validFunctions = await getValidSupabaseFunctionNames(functionsDir);
-  } catch {
-    return { kind: "all", reason: "unable_to_enumerate_functions" };
-  }
-
-  const dependencyCache = new Map<string, string[]>();
-  const affectedFunctionNames: string[] = [];
-
-  for (const functionName of validFunctions) {
-    const entrypoint = path.join(functionsDir, functionName, "index.ts");
-    const visited = new Set<string>();
-    const stack = [entrypoint];
-    let affected = false;
-
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      if (visited.has(current)) {
-        continue;
-      }
-      visited.add(current);
-
-      if (changedSharedPaths.has(current)) {
-        affected = true;
-        break;
-      }
-
-      let dependencies = dependencyCache.get(current);
-      if (!dependencies) {
-        const collected = await collectLocalDependencies({
-          ts,
-          filePath: current,
-          functionsDir,
-        });
-        if (!Array.isArray(collected)) {
-          return collected;
-        }
-        dependencies = collected;
-        dependencyCache.set(current, dependencies);
-      }
-
-      for (const dependency of dependencies) {
-        if (!visited.has(dependency)) {
-          stack.push(dependency);
-        }
-      }
-    }
-
-    if (affected) {
-      affectedFunctionNames.push(functionName);
-    }
-  }
-
-  return { kind: "partial", functionNames: affectedFunctionNames };
 }
 
 /**

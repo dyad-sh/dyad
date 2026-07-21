@@ -1,6 +1,6 @@
 {
   "name": "dyad",
-  "version": "1.9.0-beta.1",
+  "version": "1.9.0-beta.2",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
   "license": "MIT",
@@ -33,8 +33,9 @@
     "verify-release": "node scripts/verify-release-assets.js",
     "ts": "npm run ts:main && npm run ts:workers",
     "ts:main": "npx tsgo -p tsconfig.app.json --noEmit --incremental",
-    "ts:workers": "npm run ts:workers:code-explorer",
+    "ts:workers": "npm run ts:workers:code-explorer && npm run ts:workers:supabase-dependency-analysis",
     "ts:workers:code-explorer": "node node_modules/typescript/bin/tsc -p workers/code_explorer/tsconfig.json --noEmit --incremental",
+    "ts:workers:supabase-dependency-analysis": "node node_modules/typescript/bin/tsc -p workers/supabase_dependency_analysis/tsconfig.json --noEmit --incremental",
     "lint": "npx oxlint --fix",
     "lint:fix": "npx oxlint --fix --fix-suggestions --fix-dangerously",
     "db:generate": "drizzle-kit generate",

@@ -23,6 +23,7 @@ Read this when spawning `worker_threads` or `utilityProcess` children, moving he
 - Electron 40's `utilityProcess.fork` delivers `execArgv` to `process.execArgv` but does **not apply V8 flags from it**: `--expose-gc` and `--max-old-space-size` are no-ops, and `NODE_OPTIONS` via `env` is ignored too. To get `gc()` inside the child, acquire it at runtime — `v8.setFlagsFromString("--expose-gc")` then `vm.runInNewContext("gc")` — and degrade gracefully (measure without forced GC) if that ever stops working.
 - Give children a `serviceName` so they are identifiable in `app.getAppMetrics()` and Activity Monitor.
 - Unit-test the child lifecycle with a file-scoped `vi.mock("electron")` whose `utilityProcess.fork` returns an EventEmitter-backed fake child (emit spawn/message/error/exit; spy on postMessage/kill). The shared inert mock in `src/testing/electron_mock.ts` cannot emit events, and the AGENTS.md test mandate applies: cover the timeout, pre-reply-exit, fatal-error, and settle-once paths, not just the happy path.
+- When a user flow depends on a packaged utility-process bundle, add a focused Electron E2E that reaches the real worker entrypoint. Unit lifecycle tests and hybrid fallbacks verify their own contracts but cannot catch missing worker output, external runtime dependencies, or packaged message wiring.
 
 ## External worker runtime dependencies
 

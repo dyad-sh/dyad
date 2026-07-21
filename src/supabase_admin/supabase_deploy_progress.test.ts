@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,8 +14,7 @@ import {
   deploySupabaseFunction,
   listSupabaseFunctions,
 } from "@/supabase_admin/supabase_management_client";
-
-const require = createRequire(import.meta.url);
+import { runSupabaseDependencyAnalysis } from "@/ipc/processors/supabase_dependency_analysis";
 
 vi.mock("@/supabase_admin/supabase_management_client", async () => {
   const actual = await vi.importActual<
@@ -31,6 +29,13 @@ vi.mock("@/supabase_admin/supabase_management_client", async () => {
     listSupabaseFunctions: vi.fn(),
   };
 });
+
+vi.mock("@/ipc/processors/supabase_dependency_analysis", () => ({
+  runSupabaseDependencyAnalysis: vi.fn(async () => ({
+    kind: "partial" as const,
+    functionNames: ["alpha"],
+  })),
+}));
 
 async function waitForAssertion(assertion: () => void) {
   const startedAt = Date.now();
@@ -322,14 +327,33 @@ describe("deployAllSupabaseFunctions progress", () => {
     );
   });
 
-  it("deploys the union of shared-affected functions and pending functions", async () => {
-    const nodeModulesPath = path.join(appPath, "node_modules");
-    await fs.mkdir(nodeModulesPath, { recursive: true });
-    await fs.symlink(
-      path.dirname(require.resolve("typescript/package.json")),
-      path.join(nodeModulesPath, "typescript"),
-      process.platform === "win32" ? "junction" : "dir",
+  it("falls back to all functions when dependency analysis fails", async () => {
+    vi.mocked(runSupabaseDependencyAnalysis).mockRejectedValueOnce(
+      new Error("worker crashed"),
     );
+
+    await expect(
+      deployAffectedSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        sharedModulesChanged: true,
+        changedSharedModulePaths: ["supabase/functions/_shared/foo.ts"],
+        pendingFunctionDeploys: [],
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).toHaveBeenCalledTimes(2);
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "alpha" }),
+    );
+    expect(deploySupabaseFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ functionName: "beta" }),
+    );
+  });
+
+  it("deploys the union of shared-affected functions and pending functions", async () => {
     await fs.mkdir(path.join(appPath, "supabase", "functions", "_shared"), {
       recursive: true,
     });

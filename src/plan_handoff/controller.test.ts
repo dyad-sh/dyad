@@ -205,6 +205,47 @@ describe("plan handoff controller", () => {
     expect(runner.count("start-implementation")).toBe(1);
   });
 
+  it("stops queued work and ignores an in-flight completion after dispose", async () => {
+    const gate = deferred();
+    const runner = createFakeRunner({
+      blockers: { "cancel-stream": gate.promise },
+    });
+    const controller = createHandoffController(runner.run);
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.send(ACCEPT);
+    await flush();
+    expect(runner.log.at(-1)).toBe("start:cancel-stream");
+    expect(controller.getSnapshot().type).toBe("cancelling-stream");
+
+    listener.mockClear();
+    controller.dispose();
+    gate.resolve();
+    await flush();
+
+    expect(controller.getSnapshot().type).toBe("cancelling-stream");
+    expect(listener).not.toHaveBeenCalled();
+    expect(runner.count("wait")).toBe(0);
+    expect(runner.count("set-preview-mode")).toBe(0);
+  });
+
+  it("makes subscribe and send inert after dispose", () => {
+    const runner = createFakeRunner();
+    const controller = createHandoffController(runner.run);
+    const idle = controller.getSnapshot();
+
+    controller.dispose();
+    const listener = vi.fn();
+    const unsubscribe = controller.subscribe(listener);
+    controller.send(ACCEPT);
+    unsubscribe();
+
+    expect(controller.getSnapshot()).toBe(idle);
+    expect(listener).not.toHaveBeenCalled();
+    expect(runner.executed).toEqual([]);
+  });
+
   it("lets the wait command's completion drive the transition out of transitioning", async () => {
     const gate = deferred();
     const runner = createFakeRunner({ blockers: { wait: gate.promise } });

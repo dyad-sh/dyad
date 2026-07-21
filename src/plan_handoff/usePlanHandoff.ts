@@ -7,26 +7,14 @@ import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import type { PlanExitPayload } from "@/ipc/types/plan";
 import { useSettings } from "@/hooks/useSettings";
 
-import { createHandoffController, type HandoffController } from "./controller";
 import {
   createPlanHandoffCommandRunner,
   type PlanHandoffDeps,
 } from "./commands";
 import type { HandoffState } from "./state";
+import { createPlanHandoffRegistry } from "./registry";
 
-/**
- * Module-level registry: one controller per plan chat, so overlapping accepts
- * in different chats never share state, and a handoff keeps running when the
- * component tree that started it unmounts (the legacy saga relied on the same
- * property for its global-atom writes).
- */
-const controllers = new Map<number, HandoffController>();
-const registryListeners = new Set<() => void>();
-
-/**
- * Latest app dependencies, refreshed by the mounted {@link usePlanHandoff}
- * hook and read lazily by commands at execution time.
- */
+/** Latest app dependencies, refreshed by the mounted app-root hook. */
 let currentDeps: PlanHandoffDeps | null = null;
 
 const commandRunner = createPlanHandoffCommandRunner(() => {
@@ -38,42 +26,20 @@ const commandRunner = createPlanHandoffCommandRunner(() => {
   return currentDeps;
 });
 
-const IDLE_STATE: HandoffState = { type: "idle" };
-
-function notifyRegistry(): void {
-  // Set iteration is safe against listeners unsubscribing mid-notify.
-  for (const listener of registryListeners) {
-    listener();
-  }
-}
-
-function getOrCreateController(chatId: number): HandoffController {
-  let controller = controllers.get(chatId);
-  if (!controller) {
-    controller = createHandoffController(commandRunner);
-    controllers.set(chatId, controller);
-    // Bubble every controller change up through the registry so
-    // useSyncExternalStore consumers re-read, even for controllers created
-    // after they first subscribed.
-    controller.subscribe(notifyRegistry);
-    notifyRegistry();
-  }
-  return controller;
-}
-
-function subscribeToRegistry(listener: () => void): () => void {
-  registryListeners.add(listener);
-  return () => {
-    registryListeners.delete(listener);
-  };
-}
+/**
+ * One controller per plan chat, so overlapping accepts never share state and
+ * handoffs survive component unmounts until their chat is deleted.
+ */
+const controllerRegistry = createPlanHandoffRegistry(commandRunner);
 
 /** Current handoff state for a chat (idle when none was ever started). */
 export function getPlanHandoffState(chatId: number | null): HandoffState {
-  if (chatId === null) {
-    return IDLE_STATE;
-  }
-  return controllers.get(chatId)?.getSnapshot() ?? IDLE_STATE;
+  return controllerRegistry.getState(chatId);
+}
+
+/** Dispose and forget all plan-handoff work owned by a deleted chat. */
+export function disposePlanHandoffController(chatId: number): void {
+  controllerRegistry.dispose(chatId);
 }
 
 /**
@@ -81,7 +47,7 @@ export function getPlanHandoffState(chatId: number | null): HandoffState {
  * and reference-stable between transitions, as useSyncExternalStore requires.
  */
 export function usePlanHandoffState(chatId: number | null): HandoffState {
-  return useSyncExternalStore(subscribeToRegistry, () =>
+  return useSyncExternalStore(controllerRegistry.subscribe, () =>
     getPlanHandoffState(chatId),
   );
 }
@@ -119,7 +85,7 @@ export function usePlanHandoff(): {
       // the plan:exit event ever fires. Default to a new chat when unknown.
       const acceptInNewChat =
         store.get(planAcceptInNewChatByChatIdAtom).get(payload.chatId) ?? true;
-      getOrCreateController(payload.chatId).send({
+      controllerRegistry.getOrCreate(payload.chatId).send({
         type: "PLAN_ACCEPTED",
         chatId: payload.chatId,
         appId: payload.appId,

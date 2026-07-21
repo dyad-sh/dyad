@@ -476,8 +476,13 @@ export function createStreamClient<
         const key = (parsed.data as Record<string, unknown>)[
           contract.keyField
         ] as KeyValue;
-        streams.get(key)?.onEnd(parsed.data);
-        streams.delete(key);
+        const callbacks = streams.get(key);
+        callbacks?.onEnd(parsed.data);
+        // The terminal callback may synchronously start another stream with
+        // the same key. Only clean up the generation that actually ended.
+        if (streams.get(key) === callbacks) {
+          streams.delete(key);
+        }
       }
     });
 
@@ -487,8 +492,12 @@ export function createStreamClient<
         const key = (parsed.data as Record<string, unknown>)[
           contract.keyField
         ] as KeyValue;
-        streams.get(key)?.onError(parsed.data);
-        streams.delete(key);
+        const callbacks = streams.get(key);
+        callbacks?.onError(parsed.data);
+        // The error callback may synchronously replace this stream.
+        if (streams.get(key) === callbacks) {
+          streams.delete(key);
+        }
       }
     });
 
@@ -530,7 +539,10 @@ export function createStreamClient<
           [contract.keyField]: key,
           error: err.message,
         } as any);
-        streams.delete(key);
+        // The error callback may synchronously replace this stream.
+        if (streams.get(key) === callbacks) {
+          streams.delete(key);
+        }
       });
     },
 

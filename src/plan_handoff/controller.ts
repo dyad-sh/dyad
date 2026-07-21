@@ -19,6 +19,8 @@ export interface HandoffController {
   subscribe(listener: () => void): () => void;
   /** Feed an event through the transition function and run its commands. */
   send(event: HandoffEvent): void;
+  /** Permanently stop this controller and discard queued work. */
+  dispose(): void;
 }
 
 const IDLE: HandoffState = { type: "idle" };
@@ -40,8 +42,11 @@ export function createHandoffController(
   const listeners = new Set<() => void>();
   const queue: HandoffCommand[] = [];
   let draining = false;
+  let disposed = false;
 
   function send(event: HandoffEvent): void {
+    if (disposed) return;
+
     const result = transition(state, event);
     if (result.state !== state) {
       state = result.state;
@@ -63,11 +68,12 @@ export function createHandoffController(
     }
     draining = true;
     try {
-      while (queue.length > 0) {
+      while (!disposed && queue.length > 0) {
         const command = queue.shift()!;
         try {
           await runCommand(command, send);
         } catch (error) {
+          if (disposed) return;
           // Command runners are expected to convert failures into events
           // (PLAN_PERSIST_FAILED etc.). A throw here is a programming error;
           // log it and keep the queue moving so one bad command cannot wedge
@@ -86,11 +92,19 @@ export function createHandoffController(
   return {
     getSnapshot: () => state,
     subscribe: (listener) => {
+      if (disposed) return () => {};
+
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
     send,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      queue.length = 0;
+      listeners.clear();
+    },
   };
 }

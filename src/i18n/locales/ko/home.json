@@ -257,6 +257,7 @@
       "noProblemsFound": "문제를 찾을 수 없습니다",
       "runChecks": "검사 실행",
       "checkingProblems": "확인 중...",
+      "typeCheckIncomplete": "타입 검사가 완료되지 않음",
       "noAppSelectedTitle": "선택된 앱 없음",
       "noAppSelectedDescription": "TypeScript 문제와 진단 정보를 보려면 앱을 선택하세요.",
       "noProblemsReportTitle": "문제 보고서 없음",

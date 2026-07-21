@@ -57,16 +57,77 @@ function matchesPaths(problemFile: string, paths: string[]): boolean {
 /**
  * Format problems into a readable text output for the agent.
  */
-function formatProblems(problems: Problem[]): string {
-  if (problems.length === 0) {
-    return "No type errors found.";
+function formatProblemLines(problems: Problem[]): string {
+  return problems
+    .map((p) => `${p.file}:${p.line}:${p.column}: ${p.message}`)
+    .join("\n");
+}
+
+function pluralizeErrors(count: number): string {
+  return `${count} type error${count === 1 ? "" : "s"}`;
+}
+
+function formatProblems({
+  allProblems,
+  matchingProblems,
+  paths,
+}: {
+  allProblems: Problem[];
+  matchingProblems: Problem[];
+  paths?: string[];
+}): string {
+  if (!paths || paths.length === 0) {
+    if (allProblems.length === 0) {
+      return "No type errors found.";
+    }
+
+    return `Found ${pluralizeErrors(allProblems.length)}:\n\n${formatProblemLines(allProblems)}`;
   }
 
-  const lines = problems.map(
-    (p) => `${p.file}:${p.line}:${p.column}: ${p.message}`,
-  );
+  const scope = paths.length === 1 ? `\`${paths[0]}\`` : "the requested paths";
+  const outsideCount = allProblems.length - matchingProblems.length;
 
-  return `Found ${problems.length} type error(s):\n\n${lines.join("\n")}`;
+  if (matchingProblems.length === 0) {
+    if (outsideCount === 0) {
+      return `No type errors found in ${scope}.`;
+    }
+
+    return `No type errors found in ${scope}, but the project has ${pluralizeErrors(outsideCount)} outside this scope.`;
+  }
+
+  const matchingResult = `Found ${pluralizeErrors(matchingProblems.length)} in ${scope}:\n\n${formatProblemLines(matchingProblems)}`;
+  if (outsideCount === 0) {
+    return matchingResult;
+  }
+
+  return `${matchingResult}\n\nThe project also has ${pluralizeErrors(outsideCount)} outside this scope.`;
+}
+
+function formatIncompleteTypeCheck(problems: Problem[]): string {
+  const details = formatProblemLines(problems);
+
+  return `Type checking could not complete because TypeScript rejected the project configuration:\n\n${details}\n\nFix the configuration error, then rerun \`run_type_checks\`. Do not report type checking as successful until it passes.`;
+}
+
+function getOutcome(problemReport: ProblemReport) {
+  return (
+    problemReport.outcome ??
+    (problemReport.problems.length === 0 ? "passed" : "errors")
+  );
+}
+
+function getCompletedTitle(
+  outcome: "passed" | "errors" | "incomplete",
+): string {
+  if (outcome === "incomplete") {
+    return "Type check incomplete";
+  }
+
+  if (outcome === "errors") {
+    return "Type errors found";
+  }
+
+  return "Type check passed";
 }
 
 export const runTypeChecksTool: ToolDefinition<
@@ -75,9 +136,10 @@ export const runTypeChecksTool: ToolDefinition<
   name: "run_type_checks",
   description: `Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.
 
-- If a file path is provided, returns diagnostics for that file only
-- If a directory path is provided, returns diagnostics for all files within that directory
+- If a file path is provided, returns diagnostics for that file and discloses whether the project has errors elsewhere
+- If a directory path is provided, returns diagnostics for that directory and discloses whether the project has errors elsewhere
 - If no path is provided, returns diagnostics for all files in the workspace
+- Project configuration errors are always returned because they can prevent the requested files from being checked
 - This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files
 - NEVER call this tool on a file unless you've edited it or are about to edit it`,
   inputSchema: runTypeChecksSchema,
@@ -135,18 +197,31 @@ export const runTypeChecksTool: ToolDefinition<
       problems: problemReport,
     });
 
-    let problems = problemReport.problems;
+    const outcome = getOutcome(problemReport);
+    const allProblems = problemReport.problems;
+    let matchingProblems = allProblems;
 
     // Filter by paths if specified
     if (args.paths && args.paths.length > 0) {
-      problems = problems.filter((p) => matchesPaths(p.file, args.paths!));
+      matchingProblems = allProblems.filter((p) =>
+        matchesPaths(p.file, args.paths!),
+      );
     }
 
-    const result = formatProblems(problems);
+    const result =
+      outcome === "incomplete"
+        ? formatIncompleteTypeCheck(allProblems)
+        : formatProblems({
+            allProblems,
+            matchingProblems,
+            paths: args.paths,
+          });
+    const completedTitle = getCompletedTitle(outcome);
+    const completedState = outcome === "incomplete" ? "warning" : "finished";
 
     // Complete XML with result
     ctx.onXmlComplete(
-      `<dyad-status title="${escapeXmlAttr(title)}">\n${escapeXmlContent(result)}\n</dyad-status>`,
+      `<dyad-status title="${escapeXmlAttr(completedTitle)}" state="${completedState}">\n${escapeXmlContent(result)}\n</dyad-status>`,
     );
 
     return result;

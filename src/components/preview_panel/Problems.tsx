@@ -25,10 +25,16 @@ import { useTranslation } from "react-i18next";
 interface ProblemItemProps {
   problem: Problem;
   checked: boolean;
+  isIncomplete?: boolean;
   onToggle: () => void;
 }
 
-const ProblemItem = ({ problem, checked, onToggle }: ProblemItemProps) => {
+const ProblemItem = ({
+  problem,
+  checked,
+  isIncomplete,
+  onToggle,
+}: ProblemItemProps) => {
   const { t } = useTranslation(["home", "common"]);
   return (
     <div
@@ -46,7 +52,11 @@ const ProblemItem = ({ problem, checked, onToggle }: ProblemItemProps) => {
         aria-label={t("home:preview.problems_panel.selectProblem")}
       />
       <div className="flex-shrink-0 mt-0.5">
-        <XCircle size={16} className="text-red-500" />
+        {isIncomplete ? (
+          <AlertTriangle size={16} className="text-amber-500" />
+        ) : (
+          <XCircle size={16} className="text-red-500" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
@@ -147,10 +157,11 @@ const ProblemsSummary = ({
   const { t } = useTranslation(["home", "common"]);
   const { problems } = problemReport;
   const totalErrors = problems.length;
+  const isIncomplete = problemReport.outcome === "incomplete";
 
   // Keep stream hook mounted; actual fix action is provided via onFixSelected
 
-  if (problems.length === 0) {
+  if (problems.length === 0 && !isIncomplete) {
     return (
       <div className="flex flex-col items-center justify-center h-32 text-center">
         <p className="mt-6 text-sm font-medium text-muted-foreground mb-3">
@@ -168,14 +179,21 @@ const ProblemsSummary = ({
   return (
     <div className="flex items-center justify-between px-4 py-3 bg-[var(--background-darkest)] border-b border-border">
       <div className="flex items-center gap-4">
-        {totalErrors > 0 && (
+        {isIncomplete ? (
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500" />
+            <span className="text-sm font-medium">
+              {t("home:preview.problems_panel.typeCheckIncomplete")}
+            </span>
+          </div>
+        ) : totalErrors > 0 ? (
           <div className="flex items-center gap-2">
             <XCircle size={16} className="text-red-500" />
             <span className="text-sm font-medium">
               {t("home:preview.problems_panel.error", { count: totalErrors })}
             </span>
           </div>
-        )}
+        ) : null}
       </div>
       <div className="flex items-center gap-2">
         <RecheckButton appId={appId} onBeforeRecheck={onClearAll} />
@@ -347,6 +365,7 @@ export function _Problems() {
               key={selKey}
               problem={problem}
               checked={checked}
+              isIncomplete={problemReport.outcome === "incomplete"}
               onToggle={() => {
                 setSelectedKeys((prev) => {
                   const next = new Set(prev);

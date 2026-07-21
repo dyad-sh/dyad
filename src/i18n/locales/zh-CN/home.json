@@ -254,6 +254,7 @@
       "noProblemsFound": "未发现问题",
       "runChecks": "运行检查",
       "checkingProblems": "检查中...",
+      "typeCheckIncomplete": "类型检查未完成",
       "noAppSelectedTitle": "未选择应用",
       "noAppSelectedDescription": "选择一个应用以查看 TypeScript 问题和诊断信息。",
       "noProblemsReportTitle": "无问题报告",

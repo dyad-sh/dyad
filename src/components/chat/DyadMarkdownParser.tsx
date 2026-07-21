@@ -485,7 +485,12 @@ function getState({
   inProgress?: boolean;
   explicitState?: string;
 }): CustomTagState {
-  if (explicitState === "aborted" || explicitState === "finished") {
+  if (
+    explicitState === "aborted" ||
+    explicitState === "error" ||
+    explicitState === "finished" ||
+    explicitState === "warning"
+  ) {
     return explicitState;
   }
   if (explicitState === "in-progress" || explicitState === "pending") {

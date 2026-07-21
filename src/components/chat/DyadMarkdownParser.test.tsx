@@ -54,6 +54,36 @@ describe("DyadMarkdownParser dyad-status", () => {
     expect(screen.getByText("Supabase functions failed")).toBeTruthy();
     expect(statusCard.className).toContain("border-l-red-500");
   });
+
+  it("renders incomplete type checks as amber warnings", () => {
+    const { container } = render(
+      <DyadMarkdownParser
+        content={
+          '<dyad-status title="Type check incomplete" state="warning">Fix the configuration error, then rerun type checking.</dyad-status>'
+        }
+      />,
+    );
+
+    const statusCard = screen.getByRole("button");
+
+    expect(screen.getByText("Type check incomplete")).toBeTruthy();
+    expect(statusCard.className).toContain("border-l-amber-500");
+    expect(container.querySelector(".text-amber-600")).toBeTruthy();
+  });
+
+  it("keeps completed checks with source errors in the green finished state", () => {
+    const { container } = render(
+      <DyadMarkdownParser
+        content={
+          '<dyad-status title="Type errors found" state="finished">Found 1 type error.</dyad-status>'
+        }
+      />,
+    );
+
+    expect(screen.getByText("Type errors found")).toBeTruthy();
+    expect(container.querySelector(".text-green-600")).toBeTruthy();
+    expect(container.querySelector(".text-red-600")).toBeNull();
+  });
 });
 
 describe("DyadMarkdownParser dyad-command", () => {

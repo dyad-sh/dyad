@@ -165,6 +165,30 @@ function getPathApi(filePath: string): typeof path.posix | typeof path.win32 {
   return isWindowsPath(filePath) ? path.win32 : path.posix;
 }
 
+function isTypeScriptConfigDiagnostic(
+  problem: ParsedDiagnostic,
+  configPath: string,
+): boolean {
+  const pathApi = getPathApi(problem.absoluteFilePath);
+  const normalizedProblemPath = pathApi.normalize(problem.absoluteFilePath);
+  const normalizedConfigPath = pathApi.normalize(configPath);
+
+  if (
+    isWindowsPath(normalizedProblemPath) &&
+    normalizedProblemPath.toLowerCase() === normalizedConfigPath.toLowerCase()
+  ) {
+    return true;
+  }
+
+  if (normalizedProblemPath === normalizedConfigPath) {
+    return true;
+  }
+
+  return /^tsconfig(?:\..+)?\.json$/i.test(
+    pathApi.basename(normalizedProblemPath),
+  );
+}
+
 function isPathInside(rootPath: string, candidatePath: string): boolean {
   const pathApi = getPathApi(rootPath);
   const relative = pathApi.relative(rootPath, candidatePath);
@@ -488,7 +512,7 @@ export async function runTypeScriptCheck({
         );
       }
       if (result.code === 0) {
-        return { problems: [] };
+        return { problems: [], outcome: "passed" };
       }
       if (result.code === null) {
         throw new Error("TypeScript process exited without a status code");
@@ -509,7 +533,16 @@ export async function runTypeScriptCheck({
           preview,
         );
       }
-      return await addSnippets(parsed.problems, appPath);
+      const outcome = parsed.problems.some((problem) =>
+        isTypeScriptConfigDiagnostic(problem, configPath),
+      )
+        ? "incomplete"
+        : "errors";
+
+      return {
+        ...(await addSnippets(parsed.problems, appPath)),
+        outcome,
+      };
     } catch (error) {
       throw toProblemReportError(error);
     }

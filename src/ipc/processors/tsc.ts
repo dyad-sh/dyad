@@ -152,6 +152,11 @@ interface TypeScriptCli {
   entryPath: string;
 }
 
+export function isMissingPathError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 function normalizePath(filePath: string): string {
   return filePath.replaceAll("\\", "/");
 }
@@ -363,7 +368,10 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
       await fs.access(candidate);
       packageJsonPath = candidate;
       break;
-    } catch {
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        throw error;
+      }
       const parentPath = path.dirname(currentPath);
       if (parentPath === currentPath) {
         break;

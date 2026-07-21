@@ -12,6 +12,7 @@ import {
   clearTypeScriptVersionCacheForTests,
   parseTypeScriptDiagnostics,
   getTypeCheckPreconditionKind,
+  isMissingPathError,
   runTypeScriptCheck,
   toProblemReportError,
   TypeCheckPreconditionError,
@@ -207,6 +208,15 @@ describe("parseTypeScriptDiagnostics", () => {
       code: 2322,
       message: "Type mismatch",
     });
+  });
+});
+
+describe("isMissingPathError", () => {
+  it("only recognizes missing-path filesystem errors", () => {
+    expect(isMissingPathError({ code: "ENOENT" })).toBe(true);
+    expect(isMissingPathError({ code: "ENOTDIR" })).toBe(true);
+    expect(isMissingPathError({ code: "EACCES" })).toBe(false);
+    expect(isMissingPathError(new Error("unknown"))).toBe(false);
   });
 });
 

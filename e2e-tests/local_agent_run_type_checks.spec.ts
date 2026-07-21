@@ -131,7 +131,7 @@ testSkipIfWindows(
     await po.appManagement.ensurePnpmInstall();
     await po.appManagement.ensureCodeExplorerReady();
 
-    // Seed the main process's package-resolution cache with TypeScript 5.
+    // Establish a successful TypeScript 5 baseline before Rebuild replaces it.
     await po.sendPrompt("tc=local-agent/run-type-checks-happy-path");
     await expect(
       po.page.getByRole("button", { name: /Type check passed/ }),
@@ -145,6 +145,9 @@ testSkipIfWindows(
       packageJsonPath,
       `${JSON.stringify(packageJson, null, 2)}\n`,
     );
+    // CI freezes existing lockfiles, so remove the now-stale fixture lockfile
+    // and let Rebuild generate one for the replacement dependency graph.
+    await fs.rm(path.join(appPath, "pnpm-lock.yaml"));
 
     await po.previewPanel.clickRebuild();
     await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();

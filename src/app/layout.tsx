@@ -21,6 +21,7 @@ import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
+import { AppRunProvider } from "@/app_run/AppRunProvider";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -30,6 +31,14 @@ import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <AppRunProvider>
+      <RootLayoutContent>{children}</RootLayoutContent>
+    </AppRunProvider>
+  );
+}
+
+function RootLayoutContent({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
   // Subscribe to app output events once at the root level to avoid duplicates
   useAppOutputSubscription();

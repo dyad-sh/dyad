@@ -66,6 +66,7 @@ export class AppRunController {
   private pendingBatches = 0;
   private processing = false;
   private readonly pendingEvents: RunEvent[] = [];
+  private disposed = false;
 
   constructor(private readonly options: AppRunControllerOptions) {}
 
@@ -76,6 +77,9 @@ export class AppRunController {
   getSnapshot = (): RunState => this.state;
 
   subscribe = (listener: () => void): (() => void) => {
+    if (this.disposed) {
+      return () => undefined;
+    }
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -90,6 +94,9 @@ export class AppRunController {
    * in the meantime.
    */
   dispatch(input: RunOperationInput): Promise<void> {
+    if (this.disposed) {
+      return Promise.resolve();
+    }
     const runId = ++this.epoch;
     const settled = new Promise<void>((resolve) => {
       this.waiters.set(runId, resolve);
@@ -100,6 +107,9 @@ export class AppRunController {
 
   /** Send a producer event derived from app output. */
   send(input: RunProducerInput): void {
+    if (this.disposed) {
+      return;
+    }
     if (input.type === "PROXY_READY") {
       this.process({
         type: "PROXY_READY",
@@ -120,6 +130,9 @@ export class AppRunController {
    * outer event's commands.
    */
   private process(event: RunEvent): void {
+    if (this.disposed) {
+      return;
+    }
     this.pendingEvents.push(event);
     if (this.processing) {
       return;
@@ -139,6 +152,9 @@ export class AppRunController {
   }
 
   private processOne(event: RunEvent): void {
+    if (this.disposed) {
+      return;
+    }
     if (RUN_ID_TAGGED_EVENTS.has(event.type) && "runId" in event) {
       // Settle the dispatch promise even for superseded operations…
       const resolve = this.waiters.get(event.runId);
@@ -162,10 +178,23 @@ export class AppRunController {
     }
     if (changed) {
       this.options.onStateChange?.(this.state);
-      for (const listener of [...this.listeners]) {
+      if (this.disposed) {
+        return;
+      }
+      for (const listener of this.listeners) {
         listener();
       }
     }
+  }
+
+  /** Permanently detaches this controller from queued and late work. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.pendingEvents.length = 0;
+    for (const resolve of this.waiters.values()) resolve();
+    this.waiters.clear();
+    this.listeners.clear();
   }
 
   private enqueue(commands: RunCommand[]): void {
@@ -173,6 +202,7 @@ export class AppRunController {
     const runBatch = async () => {
       try {
         for (const command of commands) {
+          if (this.disposed) break;
           await this.options.executor.execute(command, emit);
         }
       } catch (error) {

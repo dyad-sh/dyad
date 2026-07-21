@@ -7,28 +7,28 @@ import {
   setPreviewAppExitForAppAtom,
   setPreviewErrorForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { showError, showInputRequest } from "@/lib/toast";
 import {
   shouldShowPnpmMinimumReleaseAgeWarning,
   type RuntimeMode2,
 } from "@/lib/schemas";
-import { getAppRunController } from "@/app_run/registry";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 import { useAppRunState } from "./useAppRun";
 import { useSettings } from "./useSettings";
 
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
 
 export function useRebuildAppAfterPnpmInstall() {
-  const store = useStore();
+  const manager = useAppRunManager();
 
   return useCallback(
     (appId: number) =>
-      getAppRunController(store, appId).dispatch({
+      manager.dispatch(appId, {
         type: "REBUILD",
         startedAt: Date.now(),
       }),
-    [store],
+    [manager],
   );
 }
 
@@ -39,7 +39,7 @@ export function useRebuildAppAfterPnpmInstall() {
  */
 export function useAppOutputSubscription() {
   const { settings } = useSettings();
-  const store = useStore();
+  const manager = useAppRunManager();
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
   const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
@@ -91,7 +91,7 @@ export function useAppOutputSubscription() {
           const proxyUrl = proxyUrlMatch[1];
           const originalUrl = originalUrlMatch && originalUrlMatch[1];
           const mode = (modeMatch?.[1] as RuntimeMode2 | undefined) ?? "host";
-          getAppRunController(store, output.appId).send({
+          manager.send(output.appId, {
             type: "PROXY_READY",
             url: {
               appUrl: proxyUrl,
@@ -102,7 +102,7 @@ export function useAppOutputSubscription() {
         }
       }
     },
-    [store],
+    [manager],
   );
 
   const processAppOutput = useCallback(
@@ -173,7 +173,7 @@ export function useAppOutputSubscription() {
             timestamp: output.timestamp ?? Date.now(),
           },
         });
-        getAppRunController(store, output.appId).send({
+        manager.send(output.appId, {
           type: "APP_EXIT",
           exitCode: output.exitCode ?? null,
           timestamp: output.timestamp ?? Date.now(),
@@ -200,7 +200,7 @@ export function useAppOutputSubscription() {
         output.message.includes("hmr update") &&
         output.message.includes("[vite]")
       ) {
-        getAppRunController(store, output.appId).send({
+        manager.send(output.appId, {
           type: "HMR_DETECTED",
         });
       }
@@ -231,7 +231,7 @@ export function useAppOutputSubscription() {
       setPackageManagerWarning,
       setPreviewAppExit,
       setPreviewError,
-      store,
+      manager,
     ],
   );
 
@@ -274,18 +274,18 @@ export function useAppOutputSubscription() {
 }
 
 export function useRunApp() {
-  const store = useStore();
+  const manager = useAppRunManager();
   const appId = useAtomValue(selectedAppIdAtom);
   const runState = useAppRunState(appId);
   const loading = runState.type === "starting" || runState.type === "stopping";
 
   const runApp = useCallback(
     (appId: number) =>
-      getAppRunController(store, appId).dispatch({
+      manager.dispatch(appId, {
         type: "START",
         startedAt: Date.now(),
       }),
-    [store],
+    [manager],
   );
 
   const stopApp = useCallback(
@@ -293,12 +293,12 @@ export function useRunApp() {
       if (appId === null) {
         return;
       }
-      await getAppRunController(store, appId).dispatch({
+      await manager.dispatch(appId, {
         type: "STOP",
         startedAt: Date.now(),
       });
     },
-    [store],
+    [manager],
   );
 
   const restartApp = useCallback(
@@ -315,21 +315,21 @@ export function useRunApp() {
       if (targetAppId === null) {
         return;
       }
-      await getAppRunController(store, targetAppId).dispatch({
+      await manager.dispatch(targetAppId, {
         type: "RESTART",
         startedAt: Date.now(),
         options: { removeNodeModules, recreateSandbox },
       });
     },
-    [appId, store],
+    [appId, manager],
   );
 
   const refreshAppIframe = useCallback(async () => {
     if (appId === null) {
       return;
     }
-    getAppRunController(store, appId).send({ type: "MANUAL_RELOAD" });
-  }, [appId, store]);
+    manager.send(appId, { type: "MANUAL_RELOAD" });
+  }, [appId, manager]);
 
   return {
     loading,

@@ -8,7 +8,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useAtom, useSetAtom, useStore } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import {
@@ -30,7 +30,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { clearTestRuntimeForAppAtom } from "@/atoms/testRuntimeAtoms";
 import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
-import { disposeAppRunController } from "@/app_run/registry";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -45,6 +45,7 @@ import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
 
 export default function AppsPage() {
   const versionPreviewManager = useVersionPreviewManager();
+  const appRunManager = useAppRunManager();
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const { collections, isLoading: collectionsLoading } = useAppCollections();
@@ -81,7 +82,6 @@ export default function AppsPage() {
   }, [collections, searchQuery]);
   const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
   const clearTestRuntimeForApp = useSetAtom(clearTestRuntimeForAppAtom);
-  const jotaiStore = useStore();
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -163,7 +163,7 @@ export default function AppsPage() {
         versionPreviewManager.disposeApp(appId);
         clearPreviewRuntimeForApp(appId);
         clearTestRuntimeForApp(appId);
-        disposeAppRunController(jotaiStore, appId);
+        appRunManager.disposeKey(appId);
       }
       if (failed.length > 0) {
         const failedNames = failed

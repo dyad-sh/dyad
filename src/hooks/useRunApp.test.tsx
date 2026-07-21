@@ -19,10 +19,8 @@ import {
   useRebuildAppAfterPnpmInstall,
   useRunApp,
 } from "@/hooks/useRunApp";
-import {
-  disposeAppRunController,
-  getAppRunController,
-} from "@/app_run/registry";
+import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { AppRunManager } from "@/app_run/manager";
 
 const {
   addLogMock,
@@ -106,12 +104,17 @@ vi.mock("./useSettings", () => ({
 
 function makeWrapper(appId: number) {
   const store = createStore();
+  const manager = new AppRunManager(store);
   store.set(selectedAppIdAtom, appId);
 
   return {
     store,
     Wrapper({ children }: PropsWithChildren) {
-      return <Provider store={store}>{children}</Provider>;
+      return (
+        <Provider store={store}>
+          <AppRunProvider manager={manager}>{children}</AppRunProvider>
+        </Provider>
+      );
     },
   };
 }
@@ -677,15 +680,6 @@ describe("useAppOutputSubscription", () => {
     });
 
     unmount();
-  });
-
-  it("disposes a deleted app's controller from the registry", () => {
-    const { store } = makeWrapper(1);
-    const controller = getAppRunController(store, 1);
-    expect(getAppRunController(store, 1)).toBe(controller);
-
-    disposeAppRunController(store, 1);
-    expect(getAppRunController(store, 1)).not.toBe(controller);
   });
 
   it("keeps pnpm rebuild loading scoped to the rebuilt app", async () => {

@@ -6,7 +6,6 @@ import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
-import { restartAppWithStore } from "@/hooks/useRunApp";
 import type { VersionPreviewRuntime } from "./controller";
 
 type JotaiStore = ReturnType<typeof createStore>;
@@ -17,12 +16,14 @@ const recoveryToastId = (appId: number) => `version-preview-recovery-${appId}`;
 export interface VersionPreviewAdapterDeps {
   queryClient: QueryClient;
   store: JotaiStore;
+  restartApp: (appId: number) => Promise<void>;
   navigateToChat?: (input: { appId: number; chatId: number }) => void;
 }
 
 export function createVersionPreviewRuntime({
   queryClient,
   store,
+  restartApp,
   navigateToChat,
 }: VersionPreviewAdapterDeps): VersionPreviewRuntime {
   async function runCheckout(
@@ -87,7 +88,7 @@ export function createVersionPreviewRuntime({
     }
 
     if (result.runtimeAction === "restart") {
-      effects.push(restartAppWithStore(store, appId));
+      effects.push(restartApp(appId));
     }
 
     const outcomes = await Promise.allSettled(effects);

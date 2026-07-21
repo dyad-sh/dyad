@@ -371,9 +371,14 @@ describe("runTypeScriptCheck", () => {
         JSON.stringify({ name: "typescript", version }),
       );
       await fs.writeFile(path.join(packagePath, "lib", "tsc.js"), "");
+      const linkTarget =
+        process.platform === "win32"
+          ? packagePath
+          : path.relative(nodeModulesPath, packagePath);
       await fs.symlink(
-        path.relative(nodeModulesPath, packagePath),
+        linkTarget,
         path.join(nodeModulesPath, "typescript"),
+        process.platform === "win32" ? "junction" : "dir",
       );
       return packagePath;
     }

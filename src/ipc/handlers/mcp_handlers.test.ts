@@ -27,6 +27,7 @@ type Row = {
   enabled: boolean;
   oauthEnabled: boolean;
   oauthState: string | null;
+  catalogSlug: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -76,32 +77,49 @@ vi.mock("@/db", () => ({
         }),
       }),
     })),
+    select: vi.fn(() => ({
+      from: () => {
+        const all = [...dbStore.values()];
+        return Object.assign(Promise.resolve(all), {
+          where: (cond: { value?: unknown; notNull?: boolean }) =>
+            Promise.resolve(
+              cond.notNull
+                ? all.filter((r) => r.catalogSlug !== null)
+                : all.filter((r) => r.catalogSlug === cond.value),
+            ),
+        });
+      },
+    })),
     insert: vi.fn(() => ({
-      values: (values: Record<string, unknown>) => ({
-        returning: () => {
-          lastInsertPayload = values;
-          // Hand back a synthetic row that looks like what drizzle
-          // would: input values + a numeric id + timestamps. The
-          // handler runs `toMcpServer` on this, so all schema-
-          // required fields must be present.
-          const synthetic: Row = {
-            id: 1000,
-            name: String(values.name ?? "synthetic"),
-            transport: String(values.transport ?? "http"),
-            command: (values.command as string | null) ?? null,
-            args: values.args ?? null,
-            envJson: values.envJson ?? null,
-            headersJson: values.headersJson ?? null,
-            url: (values.url as string | null) ?? null,
-            enabled: Boolean(values.enabled),
-            oauthEnabled: Boolean(values.oauthEnabled),
-            oauthState: (values.oauthState as string | null) ?? null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
-          return Promise.resolve([synthetic]);
-        },
-      }),
+      values: (values: Record<string, unknown>) => {
+        const build = () => ({
+          returning: () => {
+            lastInsertPayload = values;
+            // Hand back a synthetic row that looks like what drizzle
+            // would: input values + a numeric id + timestamps. The
+            // handler runs `toMcpServer` on this, so all schema-
+            // required fields must be present.
+            const synthetic: Row = {
+              id: 1000,
+              name: String(values.name ?? "synthetic"),
+              transport: String(values.transport ?? "http"),
+              command: (values.command as string | null) ?? null,
+              args: values.args ?? null,
+              envJson: values.envJson ?? null,
+              headersJson: values.headersJson ?? null,
+              url: (values.url as string | null) ?? null,
+              enabled: Boolean(values.enabled),
+              oauthEnabled: Boolean(values.oauthEnabled),
+              oauthState: (values.oauthState as string | null) ?? null,
+              catalogSlug: (values.catalogSlug as string | null) ?? null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+            return Promise.resolve([synthetic]);
+          },
+        });
+        return { ...build(), onConflictDoNothing: () => build() };
+      },
     })),
   },
 }));
@@ -115,6 +133,13 @@ vi.mock("drizzle-orm", () => ({
     lastUpdateTargetId = value;
     return { _col, value };
   },
+  isNotNull: (_col: unknown) => ({ notNull: true }),
+}));
+
+let catalogEntries: unknown[] = [];
+vi.mock("@/ipc/shared/remote_mcp_catalog", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getRemoteMcpCatalog: vi.fn(async () => catalogEntries),
 }));
 
 const getClientMock = vi.fn();
@@ -163,6 +188,7 @@ function seedRow(row: Partial<Row> & { id: number }): void {
     enabled: row.enabled ?? true,
     oauthEnabled: row.oauthEnabled ?? true,
     oauthState: row.oauthState ?? null,
+    catalogSlug: row.catalogSlug ?? null,
     createdAt: row.createdAt ?? new Date(),
     updatedAt: row.updatedAt ?? new Date(),
   };
@@ -279,5 +305,89 @@ describe("mcp listTools handler", () => {
     const result = await invoke("mcp:list-tools", 2);
     expect(result).toEqual({ tools: [], status: "unauthorized" });
     expect(failingTools).toHaveBeenCalled();
+  });
+});
+
+describe("mcp catalog handlers", () => {
+  const FIGMA = {
+    slug: "figma",
+    name: "Figma",
+    transport: "http",
+    url: "https://mcp.figma.com/mcp",
+    oauth: { required: true },
+  };
+  const CONTEXT7 = {
+    slug: "context7",
+    name: "Context7",
+    transport: "http",
+    url: "https://mcp.context7.com/mcp",
+    headers: { "X-Test": "1" },
+  };
+
+  beforeEach(() => {
+    dbStore.clear();
+    lastInsertPayload = null;
+    catalogEntries = [FIGMA, CONTEXT7];
+    vi.clearAllMocks();
+  });
+
+  it("lists catalog entries with already-added slugs", async () => {
+    seedRow({ id: 1, catalogSlug: "figma" });
+    seedRow({ id: 2 }); // manual server, no slug
+    const result = await invoke<{ entries: unknown[]; addedSlugs: string[] }>(
+      "mcp:list-catalog",
+      undefined,
+    );
+    expect(result.entries).toHaveLength(2);
+    expect(result.addedSlugs).toEqual(["figma"]);
+  });
+
+  it("adds a catalog entry with oauth enabled and provenance slug", async () => {
+    const created = await invoke<{ catalogSlug: string | null }>(
+      "mcp:add-from-catalog",
+      { slug: "figma" },
+    );
+    expect(created.catalogSlug).toBe("figma");
+    expect(lastInsertPayload).toMatchObject({
+      name: "Figma",
+      transport: "http",
+      url: "https://mcp.figma.com/mcp",
+      enabled: true,
+      oauthEnabled: true,
+      catalogSlug: "figma",
+    });
+  });
+
+  it("maps oauth: none entries to oauthEnabled: false and keeps headers", async () => {
+    await invoke("mcp:add-from-catalog", { slug: "context7" });
+    expect(lastInsertPayload).toMatchObject({
+      oauthEnabled: false,
+      headersJson: { "X-Test": "1" },
+    });
+  });
+
+  it("returns the existing server when the slug was already added", async () => {
+    seedRow({ id: 7, catalogSlug: "figma" });
+    const result = await invoke<{ id: number }>("mcp:add-from-catalog", {
+      slug: "figma",
+    });
+    expect(result.id).toBe(7);
+    expect(lastInsertPayload).toBeNull();
+  });
+
+  it("rejects unknown slugs", async () => {
+    await expect(
+      invoke("mcp:add-from-catalog", { slug: "not-in-catalog" }),
+    ).rejects.toThrow(/Unknown catalog entry/);
+  });
+
+  it("reports a connectivity error when the catalog is unreachable", async () => {
+    // Transient failure after the user already saw a populated catalog:
+    // the fetch now returns []. The add should read as a connectivity
+    // problem, not an unknown slug.
+    catalogEntries = [];
+    await expect(
+      invoke("mcp:add-from-catalog", { slug: "figma" }),
+    ).rejects.toThrow(/Could not reach the plugin catalog/);
   });
 });

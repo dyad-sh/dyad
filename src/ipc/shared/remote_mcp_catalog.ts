@@ -1,0 +1,128 @@
+import log from "electron-log";
+import { z } from "zod";
+import {
+  McpCatalogEntrySchema,
+  type McpCatalogEntry,
+} from "@/ipc/types/mcp_catalog";
+
+const logger = log.scope("remote_mcp_catalog");
+
+const REMOTE_MCP_CATALOG_TIMEOUT_MS = 5_000;
+const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
+const MAX_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const FAILURE_CACHE_TTL_MS = 30 * 1000;
+
+function getRemoteMcpCatalogUrl() {
+  if (process.env.DYAD_MCP_CATALOG_URL) {
+    return process.env.DYAD_MCP_CATALOG_URL;
+  }
+
+  if (process.env.E2E_TEST_BUILD === "true" && process.env.FAKE_LLM_PORT) {
+    return `http://localhost:${process.env.FAKE_LLM_PORT}/api/mcp-catalog`;
+  }
+
+  return "https://api.dyad.sh/v1/mcp-catalog";
+}
+
+// The envelope is parsed strictly but entries are validated one by
+// one: a single bad entry drops out instead of taking down the whole
+// catalog.
+const McpCatalogResponseSchema = z.object({
+  expiresAt: z.string().datetime().optional(),
+  servers: z.array(z.unknown()),
+});
+
+type McpCatalogCacheEntry = {
+  entries: McpCatalogEntry[];
+  expiresAt: number;
+};
+
+let catalogCache: McpCatalogCacheEntry | null = null;
+let catalogFetchPromise: Promise<McpCatalogEntry[]> | null = null;
+
+function parseEntries(raw: unknown[]): McpCatalogEntry[] {
+  const entries: McpCatalogEntry[] = [];
+  const seen = new Set<string>();
+  for (const candidate of raw) {
+    const result = McpCatalogEntrySchema.safeParse(candidate);
+    if (!result.success) {
+      logger.debug("Dropping catalog entry that failed validation");
+      continue;
+    }
+    if (seen.has(result.data.slug)) {
+      logger.debug(`Dropping catalog entry with duplicate slug`);
+      continue;
+    }
+    seen.add(result.data.slug);
+    entries.push(result.data);
+  }
+  return entries;
+}
+
+async function fetchRemoteMcpCatalog(): Promise<{
+  entries: McpCatalogEntry[];
+  expiresAt: number;
+}> {
+  const response = await fetch(getRemoteMcpCatalogUrl(), {
+    signal: AbortSignal.timeout(REMOTE_MCP_CATALOG_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `MCP catalog request failed with status ${response.status}`,
+    );
+  }
+  const parsed = McpCatalogResponseSchema.parse(await response.json());
+  return {
+    entries: parseEntries(parsed.servers),
+    // Cap a server-supplied expiry so a bad value can't pin stale data
+    // for the whole process lifetime.
+    expiresAt: parsed.expiresAt
+      ? Math.min(Date.parse(parsed.expiresAt), Date.now() + MAX_CACHE_TTL_MS)
+      : Date.now() + DEFAULT_CACHE_TTL_MS,
+  };
+}
+
+/**
+ * The curated MCP server catalog, or an empty list when it can't be
+ * fetched — callers treat "no catalog" as a normal state (offline,
+ * endpoint not deployed yet).
+ */
+export async function getRemoteMcpCatalog(): Promise<McpCatalogEntry[]> {
+  if (catalogCache && catalogCache.expiresAt > Date.now()) {
+    return catalogCache.entries;
+  }
+
+  if (!catalogFetchPromise) {
+    catalogFetchPromise = (async () => {
+      try {
+        const { entries, expiresAt } = await fetchRemoteMcpCatalog();
+        // Honor the server expiry only when at least one entry
+        // survived. An empty result (200 with no servers, or every
+        // entry dropped by parsing) is treated like a failure so a
+        // transient bad response isn't pinned for the full TTL.
+        catalogCache = {
+          entries,
+          expiresAt:
+            entries.length > 0 ? expiresAt : Date.now() + FAILURE_CACHE_TTL_MS,
+        };
+        return entries;
+      } catch (error) {
+        logger.warn("Failed to fetch MCP catalog", error);
+        catalogCache = {
+          entries: [],
+          expiresAt: Date.now() + FAILURE_CACHE_TTL_MS,
+        };
+        return [];
+      } finally {
+        catalogFetchPromise = null;
+      }
+    })();
+  }
+
+  return catalogFetchPromise;
+}
+
+export function clearMcpCatalogCacheForTests() {
+  catalogCache = null;
+  catalogFetchPromise = null;
+}

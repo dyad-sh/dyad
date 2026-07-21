@@ -1,7 +1,8 @@
 import log from "electron-log";
+import { getRemoteMcpCatalog } from "@/ipc/shared/remote_mcp_catalog";
 import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
@@ -89,6 +90,7 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
     // `oauthStateHasTokens` checks for a real access token.
     oauthConnected: oauthStateHasTokens(dbServer.oauthState),
     oauthCallbackPort: dbServer.oauthCallbackPort,
+    catalogSlug: dbServer.catalogSlug,
     createdAt: dbServer.createdAt,
     updatedAt: dbServer.updatedAt,
   };
@@ -99,6 +101,82 @@ export function registerMcpHandlers() {
   createTypedHandler(mcpContracts.listServers, async () => {
     const servers = await db.select().from(mcpServers);
     return servers.map(toMcpServer);
+  });
+
+  createTypedHandler(mcpContracts.listCatalog, async () => {
+    // The catalog fetch and the added-slugs read are independent.
+    const [entries, rows] = await Promise.all([
+      getRemoteMcpCatalog(),
+      db
+        .select({ catalogSlug: mcpServers.catalogSlug })
+        .from(mcpServers)
+        .where(isNotNull(mcpServers.catalogSlug)),
+    ]);
+    const addedSlugs = rows
+      .map((r) => r.catalogSlug)
+      .filter((slug): slug is string => slug !== null);
+    return { entries, addedSlugs };
+  });
+
+  createTypedHandler(mcpContracts.addFromCatalog, async (_, { slug }) => {
+    const entries = await getRemoteMcpCatalog();
+    // The user reached this from a populated catalog, so an empty list
+    // here means the fetch failed rather than the slug being unknown.
+    // Surface that as a connectivity problem instead of a not-found.
+    if (entries.length === 0) {
+      throw new DyadError(
+        "Could not reach the plugin catalog. Please check your connection and try again.",
+        DyadErrorKind.Precondition,
+      );
+    }
+    const entry = entries.find((e) => e.slug === slug);
+    if (!entry) {
+      throw new DyadError(
+        `Unknown catalog entry: ${slug}`,
+        DyadErrorKind.NotFound,
+      );
+    }
+
+    // Adding the same entry twice returns the existing server. The
+    // unique index on catalog_slug makes this safe against concurrent
+    // adds: onConflictDoNothing skips the duplicate insert, and we read
+    // the winning row back.
+    const existing = await db
+      .select()
+      .from(mcpServers)
+      .where(eq(mcpServers.catalogSlug, slug));
+    if (existing.length > 0) {
+      return toMcpServer(existing[0]);
+    }
+
+    const [created] = await db
+      .insert(mcpServers)
+      .values({
+        name: entry.name,
+        transport: "http",
+        url: entry.url,
+        headersJson: entry.headers ?? null,
+        enabled: true,
+        oauthEnabled: entry.oauth != null,
+        oauthScope: entry.oauth?.scope ?? null,
+        catalogSlug: entry.slug,
+      })
+      .onConflictDoNothing({ target: mcpServers.catalogSlug })
+      .returning();
+    if (!created) {
+      const [row] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.catalogSlug, slug));
+      if (!row) {
+        throw new DyadError(
+          `Unknown catalog entry: ${slug}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      return toMcpServer(row);
+    }
+    return toMcpServer(created);
   });
 
   createTypedHandler(mcpContracts.createServer, async (_, params) => {

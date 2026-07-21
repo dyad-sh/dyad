@@ -15,6 +15,7 @@ import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog"
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import type { McpToolConsent } from "@/ipc/types";
+import { CatalogBadge } from "./CatalogBadge";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
 import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
 
@@ -115,6 +116,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
                 <span className="truncate">{s.name}</span>
+                {s.catalogSlug && <CatalogBadge size="md" />}
                 {s.oauthEnabled && (
                   <span
                     className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${

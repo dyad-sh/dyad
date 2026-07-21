@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { McpCatalogEntrySchema } from "./mcp_catalog";
 import {
   defineContract,
   defineEvent,
@@ -39,6 +40,8 @@ export const McpServerSchema = z.object({
   oauthConnected: z.boolean(),
   // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
   oauthCallbackPort: z.number().nullable(),
+  // Set when the server was added from the curated catalog.
+  catalogSlug: z.string().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -204,6 +207,25 @@ export const mcpContracts = {
     channel: "mcp:list-servers",
     input: z.void(),
     output: z.array(McpServerSchema),
+  }),
+
+  listCatalog: defineContract({
+    channel: "mcp:list-catalog",
+    input: z.void(),
+    output: z.object({
+      entries: z.array(McpCatalogEntrySchema),
+      // Slugs that already have a configured server row.
+      addedSlugs: z.array(z.string()),
+    }),
+  }),
+
+  addFromCatalog: defineContract({
+    channel: "mcp:add-from-catalog",
+    // Slug only: the main process resolves it against the fetched
+    // catalog, so the renderer can't inject arbitrary server configs
+    // through this channel.
+    input: z.object({ slug: z.string().min(1) }),
+    output: McpServerSchema,
   }),
 
   createServer: defineContract({

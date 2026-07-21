@@ -15,3 +15,4 @@ export { Settings } from "./Settings";
 export { AppManagement } from "./AppManagement";
 export { PromptLibrary } from "./PromptLibrary";
 export { Plugins } from "./Plugins";
+export { Catalog } from "./Catalog";

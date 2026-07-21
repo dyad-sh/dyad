@@ -322,6 +322,7 @@ export const queryKeys = {
         ["mcp", "tools-by-server", serverIds] as const,
     },
     consents: ["mcp", "consents"] as const,
+    catalog: ["mcp", "catalog"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

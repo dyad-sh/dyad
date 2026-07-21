@@ -393,13 +393,6 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
   }
 
   const entryPath = path.resolve(packagePath, binPath);
-  if (!isPathInside(packagePath, entryPath)) {
-    throw new TypeCheckPreconditionError(
-      "typescript-not-found",
-      `Local TypeScript CLI path escapes its package: ${binPath}`,
-    );
-  }
-
   try {
     await fs.access(entryPath);
   } catch (error) {

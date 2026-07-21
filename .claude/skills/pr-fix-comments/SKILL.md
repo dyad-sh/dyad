@@ -155,7 +155,7 @@ Before categorizing review comments, read `rules/product-principles.md`. Use the
 5. **After processing all comments, verify and commit changes:**
 
    If any code changes were made:
-   - Run `/dyad:lint` to ensure code passes all checks
+   - Run `npm run fmt`, `npm run lint`, and `npm run ts` to ensure code passes all checks
    - Stage and commit the changes:
 
      ```

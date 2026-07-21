@@ -56,6 +56,7 @@ function toPreviewError(error: unknown): PreviewError {
 export class VersionPreviewController {
   private state: PreviewState = CLOSED_STATE;
   private readonly listeners = new Set<() => void>();
+  private disposed = false;
   /** Bumped per resolve dispatch; stale resolve completions are dropped. */
   private resolveEpoch = 0;
   /** Defense in depth: the state graph already serializes mutations. */
@@ -69,6 +70,9 @@ export class VersionPreviewController {
   getSnapshot = (): PreviewState => this.state;
 
   subscribe = (listener: () => void): (() => void) => {
+    if (this.disposed) {
+      return () => undefined;
+    }
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -76,6 +80,9 @@ export class VersionPreviewController {
   };
 
   send = (event: PreviewEvent): void => {
+    if (this.disposed) {
+      return;
+    }
     const previous = this.state;
     const result = transition(previous, event);
     recordVersionPreviewTransition({
@@ -95,6 +102,13 @@ export class VersionPreviewController {
       }
     }
   };
+
+  /** Permanently detaches this controller from late async completions. */
+  dispose(): void {
+    this.disposed = true;
+    this.resolveEpoch += 1;
+    this.listeners.clear();
+  }
 
   private execute(command: PreviewCommand): void {
     switch (command.type) {

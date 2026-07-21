@@ -6,6 +6,8 @@ import {
 } from "./controller";
 import {
   ensureVersionPreviewController,
+  disposeVersionPreviewController,
+  getVersionPreviewController,
   getVersionPreviewRecoveryEntries,
   initVersionPreviewRuntime,
   notifyVersionPreviewAppChanged,
@@ -354,6 +356,44 @@ describe("registry", () => {
       appId: APP_ID,
       branch: "feature/origin",
     });
+  });
+
+  it("disposes a deleted app without returning to its removed repository", async () => {
+    const fake = makeFakeRuntime();
+    initVersionPreviewRuntime(fake.runtime);
+    const controller = ensureVersionPreviewController(APP_ID);
+    await driveToPreviewing(controller, fake);
+
+    disposeVersionPreviewController(APP_ID);
+    notifyVersionPreviewAppChanged(APP_ID, null);
+
+    expect(getVersionPreviewController(APP_ID)).toBeUndefined();
+    expect(fake.ofType("return")).toHaveLength(0);
+    expect(getVersionPreviewRecoveryEntries()).toEqual([]);
+  });
+
+  it("ignores a deleted app's late mutation completion", async () => {
+    const fake = makeFakeRuntime();
+    initVersionPreviewRuntime(fake.runtime);
+    const controller = ensureVersionPreviewController(APP_ID);
+    controller.send({ type: "OPEN", appId: APP_ID });
+    controller.send({
+      type: "SELECT_VERSION",
+      versionId: "v1",
+      hasDbSnapshot: false,
+    });
+    fake.last("resolve").deferred.resolve({ branch: "feature/origin" });
+    await flush();
+
+    const listener = vi.fn();
+    subscribeVersionPreviewRegistry(listener);
+    disposeVersionPreviewController(APP_ID);
+    listener.mockClear();
+    fake.last("checkout").deferred.reject(new Error("repository deleted"));
+    await flush();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(getVersionPreviewRecoveryEntries()).toEqual([]);
   });
 
   it("exposes recovery entries across apps with working retries", async () => {

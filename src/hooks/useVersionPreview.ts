@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAtomValue, useStore } from "jotai";
 import { toast } from "sonner";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  selectedAppIdAtom,
+  selectedVersionDiffFileAtom,
+  selectedVersionIdAtom,
+  selectedVersionReturnBranchAtom,
+} from "@/atoms/appAtoms";
 import {
   CLOSED_STATE,
   type PreviewEvent,
@@ -104,9 +109,15 @@ export function useVersionPreviewGlobalBridge(): void {
     const previousAppId = previousAppIdRef.current;
     previousAppIdRef.current = selectedAppId;
     if (previousAppId !== null && previousAppId !== selectedAppId) {
+      // Presentation state is global rather than app-keyed. Clear it here,
+      // while the root bridge is guaranteed to be mounted, so a background
+      // return cannot leave another app showing the previous app's diff.
+      store.set(selectedVersionIdAtom, null);
+      store.set(selectedVersionDiffFileAtom, null);
+      store.set(selectedVersionReturnBranchAtom, null);
       notifyVersionPreviewAppChanged(previousAppId, selectedAppId);
     }
-  }, [selectedAppId]);
+  }, [selectedAppId, store]);
 
   const recoveryEntries = useVersionPreviewRecovery();
   const shownToastAppIdsRef = useRef<Set<number>>(new Set());

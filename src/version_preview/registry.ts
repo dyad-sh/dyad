@@ -5,7 +5,7 @@
  * survives pane unmounts, chat navigation, and app switches. Controllers are
  * cached for the lifetime of the renderer (a handful of apps per session);
  * a controller whose state is closed simply sits idle until its app opens
- * Version History again.
+ * Version History again. App deletion explicitly disposes its controller.
  */
 
 import type { PreviewError, PreviewEvent } from "./state";
@@ -95,6 +95,22 @@ export function getVersionPreviewController(
   appId: number,
 ): VersionPreviewController | undefined {
   return controllers.get(appId);
+}
+
+/**
+ * Drops all preview state for a deleted app. The repository no longer exists,
+ * so trying to return it to the origin branch would be both pointless and
+ * guaranteed to fail. Disposal also makes late command completions inert.
+ */
+export function disposeVersionPreviewController(appId: number): void {
+  const controller = controllers.get(appId);
+  if (!controller) {
+    return;
+  }
+  controllers.delete(appId);
+  recoveryNonceByAppId.delete(appId);
+  controller.dispose();
+  notifyRegistry();
 }
 
 /**

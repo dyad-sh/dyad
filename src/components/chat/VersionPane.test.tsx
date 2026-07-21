@@ -12,6 +12,7 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   selectedAppIdAtom,
+  selectedVersionDiffFileAtom,
   selectedVersionIdAtom,
   selectedVersionReturnBranchAtom,
 } from "@/atoms/appAtoms";
@@ -26,6 +27,7 @@ import {
   resetVersionPreviewForTests,
 } from "@/version_preview/registry";
 import { VersionPane } from "./VersionPane";
+import { useVersionPreviewGlobalBridge } from "@/hooks/useVersionPreview";
 
 const {
   listAppScreenshotsMock,
@@ -177,6 +179,11 @@ function openPane() {
   });
 }
 
+function GlobalPreviewBridge() {
+  useVersionPreviewGlobalBridge();
+  return null;
+}
+
 const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 
 async function previewFirstVersion(
@@ -310,6 +317,27 @@ describe("VersionPane", () => {
     });
     await waitFor(() => {
       expect(store.get(selectedVersionIdAtom)).toBeNull();
+      expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();
+    });
+  });
+
+  it("clears global version-diff presentation state on app switch", async () => {
+    const store = createStore();
+    store.set(selectedVersionIdAtom, "old-version");
+    store.set(selectedVersionDiffFileAtom, {
+      versionId: "old-version",
+      path: "src/old.ts",
+    });
+    store.set(selectedVersionReturnBranchAtom, "feature/old");
+
+    render(<GlobalPreviewBridge />, { wrapper: makeWrapper(store) });
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+
+    await waitFor(() => {
+      expect(store.get(selectedVersionIdAtom)).toBeNull();
+      expect(store.get(selectedVersionDiffFileAtom)).toBeNull();
       expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();
     });
   });

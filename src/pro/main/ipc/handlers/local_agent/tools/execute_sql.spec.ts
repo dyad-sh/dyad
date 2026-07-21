@@ -114,7 +114,7 @@ describe("executeSqlTool", () => {
   });
 
   it("skips Supabase migration files for non-schema SQL", async () => {
-    await executeSqlTool.execute(
+    const result = await executeSqlTool.execute(
       {
         query: "SELECT * FROM users;",
         description: "lookup users",
@@ -132,5 +132,62 @@ describe("executeSqlTool", () => {
       organizationSlug: null,
     });
     expect(mocks.writeMigrationFileMock).not.toHaveBeenCalled();
+    expect(result).toBe("Successfully executed SQL query.\n\nSQL result:\n[]");
+    expect(
+      executeSqlTool.shouldTrackMutation?.(
+        { query: "SELECT * FROM users;" },
+        result,
+        {} as any,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("executeSqlTool.shouldTrackMutation", () => {
+  const tracks = (query: string) =>
+    executeSqlTool.shouldTrackMutation?.({ query }, "", {} as any);
+
+  it("counts a mutation in any statement, not just the first", () => {
+    // A miss here leaves run_tests refusing the verifying rerun with
+    // "no changes since last run" after a real fix.
+    expect(tracks("SELECT 1; UPDATE users SET name = 'x';")).toBe(true);
+    expect(tracks("SELECT 1; INSERT INTO users (id) VALUES (1);")).toBe(true);
+    expect(tracks("SELECT id FROM users; SELECT count(*) FROM orders;")).toBe(
+      false,
+    );
+  });
+
+  it("counts a SELECT that calls an unknown function", () => {
+    expect(tracks("SELECT seed_demo_data();")).toBe(true);
+    expect(tracks("SELECT count(*) FROM users WHERE (active OR admin);")).toBe(
+      false,
+    );
+    expect(tracks("SELECT max(id), now() FROM users;")).toBe(false);
+  });
+
+  it("counts a SELECT ... INTO as a schema mutation", () => {
+    // `SELECT ... INTO new_table` creates a table in PostgreSQL. Missing it
+    // leaves run_tests refusing the rerun after the agent seeds test data.
+    expect(tracks("SELECT * INTO staging_users FROM users;")).toBe(true);
+    expect(tracks("SELECT id, name INTO TEMP tmp_users FROM users;")).toBe(
+      true,
+    );
+    // A plain read whose alias merely starts with "into" must not trip it.
+    expect(tracks("SELECT count(*) AS into_total FROM users;")).toBe(false);
+    // Keywords/calls inside string literals must not be mistaken for the real
+    // thing: a read returning the text "into staging_users" is still read-only.
+    expect(tracks("SELECT 'into staging_users';")).toBe(false);
+    expect(tracks("SELECT * FROM users WHERE note = 'seed_demo_data()';")).toBe(
+      false,
+    );
+    // A genuine SELECT ... INTO alongside a literal still counts.
+    expect(tracks("SELECT 'label' AS tag INTO staging_users FROM users;")).toBe(
+      true,
+    );
+  });
+
+  it("still treats plain reads as no-ops", () => {
+    expect(tracks("SELECT * FROM users;")).toBe(false);
+    expect(tracks("SHOW search_path;")).toBe(false);
   });
 });

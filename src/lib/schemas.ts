@@ -401,6 +401,14 @@ const BaseUserSettingsFields = {
   previewDeviceMode: DeviceModeSchema.optional(),
 
   enableAppBlueprint: z.boolean().optional(),
+  // When enabled, newly created apps opt into the AI E2E testing feature by
+  // default (their `testing_enabled` column is seeded to true at creation).
+  enableTestingForNewApps: z.boolean().optional(),
+  // Test run modes chosen in the Tests panel. Persisted so both the panel's
+  // Run button and the agent's run_tests tool share the same headed/serial
+  // preference. Default (unset) is headless + serial.
+  testHeaded: z.boolean().optional(),
+  testParallel: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),

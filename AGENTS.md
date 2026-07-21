@@ -35,6 +35,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/safe-storage.md](rules/safe-storage.md)                       | Working with Electron `safeStorage`, macOS Keychain identities, or legacy os_crypt secret recovery                                                                             |
 | [rules/electron-workers.md](rules/electron-workers.md)               | Spawning `worker_threads`/`utilityProcess`, moving heavy computation off the main process, or diagnosing main-process memory usage and OOM crashes                             |
 | [rules/app-naming.md](rules/app-naming.md)                           | Touching app display names, folder slugs, or flows that create/move app directories (create, copy, import, rename, blueprint approval, template apply)                         |
+| [rules/windows-spawn.md](rules/windows-spawn.md)                     | Spawning child processes with arguments on Windows — `.cmd` shim resolution and what `cmd.exe` quoting can and cannot contain                                                  |
 
 ## Project setup and lints
 

@@ -189,6 +189,49 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
 });
 
 describe("prepareIsolatedTestDatabase — Neon happy path", () => {
+  it("checks the direct dev server instead of the HTML-rewriting proxy", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+      cookieSecret: "secret",
+    });
+    mocks.runningApps.set(1, {
+      processId: 42,
+      originalUrl: "http://localhost:32100",
+      proxyUrl: "http://localhost:42100",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === "http://localhost:32100") {
+          return new Response("ok");
+        }
+        throw new Error(`Proxy response could not be parsed: ${url}`);
+      });
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        event,
+        emit,
+        runtimeMode: "host",
+      });
+
+      expect(prepared.infraError).toBeUndefined();
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "http://localhost:32100",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(fetchSpy).not.toHaveBeenCalledWith(
+        "http://localhost:42100",
+        expect.anything(),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("creates a branch, swaps env, restarts, and reports neon-branch", async () => {
     mocks.createTempTestBranch.mockResolvedValue({
       branchId: "test-br",

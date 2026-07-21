@@ -2,39 +2,38 @@ import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 // End-to-end coverage for the AI-generated E2E testing feature (the Tests
-// panel + <dyad-generate-test> tag). These drive the UI orchestration with the
+// panel opt-in + isolation warnings). These drive the UI orchestration with the
 // fake LLM; they deliberately don't spawn a real Playwright run (that would be
 // Playwright-in-Playwright and is covered by narrower unit/integration tests).
 
 testSkipIfWindows(
-  "generates a test that appears in chat, on disk, and in the Tests panel",
+  "prompts to switch to Agent mode when generating a test from a non-agent chat",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.importApp("minimal");
 
-    // Open the Tests panel and opt in. With no specs yet, the empty state shows.
+    // Put the chat in a non-agent mode (Build) so the button must confirm.
+    await po.chatActions.selectChatMode("build");
+
     await po.previewPanel.selectPreviewMode("tests");
     await po.previewPanel.clickEnableTesting();
     await expect(po.page.getByText("No tests yet")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
-    // The AI generates a test via <dyad-generate-test>.
-    await po.sendPrompt("tc=generate-test");
+    // Clicking "Generate a test" opens the Agent-mode confirmation dialog
+    // instead of sending the request straight away.
+    await po.page.getByTestId("generate-test-button").click();
+    await expect(po.page.getByTestId("agent-mode-required-dialog")).toBeVisible(
+      { timeout: Timeout.MEDIUM },
+    );
 
-    // 1. It renders as a distinct test card in the chat transcript.
-    await expect(po.page.getByTestId("dyad-generate-test")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-
-    // 2. It's written to disk under tests/ (forced there by normalizeTestPath).
-    await po.snapshotAppFiles({ name: "generate-test-written" });
-
-    // 3. It's auto-discovered into the panel once the turn ends (no manual
-    //    refresh) — the invalidate-on-stream-end path in TestsPanel.
+    // Cancel dismisses it without sending anything to chat.
+    await po.page.getByRole("button", { name: "Cancel" }).click();
     await expect(
-      po.page.locator("#preview-panel").getByText("critical-flow.spec.ts"),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+      po.page.getByTestId("agent-mode-required-dialog"),
+    ).toBeHidden();
+    await expect(po.page.getByText("No tests yet")).toBeVisible();
   },
 );
 

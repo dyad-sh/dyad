@@ -73,6 +73,9 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-script",
   "dyad-app-blueprint",
   "dyad-security-finding",
+  // Legacy: no longer emitted (test writing moved to the agent's write_file /
+  // run_tests tools), but historical chats still contain it and must render as
+  // a file-write card rather than raw markup.
   "dyad-generate-test",
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);

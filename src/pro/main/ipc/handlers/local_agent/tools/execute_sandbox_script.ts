@@ -26,7 +26,9 @@ import {
   assertAppBlueprintApproved,
   getToolConsent,
   requireToolConsentOrThrow,
+  trackAppMutation,
   trackFileEditTool,
+  shouldTrackToolMutation,
 } from "./tool_invocation";
 import {
   collectMcpToolDefs,
@@ -481,6 +483,14 @@ function buildWriteFileCapability(ctx: AgentContext) {
 
     trackFileEditTool(ctx, writeFileTool.name, args);
     const result = await writeFileTool.execute(args, ctx);
+    // Honor the tool's mutation predicate exactly like the main
+    // tool_definitions.ts path, so mutation tracking stays consistent if
+    // write_file ever gains a shouldTrackMutation predicate.
+    trackAppMutation(
+      ctx,
+      writeFileTool.name,
+      shouldTrackToolMutation(writeFileTool, args, result, ctx),
+    );
     const xml = writeFileTool.buildXml?.(args, true);
     if (xml) {
       ctx.onXmlComplete(xml);

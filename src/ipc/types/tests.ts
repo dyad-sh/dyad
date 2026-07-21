@@ -218,10 +218,36 @@ export const TestOutputPayloadSchema = z.object({
 });
 export type TestOutputPayload = z.infer<typeof TestOutputPayloadSchema>;
 
+/**
+ * Lifecycle of a test run, so the panel can reflect runs it didn't start
+ * itself (e.g. the agent's run_tests tool). The panel ignores `source:
+ * "panel"` — its own `runAppTests` call already writes run state directly.
+ */
+export const TestsRunStatePayloadSchema = z.object({
+  appId: z.number(),
+  source: z.enum(["panel", "agent"]),
+  state: z.enum(["started", "finished"]),
+  /** Single spec targeted, when set; absent = whole suite. */
+  testFile: z.string().optional(),
+  /** With testFile: only the test at this 1-based line was run. */
+  testLine: z.number().optional(),
+  /** With testFile: regex passed to Playwright's --grep for a partial run. */
+  grep: z.string().optional(),
+  /** Present only on "finished". */
+  results: z.array(TestResultSchema).optional(),
+  infraError: z.object({ message: z.string() }).optional(),
+  isolation: TestIsolationSchema.optional(),
+});
+export type TestsRunStatePayload = z.infer<typeof TestsRunStatePayloadSchema>;
+
 export const testsEvents = {
   output: defineEvent({
     channel: "tests:output",
     payload: TestOutputPayloadSchema,
+  }),
+  runState: defineEvent({
+    channel: "tests:run-state",
+    payload: TestsRunStatePayloadSchema,
   }),
 } as const;
 

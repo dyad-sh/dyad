@@ -346,23 +346,22 @@ This only applies to Vite apps. Next.js apps have built-in API routes, so handle
 `;
 
 /**
- * Guidance for writing end-to-end tests. The body is shared across surfaces so
- * they all produce the same kind of test; only the instruction for HOW to emit
- * the spec file differs:
- * - Build mode emits a `<dyad-generate-test>` tag.
- * - The Pro/local agent writes the spec with the `write_file` tool; Dyad
- *   detects `.spec.ts` files and surfaces them in the Tests panel.
+ * Guidance for writing end-to-end tests. Only the local/pro agent writes tests:
+ * it uses the `write_file` tool to create the spec, then the `run_tests` tool
+ * to verify it. The `emitInstruction` argument is the bullet describing how to
+ * emit the spec file.
  */
 const buildTestWritingGuidance = (emitInstruction: string) =>
   `# Writing end-to-end tests
 
-When the user asks you to write an end-to-end (e2e) test for a feature or flow, write a Playwright test.
+When writing an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
 - FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
 - Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
 ${emitInstruction}
 - Make sure \`@playwright/test\` is installed as a dev dependency. If it isn't already in \`package.json\`, install it (Playwright is required to run the test).
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
+- Do NOT create or edit \`playwright-dyad.config.ts\`. Dyad generates and owns that file, and every test run uses it: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. You do NOT need to write a Playwright config at all — just write specs under \`tests/\`.
 - Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
 - Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
 - Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.
@@ -402,30 +401,72 @@ When a flow requires a logged-in user, use the built-in auth fixture in \`tests/
 - Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, build one (or an equivalent way to create a user) first. Say so clearly if you add it.
 - Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.`;
 
-/** Build-mode test-writing guidance: emit the spec via a `<dyad-generate-test>` tag. */
-export const TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
-  `- In Build mode, emit it with a \`<dyad-generate-test>\` tag (NOT \`<dyad-write>\`) so it shows up in the Tests panel:
-  <dyad-generate-test path="tests/signup.spec.ts" description="Tests the signup flow">
-  ...test code...
-  </dyad-generate-test>`,
-);
+/**
+ * Guidance for running tests and iterating on failures with the `run_tests`
+ * tool. Appended to the agent test-writing guidance.
+ */
+const AGENT_RUN_TESTS_GUIDANCE = `## Running tests and fixing failures
+
+After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
+
+Run the whole file by default. Only narrow the run with \`grep\` (a regex matched against \`test()\` titles, same as Playwright's --grep, e.g. \`run_tests({ testFile: "tests/signup.spec.ts", grep: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
+
+Use the EXACT path of a spec that exists under tests/ — don't guess it. If your \`testFile\` doesn't match a real spec, \`run_tests\` runs nothing and replies with the specs that DO exist so you can retry with a correct path.
+
+Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
+
+The tool needs the app's dev server to be running; if it reports the app isn't running, ask the user to start it with the Run button in the preview panel.
+
+When \`run_tests\` reports a failure, work the fix loop:
+1. READ the \`error-context.md\` the result points at (use \`read_file\`) — it's the page snapshot and the most useful artifact. The failure screenshot is attached as an image; look at it too. Only read the artifacts from the CURRENT run's directory.
+2. Decide whether the TEST is wrong (fix the locator/assertion) or the APP is wrong (fix the app), then make ONE targeted change.
+3. Call \`run_tests\` again for the same spec.
+4. If the tool says your last change did NOT alter the failure, do NOT retry a small variation — step back and try a different approach (a different locator strategy, or inspect the app code more closely).
+5. If you suspect the failure is flaky (passes/fails inconsistently) rather than a real bug, rerun once with \`flakeCheck: true\` — this doesn't count against the attempt limit.
+
+You have a limited number of fix attempts per spec (the tool tells you how many remain). When it says the limit is reached, STOP editing and running: summarize for the user what the test covers, what still fails, what you tried, and what you recommend.
+
+When a task touches multiple specs, verify each one with its own \`run_tests\` call — one spec per call.`;
 
 /**
- * Local-agent test-writing guidance: write the spec with the `write_file` tool.
- * Dyad detects `.spec.ts` files and surfaces them in the Tests panel where the
- * user can run them — there is no dedicated test tool.
+ * Proactive test-maintenance policy for the local agent. Only injected when the
+ * app has opted into testing, so the agent keeps the e2e suite in sync with
+ * feature work by default — without waiting to be asked.
  */
-export const AGENT_TEST_WRITING_GUIDANCE = buildTestWritingGuidance(
-  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
-);
+const AGENT_PROACTIVE_TESTS_GUIDANCE = `# Keeping end-to-end tests up to date
 
-// The test-writing guidance is appended by `getSystemPromptForChatMode` (only
-// when the app has opted into testing), NOT baked in here. It must go AFTER the
-// postfix: the postfix ends with the strong "ONLY use <dyad-write> for ALL code
-// output" mandate, so the test guidance (which tells the model to emit
-// `<dyad-generate-test>` for specs) must come after it to carry as the
-// exception — otherwise the postfix reads as the final word and the model may
-// wrap tests in `<dyad-write>`, so they never surface in the Tests panel.
+This app has end-to-end testing enabled, so treat test coverage as PART OF THE WORK, not a separate favor to wait for. Whenever you finish implementing or changing app behavior, keep the \`tests/\` suite in sync in the SAME turn:
+
+- **Added a new user-facing feature or flow** (a new page, form, action, CRUD operation, auth flow, or meaningful interaction) → write a new Playwright spec covering its happy path.
+- **Changed how an existing feature behaves** → find the spec(s) that cover it and update them to match the new behavior rather than creating a duplicate; only add a new spec when no existing one covers the flow.
+- **Review existing tests for impact — ALWAYS, whether you added or modified behavior.** Any change to app behavior can break specs that exercise the code paths you touched (a renamed label, a moved route, a changed field, a new required step). Before finishing, look at the EXISTING tests that might be affected and decide which need updating:
+  - \`list_files\` on \`tests/\`, then \`read_file\` the specs whose flows touch what you changed — the ones that visit the affected route/page, target the elements you edited, or depend on the behavior you altered. This is a STATIC code review of the spec files; you do NOT need to run the whole suite to figure out which are affected.
+  - Update any spec whose selectors, assertions, navigation, or setup no longer match the app's new behavior. Leave unrelated specs alone.
+  - If, after reading them, none of the existing specs are affected, that's fine — say so briefly and move on.
+
+Use judgment about what DESERVES a test — don't test everything:
+- DO cover meaningful, user-facing behavior a user could break: the core flows of the feature you just built or changed.
+- SKIP purely cosmetic or non-behavioral changes: styling/layout tweaks, copy/text edits, refactors that don't change behavior, config changes, and internal-only code. Don't add a test for these.
+- Keep it proportionate: ONE focused happy-path spec per feature/flow is usually enough. Don't bloat the suite with redundant or trivial tests.
+
+After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failures (see below) before you consider the task done. Briefly tell the user which flow you added or updated a test for.
+
+If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; skip it (and say so) for trivial changes.`;
+
+/**
+ * Local-agent test-writing guidance: proactively keep tests in sync, write the
+ * spec with the `write_file` tool, then verify and iterate with `run_tests`.
+ * Dyad detects `.spec.ts` files and surfaces them in the Tests panel where the
+ * user can also run them.
+ */
+export const AGENT_TEST_WRITING_GUIDANCE = `${AGENT_PROACTIVE_TESTS_GUIDANCE}
+
+${buildTestWritingGuidance(
+  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
+)}
+
+${AGENT_RUN_TESTS_GUIDANCE}`;
+
 const BUILD_SYSTEM_PROMPT_BASE = `${BUILD_SYSTEM_PREFIX}
 
 [[AI_RULES]]
@@ -643,8 +684,8 @@ export const constructSystemPrompt = ({
    */
   codeExplorerAvailable?: boolean;
   /**
-   * Whether the app has opted into E2E testing. Gates the build-mode
-   * test-writing guidance (see `getSystemPromptForChatMode`).
+   * Whether the app has opted into E2E testing. Gates the local-agent
+   * test-writing and `run_tests` guidance (see `constructLocalAgentPrompt`).
    */
   testingEnabled?: boolean;
 }) => {
@@ -670,7 +711,6 @@ export const constructSystemPrompt = ({
     enableTurboEditsV2,
     frameworkType,
     hasSupabaseProject,
-    testingEnabled,
   });
   systemPrompt = systemPrompt.replace(
     "[[AI_RULES]]",
@@ -690,18 +730,11 @@ export const getSystemPromptForChatMode = ({
   enableTurboEditsV2,
   frameworkType,
   hasSupabaseProject,
-  testingEnabled,
 }: {
   chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
   frameworkType?: AppFrameworkType | null;
   hasSupabaseProject?: boolean;
-  /**
-   * Whether the app has opted into the E2E testing feature. Test-writing
-   * guidance is only injected when true, so the model doesn't offer to write
-   * tests for apps that haven't enabled testing in the Tests panel.
-   */
-  testingEnabled?: boolean;
 }) => {
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
@@ -716,9 +749,6 @@ export const getSystemPromptForChatMode = ({
     frameworkType === "vite" && !hasSupabaseProject;
   const buildPrompt =
     BUILD_SYSTEM_PROMPT_BASE +
-    // Keep the test guidance right after the base (i.e. after the postfix's
-    // "ONLY use <dyad-write>" mandate) so it carries as the exception.
-    (testingEnabled ? `\n\n${TEST_WRITING_GUIDANCE}` : "") +
     (shouldAppendNitroNudge ? `\n\n${BUILD_SERVER_LAYER_NUDGE}` : "");
   return buildPrompt + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };

@@ -57,6 +57,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableProSmartFilesContextMode: true,
   selectedChatMode: "build",
   enableAppBlueprint: true,
+  enableTestingForNewApps: false,
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,

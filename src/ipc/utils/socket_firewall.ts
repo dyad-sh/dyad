@@ -17,6 +17,10 @@ import {
   sanitizePathEnv,
 } from "@/ipc/utils/managed_tools";
 import { getPathEnvKey } from "@/ipc/utils/path_env";
+import {
+  buildWindowsCommandInvocation,
+  resolveWindowsExecutableName,
+} from "@/ipc/utils/windows_command";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -44,8 +48,6 @@ const SOCKET_FIREWALL_NPX_ARGS = [
   "--yes",
   SOCKET_FIREWALL_PACKAGE,
 ];
-const WINDOWS_BATCH_COMMAND_PATTERN = /\.(cmd|bat)$/i;
-const WINDOWS_CMD_NEEDS_QUOTING_PATTERN = /[\s"&|<>^%!()]/u;
 export const SOCKET_FIREWALL_PROBE_TIMEOUT_MS = 30 * 1000;
 export const PACKAGE_MANAGER_PROBE_TIMEOUT_MS = 30 * 1000;
 export const ADD_DEPENDENCY_INSTALL_TIMEOUT_MS = DEFAULT_PTY_COMMAND_TIMEOUT_MS;
@@ -1105,20 +1107,7 @@ export function resolveExecutableName(
   command: string,
   platform: NodeJS.Platform = process.platform,
 ): string {
-  if (platform === "win32" && !command.includes(".")) {
-    return `${command}.cmd`;
-  }
-  return command;
-}
-
-function quoteWindowsCmdArg(value: string): string {
-  // `cmd.exe /d /s /c` strips an outer quoted command string, so simple args
-  // stay unquoted while empty or shell-significant values are quoted/escaped.
-  if (value !== "" && !WINDOWS_CMD_NEEDS_QUOTING_PATTERN.test(value)) {
-    return value;
-  }
-
-  return `"${value.replace(/"/g, '""')}"`;
+  return resolveWindowsExecutableName(command, platform);
 }
 
 export function buildPtyInvocation(
@@ -1127,27 +1116,7 @@ export function buildPtyInvocation(
   platform: NodeJS.Platform = process.platform,
   comSpec = process.env.ComSpec ?? "cmd.exe",
 ): { command: string; args: string[] } {
-  const resolvedCommand = resolveExecutableName(command, platform);
-
-  if (
-    platform === "win32" &&
-    WINDOWS_BATCH_COMMAND_PATTERN.test(resolvedCommand)
-  ) {
-    return {
-      command: comSpec,
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        [resolvedCommand, ...args].map(quoteWindowsCmdArg).join(" "),
-      ],
-    };
-  }
-
-  return {
-    command: resolvedCommand,
-    args,
-  };
+  return buildWindowsCommandInvocation(command, args, platform, comSpec);
 }
 
 export async function runCommand(

@@ -1,6 +1,12 @@
 import { atom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { TestSpec, TestResult, TestIsolation } from "@/ipc/types";
+import type { RunAppTestsResult } from "@/ipc/types/tests";
+import {
+  buildSingleTestFileResult,
+  reconcileResultFile,
+  testKey,
+} from "@/lib/testResultUtils";
 
 /**
  * Result-state taxonomy for a single test (see plan's "Result-State Model").
@@ -151,6 +157,169 @@ export const setTestRunStateForAppAtom = atom(
       const next = new Map(prev);
       next.set(appId, nextState);
       return next;
+    });
+  },
+);
+
+/**
+ * Transition an app into the "running" state for a test run. Shared by
+ * panel-initiated runs (TestsPanel.runTests) and agent-initiated runs (the
+ * root-level tests:run-state subscriber in useTestRunEvents), so both show the
+ * same spinners/cleared-output state. Global per-app writes only — UI side
+ * effects (e.g. popping the output drawer) stay in the panel, keyed off the
+ * resulting phase transition.
+ */
+/**
+ * Test keys a `--grep` run will actually execute, so only those show a spinner
+ * and the siblings Playwright will skip keep the status they already had.
+ *
+ * Returns null when the subset can't be determined — an invalid regex, or a
+ * pattern that matched nothing here because Playwright greps the FULL
+ * hierarchical title (describe blocks included) while the spec list only knows
+ * leaf `test()` names. Callers fall back to spinning the whole file, which is
+ * the honest answer when we don't know the subset.
+ */
+function grepMatchedTestKeys(
+  grep: string,
+  specs: TestSpec[],
+  testFile: string,
+): string[] | null {
+  let regex: RegExp;
+  try {
+    regex = new RegExp(grep);
+  } catch {
+    return null;
+  }
+  const cases = specs.find((s) => s.file === testFile)?.tests ?? [];
+  const matched = cases
+    .filter((c) => regex.test(c.title))
+    .map((c) => testKey(testFile, c.line));
+  return matched.length > 0 ? matched : null;
+}
+
+export const applyTestRunStartedAtom = atom(
+  null,
+  (
+    get,
+    set,
+    {
+      appId,
+      testFile,
+      testLine,
+      grep,
+      startedAt,
+    }: {
+      appId: number;
+      testFile?: string;
+      testLine?: number;
+      grep?: string;
+      startedAt?: number;
+    },
+  ) => {
+    const isPartialRun = testFile != null && (testLine != null || !!grep);
+    const specs = get(testSpecsByAppIdAtom).get(appId) ?? [];
+    const targetFiles = testFile ? [testFile] : specs.map((s) => s.file);
+    const grepMatchedTests =
+      testFile != null && testLine == null && grep
+        ? grepMatchedTestKeys(grep, specs, testFile)
+        : null;
+    set(clearTestRunOutputForAppAtom, appId);
+    set(setTestRunStateForAppAtom, {
+      appId,
+      update: (prev) => ({
+        ...prev,
+        // A run starts in setup: isolation prep and the Playwright bootstrap
+        // both run before the first test does. Setup-phase output keeps it
+        // here; the first running-phase output advances it.
+        phase: "setup",
+        runningFiles: targetFiles,
+        runningTests:
+          testFile != null && testLine != null
+            ? [testKey(testFile, testLine)]
+            : (grepMatchedTests ?? []),
+        // For a single-test run, keep the file's existing results (siblings
+        // keep their status; we merge the one test back in afterward). Grep
+        // runs are also partial because they return only the matched tests.
+        // For a file/all run, clear the targeted files.
+        results: isPartialRun
+          ? prev.results
+          : Object.fromEntries(
+              Object.entries(prev.results).filter(
+                ([f]) => !targetFiles.includes(f),
+              ),
+            ),
+        runError: undefined,
+        isolation: undefined,
+        startedAt: startedAt ?? Date.now(),
+      }),
+    });
+  },
+);
+
+/**
+ * Merge a finished run's results back onto an app's run state. Shared by
+ * panel- and agent-initiated runs (see applyTestRunStartedAtom).
+ */
+export const applyTestRunFinishedAtom = atom(
+  null,
+  (
+    get,
+    set,
+    {
+      appId,
+      res,
+      isPartialRun,
+      expectedStartedAt,
+    }: {
+      appId: number;
+      res: RunAppTestsResult;
+      isPartialRun: boolean;
+      expectedStartedAt?: number;
+    },
+  ) => {
+    // Playwright reports a spec's `file` relative to its own rootDir, which
+    // may not match the glob-relative paths in our spec list (e.g. missing
+    // the "tests/" prefix). Reconcile each result back onto a known spec
+    // key so rows actually pick up their status.
+    const appSpecs = get(testSpecsByAppIdAtom).get(appId) ?? [];
+    const specFiles = appSpecs.map((s) => s.file);
+    const specsByFile = new Map(appSpecs.map((s) => [s.file, s]));
+    set(setTestRunStateForAppAtom, {
+      appId,
+      update: (prev) => {
+        if (
+          expectedStartedAt !== undefined &&
+          prev.startedAt !== expectedStartedAt
+        ) {
+          return prev;
+        }
+        const nextResults = { ...prev.results };
+        for (const r of res.results) {
+          const key = reconcileResultFile(r.file, specFiles);
+          const mapped = { ...r, file: key };
+          if (isPartialRun) {
+            nextResults[key] = buildSingleTestFileResult({
+              file: key,
+              knownTests: specsByFile.get(key)?.tests ?? [],
+              previous: prev.results[key],
+              incoming: mapped,
+            });
+          } else {
+            nextResults[key] = mapped;
+          }
+        }
+        return {
+          ...prev,
+          phase: "idle",
+          runningFiles: [],
+          runningTests: [],
+          results: nextResults,
+          runError: res.infraError
+            ? { message: res.infraError.message, kind: "infra" }
+            : undefined,
+          isolation: res.isolation,
+        };
+      },
     });
   },
 );

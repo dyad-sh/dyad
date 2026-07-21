@@ -14,15 +14,19 @@ import { getAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
 import type { AgentToolConsent } from "@/lib/schemas";
 import {
   AgentContext,
+  APP_MUTATING_TOOL_NAMES,
   FILE_EDIT_TOOL_NAMES,
   FileEditToolName,
   ToolDefinition,
 } from "./types";
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
+const APP_MUTATING_TOOLS: Set<string> = new Set(APP_MUTATING_TOOL_NAMES);
 
 /**
- * Track file edit tool usage for telemetry
+ * Track file edit tool usage for retry/fallback telemetry. This intentionally
+ * records attempts before execution, including failures; successful mutation
+ * counting is separate in `trackAppMutation`.
  */
 export function trackFileEditTool(
   ctx: AgentContext,
@@ -43,6 +47,47 @@ export function trackFileEditTool(
     };
   }
   ctx.fileEditTracker[filePath][toolName as FileEditToolName]++;
+}
+
+/**
+ * Count a successfully completed tool that changes the app or its data. File
+ * edits and other app-mutating tools both feed this signal so `run_tests` only
+ * accepts a rerun after a mutation actually completed.
+ */
+export function trackAppMutation(
+  ctx: AgentContext,
+  toolName: string,
+  didMutate = true,
+): void {
+  if (!didMutate) {
+    return;
+  }
+  if (
+    !FILE_EDIT_TOOLS.has(toolName as FileEditToolName) &&
+    !APP_MUTATING_TOOLS.has(toolName)
+  ) {
+    return;
+  }
+  ctx.mutationCount = (ctx.mutationCount ?? 0) + 1;
+}
+
+/**
+ * Decide whether a completed tool result represents an app mutation. Tools in
+ * APP_MUTATING_TOOL_NAMES must opt in with a result-aware predicate so a
+ * handled failure/no-op string cannot accidentally unblock run_tests. The two
+ * file-edit tools keep their historical success-after-return default; errors
+ * from them throw before this function runs.
+ */
+export function shouldTrackToolMutation<T>(
+  tool: ToolDefinition<T>,
+  args: T,
+  result: string,
+  ctx: AgentContext,
+): boolean {
+  if (tool.shouldTrackMutation) {
+    return tool.shouldTrackMutation(args, result, ctx);
+  }
+  return !APP_MUTATING_TOOLS.has(tool.name);
 }
 
 /**

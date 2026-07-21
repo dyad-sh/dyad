@@ -39,6 +39,26 @@ export interface FileEditTracker {
   };
 }
 
+/**
+ * Tools beyond write_file/search_replace whose invocation still changes the
+ * app or its data, so a `run_tests` rerun after one of them is meaningful.
+ * Feeds `AgentContext.mutationCount` after successful execution (including
+ * sandbox write_file host calls).
+ * Turn-scoped bookkeeping tools (update_todos, plan/blueprint tools) and
+ * run_tests itself are deliberately excluded — they can't change a test's
+ * outcome.
+ */
+export const APP_MUTATING_TOOL_NAMES = [
+  "copy_file",
+  "delete_file",
+  "rename_file",
+  "add_dependency",
+  "execute_sql",
+  "add_integration",
+  "enable_nitro",
+  "generate_image",
+] as const;
+
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
@@ -72,6 +92,14 @@ export interface AgentContext {
   fileEditTracker: FileEditTracker;
   /** True after a tool has successfully changed workspace contents this turn. */
   workspaceMutated?: boolean;
+  /**
+   * Turn-scoped count of successfully completed tool invocations that change
+   * the app or its data: file edits (including sandbox write_file host calls)
+   * plus the tools in `APP_MUTATING_TOOL_NAMES`. This is the
+   * signal for `run_tests`' require-a-change guards, which must see fixes made
+   * through ANY mutating tool — not just write_file/search_replace.
+   */
+  mutationCount?: number;
   /**
    * If true, the user has Dyad Pro enabled.
    * Engine-dependent tools require this to access the Dyad Pro API.
@@ -163,6 +191,48 @@ export interface AgentContext {
    * When false, the sandbox inlines every tool declaration instead.
    */
   isMcpToolSearchAvailable?: boolean;
+  /**
+   * Whether the app has opted into E2E testing (apps.testingEnabled). Gates the
+   * `run_tests` tool, mirroring how `testingEnabled` gates the test-writing
+   * guidance in the system prompt.
+   */
+  testingEnabled: boolean;
+  /**
+   * Turn-scoped `run_tests` attempt tracking, keyed by normalized spec path.
+   * Created fresh per turn like `fileEditTracker`, so the 4-attempt fix cap
+   * resets each turn.
+   */
+  testRunAttempts: Map<string, TestRunAttemptState>;
+  /**
+   * Actual Playwright runs started by `run_tests` during this turn, across all
+   * specs. Preflight/dev-server refusals do not increment this.
+   */
+  testRunCount?: number;
+}
+
+/** Per-spec fix-loop state for the `run_tests` tool, tracked across one turn. */
+export interface TestRunAttemptState {
+  /** Failed runs counted toward the per-spec cap (infra/flake runs excluded). */
+  attempts: number;
+  /** Normalized failure signature of the last failing run, for no-progress detection. */
+  lastFailureSignature?: string;
+  /** `AgentContext.mutationCount` at the last run, for the require-a-change guard. */
+  fileEditCountAtLastRun?: number;
+  /**
+   * Canonical key for the tests targeted by the last run. Changing what's
+   * targeted is itself a meaningful change, so the require-a-change guard
+   * doesn't block e.g. widening from a subset to the whole file after a fix.
+   */
+  lastRunTargetKey?: string;
+  /** Whether the one free `flakeCheck` rerun has been used for this spec. */
+  flakeCheckUsed?: boolean;
+  /**
+   * `AgentContext.mutationCount` at the time each target last PASSED, keyed by
+   * canonical target ("" = whole file). Rerunning a target that already passed
+   * with no file changes since is refused — some models otherwise loop
+   * re-running already-green tests.
+   */
+  passedAtEditCount?: Record<string, number>;
 }
 
 // ============================================================================
@@ -201,9 +271,7 @@ export type UserMessageContentPart =
   | { type: "text"; text: string }
   | { type: "image-url"; url: string };
 
-/**
- * Tool result can be a simple string or a structured result with content parts
- */
+/** Tool result text returned to the model. */
 export type ToolResult = string;
 
 // ============================================================================
@@ -249,6 +317,18 @@ export interface ToolDefinition<T = any> {
    * renderer-safe; it is sent over IPC.
    */
   getConsentMetadata?: (args: T) => SqlConsentMetadata | null | undefined;
+
+  /**
+   * For state-modifying tools, returns whether a successful execution actually
+   * changed app state. Required for tools in APP_MUTATING_TOOL_NAMES so handled
+   * failures and no-op results do not unblock run_tests. File-edit tools that
+   * return successfully default to true.
+   */
+  shouldTrackMutation?: (
+    args: T,
+    result: ToolResult,
+    ctx: AgentContext,
+  ) => boolean;
 
   /**
    * Build XML from parsed partial args.

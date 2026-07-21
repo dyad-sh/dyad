@@ -128,6 +128,9 @@ export const generateImageTool: ToolDefinition<
 
   getConsentPreview: (args) => `Generate image: "${args.prompt}"`,
 
+  shouldTrackMutation: (_args, result) =>
+    result.startsWith("Image generated and saved"),
+
   buildXml: (args, isComplete) => {
     if (!args.prompt) return undefined;
     if (isComplete) return undefined;

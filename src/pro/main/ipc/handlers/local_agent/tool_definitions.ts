@@ -30,6 +30,7 @@ import { webFetchTool } from "./tools/web_fetch";
 import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
+import { runTestsTool } from "./tools/run_tests";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import { exploreCodeTool } from "./tools/explore_code";
@@ -60,6 +61,8 @@ import {
 import {
   assertAppBlueprintApproved,
   requireToolConsentOrThrow,
+  shouldTrackToolMutation,
+  trackAppMutation,
   trackFileEditTool,
 } from "./tools/tool_invocation";
 import type { AgentToolConsent } from "@/lib/schemas";
@@ -117,6 +120,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
+  runTestsTool,
   readGuideTool,
   executeSandboxScriptTool,
   searchMcpToolsTool,
@@ -595,8 +599,16 @@ export function buildAgentToolSet(
           // Track file edit tool usage before execution to capture all attempts
           // (including failures) for retry/fallback telemetry
           trackFileEditTool(ctx, tool.name, processedArgs);
-
           const result = await tool.execute(processedArgs, ctx);
+
+          // Only completed mutations unblock run_tests. Failed tool calls are
+          // still present in fileEditTracker for retry/fallback telemetry, but
+          // must not masquerade as a code change.
+          trackAppMutation(
+            ctx,
+            tool.name,
+            shouldTrackToolMutation(tool, processedArgs, result, ctx),
+          );
 
           return convertToolResultForAiSdk(result);
         } catch (error) {

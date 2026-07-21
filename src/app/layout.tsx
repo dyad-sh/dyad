@@ -14,6 +14,7 @@ import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
+import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { useQueuePersistence } from "@/hooks/useQueuePersistence";
@@ -44,6 +45,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Initialize app blueprint events listener
   useAppBlueprintEvents();
+
+  // Consume agent test-run lifecycle events at the root so the terminal
+  // "finished" event is never dropped by a TestsPanel unmount mid-run.
+  useTestRunEvents();
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();

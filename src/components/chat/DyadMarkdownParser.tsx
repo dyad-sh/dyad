@@ -14,7 +14,6 @@ import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
-import { DyadGenerateTest } from "./DyadGenerateTest";
 import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
@@ -30,7 +29,6 @@ import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
 import { DyadSecurityFinding } from "./DyadSecurityFinding";
 import { ipc } from "@/ipc/types";
-import { normalizeTestPath } from "@/ipc/utils/normalize_test_path";
 import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import {
@@ -623,11 +621,10 @@ function renderCustomTag(
           {content}
         </DyadThink>
       );
-    // Note: a <dyad-write> whose path happens to be a tests/*.spec.* file is
-    // deliberately NOT rerouted to the DyadGenerateTest card — that would
-    // retroactively restyle historical messages, misclassify non-Playwright
-    // specs a user keeps under tests/, and drop DyadWrite's inline Edit
-    // affordance. Only the explicit <dyad-generate-test> tag gets the test card.
+    // "dyad-generate-test" is legacy: no longer emitted, but historical chats
+    // still contain it. Both tags carry a path/description and a file body, so
+    // the old test cards render as plain file-write cards instead of raw markup.
+    case "dyad-generate-test":
     case "dyad-write":
       return (
         <DyadWrite
@@ -641,24 +638,6 @@ function renderCustomTag(
         >
           {content}
         </DyadWrite>
-      );
-
-    case "dyad-generate-test":
-      return (
-        <DyadGenerateTest
-          node={{
-            properties: {
-              // Show the path the write loop actually uses (forced under
-              // tests/ with a spec extension), not the raw tag attribute,
-              // which can name a file that is never written there.
-              path: attributes.path ? normalizeTestPath(attributes.path) : "",
-              description: attributes.description || "",
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadGenerateTest>
       );
 
     case "dyad-rename":

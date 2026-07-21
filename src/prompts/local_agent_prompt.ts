@@ -115,11 +115,16 @@ const CODE_SEARCH_GUIDANCE = `Use \`grep\` and \`code_search\` when the relevant
 function developmentWorkflowBlock({
   enableAppBlueprint,
   understandStep,
+  testingEnabled,
 }: {
   enableAppBlueprint: boolean;
   understandStep: string;
+  testingEnabled: boolean;
 }): string {
   const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
+  const verifyTestsClause = testingEnabled
+    ? " This app has e2e testing enabled: if you added or changed user-facing behavior that deserves coverage, add or update the relevant Playwright spec under `tests/`; also review the existing specs whose flows touch what you changed (read them, don't run the whole suite) and update any that no longer match. Then run the affected spec(s) with `run_tests` and fix any failures before finishing (skip trivial/cosmetic changes)."
+    : "";
   const steps: string[] = [];
   if (enableAppBlueprint) {
     steps.push(APP_BLUEPRINT_WORKFLOW_STEP);
@@ -132,7 +137,7 @@ function developmentWorkflowBlock({
    The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
     `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
     `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, use the most relevant available evidence—such as code inspection, existing logs, type checks, or tests—to identify the root cause. Add targeted runtime logs only when runtime evidence is needed. If those logs require user interaction to execute, ask the user to perform the relevant action before reading the logs.`,
-    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.`,
+    `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.${verifyTestsClause}`,
     `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
   );
   const numbered = steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
@@ -142,9 +147,11 @@ function developmentWorkflowBlock({
 function proDevelopmentWorkflowBlock({
   enableAppBlueprint,
   codeExplorerAvailable,
+  testingEnabled,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
+  testingEnabled: boolean;
 }): string {
   const codeExplorationGuidance = codeExplorerAvailable
     ? CODE_EXPLORATION_GUIDANCE
@@ -153,7 +160,11 @@ function proDevelopmentWorkflowBlock({
     ? "Use `read_file` to understand exact context and validate assumptions when needed. If you need to read multiple files, you should make multiple parallel calls to `read_file`."
     : "Use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`.";
   const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} ${contextValidationGuidance}`;
-  return developmentWorkflowBlock({ enableAppBlueprint, understandStep });
+  return developmentWorkflowBlock({
+    enableAppBlueprint,
+    understandStep,
+    testingEnabled,
+  });
 }
 
 // ============================================================================
@@ -183,9 +194,16 @@ You have two tools for editing files. Choose based on the scope of your change:
 \`search_replace\` fails loudly when it cannot match the target uniquely, so you do not need to re-read after every successful edit. Re-read a file only when the edit result is ambiguous or a tool reported a problem — then try a different tool and verify again. A final verification pass happens in the Verify step of the workflow.
 </file_editing_tool_selection>`;
 
-function basicDevelopmentWorkflowBlock(enableAppBlueprint: boolean): string {
+function basicDevelopmentWorkflowBlock(
+  enableAppBlueprint: boolean,
+  testingEnabled: boolean,
+): string {
   const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.`;
-  return developmentWorkflowBlock({ enableAppBlueprint, understandStep });
+  return developmentWorkflowBlock({
+    enableAppBlueprint,
+    understandStep,
+    testingEnabled,
+  });
 }
 
 // ============================================================================
@@ -355,7 +373,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable })}
+${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable, testingEnabled })}
 [[SERVER_LAYER]]
 ${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
 ${IMAGE_GENERATION_BLOCK}
@@ -387,7 +405,7 @@ ${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${basicDevelopmentWorkflowBlock(enableAppBlueprint)}
+${basicDevelopmentWorkflowBlock(enableAppBlueprint, testingEnabled)}
 [[SERVER_LAYER]]
 ${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
 ${AI_RULES_BLOCK}
@@ -434,8 +452,8 @@ export function constructLocalAgentPrompt(
     codeExplorerAvailable?: boolean;
     /**
      * Whether the app has opted into E2E testing. Gates the agent-mode
-     * test-writing guidance so non-testing apps don't carry it in every prompt
-     * (mirrors the build-mode gating in `getSystemPromptForChatMode`).
+     * test-writing and `run_tests` guidance so non-testing apps don't carry it
+     * in every prompt.
      */
     testingEnabled?: boolean;
   },

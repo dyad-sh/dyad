@@ -1,5 +1,10 @@
-import type { RuntimeTestResult, TestStatus } from "@/atoms/testRuntimeAtoms";
 import type { TestCase, TestCaseResult, TestResult } from "@/ipc/types";
+
+type RuntimeTestResult = Omit<TestResult, "status"> & {
+  status: TestResult["status"] | "partial";
+};
+
+type TestStatus = RuntimeTestResult["status"] | "running" | "not-run";
 
 /**
  * Maps a Playwright-reported spec path onto a key from our spec list. The
@@ -55,9 +60,8 @@ export function findCaseResult(
 }
 
 /**
- * Merge per-test results from a single-test run back into a file's existing
- * results, replacing the matched test and keeping the rest. Used so running one
- * test doesn't wipe the statuses of its siblings.
+ * Merge per-test results from a single-test or grep-targeted run back into a
+ * file's existing results, replacing matched tests and keeping the rest.
  */
 export function mergeCaseResults(
   existing: TestCaseResult[] | undefined,
@@ -65,9 +69,26 @@ export function mergeCaseResults(
 ): TestCaseResult[] {
   const merged = [...(existing ?? [])];
   for (const inc of incoming) {
-    const idx = merged.findIndex((t) =>
+    let idx = merged.findIndex((t) =>
       sameTestCaseByLineOrTitleFallback(t, inc),
     );
+    if (idx < 0) {
+      const existingTitleMatches = merged
+        .map((test, index) => ({ test, index }))
+        .filter(({ test }) => test.title === inc.title);
+      const incomingTitleMatches = incoming.filter(
+        (test) => test.title === inc.title,
+      );
+      // A test's line can move after the agent edits the spec. Replace the old
+      // result by title only when that identity is unambiguous on both sides;
+      // duplicate test titles must remain distinct by line.
+      if (
+        existingTitleMatches.length === 1 &&
+        incomingTitleMatches.length === 1
+      ) {
+        idx = existingTitleMatches[0].index;
+      }
+    }
     if (idx >= 0) merged[idx] = inc;
     else merged.push(inc);
   }

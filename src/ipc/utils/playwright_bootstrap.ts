@@ -8,6 +8,11 @@ import {
   getPackageManagerCommandEnv,
 } from "./socket_firewall";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  clearNodeModuleCache,
+  getNodeModuleEntryPath,
+  resolveNodeModulePackageJsonPathSync,
+} from "../../../shared/node_module_resolution";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -219,7 +224,15 @@ function playwrightPackageVersion(appPath: string): string | null {
 function chromiumExecutablePath(appPath: string): string | null {
   try {
     const requireFromApp = createRequire(path.join(appPath, "package.json"));
-    const playwright = requireFromApp("playwright") as {
+    const packageJsonPath = resolveNodeModulePackageJsonPathSync(appPath, [
+      "playwright",
+    ]);
+    const realPackageRootPath = fs.realpathSync(path.dirname(packageJsonPath));
+    const entryPath = fs.realpathSync(
+      getNodeModuleEntryPath(packageJsonPath, "index.js"),
+    );
+    clearNodeModuleCache(realPackageRootPath, requireFromApp.cache);
+    const playwright = requireFromApp(entryPath) as {
       chromium?: { executablePath?: () => string };
     };
     const executablePath = playwright.chromium?.executablePath?.();

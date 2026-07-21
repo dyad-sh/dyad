@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
@@ -13,7 +12,14 @@ import {
   runBufferedProcess,
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
+import {
+  getTypeScriptCliPath,
+  isMissingPathError,
+  resolveTypeScriptPackageJsonPath,
+} from "../../../shared/node_module_resolution";
 import { typescriptUtilityProcessScheduler } from "./typescript_utility_process_scheduler";
+
+export { isMissingPathError } from "../../../shared/node_module_resolution";
 
 const logger = log.scope("tsc");
 
@@ -347,14 +353,13 @@ async function findTypeScriptConfig(appPath: string): Promise<string> {
 }
 
 async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
-  // Resolve through Node's algorithm (walking ancestor node_modules) so
-  // hoisted workspace installs are found, matching the Code Explorer gate.
   let packageJsonPath: string;
   try {
-    packageJsonPath = createRequire(path.join(appPath, "package.json")).resolve(
-      "typescript/package.json",
-    );
+    packageJsonPath = await resolveTypeScriptPackageJsonPath(appPath);
   } catch (error) {
+    if (!isMissingPathError(error)) {
+      throw error;
+    }
     throw new TypeCheckPreconditionError(
       "typescript-not-found",
       `Failed to load TypeScript from ${appPath}: package is not installed`,
@@ -362,7 +367,7 @@ async function resolveTypeScriptCli(appPath: string): Promise<TypeScriptCli> {
     );
   }
 
-  const entryPath = path.join(path.dirname(packageJsonPath), "lib", "tsc.js");
+  const entryPath = getTypeScriptCliPath(packageJsonPath);
   try {
     await fs.access(entryPath);
   } catch (error) {

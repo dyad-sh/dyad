@@ -1,5 +1,7 @@
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 /**
  * E2E test for run_type_checks tool in local-agent mode
@@ -116,5 +118,57 @@ testSkipIfWindows(
     await expect(
       po.page.getByText(/No problems found|No Problems Report/),
     ).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);
+
+testSkipIfWindows(
+  "local-agent - run_type_checks sees TypeScript replaced by rebuild",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
+
+    await po.appManagement.ensurePnpmInstall();
+    await po.appManagement.ensureCodeExplorerReady();
+
+    // Establish a successful TypeScript 5 baseline before Rebuild replaces it.
+    await po.sendPrompt("tc=local-agent/run-type-checks-happy-path");
+    await expect(
+      po.page.getByRole("button", { name: /Type check passed/ }),
+    ).toBeVisible({ timeout: Timeout.LONG });
+
+    const appPath = await po.appManagement.getCurrentAppPath();
+    const packageJsonPath = path.join(appPath, "package.json");
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+    packageJson.devDependencies.typescript = "7.0.2";
+    await fs.writeFile(
+      packageJsonPath,
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+    );
+    // CI freezes existing lockfiles, so remove the now-stale fixture lockfile
+    // and let Rebuild generate one for the replacement dependency graph.
+    await fs.rm(path.join(appPath, "pnpm-lock.yaml"));
+
+    await po.previewPanel.clickRebuild();
+    await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();
+    await expect(po.previewPanel.locateLoadingAppPreview()).not.toBeVisible({
+      timeout: Timeout.LONG,
+    });
+    await po.appManagement.ensurePnpmInstall();
+    await po.appManagement.ensureCodeExplorerReady();
+
+    await po.sendPrompt("tc=local-agent/run-type-checks-incomplete");
+
+    const typeCheckCard = po.page.getByRole("button", {
+      name: /Type check incomplete/,
+    });
+    await expect(typeCheckCard).toBeVisible({ timeout: Timeout.LONG });
+    await typeCheckCard.click();
+    await expect(typeCheckCard).toContainText(
+      "Option 'baseUrl' has been removed",
+    );
+    await expect(
+      po.page.getByText("Type checking unavailable", { exact: true }),
+    ).toHaveCount(0);
   },
 );

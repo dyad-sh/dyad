@@ -15,6 +15,10 @@ import {
   type ResidentProcessRegistration,
   typescriptUtilityProcessScheduler,
 } from "./typescript_utility_process_scheduler";
+import {
+  getTypeScriptCompilerPath,
+  resolveTypeScriptPackageJsonPathSync,
+} from "../../../shared/node_module_resolution";
 
 const logger = log.scope("code-explorer");
 const DEFAULT_CONFIGS = ["tsconfig.app.json", "tsconfig.json"];
@@ -34,15 +38,14 @@ export function isCodeExplorerReady(appPath: string): boolean {
   return getCodeExplorerAvailability(appPath).ready;
 }
 
-// Cheap to recompute (a `require.resolve` + a few `fs` probes, ~3µs on the
-// common path), and called only ~3x per turn — so it runs uncached. That also
-// means a freshly-installed TypeScript or added tsconfig is reflected
-// immediately rather than after a cache TTL.
+// Cheap to recompute (an ancestor node_modules walk plus a few `fs` probes),
+// and called only ~3x per turn — so it runs uncached. This also avoids Node's
+// process-lifetime resolution cache after Rebuild replaces TypeScript.
 export function getCodeExplorerAvailability(
   appPath: string,
 ): CodeExplorerAvailability {
   try {
-    require.resolve("typescript/package.json", { paths: [appPath] });
+    resolveTypeScriptPackageJsonPathSync(appPath);
   } catch {
     return {
       ready: false,
@@ -279,10 +282,10 @@ export async function runCodeExplorer(
 export function getTypeScriptInstallationFingerprint(appPath: string): string {
   try {
     const packageJsonPath = fs.realpathSync(
-      require.resolve("typescript/package.json", { paths: [appPath] }),
+      resolveTypeScriptPackageJsonPathSync(appPath),
     );
     const compilerPath = fs.realpathSync(
-      require.resolve("typescript", { paths: [appPath] }),
+      getTypeScriptCompilerPath(packageJsonPath),
     );
     const packageJson = fs.readFileSync(packageJsonPath, "utf8");
     const packageVersion = String(

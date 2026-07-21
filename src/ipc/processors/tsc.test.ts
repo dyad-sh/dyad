@@ -12,6 +12,7 @@ import {
   clearTypeScriptVersionCacheForTests,
   parseTypeScriptDiagnostics,
   getTypeCheckPreconditionKind,
+  isMissingPathError,
   runTypeScriptCheck,
   toProblemReportError,
   TypeCheckPreconditionError,
@@ -210,6 +211,15 @@ describe("parseTypeScriptDiagnostics", () => {
   });
 });
 
+describe("isMissingPathError", () => {
+  it("only recognizes missing-path filesystem errors", () => {
+    expect(isMissingPathError({ code: "ENOENT" })).toBe(true);
+    expect(isMissingPathError({ code: "ENOTDIR" })).toBe(true);
+    expect(isMissingPathError({ code: "EACCES" })).toBe(false);
+    expect(isMissingPathError(new Error("unknown"))).toBe(false);
+  });
+});
+
 describe("runTypeScriptCheck", () => {
   let appPath: string;
 
@@ -354,6 +364,64 @@ describe("runTypeScriptCheck", () => {
     }
   });
 
+  it("resolves a replacement pnpm install without restarting the process", async () => {
+    const nodeModulesPath = path.join(appPath, "node_modules");
+    await fs.rm(path.join(nodeModulesPath, "typescript"), {
+      recursive: true,
+      force: true,
+    });
+
+    async function installTypeScript(version: string) {
+      const packagePath = path.join(
+        nodeModulesPath,
+        ".pnpm",
+        `typescript@${version}`,
+        "node_modules",
+        "typescript",
+      );
+      await fs.mkdir(path.join(packagePath, "lib"), { recursive: true });
+      await fs.writeFile(
+        path.join(packagePath, "package.json"),
+        JSON.stringify({ name: "typescript", version }),
+      );
+      await fs.writeFile(path.join(packagePath, "lib", "tsc.js"), "");
+      const linkTarget =
+        process.platform === "win32"
+          ? packagePath
+          : path.relative(nodeModulesPath, packagePath);
+      await fs.symlink(
+        linkTarget,
+        path.join(nodeModulesPath, "typescript"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      return packagePath;
+    }
+
+    const typescript5Path = await installTypeScript("5.9.3");
+    mockVersion("5.9.3");
+    runBufferedProcessMock.mockResolvedValueOnce(processResult());
+    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+      outcome: "passed",
+    });
+
+    await fs.rm(path.join(nodeModulesPath, "typescript"));
+    await fs.rm(typescript5Path, { recursive: true, force: true });
+    await installTypeScript("7.0.2");
+
+    mockVersion("7.0.2");
+    runBufferedProcessMock.mockResolvedValueOnce(processResult());
+    await expect(runTypeScriptCheck({ appPath })).resolves.toMatchObject({
+      outcome: "passed",
+    });
+    expect(runBufferedProcessMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining([
+          path.join(nodeModulesPath, "typescript", "lib", "tsc.js"),
+        ]),
+      }),
+    );
+  });
+
   it("returns an empty report on a successful compiler exit", async () => {
     mockVersion("6.0.1");
     runBufferedProcessMock.mockResolvedValueOnce(processResult());
@@ -427,6 +495,18 @@ describe("runTypeScriptCheck", () => {
 
     await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
       typeCheckKind: "typescript-not-found",
+    });
+    expect(runBufferedProcessMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the filesystem cause when TypeScript is not installed", async () => {
+    await fs.rm(path.join(appPath, "node_modules", "typescript"), {
+      recursive: true,
+    });
+
+    await expect(runTypeScriptCheck({ appPath })).rejects.toMatchObject({
+      typeCheckKind: "typescript-not-found",
+      cause: { code: "ENOENT" },
     });
     expect(runBufferedProcessMock).not.toHaveBeenCalled();
   });

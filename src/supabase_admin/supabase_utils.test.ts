@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import {
   getSupabaseFunctionsAffectedBySharedModules,
+  loadAppTypeScript,
   isServerFunction,
   isSharedServerModule,
   extractFunctionNameFromPath,
@@ -406,6 +407,21 @@ describe("getSupabaseFunctionsAffectedBySharedModules", () => {
       kind: "all",
       reason: "typescript_not_installed",
     });
+  });
+
+  it("reloads TypeScript when Rebuild replaces it in place", async () => {
+    const typeScriptPath = path.join(appPath, "node_modules", "typescript");
+    await fs.rm(typeScriptPath, { recursive: true, force: true });
+    await fs.mkdir(path.join(typeScriptPath, "lib"), { recursive: true });
+    await fs.writeFile(path.join(typeScriptPath, "package.json"), "{}");
+    const compilerPath = path.join(typeScriptPath, "lib", "typescript.js");
+    await fs.writeFile(compilerPath, 'module.exports = { version: "5.9.3" };');
+
+    expect(loadAppTypeScript(appPath)?.version).toBe("5.9.3");
+
+    await fs.writeFile(compilerPath, 'module.exports = { version: "7.0.2" };');
+
+    expect(loadAppTypeScript(appPath)?.version).toBe("7.0.2");
   });
 });
 

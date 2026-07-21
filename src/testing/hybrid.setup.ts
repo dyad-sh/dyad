@@ -44,6 +44,18 @@ vi.mock("@/ipc/processors/tsc", async (importOriginal) => {
   };
 });
 
+// Supabase dependency analysis runs in a compiled Electron utility process,
+// which is unavailable in the Vitest hybrid environment. The integration
+// suites exercise the deploy queue and its renderer progress contract; use
+// the conservative production fallback so shared-module writes still deploy
+// every function without waiting for the inert utility-process mock.
+vi.mock("@/ipc/processors/supabase_dependency_analysis", () => ({
+  runSupabaseDependencyAnalysis: async () => ({
+    kind: "all" as const,
+    reason: "hybrid_test_worker_unavailable",
+  }),
+}));
+
 vi.mock("react-i18next", async () => {
   const [common, settings, chat, home, errors] = await Promise.all([
     import("@/i18n/locales/en/common.json"),

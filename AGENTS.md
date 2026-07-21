@@ -54,14 +54,6 @@ When you create a new git worktree for this repository, run `npm install` inside
 
 RUN THE FOLLOWING CHECKS before you do a commit.
 
-If you have access to the `/dyad:lint` skill, use it to run all pre-commit checks automatically:
-
-```
-/dyad:lint
-```
-
-Otherwise, run the following commands directly:
-
 **Formatting**
 
 ```sh

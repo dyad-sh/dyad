@@ -108,6 +108,9 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 
 ## Cross-repo PR workflows (forks)
 
+- Base new feature branches on `upstream/main`, not `origin/main`. The fork's
+  `main` can lag far behind and lack files that exist upstream; cherry-picks
+  then fail with modify/delete conflicts and can push an empty tip.
 - `git fetch --all` can return nonzero after successfully refreshing
   `upstream/main` when unrelated collaborator remotes have clashing historical
   tags (`would clobber existing tag`). Verify the base ref was updated, then

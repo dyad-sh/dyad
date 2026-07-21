@@ -225,6 +225,52 @@ describe("plan mode (integration)", () => {
     expect(errorEvents()).toHaveLength(0);
   }, 60_000);
 
+  it("defaults typed plan acceptance to the current chat", async () => {
+    const app = await createMinimalApp("Plan Typed Accept", "plan");
+    harness.mount({
+      chatId: app.chatId,
+      appId: app.appId,
+      withPlanPanel: true,
+    });
+    await waitForChatSurface();
+
+    // Simulate this chat having previously accepted a plan with the explicit
+    // "new chat" button. The next plan update must clear that stale choice.
+    harness.setPlanAcceptInNewChat(app.chatId, true);
+    await streamRealPlan(app.chatId);
+    expect(harness.getPlanAcceptInNewChat(app.chatId)).toBeUndefined();
+
+    // Free-text acceptance does not record a new choice. Routing must still
+    // continue here instead of reusing the stale choice and creating a chat.
+    const { send } = await harness.typeInChat(
+      "I accept this plan. Call the exit_plan tool now with confirmation: true to begin implementation.",
+      { chatId: app.chatId },
+    );
+    send();
+
+    await harness.waitForEvent(
+      "plan:exit",
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { chatId?: number }).chatId === app.chatId,
+      30_000,
+    );
+    await waitFor(
+      async () => {
+        const location = harness.currentLocation();
+        expect(Number(location.search.id)).toBe(app.chatId);
+        const chatRow = await harness.db.query.chats.findFirst({
+          where: eq(chats.id, app.chatId),
+        });
+        expect(chatRow?.chatMode).toBe("local-agent");
+      },
+      { timeout: 30_000 },
+    );
+    await waitForPlanFile(app.appDir);
+    expect(errorEvents()).toHaveLength(0);
+  }, 60_000);
+
   it("uses the source app when accepting from a stale selected app", async () => {
     const source = await createMinimalApp("Plan Source", "plan");
     const stale = await createMinimalApp("Plan Stale Selection", null);

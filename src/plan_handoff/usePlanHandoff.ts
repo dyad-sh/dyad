@@ -82,9 +82,11 @@ export function usePlanHandoff(): {
   const acceptPlan = useCallback(
     (payload: PlanExitPayload) => {
       // The user records this choice at accept-click time (PlanPanel), before
-      // the plan:exit event ever fires. Default to a new chat when unknown.
+      // the plan:exit event ever fires. When unknown (typed acceptance like
+      // "implement the plan", or after a reload), default to continuing here
+      // so we don't surprise-create a chat.
       const acceptInNewChat =
-        store.get(planAcceptInNewChatByChatIdAtom).get(payload.chatId) ?? true;
+        store.get(planAcceptInNewChatByChatIdAtom).get(payload.chatId) ?? false;
       controllerRegistry.getOrCreate(payload.chatId).send({
         type: "PLAN_ACCEPTED",
         chatId: payload.chatId,

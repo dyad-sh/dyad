@@ -49,6 +49,10 @@ module-scope `DYAD_ENGINE_URL` constants and switch those call sites to
   `fakeLlmLog` from `./log` (silenced by `FAKE_LLM_QUIET=1`, which the vitest
   harnesses set). Reserve raw `console.error` for genuine failures — it is
   never suppressed.
+- TypeScript fixtures under `e2e-tests/fixtures/` are loaded by the fake LLM
+  server through `ts-node` with its default library target. Avoid newer built-in
+  methods such as `String.prototype.padStart`, which can fail type-checking
+  before the fixture runs even though the main Vitest compiler accepts them.
 - Some unit tests mock electron-log with an explicit method object
   (`vi.mock("electron-log", ... { scope: () => ({ info, log, warn, error }) })`).
   Calling a logger method the mock omits fails with e.g. "logger.debug is not

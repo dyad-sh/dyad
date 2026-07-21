@@ -1,7 +1,8 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 const functionWrites = Array.from({ length: 20 }, (_, index) => {
-  const functionName = `queue-test-${String(index + 1).padStart(2, "0")}`;
+  const functionNumber = index + 1;
+  const functionName = `queue-test-${functionNumber < 10 ? "0" : ""}${functionNumber}`;
   return {
     name: "write_file",
     args: {

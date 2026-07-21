@@ -255,10 +255,7 @@ export const searchChatsTool: ToolDefinition<SearchChatsArgs> = {
     // Read-only freshness: await an in-flight drain briefly, then report
     // whatever coverage the index currently has.
     await waitForChatSearchIndexingIdle(INDEX_WAIT_MS);
-    const pendingCount = getChatSearchPendingCountForApp(
-      ctx.appId,
-      ctx.chatId,
-    );
+    const pendingCount = getChatSearchPendingCountForApp(ctx.appId, ctx.chatId);
     const indexStatus = pendingCount > 0 ? "indexing" : "ready";
 
     const notice =

@@ -64,6 +64,16 @@ export function normalizeRunTestFile(testFile: string): string | null {
   return TEST_FILE_PATTERN.test(normalized) ? normalized : null;
 }
 
+// Playwright treats each positional test argument as a regular expression
+// matched against the full test-file path, so a legitimate filename containing
+// regex metacharacters (e.g. `tests/checkout(legacy).spec.ts` or
+// `tests/item[1].spec.ts`) would otherwise match a different file or none at
+// all. Escape the path portion so it matches literally. The `:line` suffix is
+// appended outside the escaped portion — Playwright parses it separately.
+function escapeRegExpForSelector(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
 }
@@ -294,10 +304,11 @@ export async function runAppTestsCore({
   // Dyad taking over the canonical config name.
   const args = ["playwright", "test", "--config", DYAD_CONFIG_FILENAME];
   if (normalizedTestFile) {
+    const escapedFile = escapeRegExpForSelector(normalizedTestFile);
     const target =
       testLine && Number.isInteger(testLine) && testLine > 0
-        ? `${normalizedTestFile}:${testLine}`
-        : normalizedTestFile;
+        ? `${escapedFile}:${testLine}`
+        : escapedFile;
     args.push(target);
   } else {
     // Existing user configs can point at a different testDir. Dyad's panel only
@@ -572,9 +583,9 @@ export async function runAppTestsWithIsolation({
     // The database lookup intentionally happens only after this run registered
     // above. Keeping every await behind registration ensures a rapid second
     // invocation chains behind this run instead of racing its isolation setup
-    // and env-file swap.
-    const app = await getApp(appId);
-    const appPath = getDyadAppPath(app.path);
+    // and env-file swap. (The resolved app is re-fetched inside the lock below,
+    // so this call exists only for the ordering barrier.)
+    await getApp(appId);
 
     // Emit "started" only after the prior lifecycle has fully drained: the
     // prior run's `finally` emits its "finished" event during teardown, and

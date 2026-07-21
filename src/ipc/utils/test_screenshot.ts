@@ -72,6 +72,12 @@ export async function readTestScreenshotDataUrl(
   }
   let handle: fs.promises.FileHandle | undefined;
   try {
+    // O_NOFOLLOW closes the TOCTOU gap between the realpath check above and
+    // this open by refusing to follow a symlink swapped in afterwards. It is a
+    // defense-in-depth layer only: the realpath + containment check is the
+    // primary guard. On Windows O_NOFOLLOW is undefined, so this falls back to
+    // 0 (no effect) and the open-level guard is a no-op there — acceptable
+    // because creating a symlink on Windows requires elevated privileges.
     const noFollow = fs.constants.O_NOFOLLOW ?? 0;
     handle = await fs.promises.open(realPath, fs.constants.O_RDONLY | noFollow);
     const stats = await handle.stat();

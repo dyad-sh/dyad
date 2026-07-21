@@ -115,9 +115,19 @@ function doesStatementLikelyMutateState(statement: string): boolean {
   if (!/^(?:select|show|describe|desc)\b/i.test(statement)) {
     return true;
   }
-  return (
-    /^select\b/i.test(statement) && doesSelectCallUnknownFunction(statement)
-  );
+  if (!/^select\b/i.test(statement)) {
+    // show / describe / desc are read-only.
+    return false;
+  }
+  // `SELECT ... INTO new_table` creates a table in PostgreSQL (a schema
+  // mutation) even though the statement still begins with SELECT, so the
+  // read-only classification below would otherwise miss it and leave run_tests
+  // refusing the verifying rerun. `(?!@)` skips `SELECT ... INTO @var` variable
+  // assignment, which doesn't create a table.
+  if (/\binto\s+(?!@)/i.test(statement)) {
+    return true;
+  }
+  return doesSelectCallUnknownFunction(statement);
 }
 
 /**

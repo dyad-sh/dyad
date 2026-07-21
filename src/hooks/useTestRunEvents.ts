@@ -5,6 +5,7 @@ import {
   appendTestRunOutputAtom,
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
+  clearTestRunOutputForAppAtom,
   setTestRunStateForAppAtom,
   setTestSpecsForAppAtom,
   type TestRunPhase,
@@ -34,6 +35,7 @@ export function useTestRunEvents() {
   const appendOutput = useSetAtom(appendTestRunOutputAtom);
   const applyStarted = useSetAtom(applyTestRunStartedAtom);
   const applyFinished = useSetAtom(applyTestRunFinishedAtom);
+  const clearOutput = useSetAtom(clearTestRunOutputForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const queryClient = useQueryClient();
@@ -122,6 +124,15 @@ export function useTestRunEvents() {
             grep: payload.grep,
             startedAt,
           });
+        } else {
+          // Panel runs clear output in TestsPanel the moment the user clicks,
+          // but the run then waits for the prior run's teardown to finish. That
+          // teardown can flush more chunks in the meantime, which would stay
+          // attributed to this new run (and leak into "Ask AI to Fix"). The
+          // authoritative `started` event is the barrier: any output before it
+          // belongs to the prior run, so clear the accumulated output again
+          // here. (Agent runs already clear via applyStarted above.)
+          clearOutput(appId);
         }
         return;
       }
@@ -187,6 +198,7 @@ export function useTestRunEvents() {
     appendOutput,
     applyStarted,
     applyFinished,
+    clearOutput,
     setRunState,
     setSpecs,
     queryClient,

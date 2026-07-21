@@ -165,6 +165,17 @@ describe("executeSqlTool.shouldTrackMutation", () => {
     expect(tracks("SELECT max(id), now() FROM users;")).toBe(false);
   });
 
+  it("counts a SELECT ... INTO as a schema mutation", () => {
+    // `SELECT ... INTO new_table` creates a table in PostgreSQL. Missing it
+    // leaves run_tests refusing the rerun after the agent seeds test data.
+    expect(tracks("SELECT * INTO staging_users FROM users;")).toBe(true);
+    expect(tracks("SELECT id, name INTO TEMP tmp_users FROM users;")).toBe(
+      true,
+    );
+    // A plain read whose alias merely starts with "into" must not trip it.
+    expect(tracks("SELECT count(*) AS into_total FROM users;")).toBe(false);
+  });
+
   it("still treats plain reads as no-ops", () => {
     expect(tracks("SELECT * FROM users;")).toBe(false);
     expect(tracks("SHOW search_path;")).toBe(false);

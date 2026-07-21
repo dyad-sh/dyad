@@ -283,9 +283,11 @@ describe("VersionPane", () => {
     fireEvent.click(await screen.findByTestId("version-row-1"));
     expect(fake.ofType("resolve")).toHaveLength(0);
     expect(
-      (screen.getByRole("button", {
-        name: "Restore to this version",
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: "Restore to this version",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -303,6 +305,9 @@ describe("VersionPane", () => {
     expect(store.get(selectedVersionReturnBranchAtom)).toBe("feature/test");
 
     fireEvent.click(screen.getByRole("button", { name: "Close version pane" }));
+    await act(async () => {
+      fake.last("return").deferred.resolve(undefined);
+    });
     await waitFor(() => {
       expect(store.get(selectedVersionIdAtom)).toBeNull();
       expect(store.get(selectedVersionReturnBranchAtom)).toBeNull();

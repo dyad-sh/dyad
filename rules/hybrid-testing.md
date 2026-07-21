@@ -70,6 +70,16 @@ when OAuth, proxy, or hybrid harness suites bind/connect to loopback ports. If
 the failure is `listen EPERM` or `connect EPERM` for `127.0.0.1`, `localhost`,
 or `::1`, re-run the same command outside the sandbox before debugging tests.
 
+OAuth integration callback listeners must use OS-assigned available ports, not
+fixed high ports. Windows commonly assigns dynamic ports in the 49152-65535
+range, so a fixed callback port there can collide only under CI load and make
+`runOAuthFlow` return immediately with a misleading authentication failure.
+
+Tests that intentionally stream large files should declare a timeout sized for
+loaded Windows CI runners. Keep the large fixture when it proves bounded-memory
+behavior; raising that individual test's timeout is preferable to weakening the
+streaming regression coverage or raising the timeout suite-wide.
+
 If a hybrid suite fails before test logic with
 `better_sqlite3.node was compiled against a different Node.js version` and a
 `NODE_MODULE_VERSION` mismatch, run `npm rebuild better-sqlite3` in the worktree

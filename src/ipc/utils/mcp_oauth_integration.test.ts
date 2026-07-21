@@ -16,6 +16,7 @@
 //      non-DCR case real public MCP services generally don't expose.
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer } from "node:net";
 import {
   afterAll,
   beforeAll,
@@ -124,22 +125,37 @@ const { shell } = electronImport;
 // --- Fake-server lifecycle ----------------------------------------------
 //
 // One child process per `describe` block (DCR mode + static mode use
-// different env). Fixed high ports far outside the ephemeral range so
-// the suite is deterministic and reproducible; a collision means the
-// host has something else bound there and is a real failure to fix.
+// different env). The fake servers use fixed ports, while callback listeners
+// use ports selected by the OS to avoid collisions with Windows' dynamic port
+// range and other processes on the runner.
 
 const DCR_SERVER_PORT = 47002;
 const STATIC_SERVER_PORT = 47003;
 const REFRESH_SERVER_PORT = 47004;
 const CONFIDENTIAL_SERVER_PORT = 47005;
 const SCOPE_SERVER_PORT = 47006;
-// Fixed, deterministic callback port ranges per describe block so the
-// suite repeats identically across runs.
-const DCR_CALLBACK_PORT_BASE = 53700;
-const STATIC_CALLBACK_PORT_BASE = 53800;
-const REFRESH_CALLBACK_PORT_BASE = 53900;
-const CONFIDENTIAL_CALLBACK_PORT_BASE = 54000;
-const SCOPE_CALLBACK_PORT_BASE = 54100;
+
+async function getAvailableCallbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "localhost", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to select an OAuth callback port"));
+        return;
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(address.port);
+        }
+      });
+    });
+  });
+}
 
 async function waitForReady(baseUrl: string, attempts = 40): Promise<void> {
   for (let i = 0; i < attempts; i++) {
@@ -232,13 +248,10 @@ function setupFakeServer(
 
 describe("OAuth integration: DCR mode against fake server", () => {
   const { base } = setupFakeServer({ FAKE_DCR: "1" }, DCR_SERVER_PORT);
-  // Each test uses a unique loopback callback port to avoid the
-  // "OAuth flow already in progress" guard in startCallbackListener.
-  let nextCallbackPort = DCR_CALLBACK_PORT_BASE;
 
   it("runs the full DCR flow and lands access + refresh tokens in encrypted state", async () => {
     const serverId = 1;
-    const callbackPort = nextCallbackPort++;
+    const callbackPort = await getAvailableCallbackPort();
     seedRow({ id: serverId, url: `${base}/mcp` });
 
     const result = await runOAuthFlow({ serverId, callbackPort });
@@ -280,7 +293,7 @@ describe("OAuth integration: DCR mode against fake server", () => {
     try {
       const first = await runOAuthFlow({
         serverId,
-        callbackPort: nextCallbackPort++,
+        callbackPort: await getAvailableCallbackPort(),
       });
       expect(first.success).toBe(true);
       expect(registerHits).toBe(1);
@@ -296,7 +309,7 @@ describe("OAuth integration: DCR mode against fake server", () => {
 
       const second = await runOAuthFlow({
         serverId,
-        callbackPort: nextCallbackPort++,
+        callbackPort: await getAvailableCallbackPort(),
       });
       expect(second.success).toBe(true);
       // Critical: the second flow must not have hit /register again
@@ -314,7 +327,6 @@ describe("OAuth integration: static client_id mode against fake server", () => {
     { FAKE_DCR: "0", FAKE_CLIENT_ID: STATIC_ID },
     STATIC_SERVER_PORT,
   );
-  let nextCallbackPort = STATIC_CALLBACK_PORT_BASE;
 
   it("uses the pre-registered client_id (no /register hit) when DCR is disabled", async () => {
     const serverId = 1;
@@ -339,7 +351,7 @@ describe("OAuth integration: static client_id mode against fake server", () => {
     try {
       const result = await runOAuthFlow({
         serverId,
-        callbackPort: nextCallbackPort++,
+        callbackPort: await getAvailableCallbackPort(),
       });
       expect(result.success).toBe(true);
       expect(rowIsConnected(serverId)).toBe(true);
@@ -366,7 +378,6 @@ describe("OAuth integration: refresh-token rotation against fake server", () => 
     { FAKE_DCR: "1", FAKE_TOKEN_TTL_SEC: "1" },
     REFRESH_SERVER_PORT,
   );
-  let nextCallbackPort = REFRESH_CALLBACK_PORT_BASE;
 
   it("silently refreshes when tokens have expired (no second browser open)", async () => {
     const serverId = 1;
@@ -375,7 +386,7 @@ describe("OAuth integration: refresh-token rotation against fake server", () => 
     // First flow: real PKCE redirect path, tokens land.
     const first = await runOAuthFlow({
       serverId,
-      callbackPort: nextCallbackPort++,
+      callbackPort: await getAvailableCallbackPort(),
     });
     expect(first.success).toBe(true);
     const initialState = dbStore.get(serverId)!.oauthState;
@@ -391,7 +402,7 @@ describe("OAuth integration: refresh-token rotation against fake server", () => 
     // 'AUTHORIZED' without ever calling redirectToAuthorization.
     const second = await runOAuthFlow({
       serverId,
-      callbackPort: nextCallbackPort++,
+      callbackPort: await getAvailableCallbackPort(),
     });
     expect(second.success).toBe(true);
     // Critical: refresh must not have opened a second browser. If
@@ -426,7 +437,6 @@ describe("OAuth integration: confidential client (client_secret) against fake se
     },
     CONFIDENTIAL_SERVER_PORT,
   );
-  let nextCallbackPort = CONFIDENTIAL_CALLBACK_PORT_BASE;
 
   it("sends client_id + client_secret on token exchange and lands tokens (confidential client path)", async () => {
     const serverId = 1;
@@ -443,7 +453,7 @@ describe("OAuth integration: confidential client (client_secret) against fake se
 
     const result = await runOAuthFlow({
       serverId,
-      callbackPort: nextCallbackPort++,
+      callbackPort: await getAvailableCallbackPort(),
     });
     // Success here is the load-bearing assertion: the fake /token
     // rejects with `invalid_client` unless client_secret matches
@@ -465,7 +475,7 @@ describe("OAuth integration: confidential client (client_secret) against fake se
 
     const result = await runOAuthFlow({
       serverId,
-      callbackPort: nextCallbackPort++,
+      callbackPort: await getAvailableCallbackPort(),
     });
     expect(result.success).toBe(false);
     // No tokens persisted on a failed exchange.
@@ -483,7 +493,6 @@ describe("OAuth integration: scope passthrough against fake server", () => {
     { FAKE_DCR: "1", FAKE_REQUIRED_SCOPE: REQUIRED_SCOPE },
     SCOPE_SERVER_PORT,
   );
-  let nextCallbackPort = SCOPE_CALLBACK_PORT_BASE;
 
   it("threads the row's oauthScope through to the authorize URL", async () => {
     const serverId = 1;
@@ -495,7 +504,7 @@ describe("OAuth integration: scope passthrough against fake server", () => {
 
     const result = await runOAuthFlow({
       serverId,
-      callbackPort: nextCallbackPort++,
+      callbackPort: await getAvailableCallbackPort(),
     });
 
     // Success here is load-bearing: the fake's /authorize 400s when

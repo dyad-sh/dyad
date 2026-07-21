@@ -9,6 +9,7 @@ import {
   runTypeScriptCheck,
   TypeCheckPreconditionError,
 } from "@/ipc/processors/tsc";
+import { BufferedProcessSpawnError } from "@/ipc/utils/buffered_process";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { runTypeChecksTool } from "./run_type_checks";
 
@@ -163,6 +164,24 @@ describe("runTypeChecksTool precondition guidance", () => {
     await expect(runTypeChecksTool.execute({}, ctx)).rejects.toThrow(
       "worker exploded",
     );
+
+    expect(ctx.onXmlComplete).not.toHaveBeenCalled();
+    expect(safeSend).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the real CLI spawn error instead of suggesting a rebuild", async () => {
+    const appPath = await makeApp({
+      devDependencies: { typescript: "^7.0.0" },
+    });
+    const ctx = makeCtx(appPath);
+    const spawnError = new BufferedProcessSpawnError(
+      "spawn node ENOENT",
+      "",
+      "",
+    );
+    vi.mocked(runTypeScriptCheck).mockRejectedValue(spawnError);
+
+    await expect(runTypeChecksTool.execute({}, ctx)).rejects.toBe(spawnError);
 
     expect(ctx.onXmlComplete).not.toHaveBeenCalled();
     expect(safeSend).not.toHaveBeenCalled();

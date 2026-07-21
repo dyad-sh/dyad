@@ -10,7 +10,6 @@ import { getTypeScriptCachePath } from "@/paths/paths";
 import { getPackageManagerCommandEnv } from "@/ipc/utils/socket_firewall";
 import { prependPathSegment } from "@/ipc/utils/managed_tools";
 import {
-  BufferedProcessSpawnError,
   runBufferedProcess,
   type BufferedProcessResult,
 } from "@/ipc/utils/buffered_process";
@@ -512,13 +511,6 @@ export async function runTypeScriptCheck({
       }
       return await addSnippets(parsed.problems, appPath);
     } catch (error) {
-      if (error instanceof BufferedProcessSpawnError) {
-        throw new TypeCheckPreconditionError(
-          "typescript-not-found",
-          `Failed to start local TypeScript CLI: ${error.message}`,
-          { cause: error },
-        );
-      }
       throw toProblemReportError(error);
     }
   });

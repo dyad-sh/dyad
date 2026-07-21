@@ -52,10 +52,6 @@ testSkipIfWindows(
     // the dialog. This should create a new chat with [AI_RULES, userA,
     // assistantA] and revert the app to the state after turn A (i.e. before
     // turn B).
-    // The arrow is `pointer-events-none` until its message is hovered
-    // (group-hover reveal), so hover the containing message first — clicking it
-    // cold hit-tests to the underlying message bubble and times out.
-    await restoreButtons.nth(2).locator("..").hover();
     await restoreButtons.nth(2).click();
     await po.page.getByTestId("confirm-restore-to-message-button").click();
 
@@ -129,9 +125,7 @@ testSkipIfWindows(
     await expect(restoreButtons).toHaveCount(3);
 
     // Open the dialog on the last user message (turn B) and choose to only fork
-    // the chat. Hover the containing message first so the `pointer-events-none`
-    // arrow becomes interactive (see the note in the first test).
-    await restoreButtons.nth(2).locator("..").hover();
+    // the chat.
     await restoreButtons.nth(2).click();
     await po.page.getByTestId("fork-chat-button").click();
 

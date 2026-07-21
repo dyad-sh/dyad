@@ -18,20 +18,7 @@ vi.mock("@/ipc/utils/findLanguageModel", () => ({
 const mockFindLanguageModel = vi.mocked(findLanguageModel);
 
 describe("getTemperature", () => {
-  it("does not set a default temperature for custom models", async () => {
-    mockFindLanguageModel.mockResolvedValueOnce({
-      id: 1,
-      apiName: "custom-model",
-      displayName: "Custom Model",
-      type: "custom",
-    });
-
-    await expect(
-      getTemperature({ provider: "custom::provider", name: "custom-model" }),
-    ).resolves.toBeUndefined();
-  });
-
-  it("keeps the fallback temperature for non-custom models without metadata", async () => {
+  it("does not set a default temperature for models without metadata", async () => {
     mockFindLanguageModel.mockResolvedValueOnce({
       apiName: "cloud-model",
       displayName: "Cloud Model",
@@ -40,7 +27,20 @@ describe("getTemperature", () => {
 
     await expect(
       getTemperature({ provider: "provider", name: "cloud-model" }),
-    ).resolves.toBe(0);
+    ).resolves.toBeUndefined();
+  });
+
+  it("uses configured model temperature metadata", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "cloud-model",
+      displayName: "Cloud Model",
+      type: "cloud",
+      temperature: 0.7,
+    });
+
+    await expect(
+      getTemperature({ provider: "provider", name: "cloud-model" }),
+    ).resolves.toBe(0.7);
   });
 });
 

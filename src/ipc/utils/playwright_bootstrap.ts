@@ -13,7 +13,6 @@ import {
   getNodeModuleEntryPath,
   resolveNodeModulePackageJsonPathSync,
 } from "../../../shared/node_module_resolution";
-import { TEST_SPEC_DIR } from "@/ipc/types/tests";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -127,7 +126,7 @@ export function buildPlaywrightConfig(channel: BrowserChannel | null): string {
 // the app).
 // ${browserNote}
 export default defineConfig({
-  testDir: "./${TEST_SPEC_DIR}",
+  testDir: "./tests",
   // Run serially against the single dev server.
   workers: 1,
   fullyParallel: false,

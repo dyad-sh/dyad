@@ -10,8 +10,6 @@ import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
 import {
-  LEGACY_TEST_SPEC_DIR,
-  TEST_SPEC_DIR,
   TEST_SPEC_EXT_ALTERNATION,
   TEST_SPEC_GLOB,
   testsContracts,
@@ -50,7 +48,7 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 const logger = log.scope("tests_handlers");
 
 // A test file must look like the spec paths `listAppTests` produces: relative,
-// under `e2e-tests/`, ending in a spec extension, with no traversal or leading
+// under `tests/`, ending in a spec extension, with no traversal or leading
 // dash. This stops a compromised renderer from passing a flag-like value
 // (e.g. `--config=…`) that Playwright would interpret as a CLI option. The
 // allowed characters must cover everything the listing glob can surface
@@ -58,11 +56,8 @@ const logger = log.scope("tests_handlers");
 // no `..`, no segment starting with `-`, and no backslash, colon (reserved for
 // the `file:line` selector), or control characters.
 const TEST_FILE_PATTERN = new RegExp(
-  `^${TEST_SPEC_DIR}/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
+  `^tests/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
 );
-
-const LEGACY_TEST_SPEC_GLOB = `${LEGACY_TEST_SPEC_DIR}/**/*.spec.ts`;
-const PLAYWRIGHT_TEST_IMPORT = "@playwright/test";
 
 export function normalizeRunTestFile(testFile: string): string | null {
   const normalized = path.posix.normalize(testFile.replace(/\\/g, "/"));
@@ -73,196 +68,13 @@ function isNoTestsFoundOutput(output: string): boolean {
   return /\bno tests found\b/i.test(output);
 }
 
-async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.promises.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readFileOrNull(filePath: string): Promise<string | null> {
-  try {
-    return await fs.promises.readFile(filePath, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-async function listLegacyPlaywrightSpecs(
-  appPath: string,
-): Promise<{ file: string; content: string }[]> {
-  const legacyFiles = await glob(LEGACY_TEST_SPEC_GLOB, {
-    cwd: appPath,
-    nodir: true,
-    posix: true,
-  });
-  const playwrightSpecs: { file: string; content: string }[] = [];
-  for (const file of legacyFiles) {
-    const content = await readFileOrNull(path.join(appPath, file));
-    if (content?.includes(PLAYWRIGHT_TEST_IMPORT)) {
-      playwrightSpecs.push({ file, content });
-    }
-  }
-  return playwrightSpecs;
-}
-
-function specsReferenceFixtures(specs: { content: string }[]): boolean {
-  return specs.some(
-    ({ content }) =>
-      content.includes("./fixtures/") ||
-      content.includes("../fixtures/") ||
-      content.includes("/fixtures/") ||
-      content.includes(`${LEGACY_TEST_SPEC_DIR}/fixtures/`),
-  );
-}
-
-async function moveLegacyDyadTestFile(
-  appPath: string,
-  legacyFile: string,
-): Promise<boolean> {
-  const relativeToLegacyDir = legacyFile.slice(
-    `${LEGACY_TEST_SPEC_DIR}/`.length,
-  );
-  const sourceFile = path.join(appPath, legacyFile);
-  const nextFile = path.join(appPath, TEST_SPEC_DIR, relativeToLegacyDir);
-  await fs.promises.mkdir(path.dirname(nextFile), { recursive: true });
-  try {
-    // COPYFILE_EXCL is the portable no-clobber primitive. rename() replaces an
-    // existing destination on some platforms, which could silently destroy a
-    // newer spec when both legacy and current test paths exist.
-    await fs.promises.copyFile(
-      sourceFile,
-      nextFile,
-      fs.constants.COPYFILE_EXCL,
-    );
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException)?.code;
-    if (code === "EEXIST") {
-      logger.warn(
-        `Skipped migrating ${legacyFile}: ${path.relative(appPath, nextFile)} already exists`,
-      );
-      return false;
-    }
-    // A vanished source means the file already moved (an interleaved run, or a
-    // user moving it by hand). The destination is what we wanted either way.
-    if (code === "ENOENT") return false;
-    throw error;
-  }
-
-  try {
-    await fs.promises.unlink(sourceFile);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      // The destination is already a complete copy. Preserve both rather than
-      // risk data loss; a later migration will see the collision and skip it.
-      logger.warn(
-        `Copied but could not remove legacy test ${legacyFile}`,
-        error,
-      );
-      return false;
-    }
-  }
-  return true;
-}
-
-async function removeEmptyLegacyTestDirs(appPath: string): Promise<void> {
-  const legacyDir = path.join(appPath, LEGACY_TEST_SPEC_DIR);
-  const dirs = await glob(`${LEGACY_TEST_SPEC_DIR}/**`, {
-    cwd: appPath,
-    nodir: false,
-    posix: true,
-  });
-  for (const dir of dirs.sort((a, b) => b.length - a.length)) {
-    try {
-      await fs.promises.rmdir(path.join(appPath, dir));
-    } catch {
-      // Keep non-empty directories, e.g. a user's unit-test suite.
-    }
-  }
-  try {
-    await fs.promises.rmdir(legacyDir);
-  } catch {
-    // Keep non-empty legacy tests/ for user-owned files.
-  }
-}
-
-// In-flight migrations, keyed by app path. Listing tests and starting a run
-// both migrate first, and the Tests panel does them back to back — without
-// this, two concurrent callers would each glob the legacy dir and race their
-// renames, failing the loser instead of returning tests or starting the run.
-const migrationsInFlight = new Map<string, Promise<void>>();
-
 /**
- * Migrate early Dyad-generated E2E tests from `tests/` to `e2e-tests/`.
- *
- * Legacy Dyad tests were generated as TypeScript Playwright specs. We move
- * `.spec.ts` files that import Playwright plus fixtures they import, leaving
- * unrelated files in `tests/` untouched.
- *
- * Concurrent calls for the same app share one migration.
- */
-export async function migrateLegacyDyadTestsDir(
-  appPath: string,
-): Promise<void> {
-  const inFlight = migrationsInFlight.get(appPath);
-  if (inFlight) {
-    return inFlight;
-  }
-  const migration = runLegacyDyadTestsMigration(appPath).finally(() => {
-    migrationsInFlight.delete(appPath);
-  });
-  migrationsInFlight.set(appPath, migration);
-  return migration;
-}
-
-async function runLegacyDyadTestsMigration(appPath: string): Promise<void> {
-  if (!(await pathExists(path.join(appPath, LEGACY_TEST_SPEC_DIR)))) {
-    return;
-  }
-
-  const legacySpecs = await listLegacyPlaywrightSpecs(appPath);
-  if (legacySpecs.length === 0) {
-    return;
-  }
-
-  const legacyFixtures = specsReferenceFixtures(legacySpecs)
-    ? await glob(`${LEGACY_TEST_SPEC_DIR}/fixtures/**`, {
-        cwd: appPath,
-        nodir: true,
-        posix: true,
-      })
-    : [];
-  const legacyFiles = Array.from(
-    new Set([...legacySpecs.map(({ file }) => file), ...legacyFixtures]),
-  );
-  if (legacyFiles.length === 0) {
-    return;
-  }
-
-  const moved = await Promise.all(
-    legacyFiles.map((legacyFile) =>
-      moveLegacyDyadTestFile(appPath, legacyFile),
-    ),
-  );
-  await removeEmptyLegacyTestDirs(appPath);
-  const movedCount = moved.filter(Boolean).length;
-  if (movedCount > 0) {
-    logger.info(
-      `Migrated ${movedCount} legacy Dyad E2E test file(s) from ${LEGACY_TEST_SPEC_DIR}/ to ${TEST_SPEC_DIR}/`,
-    );
-  }
-}
-
-/**
- * The relative paths of every spec under the app's `e2e-tests/` folder, sorted.
+ * The relative paths of every spec under the app's `tests/` folder, sorted.
  * Shared by the Tests panel listing and the agent's run_tests tool (so a
  * mistyped target can be answered with the paths that actually exist).
  */
 export async function listSpecFiles(appPath: string): Promise<string[]> {
-  await migrateLegacyDyadTestsDir(appPath);
-  const testsDir = path.join(appPath, TEST_SPEC_DIR);
+  const testsDir = path.join(appPath, "tests");
   if (!fs.existsSync(testsDir)) {
     return [];
   }
@@ -415,8 +227,6 @@ export async function runAppTestsCore({
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
   const appPath = getDyadAppPath(app.path);
-  await migrateLegacyDyadTestsDir(appPath);
-
   const emit = (chunk: string, phase: "setup" | "running") =>
     onOutput?.(chunk, phase);
   const normalizedTestFile =
@@ -491,9 +301,9 @@ export async function runAppTestsCore({
     args.push(target);
   } else {
     // Existing user configs can point at a different testDir. Dyad's panel only
-    // lists specs under e2e-tests/, so an all-run must target that directory
+    // lists specs under tests/, so an all-run must target that directory
     // explicitly instead of executing every spec the user's config knows about.
-    args.push(`${TEST_SPEC_DIR}/`);
+    args.push("tests/");
   }
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
@@ -759,13 +569,12 @@ export async function runAppTestsWithIsolation({
       await prior.done.catch(() => {});
     }
 
-    // Database lookup and migration intentionally happen only after this run
-    // registered above. Keeping every await behind registration ensures a
-    // rapid second invocation chains behind this run instead of racing its
-    // isolation setup and env-file swap.
+    // The database lookup intentionally happens only after this run registered
+    // above. Keeping every await behind registration ensures a rapid second
+    // invocation chains behind this run instead of racing its isolation setup
+    // and env-file swap.
     const app = await getApp(appId);
     const appPath = getDyadAppPath(app.path);
-    await migrateLegacyDyadTestsDir(appPath);
 
     // Emit "started" only after the prior lifecycle has fully drained: the
     // prior run's `finally` emits its "finished" event during teardown, and

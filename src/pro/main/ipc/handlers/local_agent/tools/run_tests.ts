@@ -15,11 +15,7 @@ import {
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
-import {
-  TEST_SPEC_DIR,
-  type RunAppTestsResult,
-  type TestResult,
-} from "@/ipc/types/tests";
+import type { RunAppTestsResult, TestResult } from "@/ipc/types/tests";
 import { normalizeFailureSignature } from "./test_failure_signature";
 import {
   MAX_ATTEMPTS,
@@ -43,7 +39,7 @@ const runTestsSchema = z.object({
     .string()
     .min(1)
     .describe(
-      "Relative path of the single spec to run, e.g. 'e2e-tests/checkout.spec.ts'. Required — always target the one spec you're working on (usually the one you just wrote or edited). Use the exact path of a spec that exists under e2e-tests/; if it doesn't match, the tool lists the real specs so you can retry.",
+      "Relative path of the single spec to run, e.g. 'tests/checkout.spec.ts'. Required — always target the one spec you're working on (usually the one you just wrote or edited). Use the exact path of a spec that exists under tests/; if it doesn't match, the tool lists the real specs so you can retry.",
     ),
   grep: z
     .string()
@@ -81,13 +77,13 @@ async function resolveSpecPath(
   const byBase = base ? specs.filter((s) => s.split("/").pop() === base) : [];
   const specList =
     specs.length > 0
-      ? `Specs that exist under ${TEST_SPEC_DIR}/:\n${specs.map((s) => `- ${s}`).join("\n")}`
-      : `There are no spec files under ${TEST_SPEC_DIR}/ yet — write one first, then run it.`;
+      ? `Specs that exist under tests/:\n${specs.map((s) => `- ${s}`).join("\n")}`
+      : "There are no spec files under tests/ yet — write one first, then run it.";
   const didYouMean =
     byBase.length > 0
       ? `\n\nClosest match by filename: ${byBase.map((s) => `\`${s}\``).join(", ")} — if that's what you meant, call run_tests again with that exact path.`
       : "";
-  const body = `No spec matches \`${requested}\`, so I did NOT start a run — no test environment was set up and this did NOT count as a fix attempt. This is NOT an infrastructure failure; the path just doesn't point at a spec.\n\n${specList}${didYouMean}\n\nCall run_tests again with an exact path from the list above. If the spec you meant isn't listed, it hasn't been written under ${TEST_SPEC_DIR}/ yet.`;
+  const body = `No spec matches \`${requested}\`, so I did NOT start a run — no test environment was set up and this did NOT count as a fix attempt. This is NOT an infrastructure failure; the path just doesn't point at a spec.\n\n${specList}${didYouMean}\n\nCall run_tests again with an exact path from the list above. If the spec you meant isn't listed, it hasn't been written under tests/ yet.`;
   completeWarning(ctx, `No test file matches "${requested}"`, body);
   return { error: body };
 }
@@ -500,7 +496,7 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
   name: "run_tests",
   description: `Run the app's Playwright end-to-end tests and get the results back, so you can verify a test you just wrote or edited and iterate until it passes.
 
-- Pass \`testFile\` (e.g. "e2e-tests/checkout.spec.ts") to run one spec — it's required, so always target the single spec you're working on. Use the exact path of a spec that exists under e2e-tests/ (the one you just wrote/edited) — don't guess. If the path doesn't match a real spec, the tool won't run anything and will reply with the list of specs that DO exist, so you can retry with a correct path.
+- Pass \`testFile\` (e.g. "tests/checkout.spec.ts") to run one spec — it's required, so always target the single spec you're working on. Use the exact path of a spec that exists under tests/ (the one you just wrote/edited) — don't guess. If the path doesn't match a real spec, the tool won't run anything and will reply with the list of specs that DO exist, so you can retry with a correct path.
 - Unless you just wrote or edited the spec this turn, READ it with read_file before running it — you need its current content to know the test() titles (for grep) and to interpret failures against what the test actually does.
 - By default the whole file runs, so a pass means every test in the spec passes.
 - Run the whole file by default. Only add \`grep\` (a regex passed to Playwright's --grep, matched against full hierarchical test titles) when you have a specific reason to narrow the run — e.g. one test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no runnable test, the tool reports that nothing executed.

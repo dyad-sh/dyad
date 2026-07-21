@@ -6,9 +6,7 @@ import {
 
 describe("quoteWindowsCmdArg", () => {
   it("leaves simple values unquoted and quotes shell-significant ones", () => {
-    expect(quoteWindowsCmdArg("e2e-tests/home.spec.ts")).toBe(
-      "e2e-tests/home.spec.ts",
-    );
+    expect(quoteWindowsCmdArg("tests/home.spec.ts")).toBe("tests/home.spec.ts");
     expect(quoteWindowsCmdArg("")).toBe('""');
     // The whole point of routing through cmd.exe with quoting: a Playwright
     // grep regex keeps its metacharacters instead of being rejected.

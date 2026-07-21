@@ -80,7 +80,7 @@ describe("local-agent run_tests (integration)", () => {
     expect(content).toContain("did NOT count as a fix attempt");
 
     // The spec was written to disk.
-    expect(content).toContain("e2e-tests/home.spec.ts");
+    expect(content).toContain("tests/home.spec.ts");
 
     // Every channel the UI invoked had a real handler.
     expect([...harness.bridge.missingChannels]).toEqual([]);

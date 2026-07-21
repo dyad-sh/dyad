@@ -9,7 +9,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "write_file",
           args: {
-            path: "e2e-tests/home.spec.ts",
+            path: "tests/home.spec.ts",
             content:
               'import { test, expect } from "@playwright/test";\n\ntest("home page loads", async ({ page }) => {\n  await page.goto("/");\n  await expect(page.getByRole("heading")).toBeVisible();\n});\n',
           },
@@ -22,7 +22,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "run_tests",
           args: {
-            testFile: "e2e-tests/home.spec.ts",
+            testFile: "tests/home.spec.ts",
           },
         },
       ],

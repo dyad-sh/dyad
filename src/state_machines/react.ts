@@ -16,23 +16,18 @@ export interface DisposableManager {
  */
 export function useManagerLifecycle(manager: DisposableManager): void {
   const lifecycle = useRef({
-    activeManager: manager,
     generations: new Map<DisposableManager, number>(),
   });
 
   useEffect(() => {
     const generation = (lifecycle.current.generations.get(manager) ?? 0) + 1;
-    lifecycle.current.activeManager = manager;
     lifecycle.current.generations.set(manager, generation);
     manager.start?.();
 
     return () => {
       queueMicrotask(() => {
         const current = lifecycle.current;
-        if (
-          current.activeManager !== manager ||
-          current.generations.get(manager) === generation
-        ) {
+        if (current.generations.get(manager) === generation) {
           current.generations.delete(manager);
           manager.dispose();
         }

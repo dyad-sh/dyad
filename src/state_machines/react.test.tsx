@@ -78,7 +78,7 @@ describe("useManagerLifecycle", () => {
     expect(second.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("does not let an older cleanup dispose a reclaimed manager", async () => {
+  it("disposes a rapidly reclaimed manager only once", async () => {
     const first = { dispose: vi.fn() };
     const second = { dispose: vi.fn() };
     const hook = renderHook(({ manager }) => useManagerLifecycle(manager), {
@@ -87,13 +87,14 @@ describe("useManagerLifecycle", () => {
 
     hook.rerender({ manager: second });
     hook.rerender({ manager: first });
+    hook.rerender({ manager: second });
     await flushMicrotasks();
-    expect(first.dispose).not.toHaveBeenCalled();
-    expect(second.dispose).toHaveBeenCalledTimes(1);
+    expect(first.dispose).toHaveBeenCalledTimes(1);
+    expect(second.dispose).not.toHaveBeenCalled();
 
     hook.unmount();
     await flushMicrotasks();
-    expect(first.dispose).toHaveBeenCalledTimes(1);
+    expect(second.dispose).toHaveBeenCalledTimes(1);
   });
 });
 

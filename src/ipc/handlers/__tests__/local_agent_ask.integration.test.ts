@@ -182,6 +182,7 @@ describe("local-agent ask mode (integration)", () => {
     expect(toolNames).toEqual([
       "code_search",
       "execute_sandbox_script",
+      "explore_chat_history",
       "git_diff",
       "git_log",
       "git_show_commit",
@@ -194,7 +195,6 @@ describe("local-agent ask mode (integration)", () => {
       "read_guide",
       "read_logs",
       "run_type_checks",
-      "search_chats",
       "set_chat_summary",
       "web_crawl",
       "web_fetch",

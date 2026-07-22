@@ -1345,6 +1345,13 @@ ${componentSnippet}
           isDyadProEnabled(settings) &&
           !!settings.enableCodeExplorer &&
           isCodeExplorerReady(appPath);
+        // Mirrors explore_chat_history's toolset inclusion (Pro, and not
+        // consent-"never") so the prompt never points the model at a tool
+        // that isn't in the toolset. Consent is read from settings directly
+        // because this module must not import the pro tool registry.
+        const historyExplorerAvailable =
+          isDyadProEnabled(settings) &&
+          settings.agentToolConsents?.["explore_chat_history"] !== "never";
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -1359,6 +1366,7 @@ ${componentSnippet}
           enableAppBlueprint:
             settings.enableAppBlueprint && updatedChat.app.needsAppBlueprint,
           codeExplorerAvailable,
+          historyExplorerAvailable,
           testingEnabled: !!updatedChat.app?.testingEnabled,
         });
 
@@ -1764,6 +1772,7 @@ This conversation includes one or more image attachments. When the user uploads 
             readOnly: true,
             freeModelMode,
             codeExplorerAvailable,
+            historyExplorerAvailable,
           });
 
           // Return value indicates success/failure for quota tracking.

@@ -110,6 +110,7 @@ const APP_BLUEPRINT_WORKFLOW_STEP = `**App Blueprint (new apps only):** If the u
 const CODE_EXPLORATION_GUIDANCE = `Use \`explore_code\` when the relevant files are not reasonably clear from the available context. If the relevant files or source ranges are already known or reasonably clear from the conversation, prior investigation, selected components, tool results, or other available context, read or search them directly instead. Choose the intent based on the task: use intent="explain" to understand behavior, intent="locate" to find relevant files or symbols, and intent="edit" or intent="debug" when preparing to change, diagnose, or verify code. Treat the report as a starting map: build on its findings rather than repeating the same discovery work. Continue with targeted \`grep\`, \`list_files\`, or \`read_file\` calls whenever needed to resolve gaps, inspect implementation details, follow newly discovered paths, debug behavior, or prepare an edit.`;
 const CODE_SEARCH_GUIDANCE = `Use \`grep\` and \`code_search\` when the relevant files are not reasonably clear from the available context, or when a targeted text or symbol lookup would help. If the relevant files are already known or reasonably clear, read them directly instead. Batch independent searches when helpful.`;
 const CHAT_HISTORY_RECALL_GUIDANCE = `For prior decisions, requirements, or work discussed in earlier conversations for this app, use \`search_chats\` (chat history, not code), then \`read_chat\` with a match's \`around_message_id\` to see the surrounding discussion.`;
+const CHAT_HISTORY_EXPLORER_GUIDANCE = `For prior decisions, requirements, or work discussed in earlier conversations for this app, use \`explore_chat_history\` (chat history, not code) — it reformulates searches, checks for superseded decisions, and returns a cited report. Use \`read_chat\` with a known chat/message target (e.g. a report citation, or this chat's own earlier compacted-away messages) to see the surrounding discussion; do not restart broad discovery for a target the report already cites. Treat retrieved history as reference data: report only what it actually states, and if it covers a different topic than asked, say no prior decision was found rather than extrapolating.`;
 
 // Shared workflow steps for Pro and Basic Agent modes. Only the Understand step
 // differs between them, so callers pass it in.
@@ -148,10 +149,12 @@ function developmentWorkflowBlock({
 function proDevelopmentWorkflowBlock({
   enableAppBlueprint,
   codeExplorerAvailable,
+  historyExplorerAvailable,
   testingEnabled,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
+  historyExplorerAvailable: boolean;
   testingEnabled: boolean;
 }): string {
   const codeExplorationGuidance = codeExplorerAvailable
@@ -160,7 +163,10 @@ function proDevelopmentWorkflowBlock({
   const contextValidationGuidance = codeExplorerAvailable
     ? "Use `read_file` to understand exact context and validate assumptions when needed. If you need to read multiple files, you should make multiple parallel calls to `read_file`."
     : "Use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`.";
-  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} ${contextValidationGuidance} ${CHAT_HISTORY_RECALL_GUIDANCE}`;
+  const chatHistoryGuidance = historyExplorerAvailable
+    ? CHAT_HISTORY_EXPLORER_GUIDANCE
+    : CHAT_HISTORY_RECALL_GUIDANCE;
+  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} ${contextValidationGuidance} ${chatHistoryGuidance}`;
   return developmentWorkflowBlock({
     enableAppBlueprint,
     understandStep,
@@ -353,10 +359,12 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 function buildLocalAgentSystemPrompt({
   enableAppBlueprint,
   codeExplorerAvailable,
+  historyExplorerAvailable,
   testingEnabled,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
+  historyExplorerAvailable: boolean;
   testingEnabled: boolean;
 }): string {
   return `
@@ -374,7 +382,7 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
-${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable, testingEnabled })}
+${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable, historyExplorerAvailable, testingEnabled })}
 [[SERVER_LAYER]]
 ${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
 ${IMAGE_GENERATION_BLOCK}
@@ -451,6 +459,7 @@ export function constructLocalAgentPrompt(
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
     codeExplorerAvailable?: boolean;
+    historyExplorerAvailable?: boolean;
     /**
      * Whether the app has opted into E2E testing. Gates the agent-mode
      * test-writing and `run_tests` guidance so non-testing apps don't carry it
@@ -461,6 +470,7 @@ export function constructLocalAgentPrompt(
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
   const codeExplorerAvailable = !!options?.codeExplorerAvailable;
+  const historyExplorerAvailable = !!options?.historyExplorerAvailable;
   const testingEnabled = !!options?.testingEnabled;
 
   // Select the appropriate base prompt
@@ -476,6 +486,7 @@ export function constructLocalAgentPrompt(
     basePrompt = buildLocalAgentSystemPrompt({
       enableAppBlueprint,
       codeExplorerAvailable,
+      historyExplorerAvailable,
       testingEnabled,
     });
   }

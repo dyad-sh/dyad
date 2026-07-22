@@ -13,6 +13,7 @@ import { DyadGrep } from "./DyadGrep";
 import { DyadSearchChats } from "./DyadSearchChats";
 import { DyadReadChat } from "./DyadReadChat";
 import { DyadExploreCode } from "./DyadExploreCode";
+import { DyadExploreChatHistory } from "./DyadExploreChatHistory";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
@@ -786,6 +787,23 @@ function renderCustomTag(
         >
           {content}
         </DyadGrep>
+      );
+
+    case "dyad-explore-chat-history":
+      return (
+        <DyadExploreChatHistory
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+              query: attributes.query || "",
+              chats: attributes.chats || "",
+              evidence: attributes.evidence || "",
+              outcome: attributes.outcome || "",
+            },
+          }}
+        >
+          {content}
+        </DyadExploreChatHistory>
       );
 
     case "dyad-explore-code":

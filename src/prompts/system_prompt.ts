@@ -652,6 +652,7 @@ export const constructSystemPrompt = ({
   hasSupabaseProject,
   enableAppBlueprint,
   codeExplorerAvailable,
+  historyExplorerAvailable,
   testingEnabled,
 }: {
   aiRules: string | undefined;
@@ -684,6 +685,12 @@ export const constructSystemPrompt = ({
    */
   codeExplorerAvailable?: boolean;
   /**
+   * If true, the local-agent prompt routes broad historical recall through
+   * the Pro-only `explore_chat_history` sub-agent instead of direct
+   * `search_chats`.
+   */
+  historyExplorerAvailable?: boolean;
+  /**
    * Whether the app has opted into E2E testing. Gates the local-agent
    * test-writing and `run_tests` guidance (see `constructLocalAgentPrompt`).
    */
@@ -702,6 +709,7 @@ export const constructSystemPrompt = ({
       hasSupabaseProject,
       enableAppBlueprint,
       codeExplorerAvailable,
+      historyExplorerAvailable,
       testingEnabled,
     });
   }

@@ -91,7 +91,9 @@ export class ChatStreamManager {
 
   dispose(): void {
     this.host.dispose();
-    this.runtimeDeps = null;
+    // An in-flight startStream may register its IPC transport after an await.
+    // Its controller releases again once setup settles, so retain deps until
+    // that promise releases this otherwise-unreferenced manager graph.
   }
 
   private releaseIfQuiescent(controller: ChatStreamController): void {

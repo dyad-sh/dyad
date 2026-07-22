@@ -20,6 +20,15 @@ export class Catalog {
     await card.getByRole("button", { name: "Add" }).click();
   }
 
+  // stdio entries open a run-locally consent dialog before the add
+  // proceeds; confirm it.
+  async confirmStdioConsent() {
+    await this.page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Add plugin" })
+      .click();
+  }
+
   async expectAdded(name: string) {
     await expect(this.card(name).getByText("Added")).toBeVisible({
       timeout: Timeout.MEDIUM,

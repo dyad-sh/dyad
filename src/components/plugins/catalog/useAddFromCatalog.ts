@@ -9,11 +9,27 @@ import { usePluginConnect } from "../usePluginConnect";
 export function useAddFromCatalog() {
   const queryClient = useQueryClient();
   const [addingSlug, setAddingSlug] = useState<string | null>(null);
+  // A stdio entry awaiting the user's run-locally consent. Null when no
+  // consent is pending.
+  const [pendingStdioEntry, setPendingStdioEntry] =
+    useState<McpCatalogEntry | null>(null);
   const { onServerCreated } = usePluginConnect();
 
   const mutation = useMutation({
     mutationFn: async (entry: McpCatalogEntry) => {
-      const created = await ipc.mcp.addFromCatalog({ slug: entry.slug });
+      // Send the reviewed command so the handler can abort if the catalog
+      // changed since the consent prompt.
+      const created = await ipc.mcp.addFromCatalog({
+        slug: entry.slug,
+        expectedStdioConfig:
+          entry.transport === "stdio"
+            ? {
+                command: entry.command,
+                args: entry.args,
+                env: entry.env ?? null,
+              }
+            : undefined,
+      });
       return { entry, created };
     },
     onSuccess: async () => {
@@ -28,7 +44,7 @@ export function useAddFromCatalog() {
     meta: { showErrorToast: true },
   });
 
-  const addFromCatalog = async (entry: McpCatalogEntry) => {
+  const performAdd = async (entry: McpCatalogEntry) => {
     if (addingSlug) return;
     setAddingSlug(entry.slug);
     let created: Awaited<ReturnType<typeof ipc.mcp.addFromCatalog>> | null =
@@ -50,10 +66,35 @@ export function useAddFromCatalog() {
     // runs through the shared flow so it holds the connect slot (no
     // competing flow) and reuses the probed callback port; it is not
     // awaited so an abandoned browser step can't wedge the add.
-    if (entry.oauth?.required) {
+    if (entry.transport === "http" && entry.oauth?.required) {
       void onServerCreated(created, { wantsOAuth: true });
     }
   };
 
-  return { addFromCatalog, addingSlug } as const;
+  const addFromCatalog = async (entry: McpCatalogEntry) => {
+    // Adding an stdio entry enables it, which runs its npm package
+    // locally, so confirm before adding. http entries only open a
+    // network connection and add directly.
+    if (entry.transport === "stdio") {
+      setPendingStdioEntry(entry);
+      return;
+    }
+    await performAdd(entry);
+  };
+
+  const confirmPendingStdio = async () => {
+    const entry = pendingStdioEntry;
+    setPendingStdioEntry(null);
+    if (entry) await performAdd(entry);
+  };
+
+  const cancelPendingStdio = () => setPendingStdioEntry(null);
+
+  return {
+    addFromCatalog,
+    addingSlug,
+    pendingStdioEntry,
+    confirmPendingStdio,
+    cancelPendingStdio,
+  } as const;
 }

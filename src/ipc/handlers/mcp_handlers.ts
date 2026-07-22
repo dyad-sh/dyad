@@ -52,6 +52,16 @@ async function isPortFreeOnBothLoopbacks(port: number): Promise<boolean> {
   return v4 === "free" || v6 === "free";
 }
 
+function envsEqual(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+  );
+}
+
 // Parse a JSON string from the renderer and surface a clear error
 // instead of letting the main process see a raw SyntaxError. Returns
 // `null` if the input is falsy.
@@ -118,66 +128,103 @@ export function registerMcpHandlers() {
     return { entries, addedSlugs };
   });
 
-  createTypedHandler(mcpContracts.addFromCatalog, async (_, { slug }) => {
-    const entries = await getRemoteMcpCatalog();
-    // The user reached this from a populated catalog, so an empty list
-    // here means the fetch failed rather than the slug being unknown.
-    // Surface that as a connectivity problem instead of a not-found.
-    if (entries.length === 0) {
-      throw new DyadError(
-        "Could not reach the plugin catalog. Please check your connection and try again.",
-        DyadErrorKind.Precondition,
-      );
-    }
-    const entry = entries.find((e) => e.slug === slug);
-    if (!entry) {
-      throw new DyadError(
-        `Unknown catalog entry: ${slug}`,
-        DyadErrorKind.NotFound,
-      );
-    }
-
-    // Adding the same entry twice returns the existing server. The
-    // unique index on catalog_slug makes this safe against concurrent
-    // adds: onConflictDoNothing skips the duplicate insert, and we read
-    // the winning row back.
-    const existing = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.catalogSlug, slug));
-    if (existing.length > 0) {
-      return toMcpServer(existing[0]);
-    }
-
-    const [created] = await db
-      .insert(mcpServers)
-      .values({
-        name: entry.name,
-        transport: "http",
-        url: entry.url,
-        headersJson: entry.headers ?? null,
-        enabled: true,
-        oauthEnabled: entry.oauth != null,
-        oauthScope: entry.oauth?.scope ?? null,
-        catalogSlug: entry.slug,
-      })
-      .onConflictDoNothing({ target: mcpServers.catalogSlug })
-      .returning();
-    if (!created) {
-      const [row] = await db
-        .select()
-        .from(mcpServers)
-        .where(eq(mcpServers.catalogSlug, slug));
-      if (!row) {
+  createTypedHandler(
+    mcpContracts.addFromCatalog,
+    async (_, { slug, expectedStdioConfig }) => {
+      const entries = await getRemoteMcpCatalog();
+      // The user reached this from a populated catalog, so an empty list
+      // here means the fetch failed rather than the slug being unknown.
+      // Surface that as a connectivity problem instead of a not-found.
+      if (entries.length === 0) {
+        throw new DyadError(
+          "Could not reach the plugin catalog. Please check your connection and try again.",
+          DyadErrorKind.Precondition,
+        );
+      }
+      const entry = entries.find((e) => e.slug === slug);
+      if (!entry) {
         throw new DyadError(
           `Unknown catalog entry: ${slug}`,
           DyadErrorKind.NotFound,
         );
       }
-      return toMcpServer(row);
-    }
-    return toMcpServer(created);
-  });
+
+      // Adding the same entry twice returns the existing server. The
+      // unique index on catalog_slug makes this safe against concurrent
+      // adds: onConflictDoNothing skips the duplicate insert, and we read
+      // the winning row back.
+      const existing = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.catalogSlug, slug));
+      if (existing.length > 0) {
+        return toMcpServer(existing[0]);
+      }
+
+      // A stdio add must run exactly the command the consent prompt showed.
+      // Abort if the fetched entry wasn't reviewed, no longer matches, or
+      // the slug changed transport since the prompt.
+      const stdioMatchesReview =
+        entry.transport === "stdio" &&
+        expectedStdioConfig != null &&
+        entry.command === expectedStdioConfig.command &&
+        entry.args.length === expectedStdioConfig.args.length &&
+        entry.args.every((arg, i) => arg === expectedStdioConfig.args[i]) &&
+        envsEqual(entry.env ?? {}, expectedStdioConfig.env ?? {});
+      const transportMismatch =
+        (entry.transport === "stdio") !== (expectedStdioConfig != null);
+      if (
+        (entry.transport === "stdio" && !stdioMatchesReview) ||
+        transportMismatch
+      ) {
+        throw new DyadError(
+          "The plugin catalog changed since you reviewed this plugin. Please try adding it again.",
+          DyadErrorKind.Precondition,
+        );
+      }
+
+      const values =
+        entry.transport === "stdio"
+          ? {
+              name: entry.name,
+              transport: "stdio" as const,
+              command: entry.command,
+              args: entry.args,
+              envJson: entry.env ?? null,
+              enabled: true,
+              catalogSlug: entry.slug,
+            }
+          : {
+              name: entry.name,
+              transport: "http" as const,
+              url: entry.url,
+              headersJson: entry.headers ?? null,
+              enabled: true,
+              oauthEnabled: entry.oauth != null,
+              oauthScope: entry.oauth?.scope ?? null,
+              catalogSlug: entry.slug,
+            };
+      const [created] = await db
+        .insert(mcpServers)
+        .values(values)
+        .onConflictDoNothing({ target: mcpServers.catalogSlug })
+        .returning();
+      if (!created) {
+        const [row] = await db
+          .select()
+          .from(mcpServers)
+          .where(eq(mcpServers.catalogSlug, slug));
+        if (!row) {
+          throw new DyadError(
+            `Unknown catalog entry: ${slug}`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        return toMcpServer(row);
+      }
+      return toMcpServer(created);
+    },
+  );
 
   createTypedHandler(mcpContracts.createServer, async (_, params) => {
     const {

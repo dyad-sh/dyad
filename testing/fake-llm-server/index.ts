@@ -295,14 +295,27 @@ export function createFakeLlmApp(getPort: () => number) {
           url: "http://localhost:3002/mcp",
           headers: { "X-Test-Header": "dyad-e2e" },
         },
-        // The desktop client must drop these two: an entry kind it
-        // doesn't support yet and a malformed one.
+        // Valid stdio entry. The package is scoped under @dyad-sh so it
+        // can never resolve against the real npm registry: the spec only
+        // exercises the add flow, and an actual `npx` spawn in CI must
+        // fail with a 404 instead of executing someone's package.
         {
           slug: "e2e-stdio",
           name: "E2E Stdio Server",
+          description: "Fake local stdio MCP server",
+          category: "Testing",
           transport: "stdio",
           command: "npx",
-          args: ["-y", "fake-mcp@1.0.0"],
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+        },
+        // The desktop client must drop these: a stdio entry whose command
+        // isn't npx, and a malformed one.
+        {
+          slug: "e2e-stdio-node",
+          name: "E2E Stdio Node Server",
+          transport: "stdio",
+          command: "node",
+          args: ["server.mjs"],
         },
         { slug: "e2e-broken" },
       ],

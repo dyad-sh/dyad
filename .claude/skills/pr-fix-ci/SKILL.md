@@ -54,12 +54,21 @@ Inspect both `unit-tests-macos` and `unit-tests-windows`, even when only one fai
 
 ## E2E failures
 
-After unit-test fixes are ready, if any E2E shard or report-merge job failed, invoke `$dyad:deflake-e2e-from-run` with the selected run URL. Follow its artifact-first trace analysis, rebuild, and targeted E2E verification. Running it after unit fixes lets its required `$dyad:pr-push` publish the complete CI fix together.
+After unit-test fixes are ready, if any E2E shard or report-merge job failed, invoke `/dyad:deflake-e2e-from-run` with the selected run URL. Follow its artifact-first trace analysis, rebuild, and targeted E2E verification. Running it after unit fixes lets its required `/dyad:pr-push` publish the complete CI fix together.
 
-If the failure is a snapshot mismatch, use `$dyad:e2e-rebase` when appropriate. Do not substitute raw job-log guessing for the merged Playwright report when an `html-report` artifact exists.
+The standalone `safe-storage-e2e` job is not included in the merged `html-report`. If it failed, download and inspect its dedicated artifact before editing:
+
+```sh
+gh run download <RUN_ID> -R dyad-sh/dyad \
+  -n safe-storage-e2e-report -D <SCRATCH_DIR>/safe-storage-e2e-report
+```
+
+Treat `blob-report/` and `test-results/` as the authoritative failure evidence. Read the retained Playwright errors, traces, screenshots, and error-context files using the same artifact-first trace analysis from `/dyad:deflake-e2e-from-run`. This spec swaps the machine-global default macOS Keychain, so never run it locally or on a self-hosted runner. Verify the surrounding logic with the narrowest safe local tests, then rely on the next ephemeral GitHub-hosted `safe-storage-e2e` job for final confirmation and say so explicitly.
+
+If the failure is a snapshot mismatch, use `/dyad:e2e-rebase` when appropriate. Do not substitute raw job-log guessing for retained Playwright artifacts.
 
 ## Verify and publish
 
 Before publishing, run the narrowest affected tests plus `npm run fmt`, `npm run lint`, and `npm run ts`. If E2E application code changed, run `npm run build` before targeted E2E tests.
 
-If `$dyad:deflake-e2e-from-run` did not already publish the combined changes, invoke `$dyad:pr-push`. Report the source run URL, each failed job's concrete root cause and fix, commands run locally, and any platform result that still requires CI confirmation.
+If `/dyad:deflake-e2e-from-run` did not already publish the combined changes, invoke `/dyad:pr-push`. Report the source run URL, each failed job's concrete root cause and fix, commands run locally, and any platform result that still requires CI confirmation.

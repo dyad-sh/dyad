@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
-import { useControllerSnapshot } from "@/state_machines/react";
+import {
+  useControllerSnapshot,
+  useManagerLifecycle,
+} from "@/state_machines/react";
 import { createBrowserVoiceCommandRunner } from "@/voice_to_text/commands";
 import {
   isVoiceRecording,
@@ -34,7 +37,7 @@ export function useVoiceToText({
     };
   });
 
-  useEffect(() => () => controller.dispose(), [controller]);
+  useManagerLifecycle(controller);
   useEffect(() => {
     runner.updateCallbacks({ onTranscription, onError });
   }, [runner, onTranscription, onError]);

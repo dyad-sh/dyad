@@ -2,7 +2,11 @@
  * Voice capture is input-scoped: each hook mount owns exactly one controller.
  * Attempt IDs correlate every asynchronous browser/IPC completion. A result
  * from an older attempt may release its own media, but never changes the live
- * attempt's state.
+ * attempt's state. Commands may finish concurrently, while a live controller
+ * drains their events FIFO. Stale MEDIA_ACQUIRED must never be dropped because
+ * its stream needs releasing; other stale attempt completions may be ignored.
+ * Disposal intentionally discards every queued or late event after running
+ * resource-cleanup commands.
  */
 
 export type VoiceStopReason = "user" | "duration" | "size";

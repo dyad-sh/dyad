@@ -82,6 +82,7 @@ type PendingRevert =
       kind: "retry";
       retry: RetryDetails;
       currentChatMessageId: { chatId: number; messageId: number };
+      uncommittedFileCount: number;
     });
 
 // Footer component for Virtuoso - receives context via props
@@ -334,9 +335,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         return;
       }
 
-      // The last message is usually an assistant, but it might not be.
-      // The refreshed log may still be empty if the query failed; in that case
-      // fall through to a plain redo rather than throwing.
+      // Only restore when the assistant commit and its parent are both present
+      // in the freshly loaded history. Otherwise retry from the current code;
+      // restoring without that snapshot would bypass impact and HEAD guards.
       const lastMessage = messages[messages.length - 1];
       const currentCommitIndex = lastMessage?.commitHash
         ? freshVersions.findIndex(
@@ -347,8 +348,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         currentCommitIndex >= 0
           ? freshVersions[currentCommitIndex + 1]?.oid
           : undefined;
-      const revertTargetVersionId =
-        previousVersionId ?? lastMessage?.sourceCommitHash ?? undefined;
+      const revertTargetVersionId = previousVersionId;
 
       if (!isCurrentContext(appId, selectedChatId, lastMessage?.id)) return;
 
@@ -363,15 +363,20 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       };
 
       if (revertTargetVersionId) {
-        const extraCommits = getExtraRevertedCommits({
-          versions: freshVersions,
-          targetOid: revertTargetVersionId,
-          ownCommitHashes: lastMessage?.commitHash
-            ? [lastMessage.commitHash]
-            : [],
-        });
+        const uncommittedFiles = await ipc.git.getUncommittedFiles({ appId });
+        const extraCommits =
+          getExtraRevertedCommits({
+            versions: freshVersions,
+            targetOid: revertTargetVersionId,
+            ownCommitHashes: lastMessage?.commitHash
+              ? [lastMessage.commitHash]
+              : [],
+          }) ?? [];
         const expectedHeadOid = freshVersions[0]?.oid;
-        if (extraCommits?.length && expectedHeadOid) {
+        if (
+          (extraCommits?.length || uncommittedFiles.length) &&
+          expectedHeadOid
+        ) {
           setPendingRevert({
             kind: "retry",
             appId,
@@ -382,6 +387,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             extraCommits,
             retry,
             currentChatMessageId,
+            uncommittedFileCount: uncommittedFiles.length,
           });
           return;
         }
@@ -476,6 +482,11 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           open
           kind={currentPendingRevert.kind}
           extraCommits={currentPendingRevert.extraCommits}
+          uncommittedFileCount={
+            currentPendingRevert.kind === "retry"
+              ? currentPendingRevert.uncommittedFileCount
+              : 0
+          }
           onOpenChange={(open) => {
             if (!open) setPendingRevert(null);
           }}

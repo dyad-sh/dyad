@@ -237,4 +237,62 @@ describe("retry (hybrid)", () => {
       expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
     );
   }, 60_000);
+
+  it("offers the safe retry path when the working tree has uncommitted changes", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const end = harness.waitForNextStreamEnd(harness.chatId);
+    const { send } = await harness.typeInChat("tc=write-index-2");
+    send();
+    await end;
+
+    const uncommittedPath = path.join(
+      harness.appDir,
+      "retry-uncommitted-change.txt",
+    );
+    fs.writeFileSync(uncommittedPath, "keep uncommitted work\n");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    expect(
+      await screen.findByTestId("extra-commits-revert-dialog"),
+    ).toBeTruthy();
+    expect(screen.getByText("1 uncommitted file change")).toBeTruthy();
+    expect(screen.queryByTestId("confirm-revert-anyway-button")).toBeNull();
+
+    const retryEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(screen.getByTestId("retry-from-current-code-button"));
+    await retryEnd;
+
+    expect(fs.existsSync(uncommittedPath)).toBe(true);
+  }, 60_000);
+
+  it("retries a text-only response without restoring a dirty tree", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const firstEnd = harness.waitForNextStreamEnd(harness.chatId);
+    const { send } = await harness.typeInChat("[increment]");
+    send();
+    await firstEnd;
+
+    const uncommittedPath = path.join(
+      harness.appDir,
+      "retry-text-only-uncommitted-change.txt",
+    );
+    fs.writeFileSync(uncommittedPath, "preserve me\n");
+
+    const retryEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull();
+    await retryEnd;
+
+    expect(fs.existsSync(uncommittedPath)).toBe(true);
+  }, 60_000);
 });

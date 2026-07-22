@@ -19,6 +19,7 @@ export function ExtraCommitsRevertDialog({
   extraCommits,
   onConfirm,
   onRetryFromCurrentCode,
+  uncommittedFileCount = 0,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,10 +27,15 @@ export function ExtraCommitsRevertDialog({
   extraCommits: Version[];
   onConfirm: () => void;
   onRetryFromCurrentCode?: () => void;
+  uncommittedFileCount?: number;
 }) {
   const action = kind === "undo" ? "Undo" : "Retry";
   const commitLabel = extraCommits.length === 1 ? "commit was" : "commits were";
+  const commitNoun = extraCommits.length === 1 ? "commit" : "commits";
   const isRetry = kind === "retry";
+  const hasUncommittedChanges = uncommittedFileCount > 0;
+  const uncommittedLabel =
+    uncommittedFileCount === 1 ? "file change" : "file changes";
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -42,11 +48,23 @@ export function ExtraCommitsRevertDialog({
           </AlertDialogTitle>
           <AlertDialogDescription>
             {isRetry ? (
-              <>
-                {extraCommits.length} newer {commitLabel} made after this
-                response. Retry from the current code to keep them, or restore
-                and retry to revert them:
-              </>
+              hasUncommittedChanges ? (
+                <>
+                  Your app has {uncommittedFileCount} uncommitted{" "}
+                  {uncommittedLabel}
+                  {extraCommits.length > 0
+                    ? ` and ${extraCommits.length} newer ${commitNoun}`
+                    : ""}
+                  . Retry from the current code to keep this work. Commit or
+                  discard the uncommitted changes before restoring and retrying.
+                </>
+              ) : (
+                <>
+                  {extraCommits.length} newer {commitLabel} made after this
+                  response. Retry from the current code to keep them, or restore
+                  and retry to revert them:
+                </>
+              )
             ) : (
               <>
                 Besides this message&apos;s changes, {extraCommits.length} more{" "}
@@ -56,6 +74,16 @@ export function ExtraCommitsRevertDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="scrollbar-on-hover max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
+          {hasUncommittedChanges && (
+            <div className="min-w-0 text-sm">
+              <p className="font-medium text-foreground">
+                {uncommittedFileCount} uncommitted {uncommittedLabel}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Not committed to version history
+              </p>
+            </div>
+          )}
           {extraCommits.map((commit) => (
             <div key={commit.oid} className="min-w-0 text-sm">
               <p className="truncate font-medium text-foreground">
@@ -79,13 +107,15 @@ export function ExtraCommitsRevertDialog({
               Retry from current code
             </AlertDialogAction>
           )}
-          <AlertDialogAction
-            data-testid="confirm-revert-anyway-button"
-            className={`${buttonVariants({ variant: "destructive" })} w-full`}
-            onClick={onConfirm}
-          >
-            {isRetry ? "Restore and retry" : `${action} anyway`}
-          </AlertDialogAction>
+          {!hasUncommittedChanges && (
+            <AlertDialogAction
+              data-testid="confirm-revert-anyway-button"
+              className={`${buttonVariants({ variant: "destructive" })} w-full`}
+              onClick={onConfirm}
+            >
+              {isRetry ? "Restore and retry" : `${action} anyway`}
+            </AlertDialogAction>
+          )}
           <AlertDialogCancel
             data-testid="cancel-revert-button"
             className="w-full"

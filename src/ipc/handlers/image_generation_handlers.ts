@@ -35,6 +35,16 @@ function throwIfGenerationCancelled(signal: AbortSignal): void {
   }
 }
 
+function getHttpErrorKind(status: number): DyadErrorKind {
+  if (status === 401 || status === 403) {
+    return DyadErrorKind.Auth;
+  }
+  if (status === 429) {
+    return DyadErrorKind.RateLimited;
+  }
+  return DyadErrorKind.External;
+}
+
 const THEME_SYSTEM_PROMPTS: Record<ImageThemeMode, string | null> = {
   plain: null,
   "3d-clay":
@@ -119,8 +129,9 @@ export function registerImageGenerationHandlers() {
           logger.error(
             `Image generation API error: HTTP ${response.status} (request: ${requestId})`,
           );
-          throw new Error(
+          throw new DyadError(
             `Image generation failed (HTTP ${response.status}). Please try again.`,
+            getHttpErrorKind(response.status),
           );
         }
 
@@ -171,8 +182,9 @@ export function registerImageGenerationHandlers() {
               ]),
             });
             if (!imgResponse.ok) {
-              throw new Error(
+              throw new DyadError(
                 `Failed to download image: ${imgResponse.status} ${imgResponse.statusText}`,
+                getHttpErrorKind(imgResponse.status),
               );
             }
             const arrayBuffer = await imgResponse.arrayBuffer();
@@ -184,11 +196,12 @@ export function registerImageGenerationHandlers() {
             }
             imageBuffer = Buffer.from(arrayBuffer);
           } catch (dlError) {
-            if (dlError instanceof Error && dlError.name === "AbortError") {
-              throwIfGenerationCancelled(controller.signal);
+            throwIfGenerationCancelled(controller.signal);
+            if (downloadTimeoutSignal.aborted) {
               throw new DyadError(
                 "Image download timed out. Please try again.",
                 DyadErrorKind.External,
+                { cause: dlError },
               );
             }
             throw dlError;

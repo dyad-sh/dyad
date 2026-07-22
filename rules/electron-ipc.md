@@ -95,6 +95,7 @@ writeSettings({
 - When main awaits a correlated renderer decision that can auto-settle on timeout or abort, emit a request-specific terminal event for every settlement path. Key every actionable renderer projection (including native notifications) by that request ID, consume the terminal event in each projection, and guard async UI setup so it cannot create stale UI after settlement; stream-end cleanup alone may be delayed or never run.
 - When splitting large handlers behind service boundaries, leave the handler responsible for IPC registration and request orchestration while moving runtime/policy logic into `src/ipc/services/*`. Preserve any intentional module side effects in the extracted service, such as `fixPath()` for child process PATH setup.
 - Electron `net.request()` response typings do not expose every runtime stream event. If download code needs a `close` guard in addition to `aborted`/`error`, cast the response through `EventEmitter` instead of dropping the guard to appease `npm run ts`.
+- When combining a user-controlled signal with `AbortSignal.timeout()` via `AbortSignal.any()`, do not identify every fetch cancellation by matching `AbortError`: Node propagates the timeout signal's `TimeoutError` reason. Check the original controller's `signal.aborted` and the timeout signal's `aborted` state separately so user cancellation and timeout keep their intended error classifications.
 
 ## React Query key factory
 

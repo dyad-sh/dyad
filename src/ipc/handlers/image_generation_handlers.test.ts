@@ -47,7 +47,8 @@ function deferred<T>(): Deferred<T> {
 
 function abortableFetch(signal?: AbortSignal): Promise<Response> {
   return new Promise((_resolve, reject) => {
-    const rejectAbort = () => reject(new DOMException("Aborted", "AbortError"));
+    const rejectAbort = () =>
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
     if (signal?.aborted) {
       rejectAbort();
     } else {
@@ -137,6 +138,85 @@ describe("registerImageGenerationHandlers", () => {
     });
     await expect(generation).rejects.toMatchObject({
       kind: DyadErrorKind.UserCancelled,
+    });
+  });
+
+  it("classifies a URL download timeout as an external error", async () => {
+    const downloadTimeoutController = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(
+      downloadTimeoutController.signal,
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            created: 1,
+            data: [{ url: "https://example.com/generated.png" }],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockImplementationOnce((_url: string, init?: RequestInit) =>
+        abortableFetch(init?.signal ?? undefined),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const generation = generate("download-timeout");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    downloadTimeoutController.abort(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
+
+    await expect(generation).rejects.toMatchObject({
+      message: "Image download timed out. Please try again.",
+      kind: DyadErrorKind.External,
+    });
+    await expect(cancel("download-timeout")).resolves.toEqual({
+      cancelled: false,
+    });
+  });
+
+  it.each([
+    [401, DyadErrorKind.Auth],
+    [403, DyadErrorKind.Auth],
+    [429, DyadErrorKind.RateLimited],
+    [503, DyadErrorKind.External],
+  ])("classifies generation HTTP %i as %s", async (status, expectedKind) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status })),
+    );
+
+    await expect(generate(`generation-http-${status}`)).rejects.toMatchObject({
+      kind: expectedKind,
+    });
+  });
+
+  it.each([
+    [401, DyadErrorKind.Auth],
+    [403, DyadErrorKind.Auth],
+    [429, DyadErrorKind.RateLimited],
+    [503, DyadErrorKind.External],
+  ])("classifies download HTTP %i as %s", async (status, expectedKind) => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              created: 1,
+              data: [{ url: "https://example.com/generated.png" }],
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(new Response(null, { status })),
+    );
+
+    await expect(generate(`download-http-${status}`)).rejects.toMatchObject({
+      kind: expectedKind,
     });
   });
 

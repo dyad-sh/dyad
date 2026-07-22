@@ -42,6 +42,9 @@ events that may arrive after an operation has been superseded.
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.
+- Before keying a cross-entity registry by a generation counter, verify the
+  counter's scope. If generations restart per entity, use a composite key or a
+  separate invocation ID and test two entities with the same generation.
 
 ## Deliberate degrees of freedom
 
@@ -97,3 +100,7 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   need not be migrated mechanically.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
+- In `runCosim` suites, `maxSchedules` bounds visited configurations, not only
+  quiescent leaves. If one orthogonal action (for example quit at every phase)
+  causes a bound hit, split it into a focused exhaustive alphabet instead of
+  raising the bound and slowing the primary scenario.

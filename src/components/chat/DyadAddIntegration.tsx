@@ -174,9 +174,10 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     // Share the UI choice with the Configure panel without mutating the
     // main-authoritative request projection.
     setIntegrationProviderSelection((prev) => {
-      if (prev.get(chatId) === effectiveSelectedProvider) return prev;
+      if (prev.get(pendingIntegration.requestId) === effectiveSelectedProvider)
+        return prev;
       const next = new Map(prev);
-      next.set(chatId, effectiveSelectedProvider);
+      next.set(pendingIntegration.requestId, effectiveSelectedProvider);
       return next;
     });
     // Surface the right-sidebar Configure tab where the integration setup now lives.
@@ -198,11 +199,11 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     // panel collapses and the radios reopen with no preselection. (The
     // tool-locked provider, if any, is still preserved via `requestedProvider`
     // and continues to constrain `availableProviders`.)
-    if (chatId != null) {
+    if (pendingIntegration) {
       setIntegrationProviderSelection((prev) => {
-        if (!prev.has(chatId)) return prev;
+        if (!prev.has(pendingIntegration.requestId)) return prev;
         const next = new Map(prev);
-        next.delete(chatId);
+        next.delete(pendingIntegration.requestId);
         return next;
       });
     }

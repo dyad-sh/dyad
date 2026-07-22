@@ -161,6 +161,7 @@ export function createUserInputRegistry(deps: {
         cancelDeadline(command.requestId);
         break;
       case "broadcast-requested":
+      case "broadcast-armed":
       case "broadcast-classified":
       case "broadcast-settled":
       case "broadcast-follow-up-due":

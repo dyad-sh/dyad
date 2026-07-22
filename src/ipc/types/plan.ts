@@ -24,39 +24,6 @@ export const PlanExitSchema = z.object({
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
 
-export const QuestionSchema = z
-  .object({
-    id: z.string(),
-    type: z.enum(["text", "radio", "checkbox"]),
-    question: z.string(),
-    options: z.array(z.string()).min(1).optional(),
-    required: z.boolean().optional(),
-    placeholder: z.string().optional(),
-  })
-  .refine((q) => q.type === "text" || (q.options && q.options.length >= 1), {
-    message: "options are required for radio and checkbox questions",
-    path: ["options"],
-  });
-
-export type Question = z.infer<typeof QuestionSchema>;
-
-export const PlanQuestionnaireSchema = z.object({
-  chatId: z.number(),
-  requestId: z.string(),
-  questions: z.array(QuestionSchema),
-});
-
-export type PlanQuestionnairePayload = z.infer<typeof PlanQuestionnaireSchema>;
-
-export const QuestionnaireResponseSchema = z.object({
-  requestId: z.string(),
-  answers: z.record(z.string(), z.string()).nullable(),
-});
-
-export type QuestionnaireResponsePayload = z.infer<
-  typeof QuestionnaireResponseSchema
->;
-
 export const PlanSchema = z.object({
   id: z.string(),
   appId: z.number(),
@@ -106,11 +73,6 @@ export const planEvents = {
     channel: "plan:exit",
     payload: PlanExitSchema,
   }),
-
-  questionnaire: defineEvent({
-    channel: "plan:questionnaire",
-    payload: PlanQuestionnaireSchema,
-  }),
 } as const;
 
 // Plan CRUD Contracts (Invoke/Response)
@@ -143,12 +105,6 @@ export const planContracts = {
   deletePlan: defineContract({
     channel: "plan:delete",
     input: z.object({ appId: z.number(), planId: z.string() }),
-    output: z.void(),
-  }),
-
-  respondToQuestionnaire: defineContract({
-    channel: "plan:questionnaire-response",
-    input: QuestionnaireResponseSchema,
     output: z.void(),
   }),
 } as const;

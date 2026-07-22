@@ -54,10 +54,6 @@ import {
   requireAgentToolConsent,
 } from "./tool_definitions";
 import {
-  questionnaireResolver,
-  integrationResolver,
-} from "./userInputResolvers";
-import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
 } from "./processors/file_operations";
@@ -136,8 +132,6 @@ import {
 
 export function clearPendingLocalAgentInputsForChat(chatId: number): void {
   userInputRegistry.sweepChat(chatId);
-  questionnaireResolver.abortChat(chatId);
-  integrationResolver.abortChat(chatId);
 }
 
 const logger = log.scope("local_agent_handler");

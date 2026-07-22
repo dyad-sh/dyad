@@ -35,7 +35,7 @@ export {
   connectionFlowContracts,
   connectionFlowEvents,
 } from "./connection_flow";
-export { mcpContracts, mcpEvents } from "./mcp";
+export { mcpContracts } from "./mcp";
 export { vercelContracts } from "./vercel";
 export { supabaseContracts } from "./supabase";
 export { neonContracts } from "./neon";
@@ -78,7 +78,7 @@ export {
   connectionFlowClient,
   connectionFlowEventClient,
 } from "./connection_flow";
-export { mcpClient, mcpEventClient } from "./mcp";
+export { mcpClient } from "./mcp";
 export { vercelClient } from "./vercel";
 export { supabaseClient } from "./supabase";
 export { neonClient } from "./neon";
@@ -166,9 +166,6 @@ export type {
 export type {
   AgentTool,
   AgentTodo,
-  AgentToolConsentRequestPayload,
-  AgentToolConsentDecision,
-  AgentToolConsentResponseParams,
   AgentTodosUpdatePayload,
   AgentProblemsUpdatePayload,
   SetAgentToolConsentParams,
@@ -203,10 +200,7 @@ export type {
   McpListToolsResult,
   McpToolConsent,
   McpConsentValue,
-  McpConsentDecision,
   SetMcpToolConsentParams,
-  McpConsentRequestPayload,
-  McpConsentResponseParams,
 } from "./mcp";
 
 // Vercel types
@@ -420,7 +414,6 @@ export {
   AgentTodoSchema,
   AgentTodosUpdateSchema,
   AgentToolSchema,
-  AgentToolConsentRequestSchema,
 } from "./agent";
 
 export { SubscriptionStatusSchema, UserBudgetInfoSchema } from "./system";
@@ -438,7 +431,7 @@ import {
   connectionFlowClient,
   connectionFlowEventClient,
 } from "./connection_flow";
-import { mcpClient, mcpEventClient } from "./mcp";
+import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
 import { supabaseClient } from "./supabase";
 import { neonClient } from "./neon";
@@ -540,7 +533,6 @@ export const ipc = {
   events: {
     agent: agentEventClient,
     connectionFlow: connectionFlowEventClient,
-    mcp: mcpEventClient,
     system: systemEventClient,
     misc: miscEventClient,
     appBlueprint: appBlueprintEventClient,

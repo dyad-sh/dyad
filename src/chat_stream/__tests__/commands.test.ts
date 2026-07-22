@@ -64,4 +64,41 @@ describe("chat stream command adapter instances", () => {
       lastSeq: 3,
     });
   });
+
+  it("reports machine follow-up acceptance only after main confirms its durable request id", async () => {
+    const onAccepted = vi.fn();
+    const deps = {
+      store: createStore(),
+      queryClient: new QueryClient(),
+      getSettings: () => undefined,
+      getPosthog: () => null,
+    };
+    vi.spyOn(ipc.chatStream, "start").mockImplementation(
+      ({ chatId, userInputRequestId }, callbacks) => {
+        expect(userInputRequestId).toBe("integration:durable");
+        expect(onAccepted).not.toHaveBeenCalled();
+        callbacks.onChunk({
+          chatId,
+          acceptedUserInputRequestId: "integration:durable",
+        });
+        return 1;
+      },
+    );
+
+    await createProductionChatStreamCommands(() => deps).startStream({
+      chatId: 9,
+      streamId: 1,
+      request: {
+        chatId: 9,
+        appId: 4,
+        prompt: "continue",
+        userInputRequestId: "integration:durable",
+        onAccepted,
+      },
+      emit: vi.fn(),
+      isStale: () => false,
+    });
+
+    expect(onAccepted).toHaveBeenCalledOnce();
+  });
 });

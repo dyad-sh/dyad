@@ -13,6 +13,33 @@ import { showInfo } from "@/lib/toast";
 
 const PERSIST_DEBOUNCE_MS = 400;
 
+export function findRestorableQueueItems(
+  persisted: QueuedMessageItem[],
+  existing: QueuedMessageItem[],
+): QueuedMessageItem[] {
+  const seenIds = new Set(existing.map((item) => item.id));
+  const seenUserInputRequestIds = new Set(
+    existing.flatMap((item) =>
+      item.userInputRequestId ? [item.userInputRequestId] : [],
+    ),
+  );
+
+  return persisted.filter((item) => {
+    if (
+      seenIds.has(item.id) ||
+      (item.userInputRequestId !== undefined &&
+        seenUserInputRequestIds.has(item.userInputRequestId))
+    ) {
+      return false;
+    }
+    seenIds.add(item.id);
+    if (item.userInputRequestId) {
+      seenUserInputRequestIds.add(item.userInputRequestId);
+    }
+    return true;
+  });
+}
+
 /**
  * Root-level hook that persists the in-memory queued-prompt state to disk and
  * hydrates it back on startup, so queued prompts survive app restarts / crashes.
@@ -93,6 +120,7 @@ export function useQueuePersistence() {
             redo: item.redo,
             appId: item.appId,
             requestedChatMode: item.requestedChatMode,
+            userInputRequestId: item.userInputRequestId,
           })),
         );
       }
@@ -115,12 +143,11 @@ export function useQueuePersistence() {
             continue;
           }
           // The user queued prompts for this chat while hydration was in
-          // flight: keep both, persisted (older) items first, deduplicated
-          // by id so a double hydration can't duplicate entries.
-          const existingIds = new Set(existing.map((item) => item.id));
-          const restoredItems = items.filter(
-            (item) => !existingIds.has(item.id),
-          );
+          // flight: keep both, persisted (older) items first. Queue item IDs
+          // prevent ordinary double hydration; the durable user-input request
+          // ID also collapses a continuation independently enqueued while
+          // hydration was in flight.
+          const restoredItems = findRestorableQueueItems(items, existing);
           if (restoredItems.length > 0) {
             merged.set(chatId, [...restoredItems, ...existing]);
             restoredChatIds.add(chatId);
@@ -242,6 +269,7 @@ async function encodeQueuedItem(
     redo: item.redo,
     appId: item.appId,
     requestedChatMode: item.requestedChatMode,
+    userInputRequestId: item.userInputRequestId,
   };
   cache.set(item, encoded);
   return encoded;

@@ -47,6 +47,11 @@ export interface StreamRequest {
    * `streamMessage` contract.
    */
   requestedChatMode?: Chat["chatMode"] | null;
+  /** Stable idempotency key for a machine-generated user-input follow-up. */
+  userInputRequestId?: string;
+  /** Resolves only after main durably accepts the idempotent user message. */
+  onAccepted?: () => void;
+  onAcceptanceError?: (error: Error) => void;
   onSettled?: (result: StreamSettledResult) => void;
 }
 

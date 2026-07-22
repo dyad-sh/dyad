@@ -29,15 +29,26 @@ export function registerRendererIpcListeners({
   const unsubscribes: Array<() => void> = [];
 
   const userInputChatStream = {
-    submit: (request: {
+    submit: ({
+      requestId,
+      ...request
+    }: {
+      requestId: string;
       chatId: number;
       prompt: string;
       selectedComponents: [];
       requestedChatMode: "local-agent";
     }) =>
-      chatStreamManager.ensure(request.chatId).send({
-        type: "submit",
-        request,
+      new Promise<void>((resolve, reject) => {
+        chatStreamManager.ensure(request.chatId).send({
+          type: "submit",
+          request: {
+            ...request,
+            userInputRequestId: requestId,
+            onAccepted: resolve,
+            onAcceptanceError: reject,
+          },
+        });
       }),
   };
 

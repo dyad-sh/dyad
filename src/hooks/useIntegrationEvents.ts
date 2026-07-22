@@ -21,7 +21,6 @@ export function useIntegrationEvents() {
 
   const selectedAppIdRef = useRef(selectedAppId);
   const settingsRef = useRef(settings);
-  const integrationRequestChatIdsRef = useRef(new Map<string, number>());
   selectedAppIdRef.current = selectedAppId;
   settingsRef.current = settings;
 
@@ -29,10 +28,6 @@ export function useIntegrationEvents() {
     const unsubscribeRequested = ipc.events.userInput.onRequested(
       (descriptor) => {
         if (descriptor.kind !== "integration") return;
-        integrationRequestChatIdsRef.current.set(
-          descriptor.requestId,
-          descriptor.chatId,
-        );
         showUserInputNotification({
           appId: selectedAppIdRef.current,
           queryClient,
@@ -44,13 +39,10 @@ export function useIntegrationEvents() {
     );
     const unsubscribeSettled = ipc.events.userInput.onSettled(
       ({ requestId }) => {
-        const chatId = integrationRequestChatIdsRef.current.get(requestId);
-        integrationRequestChatIdsRef.current.delete(requestId);
-        if (chatId === undefined) return;
         setIntegrationProviderSelection((prev) => {
-          if (!prev.has(chatId)) return prev;
+          if (!prev.has(requestId)) return prev;
           const next = new Map(prev);
-          next.delete(chatId);
+          next.delete(requestId);
           return next;
         });
       },

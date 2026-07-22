@@ -148,39 +148,49 @@ export const chats = sqliteTable("chats", {
     .default(sql`0`),
 });
 
-export const messages = sqliteTable("messages", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  chatId: integer("chat_id")
-    .notNull()
-    .references(() => chats.id, { onDelete: "cascade" }),
-  role: text("role", { enum: ["user", "assistant"] }).notNull(),
-  content: text("content").notNull(),
-  approvalState: text("approval_state", {
-    enum: ["approved", "rejected"],
-  }),
-  // The commit hash of the codebase at the time the message was created
-  sourceCommitHash: text("source_commit_hash"),
-  // The commit hash of the codebase at the time the message was sent
-  commitHash: text("commit_hash"),
-  requestId: text("request_id"),
-  // Max tokens used for this message (only for assistant messages)
-  maxTokensUsed: integer("max_tokens_used"),
-  // Model name used for this message (only for assistant messages)
-  model: text("model"),
-  // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
-  aiMessagesJson: text("ai_messages_json", {
-    mode: "json",
-  }).$type<AiMessagesJsonV6 | null>(),
-  // Track if this message used the free agent quota (for non-Pro users)
-  usingFreeAgentModeQuota: integer("using_free_agent_mode_quota", {
-    mode: "boolean",
-  }),
-  // Indicates this message is a compaction summary
-  isCompactionSummary: integer("is_compaction_summary", { mode: "boolean" }),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const messages = sqliteTable(
+  "messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["user", "assistant"] }).notNull(),
+    content: text("content").notNull(),
+    approvalState: text("approval_state", {
+      enum: ["approved", "rejected"],
+    }),
+    // The commit hash of the codebase at the time the message was created
+    sourceCommitHash: text("source_commit_hash"),
+    // The commit hash of the codebase at the time the message was sent
+    commitHash: text("commit_hash"),
+    requestId: text("request_id"),
+    userInputRequestId: text("user_input_request_id"),
+    // Max tokens used for this message (only for assistant messages)
+    maxTokensUsed: integer("max_tokens_used"),
+    // Model name used for this message (only for assistant messages)
+    model: text("model"),
+    // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
+    aiMessagesJson: text("ai_messages_json", {
+      mode: "json",
+    }).$type<AiMessagesJsonV6 | null>(),
+    // Track if this message used the free agent quota (for non-Pro users)
+    usingFreeAgentModeQuota: integer("using_free_agent_mode_quota", {
+      mode: "boolean",
+    }),
+    // Indicates this message is a compaction summary
+    isCompactionSummary: integer("is_compaction_summary", { mode: "boolean" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("messages_chat_user_input_request_unique").on(
+      table.chatId,
+      table.userInputRequestId,
+    ),
+  ],
+);
 
 export const versions = sqliteTable(
   "versions",

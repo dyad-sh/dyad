@@ -169,6 +169,35 @@ describe("queued request fidelity", () => {
     expect(startStream.mock.calls[0][0].request.requestedChatMode).toBeNull();
   });
 
+  it("deduplicates machine follow-ups by request id and refreshes acceptance callbacks", () => {
+    const { store, productionCommands } = setup({ queue: [] });
+    const firstAccepted = vi.fn();
+    const replayAccepted = vi.fn();
+
+    productionCommands.enqueueMessage({
+      chatId: CHAT_ID,
+      request: {
+        chatId: CHAT_ID,
+        prompt: "continue",
+        userInputRequestId: "integration:1",
+        onAccepted: firstAccepted,
+      },
+    });
+    productionCommands.enqueueMessage({
+      chatId: CHAT_ID,
+      request: {
+        chatId: CHAT_ID,
+        prompt: "continue",
+        userInputRequestId: "integration:1",
+        onAccepted: replayAccepted,
+      },
+    });
+
+    const queue = store.get(queuedMessagesByIdAtom).get(CHAT_ID);
+    expect(queue).toHaveLength(1);
+    expect(queue?.[0].onAccepted).toBe(replayAccepted);
+  });
+
   it("falls back to the cached per-chat mode for items queued without a mode (manual queue path)", async () => {
     const { queryClient, controller, startStream } = setup();
     queryClient.setQueryData(queryKeys.chats.detail({ chatId: CHAT_ID }), {

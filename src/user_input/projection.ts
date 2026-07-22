@@ -4,6 +4,10 @@
  * This adapter is the only writer of the projection. It subscribes before
  * hydrating and uses per-request revisions so an event received while
  * getPending is in flight always wins over that snapshot.
+ *
+ * Machine dependency graph: user_input -> chat_stream facade. The concrete
+ * facade is injected at the application composition root; this module never
+ * imports the chat-stream manager or controller.
  */
 import { atom, type createStore } from "jotai";
 
@@ -72,6 +76,7 @@ export type UserInputProjectionIpc = Pick<typeof defaultIpc, "userInput"> & {
 
 export interface UserInputChatStreamFacade {
   submit(request: {
+    requestId: string;
     chatId: number;
     prompt: string;
     selectedComponents: [];
@@ -81,6 +86,7 @@ export interface UserInputChatStreamFacade {
 
 export interface UserInputProjectionAdapter {
   start(): () => void;
+  configureChatStream(chatStream: UserInputChatStreamFacade): void;
   respond(
     requestId: string,
     response: UserInputResponsePayload,
@@ -118,7 +124,10 @@ export function getUserInputProjectionAdapter({
   showErrorToast = showError,
 }: AdapterOptions): UserInputProjectionAdapter {
   const existing = adapters.get(store);
-  if (existing) return existing;
+  if (existing) {
+    if (chatStream) existing.configureChatStream(chatStream);
+    return existing;
+  }
 
   let stop: (() => void) | undefined;
   let settledCleanupTimer: ReturnType<typeof setTimeout> | undefined;
@@ -128,12 +137,17 @@ export function getUserInputProjectionAdapter({
     string,
     { reason?: string; revision: number }
   >();
+  const pendingArmed = new Map<
+    string,
+    { followUpPrompt: string; revision: number }
+  >();
   const pendingFollowUps = new Map<
     string,
     { prompt: string; revision: number }
   >();
   const pendingResponses = new Map<string, UserInputResponsePayload>();
   const dispatchingFollowUps = new Set<string>();
+  let activeChatStream = chatStream;
 
   const markChanged = (requestId: string): number => {
     const revision = (revisions.get(requestId) ?? 0) + 1;
@@ -198,14 +212,15 @@ export function getUserInputProjectionAdapter({
       request.status !== "due" ||
       request.descriptor.kind !== "integration" ||
       !request.followUpPrompt ||
-      !chatStream
+      !activeChatStream
     ) {
       return;
     }
 
     dispatchingFollowUps.add(requestId);
     try {
-      await chatStream.submit({
+      await activeChatStream.submit({
+        requestId,
         chatId: request.descriptor.chatId,
         prompt: request.followUpPrompt,
         selectedComponents: [],
@@ -272,6 +287,7 @@ export function getUserInputProjectionAdapter({
 
         const projected = snapshotToProjection(snapshot);
         const classification = pendingClassifications.get(requestId);
+        const armed = pendingArmed.get(requestId);
         const followUp = pendingFollowUps.get(requestId);
         if (
           changedDuringHydration &&
@@ -283,6 +299,18 @@ export function getUserInputProjectionAdapter({
             ...projected,
             classifier: "review",
             classifierReason: classification.reason,
+          });
+        } else if (
+          changedDuringHydration &&
+          armed &&
+          armed.revision === revisions.get(requestId) &&
+          (projected.status === "awaiting" || projected.status === "armed") &&
+          projected.descriptor.kind === "integration"
+        ) {
+          next.set(requestId, {
+            ...projected,
+            status: "armed",
+            followUpPrompt: armed.followUpPrompt,
           });
         } else if (
           changedDuringHydration &&
@@ -304,12 +332,18 @@ export function getUserInputProjectionAdapter({
   };
 
   const adapter: UserInputProjectionAdapter = {
+    configureChatStream(nextChatStream) {
+      activeChatStream = nextChatStream;
+      dispatchAllDueFollowUps();
+    },
+
     start() {
       if (stop) return stop;
       const unsubscribes = [
         ipcClient.events.userInput.onRequested((descriptor) => {
           markChanged(descriptor.requestId);
           pendingClassifications.delete(descriptor.requestId);
+          pendingArmed.delete(descriptor.requestId);
           pendingFollowUps.delete(descriptor.requestId);
           updateRequests((current) => {
             const next = new Map(current);
@@ -321,6 +355,28 @@ export function getUserInputProjectionAdapter({
             });
             return next;
           });
+        }),
+        ipcClient.events.userInput.onArmed(({ requestId, followUpPrompt }) => {
+          const revision = markChanged(requestId);
+          pendingArmed.set(requestId, { followUpPrompt, revision });
+          updateRequests((current) => {
+            const entry = current.get(requestId);
+            if (
+              !entry ||
+              entry.status !== "awaiting" ||
+              entry.descriptor.kind !== "integration"
+            ) {
+              return new Map(current);
+            }
+            const next = new Map(current);
+            next.set(requestId, {
+              ...entry,
+              status: "armed",
+              followUpPrompt,
+            });
+            return next;
+          });
+          removeResponding(requestId);
         }),
         ipcClient.events.userInput.onClassified(({ requestId, reason }) => {
           const revision = markChanged(requestId);
@@ -340,6 +396,7 @@ export function getUserInputProjectionAdapter({
         ipcClient.events.userInput.onSettled(({ requestId, outcome }) => {
           markChanged(requestId);
           pendingClassifications.delete(requestId);
+          pendingArmed.delete(requestId);
           pendingFollowUps.delete(requestId);
           const pendingResponse = pendingResponses.get(requestId);
           pendingResponses.delete(requestId);
@@ -358,6 +415,7 @@ export function getUserInputProjectionAdapter({
                   : previous?.descriptor,
               deadlineAt: previous?.deadlineAt,
               questionnaireSubmitted:
+                outcome === "human" &&
                 pendingResponse?.kind === "questionnaire" &&
                 pendingResponse.answers !== null,
             });
@@ -416,29 +474,6 @@ export function getUserInputProjectionAdapter({
       });
       try {
         await ipcClient.userInput.respond({ requestId, response });
-        if (response.kind === "integration") {
-          removeResponding(requestId);
-          updateRequests((current) => {
-            const entry = current.get(requestId);
-            if (
-              !entry ||
-              entry.status !== "awaiting" ||
-              entry.descriptor.kind !== "integration"
-            ) {
-              return current as Map<string, ProjectedUserInputRequest>;
-            }
-            const followUpPrompt = response.provider
-              ? `Continue. I have completed the ${response.provider} integration.`
-              : entry.followUpPrompt;
-            const next = new Map(current);
-            next.set(requestId, {
-              ...entry,
-              status: "armed",
-              followUpPrompt,
-            });
-            return next;
-          });
-        }
         return true;
       } catch (error) {
         pendingResponses.delete(requestId);

@@ -60,9 +60,9 @@ export function useIntegrationContinue() {
     );
     if (!responded) return;
     setIntegrationProviderSelection((prev) => {
-      if (!prev.has(chatId)) return prev;
+      if (!prev.has(pendingIntegration.requestId)) return prev;
       const next = new Map(prev);
-      next.delete(chatId);
+      next.delete(pendingIntegration.requestId);
       return next;
     });
     // Switch the right sidebar back to the preview so the user sees the

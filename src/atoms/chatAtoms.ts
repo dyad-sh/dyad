@@ -562,6 +562,9 @@ export interface QueuedMessageItem {
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;
+  userInputRequestId?: string;
+  onAccepted?: () => void;
+  onAcceptanceError?: (error: Error) => void;
 }
 
 // Map<chatId, QueuedMessageItem[]>

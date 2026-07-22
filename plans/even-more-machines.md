@@ -27,8 +27,8 @@ verification are incorporated. Two proposed candidates were killed in
 verification (ImportAppDialog saga, chat-mode latch) and are recorded in the
 rejected list.
 
-**Progress record (updated 2026-07-22).** Phases 0, 1, 2, and 4 stage 1 are
-COMPLETE; Phase 3 is more than half landed; Phase 5 is the active frontier.
+**Progress record (updated 2026-07-22).** Phases 0, 1, 2, 3, and 4 stage 1
+are COMPLETE; Phase 5 is the active frontier.
 
 - Phase 0: 448e2a4dd (#4014 kernel migration), b44e54c3d, 1a7b9964a,
   8ad56501c. Over-delivered: banked Part 1A item 5, the plan_handoff half
@@ -41,7 +41,8 @@ COMPLETE; Phase 3 is more than half landed; Phase 5 is the active frontier.
   (image-gen main abort fix), #4032 (image-gen machine), #4036 (MCP OAuth
   registry), #4040 (home first-prompt saga).
 - Phase 3: #4033 (items 1+2a — machine core + main-side consent port),
-  #4037 (2b — renderer projection + rehydration). Items 3, 4, 5 remain.
+  #4037 (2b — renderer projection + rehydration), plus items 3, 4, and 5
+  (questionnaire and continuation ports, legacy deletion, and hardening).
 - Phase 4: #4027 (PR A cosim driver), #4031 (PR B protocol + model +
   suite + tripwire). Stage 2 remains unscheduled; both of its entry gates
   are now satisfied, so opening it is a decision, not a wait. The two
@@ -1287,11 +1288,10 @@ generation; (4) MCP OAuth; (5) home saga last — largest, spans pages,
 benefits from every facility proved earlier. Items 2–4 are mutually
 independent once (1) merges; (5) gates only on (1) and (2)'s Clock.
 
-### Phase 3 — the user-input round-trip machine (IN PROGRESS)
+### Phase 3 — the user-input round-trip machine (COMPLETE)
 
-Landed as: items 1+2a → #4033, 2b → #4037. REMAINING: item 3
-(questionnaire port), item 4 (continuation port — its Phase 1 gate is now
-open), item 5 (deletion + hardening sweep, strictly last).
+Landed as: items 1+2a → #4033, 2b → #4037, followed by items 3, 4, and 5
+(questionnaire port, continuation port, and deletion + hardening sweep).
 
 One machine replaces the three hand-synced copies of the agent-paused
 user-input round-trip (evidence in Part 2 §1; Phase 0 banked staging (a) —
@@ -1491,19 +1491,19 @@ transition atomically before the park resolves.
 
 Phase 3 exit criteria:
 
-- [ ] All four flows round-trip through `src/user_input/`; the resolver
+- [x] All four flows round-trip through `src/user_input/`; the resolver
       instances and legacy consent paths deleted.
-- [ ] `Promise.race`/fake-decline gone; the race is a transition-matrix
+- [x] `Promise.race`/fake-decline gone; the race is a transition-matrix
       test.
-- [ ] One writer for the projection; the eight legacy mutation sites
+- [x] One writer for the projection; the eight legacy mutation sites
       deleted; `getPending` rehydrates after reload (integration-tested);
       OS notifications still fire (useNotificationHandler on new events).
-- [ ] One deadline source; stale responds throw NotFound uniformly;
+- [x] One deadline source; stale responds throw NotFound uniformly;
       confirmation UI cannot play on a dead request.
-- [ ] useIntegrationContinuation.ts and useIntegrationEvents' atom write
+- [x] useIntegrationContinuation.ts and useIntegrationEvents' atom write
       deleted; follow-ups dispatch exactly once, survive reload, and never
       fire into a cancelled chat.
-- [ ] boundaries inventory covers `src/user_input/`; verification block
+- [x] boundaries inventory covers `src/user_input/`; verification block
       green plus `npm test -- src/user_input/` and the consent integration
       suite.
 

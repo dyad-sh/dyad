@@ -16,6 +16,10 @@ import {
 } from "./projection";
 
 type RequestedListener = (payload: UserInputDescriptorPayload) => void;
+type ArmedListener = (payload: {
+  requestId: string;
+  followUpPrompt: string;
+}) => void;
 type ClassifiedListener = (payload: {
   requestId: string;
   reason?: string;
@@ -108,6 +112,7 @@ function integrationDescriptor(requestId: string): UserInputDescriptorPayload {
 
 function createFakeIpc() {
   const requested = new Set<RequestedListener>();
+  const armed = new Set<ArmedListener>();
   const classified = new Set<ClassifiedListener>();
   const settled = new Set<SettledListener>();
   const followUpDue = new Set<FollowUpDueListener>();
@@ -127,6 +132,7 @@ function createFakeIpc() {
       userInput: {
         onRequested: (listener: RequestedListener) =>
           subscribe(requested, listener),
+        onArmed: (listener: ArmedListener) => subscribe(armed, listener),
         onClassified: (listener: ClassifiedListener) =>
           subscribe(classified, listener),
         onSettled: (listener: SettledListener) => subscribe(settled, listener),
@@ -142,6 +148,8 @@ function createFakeIpc() {
     respond,
     sendRequested: (payload: UserInputDescriptorPayload) =>
       requested.forEach((listener) => listener(payload)),
+    sendArmed: (payload: Parameters<ArmedListener>[0]) =>
+      armed.forEach((listener) => listener(payload)),
     sendClassified: (payload: { requestId: string; reason?: string }) =>
       classified.forEach((listener) => listener(payload)),
     sendSettled: (payload: Parameters<SettledListener>[0]) =>
@@ -419,6 +427,117 @@ describe("user-input renderer projection", () => {
     vi.useRealTimers();
   });
 
+  it("never confirms a questionnaire when timeout wins an in-flight response", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    let rejectRespond!: (error: unknown) => void;
+    fake.respond.mockReturnValueOnce(
+      new Promise<void>((_resolve, reject) => {
+        rejectRespond = reject;
+      }),
+    );
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      showErrorToast: vi.fn(),
+    });
+    const stop = adapter.start();
+    fake.sendRequested(questionnaireDescriptor("questionnaire-race"));
+
+    const response = adapter.respond("questionnaire-race", {
+      kind: "questionnaire",
+      answers: { framework: "Vue" },
+    });
+    fake.sendSettled({
+      requestId: "questionnaire-race",
+      outcome: "timed-out",
+    });
+
+    expect(
+      store.get(userInputRequestsAtom).get("questionnaire-race"),
+    ).toMatchObject({
+      status: "settled",
+      questionnaireSubmitted: false,
+    });
+    rejectRespond(new DyadError("gone", DyadErrorKind.NotFound));
+    await expect(response).resolves.toBe(false);
+    stop();
+  });
+
+  it("accepts a chat-stream facade after a child cached the adapter", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const descriptor = integrationDescriptor("integration-late-facade");
+    fake.getPending.mockResolvedValueOnce([
+      {
+        status: "due",
+        descriptor,
+        deadlineAt: descriptor.deadlineAt,
+        followUpPrompt: descriptor.followUpPrompt,
+      },
+    ]);
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+    });
+    const stop = adapter.start();
+    await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(1));
+    const submit = vi.fn();
+
+    expect(
+      getUserInputProjectionAdapter({
+        store,
+        ipcClient: fake.ipcClient,
+        chatStream: { submit },
+      }),
+    ).toBe(adapter);
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "integration-late-facade" }),
+    );
+    stop();
+  });
+
+  it.each(["awaiting", "armed"] as const)(
+    "does not let a buffered armed event lose to a %s hydration snapshot",
+    async (hydratedStatus) => {
+      const store = createStore();
+      const fake = createFakeIpc();
+      const descriptor = integrationDescriptor("integration-hydration-race");
+      let resolveHydration!: (snapshots: PendingUserInputPayload[]) => void;
+      fake.getPending.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveHydration = resolve;
+        }),
+      );
+      const adapter = getUserInputProjectionAdapter({
+        store,
+        ipcClient: fake.ipcClient,
+      });
+      const stop = adapter.start();
+      fake.sendArmed({
+        requestId: descriptor.requestId,
+        followUpPrompt: descriptor.followUpPrompt!,
+      });
+      resolveHydration([
+        {
+          ...pending(descriptor),
+          status: hydratedStatus,
+          followUpPrompt:
+            hydratedStatus === "armed" ? descriptor.followUpPrompt : undefined,
+        },
+      ]);
+
+      await vi.waitFor(() =>
+        expect(
+          store.get(userInputRequestsAtom).get(descriptor.requestId)?.status,
+        ).toBe("armed"),
+      );
+      stop();
+    },
+  );
+
   it("dispatches one due follow-up through the injected chat-stream facade", async () => {
     const store = createStore();
     const fake = createFakeIpc();
@@ -442,6 +561,7 @@ describe("user-input renderer projection", () => {
 
     await vi.waitFor(() =>
       expect(submit).toHaveBeenCalledExactlyOnceWith({
+        requestId: "integration-1",
         chatId: 42,
         prompt: due.prompt,
         selectedComponents: [],
@@ -452,6 +572,44 @@ describe("user-input renderer projection", () => {
       requestId: "integration-1",
       response: { kind: "follow-up-dispatched" },
     });
+    stop();
+  });
+
+  it("acknowledges a follow-up only after the facade reports durable acceptance", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    let accept!: () => void;
+    const submit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          accept = resolve;
+        }),
+    );
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+    });
+    const stop = adapter.start();
+    fake.sendRequested(integrationDescriptor("integration-acceptance"));
+    fake.sendFollowUpDue({
+      requestId: "integration-acceptance",
+      chatId: 42,
+      prompt: "Continue. I have completed the supabase integration.",
+    });
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(fake.respond).not.toHaveBeenCalledWith({
+      requestId: "integration-acceptance",
+      response: { kind: "follow-up-dispatched" },
+    });
+
+    accept();
+    await vi.waitFor(() =>
+      expect(fake.respond).toHaveBeenCalledWith({
+        requestId: "integration-acceptance",
+        response: { kind: "follow-up-dispatched" },
+      }),
+    );
     stop();
   });
 
@@ -484,6 +642,10 @@ describe("user-input renderer projection", () => {
         completed: true,
       }),
     ).resolves.toBe(true);
+    fake.sendArmed({
+      requestId: "integration-2",
+      followUpPrompt: descriptor.followUpPrompt!,
+    });
     expect(store.get(userInputRequestsAtom).get("integration-2")?.status).toBe(
       "armed",
     );

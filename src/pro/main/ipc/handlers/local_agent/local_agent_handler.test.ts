@@ -287,19 +287,6 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   clearPendingConsentsForChat: vi.fn(),
 }));
 
-vi.mock("@/pro/main/ipc/handlers/local_agent/userInputResolvers", () => ({
-  questionnaireResolver: {
-    wait: vi.fn(),
-    resolve: vi.fn(),
-    abortChat: vi.fn(),
-  },
-  integrationResolver: {
-    wait: vi.fn(),
-    resolve: vi.fn(),
-    abortChat: vi.fn(),
-  },
-}));
-
 vi.mock(
   "@/pro/main/ipc/handlers/local_agent/processors/file_operations",
   () => ({

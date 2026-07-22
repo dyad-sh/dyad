@@ -681,13 +681,16 @@ testWithNotificationsEnabled(
     const chatId = await createChat(po);
     await triggerHidden(po);
     await po.browserNotifications.injectFakeNotifications();
-    // Simulate Questionnaire Event from Main process
+    // Simulate a questionnaire request from the main process.
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("plan:questionnaire", {
+        window.webContents.send("user-input:requested", {
           chatId,
           requestId: "plan-request",
+          kind: "questionnaire",
+          classifier: "none",
+          deadlineAt: Date.now() + 300_000,
           questions: [
             {
               id: "q1",
@@ -700,7 +703,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-plan-questionnaire-${chatId}-Planning Questions`;
+    const tag = "dyad-plan-questionnaire-plan-request";
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(tag);
     expect(notification.body).toContain("Planning Questions");
@@ -724,9 +727,12 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("plan:questionnaire", {
+        window.webContents.send("user-input:requested", {
           chatId,
           requestId: "plan-request",
+          kind: "questionnaire",
+          classifier: "none",
+          deadlineAt: Date.now() + 300_000,
           questions: [
             {
               id: "q1",
@@ -739,7 +745,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-plan-questionnaire-${chatId}-Planning Questions`;
+    const tag = "dyad-plan-questionnaire-plan-request";
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(tag);
     expect(notification.body).toContain("Planning Questions");
@@ -763,9 +769,12 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("plan:questionnaire", {
+        window.webContents.send("user-input:requested", {
           chatId,
           requestId: "plan-request",
+          kind: "questionnaire",
+          classifier: "none",
+          deadlineAt: Date.now() + 300_000,
           questions: [
             {
               id: "q1",
@@ -778,7 +787,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-plan-questionnaire-${chatId}-Planning Questions`;
+    const tag = "dyad-plan-questionnaire-plan-request";
     await po.browserNotifications.waitForNotificationWithTag(tag);
 
     await po.browserNotifications.clickNotificationWithTag(tag);

@@ -1,5 +1,5 @@
 import { atom } from "jotai";
-import type { PlanQuestionnairePayload } from "@/ipc/types/plan";
+import type { UserInputQuestionPayload } from "@/ipc/types/user_input";
 import {
   respondingRequestIdsAtom,
   userInputRequestsAtom,
@@ -32,24 +32,30 @@ export const planAcceptInNewChatByChatIdAtom = atom<Map<number, boolean>>(
   new Map(),
 );
 
-export const pendingQuestionnaireAtom = atom<
-  Map<number, PlanQuestionnairePayload>
->((get) => {
-  const questionnaires = new Map<number, PlanQuestionnairePayload>();
-  const respondingRequestIds = get(respondingRequestIdsAtom);
-  for (const request of get(userInputRequestsAtom).values()) {
-    if (request.status === "settled") continue;
-    const descriptor = request.descriptor;
-    if (descriptor.kind !== "questionnaire") continue;
-    if (respondingRequestIds.has(descriptor.requestId)) continue;
-    questionnaires.set(descriptor.chatId, {
-      chatId: descriptor.chatId,
-      requestId: descriptor.requestId,
-      questions: descriptor.questions as PlanQuestionnairePayload["questions"],
-    });
-  }
-  return questionnaires;
-});
+interface PendingQuestionnaire {
+  chatId: number;
+  requestId: string;
+  questions: UserInputQuestionPayload[];
+}
+
+export const pendingQuestionnaireAtom = atom<Map<number, PendingQuestionnaire>>(
+  (get) => {
+    const questionnaires = new Map<number, PendingQuestionnaire>();
+    const respondingRequestIds = get(respondingRequestIdsAtom);
+    for (const request of get(userInputRequestsAtom).values()) {
+      if (request.status === "settled") continue;
+      const descriptor = request.descriptor;
+      if (descriptor.kind !== "questionnaire") continue;
+      if (respondingRequestIds.has(descriptor.requestId)) continue;
+      questionnaires.set(descriptor.chatId, {
+        chatId: descriptor.chatId,
+        requestId: descriptor.requestId,
+        questions: descriptor.questions,
+      });
+    }
+    return questionnaires;
+  },
+);
 
 export interface PlanAnnotation {
   id: string;

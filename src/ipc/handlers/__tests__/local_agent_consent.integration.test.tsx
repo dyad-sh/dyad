@@ -20,7 +20,7 @@ import { h } from "@/testing/hybrid.setup";
 import { readSettings, writeSettings } from "@/main/settings";
 import { requireAgentToolConsent } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
-import { mcpClient } from "@/ipc/types/mcp";
+import { userInputClient } from "@/ipc/types/user_input";
 import { getTraceLog } from "@/state_machines/trace";
 
 describe("local-agent consent banner (integration)", () => {
@@ -142,7 +142,7 @@ describe("local-agent consent banner (integration)", () => {
 
     const requestEvent = harness.bridge.sentEvents
       .slice(eventBaseline)
-      .find((event) => event.channel === "agent-tool:consent-request");
+      .find((event) => event.channel === "user-input:requested");
     expect(requestEvent?.args[0]).toMatchObject({
       chatId: harness.chatId,
       toolName: "add_dependency",
@@ -175,7 +175,7 @@ describe("local-agent consent banner (integration)", () => {
     );
     expect(
       harness.bridge.sentEvents.some(
-        (event) => event.channel === "agent-tool:consent-resolved",
+        (event) => event.channel === "user-input:settled",
       ),
     ).toBe(true);
   });
@@ -200,7 +200,11 @@ describe("local-agent consent banner (integration)", () => {
     await vi.waitFor(() => {
       request = harness.bridge.sentEvents
         .slice(eventBaseline)
-        .find((event) => event.channel === "mcp:tool-consent-request");
+        .find(
+          (event) =>
+            event.channel === "user-input:requested" &&
+            (event.args[0] as { kind?: string }).kind === "mcp-consent",
+        );
       expect(request).toBeDefined();
     });
     if (!request) throw new Error("Missing MCP consent request event");
@@ -214,7 +218,12 @@ describe("local-agent consent banner (integration)", () => {
           .some((entry) => entry.to === "settled"),
       ).toBe(true),
     );
-    await mcpClient.respondToConsent({ requestId, decision: "decline" });
+    await expect(
+      userInputClient.respond({
+        requestId,
+        response: { kind: "mcp-consent", decision: "decline" },
+      }),
+    ).rejects.toMatchObject({ kind: "not_found" });
 
     await expect(consent).resolves.toEqual({
       approved: true,

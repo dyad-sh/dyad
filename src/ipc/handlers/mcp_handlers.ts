@@ -4,10 +4,9 @@ import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { createTypedHandler } from "./base";
-import { DyadError, DyadErrorKind, isDyadError } from "../../errors/dyad_error";
+import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
 import { getStoredConsent } from "../utils/mcp_consent";
-import { userInputRegistry } from "../../user_input/main";
 import { mcpManager } from "../utils/mcp_manager";
 import { disconnectOAuth, runOAuthFlow } from "../utils/mcp_oauth_flow";
 import {
@@ -452,22 +451,6 @@ export function registerMcpHandlers() {
         ...result[0],
         consent: result[0].consent as McpConsentValue,
       };
-    }
-  });
-
-  // Tool consent request/response handshake
-  // Receive consent response from renderer
-  createTypedHandler(mcpContracts.respondToConsent, async (_, data) => {
-    try {
-      await userInputRegistry.respond(data.requestId, {
-        kind: "mcp-consent",
-        decision: data.decision,
-      });
-    } catch (error) {
-      // Preserve the legacy channel's swallowed stale-response behavior. The
-      // unified user-input contract surfaces NotFound.
-      if (isDyadError(error) && error.kind === DyadErrorKind.NotFound) return;
-      throw error;
     }
   });
 

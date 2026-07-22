@@ -219,6 +219,36 @@ describe("user-input registry", () => {
     });
   });
 
+  it("settles an incomplete integration response without arming a follow-up", async () => {
+    const { registry, broadcast } = setup();
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 12,
+      classifier: "none",
+      followUpPrompt: "Continue. I have completed the database integration.",
+    });
+    const park = registry.park(requestId);
+
+    await registry.respond(requestId, {
+      kind: "integration",
+      provider: null,
+      completed: false,
+    });
+
+    await expect(park).resolves.toEqual({
+      kind: "integration",
+      provider: null,
+      completed: false,
+    });
+    expect(registry.getPending()).toEqual([]);
+    registry.streamFinished(12);
+    expect(
+      broadcast.mock.calls.some(
+        ([channel]) => channel === "user-input:follow-up-due",
+      ),
+    ).toBe(false);
+  });
+
   it("dispose aborts all live parks and clears deadlines", async () => {
     const { registry, clock } = setup();
     const requestId = registry.request({

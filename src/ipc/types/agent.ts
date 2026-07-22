@@ -6,56 +6,10 @@ import {
   createEventClient,
 } from "../contracts/core";
 import { AgentToolConsentSchema } from "../../lib/schemas";
-import { SqlConsentMetadataSchema } from "../../shared/sqlConsentMetadata";
 
 // =============================================================================
 // Agent Schemas
 // =============================================================================
-
-/**
- * Schema for agent tool consent request payload.
- */
-export const AgentToolConsentRequestSchema = z.object({
-  requestId: z.string(),
-  chatId: z.number(),
-  toolName: z.string(),
-  toolDescription: z.string().nullable().optional(),
-  inputPreview: z.string().nullable().optional(),
-  metadata: SqlConsentMetadataSchema.nullable().optional(),
-});
-
-export type AgentToolConsentRequestPayload = z.infer<
-  typeof AgentToolConsentRequestSchema
->;
-
-/**
- * Schema for agent tool consent decision.
- */
-export const AgentToolConsentDecisionSchema = z.enum([
-  "accept-once",
-  "accept-always",
-  "decline",
-]);
-
-export type AgentToolConsentDecision = z.infer<
-  typeof AgentToolConsentDecisionSchema
->;
-
-/**
- * Schema for agent tool consent response params.
- */
-export const AgentToolConsentResponseParamsSchema = z.object({
-  requestId: z.string(),
-  decision: AgentToolConsentDecisionSchema,
-});
-
-export type AgentToolConsentResponseParams = z.infer<
-  typeof AgentToolConsentResponseParamsSchema
->;
-
-export const AgentToolConsentResolvedSchema = z.object({
-  requestId: z.string(),
-});
 
 /**
  * Schema for agent todo item.
@@ -156,12 +110,6 @@ export const agentContracts = {
     input: SetAgentToolConsentParamsSchema,
     output: z.void(),
   }),
-
-  respondToConsent: defineContract({
-    channel: "agent-tool:consent-response",
-    input: AgentToolConsentResponseParamsSchema,
-    output: z.void(),
-  }),
 } as const;
 
 // =============================================================================
@@ -169,20 +117,6 @@ export const agentContracts = {
 // =============================================================================
 
 export const agentEvents = {
-  /**
-   * Emitted when the agent needs consent for a tool invocation.
-   */
-  consentRequest: defineEvent({
-    channel: "agent-tool:consent-request",
-    payload: AgentToolConsentRequestSchema,
-  }),
-
-  /** Emitted whenever the main-process waiter settles, including timeout/abort. */
-  consentResolved: defineEvent({
-    channel: "agent-tool:consent-resolved",
-    payload: AgentToolConsentResolvedSchema,
-  }),
-
   /**
    * Emitted when the agent's todo list is updated.
    */

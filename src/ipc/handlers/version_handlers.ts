@@ -1226,10 +1226,12 @@ export function registerVersionHandlers() {
           //  - `id`: autoIncrement primary key, generated per inserted row.
           //  - `chatId`: set to the newly created chat below.
           //  - `usingFreeAgentModeQuota`: reset to false (see note below).
+          //  - `userInputRequestId`: live delivery dedupe key, not message data.
           type ExcludedMessageColumn =
             | "id"
             | "chatId"
-            | "usingFreeAgentModeQuota";
+            | "usingFreeAgentModeQuota"
+            | "userInputRequestId";
           // If a column is neither copied nor excluded, this `Exclude` is no
           // longer `never` and the assignment fails to compile, flagging the
           // unclassified column.

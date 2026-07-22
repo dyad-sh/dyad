@@ -141,13 +141,13 @@ export function transition(
       const persist: UserInputCommand[] = isAlways(event.response)
         ? [{ type: "persist-always", descriptor, response: event.response }]
         : [];
-      if (descriptor.followUpPrompt) {
-        const followUpPrompt =
-          descriptor.kind === "integration" &&
-          event.response.kind === "integration" &&
-          event.response.provider
-            ? `Continue. I have completed the ${event.response.provider} integration.`
-            : descriptor.followUpPrompt;
+      if (
+        descriptor.kind === "integration" &&
+        event.response.kind === "integration" &&
+        event.response.completed &&
+        event.response.provider
+      ) {
+        const followUpPrompt = `Continue. I have completed the ${event.response.provider} integration.`;
         return applied(
           {
             status: "armed",
@@ -162,6 +162,11 @@ export function transition(
           [
             ...persist,
             { type: "cancel-deadline", requestId: descriptor.requestId },
+            {
+              type: "broadcast-armed",
+              descriptor,
+              followUpPrompt,
+            },
             {
               type: "resolve-park",
               requestId: descriptor.requestId,

@@ -24,6 +24,10 @@ events that may arrive after an operation has been superseded.
 - Commands are data and execute in a controller/adapter. A machine that derives
   effects directly from registry transitions must document that deviation and
   its reason in the module header.
+- For cross-machine dispatch followed by acknowledgement, carry a stable
+  idempotency key through every queue, IPC, and persistence boundary. Make the
+  receiving boundary durably deduplicate acceptance, and acknowledge only
+  after that acceptance; a renderer-local enqueue is not durable acceptance.
 - `observeTransition` runs before a controller commits its next snapshot. If
   an observer callback can re-enter the machine (for example, by submitting a
   follow-up turn), defer that callback until the committed state is visible.

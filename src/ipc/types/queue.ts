@@ -32,6 +32,7 @@ export const PersistedQueuedMessageSchema = z.object({
   appId: z.number().int().positive().optional(),
   // `null` is an intentional skip-cache sentinel, distinct from omission.
   requestedChatMode: ChatModeSchema.nullable().optional(),
+  userInputRequestId: z.string().optional(),
 });
 
 export type PersistedQueuedMessage = z.infer<

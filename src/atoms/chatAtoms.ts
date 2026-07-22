@@ -9,6 +9,7 @@ import type { ListedApp } from "@/ipc/types/app";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import { userInputRequestsAtom } from "@/user_input/projection";
 import { atomWithStorage } from "jotai/utils";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 
@@ -509,7 +510,38 @@ export interface PendingToolConsent {
   classifierPending?: boolean;
 }
 
-export const pendingToolConsentsAtom = atom<PendingToolConsent[]>([]);
+export const pendingToolConsentsAtom = atom<PendingToolConsent[]>((get) => {
+  const consents: PendingToolConsent[] = [];
+  for (const request of get(userInputRequestsAtom).values()) {
+    if (request.status === "settled") continue;
+    const descriptor = request.descriptor;
+    if (descriptor.kind === "agent-consent") {
+      consents.push({
+        kind: "agent",
+        requestId: descriptor.requestId,
+        chatId: descriptor.chatId,
+        toolName: descriptor.toolName,
+        toolDescription: descriptor.toolDescription,
+        inputPreview: descriptor.inputPreview,
+        metadata: descriptor.metadata as SqlConsentMetadata | null | undefined,
+      });
+    } else if (descriptor.kind === "mcp-consent") {
+      consents.push({
+        kind: "mcp",
+        requestId: descriptor.requestId,
+        chatId: descriptor.chatId,
+        serverId: descriptor.serverId,
+        serverName: descriptor.serverName,
+        toolName: descriptor.toolName,
+        toolDescription: descriptor.toolDescription,
+        inputPreview: descriptor.inputPreview,
+        classifierReason: request.classifierReason,
+        classifierPending: request.classifier === "racing",
+      });
+    }
+  }
+  return consents;
+});
 
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());

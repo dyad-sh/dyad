@@ -12,6 +12,12 @@ testSkipIfWindows(
 
     await po.appManagement.startDatabaseIntegrationSetup("neon");
     await po.appManagement.clickConnectNeonButton();
+    // Reaching the project picker proves the OAuth return advanced through
+    // resource loading and the connector re-rendered as connected.
+    await expect(po.page.getByTestId("neon-project-select")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(po.page.getByTestId("connect-neon-button")).toBeHidden();
     await po.appManagement.selectNeonProject("Test Project");
 
     await po.navigation.clickBackButton();

@@ -38,6 +38,12 @@ test("completes the GitHub publish happy paths", async ({ po }) => {
     "Set up your GitHub repo",
     { timeout: Timeout.MEDIUM },
   );
+  // The setup UI is only rendered after the device flow has exchanged the
+  // token, refreshed settings, and acknowledged the completed flow.
+  await expect(
+    po.page.getByRole("button", { name: "Connect to GitHub" }),
+  ).toBeHidden();
+  await expect(po.page.getByText("FAKE-CODE")).toBeHidden();
 
   const repoName = `github-e2e-${Date.now()}`;
   await po.githubConnector.createRepo(repoName);

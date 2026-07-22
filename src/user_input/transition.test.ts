@@ -25,6 +25,20 @@ const request: UserInputEvent = {
   descriptor,
   deadlineMs: 300_000,
 };
+const followUpDescriptor: UserInputDescriptor = {
+  kind: "integration",
+  requestId: "integration:1",
+  chatId: 11,
+  deadlineAt: 1_800_000,
+  provider: "supabase",
+  classifier: "none",
+  followUpPrompt: "continue",
+};
+const followUpRequest: UserInputEvent = {
+  type: "requested",
+  descriptor: followUpDescriptor,
+  deadlineMs: 1_800_000,
+};
 const raceEvents: UserInputEvent[] = [
   {
     type: "human-decided",
@@ -53,6 +67,7 @@ describe("user-input transition", () => {
   it("is total and reference-stable over every reachable state and event", () => {
     const events: UserInputEvent[] = [
       request,
+      followUpRequest,
       ...raceEvents,
       {
         type: "classifier-decided",
@@ -61,6 +76,25 @@ describe("user-input transition", () => {
       },
       { type: "stream-finished", chatId: descriptor.chatId },
       { type: "follow-up-dispatched", requestId: descriptor.requestId },
+      {
+        type: "human-decided",
+        requestId: followUpDescriptor.requestId,
+        response: {
+          kind: "integration",
+          provider: "supabase",
+          completed: true,
+        },
+      },
+      { type: "stream-finished", chatId: followUpDescriptor.chatId },
+      {
+        type: "follow-up-dispatched",
+        requestId: followUpDescriptor.requestId,
+      },
+      {
+        type: "human-decided",
+        requestId: descriptor.requestId,
+        response: { kind: "questionnaire", answers: null },
+      },
     ];
     const states = exploreReachableStates({
       initialState: { status: "idle" } as UserInputState,
@@ -68,7 +102,8 @@ describe("user-input transition", () => {
       transition,
       stateKey: JSON.stringify,
     });
-    expect(states.length).toBeGreaterThan(3);
+    expect(states.some((state) => state.status === "armed")).toBe(true);
+    expect(states.some((state) => state.status === "due")).toBe(true);
 
     for (const state of states) {
       for (const event of events) {
@@ -81,6 +116,11 @@ describe("user-input transition", () => {
         );
       }
     }
+
+    const awaiting = transition({ status: "idle" }, request).state;
+    expect(transition(awaiting, events.at(-1)!).ignoredReason).toBe(
+      "response-kind-mismatch",
+    );
   });
 
   it("makes every terminal ordering first-applied-wins", () => {

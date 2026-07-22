@@ -1,6 +1,7 @@
 /** Main-process composition root for the user-input registry. */
 import { BrowserWindow, type WebContents } from "electron";
 import { and, eq } from "drizzle-orm";
+import log from "electron-log";
 import { db } from "../db";
 import { mcpToolConsents } from "../db/schema";
 import { readSettings, writeSettings } from "../main/settings";
@@ -9,6 +10,7 @@ import { safeSend } from "../ipc/utils/safe_sender";
 import { createUserInputRegistry } from "./registry";
 
 const subscribers = new Set<WebContents>();
+const logger = log.scope("user_input");
 
 export function rememberUserInputSubscriber(sender: WebContents): void {
   if (subscribers.has(sender)) return;
@@ -76,5 +78,8 @@ export const userInputRegistry = createUserInputRegistry({
         },
       });
     }
+  },
+  onCommandError(command, error) {
+    logger.error(`User-input command failed: ${command.type}`, error);
   },
 });

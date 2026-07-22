@@ -34,10 +34,6 @@ function applied(
   return { state, commands };
 }
 
-function descriptorOf(state: UserInputState): UserInputDescriptor | undefined {
-  return state.status === "idle" ? undefined : state.descriptor;
-}
-
 function terminalCommands(
   descriptor: UserInputDescriptor,
   outcome: UserInputOutcome,
@@ -56,10 +52,15 @@ function settle(
   value: Extract<UserInputCommand, { type: "resolve-park" }>["value"],
   extra: readonly UserInputCommand[] = [],
 ): UserInputTransitionResult {
-  return applied({ status: "settled", descriptor, outcome }, [
-    ...extra,
-    ...terminalCommands(descriptor, outcome, value),
-  ]);
+  return applied(
+    {
+      status: "settled",
+      requestId: descriptor.requestId,
+      chatId: descriptor.chatId,
+      outcome,
+    },
+    [...extra, ...terminalCommands(descriptor, outcome, value)],
+  );
 }
 
 function isAlways(response: UserInputResponse): boolean {
@@ -113,15 +114,22 @@ export function transition(
   }
 
   if (state.status === "idle") return ignore(state, "unknown-request");
-  const descriptor = descriptorOf(state)!;
+  if (state.status === "settled") {
+    if ("requestId" in event && event.requestId !== state.requestId) {
+      return ignore(state, "request-id-mismatch");
+    }
+    if ("chatId" in event && event.chatId !== state.chatId) {
+      return ignore(state, "chat-id-mismatch");
+    }
+    return ignore(state, "already-settled");
+  }
+  const descriptor = state.descriptor;
   if ("requestId" in event && event.requestId !== descriptor.requestId) {
     return ignore(state, "request-id-mismatch");
   }
   if ("chatId" in event && event.chatId !== descriptor.chatId) {
     return ignore(state, "chat-id-mismatch");
   }
-  if (state.status === "settled") return ignore(state, "already-settled");
-
   switch (event.type) {
     case "human-decided": {
       if (state.status !== "awaiting") {

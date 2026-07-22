@@ -32,6 +32,7 @@ import { transition, type UserInputIgnoreReason } from "./transition";
 
 const CONSENT_DEADLINE_MS = 5 * 60 * 1_000;
 const INTEGRATION_DEADLINE_MS = 30 * 60 * 1_000;
+const MAX_SETTLED_TOMBSTONES = 1_000;
 
 export interface PendingUserInputSnapshot {
   status: "awaiting" | "armed" | "due";
@@ -45,6 +46,7 @@ interface ParkEntry {
   promise: Promise<UserInputParkValue | null>;
   resolve: (value: UserInputParkValue | null) => void;
   settled: boolean;
+  claimed: boolean;
   value?: UserInputParkValue | null;
   abortCleanup?: () => void;
 }
@@ -83,11 +85,13 @@ export function createUserInputRegistry(deps: {
     UserInputCommand,
     UserInputIgnoreReason
   >;
+  onCommandError?: (command: UserInputCommand, error: unknown) => void;
 }): UserInputRegistry {
   const states = new Map<string, UserInputState>();
   const parks = new Map<string, ParkEntry>();
   const deadlines = new Map<string, ClockHandle>();
   const chatIndex = new Map<number, Set<string>>();
+  const settledOrder: string[] = [];
   const observer = deps.observer ?? createTraceObserver("user_input");
   const effects = createUserInputCommandRunner({
     broadcast: deps.broadcast,
@@ -125,6 +129,7 @@ export function createUserInputRegistry(deps: {
     entry.value = value;
     entry.abortCleanup?.();
     entry.resolve(value);
+    if (entry.claimed) parks.delete(requestId);
   }
 
   function cancelDeadline(requestId: string): void {
@@ -166,8 +171,8 @@ export function createUserInputRegistry(deps: {
       }
     }
     const effect = effects.run(command);
-    void Promise.resolve(deps.commandRunner?.run(command)).catch(
-      () => undefined,
+    void Promise.resolve(deps.commandRunner?.run(command)).catch((error) =>
+      deps.onCommandError?.(command, error),
     );
     if (effect instanceof Promise) return effect;
   }
@@ -183,18 +188,57 @@ export function createUserInputRegistry(deps: {
 
     states.set(requestId, result.state);
     if (isLiveUserInputState(result.state)) addToChat(result.state.descriptor);
-    else if (previous.status !== "idle") removeFromChat(previous.descriptor);
+    else if (isLiveUserInputState(previous))
+      removeFromChat(previous.descriptor);
+
+    if (result.state.status === "settled") {
+      settledOrder.push(requestId);
+      while (settledOrder.length > MAX_SETTLED_TOMBSTONES) {
+        const expiredRequestId = settledOrder.shift();
+        if (expiredRequestId === undefined) break;
+        if (states.get(expiredRequestId)?.status === "settled") {
+          states.delete(expiredRequestId);
+          parks.delete(expiredRequestId);
+        }
+      }
+    }
 
     let pending: Promise<void> | undefined;
+    let firstError: unknown;
+    let persistenceFailed = false;
+    const runCommand = (command: UserInputCommand): void | Promise<void> => {
+      const effectiveCommand =
+        persistenceFailed && command.type === "resolve-park"
+          ? ({ ...command, value: null } as UserInputCommand)
+          : command;
+      try {
+        const commandResult = execute(effectiveCommand);
+        if (commandResult instanceof Promise) {
+          return commandResult.catch((error) => {
+            firstError ??= error;
+            persistenceFailed ||= command.type === "persist-always";
+            deps.onCommandError?.(command, error);
+          });
+        }
+      } catch (error) {
+        firstError ??= error;
+        persistenceFailed ||= command.type === "persist-always";
+        deps.onCommandError?.(command, error);
+      }
+    };
     for (const command of result.commands) {
       if (pending) {
-        pending = pending.then(() => execute(command));
+        pending = pending.then(() => runCommand(command));
         continue;
       }
-      const commandResult = execute(command);
+      const commandResult = runCommand(command);
       if (commandResult instanceof Promise) pending = commandResult;
     }
-    return pending ? pending.then(() => true) : Promise.resolve(true);
+    const finish = () => {
+      if (firstError !== undefined) throw firstError;
+      return true;
+    };
+    return pending ? pending.then(finish) : Promise.resolve(finish());
   }
 
   function dispatchWithoutWaiting(
@@ -224,7 +268,12 @@ export function createUserInputRegistry(deps: {
         const promise = new Promise<UserInputParkValue | null>((done) => {
           resolve = done;
         });
-        parks.set(requestId, { promise, resolve, settled: false });
+        parks.set(requestId, {
+          promise,
+          resolve,
+          settled: false,
+          claimed: false,
+        });
       }
       dispatchWithoutWaiting(requestId, {
         type: "requested",
@@ -236,7 +285,12 @@ export function createUserInputRegistry(deps: {
         const promise = new Promise<UserInputParkValue | null>((done) => {
           resolve = done;
         });
-        parks.set(requestId, { promise, resolve, settled: false });
+        parks.set(requestId, {
+          promise,
+          resolve,
+          settled: false,
+          claimed: false,
+        });
       }
       return requestId;
     },
@@ -244,9 +298,14 @@ export function createUserInputRegistry(deps: {
     park(requestId, abortSignal) {
       const entry = parks.get(requestId);
       if (!entry) return Promise.resolve(null);
+      entry.claimed = true;
+      if (entry.settled) {
+        parks.delete(requestId);
+        return Promise.resolve(entry.value ?? null);
+      }
       if (abortSignal?.aborted) {
         const state = states.get(requestId);
-        if (state && state.status !== "idle") {
+        if (state && isLiveUserInputState(state)) {
           dispatchWithoutWaiting(requestId, {
             type: "chat-swept",
             chatId: state.descriptor.chatId,
@@ -257,7 +316,7 @@ export function createUserInputRegistry(deps: {
       if (!entry.settled && abortSignal) {
         const onAbort = () => {
           const state = states.get(requestId);
-          if (state && state.status !== "idle") {
+          if (state && isLiveUserInputState(state)) {
             dispatchWithoutWaiting(requestId, {
               type: "chat-swept",
               chatId: state.descriptor.chatId,
@@ -351,6 +410,10 @@ export function createUserInputRegistry(deps: {
         }
       }
       for (const requestId of deadlines.keys()) cancelDeadline(requestId);
+      states.clear();
+      parks.clear();
+      chatIndex.clear();
+      settledOrder.length = 0;
     },
   };
 }

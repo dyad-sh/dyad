@@ -58,6 +58,7 @@ import { appCollectionContracts } from "../types/app_collections";
 import { terminalContracts } from "../types/terminal";
 import { testsContracts, testsEvents } from "../types/tests";
 import { queueContracts, queueSendContracts } from "../types/queue";
+import { userInputContracts, userInputEvents } from "../types/user_input";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -125,6 +126,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(terminalContracts),
   ...getInvokeChannels(testsContracts),
   ...getInvokeChannels(queueContracts),
+  ...getInvokeChannels(userInputContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -165,6 +167,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(integrationEvents),
   ...getReceiveChannels(appBlueprintEvents),
   ...getReceiveChannels(testsEvents),
+  ...getReceiveChannels(userInputEvents),
 ] as const;
 
 // =============================================================================

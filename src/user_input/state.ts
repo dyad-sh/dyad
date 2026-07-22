@@ -94,7 +94,8 @@ export type UserInputState =
     }
   | {
       status: "settled";
-      descriptor: UserInputDescriptor;
+      requestId: string;
+      chatId: number;
       outcome: UserInputOutcome;
     };
 

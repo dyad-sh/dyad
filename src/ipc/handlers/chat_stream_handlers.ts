@@ -589,6 +589,7 @@ export function registerChatStreamHandlers() {
     let attachmentPaths: string[] = [];
     const abortController = new AbortController();
     let trackedStream: TrackedStream | undefined;
+    let finishedNaturally = false;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -2223,6 +2224,7 @@ This conversation includes one or more image attachments. When the user uploads 
       }
 
       // Return the chat ID for backwards compatibility
+      finishedNaturally = true;
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
@@ -2250,10 +2252,12 @@ This conversation includes one or more image attachments. When the user uploads 
       // aborted path.
       if (!abortController.signal.aborted) {
         safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
-        userInputRegistry.streamFinished(req.chatId);
       }
-      // Unblock pending user inputs once the final stream for the chat ends.
-      if (!activeStreams.has(req.chatId)) {
+      if (finishedNaturally) {
+        userInputRegistry.streamFinished(req.chatId);
+      } else if (!activeStreams.has(req.chatId)) {
+        // Errors and cancellation sweep pending user inputs; only successful
+        // natural completion can arm a follow-up dispatch.
         userInputRegistry.sweepChat(req.chatId);
       }
 

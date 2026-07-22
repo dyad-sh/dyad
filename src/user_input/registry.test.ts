@@ -179,4 +179,61 @@ describe("user-input registry", () => {
     await expect(park).resolves.toBeNull();
     expect(clock.pendingTimerCount()).toBe(0);
   });
+
+  it("continues terminal cleanup when always-consent persistence fails", async () => {
+    const clock = createFakeClock();
+    const broadcast = vi.fn();
+    const onCommandError = vi.fn();
+    const registry = createUserInputRegistry({
+      clock,
+      idSource: createSequentialIdSource(),
+      broadcast,
+      persistAlways: async () => {
+        throw new Error("disk full");
+      },
+      onCommandError,
+    });
+    const requestId = registry.request({
+      kind: "agent-consent",
+      chatId: 6,
+      toolName: "write_file",
+      classifier: "none",
+    });
+    const park = registry.park(requestId);
+
+    await expect(
+      registry.respond(requestId, {
+        kind: "agent-consent",
+        decision: "accept-always",
+      }),
+    ).rejects.toThrow("disk full");
+    await expect(park).resolves.toBeNull();
+    expect(clock.pendingTimerCount()).toBe(0);
+    expect(broadcast).toHaveBeenCalledWith(
+      "user-input:settled",
+      expect.objectContaining({ requestId, outcome: "human" }),
+    );
+    expect(onCommandError).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "persist-always" }),
+      expect.any(Error),
+    );
+  });
+
+  it("releases a settled park after it is consumed", async () => {
+    const { registry } = setup();
+    const requestId = registry.request({
+      kind: "agent-consent",
+      chatId: 7,
+      toolName: "read_file",
+      classifier: "none",
+    });
+    await registry.respond(requestId, {
+      kind: "agent-consent",
+      decision: "accept-once",
+    });
+    await expect(registry.park(requestId)).resolves.toMatchObject({
+      decision: "accept-once",
+    });
+    await expect(registry.park(requestId)).resolves.toBeNull();
+  });
 });

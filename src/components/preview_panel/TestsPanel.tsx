@@ -40,6 +40,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useSetTestingEnabled } from "@/hooks/useSetTestingEnabled";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { useChatMode } from "@/hooks/useChatMode";
 import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { queryKeys } from "@/lib/queryKeys";
@@ -562,15 +563,13 @@ export function TestsPanel() {
   // Re-discover specs when a chat turn finishes - the agent may have written a
   // new spec file (via write_file), which wouldn't otherwise appear until the
   // panel is remounted. Done quietly, without the loading spinner.
-  const prevStreamingRef = useRef(isStreaming);
-  useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming && selectedAppId != null) {
+  useStreamFinished(({ chatId: finishedChatId }) => {
+    if (finishedChatId === chatId && selectedAppId != null) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.tests.list({ appId: selectedAppId }),
       });
     }
-    prevStreamingRef.current = isStreaming;
-  }, [isStreaming, queryClient, selectedAppId]);
+  });
 
   const loadingSpecs = specsQuery.isLoading && specs.length === 0;
   const showNeonRestartDisclosure =

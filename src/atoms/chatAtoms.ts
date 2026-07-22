@@ -79,8 +79,6 @@ homeSelectedAppAtom.debugLabel = "homeSelectedAppAtom";
 export const hasManuallySelectedChatModeAtom = atom<boolean>(false);
 hasManuallySelectedChatModeAtom.debugLabel = "hasManuallySelectedChatModeAtom";
 
-// Used for scrolling to the bottom of the chat messages (per chat)
-export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const scrollToBottomRequestedChatIdsAtom = atom<Set<number>>(
   new Set<number>(),
 );

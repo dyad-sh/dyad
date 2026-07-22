@@ -17,8 +17,17 @@ import {
   createChatStreamController,
   type ChatStreamController,
 } from "./controller";
+import type { StreamCommand, StreamEvent, StreamState } from "./state";
 
 type JotaiStore = ReturnType<typeof createStore>;
+
+export interface StreamFinishedEvent {
+  chatId: number;
+  streamId: number;
+  outcome: "completed" | "cancelled" | "errored";
+}
+
+type StreamFinishedListener = (event: StreamFinishedEvent) => void;
 
 function withoutChatId<Value>(
   previous: Map<number, Value>,
@@ -42,6 +51,7 @@ function withoutChatId<Value>(
 export class ChatStreamManager {
   private runtimeDeps: ChatStreamRuntimeDeps | null = null;
   private readonly lastStreamIdByChatId = new Map<number, number>();
+  private readonly streamFinishedListeners = new Set<StreamFinishedListener>();
   private readonly commands = createProductionChatStreamCommands(() => {
     if (!this.runtimeDeps) {
       throw new Error(
@@ -51,16 +61,33 @@ export class ChatStreamManager {
     return this.runtimeDeps;
   });
   private readonly host = new KeyedControllerHost<number, ChatStreamController>(
-    (chatId) =>
-      createChatStreamController({
+    (chatId) => {
+      const traceObserver = createTraceObserver<
+        StreamState,
+        StreamEvent,
+        StreamCommand
+      >("chat_stream", chatId, {
+        mute: (event) => event.type === "chunk-received",
+      });
+      return createChatStreamController({
         chatId,
         initialLastStreamId: this.lastStreamIdByChatId.get(chatId),
         getCommands: () => this.commands,
         onQuiescent: (controller) => this.releaseIfQuiescent(controller),
-        observer: createTraceObserver("chat_stream", chatId, {
-          mute: (event) => event.type === "chunk-received",
-        }),
-      }),
+        observer: {
+          onTransitionApplied: (transition) => {
+            traceObserver.onTransitionApplied?.(transition);
+            this.notifyStreamFinished(
+              chatId,
+              transition.previous,
+              transition.event,
+              transition.state,
+            );
+          },
+          onEventIgnored: (event) => traceObserver.onEventIgnored?.(event),
+        },
+      });
+    },
   );
 
   constructor(private readonly store: JotaiStore) {}
@@ -79,6 +106,13 @@ export class ChatStreamManager {
 
   notifyStreamRegistered(chatId: number, streamId?: number): void {
     this.host.get(chatId)?.send({ type: "registered", streamId });
+  }
+
+  subscribeStreamFinished(listener: StreamFinishedListener): () => void {
+    this.streamFinishedListeners.add(listener);
+    return () => {
+      this.streamFinishedListeners.delete(listener);
+    };
   }
 
   disposeChat(chatId: number): void {
@@ -100,9 +134,56 @@ export class ChatStreamManager {
 
   dispose(): void {
     this.host.dispose();
+    this.streamFinishedListeners.clear();
     // An in-flight startStream may register its IPC transport after an await.
     // Its controller releases again once setup settles, so retain deps until
     // that promise releases this otherwise-unreferenced manager graph.
+  }
+
+  private notifyStreamFinished(
+    chatId: number,
+    previous: StreamState,
+    event: StreamEvent,
+    state: StreamState,
+  ): void {
+    let finished: StreamFinishedEvent | undefined;
+
+    if (previous.type === "finalizing" && state.type === "idle") {
+      finished = {
+        chatId,
+        streamId: previous.streamId,
+        outcome: previous.wasCancelled ? "cancelled" : "completed",
+      };
+    } else if (
+      state.type === "errored" &&
+      previous.type !== "idle" &&
+      previous.type !== "errored" &&
+      event.type === "stream-errored"
+    ) {
+      finished = {
+        chatId,
+        streamId: event.streamId,
+        outcome: "errored",
+      };
+    }
+
+    if (!finished) return;
+
+    // Controller observers run before the snapshot is committed. Defer the
+    // one-shot signal so callbacks that submit another turn see the terminal
+    // idle/errored state instead of re-entering the previous transition.
+    queueMicrotask(() => {
+      for (const listener of this.streamFinishedListeners) {
+        try {
+          listener(finished);
+        } catch (error) {
+          console.error(
+            "[chat-stream] Stream-finished listener failed:",
+            error,
+          );
+        }
+      }
+    });
   }
 
   private releaseIfQuiescent(controller: ChatStreamController): void {

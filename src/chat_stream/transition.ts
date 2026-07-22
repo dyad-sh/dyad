@@ -32,6 +32,13 @@ export function initialStreamState(lastStreamId = 0): StreamState {
   return { type: "idle", lastStreamId };
 }
 
+/** Monotonic generation for both active and terminal stream states. */
+export function streamGeneration(state: StreamState): number {
+  return state.type === "idle" || state.type === "errored"
+    ? state.lastStreamId
+    : state.streamId;
+}
+
 /** Explicit marker for deliberately ignored (state, event) pairs. */
 function ignore(
   state: StreamState,

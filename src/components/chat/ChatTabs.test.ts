@@ -19,6 +19,7 @@ import {
 } from "@/atoms/chatAtoms";
 import {
   applySelectionToOrderedChatIds,
+  addFinishedChatNotification,
   getOrderedRecentChatIds,
   getVisibleTabCapacity,
   getFallbackChatIdAfterClose,
@@ -44,6 +45,21 @@ afterEach(() => {
 });
 
 describe("ChatTabs helpers", () => {
+  it("notifies only for a finished background chat", () => {
+    const current = new Set([2]);
+
+    const withBackground = addFinishedChatNotification(current, 3, 1);
+    expect(withBackground).toEqual(new Set([2, 3]));
+    expect(withBackground).not.toBe(current);
+
+    expect(addFinishedChatNotification(withBackground, 1, 1)).toBe(
+      withBackground,
+    );
+    expect(addFinishedChatNotification(withBackground, 3, 1)).toBe(
+      withBackground,
+    );
+  });
+
   it("keeps MRU order and appends chats that were never viewed (session filter)", () => {
     const chats = [chat(1), chat(2), chat(3), chat(4)];
     // All chats are in the session

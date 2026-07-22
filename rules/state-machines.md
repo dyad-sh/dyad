@@ -24,6 +24,12 @@ events that may arrive after an operation has been superseded.
 - Commands are data and execute in a controller/adapter. A machine that derives
   effects directly from registry transitions must document that deviation and
   its reason in the module header.
+- `observeTransition` runs before a controller commits its next snapshot. If
+  an observer callback can re-enter the machine (for example, by submitting a
+  follow-up turn), defer that callback until the committed state is visible.
+- When a manager needs machine-specific observer behavior, compose it with the
+  production trace observer (including ignored events) instead of replacing
+  trace coverage.
 - Command runners convert expected failures into events. A runner throw is a
   programming error: log it and keep the service usable; never wedge a queue or
   silently rewrite state.

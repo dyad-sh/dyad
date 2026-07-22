@@ -47,6 +47,8 @@ export interface StreamRequest {
    * `streamMessage` contract.
    */
   requestedChatMode?: Chat["chatMode"] | null;
+  /** Internal review-remediation turns must not recursively review themselves. */
+  suppressAutoReview?: boolean;
   onSettled?: (result: StreamSettledResult) => void;
 }
 

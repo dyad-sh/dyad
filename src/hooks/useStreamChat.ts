@@ -59,6 +59,7 @@ export function useStreamChat({
       selectedComponents,
       requestedChatMode,
       onSettled,
+      suppressAutoReview,
     }: {
       prompt: string;
       chatId: number;
@@ -68,6 +69,8 @@ export function useStreamChat({
       selectedComponents?: ComponentSelection[];
       requestedChatMode?: Chat["chatMode"] | null;
       onSettled?: (result: StreamSettledResult) => void;
+      /** Internal review-remediation turns must not recursively review themselves. */
+      suppressAutoReview?: boolean;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -100,6 +103,7 @@ export function useStreamChat({
           selectedComponents,
           requestedChatMode,
           onSettled,
+          suppressAutoReview,
         },
       });
     },

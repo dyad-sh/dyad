@@ -532,6 +532,7 @@ export interface QueuedMessageItem {
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;
+  suppressAutoReview?: boolean;
 }
 
 // Map<chatId, QueuedMessageItem[]>

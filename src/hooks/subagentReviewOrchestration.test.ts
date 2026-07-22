@@ -32,13 +32,11 @@ vi.mock("@/ipc/types", async (importOriginal) => {
 import {
   isStreamReviewEligible,
   runBackgroundAutoReview,
-  shouldResumePendingReview,
-  shouldStartBackgroundAutoReview,
-} from "./useStreamChat";
-import {
   runQueuedReviewFlow,
   shouldRunQueuedReviewBarrier,
-} from "./useQueueProcessor";
+  shouldResumePendingReview,
+  shouldStartBackgroundAutoReview,
+} from "./subagentReviewOrchestration";
 import {
   hasPendingReviewContinuation,
   resumePendingReviewContinuation,

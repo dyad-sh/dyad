@@ -6,9 +6,12 @@ import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
+  effectiveQueuePausedByIdAtom,
   publishChatCompletionEventAtom,
   queuePausedByIdAtom,
   queuedMessagesByIdAtom,
+  reviewBarrierHeldByIdAtom,
+  streamReviewEligibleByIdAtom,
   streamingPreviewByChatIdAtom,
   isStreamingByIdAtom,
   type QueuedMessageItem,
@@ -40,6 +43,20 @@ import {
 import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
+import {
+  isStreamReviewEligible,
+  runBackgroundAutoReview,
+  runQueuedReviewFlow,
+  shouldResumePendingReview,
+  shouldRunQueuedReviewBarrier,
+  shouldStartBackgroundAutoReview,
+  type ReviewRemediationOutcome,
+} from "@/hooks/subagentReviewOrchestration";
+import {
+  hasPendingReviewContinuation,
+  resumePendingReviewContinuation,
+  setPendingReviewContinuation,
+} from "@/hooks/subagentReviewContinuation";
 
 import type { StreamEvent, StreamRequest, StreamState } from "./state";
 import { isStreamActive } from "./transition";
@@ -96,6 +113,7 @@ export interface ChatStreamRuntimeDeps {
   queryClient: QueryClient;
   getSettings: () => UserSettings | null | undefined;
   getPosthog: () => PostHog | null;
+  submitRequest?: (request: StreamRequest) => void;
 }
 
 let runtimeDeps: ChatStreamRuntimeDeps | null = null;
@@ -159,6 +177,8 @@ interface StreamTurnContext {
 }
 
 const turnContexts = new Map<string, StreamTurnContext>();
+const reviewBarrierInFlight = new Set<number>();
+const reviewBarrierPassed = new Set<number>();
 
 function turnKey(chatId: number, streamId: number): string {
   return `${chatId}:${streamId}`;
@@ -234,6 +254,11 @@ export const productionChatStreamCommands: ChatStreamCommands = {
     store.set(chatErrorByIdAtom, (prev) => {
       const next = new Map(prev);
       next.set(chatId, null);
+      return next;
+    });
+    store.set(streamReviewEligibleByIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.set(chatId, false);
       return next;
     });
 
@@ -395,6 +420,7 @@ export const productionChatStreamCommands: ChatStreamCommands = {
       redo: request.redo,
       appId: request.appId,
       requestedChatMode: request.requestedChatMode,
+      suppressAutoReview: request.suppressAutoReview,
     };
     store.set(queuedMessagesByIdAtom, (prev) => {
       const next = new Map(prev);
@@ -428,6 +454,11 @@ export const productionChatStreamCommands: ChatStreamCommands = {
     cleanupStreamTransport(chatId, streamId);
 
     try {
+      store.set(streamReviewEligibleByIdAtom, (prev) => {
+        const next = new Map(prev);
+        next.set(chatId, isStreamReviewEligible(response));
+        return next;
+      });
       // Only treat as successful if NOT cancelled - wasCancelled flag is set
       // by the backend when the user cancels the stream.
       if (response.wasCancelled) {
@@ -546,6 +577,68 @@ export const productionChatStreamCommands: ChatStreamCommands = {
       queryClient.invalidateQueries({
         queryKey: queryKeys.uncommittedFiles.byApp({ appId: targetAppId }),
       });
+
+      const shouldResumeReviewContinuation = shouldResumePendingReview({
+        wasCancelled: response.wasCancelled,
+        pausePromptQueue: response.pausePromptQueue,
+        hasPendingContinuation: hasPendingReviewContinuation(chatId),
+      });
+      if (
+        shouldStartBackgroundAutoReview({
+          updatedFiles: response.updatedFiles === true,
+          enableAutoReview: settings?.enableAutoReview === true,
+          hasQueuedMessages:
+            (store.get(queuedMessagesByIdAtom).get(chatId)?.length ?? 0) > 0,
+          suppressAutoReview:
+            request.suppressAutoReview === true ||
+            shouldResumeReviewContinuation,
+        })
+      ) {
+        void ipc.chat
+          .getChat(chatId)
+          .then((latestChat) => {
+            const latestAssistant = [...latestChat.messages]
+              .reverse()
+              .find((message) => message.role === "assistant");
+            if (!latestAssistant) return;
+            return runBackgroundAutoReview({
+              chatId,
+              sourceMessageId: latestAssistant.id,
+              getAutoFix: () =>
+                deps().getSettings()?.autoFixReviewIssues === true,
+              streamFix: (prompt) =>
+                new Promise<ReviewRemediationOutcome>((resolve) => {
+                  const submitRequest = deps().submitRequest;
+                  if (!submitRequest) {
+                    resolve("failed");
+                    return;
+                  }
+                  submitRequest({
+                    prompt,
+                    chatId,
+                    redo: false,
+                    requestedChatMode: "local-agent",
+                    suppressAutoReview: true,
+                    onSettled: ({ success, pausedByStepLimit }) =>
+                      resolve(
+                        pausedByStepLimit
+                          ? "paused"
+                          : success
+                            ? "completed"
+                            : "failed",
+                      ),
+                  });
+                }),
+            });
+          })
+          .catch(() => {
+            // Background review failures remain visible in the agent card and
+            // must not turn an otherwise successful root stream into an error.
+          });
+      }
+      if (shouldResumeReviewContinuation) {
+        await resumePendingReviewContinuation(chatId);
+      }
       request.onSettled?.({
         success: true,
         pausedByStepLimit: response.pausePromptQueue === true,
@@ -594,7 +687,12 @@ export const productionChatStreamCommands: ChatStreamCommands = {
 
   dispatchNextQueued({ chatId, emit }) {
     const { store, queryClient, getPosthog } = deps();
-    if (store.get(queuePausedByIdAtom).get(chatId) ?? false) return;
+    const queue = store.get(queuedMessagesByIdAtom).get(chatId);
+    if (!queue || queue.length === 0) {
+      reviewBarrierPassed.delete(chatId);
+      return;
+    }
+    if (store.get(effectiveQueuePausedByIdAtom).get(chatId) ?? false) return;
     // Never dequeue while a stream is active for this chat (per-chat guard,
     // matching the legacy useQueueProcessor behavior from #2931). The
     // machine's own streams can't be active at any dispatch site (dispatch
@@ -604,6 +702,89 @@ export const productionChatStreamCommands: ChatStreamCommands = {
     // directly. Their terminal handlers poke the machine, so a skipped
     // dispatch is retried when they finish.
     if (store.get(isStreamingByIdAtom).get(chatId) ?? false) return;
+
+    if (!reviewBarrierPassed.has(chatId)) {
+      const reviewEligible =
+        store.get(streamReviewEligibleByIdAtom).get(chatId) ?? false;
+      if (!shouldRunQueuedReviewBarrier(reviewEligible)) {
+        reviewBarrierPassed.add(chatId);
+      } else {
+        if (reviewBarrierInFlight.has(chatId)) return;
+        reviewBarrierInFlight.add(chatId);
+        store.set(streamReviewEligibleByIdAtom, (prev) => {
+          const next = new Map(prev);
+          next.set(chatId, false);
+          return next;
+        });
+        store.set(reviewBarrierHeldByIdAtom, (prev) => {
+          const next = new Map(prev);
+          next.set(chatId, true);
+          return next;
+        });
+        void runQueuedReviewFlow({
+          runBarrier: (verification) =>
+            ipc.agent.runAutoReviewBarrier({ chatId, verification }),
+          streamRemediation: (prompt) =>
+            new Promise<ReviewRemediationOutcome>((resolve) => {
+              emit({
+                type: "submit",
+                request: {
+                  prompt,
+                  chatId,
+                  redo: false,
+                  requestedChatMode: "local-agent",
+                  suppressAutoReview: true,
+                  onSettled: ({ success, pausedByStepLimit }) =>
+                    resolve(
+                      pausedByStepLimit
+                        ? "paused"
+                        : success
+                          ? "completed"
+                          : "failed",
+                    ),
+                },
+              });
+            }),
+          onRemediationFailed: (threadId) =>
+            ipc.agent.skipReviewAutoFix({ chatId, threadId }),
+          onRemediationPaused: () => {
+            setPendingReviewContinuation(chatId, async () => {
+              try {
+                await ipc.agent.runAutoReviewBarrier({
+                  chatId,
+                  verification: true,
+                });
+              } finally {
+                reviewBarrierPassed.add(chatId);
+                store.set(reviewBarrierHeldByIdAtom, (prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, false);
+                  return next;
+                });
+                emit({ type: "queue-poked" });
+              }
+            });
+          },
+        })
+          .then((outcome) => {
+            if (outcome !== "paused") reviewBarrierPassed.add(chatId);
+          })
+          .catch(() => {
+            reviewBarrierPassed.add(chatId);
+          })
+          .finally(() => {
+            reviewBarrierInFlight.delete(chatId);
+            if (!reviewBarrierPassed.has(chatId)) return;
+            store.set(reviewBarrierHeldByIdAtom, (prev) => {
+              const next = new Map(prev);
+              next.set(chatId, false);
+              return next;
+            });
+            emit({ type: "queue-poked" });
+          });
+        return;
+      }
+    }
 
     // Pop the first message atomically.
     let messageToSend: QueuedMessageItem | undefined;
@@ -621,6 +802,12 @@ export const productionChatStreamCommands: ChatStreamCommands = {
       return next;
     });
     if (!messageToSend) return;
+    reviewBarrierPassed.delete(chatId);
+    store.set(streamReviewEligibleByIdAtom, (prev) => {
+      const next = new Map(prev);
+      next.set(chatId, false);
+      return next;
+    });
 
     const chatMode = queryClient.getQueryData<Chat>(
       queryKeys.chats.detail({ chatId }),
@@ -645,6 +832,7 @@ export const productionChatStreamCommands: ChatStreamCommands = {
           messageToSend.requestedChatMode !== undefined
             ? messageToSend.requestedChatMode
             : chatMode,
+        suppressAutoReview: messageToSend.suppressAutoReview,
       },
     });
   },

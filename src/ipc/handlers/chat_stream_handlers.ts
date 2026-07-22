@@ -1342,9 +1342,9 @@ ${componentSnippet}
         // points the model at spawn_agent(persona="explorer") when that
         // persona is disabled. Code-index readiness is independent now that
         // spawn_agent replaces the old explore_code tool.
-          const codeExplorerAvailable =
-            isDyadProEnabled(settings) &&
-            settings.enableExplorerSubagent !== false;
+        const codeExplorerAvailable =
+          isDyadProEnabled(settings) &&
+          settings.enableExplorerSubagent !== false;
         // Mirrors explore_chat_history's toolset inclusion (Pro, and not
         // consent-"never") so the prompt never points the model at a tool
         // that isn't in the toolset. Consent is read from settings directly

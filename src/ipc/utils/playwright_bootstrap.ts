@@ -13,6 +13,7 @@ import {
   getNodeModuleEntryPath,
   resolveNodeModulePackageJsonPathSync,
 } from "../../../shared/node_module_resolution";
+import { E2E_TEST_DIR } from "../types/tests";
 
 const logger = log.scope("playwright_bootstrap");
 
@@ -126,7 +127,7 @@ export function buildPlaywrightConfig(channel: BrowserChannel | null): string {
 // the app).
 // ${browserNote}
 export default defineConfig({
-  testDir: "./tests",
+  testDir: "./${E2E_TEST_DIR}",
   // Run serially against the single dev server.
   workers: 1,
   fullyParallel: false,
@@ -355,6 +356,27 @@ function writePlaywrightConfig(
   );
 }
 
+/**
+ * Rewrite a Dyad-generated config that still points `testDir` at the legacy
+ * `./tests` directory so it targets the current `./${E2E_TEST_DIR}`. Only touches
+ * configs carrying the sentinel (so a hand-written user config is never
+ * modified) and changes exactly that one line to preserve any `channel:` the
+ * config already has. A no-op when the config is already current — including
+ * when the fresh-write/channel-upgrade paths just emitted the latest template.
+ */
+function migrateConfigTestDir(appPath: string): void {
+  if (!isDyadGeneratedConfig(appPath)) return;
+  const text = readDyadConfigText(appPath);
+  const legacy = 'testDir: "./tests"';
+  const current = `testDir: "./${E2E_TEST_DIR}"`;
+  if (text && text.includes(legacy)) {
+    fs.writeFileSync(dyadConfigPath(appPath), text.replace(legacy, current));
+    logger.info(
+      `Migrated ${DYAD_CONFIG_FILENAME} testDir to ./${E2E_TEST_DIR}`,
+    );
+  }
+}
+
 function appendGitignoreEntries(appPath: string): void {
   const gitignorePath = path.join(appPath, ".gitignore");
   let existing = "";
@@ -490,6 +512,10 @@ export async function ensurePlaywrightBootstrap({
       );
     }
   }
+
+  // Bring an older Dyad config's testDir up to date (./tests -> ./e2e-tests) so
+  // existing apps' runs target the new directory after the convention switch.
+  migrateConfigTestDir(appPath);
 
   // The bundled Chromium binary is downloaded separately from the npm package,
   // so we track it apart (a present package does NOT mean the browser is

@@ -43,6 +43,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { useChatMode } from "@/hooks/useChatMode";
 import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
+import { MigrateTestsBanner } from "./MigrateTestsBanner";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showInfo } from "@/lib/toast";
@@ -1097,6 +1098,9 @@ export function TestsPanel() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
+        {testingEnabled && selectedAppId != null && (
+          <MigrateTestsBanner appId={selectedAppId} />
+        )}
         {!testingEnabled ? (
           <EnableTestingScreen
             hasNeonIsolation={hasNeonIsolation}

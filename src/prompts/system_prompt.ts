@@ -357,11 +357,11 @@ const buildTestWritingGuidance = (emitInstruction: string) =>
 When writing an end-to-end (e2e) test for a feature or flow, write a Playwright test.
 
 - FIRST, explore the codebase before writing any test. Read the relevant routes, pages, and components for the flow under test so your test reflects how the app ACTUALLY behaves — the real URLs/paths, the actual labels, roles, and placeholder text of the elements you'll target, the form fields and their validation, and any auth or data requirements. Do NOT guess selectors or invent UI that doesn't exist; base every locator and assertion on what you find in the code.
-- Write the spec file under the app's \`tests/\` folder, named after the flow (e.g. \`tests/signup.spec.ts\`).
+- Write the spec file under the app's \`e2e-tests/\` folder, named after the flow (e.g. \`e2e-tests/signup.spec.ts\`).
 ${emitInstruction}
 - Make sure \`@playwright/test\` is installed as a dev dependency. If it isn't already in \`package.json\`, install it (Playwright is required to run the test).
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
-- Do NOT create or edit \`playwright-dyad.config.ts\`. Dyad generates and owns that file, and every test run uses it: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. You do NOT need to write a Playwright config at all — just write specs under \`tests/\`.
+- Do NOT create or edit \`playwright-dyad.config.ts\`. Dyad generates and owns that file, and every test run uses it: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. You do NOT need to write a Playwright config at all — just write specs under \`e2e-tests/\`.
 - Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
 - Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
 - Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.
@@ -387,7 +387,7 @@ Because the isolated session starts effectively empty (a fresh copy, or a brand-
 
 ### Fixtures: seeding the data a test needs
 
-- Put reusable setup in files under \`tests/fixtures/\` (e.g. \`tests/fixtures/todos.ts\`) and import them into your specs. Write fixtures as plain files so the user can review and edit them — never hide setup in a way that regenerates differently each run.
+- Put reusable setup in files under \`e2e-tests/fixtures/\` (e.g. \`e2e-tests/fixtures/todos.ts\`) and import them into your specs. Write fixtures as plain files so the user can review and edit them — never hide setup in a way that regenerates differently each run.
 - Seed data THROUGH THE APP (its UI or its API routes), the same way a user would — e.g. create a todo by filling the app's "new todo" form, or POSTing to the app's own API route. This guarantees the data is written within the isolated session (the throwaway copy, or owned by the isolated test user so Row-Level Security scopes it correctly).
 - Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, outside the isolated session.
 - Base the fixture data on the app's actual schema and on what the specific test needs. Keep it minimal: seed only what the test asserts on.
@@ -396,7 +396,7 @@ Because the isolated session starts effectively empty (a fresh copy, or a brand-
 
 This section applies ONLY when the specific flow under test genuinely requires a logged-in user. If the flow is reachable without signing in, or the user asked for a test that doesn't need authentication (or explicitly doesn't want auth), skip everything below — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, say so and ask the user before building auth — don't add it silently.
 
-When a flow requires a logged-in user, use the built-in auth fixture in \`tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
+When a flow requires a logged-in user, use the built-in auth fixture in \`e2e-tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
 - If \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user — read the credentials from those env vars and sign that user in by driving the app's OWN login UI. Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, build one before writing the auth-gated test.
 - Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, build one (or an equivalent way to create a user) first. Say so clearly if you add it.
 - Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.`;
@@ -407,11 +407,11 @@ When a flow requires a logged-in user, use the built-in auth fixture in \`tests/
  */
 const AGENT_RUN_TESTS_GUIDANCE = `## Running tests and fixing failures
 
-After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
+After you write or edit a spec, VERIFY it with the \`run_tests\` tool — never claim a test works without running it. \`testFile\` is required: always pass the single spec you're working on (e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts" })\`) so you get fast, focused feedback. By default the whole file runs, so a pass means every test in the spec passes.
 
-Run the whole file by default. Only narrow the run with \`grep\` (a regex matched against \`test()\` titles, same as Playwright's --grep, e.g. \`run_tests({ testFile: "tests/signup.spec.ts", grep: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
+Run the whole file by default. Only narrow the run with \`grep\` (a regex matched against \`test()\` titles, same as Playwright's --grep, e.g. \`run_tests({ testFile: "e2e-tests/signup.spec.ts", grep: "user can sign up" })\`) when you have a specific reason — typically when ONE test keeps failing while the spec's other tests already passed and rerunning them all is slow. A narrowed pass only verifies the tests it matched, not the rest of the file. If the pattern matches no title, the tool runs nothing and replies with the titles that DO exist.
 
-Use the EXACT path of a spec that exists under tests/ — don't guess it. If your \`testFile\` doesn't match a real spec, \`run_tests\` runs nothing and replies with the specs that DO exist so you can retry with a correct path.
+Use the EXACT path of a spec that exists under e2e-tests/ — don't guess it. If your \`testFile\` doesn't match a real spec, \`run_tests\` runs nothing and replies with the specs that DO exist so you can retry with a correct path.
 
 Unless you just wrote or edited the spec this turn, READ it with \`read_file\` before running it. You need its current content to target a test by title with \`grep\` and to judge whether a failure comes from the test or the app — never run or edit a spec you haven't seen this turn.
 
@@ -435,12 +435,12 @@ When a task touches multiple specs, verify each one with its own \`run_tests\` c
  */
 const AGENT_PROACTIVE_TESTS_GUIDANCE = `# Keeping end-to-end tests up to date
 
-This app has end-to-end testing enabled, so treat test coverage as PART OF THE WORK, not a separate favor to wait for. Whenever you finish implementing or changing app behavior, keep the \`tests/\` suite in sync in the SAME turn:
+This app has end-to-end testing enabled, so treat test coverage as PART OF THE WORK, not a separate favor to wait for. Whenever you finish implementing or changing app behavior, keep the \`e2e-tests/\` suite in sync in the SAME turn:
 
 - **Added a new user-facing feature or flow** (a new page, form, action, CRUD operation, auth flow, or meaningful interaction) → write a new Playwright spec covering its happy path.
 - **Changed how an existing feature behaves** → find the spec(s) that cover it and update them to match the new behavior rather than creating a duplicate; only add a new spec when no existing one covers the flow.
 - **Review existing tests for impact — ALWAYS, whether you added or modified behavior.** Any change to app behavior can break specs that exercise the code paths you touched (a renamed label, a moved route, a changed field, a new required step). Before finishing, look at the EXISTING tests that might be affected and decide which need updating:
-  - \`list_files\` on \`tests/\`, then \`read_file\` the specs whose flows touch what you changed — the ones that visit the affected route/page, target the elements you edited, or depend on the behavior you altered. This is a STATIC code review of the spec files; you do NOT need to run the whole suite to figure out which are affected.
+  - \`list_files\` on \`e2e-tests/\`, then \`read_file\` the specs whose flows touch what you changed — the ones that visit the affected route/page, target the elements you edited, or depend on the behavior you altered. This is a STATIC code review of the spec files; you do NOT need to run the whole suite to figure out which are affected.
   - Update any spec whose selectors, assertions, navigation, or setup no longer match the app's new behavior. Leave unrelated specs alone.
   - If, after reading them, none of the existing specs are affected, that's fine — say so briefly and move on.
 
@@ -462,7 +462,7 @@ If you're genuinely unsure whether a change warrants a test, lean toward coverin
 export const AGENT_TEST_WRITING_GUIDANCE = `${AGENT_PROACTIVE_TESTS_GUIDANCE}
 
 ${buildTestWritingGuidance(
-  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`tests/\` (e.g. \`tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
+  `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`e2e-tests/\` (e.g. \`e2e-tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
 )}
 
 ${AGENT_RUN_TESTS_GUIDANCE}`;

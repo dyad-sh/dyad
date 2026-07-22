@@ -10,16 +10,26 @@ import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
 import {
+  E2E_TEST_DIR,
   TEST_SPEC_EXT_ALTERNATION,
   TEST_SPEC_GLOB,
   testsContracts,
 } from "../types/tests";
 import type {
+  MigrateLegacyTestResult,
   RunAppTestsResult,
   TestCase,
   TestResult,
   TestsRunStatePayload,
 } from "../types/tests";
+import {
+  detectLegacyPlaywrightSpecs,
+  legacyToE2ePath,
+  normalizeLegacyTestFile,
+  planLegacyMigration,
+} from "../utils/legacy_test_migration";
+import { assertMutationPathAllowed, safeJoin } from "../utils/path_utils";
+import { gitAdd, gitRemove } from "../utils/git_utils";
 import { runningApps } from "../utils/process_manager";
 import { isLockHeld, withLock } from "../utils/lock_utils";
 import { safeSend } from "../utils/safe_sender";
@@ -48,7 +58,7 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 const logger = log.scope("tests_handlers");
 
 // A test file must look like the spec paths `listAppTests` produces: relative,
-// under `tests/`, ending in a spec extension, with no traversal or leading
+// under `e2e-tests/`, ending in a spec extension, with no traversal or leading
 // dash. This stops a compromised renderer from passing a flag-like value
 // (e.g. `--config=…`) that Playwright would interpret as a CLI option. The
 // allowed characters must cover everything the listing glob can surface
@@ -56,7 +66,7 @@ const logger = log.scope("tests_handlers");
 // no `..`, no segment starting with `-`, and no backslash, colon (reserved for
 // the `file:line` selector), or control characters.
 const TEST_FILE_PATTERN = new RegExp(
-  `^tests/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
+  `^${E2E_TEST_DIR}/(?!.*\\.\\.)(?!(?:-|.*/-))[^\\\\:\\x00-\\x1f]+\\.spec\\.(${TEST_SPEC_EXT_ALTERNATION})$`,
 );
 
 export function normalizeRunTestFile(testFile: string): string | null {
@@ -66,8 +76,8 @@ export function normalizeRunTestFile(testFile: string): string | null {
 
 // Playwright treats each positional test argument as a regular expression
 // matched against the full test-file path, so a legitimate filename containing
-// regex metacharacters (e.g. `tests/checkout(legacy).spec.ts` or
-// `tests/item[1].spec.ts`) would otherwise match a different file or none at
+// regex metacharacters (e.g. `e2e-tests/checkout(legacy).spec.ts` or
+// `e2e-tests/item[1].spec.ts`) would otherwise match a different file or none at
 // all. Escape the path portion so it matches literally. The `:line` suffix is
 // appended outside the escaped portion — Playwright parses it separately.
 function escapeRegExpForSelector(value: string): string {
@@ -79,12 +89,12 @@ function isNoTestsFoundOutput(output: string): boolean {
 }
 
 /**
- * The relative paths of every spec under the app's `tests/` folder, sorted.
+ * The relative paths of every spec under the app's `e2e-tests/` folder, sorted.
  * Shared by the Tests panel listing and the agent's run_tests tool (so a
  * mistyped target can be answered with the paths that actually exist).
  */
 export async function listSpecFiles(appPath: string): Promise<string[]> {
-  const testsDir = path.join(appPath, "tests");
+  const testsDir = path.join(appPath, E2E_TEST_DIR);
   if (!fs.existsSync(testsDir)) {
     return [];
   }
@@ -312,9 +322,9 @@ export async function runAppTestsCore({
     args.push(target);
   } else {
     // Existing user configs can point at a different testDir. Dyad's panel only
-    // lists specs under tests/, so an all-run must target that directory
+    // lists specs under e2e-tests/, so an all-run must target that directory
     // explicitly instead of executing every spec the user's config knows about.
-    args.push("tests/");
+    args.push(`${E2E_TEST_DIR}/`);
   }
   // `-g <regex>` narrows the run to the tests whose title matches (same as the
   // Playwright CLI). Passed as a separate array arg, never a shell string, so
@@ -728,6 +738,33 @@ export async function runAppTestsWithIsolation({
   }
 }
 
+/**
+ * Move a file, falling back to copy+unlink across devices (EXDEV, e.g.
+ * different drives on Windows). Mirrors the media-file move handler.
+ */
+async function moveFileWithFallback(src: string, dst: string): Promise<void> {
+  try {
+    await fs.promises.rename(src, dst);
+  } catch (error: any) {
+    if (error?.code !== "EXDEV") {
+      throw error;
+    }
+    await fs.promises.copyFile(src, dst);
+    try {
+      await fs.promises.unlink(src);
+    } catch (unlinkError) {
+      // Source delete failed after the copy succeeded — remove the copy so we
+      // don't leave a duplicate behind.
+      try {
+        await fs.promises.unlink(dst);
+      } catch {
+        // Best-effort cleanup; destination may already be gone.
+      }
+      throw unlinkError;
+    }
+  }
+}
+
 export function registerTestsHandlers() {
   createTypedHandler(testsContracts.listAppTests, async (_event, params) => {
     const app = await getApp(params.appId);
@@ -762,6 +799,187 @@ export function registerTestsHandlers() {
     testsContracts.runAppTests,
     async (event, params): Promise<RunAppTestsResult> => {
       return runAppTestsWithIsolation({ event, source: "panel", ...params });
+    },
+  );
+
+  createTypedHandler(
+    testsContracts.detectLegacyTests,
+    async (_event, params) => {
+      const app = await getApp(params.appId);
+      const appPath = getDyadAppPath(app.path);
+      const specs = await detectLegacyPlaywrightSpecs(appPath);
+      const files = specs.map((file) => ({
+        file,
+        targetExists: fs.existsSync(safeJoin(appPath, legacyToE2ePath(file))),
+      }));
+      return { files };
+    },
+  );
+
+  createTypedHandler(
+    testsContracts.migrateLegacyTests,
+    async (_event, params) => {
+      const app = await getApp(params.appId);
+      const appPath = getDyadAppPath(app.path);
+      // Serialize against test runs (same numeric appId lock) so a move can't
+      // interleave with a run's env swap / dev-server restart.
+      return await withLock(params.appId, async () => {
+        const results: MigrateLegacyTestResult[] = [];
+
+        // Validate + normalize the requested specs up front; invalid ones are
+        // reported and excluded from the move plan. Deduplicate so the same
+        // path submitted twice doesn't produce a spurious second failure.
+        const validSpecs: string[] = [];
+        const seenSpecs = new Set<string>();
+        for (const requested of params.files) {
+          const sourceRel = normalizeLegacyTestFile(requested);
+          if (!sourceRel) {
+            results.push({
+              file: requested,
+              ok: false,
+              error: "Not a valid tests/*.spec.{ts,tsx,js,jsx} path",
+            });
+            continue;
+          }
+          if (seenSpecs.has(sourceRel)) {
+            continue; // Duplicate request; already accounted for.
+          }
+          seenSpecs.add(sourceRel);
+          validSpecs.push(sourceRel);
+        }
+
+        // Only ever move files detection actually classified as legacy
+        // Playwright specs, regardless of what the renderer submitted — a
+        // valid-looking path alone must not move an unrelated tests/ spec.
+        const detected = new Set(await detectLegacyPlaywrightSpecs(appPath));
+        const plannableSpecs: string[] = [];
+        for (const sourceRel of validSpecs) {
+          if (detected.has(sourceRel)) {
+            plannableSpecs.push(sourceRel);
+          } else {
+            results.push({
+              file: sourceRel,
+              ok: false,
+              error: "Not a Playwright spec in tests/",
+            });
+          }
+        }
+
+        // Move one tests/ file into e2e-tests/ (git-aware, never overwriting).
+        // Both paths are canonically validated (`assertMutationPathAllowed`) so
+        // a symlinked e2e-tests/ can't redirect the write outside the app.
+        const moveOne = async (
+          sourceRel: string,
+        ): Promise<{ ok: boolean; movedTo?: string; error?: string }> => {
+          const destRel = legacyToE2ePath(sourceRel);
+          try {
+            await assertMutationPathAllowed({
+              appPath,
+              relativePath: sourceRel,
+              followFinalSymlink: false,
+            });
+            await assertMutationPathAllowed({
+              appPath,
+              relativePath: destRel,
+              followFinalSymlink: false,
+            });
+            const src = safeJoin(appPath, sourceRel);
+            const dst = safeJoin(appPath, destRel);
+            if (!fs.existsSync(src)) {
+              return { ok: false, error: "Source file no longer exists" };
+            }
+            if (fs.existsSync(dst)) {
+              // Never overwrite an existing destination.
+              return { ok: false, error: `${destRel} already exists` };
+            }
+            await fs.promises.mkdir(path.dirname(dst), { recursive: true });
+            await moveFileWithFallback(src, dst);
+            // Stage the move (add new, remove old) without committing, so the
+            // user reviews it through the normal uncommitted-changes flow.
+            // Staging is best-effort: the file has already moved on disk, so a
+            // git failure (lock contention, untracked source, non-repo app)
+            // must not report the move itself as failed.
+            try {
+              await gitAdd({ path: appPath, filepath: destRel });
+            } catch (error) {
+              logger.warn(
+                `Moved ${sourceRel} but couldn't git-add ${destRel}: ${error}`,
+              );
+            }
+            try {
+              await gitRemove({ path: appPath, filepath: sourceRel });
+            } catch (error) {
+              // The source may be untracked (never committed); the file is
+              // already gone from disk, so staging the new one is enough.
+              logger.warn(
+                `Moved ${sourceRel} but couldn't git-remove it (likely untracked): ${error}`,
+              );
+            }
+            return { ok: true, movedTo: destRel };
+          } catch (error) {
+            logger.warn(`Failed to migrate ${sourceRel}: ${error}`);
+            return {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        };
+
+        // Plan by connected component: a spec is moved only when its whole
+        // import group can move (no shared fixture or dependency left behind,
+        // no destination collision). Specs that can't move are reported as
+        // blocked rather than migrated into a broken state.
+        const plan =
+          plannableSpecs.length > 0
+            ? await planLegacyMigration(appPath, plannableSpecs)
+            : {
+                movableSpecs: [] as string[],
+                supportFiles: [] as string[],
+                blockedSpecs: [] as { file: string; reason: string }[],
+                skippedSupportFiles: [] as string[],
+              };
+
+        // Move support files first so a spec never lands beside a fixture that
+        // hasn't moved yet.
+        const movedSupportFiles: string[] = [];
+        const skippedSupportFiles = [...plan.skippedSupportFiles];
+        for (const support of plan.supportFiles) {
+          const outcome = await moveOne(support);
+          if (outcome.ok && outcome.movedTo) {
+            movedSupportFiles.push(outcome.movedTo);
+          } else {
+            skippedSupportFiles.push(support);
+          }
+        }
+
+        // Move the specs that planned cleanly.
+        for (const sourceRel of plan.movableSpecs) {
+          const outcome = await moveOne(sourceRel);
+          results.push({
+            file: sourceRel,
+            ok: outcome.ok,
+            movedTo: outcome.movedTo,
+            error: outcome.error,
+          });
+        }
+
+        // Report specs that couldn't move without breaking an import.
+        for (const blocked of plan.blockedSpecs) {
+          results.push({
+            file: blocked.file,
+            ok: false,
+            error: blocked.reason,
+          });
+        }
+
+        return {
+          results,
+          movedSupportFiles,
+          skippedSupportFiles: [...new Set(skippedSupportFiles)].sort((a, b) =>
+            a.localeCompare(b),
+          ),
+        };
+      });
     },
   );
 

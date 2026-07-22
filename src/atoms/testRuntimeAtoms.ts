@@ -9,6 +9,16 @@ import {
 } from "@/lib/testResultUtils";
 
 /**
+ * Apps for which the user dismissed the "move legacy tests to e2e-tests/" offer
+ * this session. Session-scoped (not persisted): a completed move removes the
+ * files from `tests/`, so detection stops returning them and the banner clears
+ * on its own — this only suppresses the banner when the user declines.
+ */
+export const dismissedLegacyTestMigrationAppIdsAtom = atom<Set<number>>(
+  new Set<number>(),
+);
+
+/**
  * Result-state taxonomy for a single test (see plan's "Result-State Model").
  * Extends the on-disk run statuses ("passed" | "failed" | "inconclusive",
  * returned by the handler) with two UI-only states:
@@ -279,7 +289,7 @@ export const applyTestRunFinishedAtom = atom(
   ) => {
     // Playwright reports a spec's `file` relative to its own rootDir, which
     // may not match the glob-relative paths in our spec list (e.g. missing
-    // the "tests/" prefix). Reconcile each result back onto a known spec
+    // the "e2e-tests/" prefix). Reconcile each result back onto a known spec
     // key so rows actually pick up their status.
     const appSpecs = get(testSpecsByAppIdAtom).get(appId) ?? [];
     const specFiles = appSpecs.map((s) => s.file);

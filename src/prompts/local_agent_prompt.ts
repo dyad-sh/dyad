@@ -125,7 +125,7 @@ function developmentWorkflowBlock({
 }): string {
   const planContextRange = enableAppBlueprint ? "steps 1-3" : "steps 1-2";
   const verifyTestsClause = testingEnabled
-    ? " This app has e2e testing enabled: if you added or changed user-facing behavior that deserves coverage, add or update the relevant Playwright spec under `tests/`; also review the existing specs whose flows touch what you changed (read them, don't run the whole suite) and update any that no longer match. Then run the affected spec(s) with `run_tests` and fix any failures before finishing (skip trivial/cosmetic changes)."
+    ? " This app has e2e testing enabled: if you added or changed user-facing behavior that deserves coverage, add or update the relevant Playwright spec under `e2e-tests/`; also review the existing specs whose flows touch what you changed (read them, don't run the whole suite) and update any that no longer match. Then run the affected spec(s) with `run_tests` and fix any failures before finishing (skip trivial/cosmetic changes)."
     : "";
   const steps: string[] = [];
   if (enableAppBlueprint) {

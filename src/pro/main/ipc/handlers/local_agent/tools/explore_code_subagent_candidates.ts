@@ -755,7 +755,8 @@ function isTestPath(path: string): boolean {
     path.includes("/__tests__/") ||
     path.includes("/test/") ||
     path.includes("/tests/") ||
-    path.includes("/e2e/")
+    path.includes("/e2e/") ||
+    path.includes("/e2e-tests/")
   );
 }
 

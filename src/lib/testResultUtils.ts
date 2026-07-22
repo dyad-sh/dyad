@@ -8,7 +8,7 @@ type TestStatus = RuntimeTestResult["status"] | "running" | "not-run";
 
 /**
  * Maps a Playwright-reported spec path onto a key from our spec list. The
- * report's path base can differ from the glob's (e.g. missing the "tests/"
+ * report's path base can differ from the glob's (e.g. missing the "e2e-tests/"
  * prefix or being absolute), so we fall back from exact -> suffix -> basename.
  * Returns the original path when no unambiguous match exists.
  */

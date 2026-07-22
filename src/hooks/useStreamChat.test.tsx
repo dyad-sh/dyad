@@ -61,3 +61,24 @@ describe("useStreamChat queueMessage", () => {
     });
   });
 });
+
+describe("useStreamChat cancelStream", () => {
+  beforeEach(() => {
+    mocks.controllerSend.mockReset();
+  });
+
+  it("routes cancellation through the stream machine", () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useStreamChat(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.cancelStream();
+    });
+
+    expect(mocks.controllerSend).toHaveBeenCalledExactlyOnceWith({
+      type: "cancel",
+    });
+  });
+});

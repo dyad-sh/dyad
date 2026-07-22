@@ -493,32 +493,23 @@ export function createProductionChatStreamCommands(
               queryKeys.chats.detail({ chatId }),
               latestChat,
             );
-            // Racing-stream guard (from #3324): the machine serializes its OWN
-            // streams (submits during finalizing are queued), but non-machine
-            // streams (plan implementation, merge-conflict resolution) write
-            // the projection directly and may have started while getChat was
-            // in flight. Skip just the merge (the remaining invalidations and
-            // settlement still run) rather than clobber their in-progress
-            // placeholder messages.
-            if (!(store.get(isStreamingByIdAtom).get(chatId) ?? false)) {
-              store.set(chatMessagesByIdAtom, (prev) => {
-                const currentMessages = prev.get(chatId);
-                if (!currentMessages) {
-                  const next = new Map(prev);
-                  next.set(chatId, latestChat.messages);
-                  return next;
-                }
-                if (currentMessages.length > latestChat.messages.length)
-                  return prev;
-                const merged = mergeResyncMessages(
-                  latestChat.messages,
-                  currentMessages,
-                );
+            store.set(chatMessagesByIdAtom, (prev) => {
+              const currentMessages = prev.get(chatId);
+              if (!currentMessages) {
                 const next = new Map(prev);
-                next.set(chatId, merged);
+                next.set(chatId, latestChat.messages);
                 return next;
-              });
-            }
+              }
+              if (currentMessages.length > latestChat.messages.length)
+                return prev;
+              const merged = mergeResyncMessages(
+                latestChat.messages,
+                currentMessages,
+              );
+              const next = new Map(prev);
+              next.set(chatId, merged);
+              return next;
+            });
           } catch (error) {
             console.warn(
               `[CHAT] Failed to refresh latest chat for ${chatId}:`,
@@ -591,15 +582,6 @@ export function createProductionChatStreamCommands(
     dispatchNextQueued({ chatId, emit }) {
       const { store, queryClient, getPosthog } = deps();
       if (store.get(queuePausedByIdAtom).get(chatId) ?? false) return;
-      // Never dequeue while a stream is active for this chat (per-chat guard,
-      // matching the legacy useQueueProcessor behavior from #2931). The
-      // machine's own streams can't be active at any dispatch site (dispatch
-      // fires from terminal states, where the projection is already false), so
-      // this specifically guards against NON-machine streams (plan
-      // implementation, merge-conflict resolution) that write the projection
-      // directly. Their terminal handlers poke the machine, so a skipped
-      // dispatch is retried when they finish.
-      if (store.get(isStreamingByIdAtom).get(chatId) ?? false) return;
 
       // Pop the first message atomically.
       let messageToSend: QueuedMessageItem | undefined;

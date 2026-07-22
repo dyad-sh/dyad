@@ -14,10 +14,8 @@ type SetPreviewAtom = (update: SetStateAction<PreviewMap>) => void;
  * Returns identity-stable maps when nothing changed, so atom subscribers
  * keep their `Object.is` short-circuit on no-op chunks.
  *
- * Used by every `ipc.chatStream.start` consumer (useStreamChat,
- * the plan-handoff commands, useResolveMergeConflictsWithAI). Without this
- * helper, tool-XML preview streaming would only surface in the
- * useStreamChat flow.
+ * Used by the chat stream adapter and plan-handoff commands so tool-XML
+ * preview streaming behaves consistently across both stream owners.
  */
 export function applyPreviewChunk(
   setStreamingPreviewByChatId: SetPreviewAtom,

@@ -8,11 +8,9 @@ import {
   queuePausedByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
-import { ipc } from "@/ipc/types";
 import type { Chat } from "@/ipc/types";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { StreamSettledResult } from "@/chat_stream/state";
-import { isStreamActive } from "@/chat_stream/transition";
 import { showError } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
@@ -34,7 +32,6 @@ export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const errorById = useAtomValue(chatErrorByIdAtom);
   const setErrorById = useSetAtom(chatErrorByIdAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
@@ -109,21 +106,8 @@ export function useStreamChat({
 
   const cancelStream = useCallback(() => {
     if (chatId === undefined) return;
-    const controller = chatStreamManager.ensure(chatId);
-    if (isStreamActive(controller.getSnapshot())) {
-      controller.send({ type: "cancel" });
-      return;
-    }
-    // Streams started outside the machine (plan implementation,
-    // merge-conflict resolution) still register in main's activeStreams map:
-    // cancel directly and clear the projection like the legacy path did.
-    void ipc.chat.cancelStream(chatId);
-    setIsStreamingById((prev) => {
-      const next = new Map(prev);
-      next.set(chatId, false);
-      return next;
-    });
-  }, [chatId, chatStreamManager, setIsStreamingById]);
+    chatStreamManager.ensure(chatId).send({ type: "cancel" });
+  }, [chatId, chatStreamManager]);
 
   // Memoize queue management functions to prevent unnecessary re-renders
   // in components that depend on these functions (e.g., restore effect)

@@ -18,6 +18,8 @@ If a workflow's behavior depends on a deterministic check (identity comparisons,
 
 When a Claude workflow needs write credentials, prefer a two-job shape: the Claude job runs with read-only permissions and uploads a constrained JSON/Markdown artifact, then a separate `needs:` job downloads the artifact, checks out trusted helper scripts from `github.sha`, validates the artifact, creates the GitHub App token, and performs deterministic GitHub mutations.
 
+When a headless Claude job must write local handoff artifacts, explicitly pre-approve its inspection tools and scope `Edit(...)` to the output directory via `claude_args --allowedTools`. After the action, verify every mandatory file with `test -s` before upload: `actions/upload-artifact`'s `if-no-files-found: error` still succeeds when only one of several listed paths exists, and Claude Code can report a successful session after denied tool calls.
+
 ## Harden the agent's permissions — `.claude/settings.json` merges into CI
 
 Both `claude-code-action` and `claude-code-base-action` read `.claude/settings.json` from the workspace after `actions/checkout`, and the project's file is committed (tracked in git). **`permissions.allow` arrays merge across scopes — they do not replace each other.** From the Claude Code docs: _"Array settings merge across scopes. When the same array-valued setting (such as `permissions.allow`) appears in multiple scopes, the arrays are concatenated and deduplicated, not replaced."_ ([source](https://code.claude.com/docs/en/settings)).

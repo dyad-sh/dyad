@@ -82,6 +82,9 @@ Components should usually read `currentPreviewErrorAtom` rather than repeat
   together. Do not create one mega atom for unrelated state.
 - Always clone `Map` and `Set` values before modifying them so Jotai sees a new
   reference.
+- One-shot external event callbacks that must observe atom writes from the same
+  React batch should read with the provider-bound `useStore().get(...)` instead
+  of relying on a render-captured atom value.
 
 ## Cleanup
 

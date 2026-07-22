@@ -261,6 +261,11 @@ describe("retry (hybrid)", () => {
       await screen.findByTestId("extra-commits-revert-dialog"),
     ).toBeTruthy();
     expect(screen.getByText("1 uncommitted file change")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Please commit your changes before using Restore and retry/,
+      ),
+    ).toBeTruthy();
     expect(screen.queryByTestId("confirm-revert-anyway-button")).toBeNull();
 
     const retryEnd = harness.waitForNextStreamEnd(harness.chatId);

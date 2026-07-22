@@ -55,8 +55,8 @@ export function ExtraCommitsRevertDialog({
                   {extraCommits.length > 0
                     ? ` and ${extraCommits.length} newer ${commitNoun}`
                     : ""}
-                  . Retry from the current code to keep this work. Commit or
-                  discard the uncommitted changes before restoring and retrying.
+                  . Please commit your changes before using Restore and retry.
+                  You can still retry from the current code now.
                 </>
               ) : (
                 <>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAtomValue } from "jotai";
 import { useRouterState } from "@tanstack/react-router";
 import { chatCompletionEventAtom } from "@/atoms/chatAtoms";
+import { userInputRequestsAtom } from "@/user_input/projection";
 import { useSelectChat } from "./useSelectChat";
 import { ipc } from "../ipc/types";
 import { showWarning } from "../lib/toast";
@@ -79,6 +80,8 @@ export function useNotificationHandler() {
       >
     >(),
   );
+  const pendingClassifiedNotificationRequestIdsRef = useRef(new Set<string>());
+  const projectedUserInputRequests = useAtomValue(userInputRequestsAtom);
 
   useEffect(() => {
     selectChatRef.current = selectChat;
@@ -293,6 +296,37 @@ export function useNotificationHandler() {
     [closeNativeNotification],
   );
 
+  // getPending hydrates the projection after a renderer reload. Seed the
+  // notification lookup from that same source so a later classified event can
+  // still identify a racing MCP request. If classification beats hydration,
+  // replay the notification once the descriptor appears in the projection.
+  useEffect(() => {
+    for (const [requestId, request] of projectedUserInputRequests) {
+      if (request.status === "settled") continue;
+      const descriptor = request.descriptor;
+      if (
+        descriptor.kind !== "agent-consent" &&
+        descriptor.kind !== "mcp-consent"
+      ) {
+        continue;
+      }
+      userInputConsentDescriptorsRef.current.set(requestId, descriptor);
+      if (
+        descriptor.kind === "mcp-consent" &&
+        request.classifier === "review" &&
+        pendingClassifiedNotificationRequestIdsRef.current.delete(requestId)
+      ) {
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: descriptor.toolName,
+          requestId,
+          sourceLabel: descriptor.serverName || "an MCP server",
+          tagPrefix: "dyad-mcp-consent",
+        });
+      }
+    }
+  }, [projectedUserInputRequests, startConsentNotification]);
+
   const completionEvent = useAtomValue(chatCompletionEventAtom);
 
   useEffect(() => {
@@ -436,7 +470,11 @@ export function useNotificationHandler() {
   useEffect(() => {
     const unsubscribe = ipc.events.userInput.onClassified(({ requestId }) => {
       const descriptor = userInputConsentDescriptorsRef.current.get(requestId);
-      if (!descriptor || descriptor.kind !== "mcp-consent") return;
+      if (!descriptor) {
+        pendingClassifiedNotificationRequestIdsRef.current.add(requestId);
+        return;
+      }
+      if (descriptor.kind !== "mcp-consent") return;
       startConsentNotification({
         chatId: descriptor.chatId,
         toolName: descriptor.toolName,
@@ -451,6 +489,7 @@ export function useNotificationHandler() {
   useEffect(() => {
     const unsubscribe = ipc.events.userInput.onSettled(({ requestId }) => {
       const descriptor = userInputConsentDescriptorsRef.current.get(requestId);
+      pendingClassifiedNotificationRequestIdsRef.current.delete(requestId);
       if (!descriptor) return;
       userInputConsentDescriptorsRef.current.delete(requestId);
       resolveConsentNotification(

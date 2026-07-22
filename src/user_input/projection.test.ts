@@ -186,6 +186,31 @@ describe("user-input renderer projection", () => {
     stop();
   });
 
+  it("rehydrates the classifier review reason", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    fake.getPending.mockResolvedValueOnce([
+      {
+        ...pending(mcpDescriptor("review-request")),
+        classifier: "review",
+        classifierReason: "sensitive input",
+      },
+    ]);
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+    });
+    const stop = adapter.start();
+
+    await vi.waitFor(() => {
+      const request = store.get(userInputRequestsAtom).get("review-request");
+      expect(request?.status).toBe("awaiting");
+      if (!request || request.status === "settled") return;
+      expect(request.classifierReason).toBe("sensitive input");
+    });
+    stop();
+  });
+
   it("rehydrates and toasts on NotFound without re-queueing", async () => {
     const store = createStore();
     const fake = createFakeIpc();
@@ -215,6 +240,40 @@ describe("user-input renderer projection", () => {
       false,
     );
     expect(store.get(userInputRequestsAtom).has("expired-request")).toBe(false);
+    stop();
+  });
+
+  it("keeps an expired request hidden when the NotFound refresh fails", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const showErrorToast = vi.fn();
+    fake.respond.mockRejectedValueOnce(
+      new DyadError("gone", DyadErrorKind.NotFound),
+    );
+    fake.getPending
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("renderer IPC unavailable"));
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      showErrorToast,
+    });
+    const stop = adapter.start();
+    await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(1));
+    fake.sendRequested(agentDescriptor("expired-request"));
+
+    await expect(
+      adapter.respond("expired-request", {
+        kind: "agent-consent",
+        decision: "accept-once",
+      }),
+    ).resolves.toBe(false);
+
+    expect(store.get(userInputRequestsAtom).has("expired-request")).toBe(false);
+    expect(store.get(respondingRequestIdsAtom).has("expired-request")).toBe(
+      false,
+    );
+    expect(showErrorToast).toHaveBeenCalledWith("request expired");
     stop();
   });
 

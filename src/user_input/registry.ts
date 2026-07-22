@@ -39,6 +39,7 @@ export interface PendingUserInputSnapshot {
   descriptor: UserInputDescriptor;
   deadlineAt: number;
   classifier?: "none" | "racing" | "review";
+  classifierReason?: string;
   followUpPrompt?: string;
 }
 
@@ -388,6 +389,8 @@ export function createUserInputRegistry(deps: {
           deadlineAt: state.descriptor.deadlineAt,
           classifier:
             state.status === "awaiting" ? state.classifier : undefined,
+          classifierReason:
+            state.status === "awaiting" ? state.classifierReason : undefined,
           followUpPrompt:
             state.status === "armed" || state.status === "due"
               ? state.followUpPrompt

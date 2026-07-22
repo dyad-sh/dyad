@@ -94,6 +94,7 @@ function snapshotToProjection(
     descriptor: snapshot.descriptor,
     deadlineAt: snapshot.deadlineAt,
     classifier: snapshot.classifier,
+    classifierReason: snapshot.classifierReason,
     followUpPrompt: snapshot.followUpPrompt,
   };
 }
@@ -317,8 +318,16 @@ export function getUserInputProjectionAdapter({
         await ipcClient.userInput.respond({ requestId, response });
         return true;
       } catch (error) {
-        removeResponding(requestId);
         if (isDyadError(error) && error.kind === DyadErrorKind.NotFound) {
+          // Never expose a request main has already rejected as stale, even if
+          // the best-effort authoritative refresh also fails.
+          markChanged(requestId);
+          updateRequests((current) => {
+            const next = new Map(current);
+            next.delete(requestId);
+            return next;
+          });
+          removeResponding(requestId);
           try {
             await hydrate();
           } catch {
@@ -328,6 +337,7 @@ export function getUserInputProjectionAdapter({
           showErrorToast("request expired");
           return false;
         }
+        removeResponding(requestId);
         showErrorToast(error);
         return false;
       }

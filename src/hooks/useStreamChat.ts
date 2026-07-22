@@ -139,6 +139,12 @@ export function useStreamChat({
         next.set(chatId, [...existing, newItem]);
         return next;
       });
+      // The render that chose this manual queue path may be stale: the
+      // machine can already be idle after running its terminal queue
+      // dispatch. Poke it after the synchronous atom update so the newly
+      // appended item is not left without a driver. Active machines ignore
+      // the poke and drain normally when they finalize.
+      ensureController(chatId).send({ type: "queue-poked" });
       return true;
     },
     [chatId, setQueuedMessagesById],

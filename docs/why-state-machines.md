@@ -12,6 +12,16 @@ own bug: if you hit Enter at the wrong moment, your message was silently
 dropped after the input box had already cleared it. It looked sent. It never
 went anywhere.
 
+Here's how. Two pieces of code guarded the same door, using two copies of
+the same fact. The input box read a React flag to decide "send now, or add
+to the queue?" — and that flag updated one render behind reality. The send
+function read this set, which updated instantly, and refused to start a
+second stream for the same chat. Send a message, then hit Enter again in
+the few milliseconds before the flag caught up: the input box said "not
+streaming, send it now" and cleared your text, then the send function said
+"already streaming, refuse" and returned without telling anyone. Not sent,
+not queued, input already empty.
+
 We kept fixing versions of this bug all over the app. Chat streaming, OAuth
 sign-in, the plan-mode handoff, the version history preview. Different
 features, same root cause. Starting in mid-2026 we rewrote these workflows as

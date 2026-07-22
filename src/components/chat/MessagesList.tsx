@@ -47,6 +47,7 @@ interface FooterContext {
   setIsUndoLoading: (loading: boolean) => void;
   setIsRetryLoading: (loading: boolean) => void;
   refreshVersions: ReturnType<typeof useVersions>["refreshVersions"];
+  restoreTargetBranch: string | null;
   sendPreviewMutation: (event: PreviewEvent) => Promise<void>;
   streamMessage: ReturnType<typeof useStreamChat>["streamMessage"];
   selectedChatId: number | null;
@@ -87,6 +88,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     setIsUndoLoading,
     setIsRetryLoading,
     refreshVersions,
+    restoreTargetBranch,
     sendPreviewMutation,
     streamMessage,
     selectedChatId,
@@ -176,7 +178,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     }
 
     try {
-      const { data: freshVersions = [] } = await refreshVersions();
+      const freshVersions = restoreTargetBranch
+        ? await ipc.version.listVersions({ appId, ref: restoreTargetBranch })
+        : ((await refreshVersions()).data ?? []);
       const currentMessage = messages[messages.length - 1];
       // The user message that triggered this assistant response
       const userMessage = messages[messages.length - 2];
@@ -243,7 +247,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     }
 
     try {
-      const { data: freshVersions = [] } = await refreshVersions();
+      const freshVersions = restoreTargetBranch
+        ? await ipc.version.listVersions({ appId, ref: restoreTargetBranch })
+        : ((await refreshVersions()).data ?? []);
       const lastUserMessage = [...messages]
         .reverse()
         .find((message) => message.role === "user");
@@ -425,6 +431,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       useVersionPreview(appId);
     const isAnyVersionMutationPending =
       isVersionActionBlockedState(previewState);
+    const restoreTargetBranch =
+      previewState.type === "previewing" &&
+      previewState.session.checkedOutVersionId !== null
+        ? previewState.session.originBranch
+        : null;
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
@@ -514,6 +525,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         setIsUndoLoading: handleSetIsUndoLoading,
         setIsRetryLoading: handleSetIsRetryLoading,
         refreshVersions,
+        restoreTargetBranch,
         sendPreviewMutation,
         streamMessage,
         selectedChatId,
@@ -530,6 +542,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         handleSetIsUndoLoading,
         handleSetIsRetryLoading,
         refreshVersions,
+        restoreTargetBranch,
         sendPreviewMutation,
         streamMessage,
         selectedChatId,

@@ -17,7 +17,7 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { gitListFilesNative } from "@/ipc/utils/git_utils";
+import { gitListFilesNative, gitLog } from "@/ipc/utils/git_utils";
 import {
   ensureGitLineEndingPolicy,
   gitStageToRevert,
@@ -50,6 +50,32 @@ async function runGitOutput(repoDir: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd: repoDir });
   return stdout.trim();
 }
+
+describe("gitLog", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  it("can list a branch other than the checked-out HEAD", async () => {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-log-ref-"));
+    await runGit(repoDir, ["init", "-b", "main"]);
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "main\n");
+    await commitAll(repoDir, "main commit");
+    await runGit(repoDir, ["checkout", "-b", "other"]);
+    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "other\n");
+    await commitAll(repoDir, "other commit");
+    await runGit(repoDir, ["checkout", "main"]);
+
+    const commits = await gitLog({ path: repoDir, ref: "other" });
+
+    expect(commits[0].commit.message).toContain("other commit");
+  });
+});
 
 describe("ensureGitLineEndingPolicy", () => {
   let repoDir: string | undefined;

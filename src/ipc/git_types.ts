@@ -38,6 +38,7 @@ export interface GitCloneParams {
 }
 export interface GitLogParams extends GitBaseParams {
   depth?: number;
+  ref?: string;
 }
 
 export interface GitResult {

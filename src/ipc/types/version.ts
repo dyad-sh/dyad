@@ -164,7 +164,7 @@ export type RestoreToMessageResponse = z.infer<
 export const versionContracts = {
   listVersions: defineContract({
     channel: "list-versions",
-    input: z.object({ appId: z.number() }),
+    input: z.object({ appId: z.number(), ref: SafeGitRefSchema.optional() }),
     output: z.array(VersionSchema),
   }),
 

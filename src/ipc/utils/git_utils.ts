@@ -1376,8 +1376,9 @@ export async function gitCurrentBranch({
 export async function gitLog({
   path,
   depth = 100_000,
+  ref = "HEAD",
 }: GitLogParams): Promise<GitCommit[]> {
-  return await gitLogNative(path, depth);
+  return await gitLogNative(path, depth, ref);
 }
 
 export async function gitIsIgnored({
@@ -1435,6 +1436,7 @@ export async function gitListFilesNative({
 export async function gitLogNative(
   path: string,
   depth = 100_000,
+  ref = "HEAD",
 ): Promise<GitCommit[]> {
   // Use git log with custom format to get all data in a single process
   // Format: %H = commit hash, %at = author timestamp (unix), %B = raw body (message)
@@ -1444,7 +1446,7 @@ export async function gitLogNative(
     "--max-count",
     String(depth),
     "--format=%H%x00%at%x00%B%x00---END-COMMIT---",
-    "HEAD",
+    ref,
   ];
 
   const logResult = await execGit(logArgs, path);

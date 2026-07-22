@@ -9,6 +9,7 @@ import type {
   ReadyHandoffSession,
 } from "./state";
 import { TRANSITION_DISPLAY_MS, transition } from "./transition";
+import { assertReferenceStability } from "@/state_machines/testing";
 
 const session: HandoffSession = { chatId: 1, appId: 10, acceptInNewChat: true };
 const persistedSession: PersistedHandoffSession = {
@@ -107,6 +108,11 @@ describe("plan handoff transition — totality over state × event", () => {
         const result = transition(deepFreeze(state), deepFreeze(event));
         expect(STATE_TYPES).toContain(result.state.type);
         expect(Array.isArray(result.commands)).toBe(true);
+        assertReferenceStability(
+          state,
+          result,
+          (left, right) => JSON.stringify(left) === JSON.stringify(right),
+        );
       }
     }
   });
@@ -117,6 +123,7 @@ describe("plan handoff transition — totality over state × event", () => {
         const result = transition(state, event);
         if (result.state === state) {
           expect(result.commands).toEqual([]);
+          expect(result.ignoredReason).toBeTruthy();
         }
       }
     }

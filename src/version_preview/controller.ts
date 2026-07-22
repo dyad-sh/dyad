@@ -17,7 +17,12 @@ import type {
 } from "./state";
 import { CLOSED_STATE } from "./state";
 import { transition } from "./transition";
-import { recordVersionPreviewTransition } from "./debug";
+import { createVersionPreviewTransitionObserver } from "./debug";
+import { SnapshotStore } from "@/state_machines/snapshot_store";
+import {
+  observeTransition,
+  type TransitionObserver,
+} from "@/state_machines/types";
 
 export interface VersionPreviewCommands {
   /**
@@ -64,8 +69,7 @@ function toPreviewError(error: unknown): PreviewError {
 }
 
 export class VersionPreviewController {
-  private state: PreviewState = CLOSED_STATE;
-  private readonly listeners = new Set<() => void>();
+  private readonly store = new SnapshotStore<PreviewState>(CLOSED_STATE);
   private disposed = false;
   /** Bumped per resolve dispatch; stale resolve completions are dropped. */
   private resolveEpoch = 0;
@@ -79,19 +83,16 @@ export class VersionPreviewController {
   constructor(
     readonly appId: number,
     private readonly runtime: VersionPreviewRuntime,
+    private readonly observer: TransitionObserver<
+      PreviewState,
+      PreviewEvent,
+      PreviewCommand
+    > = createVersionPreviewTransitionObserver(appId),
   ) {}
 
-  getSnapshot = (): PreviewState => this.state;
+  getSnapshot = this.store.getSnapshot;
 
-  subscribe = (listener: () => void): (() => void) => {
-    if (this.disposed) {
-      return () => undefined;
-    }
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  };
+  subscribe = this.store.subscribe;
 
   send = (event: PreviewEvent): void => {
     this.dispatch(event);
@@ -101,23 +102,15 @@ export class VersionPreviewController {
     if (this.disposed) {
       return false;
     }
-    const previous = this.state;
+    const previous = this.store.getSnapshot();
     const result = transition(previous, event);
-    recordVersionPreviewTransition({
-      appId: this.appId,
-      from: previous,
-      event,
-      to: result.state,
-      commands: result.commands,
-    });
-    this.state = result.state;
-    for (const command of result.commands) {
-      this.execute(command);
-    }
+    observeTransition(this.observer, previous, event, result);
     if (result.state !== previous) {
-      for (const listener of this.listeners) {
-        listener();
-      }
+      this.store.setState(result.state, () => {
+        for (const command of result.commands) this.execute(command);
+      });
+    } else {
+      for (const command of result.commands) this.execute(command);
     }
     return result.commands.some((command) =>
       [
@@ -148,7 +141,7 @@ export class VersionPreviewController {
   dispose(): void {
     this.disposed = true;
     this.resolveEpoch += 1;
-    this.listeners.clear();
+    this.store.dispose();
     this.mutationWaiter?.reject(new Error("Version preview was disposed"));
     this.mutationWaiter = null;
   }

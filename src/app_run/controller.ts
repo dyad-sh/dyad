@@ -7,6 +7,11 @@ import type {
   RunUrl,
 } from "./state";
 import { transition } from "./transition";
+import { SnapshotStore } from "@/state_machines/snapshot_store";
+import {
+  observeTransition,
+  type TransitionObserver,
+} from "@/state_machines/types";
 
 /**
  * User-level operations. The controller allocates a fresh runId epoch for
@@ -43,6 +48,7 @@ export interface AppRunControllerOptions {
   executor: RunCommandExecutor;
   /** Called after every state change (e.g. to publish atom projections). */
   onStateChange?: (state: RunState) => void;
+  observer?: TransitionObserver<RunState, RunEvent, RunCommand>;
 }
 
 /**
@@ -58,9 +64,8 @@ export interface AppRunControllerOptions {
  * - Exposes `getSnapshot`/`subscribe` for `useSyncExternalStore`.
  */
 export class AppRunController {
-  private state: RunState = { type: "idle" };
+  private readonly store = new SnapshotStore<RunState>({ type: "idle" });
   private epoch = 0;
-  private readonly listeners = new Set<() => void>();
   private readonly waiters = new Map<number, () => void>();
   private queue: Promise<void> = Promise.resolve();
   private pendingBatches = 0;
@@ -74,17 +79,9 @@ export class AppRunController {
     return this.options.appId;
   }
 
-  getSnapshot = (): RunState => this.state;
+  getSnapshot = this.store.getSnapshot;
 
-  subscribe = (listener: () => void): (() => void) => {
-    if (this.disposed) {
-      return () => undefined;
-    }
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  };
+  subscribe = this.store.subscribe;
 
   /**
    * Dispatch a user operation. Allocates a fresh runId epoch. The returned
@@ -164,26 +161,27 @@ export class AppRunController {
       }
       // …but a stale runId never advances the state.
       if (event.runId !== this.epoch) {
+        this.options.observer?.onEventIgnored?.({
+          state: this.store.getSnapshot(),
+          event,
+          reason: "stale-run-id",
+        });
         return;
       }
     }
 
-    const result = transition(this.state, event);
-    const changed = result.state !== this.state;
-    this.state = result.state;
+    const previous = this.store.getSnapshot();
+    const result = transition(previous, event);
+    observeTransition(this.options.observer, previous, event, result);
     // Enqueue commands before notifying listeners so a listener reacting to
     // the new state cannot get its own commands ahead of this event's.
     if (result.commands.length > 0) {
       this.enqueue(result.commands);
     }
-    if (changed) {
-      this.options.onStateChange?.(this.state);
-      if (this.disposed) {
-        return;
-      }
-      for (const listener of this.listeners) {
-        listener();
-      }
+    if (result.state !== previous) {
+      this.store.setState(result.state, () => {
+        this.options.onStateChange?.(result.state);
+      });
     }
   }
 
@@ -194,10 +192,10 @@ export class AppRunController {
     this.pendingEvents.length = 0;
     for (const resolve of this.waiters.values()) resolve();
     this.waiters.clear();
-    this.listeners.clear();
+    this.store.dispose();
   }
 
-  private enqueue(commands: RunCommand[]): void {
+  private enqueue(commands: readonly RunCommand[]): void {
     const emit = (event: RunEvent) => this.process(event);
     const runBatch = async () => {
       try {

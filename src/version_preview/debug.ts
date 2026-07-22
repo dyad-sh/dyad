@@ -5,6 +5,7 @@
  */
 
 import type { PreviewCommand, PreviewEvent, PreviewState } from "./state";
+import type { IgnoreReason, TransitionObserver } from "@/state_machines/types";
 
 export interface VersionPreviewDebugEntry {
   at: number;
@@ -13,6 +14,7 @@ export interface VersionPreviewDebugEntry {
   event: PreviewEvent["type"];
   to: PreviewState["type"];
   commands: PreviewCommand["type"][];
+  ignoredReason?: IgnoreReason;
 }
 
 const MAX_ENTRIES = 100;
@@ -24,6 +26,7 @@ export function recordVersionPreviewTransition(entry: {
   event: PreviewEvent;
   to: PreviewState;
   commands: PreviewCommand[];
+  ignoredReason?: IgnoreReason;
 }): void {
   entries.push({
     at: Date.now(),
@@ -32,10 +35,35 @@ export function recordVersionPreviewTransition(entry: {
     event: entry.event.type,
     to: entry.to.type,
     commands: entry.commands.map((command) => command.type),
+    ignoredReason: entry.ignoredReason,
   });
   if (entries.length > MAX_ENTRIES) {
     entries.splice(0, entries.length - MAX_ENTRIES);
   }
+}
+
+export function createVersionPreviewTransitionObserver(
+  appId: number,
+): TransitionObserver<PreviewState, PreviewEvent, PreviewCommand> {
+  return {
+    onTransitionApplied: ({ previous, event, state, commands }) =>
+      recordVersionPreviewTransition({
+        appId,
+        from: previous,
+        event,
+        to: state,
+        commands: [...commands],
+      }),
+    onEventIgnored: ({ state, event, reason }) =>
+      recordVersionPreviewTransition({
+        appId,
+        from: state,
+        event,
+        to: state,
+        commands: [],
+        ignoredReason: reason,
+      }),
+  };
 }
 
 export function getVersionPreviewDebugLog(): readonly VersionPreviewDebugEntry[] {

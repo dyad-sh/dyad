@@ -1,5 +1,10 @@
 import type { HandoffCommand, HandoffEvent, HandoffState } from "./state";
 import { transition } from "./transition";
+import { SnapshotStore } from "@/state_machines/snapshot_store";
+import {
+  observeTransition,
+  type TransitionObserver,
+} from "@/state_machines/types";
 
 /**
  * Executes one command and may emit follow-up events via `emit`. Emission may
@@ -37,9 +42,9 @@ const IDLE: HandoffState = { type: "idle" };
  */
 export function createHandoffController(
   runCommand: HandoffCommandRunner,
+  observer?: TransitionObserver<HandoffState, HandoffEvent, HandoffCommand>,
 ): HandoffController {
-  let state: HandoffState = IDLE;
-  const listeners = new Set<() => void>();
+  const store = new SnapshotStore<HandoffState>(IDLE);
   const queue: HandoffCommand[] = [];
   let draining = false;
   let disposed = false;
@@ -47,14 +52,10 @@ export function createHandoffController(
   function send(event: HandoffEvent): void {
     if (disposed) return;
 
-    const result = transition(state, event);
-    if (result.state !== state) {
-      state = result.state;
-      // Set iteration is safe against listeners unsubscribing mid-notify.
-      for (const listener of listeners) {
-        listener();
-      }
-    }
+    const previous = store.getSnapshot();
+    const result = transition(previous, event);
+    observeTransition(observer, previous, event, result);
+    store.setState(result.state);
     if (result.commands.length > 0) {
       queue.push(...result.commands);
       void drain();
@@ -90,21 +91,14 @@ export function createHandoffController(
   }
 
   return {
-    getSnapshot: () => state,
-    subscribe: (listener) => {
-      if (disposed) return () => {};
-
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    getSnapshot: store.getSnapshot,
+    subscribe: store.subscribe,
     send,
     dispose: () => {
       if (disposed) return;
       disposed = true;
       queue.length = 0;
-      listeners.clear();
+      store.dispose();
     },
   };
 }

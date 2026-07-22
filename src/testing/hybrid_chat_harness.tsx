@@ -89,6 +89,7 @@ import { VersionPreviewManager } from "@/version_preview/manager";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { AppRunManager } from "@/app_run/manager";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -632,15 +633,17 @@ export async function setupHybridChatHarness(
       store.set(selectedChatIdAtom, route === "/chat" ? chatId : null);
 
       const RootComponent = () => (
-        <div data-testid="hybrid-surface-root">
-          {opts.wireAppEvents !== false && <HybridAppShellHooks />}
-          {opts.withTitleBar && <TitleBar />}
-          {opts.withAppList && <AppList show />}
-          {opts.withChatList && <ChatList show />}
-          {opts.withPrivacyBanner && <PrivacyBanner />}
-          {opts.withSubscriptionStatusBanner && <SubscriptionStatusBanner />}
-          <Outlet />
-        </div>
+        <PlanHandoffProvider>
+          <div data-testid="hybrid-surface-root">
+            {opts.wireAppEvents !== false && <HybridAppShellHooks />}
+            {opts.withTitleBar && <TitleBar />}
+            {opts.withAppList && <AppList show />}
+            {opts.withChatList && <ChatList show />}
+            {opts.withPrivacyBanner && <PrivacyBanner />}
+            {opts.withSubscriptionStatusBanner && <SubscriptionStatusBanner />}
+            <Outlet />
+          </div>
+        </PlanHandoffProvider>
       );
 
       // Private route tree: the harness uses the same route paths/search

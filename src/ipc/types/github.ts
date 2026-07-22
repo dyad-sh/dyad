@@ -118,6 +118,9 @@ export const CloneRepoParamsSchema = z.object({
   installCommand: z.string().optional(),
   startCommand: z.string().optional(),
   optimizeForDyad: z.boolean().optional(),
+  // When true, a name collision resolves to a deduplicated name (e.g. "foo-2")
+  // instead of failing. Used by bulk import where names are not user-chosen.
+  dedupeName: z.boolean().optional(),
 });
 
 export const CloneRepoResultSchema = z.union([

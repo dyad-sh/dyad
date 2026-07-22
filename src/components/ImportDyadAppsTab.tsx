@@ -100,6 +100,7 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
             url: `https://github.com/${repo.full_name}.git`,
             appName: repo.name,
             optimizeForDyad: true,
+            dedupeName: true,
           });
           if ("error" in result) {
             failed++;

@@ -1402,6 +1402,29 @@ async function handleDisconnectGithubRepo(
     .where(eq(apps.id, appId));
 }
 // --- GitHub Clone Repo from URL Handler ---
+// Finds an app name that collides with neither an existing app (in the DB) nor
+// an on-disk app directory, appending a numeric suffix ("foo" -> "foo-2" ->
+// "foo-3") until a free one is found. Used by bulk import, where repo names are
+// not user-chosen and collisions should resolve silently rather than fail.
+async function resolveAvailableAppName(baseName: string): Promise<string> {
+  const isTaken = async (name: string): Promise<boolean> => {
+    const existing = await db.query.apps.findFirst({
+      where: eq(apps.name, name),
+    });
+    return Boolean(existing) || fs.existsSync(getDyadAppPath(name));
+  };
+
+  if (!(await isTaken(baseName))) {
+    return baseName;
+  }
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${baseName}-${suffix}`;
+    if (!(await isTaken(candidate))) {
+      return candidate;
+    }
+  }
+}
+
 async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
@@ -1412,6 +1435,7 @@ async function handleCloneRepoFromUrl(
     startCommand,
     appName,
     optimizeForDyad = true,
+    dedupeName = false,
   } = params;
   try {
     const settings = readSettings();
@@ -1441,13 +1465,20 @@ async function handleCloneRepoFromUrl(
         };
       }
     }
-    const finalAppName = appName && appName.trim() ? appName.trim() : repoName;
-    const existingApp = await db.query.apps.findFirst({
-      where: eq(apps.name, finalAppName),
-    });
+    const requestedAppName =
+      appName && appName.trim() ? appName.trim() : repoName;
 
-    if (existingApp) {
-      return { error: `An app named "${finalAppName}" already exists.` };
+    const finalAppName = dedupeName
+      ? await resolveAvailableAppName(requestedAppName)
+      : requestedAppName;
+
+    if (!dedupeName) {
+      const existingApp = await db.query.apps.findFirst({
+        where: eq(apps.name, finalAppName),
+      });
+      if (existingApp) {
+        return { error: `An app named "${finalAppName}" already exists.` };
+      }
     }
 
     const appPath = getDyadAppPath(finalAppName);

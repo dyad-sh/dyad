@@ -22,6 +22,7 @@ const IDLE_STATE: RunState = { type: "idle" };
 export class AppRunManager {
   private readonly host: KeyedControllerHost<number, AppRunController>;
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
+  private projectionEnabled = true;
 
   constructor(
     private readonly store: JotaiStore,
@@ -46,7 +47,14 @@ export class AppRunManager {
   }
 
   start(): void {
+    this.projectionEnabled = true;
     this.ensureProjectionWriter();
+  }
+
+  stop(): void {
+    this.projectionEnabled = false;
+    this.projectionWriter?.dispose();
+    this.projectionWriter = null;
   }
 
   getSnapshot = (appId: number): RunState =>
@@ -68,12 +76,12 @@ export class AppRunManager {
   };
 
   dispose(): void {
+    this.stop();
     this.host.dispose();
-    this.projectionWriter?.dispose();
-    this.projectionWriter = null;
   }
 
   private writeProjection(value: unknown): void {
+    if (!this.projectionEnabled) return;
     this.ensureProjectionWriter().write(value);
   }
 

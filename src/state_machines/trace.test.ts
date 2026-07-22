@@ -148,4 +148,17 @@ describe("machine trace observer", () => {
     });
     expect(replayed).toEqual(state);
   });
+
+  it("does not apply events the controller recorded as ignored", () => {
+    const replayed = replayTrace<number, "advance", never>({
+      initialState: 0,
+      entries: [
+        { event: "advance" },
+        { event: "advance", ignoredReason: "disposed" },
+      ],
+      transition: (state) => ({ state: state + 1, commands: [] }),
+    });
+
+    expect(replayed).toBe(1);
+  });
 });

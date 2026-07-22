@@ -59,6 +59,7 @@ export class ChatStreamManager {
   private readonly commands;
   private readonly host: KeyedControllerHost<number, ChatStreamController>;
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
+  private projectionEnabled = true;
 
   constructor(private readonly store: JotaiStore) {
     this.commands = createProductionChatStreamCommands(
@@ -78,7 +79,14 @@ export class ChatStreamManager {
   }
 
   start(): void {
+    this.projectionEnabled = true;
     this.ensureProjectionWriter();
+  }
+
+  stop(): void {
+    this.projectionEnabled = false;
+    this.projectionWriter?.dispose();
+    this.projectionWriter = null;
   }
 
   registerRuntimeDeps(deps: ChatStreamRuntimeDeps): void {
@@ -122,9 +130,8 @@ export class ChatStreamManager {
   };
 
   dispose(): void {
+    this.stop();
     this.host.dispose();
-    this.projectionWriter?.dispose();
-    this.projectionWriter = null;
     this.streamFinishedListeners.clear();
     // An in-flight startStream may register its IPC transport after an await.
     // Its controller releases again once setup settles, so retain deps until
@@ -132,6 +139,7 @@ export class ChatStreamManager {
   }
 
   private writeProjection(value: unknown): void {
+    if (!this.projectionEnabled) return;
     this.ensureProjectionWriter().write(value);
   }
 

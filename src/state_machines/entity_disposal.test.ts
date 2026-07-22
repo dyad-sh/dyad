@@ -28,6 +28,21 @@ describe("EntityDisposalRegistry", () => {
     expect(second).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps duplicate callback registrations independently owned", () => {
+    const registry = new EntityDisposalRegistry();
+    const dispose = vi.fn();
+    const unregisterFirst = registry.onAppDeleted(dispose);
+    const unregisterSecond = registry.onAppDeleted(dispose);
+
+    unregisterFirst();
+    registry.disposeForApp(1);
+    expect(dispose).toHaveBeenCalledOnce();
+
+    unregisterSecond();
+    registry.disposeForApp(2);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it("runs every disposer before surfacing cleanup failures", () => {
     const registry = new EntityDisposalRegistry();
     const afterFailure = vi.fn();

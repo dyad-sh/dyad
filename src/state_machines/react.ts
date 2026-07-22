@@ -15,6 +15,7 @@ import type { KeyedController } from "./keyed_host";
 
 export interface DisposableManager {
   start?(): void;
+  stop?(): void;
   dispose(): void;
 }
 
@@ -136,6 +137,7 @@ export function useManagerLifecycle(manager: DisposableManager): void {
     manager.start?.();
 
     return () => {
+      manager.stop?.();
       queueMicrotask(() => {
         const current = lifecycle.current;
         if (current.generations.get(manager) === generation) {

@@ -54,7 +54,23 @@ Inspect both `unit-tests-macos` and `unit-tests-windows`, even when only one fai
 
 ## E2E failures
 
-After unit-test fixes are ready, if any E2E shard or report-merge job failed, invoke `/dyad:deflake-e2e-from-run` with the selected run URL. Follow its artifact-first trace analysis, rebuild, and targeted E2E verification. Running it after unit fixes lets its required `/dyad:pr-push` publish the complete CI fix together.
+After unit-test fixes are ready, list the run artifacts. If an E2E shard failed and `html-report` exists, invoke `/dyad:deflake-e2e-from-run` with the selected run URL. Follow its artifact-first trace analysis, rebuild, and targeted E2E verification. Running it after unit fixes lets its required `/dyad:pr-push` publish the complete CI fix together.
+
+If `merge-reports` failed, inspect that job's failed step before delegating. An install, artifact-download, or merge failure can occur before `html-report` is uploaded. Diagnose reporting-infrastructure failures from the merge job log. When shard failures also need trace analysis but `html-report` is absent, list and download every retained `blob-report-*` artifact into one scratch directory, then run Playwright's merge command locally to reconstruct the HTML report before following `/dyad:deflake-e2e-from-run`'s report-analysis phases:
+
+```sh
+gh api repos/dyad-sh/dyad/actions/runs/<RUN_ID>/artifacts --paginate \
+  --jq '.artifacts[] | select(.name | startswith("blob-report-")) | .name' \
+  > <SCRATCH_DIR>/blob-artifact-names
+while IFS= read -r artifact; do
+  gh run download <RUN_ID> -R dyad-sh/dyad -n "$artifact" \
+    -D <SCRATCH_DIR>/blob-reports
+done < <SCRATCH_DIR>/blob-artifact-names
+PLAYWRIGHT_HTML_OUTPUT_DIR=<SCRATCH_DIR>/html-report \
+  npx playwright merge-reports --config=merge.config.ts <SCRATCH_DIR>/blob-reports
+```
+
+If no shard failed and the merge job failed before producing `html-report`, do not invoke the deflake skill: fix and verify the merge/reporting failure directly.
 
 The standalone `safe-storage-e2e` job is not included in the merged `html-report`. If it failed, download and inspect its dedicated artifact before editing:
 

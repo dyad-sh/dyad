@@ -96,6 +96,10 @@ import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamManager } from "@/chat_stream/manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
+import { createImageGenerationCommandRunner } from "@/image_generation/commands";
+import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
+import { ImageGenerationManager } from "@/image_generation/manager";
+import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -873,6 +877,11 @@ export async function setupHybridChatHarness(
       });
       queryClients.push(queryClient);
       const appRunManager = new AppRunManager(store);
+      const imageGenerationManager = new ImageGenerationManager({
+        clock: systemClock,
+        idSource: uuidIdSource,
+        runner: createImageGenerationCommandRunner({ queryClient }),
+      });
       const versionPreviewManager = new VersionPreviewManager(
         createVersionPreviewRuntime({
           queryClient,
@@ -895,23 +904,25 @@ export async function setupHybridChatHarness(
           <Provider store={store}>
             <ChatStreamProvider manager={chatStreamManager}>
               <AppRunProvider manager={appRunManager}>
-                <VersionPreviewProvider manager={versionPreviewManager}>
-                  <ThemeProvider>
-                    <DeepLinkProvider>
-                      <SidebarProvider defaultOpen={false}>
-                        {opts.wireAppEvents !== false && (
-                          <HybridAppEventWiring
-                            store={store}
-                            queryClient={queryClient}
-                            chatStreamManager={chatStreamManager}
-                          />
-                        )}
-                        <RouterProvider router={router as never} />
-                        <Toaster richColors expand duration={500} />
-                      </SidebarProvider>
-                    </DeepLinkProvider>
-                  </ThemeProvider>
-                </VersionPreviewProvider>
+                <ImageGenerationProvider manager={imageGenerationManager}>
+                  <VersionPreviewProvider manager={versionPreviewManager}>
+                    <ThemeProvider>
+                      <DeepLinkProvider>
+                        <SidebarProvider defaultOpen={false}>
+                          {opts.wireAppEvents !== false && (
+                            <HybridAppEventWiring
+                              store={store}
+                              queryClient={queryClient}
+                              chatStreamManager={chatStreamManager}
+                            />
+                          )}
+                          <RouterProvider router={router as never} />
+                          <Toaster richColors expand duration={500} />
+                        </SidebarProvider>
+                      </DeepLinkProvider>
+                    </ThemeProvider>
+                  </VersionPreviewProvider>
+                </ImageGenerationProvider>
               </AppRunProvider>
             </ChatStreamProvider>
           </Provider>

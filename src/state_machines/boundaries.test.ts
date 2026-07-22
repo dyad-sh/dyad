@@ -8,6 +8,7 @@ const MACHINE_DIRECTORIES = [
   "app_run",
   "chat_stream",
   "connection_flow",
+  "image_generation",
   "plan_handoff",
   "version_preview",
   "voice_to_text",
@@ -136,5 +137,22 @@ describe("state-machine boundaries", () => {
         }
       }
     }
+  });
+
+  it("keeps image-generation projection writes inside its provider", () => {
+    const projectionAtomModule = path.join(
+      SOURCE_ROOT,
+      "atoms/imageGenerationAtoms.ts",
+    );
+    const writers = productionFiles(SOURCE_ROOT)
+      .filter((filePath) => filePath !== projectionAtomModule)
+      .filter((filePath) =>
+        fs
+          .readFileSync(filePath, "utf8")
+          .includes("setImageGenerationJobsProjectionAtom"),
+      )
+      .map((filePath) => path.relative(SOURCE_ROOT, filePath));
+
+    expect(writers).toEqual(["image_generation/ImageGenerationProvider.tsx"]);
   });
 });

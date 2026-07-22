@@ -6,10 +6,7 @@ import {
   dismissedImageGenerationJobIdsAtom,
 } from "@/atoms/imageGenerationAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  useCancelImageGeneration,
-  useGenerateImage,
-} from "@/hooks/useGenerateImage";
+import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
 import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
@@ -23,8 +20,7 @@ export function ChatImageGenerationStrip({
 }: ChatImageGenerationStripProps) {
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const cancelImageGeneration = useCancelImageGeneration();
-  const generateImage = useGenerateImage();
+  const { start, cancel } = useGenerateImage();
   const [dismissedJobIds, setDismissedJobIds] = useAtom(
     dismissedImageGenerationJobIdsAtom,
   );
@@ -63,8 +59,7 @@ export function ChatImageGenerationStrip({
 
   const handleRetry = (job: ImageGenerationJob) => {
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(job.id));
-    generateImage.mutate({
-      requestId: crypto.randomUUID(),
+    start({
       prompt: job.prompt,
       themeMode: job.themeMode,
       targetAppId: job.targetAppId,
@@ -74,7 +69,7 @@ export function ChatImageGenerationStrip({
   };
 
   const handleCancel = (jobId: string) => {
-    void cancelImageGeneration(jobId);
+    cancel(jobId);
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
   };
 

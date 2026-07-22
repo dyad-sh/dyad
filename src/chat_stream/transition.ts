@@ -1,10 +1,19 @@
-import type { StreamEvent, StreamState, TransitionResult } from "./state";
+import type {
+  ChatStreamIgnoreReason,
+  StreamCommand,
+  StreamEvent,
+  StreamState,
+} from "./state";
+import {
+  ignore as ignoreTransition,
+  type TransitionResult,
+} from "@/state_machines/types";
 
 /**
  * Pure transition function for the chat stream lifecycle machine.
  *
- * No side effects, no non-type imports. Every (state, event) pair is handled
- * explicitly: deliberately ignored pairs go through `ignore(state)` (which
+ * No side effects or platform dependencies. Every (state, event) pair is handled
+ * explicitly: deliberately ignored pairs go through `ignore(state, reason)` (which
  * returns the SAME state reference so subscribers are not re-notified), and
  * the outer switch has a `never` exhaustiveness check.
  */
@@ -24,8 +33,11 @@ export function initialStreamState(): StreamState {
 }
 
 /** Explicit marker for deliberately ignored (state, event) pairs. */
-function ignore(state: StreamState): TransitionResult {
-  return { state, commands: [] };
+function ignore(
+  state: StreamState,
+  reason: ChatStreamIgnoreReason,
+): TransitionResult<StreamState, StreamCommand, ChatStreamIgnoreReason> {
+  return ignoreTransition(state, reason);
 }
 
 /** Stale-generation guard: events tagged with a streamId other than the active one never advance the machine. */
@@ -42,7 +54,7 @@ function isStale(
 export function transition(
   state: StreamState,
   event: StreamEvent,
-): TransitionResult {
+): TransitionResult<StreamState, StreamCommand, ChatStreamIgnoreReason> {
   switch (state.type) {
     case "idle": {
       switch (event.type) {
@@ -64,8 +76,9 @@ export function transition(
         case "chunk-received":
         case "stream-ended":
         case "stream-errored":
+          return ignore(state, "no-active-stream");
         case "finalize-complete":
-          return ignore(state);
+          return ignore(state, "not-finalizing");
       }
       break;
     }
@@ -101,7 +114,7 @@ export function transition(
             commands: [],
           };
         case "chunk-received":
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           // A chunk implies main registered the stream even if the
           // registration event was missed.
           return {
@@ -113,7 +126,7 @@ export function transition(
             commands: [],
           };
         case "stream-ended":
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
             state: {
               type: "finalizing",
@@ -131,7 +144,7 @@ export function transition(
             ],
           };
         case "stream-errored":
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
             state: {
               type: "errored",
@@ -149,8 +162,9 @@ export function transition(
             ],
           };
         case "finalize-complete":
+          return ignore(state, "not-finalizing");
         case "queue-poked":
-          return ignore(state);
+          return ignore(state, "stream-active");
       }
       break;
     }
@@ -173,7 +187,7 @@ export function transition(
             commands: [{ type: "request-abort" }],
           };
         case "stream-ended":
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
             state: {
               type: "finalizing",
@@ -191,7 +205,7 @@ export function transition(
             ],
           };
         case "stream-errored":
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
             state: {
               type: "errored",
@@ -209,10 +223,16 @@ export function transition(
             ],
           };
         case "registered":
+          return ignore(state, "already-registered");
         case "chunk-received":
+          return ignore(
+            state,
+            isStale(state, event) ? "stale-stream-id" : "chunk-while-streaming",
+          );
         case "finalize-complete":
+          return ignore(state, "not-finalizing");
         case "queue-poked":
-          return ignore(state);
+          return ignore(state, "stream-active");
       }
       break;
     }
@@ -225,7 +245,7 @@ export function transition(
             commands: [{ type: "enqueue-message", request: event.request }],
           };
         case "registered":
-          if (state.registered) return ignore(state);
+          if (state.registered) return ignore(state, "already-registered");
           // Cancel raced ahead of main's registration: the earlier abort hit
           // nothing, so re-issue it now that the stream actually exists.
           return {
@@ -233,7 +253,7 @@ export function transition(
             commands: [{ type: "request-abort" }],
           };
         case "stream-ended": {
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           // Always finalize on a non-stale end, even while `registered` is
           // still false. Main aborts the tracked stream and then sends the
           // SOLE terminal `wasCancelled` end; a stream aborted before
@@ -259,7 +279,7 @@ export function transition(
           };
         }
         case "stream-errored":
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
             state: {
               type: "errored",
@@ -277,10 +297,16 @@ export function transition(
             ],
           };
         case "cancel":
+          return ignore(state, "already-cancelling");
         case "chunk-received":
+          return ignore(
+            state,
+            isStale(state, event) ? "stale-stream-id" : "chunk-while-streaming",
+          );
         case "finalize-complete":
+          return ignore(state, "not-finalizing");
         case "queue-poked":
-          return ignore(state);
+          return ignore(state, "stream-active");
       }
       break;
     }
@@ -295,7 +321,7 @@ export function transition(
             commands: [{ type: "enqueue-message", request: event.request }],
           };
         case "finalize-complete": {
-          if (isStale(state, event)) return ignore(state);
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
           const shouldDispatch = event.ok && !state.wasCancelled;
           return {
             state: { type: "idle", lastStreamId: state.streamId },
@@ -306,12 +332,18 @@ export function transition(
           };
         }
         case "cancel":
+          return ignore(state, "too-late-to-cancel");
         case "registered":
+          return ignore(state, "already-registered");
         case "chunk-received":
         case "stream-ended":
         case "stream-errored":
+          return ignore(
+            state,
+            isStale(state, event) ? "stale-stream-id" : "no-active-stream",
+          );
         case "queue-poked":
-          return ignore(state);
+          return ignore(state, "stream-active");
       }
       break;
     }
@@ -336,8 +368,9 @@ export function transition(
         case "chunk-received":
         case "stream-ended":
         case "stream-errored":
+          return ignore(state, "no-active-stream");
         case "finalize-complete":
-          return ignore(state);
+          return ignore(state, "not-finalizing");
       }
       break;
     }

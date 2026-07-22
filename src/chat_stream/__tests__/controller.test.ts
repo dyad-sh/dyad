@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatResponseEnd } from "@/ipc/types";
+import type { TransitionObserver } from "@/state_machines/types";
 
 import type { ChatStreamCommands } from "../commands";
 import { createChatStreamController } from "../controller";
-import type { StreamRequest } from "../state";
+import type {
+  ChatStreamIgnoreReason,
+  StreamCommand,
+  StreamEvent,
+  StreamRequest,
+  StreamState,
+} from "../state";
 
 const CHAT_ID = 42;
 
@@ -65,6 +72,9 @@ function createFakeCommands() {
     requestAbort: vi.fn(() => {
       log.push("requestAbort");
     }),
+    releaseTransport: vi.fn(({ streamId }) => {
+      log.push(`releaseTransport:${streamId}`);
+    }),
     runEndSideEffects: vi.fn(({ streamId }) => {
       log.push(`runEnd:${streamId}`);
       const d = deferred();
@@ -83,15 +93,99 @@ function createFakeCommands() {
   return { commands, log, startDeferreds, endDeferreds };
 }
 
-function createController(fake = createFakeCommands()) {
+function createController(
+  fake = createFakeCommands(),
+  observer?: TransitionObserver<
+    StreamState,
+    StreamEvent,
+    StreamCommand,
+    ChatStreamIgnoreReason
+  >,
+) {
   const controller = createChatStreamController({
     chatId: CHAT_ID,
     getCommands: () => fake.commands,
+    observer,
   });
   return { controller, ...fake };
 }
 
 describe("chat stream controller", () => {
+  it("reports applied and ignored events without conflating command-only transitions", () => {
+    const observer = {
+      onTransitionApplied: vi.fn(),
+      onEventIgnored: vi.fn(),
+    } satisfies TransitionObserver<
+      StreamState,
+      StreamEvent,
+      StreamCommand,
+      ChatStreamIgnoreReason
+    >;
+    const { controller } = createController(createFakeCommands(), observer);
+
+    controller.send({ type: "cancel" });
+    expect(observer.onEventIgnored).toHaveBeenCalledExactlyOnceWith({
+      state: { type: "idle", lastStreamId: 0 },
+      event: { type: "cancel" },
+      reason: "no-active-stream",
+    });
+
+    controller.send({ type: "submit", request: makeRequest() });
+    controller.send({
+      type: "submit",
+      request: makeRequest({ prompt: "queued" }),
+    });
+    expect(observer.onTransitionApplied).toHaveBeenCalledTimes(2);
+    expect(observer.onTransitionApplied).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        previous: expect.objectContaining({ type: "starting" }),
+        state: expect.objectContaining({ type: "starting" }),
+        commands: [expect.objectContaining({ type: "enqueue-message" })],
+      }),
+    );
+  });
+
+  it("disposes an active stream exactly once and observes later events as ignored", async () => {
+    const onSettled = vi.fn();
+    const observer = {
+      onEventIgnored: vi.fn(),
+    } satisfies TransitionObserver<
+      StreamState,
+      StreamEvent,
+      StreamCommand,
+      ChatStreamIgnoreReason
+    >;
+    const { controller, commands, startDeferreds } = createController(
+      createFakeCommands(),
+      observer,
+    );
+
+    controller.send({
+      type: "submit",
+      request: makeRequest({ onSettled }),
+    });
+    await flush();
+    controller.dispose();
+    controller.dispose();
+
+    expect(onSettled).toHaveBeenCalledExactlyOnceWith({ success: false });
+    expect(commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
+      chatId: CHAT_ID,
+      streamId: 1,
+    });
+
+    controller.send({ type: "registered" });
+    expect(observer.onEventIgnored).toHaveBeenLastCalledWith({
+      state: expect.objectContaining({ type: "starting", streamId: 1 }),
+      event: { type: "registered" },
+      reason: "no-active-stream",
+    });
+
+    startDeferreds[0].resolve();
+    await flush();
+    expect(commands.releaseTransport).toHaveBeenCalledTimes(1);
+  });
+
   it("runs the happy path and dispatches the queue exactly once per finalization", async () => {
     const { controller, commands, startDeferreds, endDeferreds } =
       createController();

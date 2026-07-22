@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import type { TransitionResult } from "@/state_machines/types";
+
 import type {
+  ChatStreamIgnoreReason,
+  StreamCommand,
   StreamEvent,
   StreamRequest,
   StreamState,
-  TransitionResult,
 } from "../state";
 import { initialStreamState, isStreamActive, transition } from "../transition";
 
@@ -69,13 +72,24 @@ const ACTIVE_OR_FINALIZING: StreamState["type"][] = [
   "finalizing",
 ];
 
+const ALL_IGNORE_REASONS = new Set<ChatStreamIgnoreReason>([
+  "no-active-stream",
+  "stale-stream-id",
+  "already-registered",
+  "already-cancelling",
+  "chunk-while-streaming",
+  "not-finalizing",
+  "stream-active",
+  "too-late-to-cancel",
+]);
+
 /**
  * Invariant checker applied to every transition in this suite.
  */
 function checkInvariants(
   prev: StreamState,
   event: StreamEvent,
-  result: TransitionResult,
+  result: TransitionResult<StreamState, StreamCommand, ChatStreamIgnoreReason>,
 ): void {
   const label = `state=${prev.type} event=${event.type}`;
 
@@ -89,6 +103,14 @@ function checkInvariants(
   expect(mutating.length, label).toBeLessThanOrEqual(1);
   // Never more than one side-effecting command overall.
   expect(result.commands.length, label).toBeLessThanOrEqual(1);
+
+  if (result.ignoredReason !== undefined) {
+    expect(ALL_IGNORE_REASONS, label).toContain(result.ignoredReason);
+    expect(result.state, label).toBe(prev);
+    expect(result.commands, label).toEqual([]);
+  } else if (result.state === prev && result.commands.length === 0) {
+    throw new Error(`${label} returned a reasonless ignore`);
+  }
 
   for (const command of result.commands) {
     switch (command.type) {
@@ -158,7 +180,10 @@ function checkInvariants(
   }
 }
 
-function step(state: StreamState, event: StreamEvent): TransitionResult {
+function step(
+  state: StreamState,
+  event: StreamEvent,
+): TransitionResult<StreamState, StreamCommand, ChatStreamIgnoreReason> {
   const result = transition(state, event);
   checkInvariants(state, event, result);
   return result;
@@ -166,14 +191,19 @@ function step(state: StreamState, event: StreamEvent): TransitionResult {
 
 describe("transition totality", () => {
   it("handles the full state x event matrix without throwing and upholds all invariants", () => {
+    const seenIgnoreReasons = new Set<ChatStreamIgnoreReason>();
     for (const makeState of Object.values(STATE_FACTORIES)) {
       for (const event of eventVariants()) {
         const state = makeState();
         const result = step(state, event);
         expect(result.state).toBeDefined();
         expect(Array.isArray(result.commands)).toBe(true);
+        if (result.ignoredReason !== undefined) {
+          seenIgnoreReasons.add(result.ignoredReason);
+        }
       }
     }
+    expect(seenIgnoreReasons).toEqual(ALL_IGNORE_REASONS);
   });
 
   it("returns the identical state reference for ignored pairs (no spurious notifications)", () => {

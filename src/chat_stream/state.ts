@@ -143,8 +143,13 @@ export type StreamCommand =
   /** Pop the next queued message (if any, and not paused) and submit it. */
   | { type: "dispatch-next-queued" };
 
-/** Result of a transition: the next state plus commands to execute. */
-export interface TransitionResult {
-  state: StreamState;
-  commands: StreamCommand[];
-}
+/** Stable telemetry tags for deliberately ignored stream events. */
+export type ChatStreamIgnoreReason =
+  | "no-active-stream"
+  | "stale-stream-id"
+  | "already-registered"
+  | "already-cancelling"
+  | "chunk-while-streaming"
+  | "not-finalizing"
+  | "stream-active"
+  | "too-late-to-cancel";

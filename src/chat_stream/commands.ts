@@ -63,6 +63,8 @@ export interface ChatStreamCommands {
   enqueueMessage(args: { chatId: number; request: StreamRequest }): void;
   /** Ask the main process to abort the active stream. */
   requestAbort(args: { chatId: number }): void;
+  /** Release renderer-owned stream transport state without aborting main. */
+  releaseTransport(args: { chatId: number; streamId: number }): void;
   /** Run all end-of-stream side effects (throws => finalize-complete { ok: false }). */
   runEndSideEffects(args: {
     chatId: number;
@@ -415,6 +417,10 @@ export const productionChatStreamCommands: ChatStreamCommands = {
     void ipc.chat.cancelStream(chatId).catch((err) => {
       console.error(`[CHAT] Failed to request abort for ${chatId}:`, err);
     });
+  },
+
+  releaseTransport({ chatId, streamId }) {
+    cleanupStreamTransport(chatId, streamId);
   },
 
   async runEndSideEffects({ chatId, streamId, request, response }) {

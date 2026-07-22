@@ -99,6 +99,33 @@ describe("useVoiceToText", () => {
     expect(onTranscription).not.toHaveBeenCalled();
   });
 
+  it("releases microphone media acquired after unmount", async () => {
+    let resolveMedia: ((stream: MediaStream) => void) | undefined;
+    const lateTrackStop = vi.fn();
+    const lateStream = {
+      getTracks: () => [{ stop: lateTrackStop }],
+    } as unknown as MediaStream;
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValue(
+      new Promise((resolve) => {
+        resolveMedia = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useVoiceToText({ enabled: true, onTranscription: vi.fn() }),
+    );
+    act(() => result.current.toggleRecording());
+    unmount();
+
+    await act(async () => {
+      resolveMedia?.(lateStream);
+      await Promise.resolve();
+    });
+
+    expect(lateTrackStop).toHaveBeenCalledTimes(1);
+    expect(mediaRecorderInstances).toHaveLength(0);
+  });
+
   it("still transcribes when recording is stopped by the user", async () => {
     transcribeAudioMock.mockResolvedValue({ text: "  hello world  " });
     const onTranscription = vi.fn();

@@ -1,4 +1,64 @@
 import type { IgnoreReason, TransitionResult } from "./types";
+import type { Clock, ClockHandle, IdSource } from "./clock";
+
+export interface FakeClock extends Clock {
+  advanceBy(delayMs: number): void;
+  pendingTimerCount(): number;
+}
+
+/** Deterministic scheduler that runs due callbacks in deadline/creation order. */
+export function createFakeClock(startAt = 0): FakeClock {
+  let currentTime = startAt;
+  let nextHandle = 1;
+  const timers = new Map<
+    number,
+    { callback: () => void; deadline: number; order: number }
+  >();
+
+  return {
+    now: () => currentTime,
+    schedule(callback, delayMs) {
+      const handle = nextHandle++;
+      timers.set(handle, {
+        callback,
+        deadline: currentTime + Math.max(0, delayMs),
+        order: handle,
+      });
+      return handle as unknown as ClockHandle;
+    },
+    cancel(handle) {
+      timers.delete(handle as unknown as number);
+    },
+    advanceBy(delayMs) {
+      if (delayMs < 0) throw new Error("Fake clock cannot move backwards");
+      const target = currentTime + delayMs;
+      while (true) {
+        const due = [...timers.entries()]
+          .filter(([, timer]) => timer.deadline <= target)
+          .sort(
+            ([, left], [, right]) =>
+              left.deadline - right.deadline || left.order - right.order,
+          )[0];
+        if (!due) break;
+        const [handle, timer] = due;
+        timers.delete(handle);
+        currentTime = timer.deadline;
+        timer.callback();
+      }
+      currentTime = target;
+    },
+    pendingTimerCount: () => timers.size,
+  };
+}
+
+export function createSequentialIdSource(startAt = 1): IdSource {
+  let nextId = startAt;
+  return {
+    next(prefix) {
+      return `${prefix}:${nextId++}`;
+    },
+  };
+}
 
 export function driveTransitionMatrix<State, Event, Command>(options: {
   states: readonly State[];

@@ -234,7 +234,19 @@ export type MigrateLegacyTestResult = z.infer<
 >;
 
 export const MigrateLegacyTestsResultSchema = z.object({
+  /** Outcome per selected spec. */
   results: z.array(MigrateLegacyTestResultSchema),
+  /**
+   * Support files (fixtures/helpers the specs import) moved along with them,
+   * as their new `e2e-tests/…` paths.
+   */
+  movedSupportFiles: z.array(z.string()).default([]),
+  /**
+   * Support files left in `tests/` — a spec that stayed behind still imports
+   * them, or a same-named file already existed at the destination. `tests/…`
+   * paths, so the UI can warn that a moved spec's import may need attention.
+   */
+  skippedSupportFiles: z.array(z.string()).default([]),
 });
 
 // =============================================================================

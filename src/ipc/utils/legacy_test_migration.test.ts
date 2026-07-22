@@ -6,6 +6,8 @@ import {
   detectLegacyPlaywrightSpecs,
   legacyToE2ePath,
   normalizeLegacyTestFile,
+  parseRelativeImportSpecifiers,
+  planLegacyMigration,
 } from "./legacy_test_migration";
 
 const tempDirs: string[] = [];
@@ -106,5 +108,113 @@ describe("legacyToE2ePath", () => {
     expect(legacyToE2ePath("tests/sub/a.spec.ts")).toBe(
       "e2e-tests/sub/a.spec.ts",
     );
+  });
+});
+
+describe("parseRelativeImportSpecifiers", () => {
+  it("extracts relative import/require specifiers and ignores externals", () => {
+    const content = `
+import { test } from "@playwright/test";
+import { signIn } from "./fixtures/test-user";
+import helper from "../helpers/util";
+export { thing } from "./shared";
+const x = require("./dyn");
+const y = await import("./lazy");
+import "./side-effect";
+import type { T } from "./types";
+`;
+    expect(parseRelativeImportSpecifiers(content).sort()).toEqual(
+      [
+        "../helpers/util",
+        "./dyn",
+        "./fixtures/test-user",
+        "./lazy",
+        "./shared",
+        "./side-effect",
+        "./types",
+      ].sort(),
+    );
+  });
+});
+
+describe("planLegacyMigration", () => {
+  // A Playwright spec that side-effect-imports each of `imports`.
+  const spec = (imports: string[]) =>
+    `import { test, expect } from "@playwright/test";\n` +
+    imports.map((i) => `import "${i}";`).join("\n") +
+    `\ntest("t", async () => {});\n`;
+
+  it("carries along fixtures a selected spec imports (transitively)", async () => {
+    const appPath = makeApp({
+      "tests/signup.spec.ts": spec(["./fixtures/test-user"]),
+      "tests/fixtures/test-user.ts": `import "./base";\nexport const signIn = () => {};\n`,
+      "tests/fixtures/base.ts": `export const base = 1;\n`,
+    });
+    const plan = await planLegacyMigration(appPath, ["tests/signup.spec.ts"]);
+    expect(plan.supportFiles).toEqual([
+      "tests/fixtures/base.ts",
+      "tests/fixtures/test-user.ts",
+    ]);
+    expect(plan.moveFiles.sort()).toEqual([
+      "tests/fixtures/base.ts",
+      "tests/fixtures/test-user.ts",
+      "tests/signup.spec.ts",
+    ]);
+    expect(plan.sharedLeftBehind).toEqual([]);
+  });
+
+  it("leaves a fixture shared with a spec that stays behind", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["./fixtures/shared"]),
+      "tests/b.spec.ts": spec(["./fixtures/shared"]),
+      "tests/fixtures/shared.ts": `export const shared = 1;\n`,
+    });
+    // Only a moves; b stays and still needs the shared fixture.
+    const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.supportFiles).toEqual([]);
+    expect(plan.sharedLeftBehind).toEqual(["tests/fixtures/shared.ts"]);
+    expect(plan.moveFiles).toEqual(["tests/a.spec.ts"]);
+  });
+
+  it("moves a shared fixture when all its importers are selected", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["./fixtures/shared"]),
+      "tests/b.spec.ts": spec(["./fixtures/shared"]),
+      "tests/fixtures/shared.ts": `export const shared = 1;\n`,
+    });
+    const plan = await planLegacyMigration(appPath, [
+      "tests/a.spec.ts",
+      "tests/b.spec.ts",
+    ]);
+    expect(plan.supportFiles).toEqual(["tests/fixtures/shared.ts"]);
+    expect(plan.sharedLeftBehind).toEqual([]);
+  });
+
+  it("resolves a directory import to its index file", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["./fixtures"]),
+      "tests/fixtures/index.ts": `export const f = 1;\n`,
+    });
+    const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.supportFiles).toEqual(["tests/fixtures/index.ts"]);
+  });
+
+  it("never moves another spec file as a support file", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["./b.spec"]),
+      "tests/b.spec.ts": spec([]),
+    });
+    const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.supportFiles).toEqual([]);
+    expect(plan.moveFiles).toEqual(["tests/a.spec.ts"]);
+  });
+
+  it("ignores imports that escape tests/ or resolve to nothing", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["../src/app", "./missing", "@playwright/test"]),
+    });
+    const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.supportFiles).toEqual([]);
+    expect(plan.moveFiles).toEqual(["tests/a.spec.ts"]);
   });
 });

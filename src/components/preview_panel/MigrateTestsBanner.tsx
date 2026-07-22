@@ -41,12 +41,17 @@ export function MigrateTestsBanner({ appId }: { appId: number }) {
 
   const handleConfirm = async (selected: string[]) => {
     try {
-      const { results } = await migrate.mutateAsync({ appId, files: selected });
+      const { results, movedSupportFiles, skippedSupportFiles } =
+        await migrate.mutateAsync({ appId, files: selected });
       const moved = results.filter((r) => r.ok).length;
       const failed = results.filter((r) => !r.ok);
       if (moved > 0) {
+        const supportNote =
+          movedSupportFiles.length > 0
+            ? ` (+${movedSupportFiles.length} supporting file${movedSupportFiles.length === 1 ? "" : "s"})`
+            : "";
         showSuccess(
-          `Moved ${moved} test${moved === 1 ? "" : "s"} to e2e-tests/`,
+          `Moved ${moved} test${moved === 1 ? "" : "s"} to e2e-tests/${supportNote}`,
         );
       }
       if (failed.length > 0) {
@@ -54,6 +59,13 @@ export function MigrateTestsBanner({ appId }: { appId: number }) {
           `Couldn't move ${failed.length} test${failed.length === 1 ? "" : "s"}: ${failed
             .map((r) => `${r.file} (${r.error})`)
             .join("; ")}`,
+        );
+      }
+      if (skippedSupportFiles.length > 0) {
+        // A fixture a moved spec imports is still used by a test left in tests/,
+        // so it stayed put — warn that the moved spec's import may need a look.
+        showError(
+          `Left ${skippedSupportFiles.length} shared supporting file${skippedSupportFiles.length === 1 ? "" : "s"} in tests/ (still used by tests you didn't move): ${skippedSupportFiles.join(", ")}`,
         );
       }
       setDialogOpen(false);

@@ -81,6 +81,7 @@ export function MigrateTestsDialog({
             Dyad now keeps Playwright end-to-end tests in{" "}
             <code>e2e-tests/</code>. Move the selected tests out of{" "}
             <code>tests/</code> so they stay visible and runnable in this panel.
+            Fixtures and helpers they import move along with them.
           </DialogDescription>
         </DialogHeader>
 

@@ -26,6 +26,7 @@ import {
   detectLegacyPlaywrightSpecs,
   legacyToE2ePath,
   normalizeLegacyTestFile,
+  planLegacyMigration,
 } from "../utils/legacy_test_migration";
 import { safeJoin } from "../utils/path_utils";
 import { gitAdd, gitRemove } from "../utils/git_utils";
@@ -824,36 +825,37 @@ export function registerTestsHandlers() {
       // interleave with a run's env swap / dev-server restart.
       return await withLock(params.appId, async () => {
         const results: MigrateLegacyTestResult[] = [];
+
+        // Validate + normalize the requested specs up front; invalid ones are
+        // reported and excluded from the move plan.
+        const validSpecs: string[] = [];
         for (const requested of params.files) {
           const sourceRel = normalizeLegacyTestFile(requested);
-          if (!sourceRel) {
+          if (sourceRel) {
+            validSpecs.push(sourceRel);
+          } else {
             results.push({
               file: requested,
               ok: false,
               error: "Not a valid tests/*.spec.ts path",
             });
-            continue;
           }
+        }
+
+        // Move one tests/ file into e2e-tests/ (git-aware, never overwriting).
+        const moveOne = async (
+          sourceRel: string,
+        ): Promise<{ ok: boolean; movedTo?: string; error?: string }> => {
           const destRel = legacyToE2ePath(sourceRel);
           try {
             const src = safeJoin(appPath, sourceRel);
             const dst = safeJoin(appPath, destRel);
             if (!fs.existsSync(src)) {
-              results.push({
-                file: requested,
-                ok: false,
-                error: "Source file no longer exists",
-              });
-              continue;
+              return { ok: false, error: "Source file no longer exists" };
             }
             if (fs.existsSync(dst)) {
               // Never overwrite an existing destination.
-              results.push({
-                file: requested,
-                ok: false,
-                error: `${destRel} already exists`,
-              });
-              continue;
+              return { ok: false, error: `${destRel} already exists` };
             }
             await fs.promises.mkdir(path.dirname(dst), { recursive: true });
             await moveFileWithFallback(src, dst);
@@ -869,17 +871,55 @@ export function registerTestsHandlers() {
                 `Moved ${sourceRel} but couldn't git-remove it (likely untracked): ${error}`,
               );
             }
-            results.push({ file: requested, ok: true, movedTo: destRel });
+            return { ok: true, movedTo: destRel };
           } catch (error) {
             logger.warn(`Failed to migrate ${sourceRel}: ${error}`);
-            results.push({
-              file: requested,
+            return {
               ok: false,
               error: error instanceof Error ? error.message : String(error),
-            });
+            };
+          }
+        };
+
+        // Carry along the fixtures/helpers the selected specs import, unless a
+        // spec staying behind still needs them.
+        const plan =
+          validSpecs.length > 0
+            ? await planLegacyMigration(appPath, validSpecs)
+            : { moveFiles: [], supportFiles: [], sharedLeftBehind: [] };
+
+        // Move support files first so a spec never lands beside a fixture that
+        // hasn't moved yet. A support file that can't move (destination exists)
+        // joins the dependency-shared ones as "skipped".
+        const movedSupportFiles: string[] = [];
+        const skippedSupportFiles = [...plan.sharedLeftBehind];
+        for (const support of plan.supportFiles) {
+          const outcome = await moveOne(support);
+          if (outcome.ok && outcome.movedTo) {
+            movedSupportFiles.push(outcome.movedTo);
+          } else {
+            skippedSupportFiles.push(support);
           }
         }
-        return { results };
+
+        // Move the selected specs.
+        for (const sourceRel of validSpecs) {
+          const outcome = await moveOne(sourceRel);
+          results.push({
+            file: sourceRel,
+            ok: outcome.ok,
+            movedTo: outcome.movedTo,
+            error: outcome.error,
+          });
+        }
+
+        return {
+          results,
+          movedSupportFiles,
+          skippedSupportFiles: skippedSupportFiles.sort((a, b) =>
+            a.localeCompare(b),
+          ),
+        };
       });
     },
   );

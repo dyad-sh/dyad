@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { glob } from "glob";
 import log from "electron-log";
-import { E2E_TEST_DIR, LEGACY_TEST_DIR } from "../types/tests";
+import { E2E_TEST_DIR, LEGACY_TEST_DIR, SPEC_FILE_RE } from "../types/tests";
 
 const logger = log.scope("legacy_test_migration");
 
@@ -88,4 +88,187 @@ export async function detectLegacyPlaywrightSpecs(
     }
   }
   return playwrightSpecs.sort((a, b) => a.localeCompare(b));
+}
+
+// =============================================================================
+// Support-file closure (carry a spec's imported fixtures/helpers along)
+// =============================================================================
+
+/** Every resolvable source file under the legacy `tests/` directory. */
+const LEGACY_SOURCE_GLOB = `${LEGACY_TEST_DIR}/**/*.{ts,tsx,js,jsx}`;
+
+/** Extensions tried when resolving an extensionless relative import. */
+const RESOLVE_EXTENSIONS = ["ts", "tsx", "js", "jsx"] as const;
+
+// Captures the specifier of `from "x"`, `import "x"`, `import("x")`, and
+// `require("x")`. The trailing quote anchor keeps identifiers like `fromCache`
+// from matching. Best-effort (regex, not a full parser) — matches the ad-hoc
+// import detection used elsewhere in the codebase.
+const IMPORT_SPECIFIER_RE =
+  /\b(?:from|import|require)\s*\(?\s*["']([^"']+)["']/g;
+
+/** Relative import specifiers ("./x", "../y") found in a file's content. */
+export function parseRelativeImportSpecifiers(content: string): string[] {
+  const specifiers: string[] = [];
+  IMPORT_SPECIFIER_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = IMPORT_SPECIFIER_RE.exec(content)) !== null) {
+    const specifier = match[1];
+    if (specifier.startsWith("./") || specifier.startsWith("../")) {
+      specifiers.push(specifier);
+    }
+  }
+  return specifiers;
+}
+
+/** True when a `tests/`-relative path is itself a spec file. */
+function isSpecFile(file: string): boolean {
+  return SPEC_FILE_RE.test(file);
+}
+
+/**
+ * Resolve a relative import from `fromFile` to a concrete file under `tests/`
+ * using TS/JS resolution (exact, then `+ext`, then `/index.ext`). Returns the
+ * posix path under `tests/`, or null when it doesn't resolve to a known file or
+ * escapes `tests/`.
+ */
+function resolveRelativeImport(
+  fromFile: string,
+  specifier: string,
+  known: Set<string>,
+): string | null {
+  const resolved = path.posix.normalize(
+    path.posix.join(path.posix.dirname(fromFile), specifier),
+  );
+  if (
+    resolved !== LEGACY_TEST_DIR &&
+    !resolved.startsWith(`${LEGACY_TEST_DIR}/`)
+  ) {
+    return null; // Escapes the tests/ directory.
+  }
+  const candidates = [
+    resolved,
+    ...RESOLVE_EXTENSIONS.map((ext) => `${resolved}.${ext}`),
+    ...RESOLVE_EXTENSIONS.map((ext) => `${resolved}/index.${ext}`),
+  ];
+  return candidates.find((candidate) => known.has(candidate)) ?? null;
+}
+
+interface LegacyImportGraph {
+  files: string[];
+  /** file -> the `tests/` files it imports. */
+  imports: Map<string, Set<string>>;
+  /** file -> the `tests/` files that import it. */
+  importedBy: Map<string, Set<string>>;
+}
+
+/** Build the local import graph among all source files under `tests/`. */
+async function buildLegacyImportGraph(
+  appPath: string,
+): Promise<LegacyImportGraph> {
+  const files = (
+    await glob(LEGACY_SOURCE_GLOB, { cwd: appPath, nodir: true, posix: true })
+  ).sort();
+  const known = new Set(files);
+  const imports = new Map<string, Set<string>>();
+  const importedBy = new Map<string, Set<string>>();
+  for (const file of files) {
+    imports.set(file, new Set());
+    importedBy.set(file, new Set());
+  }
+  for (const file of files) {
+    let content: string;
+    try {
+      content = await fs.promises.readFile(path.join(appPath, file), "utf8");
+    } catch (error) {
+      logger.warn(
+        `Failed to read ${file} while graphing legacy tests: ${error}`,
+      );
+      continue;
+    }
+    for (const specifier of parseRelativeImportSpecifiers(content)) {
+      const target = resolveRelativeImport(file, specifier, known);
+      if (target && target !== file) {
+        imports.get(file)!.add(target);
+        importedBy.get(target)!.add(file);
+      }
+    }
+  }
+  return { files, imports, importedBy };
+}
+
+export interface LegacyMigrationPlan {
+  /** Everything to move: the selected specs plus safe support files. */
+  moveFiles: string[];
+  /** Support files (fixtures/helpers) carried along, `tests/`-relative. */
+  supportFiles: string[];
+  /**
+   * Support files a selected spec imports that CANNOT be moved because a file
+   * staying behind still imports them. Left in `tests/`; the moved spec's
+   * import to them will need manual attention.
+   */
+  sharedLeftBehind: string[];
+}
+
+/**
+ * Given the specs the user chose to move, compute the full set of files to
+ * relocate: the specs plus the fixtures/helpers they import (transitively).
+ * A support file is only carried along when every file that imports it is also
+ * being moved — a fixture shared with a spec that stays in `tests/` is left in
+ * place so the stay-behind spec keeps working. Other spec files are never moved
+ * as support (they move only when explicitly selected).
+ */
+export async function planLegacyMigration(
+  appPath: string,
+  selected: string[],
+): Promise<LegacyMigrationPlan> {
+  const graph = await buildLegacyImportGraph(appPath);
+  const selectedSet = new Set(selected);
+
+  // Support files reachable from the selected specs via imports. Don't descend
+  // into (or collect) other spec files — those move only when selected.
+  const reachable = new Set<string>();
+  const stack = [...selected];
+  while (stack.length > 0) {
+    const file = stack.pop()!;
+    for (const dep of graph.imports.get(file) ?? []) {
+      if (isSpecFile(dep) || reachable.has(dep)) {
+        continue;
+      }
+      reachable.add(dep);
+      stack.push(dep);
+    }
+  }
+
+  // Grow the movable set to a fixpoint: a support file is safe to move once
+  // every file that imports it is already being moved (a selected spec or an
+  // already-movable support file).
+  const movableSupport = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const file of reachable) {
+      if (movableSupport.has(file)) {
+        continue;
+      }
+      const importers = graph.importedBy.get(file) ?? new Set<string>();
+      const safe = [...importers].every(
+        (importer) => selectedSet.has(importer) || movableSupport.has(importer),
+      );
+      if (safe) {
+        movableSupport.add(file);
+        changed = true;
+      }
+    }
+  }
+
+  const supportFiles = [...movableSupport].sort((a, b) => a.localeCompare(b));
+  const sharedLeftBehind = [...reachable]
+    .filter((file) => !movableSupport.has(file))
+    .sort((a, b) => a.localeCompare(b));
+  return {
+    moveFiles: [...selected, ...supportFiles],
+    supportFiles,
+    sharedLeftBehind,
+  };
 }

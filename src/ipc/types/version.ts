@@ -30,6 +30,7 @@ export const CurrentChatMessageIdSchema = z.object({
 export const RevertVersionParamsSchema = z.object({
   appId: z.number(),
   previousVersionId: z.string(),
+  expectedHeadOid: z.string().optional(),
   currentChatMessageId: CurrentChatMessageIdSchema.optional(),
   targetBranchName: z
     .string()
@@ -163,7 +164,7 @@ export type RestoreToMessageResponse = z.infer<
 export const versionContracts = {
   listVersions: defineContract({
     channel: "list-versions",
-    input: z.object({ appId: z.number() }),
+    input: z.object({ appId: z.number(), ref: SafeGitRefSchema.optional() }),
     output: z.array(VersionSchema),
   }),
 

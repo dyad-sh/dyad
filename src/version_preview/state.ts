@@ -85,6 +85,7 @@ export type PreviewEvent =
       type: "RESTORE";
       appId: number;
       versionId: string;
+      expectedHeadOid?: string;
       currentChatMessageId?: { chatId: number; messageId: number };
     }
   | {
@@ -124,6 +125,7 @@ export type PreviewCommand =
       appId: number;
       versionId: string;
       targetBranch: string | null;
+      expectedHeadOid?: string;
       currentChatMessageId?: { chatId: number; messageId: number };
     }
   | {

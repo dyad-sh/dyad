@@ -606,7 +606,7 @@ async function revertCodebaseToVersion({
 
 export function registerVersionHandlers() {
   createTypedHandler(versionContracts.listVersions, async (_, params) => {
-    const { appId } = params;
+    const { appId, ref } = params;
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
@@ -626,6 +626,7 @@ export function registerVersionHandlers() {
     const commits = await gitLog({
       path: appPath,
       depth: 100_000, // KEEP UP TO DATE WITH ChatHeader.tsx
+      ref,
     });
 
     // Get all stored version metadata for this app to match with commits.
@@ -780,8 +781,13 @@ export function registerVersionHandlers() {
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
-    const { appId, previousVersionId, currentChatMessageId, targetBranchName } =
-      params;
+    const {
+      appId,
+      previousVersionId,
+      expectedHeadOid,
+      currentChatMessageId,
+      targetBranchName,
+    } = params;
     return withLock(appId, async () => {
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
@@ -792,6 +798,19 @@ export function registerVersionHandlers() {
       }
 
       const appPath = getDyadAppPath(app.path);
+
+      if (expectedHeadOid) {
+        const currentHeadOid = await getCurrentCommitHash({
+          path: appPath,
+          ref: targetBranchName ?? "HEAD",
+        });
+        if (currentHeadOid !== expectedHeadOid) {
+          throw new DyadError(
+            "The app's history changed since you confirmed. Please retry the undo.",
+            DyadErrorKind.Conflict,
+          );
+        }
+      }
 
       const { successMessage, warningMessage } = await revertCodebaseToVersion({
         appId,

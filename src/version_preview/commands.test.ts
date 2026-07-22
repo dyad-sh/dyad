@@ -164,8 +164,16 @@ describe("createVersionPreviewRuntime", () => {
       appId: 7,
       versionId: "abc",
       targetBranch: null,
+      expectedHeadOid: "head-at-confirmation",
     });
 
+    expect(revertVersionMock).toHaveBeenCalledWith({
+      appId: 7,
+      previousVersionId: "abc",
+      expectedHeadOid: "head-at-confirmation",
+      targetBranchName: undefined,
+      currentChatMessageId: undefined,
+    });
     expect(getChatMock).toHaveBeenCalledWith(55);
     expect(store.get(chatMessagesByIdAtom).get(55)).toEqual([{ id: 9 }]);
     expect(toastSuccessMock).toHaveBeenCalledWith("Restored");

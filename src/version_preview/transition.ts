@@ -119,6 +119,7 @@ function beginRestore(
           appId: nextSession.appId,
           versionId: event.versionId,
           targetBranch,
+          expectedHeadOid: event.expectedHeadOid,
           currentChatMessageId: event.currentChatMessageId,
         }
       : {

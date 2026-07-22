@@ -13,10 +13,12 @@
 //
 // Covers the undo and "undo after assistant with no code" e2e scenarios.
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -27,6 +29,22 @@ import { messages as messagesTable } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 
 const INDEX_PATH = "src/pages/Index.tsx";
+
+function commitWithTestIdentity(cwd: string, message: string) {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Test User",
+      "commit",
+      "-m",
+      message,
+    ],
+    { cwd },
+  );
+}
 
 describe("undo (integration)", () => {
   let harness: HybridChatHarness;
@@ -41,6 +59,13 @@ describe("undo (integration)", () => {
     harness.bridge.sentEvents.filter(
       (e) => e.channel === "chat:response:error",
     );
+
+  const settleRendererActions = async () => {
+    await act(async () => {
+      await harness.bridge.settleInFlight();
+      await Promise.resolve();
+    });
+  };
 
   /** Type + send a prompt through the real UI and gate on ITS stream end. */
   const sendTurn = async (prompt: string) => {
@@ -110,6 +135,9 @@ describe("undo (integration)", () => {
     await waitFor(async () => expect(await loadMessages()).toHaveLength(2), {
       timeout: 15_000,
     });
+    expect(harness.bridge.lastInvoke("revert-version")?.args[0]).toMatchObject({
+      expectedHeadOid: expect.any(String),
+    });
     expect(harness.readAppFile(INDEX_PATH)).toContain("Testing:write-index!");
     expect(harness.readAppFile(INDEX_PATH)).not.toContain(
       "Testing:write-index(2)!",
@@ -120,8 +148,11 @@ describe("undo (integration)", () => {
 
     // Second undo: back to the pristine fixture (the e2e asserted the
     // scaffold's "Welcome to Your Blank App" page; in the minimal fixture the
-    // page written by the LLM simply doesn't exist initially).
+    // page written by the LLM simply doesn't exist initially). The first
+    // forward-revert commit and the previously undone turn are now extra
+    // commits relative to this older target, so confirmation is required.
     await clickUndo();
+    fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
     await waitFor(() =>
       expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
     );
@@ -143,6 +174,7 @@ describe("undo (integration)", () => {
 
     // No error events were emitted during the whole cycle.
     expect(errorEvents()).toHaveLength(0);
+    await settleRendererActions();
   };
 
   beforeAll(async () => {
@@ -163,6 +195,84 @@ describe("undo (integration)", () => {
 
   it("undo with git", async () => {
     await runUndoCycle();
+  }, 60_000);
+
+  it("confirms before undoing an extra commit and supports cancellation", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    await sendTurn("tc=write-index");
+    await waitFor(
+      () => expect(screen.getByText(/And it's done!/)).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const manualPath = path.join(harness.appDir, "manual-change.txt");
+    fs.writeFileSync(manualPath, "keep me\n");
+    execFileSync("git", ["add", "manual-change.txt"], {
+      cwd: harness.appDir,
+    });
+    commitWithTestIdentity(harness.appDir, "Manual work after AI turn");
+
+    await settleRendererActions();
+    const versionInvokeBaseline = harness.bridge.invokeLog.filter(
+      (entry) => entry.channel === "list-versions",
+    ).length;
+    const undoButton = screen.getByRole("button", { name: /Undo/ });
+    fireEvent.click(undoButton);
+    fireEvent.click(undoButton);
+    expect(
+      await screen.findByTestId("extra-commits-revert-dialog"),
+    ).toBeTruthy();
+    expect(
+      harness.bridge.invokeLog.filter(
+        (entry) => entry.channel === "list-versions",
+      ).length - versionInvokeBaseline,
+    ).toBe(1);
+    expect(screen.getByText("Manual work after AI turn")).toBeTruthy();
+    expect(fs.existsSync(manualPath)).toBe(true);
+    expect(await loadMessages()).toHaveLength(2);
+
+    harness.setSelectedAppId(null);
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+    harness.setSelectedAppId(harness.appId);
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+
+    await clickUndo();
+    fireEvent.click(await screen.findByTestId("cancel-revert-button"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+    expect(fs.existsSync(manualPath)).toBe(true);
+    expect(await loadMessages()).toHaveLength(2);
+
+    await clickUndo();
+    await screen.findByTestId("extra-commits-revert-dialog");
+    const racedPath = path.join(harness.appDir, "raced-change.txt");
+    fs.writeFileSync(racedPath, "newer work\n");
+    execFileSync("git", ["add", "raced-change.txt"], { cwd: harness.appDir });
+    commitWithTestIdentity(harness.appDir, "Work created during confirmation");
+    fireEvent.click(screen.getByTestId("confirm-revert-anyway-button"));
+    await waitFor(() => expect(fs.existsSync(racedPath)).toBe(true));
+    expect(await loadMessages()).toHaveLength(2);
+
+    await clickUndo();
+    fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
+    await waitFor(() => expect(fs.existsSync(manualPath)).toBe(false), {
+      timeout: 15_000,
+    });
+    expect(fs.existsSync(racedPath)).toBe(false);
+    await waitFor(async () => expect(await loadMessages()).toHaveLength(0), {
+      timeout: 15_000,
+    });
+    await settleRendererActions();
   }, 60_000);
 
   it("undo after assistant with no code", async () => {

@@ -133,6 +133,11 @@ can retain handles briefly on Windows, so teardown should use bounded
 `fs.rm` retries (`maxRetries` plus `retryDelay`) rather than making successful
 test logic fail with a transient `EBUSY`.
 
+When a hybrid Git fixture creates commits directly, pass an explicit test
+identity with `git -c user.email=... -c user.name=... commit` (or configure it
+locally first). CI and fresh developer environments may have no global Git
+identity, causing `Author identity unknown` before the UI flow runs.
+
 For cross-platform path assertions, match the path contract being exercised.
 Use `path.normalize()` when the code preserves a rooted path such as `/tmp/...`;
 `path.resolve()` adds the runner's current drive on Windows and is only correct
@@ -142,3 +147,9 @@ For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or
 ending the test.
+
+When a renderer action awaits IPC post-effects that can outlive the first
+observable DOM or database update, call `await harness.bridge.settleInFlight()`
+before ending the test. Otherwise provider teardown can dispose the owning state
+machine while its command is still settling and produce misleading disposal
+errors after an otherwise successful assertion.

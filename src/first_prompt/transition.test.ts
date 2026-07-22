@@ -43,10 +43,10 @@ describe("first-prompt transition", () => {
       initialState: { type: "idle" } as FirstPromptState,
       events,
       transition,
-      stateKey: (state) => state.type,
+      stateKey: (state) => JSON.stringify(state),
     });
 
-    expect(states.map((state) => state.type).sort()).toEqual(
+    expect([...new Set(states.map((state) => state.type))].sort()).toEqual(
       [
         "awaitingProviderSetup",
         "checkingProviders",

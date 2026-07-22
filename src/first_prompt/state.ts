@@ -5,9 +5,13 @@
  * the application composition root). No machine module imports chat_stream.
  *
  * Deliberate plan deviation: APP_CREATED and the post-create/partial-failure
- * states retain appName so RETRY can rerun the Neon hook against the existing
- * app without creating a second app. NEON_HOOK_DONE is an internal sequencing
- * event that keeps RunNeonTemplateHook and ApplyTheme as separate commands.
+ * states retain appName and the current post-create step so RETRY can resume
+ * the failed side effect against the existing app without creating a second
+ * app or repeating a completed Neon hook. NEON_HOOK_DONE is an internal
+ * sequencing event that keeps RunNeonTemplateHook and ApplyTheme as separate
+ * commands. dispatching also retains settle/preview completion flags so those
+ * independent operations can preserve current-main concurrency and join
+ * deterministically before navigation.
  */
 
 export type FirstPromptChatMode = "build" | "ask" | "local-agent" | "plan";
@@ -43,11 +47,14 @@ export type FirstPromptState =
       readonly appId: number;
       readonly appName: string;
       readonly chatId: number;
+      readonly step: "neon" | "theme";
     }
   | {
       readonly type: "dispatching";
       readonly appId: number;
       readonly chatId: number;
+      readonly settled: boolean;
+      readonly previewDecided: boolean;
     }
   | {
       readonly type: "navigating";
@@ -66,6 +73,7 @@ export type FirstPromptState =
       readonly appName: string;
       readonly chatId: number;
       readonly message: string;
+      readonly step: "neon" | "theme";
     };
 
 export type FirstPromptEvent =

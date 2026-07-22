@@ -23,7 +23,6 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
@@ -43,7 +42,6 @@ export function HomeChatInput({
 }: {
   onSubmit: (options?: HomeSubmitOptions) => boolean | Promise<boolean>;
 }) {
-  const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const [selectedApp, setSelectedApp] = useAtom(homeSelectedAppAtom);
   const { settings } = useSettings();
@@ -133,12 +131,8 @@ export function HomeChatInput({
       return;
     }
 
-    // The first-prompt saga owns clearing the snapshotted editing buffer at
-    // the same commit point as prompt dispatch.
-    posthog.capture("chat:home_submit", {
-      chatMode: settings?.selectedChatMode,
-      existingApp: !!selectedApp,
-    });
+    // The first-prompt saga owns clearing the snapshotted editing buffer and
+    // recording submission analytics at the actual prompt-dispatch commit.
   };
 
   if (!settings) {

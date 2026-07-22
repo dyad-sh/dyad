@@ -144,6 +144,10 @@ export function FirstPromptProvider({
       posthog.capture("home:chat-submit", {
         existingApp: payload.selectedApp !== undefined,
       });
+      posthog.capture("chat:home_submit", {
+        chatMode: payload.chatMode,
+        existingApp: payload.selectedApp !== undefined,
+      });
     },
     async refreshQueries(appId) {
       await refreshApps();

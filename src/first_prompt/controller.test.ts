@@ -79,6 +79,10 @@ describe("FirstPromptController", () => {
 
       expect(harness.controller.getSnapshot().type).toBe("failedPartial");
       expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
+      expect(harness.deps.runNeonTemplateHook).toHaveBeenCalledTimes(1);
+      expect(harness.deps.applyTheme).toHaveBeenCalledTimes(
+        failingStep === "theme" ? 1 : 0,
+      );
 
       harness.setNeonError();
       harness.setThemeError();
@@ -87,6 +91,12 @@ describe("FirstPromptController", () => {
       expect(harness.controller.getSnapshot().type).toBe("dispatching");
       expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
       expect(harness.deps.submitPrompt).toHaveBeenCalledTimes(1);
+      expect(harness.deps.runNeonTemplateHook).toHaveBeenCalledTimes(
+        failingStep === "neon" ? 2 : 1,
+      );
+      expect(harness.deps.applyTheme).toHaveBeenCalledTimes(
+        failingStep === "theme" ? 2 : 1,
+      );
 
       harness.clock.advanceBy(1_999);
       await flushCommands();
@@ -121,6 +131,30 @@ describe("FirstPromptController", () => {
     expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
   });
 
+  it("uses an edited resubmit payload while reusing a partially created app", async () => {
+    const harness = createHarness();
+    harness.setThemeError(new Error("theme failed"));
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+
+    const editedPayload: FirstPromptPayload = {
+      ...payload,
+      prompt: "Build an edited notes app",
+    };
+    harness.setThemeError();
+    harness.controller.send({ type: "SUBMIT", payload: editedPayload });
+    await flushCommands();
+
+    expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
+    expect(harness.deps.runNeonTemplateHook).toHaveBeenCalledTimes(1);
+    expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
+      appId: 1,
+      chatId: 2,
+      payload: editedPayload,
+    });
+  });
+
   it("creates only a chat when the payload targets an existing app", async () => {
     const harness = createHarness();
     harness.controller.send({
@@ -152,6 +186,7 @@ describe("FirstPromptController", () => {
 
     expect(harness.controller.getSnapshot().type).toBe("dispatching");
     expect(harness.deps.clearEditingBuffer).toHaveBeenCalledTimes(1);
+    expect(harness.deps.openPreviewIfSetupRequired).toHaveBeenCalledWith(1);
     expect(
       (harness.deps.submitPrompt as ReturnType<typeof vi.fn>).mock
         .invocationCallOrder[0],
@@ -163,5 +198,32 @@ describe("FirstPromptController", () => {
     harness.clock.advanceBy(2_000);
     await flushCommands();
     expect(harness.controller.getSnapshot().type).toBe("idle");
+  });
+
+  it("waits for both settle and a deferred preview decision", async () => {
+    const harness = createHarness();
+    let resolvePreview!: (opened: boolean) => void;
+    (
+      harness.deps.openPreviewIfSetupRequired as ReturnType<typeof vi.fn>
+    ).mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolvePreview = resolve;
+      }),
+    );
+
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    expect(harness.deps.openPreviewIfSetupRequired).toHaveBeenCalledWith(1);
+
+    harness.clock.advanceBy(2_000);
+    await flushCommands();
+    expect(harness.controller.getSnapshot().type).toBe("dispatching");
+    expect(harness.deps.refreshQueries).not.toHaveBeenCalled();
+
+    resolvePreview(false);
+    await flushCommands();
+    expect(harness.deps.refreshQueries).toHaveBeenCalledWith(1);
+    expect(harness.deps.selectChat).toHaveBeenCalledWith(1, 2);
   });
 });

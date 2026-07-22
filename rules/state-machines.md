@@ -36,6 +36,10 @@ Background and before/after examples of why this pattern exists:
 - Command runners convert expected failures into events. A runner throw is a
   programming error: log it and keep the service usable; never wedge a queue or
   silently rewrite state.
+- When a multi-step side effect can fail partway through, retain the exact
+  completed/next step in the failure state. Retrying from the start can repeat
+  non-idempotent external work or deterministically fail on an existing-resource
+  guard even when the owning entity is correctly reused.
 - Controllers are disposable and their owner must call `dispose()` on provider
   unmount or entity deletion. Renderer controller collections belong to a
   provider-owned `KeyedControllerHost`; never keep them in module globals.
@@ -57,6 +61,11 @@ in parallel, which events may be dropped as stale, and which must never be
 dropped. Main-process machines should use an explicitly constructed registry
 with injected timers, IDs, and broadcasts; renderer machines use the shared
 keyed host.
+
+When independent async operations should overlap but both gate progress, start
+both through commands and model their completion as separate events joined by
+explicit state flags or substates. A serial command queue must not accidentally
+turn prior `Promise.all`-style behavior into additive latency.
 
 New machines must inject `Clock` and `IdSource` from `src/state_machines/clock.ts`
 when they schedule timers, read wall time, or mint operation identities. Use

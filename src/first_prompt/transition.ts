@@ -31,22 +31,61 @@ function startCreating(
 
 function resumePartial(
   state: Extract<FirstPromptState, { type: "failedPartial" }>,
+  payload: FirstPromptPayload = state.payload,
 ): FirstPromptTransitionResult {
   return {
     state: {
       type: "postCreate",
-      payload: state.payload,
+      payload,
       appId: state.appId,
       appName: state.appName,
       chatId: state.chatId,
+      step: state.step,
     },
     commands: [
-      {
-        type: "RunNeonTemplateHook",
-        appId: state.appId,
-        appName: state.appName,
-      },
+      state.step === "neon"
+        ? {
+            type: "RunNeonTemplateHook",
+            appId: state.appId,
+            appName: state.appName,
+          }
+        : { type: "ApplyTheme", appId: state.appId },
     ],
+  };
+}
+
+function startDispatching(
+  payload: FirstPromptPayload,
+  appId: number,
+  chatId: number,
+): FirstPromptTransitionResult {
+  return {
+    state: {
+      type: "dispatching",
+      appId,
+      chatId,
+      settled: false,
+      previewDecided: false,
+    },
+    commands: [
+      { type: "SubmitPrompt", appId, chatId, payload },
+      { type: "ClearEditingBuffer" },
+      { type: "ScheduleSettle" },
+      { type: "OpenPreviewIfSetupRequired", appId },
+    ],
+  };
+}
+
+function finishDispatching(
+  state: Extract<FirstPromptState, { type: "dispatching" }>,
+): FirstPromptTransitionResult {
+  return {
+    state: {
+      type: "navigating",
+      appId: state.appId,
+      chatId: state.chatId,
+    },
+    commands: [{ type: "RefreshQueries", appId: state.appId }],
   };
 }
 
@@ -157,6 +196,7 @@ export function transition(
               appId: event.appId,
               appName: event.appName,
               chatId: event.chatId,
+              step: "neon",
             },
             commands: [
               {
@@ -170,19 +210,7 @@ export function transition(
           const appId = state.payload.selectedApp?.id;
           if (appId === undefined)
             return ignore(state, "invalid-in-current-state");
-          return {
-            state: { type: "dispatching", appId, chatId: event.chatId },
-            commands: [
-              {
-                type: "SubmitPrompt",
-                appId,
-                chatId: event.chatId,
-                payload: state.payload,
-              },
-              { type: "ClearEditingBuffer" },
-              { type: "ScheduleSettle" },
-            ],
-          };
+          return startDispatching(state.payload, appId, event.chatId);
         }
         case "CREATE_FAILED":
           return {
@@ -208,28 +236,14 @@ export function transition(
     case "postCreate":
       switch (event.type) {
         case "NEON_HOOK_DONE":
+          if (state.step !== "neon")
+            return ignore(state, "invalid-in-current-state");
           return {
-            state,
+            state: { ...state, step: "theme" },
             commands: [{ type: "ApplyTheme", appId: state.appId }],
           };
         case "POST_CREATE_DONE":
-          return {
-            state: {
-              type: "dispatching",
-              appId: state.appId,
-              chatId: state.chatId,
-            },
-            commands: [
-              {
-                type: "SubmitPrompt",
-                appId: state.appId,
-                chatId: state.chatId,
-                payload: state.payload,
-              },
-              { type: "ClearEditingBuffer" },
-              { type: "ScheduleSettle" },
-            ],
-          };
+          return startDispatching(state.payload, state.appId, state.chatId);
         case "POST_CREATE_FAILED":
           return {
             state: {
@@ -239,6 +253,7 @@ export function transition(
               appName: state.appName,
               chatId: state.chatId,
               message: event.message,
+              step: state.step,
             },
             commands: [
               {
@@ -257,16 +272,22 @@ export function transition(
     case "dispatching":
       switch (event.type) {
         case "SETTLED":
-          return {
-            state: {
-              type: "navigating",
-              appId: state.appId,
-              chatId: state.chatId,
-            },
-            commands: [
-              { type: "OpenPreviewIfSetupRequired", appId: state.appId },
-            ],
-          };
+          if (state.settled) return ignore(state, "invalid-in-current-state");
+          return state.previewDecided
+            ? finishDispatching(state)
+            : {
+                state: { ...state, settled: true },
+                commands: [],
+              };
+        case "PREVIEW_DECISION":
+          if (state.previewDecided)
+            return ignore(state, "invalid-in-current-state");
+          return state.settled
+            ? finishDispatching(state)
+            : {
+                state: { ...state, previewDecided: true },
+                commands: [],
+              };
         case "RESET":
           return { state: { type: "idle" }, commands: [] };
         default:
@@ -275,11 +296,6 @@ export function transition(
 
     case "navigating":
       switch (event.type) {
-        case "PREVIEW_DECISION":
-          return {
-            state,
-            commands: [{ type: "RefreshQueries", appId: state.appId }],
-          };
         case "REFRESHED":
           return {
             state: { type: "idle" },
@@ -314,6 +330,7 @@ export function transition(
     case "failedPartial":
       switch (event.type) {
         case "SUBMIT":
+          return resumePartial(state, event.payload);
         case "RETRY":
           return resumePartial(state);
         case "RESET":

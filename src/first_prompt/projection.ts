@@ -30,6 +30,8 @@ export function projectFirstPromptState(
   return {
     phase: state.type,
     hasArmedPayload:
-      state.type === "awaitingProviderSetup" && hasPromptContent(state.payload),
+      (state.type === "checkingProviders" ||
+        state.type === "awaitingProviderSetup") &&
+      hasPromptContent(state.payload),
   };
 }

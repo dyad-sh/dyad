@@ -119,14 +119,13 @@ export function createFirstPromptCommandRunner(options: {
           return;
 
         case "ScheduleSettle":
-          await new Promise<void>((resolve) => {
+          {
             const handle = options.clock.schedule(() => {
               settleHandles.delete(handle);
               if (!disposed) emit({ type: "SETTLED" });
-              resolve();
             }, options.getSettleDelayMs());
             settleHandles.add(handle);
-          });
+          }
           return;
 
         case "RefreshQueries":

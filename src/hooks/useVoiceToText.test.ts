@@ -1,4 +1,5 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import {
@@ -91,12 +92,61 @@ describe("useVoiceToText", () => {
     expect(result.current.isRecording).toBe(true);
 
     unmount();
+    await act(() => Promise.resolve());
 
     expect(mediaRecorderInstances).toHaveLength(1);
     expect(mediaRecorderInstances[0].stop).toHaveBeenCalledTimes(1);
     expect(trackStopMock).toHaveBeenCalledTimes(1);
     expect(transcribeAudioMock).not.toHaveBeenCalled();
     expect(onTranscription).not.toHaveBeenCalled();
+  });
+
+  it("survives StrictMode effect replay and disposes on final unmount", async () => {
+    const onTranscription = vi.fn();
+    const { result, unmount } = renderHook(
+      () => useVoiceToText({ enabled: true, onTranscription }),
+      { wrapper: StrictMode },
+    );
+    await act(() => Promise.resolve());
+
+    await act(async () => {
+      result.current.toggleRecording();
+      await Promise.resolve();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+    expect(mediaRecorderInstances).toHaveLength(1);
+    unmount();
+    await act(() => Promise.resolve());
+    expect(mediaRecorderInstances[0].stop).toHaveBeenCalledTimes(1);
+    expect(trackStopMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases microphone media acquired after unmount", async () => {
+    let resolveMedia: ((stream: MediaStream) => void) | undefined;
+    const lateTrackStop = vi.fn();
+    const lateStream = {
+      getTracks: () => [{ stop: lateTrackStop }],
+    } as unknown as MediaStream;
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValue(
+      new Promise((resolve) => {
+        resolveMedia = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useVoiceToText({ enabled: true, onTranscription: vi.fn() }),
+    );
+    act(() => result.current.toggleRecording());
+    unmount();
+
+    await act(async () => {
+      resolveMedia?.(lateStream);
+      await Promise.resolve();
+    });
+
+    expect(lateTrackStop).toHaveBeenCalledTimes(1);
+    expect(mediaRecorderInstances).toHaveLength(0);
   });
 
   it("still transcribes when recording is stopped by the user", async () => {

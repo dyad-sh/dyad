@@ -10,6 +10,7 @@ const MACHINE_DIRECTORIES = [
   "connection_flow",
   "plan_handoff",
   "version_preview",
+  "voice_to_text",
 ] as const;
 
 function productionFiles(directory: string): string[] {

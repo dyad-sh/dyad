@@ -46,6 +46,11 @@ dropped. Main-process machines should use an explicitly constructed registry
 with injected timers, IDs, and broadcasts; renderer machines use the shared
 keyed host.
 
+New machines must inject `Clock` and `IdSource` from `src/state_machines/clock.ts`
+when they schedule timers, read wall time, or mint operation identities. Use
+`createFakeClock` and `createSequentialIdSource` in tests instead of fake global
+timers or nondeterministic UUIDs; retrofitting existing machines is optional.
+
 ## Composition
 
 - Machines communicate through typed facades injected in their dependency

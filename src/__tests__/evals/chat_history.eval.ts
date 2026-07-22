@@ -274,100 +274,96 @@ const canRun = hasDyadProKey() && scenarios.length > 0;
 
   for (const job of jobs) {
     const name = `${job.query.id} · ${job.arm} · ${job.model.label} · rep${job.rep}`;
-    it.concurrent(
-      name,
-      async () => {
-        const base: RunRecord = {
-          category: job.scenario.category,
-          query_id: job.query.id,
-          expected: job.query.expected,
-          arm: job.arm,
-          model: job.model.label,
-          rep: job.rep,
-        };
-        try {
-          await gate(async () => {
-            const seeded = world.categories.get(job.scenario.category)!;
-            const model = getEvalModel(job.model.provider, job.model.name);
-            let arm: ArmResult;
-            if (job.arm === "current") {
-              arm = await runCurrentArm({
-                model,
-                ctx: makeEvalContext(seeded),
-                appName: job.scenario.app.name,
-                question: job.query.question,
-              });
-            } else if (job.arm === "subagent") {
-              arm = await runSubagentArm({
-                model,
-                ctx: makeEvalContext(seeded),
-                appName: job.scenario.app.name,
-                question: job.query.question,
-              });
-            } else {
-              arm = await runControlArm({
-                model,
-                appName: job.scenario.app.name,
-                question: job.query.question,
-              });
-            }
-            const mech = scoreMechanically({
-              scenario: job.scenario,
-              query: job.query,
-              seeded,
-              answer: arm.answer,
-              toolRun: arm.toolRun,
+    it.concurrent(name, async () => {
+      const base: RunRecord = {
+        category: job.scenario.category,
+        query_id: job.query.id,
+        expected: job.query.expected,
+        arm: job.arm,
+        model: job.model.label,
+        rep: job.rep,
+      };
+      try {
+        await gate(async () => {
+          const seeded = world.categories.get(job.scenario.category)!;
+          const model = getEvalModel(job.model.provider, job.model.name);
+          let arm: ArmResult;
+          if (job.arm === "current") {
+            arm = await runCurrentArm({
+              model,
+              ctx: makeEvalContext(seeded),
+              appName: job.scenario.app.name,
+              question: job.query.question,
             });
-            const judge = await judgeAnswer({
-              judgeModel: judgeModel(),
-              query: job.query,
-              answer: arm.answer,
+          } else if (job.arm === "subagent") {
+            arm = await runSubagentArm({
+              model,
+              ctx: makeEvalContext(seeded),
+              appName: job.scenario.app.name,
+              question: job.query.question,
             });
-            recordRun({
-              ...base,
-              verdict: judge.verdict,
-              judge_reasoning: judge.reasoning,
-              atoms_all_hit: mech.atomsAllHit,
-              atom_groups_hit: mech.atomGroupsHit,
-              atom_groups_total: mech.atomGroupsTotal,
-              leaked_atoms: mech.leakedAtoms,
-              injection_complied: mech.injectionComplied,
-              gold_observed_all: mech.goldObservedAll,
-              gold_observed_any: mech.goldObservedAny,
-              earlier_atoms_mentioned: mech.earlierAtomsMentioned,
-              input_tokens: arm.usage.inputTokens,
-              output_tokens: arm.usage.outputTokens,
-              steps: arm.steps,
-              search_calls:
-                arm.toolRun?.log.filter((l) => l.tool === "search_chats")
-                  .length ?? 0,
-              read_calls:
-                arm.toolRun?.log.filter((l) => l.tool === "read_chat").length ??
-                0,
-              primary_context_bytes: arm.primaryContextBytes,
-              report_bytes: arm.reportBytes,
-              fabricated_citations: arm.fabricatedCitations,
-              valid_citations: arm.validCitations,
-              fallback_used: arm.fallbackUsed,
-              wall_ms: arm.wallMs,
-              answer: arm.answer,
-              report: arm.report,
-              tool_log: arm.toolRun?.log,
+          } else {
+            arm = await runControlArm({
+              model,
+              appName: job.scenario.app.name,
+              question: job.query.question,
             });
+          }
+          const mech = scoreMechanically({
+            scenario: job.scenario,
+            query: job.query,
+            seeded,
+            answer: arm.answer,
+            toolRun: arm.toolRun,
           });
-        } catch (error) {
+          const judge = await judgeAnswer({
+            judgeModel: judgeModel(),
+            query: job.query,
+            answer: arm.answer,
+          });
           recordRun({
             ...base,
-            error:
-              error instanceof Error
-                ? `${error.message}\n${error.stack}`
-                : String(error),
+            verdict: judge.verdict,
+            judge_reasoning: judge.reasoning,
+            atoms_all_hit: mech.atomsAllHit,
+            atom_groups_hit: mech.atomGroupsHit,
+            atom_groups_total: mech.atomGroupsTotal,
+            leaked_atoms: mech.leakedAtoms,
+            injection_complied: mech.injectionComplied,
+            gold_observed_all: mech.goldObservedAll,
+            gold_observed_any: mech.goldObservedAny,
+            earlier_atoms_mentioned: mech.earlierAtomsMentioned,
+            input_tokens: arm.usage.inputTokens,
+            output_tokens: arm.usage.outputTokens,
+            steps: arm.steps,
+            search_calls:
+              arm.toolRun?.log.filter((l) => l.tool === "search_chats")
+                .length ?? 0,
+            read_calls:
+              arm.toolRun?.log.filter((l) => l.tool === "read_chat").length ??
+              0,
+            primary_context_bytes: arm.primaryContextBytes,
+            report_bytes: arm.reportBytes,
+            fabricated_citations: arm.fabricatedCitations,
+            valid_citations: arm.validCitations,
+            fallback_used: arm.fallbackUsed,
+            wall_ms: arm.wallMs,
+            answer: arm.answer,
+            report: arm.report,
+            tool_log: arm.toolRun?.log,
           });
-        }
-        expect(true).toBe(true);
-      },
-      340_000,
-    );
+        });
+      } catch (error) {
+        recordRun({
+          ...base,
+          error:
+            error instanceof Error
+              ? `${error.message}\n${error.stack}`
+              : String(error),
+        });
+      }
+      expect(true).toBe(true);
+    }, 340_000);
   }
 });
 

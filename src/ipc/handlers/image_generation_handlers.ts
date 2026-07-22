@@ -26,6 +26,15 @@ const activeControllers = new Map<string, AbortController>();
 const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50 MB
 
+function throwIfGenerationCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new DyadError(
+      "Image generation cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
+  }
+}
+
 const THEME_SYSTEM_PROMPTS: Record<ImageThemeMode, string | null> = {
   plain: null,
   "3d-clay":
@@ -70,159 +79,166 @@ export function registerImageGenerationHandlers() {
         IMAGE_GENERATION_TIMEOUT_MS,
       );
 
-      let response: Response;
       try {
-        response = await fetch(`${getDyadEngineBaseUrl()}/images/generations`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "X-Dyad-Request-Id": requestId,
-          },
-          body: JSON.stringify({
-            prompt: fullPrompt,
-            model: "dyad/image-gen",
-          }),
-          signal: controller.signal,
-        });
-      } catch (error) {
-        activeControllers.delete(requestId);
-        if (error instanceof Error && error.name === "AbortError") {
+        let response: Response;
+        try {
+          response = await fetch(
+            `${getDyadEngineBaseUrl()}/images/generations`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+                "X-Dyad-Request-Id": requestId,
+              },
+              body: JSON.stringify({
+                prompt: fullPrompt,
+                model: "dyad/image-gen",
+              }),
+              signal: controller.signal,
+            },
+          );
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            throw new DyadError(
+              "Image generation cancelled or timed out.",
+              DyadErrorKind.UserCancelled,
+            );
+          }
           throw new DyadError(
-            "Image generation cancelled or timed out.",
-            DyadErrorKind.UserCancelled,
+            "Failed to connect to image generation service.",
+            DyadErrorKind.External,
+          );
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        if (!response.ok) {
+          // Only log status code and request ID — never log response body
+          // as it may echo back request details including credentials
+          logger.error(
+            `Image generation API error: HTTP ${response.status} (request: ${requestId})`,
+          );
+          throw new Error(
+            `Image generation failed (HTTP ${response.status}). Please try again.`,
           );
         }
-        throw new DyadError(
-          "Failed to connect to image generation service.",
-          DyadErrorKind.External,
-        );
-      } finally {
-        clearTimeout(timeoutId);
-      }
 
-      if (!response.ok) {
-        // Only log status code and request ID — never log response body
-        // as it may echo back request details including credentials
-        logger.error(
-          `Image generation API error: HTTP ${response.status} (request: ${requestId})`,
-        );
-        throw new Error(
-          `Image generation failed (HTTP ${response.status}). Please try again.`,
-        );
-      }
-
-      const rawData = await response.json();
-      const parsed = ImageGenerationApiResponseSchema.safeParse(rawData);
-      if (!parsed.success) {
-        logger.error("Invalid image generation response:", parsed.error);
-        throw new DyadError(
-          "Invalid response from image generation service",
-          DyadErrorKind.External,
-        );
-      }
-
-      const imageData = parsed.data.data[0];
-      if (!imageData?.b64_json && !imageData?.url) {
-        throw new DyadError(
-          "No image data returned from generation service",
-          DyadErrorKind.External,
-        );
-      }
-
-      // Prepare image data before acquiring lock (network I/O outside lock)
-      let imageBuffer: Buffer;
-      if (imageData.b64_json) {
-        imageBuffer = Buffer.from(imageData.b64_json, "base64");
-        if (imageBuffer.byteLength > MAX_IMAGE_SIZE) {
+        const rawData = await response.json();
+        const parsed = ImageGenerationApiResponseSchema.safeParse(rawData);
+        if (!parsed.success) {
+          logger.error("Invalid image generation response:", parsed.error);
           throw new DyadError(
-            "Decoded image exceeds maximum allowed size",
-            DyadErrorKind.Validation,
-          );
-        }
-      } else if (imageData.url) {
-        const imageUrl = new URL(imageData.url);
-        if (imageUrl.protocol !== "https:") {
-          throw new DyadError(
-            "Image URL must use HTTPS",
+            "Invalid response from image generation service",
             DyadErrorKind.External,
           );
         }
-        const dlController = new AbortController();
-        const dlTimeout = setTimeout(
-          () => dlController.abort(),
-          IMAGE_GENERATION_TIMEOUT_MS,
-        );
-        try {
-          const imgResponse = await fetch(imageData.url, {
-            signal: dlController.signal,
-          });
-          if (!imgResponse.ok) {
-            throw new Error(
-              `Failed to download image: ${imgResponse.status} ${imgResponse.statusText}`,
-            );
-          }
-          const arrayBuffer = await imgResponse.arrayBuffer();
-          if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
+
+        const imageData = parsed.data.data[0];
+        if (!imageData?.b64_json && !imageData?.url) {
+          throw new DyadError(
+            "No image data returned from generation service",
+            DyadErrorKind.External,
+          );
+        }
+
+        // Prepare image data before acquiring lock (network I/O outside lock)
+        let imageBuffer: Buffer;
+        if (imageData.b64_json) {
+          imageBuffer = Buffer.from(imageData.b64_json, "base64");
+          if (imageBuffer.byteLength > MAX_IMAGE_SIZE) {
             throw new DyadError(
-              "Downloaded image exceeds maximum allowed size",
+              "Decoded image exceeds maximum allowed size",
               DyadErrorKind.Validation,
             );
           }
-          imageBuffer = Buffer.from(arrayBuffer);
-        } catch (dlError) {
-          if (dlError instanceof Error && dlError.name === "AbortError") {
+        } else if (imageData.url) {
+          const imageUrl = new URL(imageData.url);
+          if (imageUrl.protocol !== "https:") {
             throw new DyadError(
-              "Image download timed out. Please try again.",
+              "Image URL must use HTTPS",
               DyadErrorKind.External,
             );
           }
-          throw dlError;
-        } finally {
-          clearTimeout(dlTimeout);
+          const downloadTimeoutSignal = AbortSignal.timeout(
+            IMAGE_GENERATION_TIMEOUT_MS,
+          );
+          try {
+            const imgResponse = await fetch(imageData.url, {
+              signal: AbortSignal.any([
+                controller.signal,
+                downloadTimeoutSignal,
+              ]),
+            });
+            if (!imgResponse.ok) {
+              throw new Error(
+                `Failed to download image: ${imgResponse.status} ${imgResponse.statusText}`,
+              );
+            }
+            const arrayBuffer = await imgResponse.arrayBuffer();
+            if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
+              throw new DyadError(
+                "Downloaded image exceeds maximum allowed size",
+                DyadErrorKind.Validation,
+              );
+            }
+            imageBuffer = Buffer.from(arrayBuffer);
+          } catch (dlError) {
+            if (dlError instanceof Error && dlError.name === "AbortError") {
+              throwIfGenerationCancelled(controller.signal);
+              throw new DyadError(
+                "Image download timed out. Please try again.",
+                DyadErrorKind.External,
+              );
+            }
+            throw dlError;
+          }
+        } else {
+          throw new DyadError(
+            "Unexpected image response format",
+            DyadErrorKind.External,
+          );
         }
-      } else {
-        throw new DyadError(
-          "Unexpected image response format",
-          DyadErrorKind.External,
+
+        throwIfGenerationCancelled(controller.signal);
+
+        // Save to app's media folder under lock (consistent with media CRUD handlers)
+        const { fileName, filePath, appPath } = await withLock(
+          `media:${params.targetAppId}`,
+          async () => {
+            const appPath = getDyadAppPath(app.path);
+            const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+            await fs.promises.mkdir(mediaDir, { recursive: true });
+
+            const timestamp = Date.now();
+            const sanitizedPrompt =
+              params.prompt
+                .slice(0, 30)
+                .replace(/[^a-zA-Z0-9]/g, "_")
+                .replace(/_+/g, "_")
+                .replace(/^_|_$/g, "")
+                .toLowerCase() || "image";
+            const fileName = `generated_${sanitizedPrompt}_${timestamp}.png`;
+            const filePath = safeJoin(mediaDir, fileName);
+
+            throwIfGenerationCancelled(controller.signal);
+            await fs.promises.writeFile(filePath, imageBuffer);
+
+            logger.log(`Generated image saved: ${filePath}`);
+            return { fileName, filePath, appPath: app.path };
+          },
         );
+
+        return {
+          fileName,
+          filePath,
+          appPath,
+          appId: app.id,
+          appName: app.name,
+        };
+      } finally {
+        activeControllers.delete(requestId);
       }
-
-      // Save to app's media folder under lock (consistent with media CRUD handlers)
-      const { fileName, filePath, appPath } = await withLock(
-        `media:${params.targetAppId}`,
-        async () => {
-          const appPath = getDyadAppPath(app.path);
-          const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
-          await fs.promises.mkdir(mediaDir, { recursive: true });
-
-          const timestamp = Date.now();
-          const sanitizedPrompt =
-            params.prompt
-              .slice(0, 30)
-              .replace(/[^a-zA-Z0-9]/g, "_")
-              .replace(/_+/g, "_")
-              .replace(/^_|_$/g, "")
-              .toLowerCase() || "image";
-          const fileName = `generated_${sanitizedPrompt}_${timestamp}.png`;
-          const filePath = safeJoin(mediaDir, fileName);
-
-          await fs.promises.writeFile(filePath, imageBuffer);
-
-          logger.log(`Generated image saved: ${filePath}`);
-          return { fileName, filePath, appPath: app.path };
-        },
-      );
-
-      activeControllers.delete(requestId);
-
-      return {
-        fileName,
-        filePath,
-        appPath,
-        appId: app.id,
-        appName: app.name,
-      };
     },
   );
 

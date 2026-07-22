@@ -1,4 +1,4 @@
-import { useAtom } from "jotai";
+import { useSetAtom, useStore } from "jotai";
 import {
   pendingContinuationProviderAtom,
   pendingIntegrationAtom,
@@ -25,14 +25,15 @@ import { useStreamChat } from "./useStreamChat";
  */
 export function useIntegrationContinuation() {
   const { streamMessage } = useStreamChat({ hasChatId: false });
-  const [pendingContinuationMap, setPendingContinuationMap] = useAtom(
-    pendingContinuationProviderAtom,
-  );
-  const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
-    pendingIntegrationAtom,
-  );
+  const store = useStore();
+  const setPendingContinuationMap = useSetAtom(pendingContinuationProviderAtom);
+  const setPendingIntegrationMap = useSetAtom(pendingIntegrationAtom);
   useStreamFinished(({ chatId }) => {
-    const continuationProvider = pendingContinuationMap.get(chatId);
+    // Read at event time: the Continue click writes this atom immediately
+    // before its IPC call can unblock and finish the current stream.
+    const continuationProvider = store
+      .get(pendingContinuationProviderAtom)
+      .get(chatId);
     if (continuationProvider) {
       setPendingContinuationMap((prev) => {
         if (!prev.has(chatId)) return prev;
@@ -44,7 +45,7 @@ export function useIntegrationContinuation() {
         chatId,
         prompt: `Continue. I have completed the ${continuationProvider} integration.`,
       });
-    } else if (pendingIntegrationMap.has(chatId)) {
+    } else if (store.get(pendingIntegrationAtom).has(chatId)) {
       // Stream ended without a Continue click — the backend has already
       // resolved/cleared its resolver (timeout, abort, or natural exit), so
       // the renderer's pending entry is stale. Drop it.

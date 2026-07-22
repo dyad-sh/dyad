@@ -96,7 +96,6 @@ export function HomeChatInput({
     handleDragOver,
     handleDragLeave,
     handleDrop,
-    clearAttachments,
     handlePaste,
     confirmPendingFiles,
     cancelPendingFiles,
@@ -134,9 +133,8 @@ export function HomeChatInput({
       return;
     }
 
-    // Clear attachments and selected app as part of submission process
-    clearAttachments();
-    setSelectedApp(null);
+    // The first-prompt saga owns clearing the snapshotted editing buffer at
+    // the same commit point as prompt dispatch.
     posthog.capture("chat:home_submit", {
       chatMode: settings?.selectedChatMode,
       existingApp: !!selectedApp,

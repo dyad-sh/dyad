@@ -8,6 +8,7 @@ const MACHINE_DIRECTORIES = [
   "app_run",
   "chat_stream",
   "connection_flow",
+  "first_prompt",
   "image_generation",
   "mcp_oauth",
   "plan_handoff",
@@ -157,5 +158,22 @@ describe("state-machine boundaries", () => {
       );
 
     expect(writers).toEqual(["image_generation/ImageGenerationProvider.tsx"]);
+  });
+
+  it("keeps the first-prompt projection writer inside its provider", () => {
+    const projectionAtomModule = path.join(
+      SOURCE_ROOT,
+      "first_prompt/projection.ts",
+    );
+    const writers = productionFiles(SOURCE_ROOT)
+      .filter((filePath) => filePath !== projectionAtomModule)
+      .filter((filePath) =>
+        fs
+          .readFileSync(filePath, "utf8")
+          .includes("firstPromptSagaProjectionWriteAtom"),
+      )
+      .map((filePath) => path.relative(SOURCE_ROOT, filePath));
+
+    expect(writers).toEqual(["first_prompt/FirstPromptProvider.tsx"]);
   });
 });

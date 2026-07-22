@@ -22,14 +22,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatTabs } from "@/components/chat/ChatTabs";
-import { pendingFirstPromptAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { firstPromptSagaAtom } from "@/first_prompt/projection";
+import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
+  const { hasArmedPayload } = useAtomValue(firstPromptSagaAtom);
+  const sendFirstPrompt = useFirstPromptSend();
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
@@ -45,8 +48,8 @@ export const TitleBar = () => {
         await refreshSettings();
         // Refetch user budget when Dyad Pro key is set via deep link
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
-        if (shouldResumeFirstPrompt) {
-          navigate({ to: "/", search: {}, replace: true });
+        if (hasArmedPayload) {
+          sendFirstPrompt({ type: "PROVIDER_CONFIGURED" });
         } else {
           setIsSuccessDialogOpen(true);
         }
@@ -57,10 +60,10 @@ export const TitleBar = () => {
   }, [
     clearLastDeepLink,
     lastDeepLink,
-    navigate,
+    hasArmedPayload,
     queryClient,
     refreshSettings,
-    shouldResumeFirstPrompt,
+    sendFirstPrompt,
   ]);
 
   const selectedApp = apps.find((app) => app.id === selectedAppId);

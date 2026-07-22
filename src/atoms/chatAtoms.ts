@@ -68,9 +68,6 @@ export const chatInputValueAtom = atom(
 export const homeChatInputValueAtom = atom<string>("");
 homeChatInputValueAtom.debugLabel = "homeChatInputValueAtom";
 
-export const pendingFirstPromptAtom = atom<boolean>(false);
-pendingFirstPromptAtom.debugLabel = "pendingFirstPromptAtom";
-
 export const homeSelectedAppAtom = atom<ListedApp | null>(null);
 homeSelectedAppAtom.debugLabel = "homeSelectedAppAtom";
 

@@ -99,6 +99,7 @@ import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationManager } from "@/image_generation/manager";
+import { FirstPromptProvider } from "@/first_prompt/FirstPromptProvider";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
@@ -664,19 +665,44 @@ export async function setupHybridChatHarness(
             request,
           }),
       };
+      const firstPromptChatStream = {
+        submit: (request: {
+          prompt: string;
+          chatId: number;
+          appId: number;
+          attachments: readonly FileAttachment[];
+          requestedChatMode?: "build" | "ask" | "local-agent" | "plan";
+        }) =>
+          chatStreamManager.ensure(request.chatId).send({
+            type: "submit",
+            request: {
+              ...request,
+              attachments: [...request.attachments],
+              selectedComponents: [],
+            },
+          }),
+      };
 
       const RootComponent = () => (
-        <PlanHandoffProvider chatStream={planHandoffChatStream}>
-          <div data-testid="hybrid-surface-root">
-            {opts.wireAppEvents !== false && <HybridAppShellHooks />}
-            {opts.withTitleBar && <TitleBar />}
-            {opts.withAppList && <AppList show />}
-            {opts.withChatList && <ChatList show />}
-            {opts.withPrivacyBanner && <PrivacyBanner />}
-            {opts.withSubscriptionStatusBanner && <SubscriptionStatusBanner />}
-            <Outlet />
-          </div>
-        </PlanHandoffProvider>
+        <FirstPromptProvider
+          chatStream={firstPromptChatStream}
+          clock={systemClock}
+          settleDelayMs={0}
+        >
+          <PlanHandoffProvider chatStream={planHandoffChatStream}>
+            <div data-testid="hybrid-surface-root">
+              {opts.wireAppEvents !== false && <HybridAppShellHooks />}
+              {opts.withTitleBar && <TitleBar />}
+              {opts.withAppList && <AppList show />}
+              {opts.withChatList && <ChatList show />}
+              {opts.withPrivacyBanner && <PrivacyBanner />}
+              {opts.withSubscriptionStatusBanner && (
+                <SubscriptionStatusBanner />
+              )}
+              <Outlet />
+            </div>
+          </PlanHandoffProvider>
+        </FirstPromptProvider>
       );
 
       // Private route tree: the harness uses the same route paths/search

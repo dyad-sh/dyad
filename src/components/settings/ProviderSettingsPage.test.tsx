@@ -6,11 +6,14 @@ import { DyadErrorKind } from "@/errors/dyad_error";
 import { ProviderSettingsPage } from "./ProviderSettingsPage";
 
 const mocks = vi.hoisted(() => ({
+  anyProviderSetup: false,
+  hasArmedPayload: false,
   navigate: vi.fn(),
   routerBack: vi.fn(),
   updateSettings: vi.fn(),
   validateProviderApiKey: vi.fn(),
   openExternalUrl: vi.fn(),
+  sendFirstPrompt: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -49,13 +52,17 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
     ],
     isLoading: false,
     error: null,
-    isAnyProviderSetup: () => false,
+    isAnyProviderSetup: () => mocks.anyProviderSetup,
   }),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => false,
+  useAtomValue: () => ({ hasArmedPayload: mocks.hasArmedPayload }),
+}));
+
+vi.mock("@/first_prompt/FirstPromptProvider", () => ({
+  useFirstPromptSend: () => mocks.sendFirstPrompt,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -106,11 +113,14 @@ async function saveApiKey() {
 
 describe("ProviderSettingsPage", () => {
   beforeEach(() => {
+    mocks.anyProviderSetup = false;
+    mocks.hasArmedPayload = false;
     mocks.navigate.mockReset();
     mocks.routerBack.mockReset();
     mocks.updateSettings.mockReset();
     mocks.validateProviderApiKey.mockReset();
     mocks.openExternalUrl.mockReset();
+    mocks.sendFirstPrompt.mockReset();
   });
 
   it("titles auth validation errors as rejected API keys", async () => {
@@ -123,6 +133,42 @@ describe("ProviderSettingsPage", () => {
 
     expect(await screen.findByText("API key rejected")).not.toBeNull();
     expect(screen.queryByText("API key check failed")).toBeNull();
+  });
+
+  it("notifies the first-prompt saga after saving the first provider", async () => {
+    mocks.hasArmedPayload = true;
+    mocks.validateProviderApiKey.mockResolvedValue(undefined);
+    mocks.updateSettings.mockResolvedValue(undefined);
+
+    renderProviderSettingsPage();
+    await saveApiKey();
+
+    await waitFor(() =>
+      expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({
+        type: "PROVIDER_CONFIGURED",
+      }),
+    );
+    expect(mocks.navigate).not.toHaveBeenCalledWith({
+      to: "/",
+      search: {},
+      replace: true,
+    });
+  });
+
+  it("notifies an armed saga when replacing an existing provider key", async () => {
+    mocks.anyProviderSetup = true;
+    mocks.hasArmedPayload = true;
+    mocks.validateProviderApiKey.mockResolvedValue(undefined);
+    mocks.updateSettings.mockResolvedValue(undefined);
+
+    renderProviderSettingsPage();
+    await saveApiKey();
+
+    await waitFor(() =>
+      expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({
+        type: "PROVIDER_CONFIGURED",
+      }),
+    );
   });
 
   it("nudges toward Paste & Save after returning from the provider website", async () => {

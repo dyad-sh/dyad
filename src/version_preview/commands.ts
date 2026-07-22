@@ -176,12 +176,14 @@ export function createVersionPreviewRuntime({
         appId,
         versionId,
         targetBranch,
+        expectedHeadOid,
         currentChatMessageId,
       }) =>
         mutateAndDiscard(appId, "restore", () =>
           ipc.version.revertVersion({
             appId,
             previousVersionId: versionId,
+            expectedHeadOid,
             targetBranchName: targetBranch ?? undefined,
             currentChatMessageId,
           }),

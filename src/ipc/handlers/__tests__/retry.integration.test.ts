@@ -14,6 +14,10 @@
 // mount) holds just the fixture's initial commit, so the Retry handler's
 // `versions[0].oid === lastMessage.commitHash` check is false and it takes the
 // plain `redo: true` path — the exact behavior the node test invoked directly.
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -30,6 +34,7 @@ describe("retry (hybrid)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
+      autoApprove: true,
       settings: { isTestMode: true },
     });
   }, 60_000);
@@ -105,5 +110,58 @@ describe("retry (hybrid)", () => {
     // The replacement rows are new db rows (old pair was deleted).
     expect(retriedMessages[0].id).not.toBe(firstMessages[0].id);
     expect(retriedMessages[1].id).not.toBe(firstMessages[1].id);
+  }, 60_000);
+
+  it("confirms before retry reverts an intermediate commit", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const sendTurn = async (prompt: string) => {
+      const end = harness.waitForNextStreamEnd(harness.chatId);
+      const { send } = await harness.typeInChat(prompt);
+      send();
+      await end;
+    };
+
+    await sendTurn("tc=write-index");
+    const manualPath = path.join(harness.appDir, "retry-manual-change.txt");
+    fs.writeFileSync(manualPath, "keep me\n");
+    execFileSync("git", ["add", "retry-manual-change.txt"], {
+      cwd: harness.appDir,
+    });
+    execFileSync("git", ["commit", "-m", "Manual work between AI turns"], {
+      cwd: harness.appDir,
+    });
+    await sendTurn("tc=write-index-2");
+
+    const messagesBefore = await harness.db.query.messages.findMany();
+    const retryButton = await screen.findByRole("button", { name: /Retry/ });
+    fireEvent.click(retryButton);
+
+    expect(
+      await screen.findByTestId("extra-commits-revert-dialog"),
+    ).toBeTruthy();
+    expect(screen.getByText("Manual work between AI turns")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("cancel-revert-button"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+    expect(fs.existsSync(manualPath)).toBe(true);
+    expect(await harness.db.query.messages.findMany()).toHaveLength(
+      messagesBefore.length,
+    );
+
+    const retriedStreamEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
+    await retriedStreamEnd;
+
+    expect(fs.existsSync(manualPath)).toBe(false);
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
   }, 60_000);
 });

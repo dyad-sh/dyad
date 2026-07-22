@@ -39,6 +39,7 @@ export interface VersionPreviewCommands {
     appId: number;
     versionId: string;
     targetBranch: string | null;
+    expectedHeadOid?: string;
     currentChatMessageId?: { chatId: number; messageId: number };
   }): Promise<void>;
   restoreToMessage(input: {
@@ -211,6 +212,7 @@ export class VersionPreviewController {
             appId: command.appId,
             versionId: command.versionId,
             targetBranch: command.targetBranch,
+            expectedHeadOid: command.expectedHeadOid,
             currentChatMessageId: command.currentChatMessageId,
           }),
           {

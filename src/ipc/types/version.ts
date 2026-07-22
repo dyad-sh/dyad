@@ -30,6 +30,7 @@ export const CurrentChatMessageIdSchema = z.object({
 export const RevertVersionParamsSchema = z.object({
   appId: z.number(),
   previousVersionId: z.string(),
+  expectedHeadOid: z.string().optional(),
   currentChatMessageId: CurrentChatMessageIdSchema.optional(),
   targetBranchName: z
     .string()

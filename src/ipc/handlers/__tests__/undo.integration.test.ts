@@ -13,6 +13,8 @@
 //
 // Covers the undo and "undo after assistant with no code" e2e scenarios.
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -120,8 +122,11 @@ describe("undo (integration)", () => {
 
     // Second undo: back to the pristine fixture (the e2e asserted the
     // scaffold's "Welcome to Your Blank App" page; in the minimal fixture the
-    // page written by the LLM simply doesn't exist initially).
+    // page written by the LLM simply doesn't exist initially). The first
+    // forward-revert commit and the previously undone turn are now extra
+    // commits relative to this older target, so confirmation is required.
     await clickUndo();
+    fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
     await waitFor(() =>
       expect(screen.getAllByText("Restored version").length).toBeGreaterThan(0),
     );
@@ -163,6 +168,67 @@ describe("undo (integration)", () => {
 
   it("undo with git", async () => {
     await runUndoCycle();
+  }, 60_000);
+
+  it("confirms before undoing an extra commit and supports cancellation", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    await sendTurn("tc=write-index");
+    await waitFor(
+      () => expect(screen.getByText(/And it's done!/)).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const manualPath = path.join(harness.appDir, "manual-change.txt");
+    fs.writeFileSync(manualPath, "keep me\n");
+    execFileSync("git", ["add", "manual-change.txt"], {
+      cwd: harness.appDir,
+    });
+    execFileSync("git", ["commit", "-m", "Manual work after AI turn"], {
+      cwd: harness.appDir,
+    });
+
+    await clickUndo();
+    expect(
+      await screen.findByTestId("extra-commits-revert-dialog"),
+    ).toBeTruthy();
+    expect(screen.getByText("Manual work after AI turn")).toBeTruthy();
+    expect(fs.existsSync(manualPath)).toBe(true);
+    expect(await loadMessages()).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId("cancel-revert-button"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+    expect(fs.existsSync(manualPath)).toBe(true);
+    expect(await loadMessages()).toHaveLength(2);
+
+    await clickUndo();
+    await screen.findByTestId("extra-commits-revert-dialog");
+    const racedPath = path.join(harness.appDir, "raced-change.txt");
+    fs.writeFileSync(racedPath, "newer work\n");
+    execFileSync("git", ["add", "raced-change.txt"], { cwd: harness.appDir });
+    execFileSync("git", ["commit", "-m", "Work created during confirmation"], {
+      cwd: harness.appDir,
+    });
+    fireEvent.click(screen.getByTestId("confirm-revert-anyway-button"));
+    await waitFor(() => expect(fs.existsSync(racedPath)).toBe(true));
+    expect(await loadMessages()).toHaveLength(2);
+
+    await clickUndo();
+    fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
+    await waitFor(() => expect(fs.existsSync(manualPath)).toBe(false), {
+      timeout: 15_000,
+    });
+    expect(fs.existsSync(racedPath)).toBe(false);
+    await waitFor(async () => expect(await loadMessages()).toHaveLength(0), {
+      timeout: 15_000,
+    });
+    await harness.bridge.settleInFlight();
   }, 60_000);
 
   it("undo after assistant with no code", async () => {

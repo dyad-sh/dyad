@@ -780,8 +780,13 @@ export function registerVersionHandlers() {
   });
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
-    const { appId, previousVersionId, currentChatMessageId, targetBranchName } =
-      params;
+    const {
+      appId,
+      previousVersionId,
+      expectedHeadOid,
+      currentChatMessageId,
+      targetBranchName,
+    } = params;
     return withLock(appId, async () => {
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
@@ -792,6 +797,16 @@ export function registerVersionHandlers() {
       }
 
       const appPath = getDyadAppPath(app.path);
+
+      if (expectedHeadOid) {
+        const currentHeadOid = await getCurrentCommitHash({ path: appPath });
+        if (currentHeadOid !== expectedHeadOid) {
+          throw new DyadError(
+            "The app's history changed since you confirmed. Please retry the undo.",
+            DyadErrorKind.Conflict,
+          );
+        }
+      }
 
       const { successMessage, warningMessage } = await revertCodebaseToVersion({
         appId,

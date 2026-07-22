@@ -142,3 +142,9 @@ For asynchronous Git actions driven through the renderer, file existence can
 change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or
 ending the test.
+
+When a renderer action awaits IPC post-effects that can outlive the first
+observable DOM or database update, call `await harness.bridge.settleInFlight()`
+before ending the test. Otherwise provider teardown can dispose the owning state
+machine while its command is still settling and produce misleading disposal
+errors after an otherwise successful assertion.

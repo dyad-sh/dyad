@@ -7,6 +7,7 @@ import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
+import type { SubagentPersona } from "@/ipc/types";
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { McpToolDef } from "./mcp_type_defs";
@@ -147,6 +148,12 @@ export interface AgentContext {
     toolDescription?: string | null;
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
+    abortSignal?: AbortSignal;
+    subagent?: {
+      threadId: string;
+      persona: Extract<SubagentPersona, "explorer" | "implementer">;
+      taskName: string;
+    };
   }) => Promise<boolean>;
   /**
    * Append a user message to be sent after the tool result.

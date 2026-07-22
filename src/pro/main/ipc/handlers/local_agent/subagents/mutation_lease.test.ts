@@ -8,6 +8,7 @@ import {
   beginAppFinalization,
   endAppFinalization,
   releaseMutationLease,
+  withMutationAdmission,
 } from "./mutation_lease";
 
 describe("sub-agent mutation lease", () => {
@@ -50,6 +51,30 @@ describe("sub-agent mutation lease", () => {
         scope: ["src/second"],
       }),
     ).toBe(false);
+  });
+
+  it("serializes root mutation work with Implementer admission", async () => {
+    let releaseRoot!: () => void;
+    const rootFinished = new Promise<void>((resolve) => {
+      releaseRoot = resolve;
+    });
+    const rootMutation = withMutationAdmission(7, () => rootFinished);
+    await Promise.resolve();
+
+    let implementerAdmitted = false;
+    const implementerAdmission = withMutationAdmission(7, async () => {
+      implementerAdmitted = acquireMutationLease({
+        appId: 7,
+        threadId: "implementer-1",
+        scope: ["src"],
+      });
+    });
+    await Promise.resolve();
+    expect(implementerAdmitted).toBe(false);
+
+    releaseRoot();
+    await Promise.all([rootMutation, implementerAdmission]);
+    expect(implementerAdmitted).toBe(true);
   });
 
   it("enforces the Implementer's explicit path scope", () => {

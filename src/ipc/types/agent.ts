@@ -22,6 +22,13 @@ export const AgentToolConsentRequestSchema = z.object({
   toolDescription: z.string().nullable().optional(),
   inputPreview: z.string().nullable().optional(),
   metadata: SqlConsentMetadataSchema.nullable().optional(),
+  subagent: z
+    .object({
+      threadId: z.string(),
+      persona: z.enum(["explorer", "implementer"]),
+      taskName: z.string(),
+    })
+    .optional(),
 });
 
 export type AgentToolConsentRequestPayload = z.infer<
@@ -322,6 +329,11 @@ export const agentEvents = {
   consentRequest: defineEvent({
     channel: "agent-tool:consent-request",
     payload: AgentToolConsentRequestSchema,
+  }),
+
+  consentResolved: defineEvent({
+    channel: "agent-tool:consent-resolved",
+    payload: z.object({ requestId: z.string() }),
   }),
 
   /**

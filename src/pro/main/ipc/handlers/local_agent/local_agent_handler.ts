@@ -760,6 +760,12 @@ export async function handleLocalAgentStream(
         toolDescription?: string | null;
         inputPreview?: string | null;
         metadata?: SqlConsentMetadata | null;
+        abortSignal?: AbortSignal;
+        subagent?: {
+          threadId: string;
+          persona: "explorer" | "implementer";
+          taskName: string;
+        };
       }) => {
         return requireAgentToolConsent(event, {
           chatId: chat.id,
@@ -767,7 +773,8 @@ export async function handleLocalAgentStream(
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
           metadata: params.metadata,
-          abortSignal: abortController.signal,
+          subagent: params.subagent,
+          abortSignal: params.abortSignal ?? abortController.signal,
         });
       },
       appendUserMessage: (content: UserMessageContentPart[]) => {

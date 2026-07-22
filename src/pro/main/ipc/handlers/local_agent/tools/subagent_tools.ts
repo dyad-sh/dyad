@@ -44,22 +44,31 @@ const spawnFallbackSchema = z.object({
   ...baseSpawnShape,
 });
 
-function buildSubagentToolSet(params: {
+interface SubagentToolContextParams {
   ctx: AgentContext;
   threadId: string;
   persona: "explorer" | "implementer";
+  taskName: string;
   scope: string[];
-}): ToolSet {
-  const { ctx, threadId, persona, scope } = params;
-  const allowlist =
-    persona === "explorer"
-      ? ["read_file", "list_files", "grep", "code_search", "compiler_explore"]
-      : ["read_file", "list_files", "grep", "write_file", "search_replace"];
-  const childCtx: AgentContext = {
+  abortSignal: AbortSignal;
+}
+
+export function buildSubagentContext(
+  params: SubagentToolContextParams,
+): AgentContext {
+  const { ctx, threadId, persona, taskName, scope, abortSignal } = params;
+  return {
     ...ctx,
     subagentThreadId: threadId,
     subagentPersona: persona,
     subagentPathScope: scope.map(normalizeMutationScope),
+    abortSignal,
+    requireConsent: (consent) =>
+      ctx.requireConsent({
+        ...consent,
+        abortSignal,
+        subagent: { threadId, persona, taskName },
+      }),
     allowDeploySideEffects: false,
     onSharedServerModuleChange: (relativePath) => {
       ctx.isSharedModulesChanged = true;
@@ -80,6 +89,15 @@ function buildSubagentToolSet(params: {
     onXmlStream: () => {},
     onXmlComplete: () => {},
   };
+}
+
+function buildSubagentToolSet(params: SubagentToolContextParams): ToolSet {
+  const { ctx, persona } = params;
+  const allowlist =
+    persona === "explorer"
+      ? ["read_file", "list_files", "grep", "code_search", "compiler_explore"]
+      : ["read_file", "list_files", "grep", "write_file", "search_replace"];
+  const childCtx = buildSubagentContext(params);
   const allTools = buildAgentToolSet(childCtx, {
     readOnly: persona === "explorer",
     enableAppBlueprint: ctx.enableAppBlueprint,
@@ -133,12 +151,10 @@ export const spawnAgentTool: ToolDefinition<
       taskName: args.task_name,
       assignment: args.assignment,
       scope: args.scope,
-      buildTools: (threadId) =>
+      buildTools: (child) =>
         buildSubagentToolSet({
           ctx,
-          threadId,
-          persona: args.persona,
-          scope: args.scope,
+          ...child,
         }),
     });
     ctx.spawnedSubagentThreadIds ??= [];
@@ -229,12 +245,10 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
       args.message,
       {
         ctx,
-        buildTools: (threadId, childPersona, scope) =>
+        buildTools: (child) =>
           buildSubagentToolSet({
             ctx,
-            threadId,
-            persona: childPersona,
-            scope,
+            ...child,
           }),
       },
     );

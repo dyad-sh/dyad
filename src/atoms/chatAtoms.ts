@@ -503,6 +503,11 @@ export interface PendingToolConsent {
   toolDescription?: string | null;
   inputPreview?: string | null;
   metadata?: SqlConsentMetadata | null;
+  subagent?: {
+    threadId: string;
+    persona: "explorer" | "implementer";
+    taskName: string;
+  };
   // MCP-only fields.
   serverId?: number;
   serverName?: string | null;

@@ -414,11 +414,11 @@ const ChatMessage = ({
             ) : null}
             {message.role === "assistant" &&
               isLastMessage &&
-              !isStreaming &&
               selectedChatId != null && (
                 <SubagentTeamCard
                   chatId={selectedChatId}
                   messageId={message.id}
+                  rootIsStreaming={isStreaming}
                 />
               )}
           </div>

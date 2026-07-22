@@ -31,6 +31,7 @@ import {
   endAppFinalization,
   hasMutationLease,
   releaseMutationLease,
+  withMutationAdmission,
 } from "./mutation_lease";
 import {
   parseReviewResult,
@@ -126,7 +127,13 @@ export async function spawnModelSubagent(params: {
   taskName: string;
   assignment: string;
   scope: string[];
-  buildTools: (threadId: string) => ToolSet;
+  buildTools: (params: {
+    threadId: string;
+    persona: "explorer" | "implementer";
+    taskName: string;
+    scope: string[];
+    abortSignal: AbortSignal;
+  }) => ToolSet;
 }): Promise<string> {
   assertPro(params.persona);
   assertPersonaEnabled(params.persona);
@@ -138,14 +145,16 @@ export async function spawnModelSubagent(params: {
   }
 
   const threadId = crypto.randomUUID();
-  if (
-    params.persona === "implementer" &&
-    !acquireMutationLease({
-      appId: params.ctx.appId,
-      threadId,
-      scope: params.scope,
-    })
-  ) {
+  const reserved =
+    params.persona !== "implementer" ||
+    (await withMutationAdmission(params.ctx.appId, async () =>
+      acquireMutationLease({
+        appId: params.ctx.appId,
+        threadId,
+        scope: params.scope,
+      }),
+    ));
+  if (!reserved) {
     throw new DyadError(
       "Another Implementer is already editing this app.",
       DyadErrorKind.Conflict,
@@ -166,14 +175,26 @@ export async function spawnModelSubagent(params: {
     releaseMutationLease(params.ctx.appId, threadId);
     throw error;
   }
-  const tools = params.buildTools(thread.id);
   const run = (assignment: string) =>
     enqueueRun({
       threadId: thread.id,
       chatId: params.ctx.chatId,
       source: "model",
       run: () =>
-        runThread(thread.id, params.ctx.appId, assignment, tools, params.scope),
+        runThread(
+          thread.id,
+          params.ctx.appId,
+          assignment,
+          (abortSignal) =>
+            params.buildTools({
+              threadId: thread.id,
+              persona: params.persona,
+              taskName: params.taskName,
+              scope: params.scope,
+              abortSignal,
+            }),
+          params.scope,
+        ),
     });
   followupRunners.set(thread.id, run);
   run(params.assignment);
@@ -608,7 +629,7 @@ export async function sendSubagentMessage(
   };
   if (thread.persona === "implementer") {
     const appId = await getThreadAppId(thread.chatId);
-    await withLock(`subagent-finalization:${appId}`, append);
+    await withMutationAdmission(appId, append);
   } else {
     await append();
   }
@@ -620,11 +641,13 @@ export async function followupSubagent(
   assignment: string,
   currentTurn?: {
     ctx: AgentContext;
-    buildTools: (
-      threadId: string,
-      persona: "explorer" | "implementer",
-      scope: string[],
-    ) => ToolSet;
+    buildTools: (params: {
+      threadId: string;
+      persona: "explorer" | "implementer";
+      taskName: string;
+      scope: string[];
+      abortSignal: AbortSignal;
+    }) => ToolSet;
   },
 ): Promise<SubagentPersona> {
   assertPro();
@@ -638,6 +661,7 @@ export async function followupSubagent(
   }
   let run = followupRunners.get(threadId);
   if (currentTurn && thread.persona !== "reviewer") {
+    const persona = thread.persona;
     if (currentTurn.ctx.chatId !== chatId) {
       throw new DyadError(
         "The follow-up must belong to the current root chat.",
@@ -649,7 +673,6 @@ export async function followupSubagent(
           (value): value is string => typeof value === "string",
         )
       : [];
-    const tools = currentTurn.buildTools(thread.id, thread.persona, scope);
     run = (nextAssignment: string) =>
       enqueueRun({
         threadId: thread.id,
@@ -660,7 +683,14 @@ export async function followupSubagent(
             thread.id,
             currentTurn.ctx.appId,
             nextAssignment,
-            tools,
+            (abortSignal) =>
+              currentTurn.buildTools({
+                threadId: thread.id,
+                persona,
+                taskName: thread.taskName,
+                scope,
+                abortSignal,
+              }),
             scope,
           ),
       });
@@ -719,10 +749,7 @@ export async function followupSubagent(
     }
   };
   if (thread.persona === "implementer") {
-    await withLock(
-      `subagent-finalization:${currentTurn!.ctx.appId}`,
-      appendAndSchedule,
-    );
+    await withMutationAdmission(currentTurn!.ctx.appId, appendAndSchedule);
   } else {
     await appendAndSchedule();
   }
@@ -793,37 +820,34 @@ export async function waitForSubagentsAndBeginFinalization(
       threadIds.length > 0
         ? await waitForSubagents(chatId, threadIds, abortSignal)
         : [];
-    const finalized = await withLock(
-      `subagent-finalization:${appId}`,
-      async () => {
-        const pending =
-          threadIds.length === 0
-            ? []
-            : await db.query.agentMessages.findMany({
-                where: and(
-                  inArray(agentMessages.threadId, [...new Set(threadIds)]),
-                  eq(agentMessages.consumed, false),
-                  eq(agentMessages.role, "root"),
-                ),
-              });
-        const pendingIds = new Set(pending.map((message) => message.threadId));
-        const rows = await Promise.all(
-          [...new Set(threadIds)].map((id) => getOwnedThread(chatId, id)),
-        );
-        if (
-          !rows.every((row) =>
-            isSubagentJoinReady(
-              row.status,
-              pendingIds.has(row.id),
-              followupRunners.has(row.id),
-            ),
-          )
-        ) {
-          return false;
-        }
-        return beginAppFinalization(appId);
-      },
-    );
+    const finalized = await withMutationAdmission(appId, async () => {
+      const pending =
+        threadIds.length === 0
+          ? []
+          : await db.query.agentMessages.findMany({
+              where: and(
+                inArray(agentMessages.threadId, [...new Set(threadIds)]),
+                eq(agentMessages.consumed, false),
+                eq(agentMessages.role, "root"),
+              ),
+            });
+      const pendingIds = new Set(pending.map((message) => message.threadId));
+      const rows = await Promise.all(
+        [...new Set(threadIds)].map((id) => getOwnedThread(chatId, id)),
+      );
+      if (
+        !rows.every((row) =>
+          isSubagentJoinReady(
+            row.status,
+            pendingIds.has(row.id),
+            followupRunners.has(row.id),
+          ),
+        )
+      ) {
+        return false;
+      }
+      return beginAppFinalization(appId);
+    });
     if (finalized) return summaries;
     await waitForAbortableDelay(250, abortSignal);
   }
@@ -841,7 +865,7 @@ async function runThread(
   threadId: string,
   appId: number,
   assignment: string,
-  tools: ToolSet,
+  buildTools: (abortSignal: AbortSignal) => ToolSet,
   scope: string[],
 ): Promise<void> {
   const thread = await getThread(threadId);
@@ -863,6 +887,7 @@ async function runThread(
     }
     if (controller.signal.aborted || cancelledThreadIds.has(threadId)) return;
     if (!(await updateStatus(threadId, "running"))) return;
+    const tools = buildTools(controller.signal);
     const result = await runModel({
       threadId,
       appId,

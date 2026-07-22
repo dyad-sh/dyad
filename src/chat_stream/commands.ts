@@ -53,6 +53,7 @@ import {
   type ReviewRemediationOutcome,
 } from "@/hooks/subagentReviewOrchestration";
 import {
+  clearPendingReviewContinuation,
   hasPendingReviewContinuation,
   resumePendingReviewContinuation,
   setPendingReviewContinuation,
@@ -240,6 +241,20 @@ function invalidatePostStreamQueries(
     });
   }
   queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
+}
+
+function releaseAbandonedReviewContinuation(
+  store: JotaiStore,
+  chatId: number,
+): void {
+  if (!hasPendingReviewContinuation(chatId)) return;
+  clearPendingReviewContinuation(chatId);
+  reviewBarrierPassed.add(chatId);
+  store.set(reviewBarrierHeldByIdAtom, (prev) => {
+    const next = new Map(prev);
+    next.set(chatId, false);
+    return next;
+  });
 }
 
 // =============================================================================
@@ -583,6 +598,9 @@ export const productionChatStreamCommands: ChatStreamCommands = {
         pausePromptQueue: response.pausePromptQueue,
         hasPendingContinuation: hasPendingReviewContinuation(chatId),
       });
+      if (response.wasCancelled) {
+        releaseAbandonedReviewContinuation(store, chatId);
+      }
       if (
         shouldStartBackgroundAutoReview({
           updatedFiles: response.updatedFiles === true,
@@ -682,6 +700,7 @@ export const productionChatStreamCommands: ChatStreamCommands = {
 
     syncChatFromDb(chatId, makeSetMessagesById(store), "[CHAT] onError", store);
     invalidatePostStreamQueries(queryClient, targetAppId);
+    releaseAbandonedReviewContinuation(store, chatId);
     request.onSettled?.({ success: false });
   },
 
@@ -750,10 +769,17 @@ export const productionChatStreamCommands: ChatStreamCommands = {
           onRemediationPaused: () => {
             setPendingReviewContinuation(chatId, async () => {
               try {
-                await ipc.agent.runAutoReviewBarrier({
-                  chatId,
-                  verification: true,
-                });
+                try {
+                  await ipc.agent.runAutoReviewBarrier({
+                    chatId,
+                    verification: true,
+                  });
+                } catch (error) {
+                  console.warn(
+                    `[CHAT] Verification review failed for ${chatId}:`,
+                    error,
+                  );
+                }
               } finally {
                 reviewBarrierPassed.add(chatId);
                 store.set(reviewBarrierHeldByIdAtom, (prev) => {

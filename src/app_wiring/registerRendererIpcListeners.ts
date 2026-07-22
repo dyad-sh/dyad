@@ -82,8 +82,17 @@ export function registerRendererIpcListeners({
           toolDescription: payload.toolDescription,
           inputPreview: payload.inputPreview,
           metadata: payload.metadata,
+          subagent: payload.subagent,
         },
       ]);
+    }),
+  );
+
+  unsubscribes.push(
+    ipcClient.events.agent.onConsentResolved(({ requestId }) => {
+      store.set(pendingToolConsentsAtom, (prev) =>
+        prev.filter((consent) => consent.requestId !== requestId),
+      );
     }),
   );
 

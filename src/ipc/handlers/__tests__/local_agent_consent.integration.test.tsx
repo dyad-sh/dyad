@@ -118,19 +118,36 @@ describe("local-agent consent banner (integration)", () => {
       toolName: "add_dependency",
       toolDescription: "Install npm packages",
       abortSignal: abortController.signal,
+      subagent: {
+        threadId: "implementer-1",
+        persona: "implementer",
+        taskName: "Update dependencies",
+      },
     });
 
     const requestEvent = harness.bridge.sentEvents
       .slice(eventBaseline)
       .find((event) => event.channel === "agent-tool:consent-request");
-    expect(requestEvent?.args[0]).toMatchObject({
+    const requestPayload = requestEvent?.args[0] as { requestId: string };
+    expect(requestPayload).toMatchObject({
       chatId: harness.chatId,
       toolName: "add_dependency",
+      subagent: {
+        threadId: "implementer-1",
+        persona: "implementer",
+        taskName: "Update dependencies",
+      },
     });
-    expect(requestEvent?.args[0]).not.toHaveProperty("abortSignal");
+    expect(requestPayload).not.toHaveProperty("abortSignal");
 
     abortController.abort();
     await expect(consent).resolves.toBe(false);
+    expect(
+      harness.bridge.sentEvents
+        .slice(eventBaseline)
+        .find((event) => event.channel === "agent-tool:consent-resolved")
+        ?.args[0],
+    ).toEqual({ requestId: requestPayload.requestId });
   });
 
   async function lastAssistantContent(chatId: number) {

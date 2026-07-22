@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { withLock } from "@/ipc/utils/lock_utils";
 import type { AgentContext } from "../tools/types";
 
 interface MutationLease {
@@ -10,6 +11,13 @@ interface MutationLease {
 
 const leases = new Map<number, MutationLease>();
 const finalizingApps = new Set<number>();
+
+export function withMutationAdmission<T>(
+  appId: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  return withLock(`subagent-finalization:${appId}`, operation);
+}
 
 export function acquireMutationLease(params: {
   appId: number;

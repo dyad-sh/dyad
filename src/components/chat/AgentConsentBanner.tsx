@@ -123,6 +123,14 @@ export function AgentConsentBanner({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+        {consent.subagent && (
+          <p className="ml-6 mb-1.5 text-xs text-muted-foreground">
+            Requested by {consent.subagent.persona}{" "}
+            <span className="font-medium text-foreground">
+              {consent.subagent.taskName}
+            </span>
+          </p>
+        )}
         {classifierPending ? (
           <div
             className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"

@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Loader2,
   SearchCheck,
+  Square,
   Wrench,
 } from "lucide-react";
 
@@ -34,9 +35,11 @@ const MAX_RENDERED_REPORT_CHARS = 100_000;
 export function SubagentTeamCard({
   chatId,
   messageId,
+  rootIsStreaming = false,
 }: {
   chatId: number;
   messageId: number;
+  rootIsStreaming?: boolean;
 }) {
   const { settings } = useSettings();
   const { streamMessage } = useStreamChat();
@@ -61,6 +64,12 @@ export function SubagentTeamCard({
   const startReviewMutation = useMutation({
     mutationFn: () =>
       ipc.agent.startReview({ chatId, sourceMessageId: messageId }),
+    onSuccess: invalidateThreads,
+    onError: (error) => showError(error),
+  });
+  const cancelMutation = useMutation({
+    mutationFn: (threadId: string) =>
+      ipc.agent.cancelSubagent({ chatId, threadId }),
     onSuccess: invalidateThreads,
     onError: (error) => showError(error),
   });
@@ -221,6 +230,7 @@ export function SubagentTeamCard({
   const findingCount = Number(review?.result?.findingCount ?? 0);
   const report =
     typeof review?.result?.report === "string" ? review.result.report : null;
+  if (rootIsStreaming && visibleThreads.length === 0) return null;
 
   return (
     <div className="mt-3 rounded-lg border bg-muted/20 text-sm">
@@ -247,6 +257,7 @@ export function SubagentTeamCard({
           variant="outline"
           disabled={
             startReviewMutation.isPending ||
+            rootIsStreaming ||
             review?.status === "running" ||
             review?.status === "queued"
           }
@@ -273,9 +284,28 @@ export function SubagentTeamCard({
                     {thread.taskName}
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {statusLabel(thread)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {statusLabel(thread)}
+                  </span>
+                  {isSubagentCancellable(thread.status) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Stop ${thread.persona} ${thread.taskName}`}
+                      disabled={cancelMutation.isPending}
+                      onClick={() => cancelMutation.mutate(thread.id)}
+                    >
+                      {cancelMutation.isPending &&
+                      cancelMutation.variables === thread.id ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Square className="mr-1 h-3.5 w-3.5" />
+                      )}
+                      Stop
+                    </Button>
+                  )}
+                </div>
               </div>
               {(thread.inputTokens > 0 || thread.outputTokens > 0) && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -492,4 +522,20 @@ function statusLabel(thread: SubagentThreadSummary): string {
       : `${count} finding${count === 1 ? "" : "s"}`;
   }
   return thread.status.replaceAll("_", " ");
+}
+
+function isSubagentCancellable(
+  status: SubagentThreadSummary["status"],
+): boolean {
+  return [
+    "queued",
+    "running",
+    "idle",
+    "waiting_for_writer",
+    "waiting_for_auto_review",
+    "auto_fix_countdown",
+    "fixing_findings",
+    "verification_review",
+    "needs_approval",
+  ].includes(status);
 }

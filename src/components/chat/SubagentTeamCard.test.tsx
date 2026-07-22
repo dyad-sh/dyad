@@ -12,6 +12,7 @@ import {
 import { SubagentTeamCard } from "./SubagentTeamCard";
 
 const mocks = vi.hoisted(() => ({
+  cancelSubagent: vi.fn(),
   fixReviewFindings: vi.fn(),
   followupSubagent: vi.fn(),
   getSubagentMessages: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/ipc/types")>()),
   ipc: {
     agent: {
+      cancelSubagent: mocks.cancelSubagent,
       fixReviewFindings: mocks.fixReviewFindings,
       followupSubagent: mocks.followupSubagent,
       getSubagentMessages: mocks.getSubagentMessages,
@@ -116,6 +118,7 @@ describe("SubagentTeamCard", () => {
     clearPendingReviewContinuation(7);
     mocks.onSubagentUpdate.mockReturnValue(vi.fn());
     mocks.startReview.mockResolvedValue(undefined);
+    mocks.cancelSubagent.mockResolvedValue(undefined);
     mocks.sendSubagentMessage.mockResolvedValue(undefined);
     mocks.followupSubagent.mockResolvedValue("explorer");
     mocks.getSubagentMessages.mockResolvedValue([]);
@@ -181,6 +184,39 @@ describe("SubagentTeamCard", () => {
         sourceMessageId: 42,
       });
     });
+  });
+
+  it("stops an active child and refreshes the team", async () => {
+    mocks.listSubagents.mockResolvedValue([
+      {
+        ...makeReview("explorer-thread", 42, "exploration report"),
+        persona: "explorer",
+        taskName: "Find auth flow",
+        status: "running",
+      },
+    ]);
+
+    render(<SubagentTeamCard chatId={7} messageId={42} rootIsStreaming />, {
+      wrapper: makeWrapper(),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Stop explorer Find auth flow",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.cancelSubagent).toHaveBeenCalledWith({
+        chatId: 7,
+        threadId: "explorer-thread",
+      });
+    });
+    expect(
+      screen
+        .getByRole("button", { name: "Review changes" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("verifies a manual fix after a step-limit continuation completes", async () => {

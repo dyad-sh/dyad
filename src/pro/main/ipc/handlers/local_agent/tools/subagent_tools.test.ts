@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildSubagentContext,
   cancelAgentTool,
   compilerExploreTool,
   followupTaskTool,
@@ -12,6 +13,40 @@ import {
 import type { AgentContext } from "./types";
 
 describe("spawn_agent schema", () => {
+  it("binds child consent and tools to the child abort signal", async () => {
+    const requireConsent = vi.fn(async () => true);
+    const rootSignal = new AbortController().signal;
+    const childSignal = new AbortController().signal;
+    const child = buildSubagentContext({
+      ctx: {
+        requireConsent,
+        abortSignal: rootSignal,
+        sharedServerModulePaths: [],
+        pendingFunctionDeploys: [],
+        fileEditTracker: { attemptsByFile: new Map() },
+      } as unknown as AgentContext,
+      threadId: "child-1",
+      persona: "implementer",
+      taskName: "Edit auth flow",
+      scope: ["./src/auth/"],
+      abortSignal: childSignal,
+    });
+
+    await child.requireConsent({ toolName: "write_file" });
+
+    expect(child.abortSignal).toBe(childSignal);
+    expect(child.subagentPathScope).toEqual(["src/auth"]);
+    expect(requireConsent).toHaveBeenCalledWith({
+      toolName: "write_file",
+      abortSignal: childSignal,
+      subagent: {
+        threadId: "child-1",
+        persona: "implementer",
+        taskName: "Edit auth flow",
+      },
+    });
+  });
+
   it("keeps schema introspection safe when no spawn persona is enabled", () => {
     const schema = spawnAgentTool.getInputSchema?.({
       canUseExplorerSubagent: false,

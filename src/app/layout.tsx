@@ -16,7 +16,7 @@ import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
-import { useQueueProcessor } from "@/hooks/useQueueProcessor";
+import { useChatStreamRuntime } from "@/hooks/useChatStream";
 import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
@@ -73,8 +73,10 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
     true,
   );
 
-  // Process queued messages globally (even when not on chat page)
-  useQueueProcessor();
+  // Wire the chat stream machine's runtime (side-effect adapter). Streams
+  // and queued-message dispatch keep running globally, even when the chat
+  // page is closed.
+  useChatStreamRuntime();
 
   // Persist queued messages to disk and hydrate them on startup, so queued
   // prompts survive app restarts / crashes.

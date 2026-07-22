@@ -443,14 +443,24 @@ export function createStreamClient<
   // the exact key type from TInput[TKey] due to Zod v4 type system limitations.
   type KeyValue = string | number;
 
-  const streams = new Map<
-    KeyValue,
-    {
+  interface StreamEntry {
+    callbacks: {
       onChunk: (data: z.infer<TChunk>) => void;
       onEnd: (data: z.infer<TEnd>) => void;
       onError: (data: z.infer<TError>) => void;
-    }
-  >();
+    };
+    /** Monotonic per-client stream generation; identifies this start() call. */
+    streamId: number;
+    /** When true (default), the entry is removed on end/error events. */
+    autoRelease: boolean;
+  }
+
+  const streams = new Map<KeyValue, StreamEntry>();
+
+  // Monotonic generation counter: every start() gets a fresh streamId so
+  // stale end/error/chunk events can be rejected structurally (an entry that
+  // has been replaced or released never receives another event).
+  let nextStreamId = 0;
 
   let listenersSetUp = false;
 
@@ -466,7 +476,7 @@ export function createStreamClient<
         const key = (parsed.data as Record<string, unknown>)[
           contract.keyField
         ] as KeyValue;
-        streams.get(key)?.onChunk(parsed.data);
+        streams.get(key)?.callbacks.onChunk(parsed.data);
       }
     });
 
@@ -476,11 +486,12 @@ export function createStreamClient<
         const key = (parsed.data as Record<string, unknown>)[
           contract.keyField
         ] as KeyValue;
-        const callbacks = streams.get(key);
-        callbacks?.onEnd(parsed.data);
+        const entry = streams.get(key);
+        if (!entry) return;
+        entry.callbacks.onEnd(parsed.data);
         // The terminal callback may synchronously start another stream with
         // the same key. Only clean up the generation that actually ended.
-        if (streams.get(key) === callbacks) {
+        if (entry.autoRelease && streams.get(key) === entry) {
           streams.delete(key);
         }
       }
@@ -492,10 +503,11 @@ export function createStreamClient<
         const key = (parsed.data as Record<string, unknown>)[
           contract.keyField
         ] as KeyValue;
-        const callbacks = streams.get(key);
-        callbacks?.onError(parsed.data);
+        const entry = streams.get(key);
+        if (!entry) return;
+        entry.callbacks.onError(parsed.data);
         // The error callback may synchronously replace this stream.
-        if (streams.get(key) === callbacks) {
+        if (entry.autoRelease && streams.get(key) === entry) {
           streams.delete(key);
         }
       }
@@ -507,6 +519,11 @@ export function createStreamClient<
   return {
     /**
      * Start a stream with the given input and callbacks.
+     *
+     * Returns the monotonic streamId identifying this start() call. With
+     * `autoRelease: false` the entry keeps receiving events after end/error
+     * until `release(key, streamId)` is called (used by the chat stream
+     * controller, which owns terminal reconciliation).
      */
     start(
       input: Input,
@@ -515,8 +532,14 @@ export function createStreamClient<
         onEnd: (data: z.infer<TEnd>) => void;
         onError: (data: z.infer<TError>) => void;
       },
-    ): void {
+      opts?: { streamId?: number; autoRelease?: boolean },
+    ): number {
       setupListeners();
+
+      const streamId = opts?.streamId ?? ++nextStreamId;
+      if (streamId > nextStreamId) {
+        nextStreamId = streamId;
+      }
 
       const ipcRenderer = getIpcRenderer();
       if (!ipcRenderer) {
@@ -526,30 +549,49 @@ export function createStreamClient<
           ],
           error: "IPC renderer not available",
         } as any);
-        return;
+        return streamId;
       }
 
       const key = (input as Record<string, unknown>)[
         contract.keyField
       ] as KeyValue;
-      streams.set(key, callbacks);
+      const entry: StreamEntry = {
+        callbacks,
+        streamId,
+        autoRelease: opts?.autoRelease !== false,
+      };
+      streams.set(key, entry);
 
       ipcRenderer.invoke(contract.channel, input).catch((err: Error) => {
+        // Only surface the failure if this start() call still owns the entry.
+        if (streams.get(key) !== entry) return;
         callbacks.onError({
           [contract.keyField]: key,
           error: err.message,
         } as any);
         // The error callback may synchronously replace this stream.
-        if (streams.get(key) === callbacks) {
+        if (streams.get(key) === entry) {
           streams.delete(key);
         }
       });
+      return streamId;
     },
 
     /**
      * Cancel a stream by its key value.
      */
     cancel(key: KeyValue): void {
+      streams.delete(key);
+    },
+
+    /**
+     * Release a stream entry. When `streamId` is given, only releases if the
+     * current entry belongs to that generation (stale releases are no-ops).
+     */
+    release(key: KeyValue, streamId?: number): void {
+      const entry = streams.get(key);
+      if (!entry) return;
+      if (streamId !== undefined && entry.streamId !== streamId) return;
       streams.delete(key);
     },
 

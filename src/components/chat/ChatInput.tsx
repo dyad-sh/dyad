@@ -148,8 +148,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
   const {
     streamMessage,
+    cancelStream,
     isStreaming,
-    setIsStreaming,
     error,
     setError,
     queuedMessages,
@@ -162,7 +162,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     pauseQueue,
     clearPauseOnly,
     resumeQueue,
-    clearCompletionFlag,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -670,10 +669,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
     // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {
-      clearCompletionFlag();
-      ipc.chat.cancelStream(chatId);
+      // The stream machine reconciles the cancel with the real terminal
+      // event (including cancels fired before main registered the stream).
+      cancelStream();
     }
-    setIsStreaming(false);
   };
 
   const dismissError = () => {

@@ -10,6 +10,7 @@ import {
   streamingPreviewByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { ensureController } from "@/chat_stream/registry";
 import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -184,6 +185,10 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               "[CHAT] Merge conflict onEnd",
               store,
             );
+            // This stream ran OUTSIDE the chat stream machine; poke it now
+            // that the projection is cleared so prompts queued during this
+            // stream drain (no-op when the queue is empty or paused).
+            ensureController(newChatId).send({ type: "queue-poked" });
           },
           onError: ({ error }) => {
             showError(error || "Failed to resolve conflicts");
@@ -203,6 +208,9 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               "[CHAT] Merge conflict onError",
               store,
             );
+            // See onEnd: drain prompts queued during this non-machine
+            // stream.
+            ensureController(newChatId).send({ type: "queue-poked" });
           },
         },
       );

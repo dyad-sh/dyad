@@ -1,168 +1,53 @@
 import { useCallback } from "react";
 import type { ComponentSelection, FileAttachment } from "@/ipc/types";
-import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatErrorByIdAtom,
-  chatMessagesByIdAtom,
-  chatStreamCountByIdAtom,
   isStreamingByIdAtom,
-  recentStreamChatIdsAtom,
   queuedMessagesByIdAtom,
-  streamCompletedSuccessfullyByIdAtom,
-  streamingPreviewByChatIdAtom,
   queuePausedByIdAtom,
-  publishChatCompletionEventAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
-import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { pendingScreenshotAppIdAtom } from "@/atoms/previewAtoms";
-import type { ChatResponseEnd, Chat } from "@/ipc/types";
-import { useChats } from "./useChats";
-import { useLoadApp } from "./useLoadApp";
-import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
-import {
-  applyPreviewChunk,
-  clearPreviewForChat,
-} from "@/lib/streamingPreviewSync";
-import {
-  triggerResync,
-  syncChatFromDb,
-  mergeResyncMessages,
-} from "@/lib/resyncChat";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
-import { useVersions } from "./useVersions";
-import { showError, showExtraFilesToast, showWarning } from "@/lib/toast";
+import type { Chat } from "@/ipc/types";
+import { ensureController } from "@/chat_stream/registry";
+import type { StreamSettledResult } from "@/chat_stream/state";
+import { isStreamActive } from "@/chat_stream/transition";
+import { showError } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
-import { useRunApp } from "./useRunApp";
-import { useCountTokens } from "./useCountTokens";
-import { useUserBudgetInfo } from "./useUserBudgetInfo";
-import { usePostHog } from "posthog-js/react";
-
-import { useSettings } from "./useSettings";
-import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queryKeys";
-import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
-import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
-import { resolveAppIdForChat } from "@/lib/chatUtils";
-import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
-import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
-import { isFreeProModel } from "@/lib/freeProModel";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
-import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
 }
 
-// Module-level set to track chatIds with active/pending streams
-// This prevents race conditions when clicking rapidly before state updates
-const pendingStreamChatIds = new Set<number>();
-
-// Throttled ack scheduler for the canned test stream's ack-based
-// backpressure. Stores the highest chunkSeq received per chatId; at most
-// one ack per ACK_THROTTLE_MS is sent per chatId, carrying the latest
-// received seq. Real LLM streams omit chunkSeq, so the scheduler is never
-// armed for them.
-const ACK_THROTTLE_MS = 250;
-const latestChunkByChatId = new Map<number, number>();
-const ackTimerByChatId = new Map<number, ReturnType<typeof setTimeout>>();
-
-function scheduleThrottledAck(chatId: number): void {
-  if (ackTimerByChatId.has(chatId)) return;
-  const timer = setTimeout(() => {
-    ackTimerByChatId.delete(chatId);
-    const seq = latestChunkByChatId.get(chatId);
-    if (seq === undefined) return;
-    void ipc.chat.responseAck({ chatId, lastSeq: seq }).catch(() => {
-      // Ignore ack failures; main has no retry path and acks are
-      // advisory under throttling.
-    });
-  }, ACK_THROTTLE_MS);
-  ackTimerByChatId.set(chatId, timer);
-}
-
-function cancelAckTimer(chatId: number): void {
-  const timer = ackTimerByChatId.get(chatId);
-  if (timer !== undefined) {
-    clearTimeout(timer);
-    ackTimerByChatId.delete(chatId);
-  }
-}
-
+/**
+ * Chat streaming facade for React components.
+ *
+ * The stream lifecycle itself (start/cancel/finalize/queue dispatch) is owned
+ * by the per-chat state machine in `src/chat_stream/`; this hook validates
+ * submissions, forwards them as machine events, and exposes the legacy
+ * projections (`isStreamingByIdAtom`, `chatErrorByIdAtom`) plus the prompt
+ * queue helpers.
+ */
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
-  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const errorById = useAtomValue(chatErrorByIdAtom);
   const setErrorById = useSetAtom(chatErrorByIdAtom);
-  const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
-  const publishChatCompletionEvent = useSetAtom(publishChatCompletionEventAtom);
-  const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const { invalidateChats } = useChats(selectedAppId);
-  const { refreshApp } = useLoadApp(selectedAppId);
-
-  const store = useStore();
-  const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
-  const { refreshVersions } = useVersions(selectedAppId);
-  const { refreshAppIframe } = useRunApp();
-  const { refetchUserBudget } = useUserBudgetInfo();
-  const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
-  const { settings } = useSettings();
-  const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
   );
-  const setStreamCompletedSuccessfullyById = useSetAtom(
-    streamCompletedSuccessfullyByIdAtom,
-  );
-  const setStreamingPreviewByChatId = useSetAtom(streamingPreviewByChatIdAtom);
   const queuePausedById = useAtomValue(queuePausedByIdAtom);
   const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
 
-  const posthog = usePostHog();
-  const queryClient = useQueryClient();
-  const setPackageManagerWarning = useSetAtom(
-    setPackageManagerWarningForAppAtom,
-  );
   let chatId: number | undefined;
-
-  const showWarningMessage = useCallback(
-    (warningMessage: string, warningAppId: number | null) => {
-      if (warningMessage.startsWith(PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX)) {
-        if (!shouldShowPnpmMinimumReleaseAgeWarning(settings)) {
-          return;
-        }
-
-        if (warningAppId !== null) {
-          setPackageManagerWarning({
-            appId: warningAppId,
-            warning: { kind: "release-age", message: warningMessage },
-          });
-        } else {
-          showWarning(warningMessage);
-        }
-        return;
-      }
-
-      showWarning(warningMessage);
-    },
-    [
-      setPackageManagerWarning,
-      settings,
-      settings?.enablePnpmMinimumReleaseAgeWarning,
-      settings?.hidePnpmMinimumReleaseAgeWarning,
-    ],
-  );
-
   if (hasChatId) {
     const { id } = useSearch({ from: "/chat" });
     chatId = id;
   }
-  const { invalidateTokenCount } = useCountTokens(chatId ?? null, "");
 
   const streamMessage = useCallback(
     async ({
@@ -182,10 +67,7 @@ export function useStreamChat({
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
       requestedChatMode?: Chat["chatMode"] | null;
-      onSettled?: (result: {
-        success: boolean;
-        pausedByStepLimit?: boolean;
-      }) => void;
+      onSettled?: (result: StreamSettledResult) => void;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -203,404 +85,44 @@ export function useStreamChat({
         return;
       }
 
-      // Prevent duplicate streams - check module-level set to avoid race conditions
-      if (pendingStreamChatIds.has(chatId)) {
-        console.warn(
-          `[CHAT] Ignoring duplicate stream request for chat ${chatId} - stream already in progress`,
-        );
-        // Call onSettled to allow callers to clean up their local loading state
-        onSettled?.({ success: false });
-        return;
-      }
-
-      // Mark this chat as having a pending stream
-      pendingStreamChatIds.add(chatId);
-
-      setRecentStreamChatIds((prev) => {
-        const next = new Set(prev);
-        next.add(chatId);
-        return next;
+      // The machine decides what happens next: idle/errored chats start a
+      // stream immediately; chats with an active stream get the submission
+      // queued (never dropped, even in the render lag window where the
+      // `isStreaming` projection hasn't caught up yet).
+      ensureController(chatId).send({
+        type: "submit",
+        request: {
+          prompt,
+          chatId,
+          appId,
+          redo,
+          attachments,
+          selectedComponents,
+          requestedChatMode,
+          onSettled,
+        },
       });
-
-      setErrorById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, null);
-        return next;
-      });
-      setIsStreamingById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, true);
-        return next;
-      });
-      // Reset the successful completion flag when starting a new stream
-      setStreamCompletedSuccessfullyById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, false);
-        return next;
-      });
-
-      let hasIncrementedStreamCount = false;
-      const shouldInvalidateFreeModelQuota = isFreeProModel(
-        settings?.selectedModel,
-      );
-      const finalizeStream = (chatId: number) => {
-        pendingStreamChatIds.delete(chatId);
-        latestChunkByChatId.delete(chatId);
-        cancelAckTimer(chatId);
-        clearPreviewForChat(setStreamingPreviewByChatId, chatId);
-      };
-
-      try {
-        // Convert one file at a time so FileReader does not hold every source
-        // buffer concurrently alongside all encoded strings.
-        const convertedAttachments =
-          attachments && attachments.length > 0
-            ? await convertFileAttachmentsToChatAttachments(attachments)
-            : undefined;
-
-        // Resolve the target app from the chat itself when the caller didn't
-        // pass one. Falling back to `selectedAppId` is wrong for background
-        // queue processing, where the user may have switched to a different
-        // app while a queued message streams for the original chat.
-        const resolvedAppIdFromChat =
-          appId === undefined
-            ? await resolveAppIdForChat(chatId, queryClient)
-            : null;
-        const targetAppId =
-          appId ?? resolvedAppIdFromChat ?? selectedAppId ?? null;
-
-        const cachedChat =
-          requestedChatMode === null
-            ? undefined
-            : queryClient.getQueryData<Chat>(
-                queryKeys.chats.detail({ chatId }),
-              );
-
-        if (shouldInvalidateFreeModelQuota) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.freeModelQuota.status,
-          });
-        }
-
-        ipc.chatStream.start(
-          {
-            chatId,
-            prompt,
-            redo,
-            attachments: convertedAttachments,
-            selectedComponents: selectedComponents ?? [],
-            requestedChatMode:
-              requestedChatMode === null
-                ? undefined
-                : (requestedChatMode ?? cachedChat?.chatMode ?? undefined),
-          },
-          {
-            onChunk: ({
-              messages: updatedMessages,
-              streamingMessageId,
-              streamingPatch,
-              streamingPreview,
-              chunkSeq,
-              effectiveChatMode,
-              chatModeFallbackReason,
-            }) => {
-              if (
-                handleEffectiveChatModeChunk(
-                  { effectiveChatMode, chatModeFallbackReason },
-                  settings,
-                  chatId,
-                )
-              ) {
-                if (chatModeFallbackReason) {
-                  queryClient.invalidateQueries({
-                    queryKey: queryKeys.chats.detail({ chatId }),
-                  });
-                }
-                return;
-              }
-
-              if (!hasIncrementedStreamCount) {
-                setStreamCountById((prev) => {
-                  const next = new Map(prev);
-                  next.set(chatId, (prev.get(chatId) ?? 0) + 1);
-                  return next;
-                });
-                hasIncrementedStreamCount = true;
-              }
-
-              applyPreviewChunk(
-                setStreamingPreviewByChatId,
-                chatId,
-                streamingPreview,
-              );
-
-              if (updatedMessages) {
-                // Full messages update (initial load, post-compaction, etc.)
-                setMessagesById((prev) => {
-                  const next = new Map(prev);
-                  next.set(chatId, updatedMessages);
-                  return next;
-                });
-              } else if (
-                streamingMessageId !== undefined &&
-                streamingPatch !== undefined
-              ) {
-                const applied = applyStreamingPatch(
-                  setMessagesById,
-                  chatId,
-                  streamingMessageId,
-                  streamingPatch,
-                );
-                if (!applied) {
-                  triggerResync(chatId, setMessagesById, store);
-                }
-              }
-
-              // Ack-based backpressure for the canned test stream. Real
-              // LLM streams omit chunkSeq, so this is a no-op for them.
-              // Coalesce many incoming chunks into a single ack fired on a
-              // fixed throttle interval (ACK_THROTTLE_MS).
-              if (chunkSeq !== undefined) {
-                const prev = latestChunkByChatId.get(chatId) ?? 0;
-                if (chunkSeq > prev) {
-                  latestChunkByChatId.set(chatId, chunkSeq);
-                }
-                scheduleThrottledAck(chatId);
-              }
-            },
-            onEnd: (response: ChatResponseEnd) => {
-              finalizeStream(chatId);
-              void (async () => {
-                // Only mark as successful if NOT cancelled - wasCancelled flag is set
-                // by the backend when user cancels the stream
-                if (response.wasCancelled) {
-                  setMessagesById((prev) => {
-                    const existingMessages = prev.get(chatId);
-                    if (!existingMessages) return prev;
-
-                    const updatedMessages =
-                      applyCancellationNoticeToLastAssistantMessage(
-                        existingMessages,
-                      );
-                    if (updatedMessages === existingMessages) {
-                      return prev;
-                    }
-
-                    const next = new Map(prev);
-                    next.set(chatId, updatedMessages);
-                    return next;
-                  });
-                }
-
-                if (response.pausePromptQueue) {
-                  setQueuePausedById((prev) => {
-                    const next = new Map(prev);
-                    next.set(chatId, true);
-                    return next;
-                  });
-                }
-
-                if (!response.wasCancelled) {
-                  setStreamCompletedSuccessfullyById((prev) => {
-                    const next = new Map(prev);
-                    next.set(chatId, true);
-                    return next;
-                  });
-                  publishChatCompletionEvent({
-                    chatId,
-                    title: response.chatSummary,
-                  });
-                }
-
-                if (response.updatedFiles) {
-                  if (settings?.autoExpandPreviewPanel) {
-                    setIsPreviewOpen(true);
-                  }
-                  refreshAppIframe();
-                  if (targetAppId) {
-                    setPendingScreenshotAppId(targetAppId);
-                  }
-                }
-                if (response.extraFiles) {
-                  showExtraFilesToast({
-                    files: response.extraFiles,
-                    error: response.extraFilesError,
-                    posthog,
-                  });
-                }
-                for (const warningMessage of response.warningMessages ?? []) {
-                  showWarningMessage(warningMessage, targetAppId);
-                }
-                // Use queryClient directly with the chatId parameter to avoid stale closure issues
-                queryClient.invalidateQueries({
-                  queryKey: ["proposal", chatId],
-                });
-
-                refetchUserBudget();
-
-                // Invalidate free agent quota to update the UI after message
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.freeAgentQuota.status,
-                });
-                if (shouldInvalidateFreeModelQuota) {
-                  queryClient.invalidateQueries({
-                    queryKey: queryKeys.freeModelQuota.status,
-                  });
-                }
-
-                // Keep the same as below
-                setIsStreamingById((prev) => {
-                  const next = new Map(prev);
-                  next.set(chatId, false);
-                  return next;
-                });
-                // Use queryClient directly with the chatId parameter to avoid stale closure issues
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.proposals.detail({ chatId }),
-                });
-                if (!response.wasCancelled) {
-                  // Re-fetch messages to pick up server-assigned fields (e.g. commitHash)
-                  // that may only be finalized at stream completion.
-                  try {
-                    const latestChat = await ipc.chat.getChat(chatId);
-                    queryClient.setQueryData(
-                      queryKeys.chats.detail({ chatId }),
-                      latestChat,
-                    );
-                    // Guard against a racing new stream that started after
-                    // setIsStreamingById(false) above.
-                    if (!store.get(isStreamingByIdAtom).get(chatId)) {
-                      setMessagesById((prev) => {
-                        const currentMessages = prev.get(chatId);
-                        if (!currentMessages) {
-                          const next = new Map(prev);
-                          next.set(chatId, latestChat.messages);
-                          return next;
-                        }
-                        if (currentMessages.length > latestChat.messages.length)
-                          return prev;
-                        const merged = mergeResyncMessages(
-                          latestChat.messages,
-                          currentMessages,
-                        );
-                        const next = new Map(prev);
-                        next.set(chatId, merged);
-                        return next;
-                      });
-                    }
-                  } catch (error) {
-                    console.warn(
-                      `[CHAT] Failed to refresh latest chat for ${chatId}:`,
-                      error,
-                    );
-                  }
-                }
-                invalidateChats();
-                refreshApp();
-                refreshVersions();
-                invalidateTokenCount();
-                // Refresh the uncommitted changes banner immediately rather
-                // than waiting for its 5s poll, so it reflects the changes
-                // made by this stream as soon as it ends.
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.uncommittedFiles.byApp({
-                    appId: targetAppId,
-                  }),
-                });
-                onSettled?.({
-                  success: true,
-                  pausedByStepLimit: response.pausePromptQueue === true,
-                });
-              })().catch((error) => {
-                console.error(
-                  `[CHAT] Failed to finalize stream for ${chatId}:`,
-                  error,
-                );
-                setIsStreamingById((prev) => {
-                  const next = new Map(prev);
-                  next.set(chatId, false);
-                  return next;
-                });
-                onSettled?.({ success: false });
-              });
-            },
-            onError: ({ error: errorMessage, warningMessages }) => {
-              // Remove from pending set now that stream ended with error
-              finalizeStream(chatId);
-
-              for (const warningMessage of warningMessages ?? []) {
-                showWarningMessage(warningMessage, targetAppId);
-              }
-              console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
-              setErrorById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, errorMessage);
-                return next;
-              });
-
-              // Invalidate free agent quota to update the UI after error
-              // (the server may have refunded the quota)
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.freeAgentQuota.status,
-              });
-              if (shouldInvalidateFreeModelQuota) {
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.freeModelQuota.status,
-                });
-              }
-
-              // Keep the same as above
-              setIsStreamingById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, false);
-                return next;
-              });
-              syncChatFromDb(chatId, setMessagesById, "[CHAT] onError", store);
-              invalidateChats();
-              refreshApp();
-              refreshVersions();
-              invalidateTokenCount();
-              onSettled?.({ success: false });
-            },
-          },
-        );
-      } catch (error) {
-        // Remove from pending set on exception
-        finalizeStream(chatId);
-
-        console.error("[CHAT] Exception during streaming setup:", error);
-        setIsStreamingById((prev) => {
-          const next = new Map(prev);
-          if (chatId) next.set(chatId, false);
-          return next;
-        });
-        setErrorById((prev) => {
-          const next = new Map(prev);
-          if (chatId)
-            next.set(
-              chatId,
-              error instanceof Error ? error.message : String(error),
-            );
-          return next;
-        });
-        onSettled?.({ success: false });
-      }
     },
-    [
-      setMessagesById,
-      setIsStreamingById,
-      setIsPreviewOpen,
-      setStreamCompletedSuccessfullyById,
-      setQueuePausedById,
-      setStreamingPreviewByChatId,
-      selectedAppId,
-      refetchUserBudget,
-      settings,
-      showWarningMessage,
-      queryClient,
-      store,
-    ],
+    [],
   );
+
+  const cancelStream = useCallback(() => {
+    if (chatId === undefined) return;
+    const controller = ensureController(chatId);
+    if (isStreamActive(controller.getSnapshot())) {
+      controller.send({ type: "cancel" });
+      return;
+    }
+    // Streams started outside the machine (plan implementation,
+    // merge-conflict resolution) still register in main's activeStreams map:
+    // cancel directly and clear the projection like the legacy path did.
+    void ipc.chat.cancelStream(chatId);
+    setIsStreamingById((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, false);
+      return next;
+    });
+  }, [chatId, setIsStreamingById]);
 
   // Memoize queue management functions to prevent unnecessary re-renders
   // in components that depend on these functions (e.g., restore effect)
@@ -617,6 +139,12 @@ export function useStreamChat({
         next.set(chatId, [...existing, newItem]);
         return next;
       });
+      // The render that chose this manual queue path may be stale: the
+      // machine can already be idle after running its terminal queue
+      // dispatch. Poke it after the synchronous atom update so the newly
+      // appended item is not left without a driver. Active machines ignore
+      // the poke and drain normally when they finalize.
+      ensureController(chatId).send({ type: "queue-poked" });
       return true;
     },
     [chatId, setQueuedMessagesById],
@@ -695,6 +223,7 @@ export function useStreamChat({
 
   return {
     streamMessage,
+    cancelStream,
     isStreaming:
       hasChatId && chatId !== undefined
         ? (isStreamingById.get(chatId) ?? false)
@@ -705,12 +234,6 @@ export function useStreamChat({
         : null,
     setError: (value: string | null) =>
       setErrorById((prev) => {
-        const next = new Map(prev);
-        if (chatId !== undefined) next.set(chatId, value);
-        return next;
-      }),
-    setIsStreaming: (value: boolean) =>
-      setIsStreamingById((prev) => {
         const next = new Map(prev);
         if (chatId !== undefined) next.set(chatId, value);
         return next;
@@ -752,22 +275,10 @@ export function useStreamChat({
         next.set(chatId, false);
         return next;
       });
-      // Signal the queue processor if we're not currently streaming
-      if (!pendingStreamChatIds.has(chatId)) {
-        setStreamCompletedSuccessfullyById((prev) => {
-          const next = new Map(prev);
-          next.set(chatId, true);
-          return next;
-        });
-      }
-    }, [chatId, setQueuePausedById, setStreamCompletedSuccessfullyById]),
-    clearCompletionFlag: useCallback(() => {
-      if (chatId === undefined) return;
-      setStreamCompletedSuccessfullyById((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-    }, [chatId, setStreamCompletedSuccessfullyById]),
+      // Poke the machine: if it's idle (or errored) it emits a
+      // dispatch-next-queued command; if a stream is active the poke is
+      // ignored and the queue drains on the next finalize.
+      ensureController(chatId).send({ type: "queue-poked" });
+    }, [chatId, setQueuePausedById]),
   };
 }

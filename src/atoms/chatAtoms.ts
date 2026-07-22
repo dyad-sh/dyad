@@ -1,4 +1,5 @@
 import type {
+  Chat,
   FileAttachment,
   Message,
   AgentTodo,
@@ -80,7 +81,6 @@ hasManuallySelectedChatModeAtom.debugLabel = "hasManuallySelectedChatModeAtom";
 
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
-export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const scrollToBottomRequestedChatIdsAtom = atom<Set<number>>(
   new Set<number>(),
 );
@@ -525,16 +525,17 @@ export interface QueuedMessageItem {
   prompt: string;
   attachments?: FileAttachment[];
   selectedComponents?: ComponentSelection[];
+  // Extra stream-request fields preserved when the chat stream machine queues
+  // a submission that arrived while a stream was active, so the queued
+  // dispatch replays the ORIGINAL request (e.g. a Retry keeps its redo
+  // semantics). In-memory only: not round-tripped through queue persistence.
+  redo?: boolean;
+  appId?: number;
+  requestedChatMode?: Chat["chatMode"] | null;
 }
 
 // Map<chatId, QueuedMessageItem[]>
 export const queuedMessagesByIdAtom = atom<Map<number, QueuedMessageItem[]>>(
-  new Map(),
-);
-
-// Tracks whether the last stream for a chat completed successfully (via onEnd, not cancelled or errored)
-// This is used to safely process the queue only when we're certain the stream finished normally
-export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
   new Map(),
 );
 

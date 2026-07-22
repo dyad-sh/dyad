@@ -353,12 +353,12 @@ async function cancelTrackedStreams(
   }
 
   // Notify the renderer that the stream ended as soon as it is aborted, before
-  // awaiting the handler's completion. The renderer clears its streaming state
-  // (`isStreaming`, `pendingStreamChatIds`) off these events, so delaying them
-  // until after the handler fully unwinds leaves a window where a message the
-  // user submits (or a queue the user resumes) right after pressing Stop is
-  // treated as still-streaming — it gets queued instead of sent, or the resume
-  // never re-arms the queue processor. Callers that need writes to have settled
+  // awaiting the handler's completion. The renderer's chat stream machine
+  // finalizes (clearing the `isStreaming` projection) off these events, so
+  // delaying them until after the handler fully unwinds leaves a window where
+  // a message the user submits (or a queue the user resumes) right after
+  // pressing Stop is treated as still-streaming — it stays queued instead of
+  // dispatching immediately. Callers that need writes to have settled
   // (restore/delete) still await the completions below; only the renderer
   // notification moves earlier, matching the pre-cancellation-refactor timing.
   // A new stream the renderer starts for a chat under an active restore barrier

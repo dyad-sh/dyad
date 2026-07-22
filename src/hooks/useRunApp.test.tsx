@@ -19,6 +19,8 @@ import {
   useRebuildAppAfterPnpmInstall,
   useRunApp,
 } from "@/hooks/useRunApp";
+import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { AppRunManager } from "@/app_run/manager";
 
 const {
   addLogMock,
@@ -102,12 +104,17 @@ vi.mock("./useSettings", () => ({
 
 function makeWrapper(appId: number) {
   const store = createStore();
+  const manager = new AppRunManager(store);
   store.set(selectedAppIdAtom, appId);
 
   return {
     store,
     Wrapper({ children }: PropsWithChildren) {
-      return <Provider store={store}>{children}</Provider>;
+      return (
+        <Provider store={store}>
+          <AppRunProvider manager={manager}>{children}</AppRunProvider>
+        </Provider>
+      );
     },
   };
 }
@@ -533,6 +540,144 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(result.current.loading).toBe(false);
+
+    unmount();
+  });
+
+  it("keeps a restart's loading state when a cached proxy line arrives, then applies the buffered URL", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    let finishRestartApp: () => void = () => {};
+    restartAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRestartApp = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(
+      () => {
+        useAppOutputSubscription();
+        return useRunApp();
+      },
+      { wrapper: Wrapper },
+    );
+
+    let restartPromise = Promise.resolve();
+    await act(async () => {
+      restartPromise = result.current.restartApp();
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+    const tokenBefore = store.get(currentPreviewReloadTokenAtom);
+
+    // A cached proxy line (re-emitted for an already-running app before the
+    // restart) arrives while the restart IPC is still in flight.
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "stdout",
+          appId: 1,
+          message:
+            "[dyad-proxy-server]started=[http://localhost:42101] original=[http://localhost:32101] mode=[host]",
+        });
+      }
+    });
+
+    // It must NOT clear the restart's loading state or apply the URL yet.
+    expect(result.current.loading).toBe(true);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
+    expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+
+    await act(async () => {
+      finishRestartApp();
+      await restartPromise;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(store.get(currentAppUrlAtom)).toEqual({
+      appUrl: "http://localhost:42101",
+      appId: 1,
+      originalUrl: "http://localhost:32101",
+      mode: "host",
+    });
+    expect(store.get(currentPreviewReloadTokenAtom)).toBeGreaterThan(
+      tokenBefore,
+    );
+
+    unmount();
+  });
+
+  it("ignores a superseded run's late resolution after a restart begins", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    let finishRunApp: () => void = () => {};
+    runAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRunApp = resolve;
+      }),
+    );
+    let finishRestartApp: () => void = () => {};
+    restartAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRestartApp = resolve;
+      }),
+    );
+
+    const { result, unmount } = renderHook(() => useRunApp(), {
+      wrapper: Wrapper,
+    });
+
+    let runPromise = Promise.resolve();
+    await act(async () => {
+      runPromise = result.current.runApp(1);
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+
+    let restartPromise = Promise.resolve();
+    await act(async () => {
+      restartPromise = result.current.restartApp();
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+
+    // The first run's IPC promise settles late: previously its `finally`
+    // cleared the restart's fresh loading state (last writer wins).
+    await act(async () => {
+      finishRunApp();
+      await runPromise;
+    });
+    expect(result.current.loading).toBe(true);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
+
+    await act(async () => {
+      finishRestartApp();
+      await restartPromise;
+    });
+    expect(result.current.loading).toBe(false);
+
+    unmount();
+  });
+
+  it("settles stopApp and clears loading when the stop IPC throws synchronously", async () => {
+    const { store, Wrapper } = makeWrapper(1);
+    stopAppMock.mockImplementationOnce(() => {
+      throw new Error("ipc channel broken");
+    });
+
+    const { result, unmount } = renderHook(() => useRunApp(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      // Must resolve (not hang) even though stopApp threw synchronously.
+      await result.current.stopApp(1);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
+    expect(store.get(currentPreviewErrorAtom)).toEqual({
+      message: "ipc channel broken",
+      source: "dyad-app",
+    });
 
     unmount();
   });

@@ -30,6 +30,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { clearTestRuntimeForAppAtom } from "@/atoms/testRuntimeAtoms";
 import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -44,6 +45,7 @@ import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
 
 export default function AppsPage() {
   const versionPreviewManager = useVersionPreviewManager();
+  const appRunManager = useAppRunManager();
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const { collections, isLoading: collectionsLoading } = useAppCollections();
@@ -161,6 +163,7 @@ export default function AppsPage() {
         versionPreviewManager.disposeApp(appId);
         clearPreviewRuntimeForApp(appId);
         clearTestRuntimeForApp(appId);
+        appRunManager.disposeKey(appId);
       }
       if (failed.length > 0) {
         const failedNames = failed

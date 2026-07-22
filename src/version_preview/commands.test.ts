@@ -11,7 +11,7 @@ const {
   revertVersionMock,
   restoreToMessageVersionMock,
   getChatMock,
-  restartAppWithStoreMock,
+  restartAppMock,
   toastSuccessMock,
   toastWarningMock,
 } = vi.hoisted(() => ({
@@ -19,7 +19,7 @@ const {
   revertVersionMock: vi.fn(),
   restoreToMessageVersionMock: vi.fn(),
   getChatMock: vi.fn(),
-  restartAppWithStoreMock: vi.fn(),
+  restartAppMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastWarningMock: vi.fn(),
 }));
@@ -34,10 +34,6 @@ vi.mock("@/ipc/types", async (importOriginal) => ({
       restoreToMessageVersion: restoreToMessageVersionMock,
     },
   },
-}));
-
-vi.mock("@/hooks/useRunApp", () => ({
-  restartAppWithStore: restartAppWithStoreMock,
 }));
 
 vi.mock("@/lib/toast", () => ({ showError: vi.fn() }));
@@ -71,6 +67,7 @@ function setup() {
   const runtime = createVersionPreviewRuntime({
     queryClient,
     store,
+    restartApp: restartAppMock,
     navigateToChat,
   });
   return { queryClient, store, navigateToChat, runtime };
@@ -82,7 +79,7 @@ describe("createVersionPreviewRuntime", () => {
     checkoutVersionMock.mockResolvedValue(result());
     revertVersionMock.mockResolvedValue(result());
     restoreToMessageVersionMock.mockResolvedValue(result());
-    restartAppWithStoreMock.mockResolvedValue(undefined);
+    restartAppMock.mockResolvedValue(undefined);
   });
 
   it("uses semantic preview and return checkout intents", async () => {
@@ -133,7 +130,7 @@ describe("createVersionPreviewRuntime", () => {
     });
     expect(store.get(chatMessagesByIdAtom).get(11)).toEqual([{ id: 1 }]);
     expect(navigateToChat).toHaveBeenCalledWith({ appId: 7, chatId: 12 });
-    expect(restartAppWithStoreMock).toHaveBeenCalledWith(store, 7);
+    expect(restartAppMock).toHaveBeenCalledWith(7);
     expect(commandOutcome.repositoryOutcome).toBe("target-applied");
   });
 
@@ -176,7 +173,7 @@ describe("createVersionPreviewRuntime", () => {
 
   it("does not turn a post-effect failure into a Git mutation failure", async () => {
     checkoutVersionMock.mockResolvedValue(result({ runtimeAction: "restart" }));
-    restartAppWithStoreMock.mockRejectedValue(new Error("restart failed"));
+    restartAppMock.mockRejectedValue(new Error("restart failed"));
     const { runtime } = setup();
 
     await expect(

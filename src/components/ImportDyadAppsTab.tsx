@@ -21,7 +21,7 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
   const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings } = useSettings();
   const isAuthenticated = !!settings?.githubAccessToken;
-  const { repos, loading, refetch } = useDyadGithubRepos({
+  const { repos, loading, error, refetch } = useDyadGithubRepos({
     enabled: isOpen && isAuthenticated,
   });
   const { refreshApps } = useLoadApps();
@@ -163,7 +163,18 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
         </div>
       )}
 
-      {!loading && repos.length === 0 && (
+      {!loading && error && (
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <p className="text-xs sm:text-sm text-red-500">
+            {t("home:dyadReposLoadError")}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            {t("home:retry")}
+          </Button>
+        </div>
+      )}
+
+      {!loading && !error && repos.length === 0 && (
         <p className="text-xs sm:text-sm text-muted-foreground text-center py-4">
           {t("home:noDyadReposFound")}
         </p>

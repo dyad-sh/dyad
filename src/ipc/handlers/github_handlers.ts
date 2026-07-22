@@ -683,7 +683,13 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
       (repo) => !dyadRepos.has(repo.full_name),
     );
     const CONCURRENCY = 8;
-    for (let i = 0; i < candidates.length; i += CONCURRENCY) {
+    // Only a 404 definitively means "no AI_RULES.md" (i.e. not a Dyad repo).
+    // Any other non-ok status (notably 403/429 secondary rate limits) is
+    // inconclusive — silently treating it as "not a Dyad repo" would hide real
+    // repos. When we hit one, stop the scan so we don't keep hammering the API
+    // and mislabel more repos; topic-tagged repos already found still surface.
+    let rateLimited = false;
+    for (let i = 0; i < candidates.length && !rateLimited; i += CONCURRENCY) {
       await Promise.all(
         candidates.slice(i, i + CONCURRENCY).map(async (repo) => {
           try {
@@ -697,9 +703,20 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
                 full_name: repo.full_name,
                 private: repo.private,
               });
+            } else if (res.status !== 404) {
+              rateLimited = true;
+              logger.warn(
+                `AI_RULES.md heuristic stopped: GitHub returned ${res.status} for ${repo.full_name}. Some legacy Dyad repos may not be listed.`,
+              );
             }
-          } catch {
-            // Treat lookup failures as "not a Dyad repo".
+          } catch (err) {
+            // Network-level failure: inconclusive, so stop rather than
+            // silently excluding this and remaining candidates.
+            rateLimited = true;
+            logger.warn(
+              `AI_RULES.md heuristic stopped: request for ${repo.full_name} failed:`,
+              err,
+            );
           }
         }),
       );

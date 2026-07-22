@@ -128,7 +128,7 @@ describe("retry (hybrid)", () => {
     expect(retriedMessages[1].id).not.toBe(firstMessages[1].id);
   }, 60_000);
 
-  it("confirms before retry reverts an intermediate commit", async () => {
+  it("preserves commits from before the response and confirms before reverting newer commits", async () => {
     harness.mount();
     await waitFor(
       () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
@@ -143,13 +143,32 @@ describe("retry (hybrid)", () => {
     };
 
     await sendTurn("tc=write-index");
-    const manualPath = path.join(harness.appDir, "retry-manual-change.txt");
-    fs.writeFileSync(manualPath, "keep me\n");
-    execFileSync("git", ["add", "retry-manual-change.txt"], {
+    const earlierManualPath = path.join(
+      harness.appDir,
+      "retry-earlier-manual-change.txt",
+    );
+    fs.writeFileSync(earlierManualPath, "keep me\n");
+    execFileSync("git", ["add", "retry-earlier-manual-change.txt"], {
       cwd: harness.appDir,
     });
-    commitWithTestIdentity(harness.appDir, "Manual work between AI turns");
+    commitWithTestIdentity(harness.appDir, "Manual work before latest AI turn");
     await sendTurn("tc=write-index-2");
+
+    const directRetryEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull();
+    await directRetryEnd;
+    expect(fs.existsSync(earlierManualPath)).toBe(true);
+
+    const newerManualPath = path.join(
+      harness.appDir,
+      "retry-newer-manual-change.txt",
+    );
+    fs.writeFileSync(newerManualPath, "choose what happens to me\n");
+    execFileSync("git", ["add", "retry-newer-manual-change.txt"], {
+      cwd: harness.appDir,
+    });
+    commitWithTestIdentity(harness.appDir, "Manual work after latest AI turn");
 
     const messagesBefore = await harness.db.query.messages.findMany();
     const retryButton = await screen.findByRole("button", { name: /Retry/ });
@@ -158,12 +177,13 @@ describe("retry (hybrid)", () => {
     expect(
       await screen.findByTestId("extra-commits-revert-dialog"),
     ).toBeTruthy();
-    expect(screen.getByText("Manual work between AI turns")).toBeTruthy();
+    expect(screen.getByText("Manual work after latest AI turn")).toBeTruthy();
+    expect(screen.getByTestId("retry-from-current-code-button")).toBeTruthy();
     fireEvent.click(screen.getByTestId("cancel-revert-button"));
     await waitFor(() =>
       expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
     );
-    expect(fs.existsSync(manualPath)).toBe(true);
+    expect(fs.existsSync(newerManualPath)).toBe(true);
     expect(await harness.db.query.messages.findMany()).toHaveLength(
       messagesBefore.length,
     );
@@ -173,9 +193,111 @@ describe("retry (hybrid)", () => {
     fireEvent.click(await screen.findByTestId("confirm-revert-anyway-button"));
     await retriedStreamEnd;
 
-    expect(fs.existsSync(manualPath)).toBe(false);
+    expect(fs.existsSync(newerManualPath)).toBe(false);
+    expect(fs.existsSync(earlierManualPath)).toBe(true);
     await waitFor(() =>
       expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
     );
+  }, 60_000);
+
+  it("can retry from current code without reverting newer commits", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const end = harness.waitForNextStreamEnd(harness.chatId);
+    const { send } = await harness.typeInChat("tc=write-index");
+    send();
+    await end;
+
+    const manualPath = path.join(
+      harness.appDir,
+      "retry-current-code-change.txt",
+    );
+    fs.writeFileSync(manualPath, "keep current code\n");
+    execFileSync("git", ["add", "retry-current-code-change.txt"], {
+      cwd: harness.appDir,
+    });
+    commitWithTestIdentity(harness.appDir, "Newer work to preserve");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    expect(
+      await screen.findByTestId("extra-commits-revert-dialog"),
+    ).toBeTruthy();
+    expect(screen.getByText("Newer work to preserve")).toBeTruthy();
+
+    const retryEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(screen.getByTestId("retry-from-current-code-button"));
+    await retryEnd;
+
+    expect(fs.existsSync(manualPath)).toBe(true);
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+  }, 60_000);
+
+  it("offers the safe retry path when the working tree has uncommitted changes", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const end = harness.waitForNextStreamEnd(harness.chatId);
+    const { send } = await harness.typeInChat("tc=write-index-2");
+    send();
+    await end;
+
+    const uncommittedPath = path.join(
+      harness.appDir,
+      "retry-uncommitted-change.txt",
+    );
+    fs.writeFileSync(uncommittedPath, "keep uncommitted work\n");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    expect(
+      await screen.findByTestId("extra-commits-revert-dialog"),
+    ).toBeTruthy();
+    expect(screen.getByText("1 uncommitted file change")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Please commit your changes before using Restore and retry/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("confirm-revert-anyway-button")).toBeNull();
+
+    const retryEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(screen.getByTestId("retry-from-current-code-button"));
+    await retryEnd;
+
+    expect(fs.existsSync(uncommittedPath)).toBe(true);
+  }, 60_000);
+
+  it("retries a text-only response without restoring a dirty tree", async () => {
+    harness.mount();
+    await waitFor(
+      () => expect(screen.getByTestId("chat-input-container")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+
+    const firstEnd = harness.waitForNextStreamEnd(harness.chatId);
+    const { send } = await harness.typeInChat("[increment]");
+    send();
+    await firstEnd;
+
+    const uncommittedPath = path.join(
+      harness.appDir,
+      "retry-text-only-uncommitted-change.txt",
+    );
+    fs.writeFileSync(uncommittedPath, "preserve me\n");
+
+    const retryEnd = harness.waitForNextStreamEnd(harness.chatId);
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull();
+    await retryEnd;
+
+    expect(fs.existsSync(uncommittedPath)).toBe(true);
   }, 60_000);
 });

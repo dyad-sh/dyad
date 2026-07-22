@@ -23,14 +23,22 @@ describe("readChatTool schema", () => {
     expect(readChatTool.defaultConsent).toBe("always");
   });
 
-  it("rejects offset/limit combined with around_message_id", () => {
-    expect(() =>
+  it("prefers around-message mode when pagination fields are also present", () => {
+    expect(
       readChatTool.inputSchema.parse({
         chat_id: 1,
         around_message_id: 2,
+        before: 1,
+        after: 1,
         offset: 0,
+        limit: 10,
       }),
-    ).toThrow(/offset\/limit/);
+    ).toEqual({
+      chat_id: 1,
+      around_message_id: 2,
+      before: 1,
+      after: 1,
+    });
   });
 
   it("rejects before/after without around_message_id", () => {
@@ -140,6 +148,24 @@ describe("readChatTool.execute", () => {
     expect(parsed.mode.around_message_id).toBe(messageIds[7]);
     expect(parsed.has_more_before).toBe(true);
     expect(parsed.has_more_after).toBe(true);
+  });
+
+  it("executes a mixed-mode model call as an around-message read", async () => {
+    const { appId, chatId, messageIds } = seedChat(15);
+    const args = readChatTool.inputSchema.parse({
+      chat_id: chatId,
+      around_message_id: messageIds[7],
+      before: 2,
+      after: 1,
+      offset: 0,
+      limit: 10,
+    });
+    const { parsed } = await run(args, { appId, chatId: chatId + 999 });
+
+    expect(parsed.mode).toEqual({ around_message_id: messageIds[7] });
+    expect(parsed.messages.map((message: any) => message.message_id)).toEqual(
+      messageIds.slice(5, 9),
+    );
   });
 
   it("clamps an around-window at the start of the chat", async () => {

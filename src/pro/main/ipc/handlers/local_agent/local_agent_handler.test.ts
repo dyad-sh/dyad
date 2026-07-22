@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import { streamText, type ModelMessage } from "ai";
+import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -2230,6 +2230,104 @@ describe("handleLocalAgentStream", () => {
       const thinkEndIndex = finalContent.indexOf("</think>");
       const answerIndex = finalContent.indexOf("Answer");
       expect(thinkEndIndex).toBeLessThan(answerIndex);
+    });
+  });
+
+  describe("Stream processing - pre-execution tool errors", () => {
+    it("replaces an invalid tool preview with a persistent error status", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      let toolContext: any;
+      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
+        toolContext = ctx;
+        return { read_chat: {} };
+      });
+
+      const invalidInput = {
+        chat_id: 703,
+        around_message_id: 4134,
+        before: 6,
+        after: 3,
+        offset: 0,
+        limit: 10,
+      };
+      const validationMessage =
+        "offset/limit cannot be combined with around_message_id; use before/after instead";
+      const validationError = new InvalidToolInputError({
+        toolName: "read_chat",
+        toolInput: JSON.stringify(invalidInput),
+        cause: new Error(validationMessage),
+      });
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          toolContext.onXmlStream(
+            '<dyad-read-chat chat-id="703" state="pending">Reading chat...</dyad-read-chat>',
+          );
+          yield {
+            type: "tool-error",
+            toolCallId: "call-read-chat",
+            toolName: "read_chat",
+            input: invalidInput,
+            error: validationError,
+          };
+          yield {
+            type: "text-delta",
+            text: "I could not inspect that citation.",
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "recall our recent work" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const chunks = getMessagesByChannel("chat:response:chunk");
+      const previewChunks = chunks.filter(
+        (message) => (message.args[0] as any).streamingPreview !== undefined,
+      );
+      const pendingPreview = previewChunks.find(
+        (message) => (message.args[0] as any).streamingPreview.content !== "",
+      );
+      expect(
+        (pendingPreview!.args[0] as any).streamingPreview.content,
+      ).toContain(
+        '<dyad-read-chat chat-id="703" state="pending">Reading chat...',
+      );
+      expect(
+        (previewChunks.at(-1)!.args[0] as any).streamingPreview.content,
+      ).toBe("");
+
+      const statusChunkIndex = chunks.findIndex((message) =>
+        (message.args[0] as any).streamingPatch?.content?.includes(
+          '<dyad-status title="Tool &quot;read_chat&quot; failed" state="error">',
+        ),
+      );
+      const clearPreviewIndex = chunks.findIndex(
+        (message) => (message.args[0] as any).streamingPreview?.content === "",
+      );
+      expect(statusChunkIndex).toBeGreaterThanOrEqual(0);
+      expect(clearPreviewIndex).toBeGreaterThan(statusChunkIndex);
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")?.data
+        .content as string;
+      expect(finalContent).toContain(
+        '<dyad-status title="Tool &quot;read_chat&quot; failed" state="error">',
+      );
+      expect(finalContent).toContain(validationMessage);
+      expect(finalContent).toContain("</dyad-status>");
+      expect(finalContent).toContain("I could not inspect that citation.");
     });
   });
 

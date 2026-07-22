@@ -25,75 +25,85 @@ const MAX_MESSAGE_CHARS = 2_400;
 /** Hard budget for the serialized JSON tool result. */
 const MAX_OUTPUT_BYTES = 20 * 1024;
 
-const readChatSchema = z
-  .object({
-    chat_id: z
-      .number()
-      .int()
-      .positive()
-      .describe(
-        "ID of a chat for this app (from an explore_chat_history citation or a search_chats match)",
-      ),
-    around_message_id: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe(
-        "Return this message plus surrounding context (use a cited or matched message_id)",
-      ),
-    before: z
-      .number()
-      .int()
-      .min(0)
-      .max(MAX_CONTEXT_RADIUS)
-      .optional()
-      .describe(
-        `Messages to include before around_message_id (default ${DEFAULT_CONTEXT_RADIUS})`,
-      ),
-    after: z
-      .number()
-      .int()
-      .min(0)
-      .max(MAX_CONTEXT_RADIUS)
-      .optional()
-      .describe(
-        `Messages to include after around_message_id (default ${DEFAULT_CONTEXT_RADIUS})`,
-      ),
-    offset: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe("Chronological paging: messages to skip from the start"),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_PAGE_LIMIT)
-      .optional()
-      .describe(
-        `Chronological paging: messages to return (default ${DEFAULT_PAGE_LIMIT})`,
-      ),
-  })
+const readChatArgsSchema = z.object({
+  chat_id: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      "ID of a chat for this app (from an explore_chat_history citation or a search_chats match)",
+    ),
+  around_message_id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Return this message plus surrounding context (use a cited or matched message_id)",
+    ),
+  before: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_CONTEXT_RADIUS)
+    .optional()
+    .describe(
+      `Messages to include before around_message_id (default ${DEFAULT_CONTEXT_RADIUS})`,
+    ),
+  after: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_CONTEXT_RADIUS)
+    .optional()
+    .describe(
+      `Messages to include after around_message_id (default ${DEFAULT_CONTEXT_RADIUS})`,
+    ),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("Chronological paging: messages to skip from the start"),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_PAGE_LIMIT)
+    .optional()
+    .describe(
+      `Chronological paging: messages to return (default ${DEFAULT_PAGE_LIMIT})`,
+    ),
+});
+
+type ReadChatArgs = z.infer<typeof readChatArgsSchema>;
+
+const readChatSchema = readChatArgsSchema
   .superRefine((args, issueCtx) => {
-    if (args.around_message_id !== undefined) {
-      if (args.offset !== undefined || args.limit !== undefined) {
-        issueCtx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            "offset/limit cannot be combined with around_message_id; use before/after instead",
-        });
-      }
-    } else if (args.before !== undefined || args.after !== undefined) {
+    if (
+      args.around_message_id === undefined &&
+      (args.before !== undefined || args.after !== undefined)
+    ) {
       issueCtx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "before/after require around_message_id",
       });
     }
-  });
+  })
+  .transform((args): ReadChatArgs => {
+    if (args.around_message_id === undefined) {
+      return args;
+    }
 
-type ReadChatArgs = z.infer<typeof readChatSchema>;
+    // Models sometimes populate every optional paging field even after
+    // choosing an around-message lookup. The target message makes the intent
+    // unambiguous, so prefer that mode instead of rejecting the read and
+    // encouraging identical retries.
+    const normalized = { ...args };
+    delete normalized.offset;
+    delete normalized.limit;
+    return normalized;
+  });
 
 interface ChatRow {
   id: number;

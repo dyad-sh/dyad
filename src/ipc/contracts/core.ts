@@ -457,9 +457,10 @@ export function createStreamClient<
 
   const streams = new Map<KeyValue, StreamEntry>();
 
-  // Monotonic generation counter: every start() gets a fresh streamId so
-  // stale end/error/chunk events can be rejected structurally (an entry that
-  // has been replaced or released never receives another event).
+  // Monotonic generation counter: every start() gets a fresh streamId. Stream
+  // contracts that echo it in their payloads reject stale chunk/end/error
+  // events even after a same-key entry has been replaced. Payloads without a
+  // streamId retain the legacy key-only routing behavior.
   let nextStreamId = 0;
 
   let listenersSetUp = false;
@@ -473,21 +474,33 @@ export function createStreamClient<
     ipcRenderer.on(contract.events.chunk.channel, (data: unknown) => {
       const parsed = contract.events.chunk.payload.safeParse(data);
       if (parsed.success) {
-        const key = (parsed.data as Record<string, unknown>)[
-          contract.keyField
-        ] as KeyValue;
-        streams.get(key)?.callbacks.onChunk(parsed.data);
+        const payload = parsed.data as Record<string, unknown>;
+        const key = payload[contract.keyField] as KeyValue;
+        const entry = streams.get(key);
+        if (!entry) return;
+        if (
+          typeof payload.streamId === "number" &&
+          payload.streamId !== entry.streamId
+        ) {
+          return;
+        }
+        entry.callbacks.onChunk(parsed.data);
       }
     });
 
     ipcRenderer.on(contract.events.end.channel, (data: unknown) => {
       const parsed = contract.events.end.payload.safeParse(data);
       if (parsed.success) {
-        const key = (parsed.data as Record<string, unknown>)[
-          contract.keyField
-        ] as KeyValue;
+        const payload = parsed.data as Record<string, unknown>;
+        const key = payload[contract.keyField] as KeyValue;
         const entry = streams.get(key);
         if (!entry) return;
+        if (
+          typeof payload.streamId === "number" &&
+          payload.streamId !== entry.streamId
+        ) {
+          return;
+        }
         entry.callbacks.onEnd(parsed.data);
         // The terminal callback may synchronously start another stream with
         // the same key. Only clean up the generation that actually ended.
@@ -500,11 +513,16 @@ export function createStreamClient<
     ipcRenderer.on(contract.events.error.channel, (data: unknown) => {
       const parsed = contract.events.error.payload.safeParse(data);
       if (parsed.success) {
-        const key = (parsed.data as Record<string, unknown>)[
-          contract.keyField
-        ] as KeyValue;
+        const payload = parsed.data as Record<string, unknown>;
+        const key = payload[contract.keyField] as KeyValue;
         const entry = streams.get(key);
         if (!entry) return;
+        if (
+          typeof payload.streamId === "number" &&
+          payload.streamId !== entry.streamId
+        ) {
+          return;
+        }
         entry.callbacks.onError(parsed.data);
         // The error callback may synchronously replace this stream.
         if (entry.autoRelease && streams.get(key) === entry) {

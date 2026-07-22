@@ -69,8 +69,8 @@ export class ChatStreamManager {
     return this.host.get(chatId);
   }
 
-  notifyStreamRegistered(chatId: number): void {
-    this.host.get(chatId)?.send({ type: "registered" });
+  notifyStreamRegistered(chatId: number, streamId?: number): void {
+    this.host.get(chatId)?.send({ type: "registered", streamId });
   }
 
   disposeChat(chatId: number): void {

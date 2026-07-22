@@ -324,6 +324,17 @@ describe("happy path", () => {
     expect(result.state.type).toBe("streaming");
   });
 
+  it("ignores a stale registration while accepting legacy registrations without an id", () => {
+    const starting = STATE_FACTORIES.starting();
+
+    const stale = step(starting, { type: "registered", streamId: 3 });
+    expect(stale.state).toBe(starting);
+    expect(stale.ignoredReason).toBe("stale-stream-id");
+
+    const legacy = step(starting, { type: "registered" });
+    expect(legacy.state.type).toBe("streaming");
+  });
+
   it("errors terminate the stream and a new submit restarts with a fresh generation", () => {
     const streaming = STATE_FACTORIES.streaming();
     let result = step(streaming, {

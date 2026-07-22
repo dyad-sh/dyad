@@ -51,6 +51,17 @@ function isStale(
   return event.streamId !== state.streamId;
 }
 
+/** Registration events from older clients omit streamId and target the current generation. */
+function isStaleRegistration(
+  state: Extract<
+    StreamState,
+    { type: "starting" | "streaming" | "cancelling" | "finalizing" }
+  >,
+  event: Extract<StreamEvent, { type: "registered" }>,
+): boolean {
+  return event.streamId !== undefined && event.streamId !== state.streamId;
+}
+
 export function transition(
   state: StreamState,
   event: StreamEvent,
@@ -112,6 +123,9 @@ export function transition(
             commands: [{ type: "request-abort" }],
           };
         case "registered":
+          if (isStaleRegistration(state, event)) {
+            return ignore(state, "stale-stream-id");
+          }
           return {
             state: {
               type: "streaming",
@@ -248,7 +262,12 @@ export function transition(
             ],
           };
         case "registered":
-          return ignore(state, "already-registered");
+          return ignore(
+            state,
+            isStaleRegistration(state, event)
+              ? "stale-stream-id"
+              : "already-registered",
+          );
         case "stream-context":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           if (event.targetAppId === state.targetAppId) {
@@ -279,6 +298,9 @@ export function transition(
             commands: [{ type: "enqueue-message", request: event.request }],
           };
         case "registered":
+          if (isStaleRegistration(state, event)) {
+            return ignore(state, "stale-stream-id");
+          }
           if (state.registered) return ignore(state, "already-registered");
           // Cancel raced ahead of main's registration: the earlier abort hit
           // nothing, so re-issue it now that the stream actually exists.
@@ -380,7 +402,12 @@ export function transition(
         case "cancel":
           return ignore(state, "too-late-to-cancel");
         case "registered":
-          return ignore(state, "already-registered");
+          return ignore(
+            state,
+            isStaleRegistration(state, event)
+              ? "stale-stream-id"
+              : "already-registered",
+          );
         case "stream-context":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           if (event.targetAppId === state.targetAppId) {

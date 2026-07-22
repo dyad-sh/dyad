@@ -256,6 +256,7 @@ export function createProductionChatStreamCommands(
       ipc.chatStream.start(
         {
           chatId,
+          streamId,
           prompt: request.prompt,
           redo: request.redo,
           attachments: convertedAttachments,

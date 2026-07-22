@@ -205,6 +205,7 @@ const CHUNK_SIZE = 500;
 export async function streamTestResponse(
   event: Electron.IpcMainInvokeEvent,
   chatId: number,
+  streamId: number | undefined,
   testResponse: string,
   abortController: AbortController,
   placeholderAssistantMessageId: number,
@@ -237,6 +238,7 @@ export async function streamTestResponse(
         if (patch) {
           safeSend(event.sender, "chat:response:chunk", {
             chatId,
+            streamId,
             streamingMessageId: placeholderAssistantMessageId,
             streamingPatch: patch,
             chunkSeq: currentSeq,
@@ -256,6 +258,7 @@ export async function streamTestResponse(
       if (patch) {
         safeSend(event.sender, "chat:response:chunk", {
           chatId,
+          streamId,
           streamingMessageId: placeholderAssistantMessageId,
           streamingPatch: patch,
           chunkSeq: currentSeq,

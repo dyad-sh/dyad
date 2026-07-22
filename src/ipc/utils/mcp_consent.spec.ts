@@ -106,9 +106,9 @@ describe("requireMcpToolConsent (classifier race)", () => {
     await vi.waitFor(() => expect(send).toHaveBeenCalled());
     resolveConsent(lastRequestId(send), "decline");
     await expect(pending).resolves.toEqual({ approved: false });
-    expect(send).not.toHaveBeenCalledWith(
+    expect(send).toHaveBeenCalledWith(
       "mcp:tool-consent-resolved",
-      expect.anything(),
+      expect.objectContaining({ requestId: expect.any(String) }),
     );
   });
 
@@ -124,5 +124,9 @@ describe("requireMcpToolConsent (classifier race)", () => {
     expect(send.mock.calls[0][1]).not.toHaveProperty("abortSignal");
     controller.abort();
     await expect(pending).resolves.toEqual({ approved: false });
+    expect(send).toHaveBeenCalledWith(
+      "mcp:tool-consent-resolved",
+      expect.objectContaining({ requestId: expect.any(String) }),
+    );
   });
 });

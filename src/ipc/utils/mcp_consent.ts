@@ -135,9 +135,13 @@ export async function requireMcpToolConsent(
   // No classifier: show the prompt and wait for the user.
   if (!autoApprove) {
     send("mcp:tool-consent-request", { requestId, ...serializableParams });
-    return finalize(
-      await waitForConsent(requestId, params.chatId, abortSignal),
+    const response = await waitForConsent(
+      requestId,
+      params.chatId,
+      abortSignal,
     );
+    send("mcp:tool-consent-resolved", { requestId });
+    return finalize(response);
   }
 
   // Classifier active: show the prompt immediately with a spinner and race the
@@ -169,6 +173,7 @@ export async function requireMcpToolConsent(
     // The classifier promise is intentionally left to finish on its own; it is
     // a stateless call whose result we no longer need. The .catch() above keeps
     // a late rejection from going unhandled.
+    send("mcp:tool-consent-resolved", { requestId });
     return finalize(winner.decision);
   }
   if (winner.result.approved) {
@@ -187,5 +192,7 @@ export async function requireMcpToolConsent(
     toolName: params.toolName,
     serverName: params.serverName,
   });
-  return finalize((await humanPromise).decision);
+  const response = (await humanPromise).decision;
+  send("mcp:tool-consent-resolved", { requestId });
+  return finalize(response);
 }

@@ -7,6 +7,7 @@ import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
 import { createUserInputResolver } from "@/ipc/utils/user_input_resolver";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
@@ -299,6 +300,7 @@ export async function requireAgentToolConsent(
     params.chatId,
     abortSignal,
   );
+  safeSend(event.sender, "agent-tool:consent-resolved", { requestId });
 
   if (response === "accept-always") {
     setAgentToolConsent(params.toolName, "always");

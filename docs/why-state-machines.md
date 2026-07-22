@@ -259,16 +259,26 @@ later showed "timed out" out of nowhere. Finishing sign-in at second 25
 showed "timed out" and then "connected". And a stale reply link would write
 credentials with nothing checking which attempt it belonged to.
 
-The fix: every attempt gets an id, and replies must carry it back.
+The fix has two parts. First, the machine allows one attempt per provider
+at a time: clicking Connect while one is running does nothing, and a reply
+only counts while an attempt is actually in `awaitingReturn`. For Neon and
+Supabase that rule is the whole story, because their browser reply can't
+carry anything back (the OAuth endpoint takes no client state to
+round-trip) — so "the one attempt that's waiting" is the only match there
+is, and it's always unambiguous.
 
 ```mermaid
 stateDiagram-v2
-    disconnected --> starting: connect (new flowId)
+    disconnected --> starting: connect
     starting --> awaitingReturn: prepared
-    awaitingReturn --> exchangingToken: return (flowId matches)
+    awaitingReturn --> exchangingToken: return (while waiting)
     awaitingReturn --> failed: timed out
     exchangingToken --> connected: token saved
 ```
+
+Second, where a reply *can* carry an id back — GitHub's device flow polls
+in a chain, and each poll knows which attempt started it — it must, and a
+result from an old attempt is ignored:
 
 ```ts
 // src/connection_flow/transition.ts (after)
@@ -277,9 +287,8 @@ if (state.flowId !== event.flowId) {
 }
 ```
 
-A reply from an old attempt can't touch a new one. Timeout and success can't
-both fire, because they're two different transitions out of the same state
-and only one can happen.
+Either way, timeout and success can't both fire: they're two different
+transitions out of the same waiting state, and only one can happen.
 
 ## What this buys us
 

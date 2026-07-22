@@ -120,6 +120,19 @@
     "chatNumber": "Chat n.º {{chatId}}",
     "messagesRange": "mensajes {{range}}"
   },
+  "exploreChatHistory": {
+    "badge": "HISTORIAL",
+    "title": "Explorar el historial de chats",
+    "chatCount_one": "{{count}} chat",
+    "chatCount_other": "{{count}} chats",
+    "evidenceCount_one": "{{count}} evidencia",
+    "evidenceCount_other": "{{count}} evidencias",
+    "noRelevantHistory": "sin historial relevante",
+    "partial": "parcial",
+    "exploring": "Explorando...",
+    "didNotFinish": "No finalizó",
+    "failed": "Falló"
+  },
   "git": {
     "checkingChanges": "Comprobando los cambios del proyecto",
     "checkedChanges": "Cambios del proyecto comprobados",

@@ -120,6 +120,19 @@
     "chatNumber": "Chat #{{chatId}}",
     "messagesRange": "messages {{range}}"
   },
+  "exploreChatHistory": {
+    "badge": "HISTORY",
+    "title": "Explore chat history",
+    "chatCount_one": "{{count}} chat",
+    "chatCount_other": "{{count}} chats",
+    "evidenceCount_one": "{{count}} evidence item",
+    "evidenceCount_other": "{{count}} evidence items",
+    "noRelevantHistory": "no relevant history",
+    "partial": "partial",
+    "exploring": "Exploring...",
+    "didNotFinish": "Did not finish",
+    "failed": "Failed"
+  },
   "git": {
     "checkingChanges": "Checking project changes",
     "checkedChanges": "Checked project changes",

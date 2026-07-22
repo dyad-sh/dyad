@@ -383,6 +383,109 @@ describe("runExploreChatHistorySubagent", () => {
     expect(report.stats.fabricatedCitations).toBe(0);
   });
 
+  it("falls back to evidence-only after a second all-fabricated submission", async () => {
+    const appId = harness.insertApp();
+    const currentChat = harness.insertChat(appId, "Current");
+    const historicalChat = harness.insertChat(appId, "Auth decisions");
+    harness.insertMessage({
+      chatId: historicalChat,
+      role: "assistant",
+      content: "We decided to use the pelican auth provider for login.",
+    });
+    await drainChatSearchIndexOnce();
+
+    let secondResult = "";
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.search_chats.execute({ query: "pelican auth" });
+        for (const attempt of [1, 2]) {
+          const result = await options.tools.submit_report.execute({
+            summary: `FABRICATED SUMMARY ${attempt}`,
+            findings: [
+              {
+                claim: `Fabricated claim ${attempt}`,
+                evidence: [
+                  {
+                    chat_id: historicalChat,
+                    message_id: 999_999 + attempt,
+                  },
+                ],
+              },
+            ],
+            conflicts: [],
+            missing_coverage: [],
+            outcome: "complete",
+            confidence: "high",
+          });
+          if (attempt === 2) secondResult = result;
+        }
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const { report } = await runExploreChatHistorySubagent({
+      query: "which auth provider did we pick?",
+      ctx: makeAgentContext({
+        isDyadPro: true,
+        appId,
+        chatId: currentChat,
+      }),
+    });
+
+    expect(secondResult).toContain("evidence-only fallback");
+    expect(report.text).not.toContain("FABRICATED SUMMARY");
+    expect(report.text).not.toContain("Fabricated claim");
+    expect(report.text).toContain("Synthesis unavailable");
+    expect(report.stats.outcome).toBe("partial");
+  });
+
+  it("bounces fabricated evidence even when the model labels it no_match", async () => {
+    const appId = harness.insertApp();
+    const currentChat = harness.insertChat(appId, "Current");
+    const historicalChat = harness.insertChat(appId, "Auth decisions");
+    harness.insertMessage({
+      chatId: historicalChat,
+      role: "assistant",
+      content: "We decided to use the pelican auth provider for login.",
+    });
+    await drainChatSearchIndexOnce();
+
+    let submitResult = "";
+    mocks.streamText.mockImplementationOnce((options: any) => ({
+      fullStream: createToolStream(async () => {
+        await options.tools.search_chats.execute({ query: "pelican auth" });
+        submitResult = await options.tools.submit_report.execute({
+          summary: "UNVALIDATED NO-MATCH SUMMARY",
+          findings: [
+            {
+              claim: "Fabricated no-match claim",
+              evidence: [{ chat_id: historicalChat, message_id: 999_999 }],
+            },
+          ],
+          conflicts: [],
+          missing_coverage: [],
+          outcome: "no_match",
+          confidence: "low",
+        });
+      }),
+      textStream: createTextStream([]),
+    }));
+
+    const { report } = await runExploreChatHistorySubagent({
+      query: "which auth provider did we pick?",
+      ctx: makeAgentContext({
+        isDyadPro: true,
+        appId,
+        chatId: currentChat,
+      }),
+    });
+
+    expect(submitResult).toContain("No cited chat_id/message_id pair matched");
+    expect(report.text).not.toContain("UNVALIDATED NO-MATCH SUMMARY");
+    expect(report.text).not.toContain("Fabricated no-match claim");
+    expect(report.text).toContain("Synthesis unavailable");
+  });
+
   it("returns the deterministic evidence-only fallback when the stream fails after observations", async () => {
     vi.spyOn(searchChatsTool, "execute").mockResolvedValue(
       craftedSearchResultJson(),

@@ -14,6 +14,7 @@ import { z } from "zod";
  */
 
 const MAX_EXCERPT_CHARS = 220;
+const MAX_CHAT_TITLE_CHARS = 160;
 /** Hard bound on the serialized report returned to the primary agent. */
 const MAX_REPORT_BYTES = 6 * 1024;
 const MAX_FALLBACK_OBSERVATIONS = 8;
@@ -51,6 +52,16 @@ function clampExcerpt(text: string): string {
     : collapsed;
 }
 
+function clampChatTitle(text: string): string {
+  const collapsed = text
+    .replace(/[“”]/g, '"')
+    .replace(/[\s\u2028\u2029]+/g, " ")
+    .trim();
+  return collapsed.length > MAX_CHAT_TITLE_CHARS
+    ? `${collapsed.slice(0, MAX_CHAT_TITLE_CHARS)}…`
+    : collapsed;
+}
+
 export function createHistoryObservationRegistry(): HistoryObservationRegistry {
   const byKey = new Map<string, HistoryObservation>();
   const registry: HistoryObservationRegistry = {
@@ -72,7 +83,10 @@ export function createHistoryObservationRegistry(): HistoryObservationRegistry {
           upsert({
             chatId: chat.chat_id,
             messageId: match.message_id,
-            chatTitle: chat.title ?? null,
+            chatTitle:
+              typeof chat.title === "string"
+                ? clampChatTitle(chat.title)
+                : null,
             role: String(match.role ?? ""),
             createdAt: String(match.created_at ?? ""),
             excerpt: clampExcerpt(String(match.excerpt ?? "")),
@@ -95,7 +109,10 @@ export function createHistoryObservationRegistry(): HistoryObservationRegistry {
         upsert({
           chatId,
           messageId: message.message_id,
-          chatTitle: parsed.chat.title ?? null,
+          chatTitle:
+            typeof parsed.chat.title === "string"
+              ? clampChatTitle(parsed.chat.title)
+              : null,
           role: String(message.role ?? ""),
           createdAt: String(message.created_at ?? ""),
           excerpt: clampExcerpt(String(message.text ?? "")),
@@ -184,6 +201,11 @@ interface ResolvedEvidence {
   observation: HistoryObservation;
 }
 
+interface ReportBlock {
+  lines: string[];
+  observations: HistoryObservation[];
+}
+
 function resolveEvidence(
   refs: { chat_id: number; message_id: number }[],
   registry: HistoryObservationRegistry,
@@ -231,9 +253,6 @@ export function validateAndFormatHistoryReport(params: {
 }): FormattedHistoryReport {
   const { query, report, registry } = params;
   let fabricated = 0;
-  const citedChats = new Set<number>();
-  let evidenceCount = 0;
-
   const findings = report.findings
     .map((finding) => {
       const { resolved, fabricated: bad } = resolveEvidence(
@@ -256,65 +275,146 @@ export function validateAndFormatHistoryReport(params: {
     })
     .filter((conflict) => conflict.resolved.length >= 2);
 
-  for (const group of [...findings, ...conflicts]) {
-    for (const { observation } of group.resolved) {
-      citedChats.add(observation.chatId);
-      evidenceCount += 1;
-    }
-  }
-
-  // Downgrade only when validation stripped findings the model actually
-  // submitted — an honest zero-findings no_match must survive unchanged
-  // (observations of irrelevant search hits are not evidence of relevance).
+  // Downgrade only when validation stripped substantive groups the model
+  // actually submitted. An honest no_match with no findings or conflicts
+  // must survive unchanged: adjacent search hits are not relevant evidence.
   let outcome = report.outcome;
-  if (report.findings.length > 0 && findings.length === 0) {
+  const submittedGroups = report.findings.length + report.conflicts.length;
+  const validatedGroups = findings.length + conflicts.length;
+  if (submittedGroups > 0 && validatedGroups === 0) {
     outcome = registry.size() > 0 ? "partial" : "no_match";
-  } else if (findings.length === 0 && outcome === "complete") {
+  } else if (validatedGroups === 0 && outcome === "complete") {
     // "complete" with nothing cited is self-contradictory; fail closed.
     outcome = "no_match";
   }
 
-  const lines: string[] = [
-    `Chat history report for: "${query}"`,
-    `Outcome: ${outcome} · Confidence: ${report.confidence} · Index: ${registry.indexStatus}`,
-    "",
-    report.summary,
-  ];
-  if (findings.length > 0) {
-    lines.push("", "Findings:");
-    findings.forEach((finding, i) => {
-      lines.push(`${i + 1}. ${finding.claim}`);
-      for (const { observation } of finding.resolved) {
-        lines.push(formatEvidenceLine(observation));
-      }
-    });
+  let confidence = report.confidence;
+  if (registry.indexStatus !== "ready") {
+    outcome = "partial";
+    if (confidence === "high") confidence = "medium";
   }
-  if (conflicts.length > 0) {
-    lines.push("", "Conflicts:");
-    for (const conflict of conflicts) {
-      lines.push(`- ${conflict.description}`);
-      for (const { observation } of conflict.resolved) {
-        lines.push(formatEvidenceLine(observation));
-      }
-    }
-  }
-  if (report.missing_coverage.length > 0) {
-    lines.push("", "Missing coverage:");
-    for (const gap of report.missing_coverage) {
-      lines.push(`- ${gap}`);
-    }
-  }
-  lines.push("", ARCHIVAL_NOTE);
+  const summary =
+    validatedGroups === 0
+      ? outcome === "no_match"
+        ? "No relevant prior discussion was found. Do not treat this as proof of absence — consider asking the user."
+        : "No submitted claim had validated evidence. Treat this result as incomplete."
+      : report.summary;
+
+  const findingBlocks: ReportBlock[] = findings.map((finding, index) => ({
+    lines: [
+      `${index + 1}. ${finding.claim}`,
+      ...finding.resolved.map(({ observation }) =>
+        formatEvidenceLine(observation),
+      ),
+    ],
+    observations: finding.resolved.map(({ observation }) => observation),
+  }));
+  const conflictBlocks: ReportBlock[] = conflicts.map((conflict) => ({
+    lines: [
+      `- ${conflict.description}`,
+      ...conflict.resolved.map(({ observation }) =>
+        formatEvidenceLine(observation),
+      ),
+    ],
+    observations: conflict.resolved.map(({ observation }) => observation),
+  }));
+  const bounded = buildBoundedValidatedReport({
+    query,
+    summary,
+    outcome,
+    confidence,
+    indexStatus: registry.indexStatus,
+    findingBlocks,
+    conflictBlocks,
+    missingCoverage: report.missing_coverage,
+  });
+  if (bounded.truncated) outcome = "partial";
+
+  const citedChats = new Set(
+    bounded.observations.map((observation) => observation.chatId),
+  );
 
   return {
-    text: clampReportText(lines),
+    text: bounded.text,
     stats: {
       chats: citedChats.size,
-      evidence: evidenceCount,
+      evidence: bounded.observations.length,
       outcome,
       fabricatedCitations: fabricated,
     },
   };
+}
+
+function buildBoundedValidatedReport(params: {
+  query: string;
+  summary: string;
+  outcome: HistoryReportStats["outcome"];
+  confidence: SubmitHistoryReport["confidence"];
+  indexStatus: string;
+  findingBlocks: ReportBlock[];
+  conflictBlocks: ReportBlock[];
+  missingCoverage: string[];
+}): { text: string; observations: HistoryObservation[]; truncated: boolean } {
+  const render = (outcome: HistoryReportStats["outcome"], clamp: boolean) => {
+    const lines = [
+      `Chat history report for: "${params.query}"`,
+      `Outcome: ${outcome} · Confidence: ${params.confidence} · Index: ${params.indexStatus}`,
+      "",
+      params.summary,
+    ];
+    const observations: HistoryObservation[] = [];
+    let truncated = false;
+
+    const appendSection = (heading: string, blocks: ReportBlock[]) => {
+      let sectionStarted = false;
+      for (const block of blocks) {
+        const addition = [
+          ...(!sectionStarted ? ["", heading] : []),
+          ...block.lines,
+        ];
+        if (clamp && !fitsReportBudget([...lines, ...addition])) {
+          truncated = true;
+          return false;
+        }
+        lines.push(...addition);
+        observations.push(...block.observations);
+        sectionStarted = true;
+      }
+      return true;
+    };
+
+    if (appendSection("Findings:", params.findingBlocks)) {
+      appendSection("Conflicts:", params.conflictBlocks);
+    }
+    if (!truncated && params.missingCoverage.length > 0) {
+      for (const [index, gap] of params.missingCoverage.entries()) {
+        const addition = [
+          ...(index === 0 ? ["", "Missing coverage:"] : []),
+          `- ${gap}`,
+        ];
+        if (clamp && !fitsReportBudget([...lines, ...addition])) {
+          truncated = true;
+          break;
+        }
+        lines.push(...addition);
+      }
+    }
+    lines.push("", ARCHIVAL_NOTE);
+    if (truncated) lines.push("…[report truncated]");
+    return { text: lines.join("\n"), observations, truncated };
+  };
+
+  const full = render(params.outcome, false);
+  if (Buffer.byteLength(full.text, "utf8") <= MAX_REPORT_BYTES) return full;
+  return render("partial", true);
+}
+
+function fitsReportBudget(lines: string[]): boolean {
+  const suffix = ["", ARCHIVAL_NOTE, "…[report truncated]"];
+  return (
+    Buffer.byteLength([...lines, ...suffix].join("\n"), "utf8") <=
+    MAX_REPORT_BYTES
+  );
 }
 
 /**

@@ -95,11 +95,14 @@ export async function runExploreChatHistorySubagent({
       if (
         formatted.stats.evidence === 0 &&
         registry.size() > 0 &&
-        report.outcome !== "no_match" &&
-        !submitBounceUsed
+        report.findings.length + report.conflicts.length > 0
       ) {
-        submitBounceUsed = true;
-        return "No cited chat_id/message_id pair matched evidence observed in this run's tool results. Cite only pairs that appeared in search_chats or read_chat output, then call submit_report again.";
+        if (!submitBounceUsed) {
+          submitBounceUsed = true;
+          return "No cited chat_id/message_id pair matched evidence observed in this run's tool results. Cite only pairs that appeared in search_chats or read_chat output, then call submit_report again.";
+        }
+        reportFinalized = true;
+        return "No cited pair matched observed evidence. The host will return an evidence-only fallback.";
       }
       acceptedRef.current = formatted;
       reportFinalized = true;

@@ -2,6 +2,7 @@ import { createStore, type WritableAtom } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import type {
   PendingUserInputPayload,
   UserInputDescriptorPayload,
@@ -70,6 +71,26 @@ function mcpDescriptor(requestId: string): UserInputDescriptorPayload {
     serverName: "test server",
     toolName: "read_file",
     classifier: "racing",
+  };
+}
+
+function questionnaireDescriptor(
+  requestId: string,
+): UserInputDescriptorPayload {
+  return {
+    kind: "questionnaire",
+    requestId,
+    chatId: 7,
+    deadlineAt: 10_000,
+    classifier: "none",
+    questions: [
+      {
+        id: "framework",
+        type: "radio",
+        question: "Which framework?",
+        options: ["React", "Vue"],
+      },
+    ],
   };
 }
 
@@ -307,5 +328,80 @@ describe("user-input renderer projection", () => {
       "settled",
     );
     stop();
+  });
+
+  it("clears a questionnaire on main timeout and rejects a stale submit without confirmation", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const showErrorToast = vi.fn();
+    fake.respond.mockRejectedValueOnce(
+      new DyadError("gone", DyadErrorKind.NotFound),
+    );
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      showErrorToast,
+    });
+    const stop = adapter.start();
+    await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(1));
+
+    fake.sendRequested(questionnaireDescriptor("questionnaire-1"));
+    expect(store.get(pendingQuestionnaireAtom).has(7)).toBe(true);
+
+    fake.sendSettled({
+      requestId: "questionnaire-1",
+      outcome: "timed-out",
+    });
+    expect(store.get(pendingQuestionnaireAtom).has(7)).toBe(false);
+
+    await expect(
+      adapter.respond("questionnaire-1", {
+        kind: "questionnaire",
+        answers: { framework: "Vue" },
+      }),
+    ).resolves.toBe(false);
+
+    expect(showErrorToast).toHaveBeenCalledWith("request expired");
+    expect(
+      Array.from(store.get(userInputRequestsAtom).values()).some(
+        (request) =>
+          request.status === "settled" && request.questionnaireSubmitted,
+      ),
+    ).toBe(false);
+    stop();
+  });
+
+  it("retains a successful questionnaire settlement for one confirmation animation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const store = createStore();
+    const fake = createFakeIpc();
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+    });
+    const stop = adapter.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    fake.sendRequested(questionnaireDescriptor("questionnaire-2"));
+    const response = adapter.respond("questionnaire-2", {
+      kind: "questionnaire",
+      answers: { framework: "Vue" },
+    });
+    fake.sendSettled({ requestId: "questionnaire-2", outcome: "human" });
+    await expect(response).resolves.toBe(true);
+
+    expect(
+      store.get(userInputRequestsAtom).get("questionnaire-2"),
+    ).toMatchObject({
+      status: "settled",
+      settledAt: 1_000,
+      questionnaireSubmitted: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(store.get(userInputRequestsAtom).has("questionnaire-2")).toBe(false);
+    stop();
+    vi.useRealTimers();
   });
 });

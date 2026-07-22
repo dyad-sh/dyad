@@ -24,7 +24,7 @@ function setup() {
 
 describe("user-input registry", () => {
   it("uses its injected clock as the only deadline source", async () => {
-    const { registry, clock } = setup();
+    const { registry, clock, broadcast } = setup();
     const requestId = registry.request({
       kind: "agent-consent",
       chatId: 1,
@@ -38,6 +38,10 @@ describe("user-input registry", () => {
     clock.advanceBy(300_000);
     await expect(park).resolves.toBeNull();
     expect(registry.getPending()).toEqual([]);
+    expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
+      requestId,
+      outcome: "timed-out",
+    });
   });
 
   it("sweeps a consent and questionnaire in one chat", async () => {

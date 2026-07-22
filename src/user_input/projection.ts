@@ -25,6 +25,7 @@ type UserInputOutcome =
   | "dispatched";
 
 const MAX_SETTLED_TOMBSTONES = 1_000;
+const QUESTIONNAIRE_CONFIRMATION_MS = 2_000;
 
 export type ProjectedUserInputRequest =
   | {
@@ -42,6 +43,7 @@ export type ProjectedUserInputRequest =
       settledAt: number;
       descriptor?: UserInputDescriptorPayload;
       deadlineAt?: number;
+      questionnaireSubmitted?: boolean;
     };
 
 export type UserInputRequests = ReadonlyMap<string, ProjectedUserInputRequest>;
@@ -108,6 +110,7 @@ export function getUserInputProjectionAdapter({
   if (existing) return existing;
 
   let stop: (() => void) | undefined;
+  let settledCleanupTimer: ReturnType<typeof setTimeout> | undefined;
   let hydrationGeneration = 0;
   const revisions = new Map<string, number>();
   const pendingClassifications = new Map<
@@ -118,6 +121,7 @@ export function getUserInputProjectionAdapter({
     string,
     { prompt: string; revision: number }
   >();
+  const pendingResponses = new Map<string, UserInputResponsePayload>();
 
   const markChanged = (requestId: string): number => {
     const revision = (revisions.get(requestId) ?? 0) + 1;
@@ -140,6 +144,38 @@ export function getUserInputProjectionAdapter({
       next.delete(requestId);
       return next;
     });
+  };
+
+  const scheduleSettledCleanup = () => {
+    if (!stop) return;
+    if (settledCleanupTimer) clearTimeout(settledCleanupTimer);
+    settledCleanupTimer = undefined;
+
+    const now = Date.now();
+    let nextExpiry = Number.POSITIVE_INFINITY;
+    updateRequests((current) => {
+      let next: Map<string, ProjectedUserInputRequest> | undefined;
+      for (const [requestId, entry] of current) {
+        if (entry.status !== "settled" || !entry.questionnaireSubmitted) {
+          continue;
+        }
+        const expiresAt = entry.settledAt + QUESTIONNAIRE_CONFIRMATION_MS;
+        if (expiresAt <= now) {
+          next ??= new Map(current);
+          next.delete(requestId);
+        } else {
+          nextExpiry = Math.min(nextExpiry, expiresAt);
+        }
+      }
+      return next ?? (current as Map<string, ProjectedUserInputRequest>);
+    });
+
+    if (Number.isFinite(nextExpiry)) {
+      settledCleanupTimer = setTimeout(
+        scheduleSettledCleanup,
+        Math.max(0, nextExpiry - Date.now()),
+      );
+    }
   };
 
   const hydrate = async (): Promise<void> => {
@@ -252,6 +288,8 @@ export function getUserInputProjectionAdapter({
           markChanged(requestId);
           pendingClassifications.delete(requestId);
           pendingFollowUps.delete(requestId);
+          const pendingResponse = pendingResponses.get(requestId);
+          pendingResponses.delete(requestId);
           removeResponding(requestId);
           updateRequests((current) => {
             const previous = current.get(requestId);
@@ -266,6 +304,9 @@ export function getUserInputProjectionAdapter({
                   ? previous.descriptor
                   : previous?.descriptor,
               deadlineAt: previous?.deadlineAt,
+              questionnaireSubmitted:
+                pendingResponse?.kind === "questionnaire" &&
+                pendingResponse.answers !== null,
             });
             const tombstones = Array.from(next.entries()).filter(
               ([, entry]) => entry.status === "settled",
@@ -279,6 +320,7 @@ export function getUserInputProjectionAdapter({
             }
             return next;
           });
+          scheduleSettledCleanup();
         }),
         ipcClient.events.userInput.onFollowUpDue(({ requestId, prompt }) => {
           const revision = markChanged(requestId);
@@ -299,16 +341,20 @@ export function getUserInputProjectionAdapter({
 
       stop = () => {
         ++hydrationGeneration;
+        if (settledCleanupTimer) clearTimeout(settledCleanupTimer);
+        settledCleanupTimer = undefined;
         for (const unsubscribe of unsubscribes.splice(0).reverse()) {
           unsubscribe();
         }
         stop = undefined;
       };
+      scheduleSettledCleanup();
       void hydrate().catch((error) => showErrorToast(error));
       return stop;
     },
 
     async respond(requestId, response) {
+      pendingResponses.set(requestId, response);
       store.set(writableRespondingRequestIdsAtom, (current) => {
         const next = new Set<string>(current);
         next.add(requestId);
@@ -318,6 +364,7 @@ export function getUserInputProjectionAdapter({
         await ipcClient.userInput.respond({ requestId, response });
         return true;
       } catch (error) {
+        pendingResponses.delete(requestId);
         if (isDyadError(error) && error.kind === DyadErrorKind.NotFound) {
           // Never expose a request main has already rejected as stale, even if
           // the best-effort authoritative refresh also fails.

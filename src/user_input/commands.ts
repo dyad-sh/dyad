@@ -61,6 +61,14 @@ export function createUserInputCommandRunner(deps: {
             });
           } else if (descriptor.kind === "agent-consent") {
             deps.broadcast("agent-tool:consent-request", descriptor);
+          } else if (descriptor.kind === "questionnaire") {
+            // Kept for the in-PR dual-emission window. Renderer consumers use
+            // user-input:requested; Phase 3 item 5 removes this legacy event.
+            deps.broadcast("plan:questionnaire", {
+              chatId: descriptor.chatId,
+              requestId: descriptor.requestId,
+              questions: descriptor.questions,
+            });
           }
           return;
         }

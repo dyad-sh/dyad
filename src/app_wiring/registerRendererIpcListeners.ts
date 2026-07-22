@@ -4,7 +4,6 @@ import type { createStore } from "jotai";
 import { agentTodosByChatIdAtom } from "@/atoms/chatAtoms";
 import type { ChatStreamManager } from "@/chat_stream/manager";
 import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
-import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import { ipc as defaultIpc, type TelemetryEventPayload } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
@@ -76,12 +75,6 @@ export function registerRendererIpcListeners({
 
   unsubscribes.push(
     ipcClient.events.misc.onChatStreamEnd(({ chatId }) => {
-      store.set(pendingQuestionnaireAtom, (prev) => {
-        if (!prev.has(chatId)) return prev;
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
       store.set(pendingIntegrationAtom, (prev) => {
         if (!prev.has(chatId)) return prev;
         const next = new Map(prev);

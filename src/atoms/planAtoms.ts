@@ -1,5 +1,9 @@
 import { atom } from "jotai";
 import type { PlanQuestionnairePayload } from "@/ipc/types/plan";
+import {
+  respondingRequestIdsAtom,
+  userInputRequestsAtom,
+} from "@/user_input/projection";
 
 export interface PlanData {
   content: string;
@@ -30,13 +34,22 @@ export const planAcceptInNewChatByChatIdAtom = atom<Map<number, boolean>>(
 
 export const pendingQuestionnaireAtom = atom<
   Map<number, PlanQuestionnairePayload>
->(new Map());
-
-// Transient flag: chatIds that just had a questionnaire submitted (for brief confirmation)
-// "visible" = showing, "fading" = fade-out in progress
-export const questionnaireSubmittedChatIdsAtom = atom<
-  Map<number, "visible" | "fading">
->(new Map());
+>((get) => {
+  const questionnaires = new Map<number, PlanQuestionnairePayload>();
+  const respondingRequestIds = get(respondingRequestIdsAtom);
+  for (const request of get(userInputRequestsAtom).values()) {
+    if (request.status === "settled") continue;
+    const descriptor = request.descriptor;
+    if (descriptor.kind !== "questionnaire") continue;
+    if (respondingRequestIds.has(descriptor.requestId)) continue;
+    questionnaires.set(descriptor.chatId, {
+      chatId: descriptor.chatId,
+      requestId: descriptor.requestId,
+      questions: descriptor.questions as PlanQuestionnairePayload["questions"],
+    });
+  }
+  return questionnaires;
+});
 
 export interface PlanAnnotation {
   id: string;

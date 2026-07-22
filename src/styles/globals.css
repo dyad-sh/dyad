@@ -393,6 +393,26 @@ body[data-scroll-locked] .app-region-drag {
   }
 }
 
+@keyframes questionnaire-submitted-confirmation {
+  0% {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  15%,
+  85% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.questionnaire-submitted-confirmation {
+  animation: questionnaire-submitted-confirmation 2s ease-in-out forwards;
+}
+
 /* In-between text-xs and text-sm */
 .text-xs-sm {
   font-size: 0.82rem;

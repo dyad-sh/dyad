@@ -2,8 +2,7 @@ import { z } from "zod";
 import crypto from "node:crypto";
 import log from "electron-log";
 import { ToolDefinition, AgentContext } from "./types";
-import { safeSend } from "@/ipc/utils/safe_sender";
-import { questionnaireResolver } from "../userInputResolvers";
+import { userInputRegistry } from "@/user_input/main";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -128,29 +127,25 @@ export const planningQuestionnaireTool: ToolDefinition<
     `Questionnaire (${args.questions.length} questions)`,
 
   execute: async (args, ctx: AgentContext) => {
-    const requestId = `questionnaire:${crypto.randomUUID()}`;
-
     // Auto-generate missing IDs
     const questions = args.questions.map((q) => ({
       ...q,
       id: q.id || `q_${crypto.randomUUID().slice(0, 8)}`,
     }));
 
+    const requestId = userInputRegistry.request({
+      kind: "questionnaire",
+      chatId: ctx.chatId,
+      questions,
+      classifier: "none",
+    });
+
     logger.log(
       `Presenting questionnaire (${questions.length} questions), requestId: ${requestId}`,
     );
 
-    safeSend(ctx.event.sender, "plan:questionnaire", {
-      chatId: ctx.chatId,
-      requestId,
-      questions,
-    });
-
-    const answers = await questionnaireResolver.wait(
-      requestId,
-      ctx.chatId,
-      ctx.abortSignal,
-    );
+    const result = await userInputRegistry.park(requestId, ctx.abortSignal);
+    const answers = result?.kind === "questionnaire" ? result.answers : null;
 
     if (!answers) {
       return "The user dismissed the questionnaire without answering. Ask them how they'd like to proceed, or try asking questions in regular chat text.";

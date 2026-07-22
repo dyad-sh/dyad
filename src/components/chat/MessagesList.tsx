@@ -14,7 +14,7 @@ import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { questionnaireSubmittedChatIdsAtom } from "@/atoms/planAtoms";
+import { userInputRequestsAtom } from "@/user_input/projection";
 import { useAtomValue } from "jotai";
 import { CheckCircle2, Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -82,7 +82,7 @@ type PendingRevert =
 
 // Footer component for Virtuoso - receives context via props
 function FooterComponent({ context }: { context?: FooterContext }) {
-  const submittedChatIds = useAtomValue(questionnaireSubmittedChatIdsAtom);
+  const userInputRequests = useAtomValue(userInputRequestsAtom);
   const [pendingRevert, setPendingRevert] = useState<PendingRevert | null>(
     null,
   );
@@ -135,8 +135,21 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     renderSetupBanner,
   } = context;
 
-  const questionnaireState =
-    selectedChatId != null ? submittedChatIds.get(selectedChatId) : undefined;
+  let questionnaireSettledAt: number | undefined;
+  if (selectedChatId != null) {
+    for (const request of userInputRequests.values()) {
+      if (
+        request.status === "settled" &&
+        request.questionnaireSubmitted &&
+        request.descriptor?.kind === "questionnaire" &&
+        request.descriptor.chatId === selectedChatId &&
+        (questionnaireSettledAt === undefined ||
+          request.settledAt > questionnaireSettledAt)
+      ) {
+        questionnaireSettledAt = request.settledAt;
+      }
+    }
+  }
 
   const lastMessage = messages.length
     ? messages[messages.length - 1]
@@ -512,9 +525,10 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         />
       )}
 
-      {questionnaireState && (
+      {questionnaireSettledAt !== undefined && (
         <div
-          className={`flex justify-start px-4 duration-300 ${questionnaireState === "fading" ? "animate-out fade-out-0 slide-out-to-bottom-2" : "animate-in fade-in-0 slide-in-from-bottom-2"}`}
+          key={questionnaireSettledAt}
+          className="questionnaire-submitted-confirmation flex justify-start px-4"
         >
           <div className="max-w-3xl w-full mx-auto">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground py-2">

@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => {
     showSuccess: vi.fn(),
     showWarning: vi.fn(),
     toastInfo: vi.fn(),
+    handleSwitchedToMainBranch: vi.fn(),
     openExternalUrl: vi.fn(),
     editAppFile: vi.fn(),
     createChat: vi.fn(),
@@ -87,6 +88,10 @@ vi.mock("@/hooks/useLoadAppFile", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useSwitchedToMainBranch", () => ({
+  useSwitchedToMainBranch: () => mocks.handleSwitchedToMainBranch,
+}));
+
 vi.mock("@/ipc/types", () => ({
   ipc: {
     app: {
@@ -128,6 +133,8 @@ describe("SecurityPanel", () => {
     });
     mocks.streamMessage.mockResolvedValue(undefined);
     mocks.createChat.mockResolvedValue(99);
+    mocks.editAppFile.mockResolvedValue({});
+    mocks.handleSwitchedToMainBranch.mockResolvedValue(undefined);
     mocks.reviewData.findings[0].fixChatId = undefined;
   });
 

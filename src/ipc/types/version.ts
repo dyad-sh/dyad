@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import { safeBranchNameSchema } from "./branch_name";
 
 // =============================================================================
 // Version Schemas
@@ -22,6 +23,17 @@ export const BranchResultSchema = z.object({
 
 export type BranchResult = z.infer<typeof BranchResultSchema>;
 
+export const BranchTipParamsSchema = z.object({
+  appId: z.number(),
+  branch: safeBranchNameSchema,
+});
+
+export const BranchTipResultSchema = z.object({
+  oid: z.string(),
+});
+
+export type BranchTipResult = z.infer<typeof BranchTipResultSchema>;
+
 export const CurrentChatMessageIdSchema = z.object({
   chatId: z.number(),
   messageId: z.number(),
@@ -32,13 +44,9 @@ export const RevertVersionParamsSchema = z.object({
   previousVersionId: z.string(),
   expectedHeadOid: z.string().optional(),
   currentChatMessageId: CurrentChatMessageIdSchema.optional(),
-  targetBranchName: z
-    .string()
-    .refine(
-      (v) => !v.startsWith("-"),
-      "targetBranchName must not start with '-'",
-    )
-    .optional(),
+  // `revertVersion` can fall back to checking this out as a git ref, so it gets
+  // the same branch-name guards as the other branch inputs.
+  targetBranchName: safeBranchNameSchema.optional(),
 });
 
 export type RevertVersionParams = z.infer<typeof RevertVersionParamsSchema>;
@@ -208,6 +216,12 @@ export const versionContracts = {
     channel: "get-current-branch",
     input: z.object({ appId: z.number() }),
     output: BranchResultSchema,
+  }),
+
+  getBranchTip: defineContract({
+    channel: "get-branch-tip",
+    input: BranchTipParamsSchema,
+    output: BranchTipResultSchema,
   }),
 } as const;
 

@@ -44,39 +44,13 @@ import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 import {
-  DIFF_BINARY_PLACEHOLDER,
-  DIFF_TOO_LARGE_PLACEHOLDER,
-} from "@/shared/diff_placeholders";
-import {
   blockNewStreamsForApp,
   blockNewStreamsForChat,
   cancelActiveStreamsForApp,
 } from "./chat_stream_handlers";
+import { sanitizeDiffContent } from "../utils/diff_content";
 
 const logger = log.scope("version_handlers");
-
-// Guard against dumping binary blobs or huge files into the renderer's diff
-// editor. Binary files render as garbage and large files hurt performance.
-const MAX_DIFF_CONTENT_BYTES = 1_000_000; // ~1 MB
-
-function sanitizeDiffContent(content: string): string {
-  // Size guard first: content.length is an O(1) check that short-circuits
-  // oversized files before the O(N) NUL scan / byte-length traversal below.
-  // Fast-path: every UTF-8 character is at least 1 byte, so if the string
-  // length already exceeds the limit, the byte length must too — which lets us
-  // skip the Buffer.byteLength traversal for large files entirely.
-  if (
-    content.length > MAX_DIFF_CONTENT_BYTES ||
-    Buffer.byteLength(content, "utf-8") > MAX_DIFF_CONTENT_BYTES
-  ) {
-    return DIFF_TOO_LARGE_PLACEHOLDER;
-  }
-  // A NUL byte is a strong signal the file is binary.
-  if (/\u0000/.test(content)) {
-    return DIFF_BINARY_PLACEHOLDER;
-  }
-  return content;
-}
 
 /**
  * Builds a user-facing warning for when the code was restored but the Neon
@@ -701,6 +675,31 @@ export function registerVersionHandlers() {
       logger.error(`Error getting current branch for app ${appId}:`, error);
       throw new DyadError(
         `Failed to get current branch: ${error.message}`,
+        DyadErrorKind.External,
+      );
+    }
+  });
+
+  createTypedHandler(versionContracts.getBranchTip, async (_, params) => {
+    const { appId, branch } = params;
+    const appPath = await getVersionAppPath(appId);
+    try {
+      return {
+        oid: await getCurrentCommitHash({
+          path: appPath,
+          ref: `refs/heads/${branch}`,
+        }),
+      };
+    } catch (error: any) {
+      if (error instanceof DyadError) {
+        throw error;
+      }
+      logger.error(
+        `Error getting branch tip for app ${appId} branch ${branch}:`,
+        error,
+      );
+      throw new DyadError(
+        `Failed to get branch tip: ${error.message}`,
         DyadErrorKind.External,
       );
     }
@@ -1476,4 +1475,55 @@ async function switchPostgresToDevelopmentBranch({
     appPath,
     disabled: false,
   });
+}
+
+/**
+ * Re-attaches a detached HEAD (i.e. a historical version is checked out) back to
+ * the writable branch: it runs `git checkout <branch>` first and, for Neon apps,
+ * only then switches Postgres back to the development branch and re-enables DB
+ * push.
+ *
+ * The checkout runs first because it is the step that can fail (dirty working
+ * tree, merge conflict), and doing it first keeps the operation consistent on
+ * failure: a failed checkout leaves the database env untouched instead of
+ * pointing `.env.local` at the development branch while the repo is still
+ * stranded on the historical detached HEAD. This mirrors `revertVersion`, which
+ * likewise checks out before switching Postgres.
+ *
+ * Used when a user edits a file while viewing a checked-out version, so the edit
+ * lands as a new version on top of the writable branch instead of an orphan
+ * commit on the detached HEAD.
+ */
+export async function switchToMainBranch({
+  appId,
+  targetBranchName = "main",
+}: {
+  appId: number;
+  targetBranchName?: string;
+}): Promise<void> {
+  const app = await db.query.apps.findFirst({
+    where: eq(apps.id, appId),
+  });
+  if (!app) {
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
+  }
+  const fullAppPath = getDyadAppPath(app.path);
+  await getCurrentCommitHash({
+    path: fullAppPath,
+    ref: `refs/heads/${targetBranchName}`,
+  });
+  await gitCheckout({ path: fullAppPath, ref: targetBranchName });
+  // Guard on the two fields the switch actually uses, matching `revertVersion`
+  // (which performs the same switch-back-to-development). Requiring
+  // `neonPreviewBranchId` here would wrongly skip the switch for a Neon app that
+  // has a development branch but no preview branch. Runs only after the checkout
+  // above succeeds, so a failed checkout can't leave the database env pointing at
+  // the development branch while the code stays on the historical version.
+  if (app.neonProjectId && app.neonDevelopmentBranchId) {
+    await switchPostgresToDevelopmentBranch({
+      neonProjectId: app.neonProjectId,
+      neonDevelopmentBranchId: app.neonDevelopmentBranchId,
+      appPath: app.path,
+    });
+  }
 }

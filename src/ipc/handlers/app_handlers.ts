@@ -110,8 +110,11 @@ import {
   gitListBranches,
   gitRenameBranch,
   getCurrentCommitHash,
+  gitCheckout,
+  gitCurrentBranch,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import { switchToMainBranch } from "./version_handlers";
 import { normalizePath } from "../../../shared/normalizePath";
 import { safeJoin } from "../utils/path_utils";
 import {
@@ -1035,7 +1038,14 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.editAppFile, async (_, params) => {
-    let { appId, filePath, content } = params;
+    let {
+      appId,
+      filePath,
+      content,
+      targetBranchName,
+      expectedBranchTipOid,
+      expectedFileContent,
+    } = params;
     // It should already be normalized, but just in case.
     filePath = normalizePath(filePath);
     const app = await db.query.apps.findFirst({
@@ -1049,42 +1059,165 @@ export function registerAppHandlers() {
     const appPath = getDyadAppPath(app.path);
     const fullPath = safeJoin(appPath, filePath);
 
-    if (app.neonProjectId && app.neonDevelopmentBranchId) {
-      try {
-        await storeDbTimestampAtCurrentVersion({
-          appId: app.id,
-        });
-      } catch (error) {
-        logger.error("Error storing Neon timestamp at current version:", error);
-        throw new Error(
-          "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+    const isGitRepo = fs.existsSync(path.join(appPath, ".git"));
+    let switchedToMainBranch = false;
+
+    const writeAndStageFile = async () => {
+      if (app.neonProjectId && app.neonDevelopmentBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({
+            appId: app.id,
+          });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
             error,
+          );
+          throw new Error(
+            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+              error,
+          );
+        }
+      }
+
+      // Ensure directory exists
+      const dirPath = path.dirname(fullPath);
+      await fsPromises.mkdir(dirPath, { recursive: true });
+
+      try {
+        await fsPromises.writeFile(fullPath, content, "utf-8");
+
+        // Check if git repository exists and stage the change. Saves are staged
+        // (not committed) so edits spanning multiple files can be reviewed and
+        // committed together from the code editor's Commit menu.
+        if (isGitRepo) {
+          await gitService.stageFile({
+            path: appPath,
+            filepath: filePath,
+          });
+        }
+      } catch (error: any) {
+        logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
+        throw new DyadError(
+          `Failed to write file: ${error.message}`,
+          DyadErrorKind.External,
         );
       }
-    }
+    };
 
-    // Ensure directory exists
-    const dirPath = path.dirname(fullPath);
-    await fsPromises.mkdir(dirPath, { recursive: true });
+    if (isGitRepo) {
+      switchedToMainBranch = await withLock(appId, async () => {
+        if (targetBranchName && expectedBranchTipOid) {
+          const actualBranchTipOid = await getCurrentCommitHash({
+            path: appPath,
+            ref: `refs/heads/${targetBranchName}`,
+          });
+          if (actualBranchTipOid !== expectedBranchTipOid) {
+            throw new DyadError(
+              "Cannot save this version diff because the branch has changed. Reopen the latest version and try again.",
+              DyadErrorKind.Conflict,
+            );
+          }
+          // A version diff renders the committed blob, not the working-tree
+          // file. If the file on disk diverged from what the editor showed
+          // (e.g. uncommitted local edits the diff never displayed), writing the
+          // edited blob would silently clobber those edits — the branch-tip
+          // check above only catches *commits* moving, not working-tree drift.
+          // Compare the on-disk content against the baseline the editor started
+          // from and reject the save if they differ so the user can reopen
+          // against the real current content. Consecutive saves stay allowed:
+          // the editor re-baselines to the just-saved content, which matches the
+          // (staged) file left on disk.
+          if (expectedFileContent != null) {
+            let onDiskContent = "";
+            try {
+              onDiskContent = await fsPromises.readFile(fullPath, "utf-8");
+            } catch (error: any) {
+              // A missing file is only expected when the baseline is also empty
+              // (e.g. an added file at the tip); any other read error is real.
+              if (error?.code !== "ENOENT") {
+                throw error;
+              }
+            }
+            const normalizeLineEndings = (value: string) =>
+              value.replace(/\r\n/g, "\n");
+            if (
+              normalizeLineEndings(onDiskContent) !==
+              normalizeLineEndings(expectedFileContent)
+            ) {
+              throw new DyadError(
+                "Cannot save this version diff because the file has changed on disk. Reopen the latest version and try again.",
+                DyadErrorKind.Conflict,
+              );
+            }
+          }
+        }
 
-    try {
-      await fsPromises.writeFile(fullPath, content, "utf-8");
-
-      // Check if git repository exists and stage the change. Saves are staged
-      // (not committed) so edits spanning multiple files can be reviewed and
-      // committed together from the code editor's Commit menu.
-      if (fs.existsSync(path.join(appPath, ".git"))) {
-        await gitService.stageFile({
-          path: appPath,
-          filepath: filePath,
-        });
-      }
-    } catch (error: any) {
-      logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
-      throw new DyadError(
-        `Failed to write file: ${error.message}`,
-        DyadErrorKind.External,
-      );
+        const currentBranch = await gitCurrentBranch({ path: appPath });
+        if (
+          targetBranchName &&
+          currentBranch !== null &&
+          currentBranch !== targetBranchName
+        ) {
+          throw new DyadError(
+            "Cannot save this version diff because the checked-out branch changed. Reopen the latest version and try again.",
+            DyadErrorKind.Conflict,
+          );
+        }
+        // `gitCurrentBranch` returns null only for a detached HEAD; a named
+        // branch (even a non-`main` one) is left alone.
+        if (currentBranch !== null) {
+          await writeAndStageFile();
+          return false;
+        }
+        if (!targetBranchName) {
+          throw new DyadError(
+            "Cannot save while a version is checked out because the writable branch is unknown.",
+            DyadErrorKind.Conflict,
+          );
+        }
+        // If a historical version is checked out (detached HEAD), re-attach to
+        // the writable branch before writing so the edit is staged there and
+        // becomes a new version on top of it. Keep the whole write/stage under
+        // the app lock so it can't race a concurrent checkout.
+        //
+        // Capture the detached commit first so a failure *after* the switch can
+        // roll the checkout back. Without this, a failure once the checkout has
+        // moved the repo off the detached HEAD would leave it on the writable
+        // branch while the renderer still has this historical version selected:
+        // its next save is rejected by the on-disk baseline check and the user is
+        // stranded on a stale diff with no way forward. Restoring the detached
+        // HEAD returns the work-tree to the committed blob the editor is
+        // baselined against, so the surfaced error's retry works against the
+        // correct state. Both the switch and the write/stage run inside the
+        // try/catch because `switchToMainBranch` performs its Neon-branch switch
+        // *after* its `git checkout` succeeds, so a Neon failure can also leave
+        // the repo on the writable branch.
+        const detachedOid = await getCurrentCommitHash({ path: appPath });
+        try {
+          await switchToMainBranch({
+            appId,
+            targetBranchName,
+          });
+          await writeAndStageFile();
+        } catch (error) {
+          try {
+            await gitCheckout({ path: appPath, ref: detachedOid });
+          } catch (rollbackError) {
+            // Best-effort: if even the rollback fails the repo stays on the
+            // writable branch, but surfacing the original save error is more
+            // useful than masking it with the rollback failure.
+            logger.error(
+              "Failed to restore the historical version after a failed post-checkout save",
+              rollbackError,
+            );
+          }
+          throw error;
+        }
+        return true;
+      });
+    } else {
+      await writeAndStageFile();
     }
 
     queueCloudSandboxSnapshotSync({
@@ -1108,6 +1241,7 @@ export function registerAppHandlers() {
           });
           if (deployErrors.length > 0) {
             return {
+              switchedToMainBranch,
               warning: `File saved, but some Supabase functions failed to deploy: ${deployErrors.join(", ")}`,
             };
           }
@@ -1117,6 +1251,7 @@ export function registerAppHandlers() {
             error,
           );
           return {
+            switchedToMainBranch,
             warning: `File saved, but failed to redeploy Supabase functions: ${error}`,
           };
         }
@@ -1133,13 +1268,14 @@ export function registerAppHandlers() {
         } catch (error) {
           logger.error(`Error deploying Supabase function ${filePath}:`, error);
           return {
+            switchedToMainBranch,
             warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
           };
         }
       }
     }
 
-    return {};
+    return { switchedToMainBranch };
   });
 
   createTypedHandler(appContracts.deleteApp, async (_, params) => {

@@ -397,3 +397,24 @@ body[data-scroll-locked] .app-region-drag {
 .text-xs-sm {
   font-size: 0.82rem;
 }
+
+/*
+ * Monaco inline diff "revert this change" arrow (FileDiffEditor edit mode).
+ * The arrow is rendered by Monaco's diff gutter menu
+ * (`.gutter > .gutterItem > ... > .actions-container`). Keep Monaco's default
+ * background; only give the chip more breathing room and match the toolbar
+ * pencil button's corner radius (Tailwind `rounded` = 0.25rem).
+ */
+.monaco-diff-editor .gutter .gutterItem .actions-container {
+  border-radius: 0.25rem !important;
+  /* Clip the inner action item (and its hover background) to the rounded
+   * corners so the radius stays visible. */
+  overflow: hidden;
+}
+
+.monaco-diff-editor .gutter .gutterItem .action-label {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 10px !important;
+}

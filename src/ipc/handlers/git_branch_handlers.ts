@@ -24,6 +24,7 @@ import {
 import { gitService } from "../services/git_service";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "../utils/path_utils";
+import { sanitizeDiffContent } from "../utils/diff_content";
 import { promises as fsPromises } from "node:fs";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -430,7 +431,17 @@ async function handleGetUncommittedFileDiff(
     newContent = "";
   }
 
-  return { path: filePath, oldContent, newContent };
+  // Binary and oversized files must be replaced with placeholders before they
+  // reach the renderer's diff editor. Without this, a binary asset (image, font,
+  // etc.) is decoded as UTF-8 garbage and — because the staged diff pane is now
+  // editable — saving even one character would rewrite the whole file with
+  // replacement characters and corrupt it. The renderer keeps placeholder diffs
+  // read-only (see `isDiffPlaceholder`).
+  return {
+    path: filePath,
+    oldContent: sanitizeDiffContent(oldContent),
+    newContent: sanitizeDiffContent(newContent),
+  };
 }
 
 async function withAppGitOp<T>(

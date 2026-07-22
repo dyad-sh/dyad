@@ -28,6 +28,22 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 
+function commitWithTestIdentity(cwd: string, message: string) {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Test User",
+      "commit",
+      "-m",
+      message,
+    ],
+    { cwd },
+  );
+}
+
 describe("retry (hybrid)", () => {
   let harness: HybridChatHarness;
 
@@ -132,9 +148,7 @@ describe("retry (hybrid)", () => {
     execFileSync("git", ["add", "retry-manual-change.txt"], {
       cwd: harness.appDir,
     });
-    execFileSync("git", ["commit", "-m", "Manual work between AI turns"], {
-      cwd: harness.appDir,
-    });
+    commitWithTestIdentity(harness.appDir, "Manual work between AI turns");
     await sendTurn("tc=write-index-2");
 
     const messagesBefore = await harness.db.query.messages.findMany();

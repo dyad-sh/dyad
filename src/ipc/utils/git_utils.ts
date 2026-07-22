@@ -1447,6 +1447,7 @@ export async function gitLogNative(
     String(depth),
     "--format=%H%x00%at%x00%B%x00---END-COMMIT---",
     ref,
+    "--",
   ];
 
   const logResult = await execGit(logArgs, path);

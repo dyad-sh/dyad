@@ -61,19 +61,26 @@ describe("gitLog", () => {
     }
   });
 
-  it("can list a branch other than the checked-out HEAD", async () => {
+  it("disambiguates a branch ref that also names a project path", async () => {
     repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-log-ref-"));
     await runGit(repoDir, ["init", "-b", "main"]);
-    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "main\n");
+    await fs.promises.mkdir(path.join(repoDir, "src"));
+    await fs.promises.writeFile(
+      path.join(repoDir, "src", "file.txt"),
+      "main\n",
+    );
     await commitAll(repoDir, "main commit");
-    await runGit(repoDir, ["checkout", "-b", "other"]);
-    await fs.promises.writeFile(path.join(repoDir, "file.txt"), "other\n");
-    await commitAll(repoDir, "other commit");
+    await runGit(repoDir, ["checkout", "-b", "src"]);
+    await fs.promises.writeFile(
+      path.join(repoDir, "src", "file.txt"),
+      "branch\n",
+    );
+    await commitAll(repoDir, "branch commit");
     await runGit(repoDir, ["checkout", "main"]);
 
-    const commits = await gitLog({ path: repoDir, ref: "other" });
+    const commits = await gitLog({ path: repoDir, ref: "src" });
 
-    expect(commits[0].commit.message).toContain("other commit");
+    expect(commits[0].commit.message).toContain("branch commit");
   });
 });
 

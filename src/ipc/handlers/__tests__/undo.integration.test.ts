@@ -30,6 +30,22 @@ import { asc, eq } from "drizzle-orm";
 
 const INDEX_PATH = "src/pages/Index.tsx";
 
+function commitWithTestIdentity(cwd: string, message: string) {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Test User",
+      "commit",
+      "-m",
+      message,
+    ],
+    { cwd },
+  );
+}
+
 describe("undo (integration)", () => {
   let harness: HybridChatHarness;
 
@@ -196,9 +212,7 @@ describe("undo (integration)", () => {
     execFileSync("git", ["add", "manual-change.txt"], {
       cwd: harness.appDir,
     });
-    execFileSync("git", ["commit", "-m", "Manual work after AI turn"], {
-      cwd: harness.appDir,
-    });
+    commitWithTestIdentity(harness.appDir, "Manual work after AI turn");
 
     await settleRendererActions();
     const versionInvokeBaseline = harness.bridge.invokeLog.filter(
@@ -241,9 +255,7 @@ describe("undo (integration)", () => {
     const racedPath = path.join(harness.appDir, "raced-change.txt");
     fs.writeFileSync(racedPath, "newer work\n");
     execFileSync("git", ["add", "raced-change.txt"], { cwd: harness.appDir });
-    execFileSync("git", ["commit", "-m", "Work created during confirmation"], {
-      cwd: harness.appDir,
-    });
+    commitWithTestIdentity(harness.appDir, "Work created during confirmation");
     fireEvent.click(screen.getByTestId("confirm-revert-anyway-button"));
     await waitFor(() => expect(fs.existsSync(racedPath)).toBe(true));
     expect(await loadMessages()).toHaveLength(2);

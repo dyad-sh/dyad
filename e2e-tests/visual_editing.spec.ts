@@ -5,12 +5,14 @@ const fs = require("fs");
 const path = require("path");
 
 async function saveVisualChanges(page: Page) {
+  const saveButton = page.getByRole("button", { name: "Save Changes" });
+
   await expect(async () => {
-    const saveButton = page.getByRole("button", { name: "Save Changes" });
     await expect(saveButton).toBeVisible({ timeout: 1_000 });
     await expect(saveButton).toBeEnabled({ timeout: 1_000 });
-    await saveButton.click();
   }).toPass({ timeout: Timeout.MEDIUM });
+
+  await saveButton.click();
 }
 
 testSkipIfWindows("edit style of one selected component", async ({ po }) => {

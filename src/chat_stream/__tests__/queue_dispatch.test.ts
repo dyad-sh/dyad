@@ -216,7 +216,7 @@ describe("manager disposal", () => {
 
     // The production adapter has no IPC bridge in this environment, so the
     // stream errors out immediately; the controller must reach `errored` and
-    // then be disposed from the registry (not leak forever).
+    // then be disposed from the manager host (not leak forever).
     manager.ensure(chatId).send({
       type: "submit",
       request: { prompt: "hello", chatId },
@@ -225,6 +225,19 @@ describe("manager disposal", () => {
       expect(manager.peek(chatId)).toBeUndefined();
     });
     expect(store.get(chatErrorByIdAtom).get(chatId)).toBeTruthy();
+
+    const replacement = manager.ensure(chatId);
+    replacement.send({
+      type: "submit",
+      request: { prompt: "retry", chatId },
+    });
+    expect(replacement.getSnapshot()).toMatchObject({
+      type: "starting",
+      streamId: 2,
+    });
+    await vi.waitFor(() => {
+      expect(manager.peek(chatId)).toBeUndefined();
+    });
     consoleError.mockRestore();
   });
 });

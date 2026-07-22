@@ -34,10 +34,13 @@ function withoutChatId<Value>(
  *
  * Terminal, settled controllers self-release once only the host subscription
  * remains. This is the intentional release path for idle chats that are never
- * deleted; deleted chats are disposed explicitly through `disposeChat`.
+ * deleted; their last generation is retained so replacement controllers do
+ * not reuse IDs while delayed IPC events may still be in flight. Deleted chats
+ * are disposed explicitly through `disposeChat`.
  */
 export class ChatStreamManager {
   private runtimeDeps: ChatStreamRuntimeDeps | null = null;
+  private readonly lastStreamIdByChatId = new Map<number, number>();
   private readonly commands = createProductionChatStreamCommands(() => {
     if (!this.runtimeDeps) {
       throw new Error(
@@ -50,6 +53,7 @@ export class ChatStreamManager {
     (chatId) =>
       createChatStreamController({
         chatId,
+        initialLastStreamId: this.lastStreamIdByChatId.get(chatId),
         getCommands: () => this.commands,
         onQuiescent: (controller) => this.releaseIfQuiescent(controller),
       }),
@@ -75,6 +79,7 @@ export class ChatStreamManager {
 
   disposeChat(chatId: number): void {
     this.host.disposeKey(chatId);
+    this.lastStreamIdByChatId.delete(chatId);
     this.store.set(queuedMessagesByIdAtom, (previous) =>
       withoutChatId(previous, chatId),
     );
@@ -97,13 +102,17 @@ export class ChatStreamManager {
   }
 
   private releaseIfQuiescent(controller: ChatStreamController): void {
-    const snapshotType = controller.getSnapshot().type;
+    const snapshot = controller.getSnapshot();
     if (
       this.host.get(controller.chatId) === controller &&
-      (snapshotType === "idle" || snapshotType === "errored") &&
+      (snapshot.type === "idle" || snapshot.type === "errored") &&
       controller.isSettled() &&
       controller.subscriberCount() <= 1
     ) {
+      this.lastStreamIdByChatId.set(
+        controller.chatId,
+        snapshot.lastStreamId,
+      );
       this.host.disposeKey(controller.chatId);
     }
   }

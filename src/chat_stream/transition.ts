@@ -28,8 +28,8 @@ export function isStreamActive(state: StreamState): boolean {
 }
 
 /** Initial state for a freshly created controller. */
-export function initialStreamState(): StreamState {
-  return { type: "idle", lastStreamId: 0 };
+export function initialStreamState(lastStreamId = 0): StreamState {
+  return { type: "idle", lastStreamId };
 }
 
 /** Explicit marker for deliberately ignored (state, event) pairs. */

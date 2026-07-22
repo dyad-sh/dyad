@@ -19,11 +19,7 @@ import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
 
 import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
-import {
-  getEffectiveDefaultChatMode,
-  hasDyadProKey,
-  type ChatMode,
-} from "@/lib/schemas";
+import { hasDyadProKey, type ChatMode } from "@/lib/schemas";
 import {
   FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   isFreeProBuildModeCombination,
@@ -34,6 +30,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { RefreshCw, Zap } from "lucide-react";
 import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
 import { firstPromptSagaAtom } from "@/first_prompt/projection";
+import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -68,20 +65,7 @@ export default function HomePage() {
       return initialChatMode;
     }
 
-    const effectiveDefaultChatMode = getEffectiveDefaultChatMode(
-      settings,
-      envVars,
-      !isQuotaExceeded,
-    );
-    if (
-      isFreeProBuildModeCombination(
-        settings.selectedModel,
-        effectiveDefaultChatMode,
-      )
-    ) {
-      return FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
-    }
-    return effectiveDefaultChatMode;
+    return getHomeDefaultChatMode(settings, envVars, !isQuotaExceeded);
   }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
 
   const posthog = usePostHog();
@@ -182,7 +166,6 @@ export default function HomePage() {
   );
 
   const isLoading = [
-    "checkingProviders",
     "creating",
     "postCreate",
     "dispatching",

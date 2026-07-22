@@ -7,6 +7,8 @@ import type {
 } from "./state";
 import type { FirstPromptCommandRunner } from "./controller";
 
+export const PROVIDER_CHECK_TIMEOUT_MS = 10_000;
+
 export interface CreatedFirstPromptApp {
   readonly appId: number;
   readonly appName: string;
@@ -45,6 +47,7 @@ export function createFirstPromptCommandRunner(options: {
   getDeps: () => FirstPromptDeps;
 }): FirstPromptCommandRunner {
   const settleHandles = new Set<ClockHandle>();
+  let providerCheckHandle: ClockHandle | undefined;
   let disposed = false;
 
   return {
@@ -55,6 +58,25 @@ export function createFirstPromptCommandRunner(options: {
       if (disposed) return;
       const deps = options.getDeps();
       switch (command.type) {
+        case "ScheduleProviderCheckTimeout": {
+          if (providerCheckHandle !== undefined) {
+            options.clock.cancel(providerCheckHandle);
+          }
+          const handle = options.clock.schedule(() => {
+            providerCheckHandle = undefined;
+            if (!disposed) emit({ type: "PROVIDER_CHECK_TIMED_OUT" });
+          }, PROVIDER_CHECK_TIMEOUT_MS);
+          providerCheckHandle = handle;
+          return;
+        }
+
+        case "CancelProviderCheckTimeout":
+          if (providerCheckHandle !== undefined) {
+            options.clock.cancel(providerCheckHandle);
+            providerCheckHandle = undefined;
+          }
+          return;
+
         case "CreateApp":
           try {
             const result = await deps.createApp(command.payload.chatMode);
@@ -170,6 +192,10 @@ export function createFirstPromptCommandRunner(options: {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (providerCheckHandle !== undefined) {
+        options.clock.cancel(providerCheckHandle);
+        providerCheckHandle = undefined;
+      }
       for (const handle of settleHandles) options.clock.cancel(handle);
       settleHandles.clear();
     },

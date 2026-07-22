@@ -81,6 +81,9 @@ vi.mock("@/lib/schemas", async (importOriginal) => ({
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
   hasDyadProKey: () => false,
 }));
+vi.mock("@/lib/homeChatMode", () => ({
+  getHomeDefaultChatMode: () => mocks.effectiveDefaultChatMode,
+}));
 vi.mock("@/components/chat/HomeChatInput", () => ({
   HomeChatInput: ({ onSubmit }: { onSubmit: (options?: any) => boolean }) => (
     <button
@@ -166,7 +169,6 @@ describe("HomePage first-prompt projection", () => {
 
   it("shows the loading projection for every active orchestration phase", () => {
     for (const phase of [
-      "checkingProviders",
       "creating",
       "postCreate",
       "dispatching",
@@ -177,6 +179,16 @@ describe("HomePage first-prompt projection", () => {
       expect(screen.getByText("buildingApp")).toBeTruthy();
       view.unmount();
     }
+  });
+
+  it("keeps the composer visible while checking providers", () => {
+    mocks.phase = "checkingProviders";
+    render(<HomePage />);
+
+    expect(
+      screen.getByRole("button", { name: "Submit home prompt" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("buildingApp")).toBeNull();
   });
 
   it("preserves existing-app loading copy", () => {

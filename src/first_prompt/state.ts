@@ -85,6 +85,7 @@ export type FirstPromptEvent =
   | { readonly type: "ARM_FOR_SETUP"; readonly payload: FirstPromptPayload }
   | { readonly type: "DISARM" }
   | { readonly type: "PROVIDERS_LOADED"; readonly anySetup: boolean }
+  | { readonly type: "PROVIDER_CHECK_TIMED_OUT" }
   | {
       readonly type: "PROVIDER_CONFIGURED";
       readonly defaultChatMode?: FirstPromptChatMode;
@@ -108,6 +109,8 @@ export type FirstPromptEvent =
   | { readonly type: "RESET" };
 
 export type FirstPromptCommand =
+  | { readonly type: "ScheduleProviderCheckTimeout" }
+  | { readonly type: "CancelProviderCheckTimeout" }
   | { readonly type: "CreateApp"; readonly payload: FirstPromptPayload }
   | {
       readonly type: "CreateChat";

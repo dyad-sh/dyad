@@ -39,6 +39,10 @@ Background and before/after examples of why this pattern exists:
 - When a resume event can come from a global watcher as well as explicit UI
   senders, validate the captured payload in the transition. Caller-only guards
   can be bypassed after navigation or another asynchronous detour.
+- When several adapters enrich the same resume event with derived data, use one
+  shared resolver. Divergent raw/effective values make event races observable.
+- A machine-owned watchdog timer needs an explicit cancel command on every
+  transition that leaves the watched state, plus disposal cleanup.
 - When a multi-step side effect can fail partway through, retain the exact
   completed/next step in the failure state. Retrying from the start can repeat
   non-idempotent external work or deterministically fail on an existing-resource

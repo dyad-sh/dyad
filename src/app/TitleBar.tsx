@@ -27,6 +27,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { firstPromptSagaAtom } from "@/first_prompt/projection";
 import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
+import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
+import type { UserSettings } from "@/lib/schemas";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -35,7 +37,7 @@ export const TitleBar = () => {
   const sendFirstPrompt = useFirstPromptSend();
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
-  const { settings, refreshSettings } = useSettings();
+  const { settings, envVars, refreshSettings } = useSettings();
   const queryClient = useQueryClient();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
@@ -49,7 +51,15 @@ export const TitleBar = () => {
         // Refetch user budget when Dyad Pro key is set via deep link
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
         if (hasArmedPayload) {
-          sendFirstPrompt({ type: "PROVIDER_CONFIGURED" });
+          const refreshedSettings = queryClient.getQueryData<UserSettings>(
+            queryKeys.settings.user,
+          );
+          sendFirstPrompt({
+            type: "PROVIDER_CONFIGURED",
+            defaultChatMode: refreshedSettings
+              ? getHomeDefaultChatMode(refreshedSettings, envVars)
+              : "local-agent",
+          });
         } else {
           setIsSuccessDialogOpen(true);
         }
@@ -59,6 +69,7 @@ export const TitleBar = () => {
     handleDeepLink();
   }, [
     clearLastDeepLink,
+    envVars,
     lastDeepLink,
     hasArmedPayload,
     queryClient,

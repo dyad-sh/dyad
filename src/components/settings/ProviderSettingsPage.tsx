@@ -32,13 +32,9 @@ import {
   UserSettings,
   AzureProviderSetting,
   VertexProviderSetting,
-  getEffectiveDefaultChatMode,
   hasDyadProKey,
 } from "@/lib/schemas";
-import {
-  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
-  isFreeProBuildModeCombination,
-} from "@/lib/freeProModel";
+import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -272,22 +268,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       const nextSettings = settings
         ? ({ ...settings, ...settingsUpdate } as UserSettings)
         : undefined;
-      let resumeDefaultChatMode = nextSettings
-        ? getEffectiveDefaultChatMode(
+      const resumeDefaultChatMode = nextSettings
+        ? getHomeDefaultChatMode(
             nextSettings,
             envVars,
             isQuotaLoading ? undefined : !isQuotaExceeded,
           )
         : settingsUpdate.defaultChatMode;
-      if (
-        nextSettings &&
-        isFreeProBuildModeCombination(
-          nextSettings.selectedModel,
-          resumeDefaultChatMode,
-        )
-      ) {
-        resumeDefaultChatMode = FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
-      }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       if (isFirstProviderSetup && hasArmedPayload) {

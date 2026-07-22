@@ -30,6 +30,15 @@ function startCreating(
   };
 }
 
+function startCheckingProviders(
+  payload: FirstPromptPayload,
+): FirstPromptTransitionResult {
+  return {
+    state: { type: "checkingProviders", payload },
+    commands: [{ type: "ScheduleProviderCheckTimeout" }],
+  };
+}
+
 function applyProviderDefaultChatMode(
   payload: FirstPromptPayload,
   defaultChatMode: FirstPromptPayload["chatMode"],
@@ -119,6 +128,7 @@ function ignoreEvent(
     case "ARM_FOR_SETUP":
     case "DISARM":
     case "PROVIDERS_LOADED":
+    case "PROVIDER_CHECK_TIMED_OUT":
     case "SETUP_DISMISSED":
     case "APP_CREATED":
     case "CHAT_CREATED":
@@ -147,10 +157,7 @@ export function transition(
     case "idle":
       switch (event.type) {
         case "SUBMIT":
-          return {
-            state: { type: "checkingProviders", payload: event.payload },
-            commands: [],
-          };
+          return startCheckingProviders(event.payload);
         case "ARM_FOR_SETUP":
           return {
             state: {
@@ -170,17 +177,37 @@ export function transition(
       switch (event.type) {
         case "PROVIDERS_LOADED":
           return event.anySetup
-            ? startCreating(state.payload)
+            ? {
+                ...startCreating(state.payload),
+                commands: [
+                  { type: "CancelProviderCheckTimeout" },
+                  createCommand(state.payload),
+                ],
+              }
             : {
                 state: {
                   type: "awaitingProviderSetup",
                   payload: state.payload,
                 },
-                commands: [{ type: "ShowSetupDialog" }],
+                commands: [
+                  { type: "CancelProviderCheckTimeout" },
+                  { type: "ShowSetupDialog" },
+                ],
               };
+        case "PROVIDER_CHECK_TIMED_OUT":
+          return {
+            state: {
+              type: "awaitingProviderSetup",
+              payload: state.payload,
+            },
+            commands: [{ type: "ShowSetupDialog" }],
+          };
         case "PROVIDER_CONFIGURED":
           if (!hasPromptContent(state.payload)) {
-            return { state: { type: "idle" }, commands: [] };
+            return {
+              state: { type: "idle" },
+              commands: [{ type: "CancelProviderCheckTimeout" }],
+            };
           }
           const checkingPayload = applyProviderDefaultChatMode(
             state.payload,
@@ -189,12 +216,16 @@ export function transition(
           return {
             ...startCreating(checkingPayload),
             commands: [
+              { type: "CancelProviderCheckTimeout" },
               { type: "NavigateHome" },
               createCommand(checkingPayload),
             ],
           };
         case "RESET":
-          return { state: { type: "idle" }, commands: [] };
+          return {
+            state: { type: "idle" },
+            commands: [{ type: "CancelProviderCheckTimeout" }],
+          };
         default:
           return ignoreEvent(state, event);
       }
@@ -355,10 +386,7 @@ export function transition(
     case "failed":
       switch (event.type) {
         case "SUBMIT":
-          return {
-            state: { type: "checkingProviders", payload: event.payload },
-            commands: [],
-          };
+          return startCheckingProviders(event.payload);
         case "RETRY":
           return startCreating(state.payload);
         case "RESET":
@@ -373,7 +401,9 @@ export function transition(
     case "failedPartial":
       switch (event.type) {
         case "SUBMIT":
-          return resumePartial(state, event.payload);
+          return event.payload.selectedApp
+            ? startCheckingProviders(event.payload)
+            : resumePartial(state, event.payload);
         case "RETRY":
           return resumePartial(state);
         case "RESET":

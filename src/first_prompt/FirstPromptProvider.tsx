@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { useTranslation } from "react-i18next";
 import { usePostHog } from "posthog-js/react";
-import { ipc } from "@/ipc/types";
+import { ipc, type FreeAgentQuotaStatus } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
@@ -22,6 +22,7 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import { queryKeys } from "@/lib/queryKeys";
+import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 import { showError } from "@/lib/toast";
 import {
   attachmentsAtom,
@@ -86,7 +87,7 @@ export function FirstPromptProvider({
   const queryClient = useQueryClient();
   const { t } = useTranslation("home");
   const posthog = usePostHog();
-  const { settings } = useSettings();
+  const { settings, envVars } = useSettings();
   const { refreshApps } = useLoadApps();
   const { selectChat } = useSelectChat();
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -239,16 +240,27 @@ export function FirstPromptProvider({
       !awaitingStartedWithProviderRef.current &&
       hasConfiguredProvider
     ) {
+      const quotaStatus = queryClient.getQueryData<FreeAgentQuotaStatus>(
+        queryKeys.freeAgentQuota.status,
+      );
       controller.send({
         type: "PROVIDER_CONFIGURED",
-        defaultChatMode: settings?.defaultChatMode,
+        defaultChatMode: settings
+          ? getHomeDefaultChatMode(
+              settings,
+              envVars,
+              quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
+            )
+          : undefined,
       });
     }
   }, [
     controller,
     hasConfiguredProvider,
+    envVars,
     pathname,
-    settings?.defaultChatMode,
+    queryClient,
+    settings,
     snapshot.type,
   ]);
 

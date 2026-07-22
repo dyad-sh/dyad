@@ -121,6 +121,21 @@ describe("FirstPromptController", () => {
     expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
   });
 
+  it("opens provider setup when provider detection times out", async () => {
+    const harness = createHarness();
+    harness.controller.send({ type: "SUBMIT", payload });
+    await flushCommands();
+
+    harness.clock.advanceBy(10_000);
+    await flushCommands();
+
+    expect(harness.controller.getSnapshot()).toEqual({
+      type: "awaitingProviderSetup",
+      payload,
+    });
+    expect(harness.deps.showSetupDialog).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps rapid submissions single-flight through creation", async () => {
     const harness = createHarness();
     expect(harness.controller.send({ type: "SUBMIT", payload })).toBe(true);
@@ -153,6 +168,35 @@ describe("FirstPromptController", () => {
       appId: 1,
       chatId: 2,
       payload: editedPayload,
+    });
+  });
+
+  it("creates a chat in a newly selected app after a partial failure", async () => {
+    const harness = createHarness();
+    harness.setThemeError(new Error("theme failed"));
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+
+    harness.setThemeError();
+    harness.controller.send({
+      type: "SUBMIT",
+      payload: {
+        ...payload,
+        selectedApp: { id: 41, name: "Existing app" },
+      },
+    });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+
+    expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
+    expect(harness.deps.createChat).toHaveBeenCalledWith(41, "build");
+    expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
+      appId: 41,
+      chatId: 3,
+      payload: expect.objectContaining({
+        selectedApp: { id: 41, name: "Existing app" },
+      }),
     });
   });
 

@@ -23,6 +23,7 @@ const events: readonly FirstPromptEvent[] = [
   { type: "DISARM" },
   { type: "PROVIDERS_LOADED", anySetup: false },
   { type: "PROVIDERS_LOADED", anySetup: true },
+  { type: "PROVIDER_CHECK_TIMED_OUT" },
   { type: "PROVIDER_CONFIGURED" },
   { type: "SETUP_DISMISSED" },
   { type: "APP_CREATED", appId: 1, appName: "Notes", chatId: 2 },
@@ -105,7 +106,13 @@ describe("first-prompt transition", () => {
 
       const result = transition(state, { type: "PROVIDER_CONFIGURED" });
 
-      expect(result).toEqual({ state: { type: "idle" }, commands: [] });
+      expect(result).toEqual({
+        state: { type: "idle" },
+        commands:
+          type === "checkingProviders"
+            ? [{ type: "CancelProviderCheckTimeout" }]
+            : [],
+      });
     },
   );
 
@@ -152,6 +159,38 @@ describe("first-prompt transition", () => {
     expect(result.state).toEqual({
       type: "creating",
       payload: explicitPayload,
+    });
+  });
+
+  it("falls back to provider setup when provider detection times out", () => {
+    const state: FirstPromptState = { type: "checkingProviders", payload };
+
+    expect(transition(state, { type: "PROVIDER_CHECK_TIMED_OUT" })).toEqual({
+      state: { type: "awaitingProviderSetup", payload },
+      commands: [{ type: "ShowSetupDialog" }],
+    });
+  });
+
+  it("starts fresh when a partial-failure resubmit targets another app", () => {
+    const state: FirstPromptState = {
+      type: "failedPartial",
+      payload,
+      appId: 1,
+      appName: "Orphaned app",
+      chatId: 2,
+      message: "Theme failed",
+      step: "theme",
+    };
+    const retargetedPayload: FirstPromptPayload = {
+      ...payload,
+      selectedApp: { id: 41, name: "Existing app" },
+    };
+
+    expect(
+      transition(state, { type: "SUBMIT", payload: retargetedPayload }),
+    ).toEqual({
+      state: { type: "checkingProviders", payload: retargetedPayload },
+      commands: [{ type: "ScheduleProviderCheckTimeout" }],
     });
   });
 });

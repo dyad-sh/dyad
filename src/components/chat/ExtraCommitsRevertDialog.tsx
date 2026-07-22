@@ -18,27 +18,41 @@ export function ExtraCommitsRevertDialog({
   kind,
   extraCommits,
   onConfirm,
+  onRetryFromCurrentCode,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   kind: "undo" | "retry";
   extraCommits: Version[];
   onConfirm: () => void;
+  onRetryFromCurrentCode?: () => void;
 }) {
   const action = kind === "undo" ? "Undo" : "Retry";
   const commitLabel = extraCommits.length === 1 ? "commit was" : "commits were";
+  const isRetry = kind === "retry";
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent data-testid="extra-commits-revert-dialog">
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {action} will revert additional changes
+            {isRetry
+              ? "How would you like to retry?"
+              : "Undo will revert additional changes"}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Besides this message&apos;s changes, {extraCommits.length} more{" "}
-            {commitLabel} made afterwards.{" "}
-            {action === "Undo" ? "Undoing" : "Retrying"} will also revert them:
+            {isRetry ? (
+              <>
+                {extraCommits.length} newer {commitLabel} made after this
+                response. Retry from the current code to keep them, or restore
+                and retry to revert them:
+              </>
+            ) : (
+              <>
+                Besides this message&apos;s changes, {extraCommits.length} more{" "}
+                {commitLabel} made afterwards. Undoing will also revert them:
+              </>
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="scrollbar-on-hover max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
@@ -56,12 +70,21 @@ export function ExtraCommitsRevertDialog({
           ))}
         </div>
         <AlertDialogFooter className="flex-col sm:flex-col sm:justify-normal">
+          {isRetry && onRetryFromCurrentCode && (
+            <AlertDialogAction
+              data-testid="retry-from-current-code-button"
+              className="w-full"
+              onClick={onRetryFromCurrentCode}
+            >
+              Retry from current code
+            </AlertDialogAction>
+          )}
           <AlertDialogAction
             data-testid="confirm-revert-anyway-button"
             className={`${buttonVariants({ variant: "destructive" })} w-full`}
             onClick={onConfirm}
           >
-            {action} anyway
+            {isRetry ? "Restore and retry" : `${action} anyway`}
           </AlertDialogAction>
           <AlertDialogCancel
             data-testid="cancel-revert-button"

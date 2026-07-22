@@ -78,7 +78,11 @@ type PendingRevert =
       kind: "undo";
       currentChatMessageId?: { chatId: number; messageId: number };
     })
-  | (RevertConfirmation & { kind: "retry"; retry: RetryDetails });
+  | (RevertConfirmation & {
+      kind: "retry";
+      retry: RetryDetails;
+      currentChatMessageId: { chatId: number; messageId: number };
+    });
 
 // Footer component for Virtuoso - receives context via props
 function FooterComponent({ context }: { context?: FooterContext }) {
@@ -203,11 +207,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     appId: actionAppId,
     targetVersionId,
     expectedHeadOid,
+    currentChatMessageId,
     retry,
   }: {
     appId: number;
     targetVersionId?: string;
     expectedHeadOid?: string;
+    currentChatMessageId?: { chatId: number; messageId: number };
     retry: RetryDetails;
   }) => {
     if (targetVersionId) {
@@ -216,6 +222,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         appId: actionAppId,
         versionId: targetVersionId,
         expectedHeadOid,
+        currentChatMessageId,
       });
     }
 
@@ -304,10 +311,10 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     }
   };
 
-  // Re-runs the last user prompt. If the last assistant turn is still the tip of
-  // history it is first reverted (so the retry replaces it rather than stacking);
-  // otherwise the prompt is redone. Shared by the modified-files card and the
-  // standalone Retry button below.
+  // Re-runs the last user prompt. Restore to the version immediately before the
+  // last assistant response so Retry replaces that attempt without discarding
+  // work that already existed when it started. If newer commits exist, let the
+  // user choose whether to keep them or restore through them.
   const handleRetry = async () => {
     if (!selectedChatId || !appId) {
       console.error("No chat selected or app ID not available");
@@ -330,44 +337,29 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       // The last message is usually an assistant, but it might not be.
       // The refreshed log may still be empty if the query failed; in that case
       // fall through to a plain redo rather than throwing.
-      const lastVersion = freshVersions[0];
       const lastMessage = messages[messages.length - 1];
-      let shouldRedo = true;
-      let revertTargetVersionId: string | undefined;
-      if (
-        lastMessage?.role === "assistant" &&
-        lastVersion?.oid === lastMessage.commitHash
-      ) {
-        const previousAssistantMessage = messages[messages.length - 3];
-        if (
-          previousAssistantMessage?.role === "assistant" &&
-          previousAssistantMessage?.commitHash
-        ) {
-          console.debug("Reverting to previous assistant version");
-          revertTargetVersionId = previousAssistantMessage.commitHash;
-          shouldRedo = false;
-        } else {
-          const chat = await ipc.chat.getChat(selectedChatId);
-          if (chat.initialCommitHash) {
-            console.debug(
-              "Reverting to initial commit hash",
-              chat.initialCommitHash,
-            );
-            revertTargetVersionId = chat.initialCommitHash;
-          } else {
-            showWarning(
-              "No initial commit hash found for chat. Need to manually undo code changes",
-            );
-          }
-        }
-      }
+      const currentCommitIndex = lastMessage?.commitHash
+        ? freshVersions.findIndex(
+            (version) => version.oid === lastMessage.commitHash,
+          )
+        : -1;
+      const previousVersionId =
+        currentCommitIndex >= 0
+          ? freshVersions[currentCommitIndex + 1]?.oid
+          : undefined;
+      const revertTargetVersionId =
+        previousVersionId ?? lastMessage?.sourceCommitHash ?? undefined;
 
       if (!isCurrentContext(appId, selectedChatId, lastMessage?.id)) return;
 
       const retry = {
         prompt: lastUserMessage.content,
         chatId: selectedChatId,
-        redo: shouldRedo,
+        redo: !revertTargetVersionId,
+      };
+      const currentChatMessageId = {
+        chatId: selectedChatId,
+        messageId: lastUserMessage.id,
       };
 
       if (revertTargetVersionId) {
@@ -389,6 +381,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             expectedHeadOid,
             extraCommits,
             retry,
+            currentChatMessageId,
           });
           return;
         }
@@ -398,6 +391,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         appId,
         targetVersionId: revertTargetVersionId,
         expectedHeadOid: freshVersions[0]?.oid,
+        currentChatMessageId: revertTargetVersionId
+          ? currentChatMessageId
+          : undefined,
         retry,
       });
     } catch (error) {
@@ -483,6 +479,31 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           onOpenChange={(open) => {
             if (!open) setPendingRevert(null);
           }}
+          onRetryFromCurrentCode={
+            currentPendingRevert.kind === "retry"
+              ? () => {
+                  const action = currentPendingRevert;
+                  setPendingRevert(null);
+                  if (
+                    action.appId !== appId ||
+                    action.chatId !== selectedChatId ||
+                    action.messageId !== lastMessage?.id ||
+                    !beginAction("retry", { allowPending: true })
+                  ) {
+                    return;
+                  }
+                  void executeRetry({
+                    appId: action.appId,
+                    retry: { ...action.retry, redo: true },
+                  })
+                    .catch((error) => {
+                      console.error("Error during retry operation:", error);
+                      showError("Failed to retry message");
+                    })
+                    .finally(() => endAction("retry"));
+                }
+              : undefined
+          }
           onConfirm={() => {
             const action = currentPendingRevert;
             setPendingRevert(null);

@@ -96,6 +96,7 @@ writeSettings({
 - When splitting large handlers behind service boundaries, leave the handler responsible for IPC registration and request orchestration while moving runtime/policy logic into `src/ipc/services/*`. Preserve any intentional module side effects in the extracted service, such as `fixPath()` for child process PATH setup.
 - Electron `net.request()` response typings do not expose every runtime stream event. If download code needs a `close` guard in addition to `aborted`/`error`, cast the response through `EventEmitter` instead of dropping the guard to appease `npm run ts`.
 - When combining a user-controlled signal with `AbortSignal.timeout()` via `AbortSignal.any()`, do not identify every fetch cancellation by matching `AbortError`: Node propagates the timeout signal's `TimeoutError` reason. Check the original controller's `signal.aborted` and the timeout signal's `aborted` state separately so user cancellation and timeout keep their intended error classifications.
+- For cancellable file persistence, passing an `AbortSignal` to `fs.promises.writeFile` is not sufficient because cancellation is best-effort and may leave a partial file. Write to a same-directory temporary path, remove it on failure or abort, check cancellation before and after an atomic rename, and remove the finalized path if cancellation raced the rename.
 
 ## React Query key factory
 

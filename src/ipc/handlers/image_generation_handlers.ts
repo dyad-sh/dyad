@@ -15,7 +15,7 @@ import { eq } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
 
 const logger = log.scope("image_generation_handlers");
@@ -204,7 +204,14 @@ export function registerImageGenerationHandlers() {
                 { cause: dlError },
               );
             }
-            throw dlError;
+            if (isDyadError(dlError)) {
+              throw dlError;
+            }
+            throw new DyadError(
+              "Failed to download generated image.",
+              DyadErrorKind.External,
+              { cause: dlError },
+            );
           }
         } else {
           throw new DyadError(
@@ -233,9 +240,31 @@ export function registerImageGenerationHandlers() {
                 .toLowerCase() || "image";
             const fileName = `generated_${sanitizedPrompt}_${timestamp}.png`;
             const filePath = safeJoin(mediaDir, fileName);
+            const tempFilePath = safeJoin(mediaDir, `.${fileName}.tmp`);
 
             throwIfGenerationCancelled(controller.signal);
-            await fs.promises.writeFile(filePath, imageBuffer);
+            let finalized = false;
+            try {
+              await fs.promises.writeFile(tempFilePath, imageBuffer, {
+                signal: controller.signal,
+              });
+              throwIfGenerationCancelled(controller.signal);
+              await fs.promises.rename(tempFilePath, filePath);
+              finalized = true;
+              throwIfGenerationCancelled(controller.signal);
+            } catch (error) {
+              const cleanupOperations = [
+                fs.promises.rm(tempFilePath, { force: true }),
+              ];
+              if (finalized && controller.signal.aborted) {
+                cleanupOperations.push(
+                  fs.promises.rm(filePath, { force: true }),
+                );
+              }
+              await Promise.allSettled(cleanupOperations);
+              throwIfGenerationCancelled(controller.signal);
+              throw error;
+            }
 
             logger.log(`Generated image saved: ${filePath}`);
             return { fileName, filePath, appPath: app.path };

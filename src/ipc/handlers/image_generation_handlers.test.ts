@@ -177,6 +177,30 @@ describe("registerImageGenerationHandlers", () => {
     });
   });
 
+  it("classifies a URL download network failure as an external error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              created: 1,
+              data: [{ url: "https://example.com/generated.png" }],
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockRejectedValueOnce(new TypeError("fetch failed")),
+    );
+
+    await expect(generate("download-network-failure")).rejects.toMatchObject({
+      message: "Failed to download generated image.",
+      kind: DyadErrorKind.External,
+      cause: expect.any(TypeError),
+    });
+  });
+
   it.each([
     [401, DyadErrorKind.Auth],
     [403, DyadErrorKind.Auth],
@@ -284,6 +308,51 @@ describe("registerImageGenerationHandlers", () => {
       kind: DyadErrorKind.UserCancelled,
     });
     expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("aborts and cleans up a file write when generation is cancelled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            created: 1,
+            data: [{ b64_json: Buffer.from("image").toString("base64") }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const writeStarted = deferred<void>();
+    const writeFile = vi
+      .spyOn(fs.promises, "writeFile")
+      .mockImplementationOnce(async (_file, _data, options) => {
+        const signal = (options as { signal?: AbortSignal } | undefined)
+          ?.signal;
+        writeStarted.resolve();
+        await abortableFetch(signal);
+      });
+    const rename = vi.spyOn(fs.promises, "rename");
+    const rm = vi.spyOn(fs.promises, "rm");
+
+    const generation = generate("file-write-phase");
+    await writeStarted.promise;
+    await expect(cancel("file-write-phase")).resolves.toEqual({
+      cancelled: true,
+    });
+
+    await expect(generation).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(writeFile).toHaveBeenCalledWith(
+      expect.stringMatching(/\.tmp$/),
+      expect.any(Buffer),
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(rename).not.toHaveBeenCalled();
+    expect(rm).toHaveBeenCalledWith(expect.stringMatching(/\.tmp$/), {
+      force: true,
+    });
   });
 
   it("removes failed requests from the active controller registry", async () => {

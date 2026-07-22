@@ -37,6 +37,7 @@ export interface PlanHandoffDeps {
       chatId: number;
       prompt: string;
       selectedComponents: [];
+      requestedChatMode: "local-agent";
     }): void;
   };
 }
@@ -212,6 +213,7 @@ export function createPlanHandoffCommandRunner(
           chatId: command.chatId,
           prompt: `/implement-plan=${command.planSlug}`,
           selectedComponents: [],
+          requestedChatMode: "local-agent",
         });
         emit({ type: "IMPLEMENTATION_STARTED" });
         return;

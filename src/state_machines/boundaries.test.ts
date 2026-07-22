@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const SOURCE_ROOT = path.resolve(process.cwd(), "src");
@@ -25,11 +26,46 @@ function productionFiles(directory: string): string[] {
   });
 }
 
+function importsFromSource(source: string): string[] {
+  const sourceFile = ts.createSourceFile(
+    "boundary-check.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const imports: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      imports.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      imports.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return imports;
+}
+
 function importsIn(filePath: string): string[] {
-  const source = fs.readFileSync(filePath, "utf8");
-  return [
-    ...source.matchAll(/(?:import|export)\s[\s\S]*?\sfrom\s+["']([^"']+)["']/g),
-  ].map((match) => match[1]);
+  return importsFromSource(fs.readFileSync(filePath, "utf8"));
+}
+
+function isWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 describe("state-machine boundaries", () => {
@@ -39,12 +75,36 @@ describe("state-machine boundaries", () => {
     );
     for (const filePath of kernelFiles) {
       for (const source of importsIn(filePath)) {
+        const relativeImportStaysInKernel =
+          source.startsWith(".") &&
+          isWithin(
+            path.join(SOURCE_ROOT, "state_machines"),
+            path.resolve(path.dirname(filePath), source),
+          );
         expect(
-          source === "react" || source.startsWith("."),
+          source === "react" || relativeImportStaysInKernel,
           `${path.relative(SOURCE_ROOT, filePath)} imports ${source}`,
         ).toBe(true);
       }
     }
+  });
+
+  it("detects every module-loading syntax used by production TypeScript", () => {
+    expect(
+      importsFromSource(`
+        import "side-effect";
+        import value from "static-import";
+        export { value } from "re-export";
+        export * from "star-export";
+        void import("dynamic-import");
+      `),
+    ).toEqual([
+      "side-effect",
+      "static-import",
+      "re-export",
+      "star-export",
+      "dynamic-import",
+    ]);
   });
 
   it("requires machine-to-machine calls to cross an injected facade", () => {

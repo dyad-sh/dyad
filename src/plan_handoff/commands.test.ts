@@ -51,6 +51,7 @@ describe("plan handoff commands — stream idle watcher", () => {
       chatId: 7,
       prompt: "/implement-plan=my-plan",
       selectedComponents: [],
+      requestedChatMode: "local-agent",
     });
     expect(events).toContainEqual({ type: "IMPLEMENTATION_STARTED" });
   });

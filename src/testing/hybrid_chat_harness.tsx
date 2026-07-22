@@ -97,6 +97,7 @@ const planHandoffChatStream = {
     chatId: number;
     prompt: string;
     selectedComponents: [];
+    requestedChatMode: "local-agent";
   }) =>
     ensureChatStreamController(request.chatId).send({
       type: "submit",

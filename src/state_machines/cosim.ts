@@ -30,6 +30,7 @@ export interface CosimParticipant<State, Event, Command> {
   initialState: State;
   transition(state: State, event: Event): CosimTransitionResult<State, Command>;
   stateKey(state: State): string;
+  eventKey(event: Event): string;
   commandKey(command: Command): string;
   describeEvent?(event: Event): string;
   describeCommand?(command: Command): string;
@@ -358,7 +359,7 @@ export function runCosim<
       return `enqueue ${channel.describeEvent?.(effect.event) ?? channel.eventKey(effect.event)} on "${effect.channel}"`;
     }
     const participant = options.participants[effect.participant];
-    return `send ${participant.describeEvent?.(effect.event) ?? String(effect.event)} to "${effect.participant}"`;
+    return `send ${participant.describeEvent?.(effect.event) ?? participant.eventKey(effect.event)} to "${effect.participant}"`;
   };
 
   const applyEffects = (

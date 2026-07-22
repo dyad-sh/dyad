@@ -28,6 +28,8 @@ function runToyProtocol(fixed: boolean, maxSchedules = 10_000): CosimResult {
         initialState: { party: "sender", phase: "idle" },
         stateKey: (state) =>
           state.party === "sender" ? `sender:${state.phase}` : "not-sender",
+        eventKey: (event) =>
+          "attempt" in event ? `${event.type}:${event.attempt}` : event.type,
         commandKey: (command) => `${command.type}:${command.attempt}`,
         describeEvent: (event) =>
           "attempt" in event ? `${event.type}#${event.attempt}` : event.type,
@@ -60,6 +62,8 @@ function runToyProtocol(fixed: boolean, maxSchedules = 10_000): CosimResult {
           state.party === "receiver"
             ? `receiver:${state.received}`
             : "not-receiver",
+        eventKey: (event) =>
+          "attempt" in event ? `${event.type}:${event.attempt}` : event.type,
         commandKey: (command) => `${command.type}:${command.attempt}`,
         describeEvent: (event) =>
           "attempt" in event ? `${event.type}#${event.attempt}` : event.type,
@@ -216,6 +220,7 @@ describe("interleaving co-simulation", () => {
         participant: {
           initialState: "initial",
           stateKey: (state) => state,
+          eventKey: (event) => event,
           commandKey: (command) => command,
           transition: (state, event) => ({
             state:
@@ -261,6 +266,47 @@ describe("interleaving co-simulation", () => {
     expect(result.failure?.phase).toBe("quiescence");
     expect(result.failure?.trace).toEqual([
       'inject "fail": send fail to "participant"',
+    ]);
+  });
+
+  it("uses participant event keys when descriptions are omitted", () => {
+    const result = runCosim<
+      "participant",
+      never,
+      boolean,
+      { type: "start" },
+      never
+    >({
+      participants: {
+        participant: {
+          initialState: false,
+          stateKey: String,
+          eventKey: (event) => event.type,
+          commandKey: (command) => command,
+          transition: () => ({ state: true, commands: [] }),
+        },
+      },
+      channels: {},
+      scenario: {
+        actions: [
+          {
+            id: "start",
+            target: "participant",
+            participant: "participant",
+            event: { type: "start" },
+          },
+        ],
+        routeCommand: () => [],
+      },
+      assertions: {
+        atQuiescence: () => {
+          throw new Error("capture trace");
+        },
+      },
+    });
+
+    expect(result.failure?.trace).toEqual([
+      'inject "start": send start to "participant"',
     ]);
   });
 });

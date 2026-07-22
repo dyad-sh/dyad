@@ -76,7 +76,7 @@ import {
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
-import { useQueueProcessor } from "@/hooks/useQueueProcessor";
+import { useChatStreamRuntime } from "@/hooks/useChatStream";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -506,13 +506,12 @@ function HybridAppEventWiring({
   return null;
 }
 
-// The real app runs the queue processor at the layout level
-// (src/app/layout.tsx), above the chat route — so queued prompts drain even
-// when the chat page is closed. Mount the SAME hook here (hasChatId: false
-// internally, so it needs no router context) rather than replicating its
-// logic.
+// The real app wires the chat stream machine runtime at the layout level
+// (src/app/layout.tsx), above the chat route — so streams and queued-prompt
+// dispatch keep working even when the chat page is closed. Mount the SAME
+// hook here rather than replicating its logic.
 function HybridAppShellHooks() {
-  useQueueProcessor();
+  useChatStreamRuntime();
   usePlanEvents();
   useAppBlueprintEvents();
   return null;

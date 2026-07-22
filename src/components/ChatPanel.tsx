@@ -110,8 +110,6 @@ export function ChatPanel({
   // and state for the scroll button UI which needs re-renders.
   const isAtBottomRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  // Ref to track previous streaming state for stream-complete scroll
-  const prevIsStreamingRef = useRef(false);
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth"): boolean => {
@@ -273,21 +271,28 @@ export function ChatPanel({
 
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
 
-  // Scroll to bottom when streaming completes to ensure footer content is visible,
-  // but only if the user was following (at bottom) during the stream.
+  // Scroll to bottom when streaming completes to ensure footer content is
+  // visible, but only if the user was following (at bottom) during the
+  // stream. Subscribes to the isStreaming projection (written by the chat
+  // stream machine) directly on the store, so the true -> false edge is
+  // observed exactly once per stream, without render-lagged refs.
   useEffect(() => {
-    const wasStreaming = prevIsStreamingRef.current;
-    prevIsStreamingRef.current = isStreaming;
-
-    if (wasStreaming && !isStreaming && isAtBottomRef.current) {
-      // Double RAF ensures DOM is fully updated with footer content
-      requestAnimationFrame(() => {
+    if (!chatId) return;
+    let prevStreaming = store.get(isStreamingByIdAtom).get(chatId) ?? false;
+    return store.sub(isStreamingByIdAtom, () => {
+      const nowStreaming = store.get(isStreamingByIdAtom).get(chatId) ?? false;
+      const wasStreaming = prevStreaming;
+      prevStreaming = nowStreaming;
+      if (wasStreaming && !nowStreaming && isAtBottomRef.current) {
+        // Double RAF ensures DOM is fully updated with footer content
         requestAnimationFrame(() => {
-          scrollToBottom("smooth");
+          requestAnimationFrame(() => {
+            scrollToBottom("smooth");
+          });
         });
-      });
-    }
-  }, [isStreaming, scrollToBottom]);
+      }
+    });
+  }, [chatId, store, scrollToBottom]);
 
   // Keep footer actions (including Retry) visible when stream errors render below.
   useEffect(() => {

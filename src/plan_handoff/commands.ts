@@ -14,6 +14,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { ipc, type Message } from "@/ipc/types";
 import { planClient } from "@/ipc/types/plan";
+import { ensureController as ensureChatStreamController } from "@/chat_stream/registry";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
@@ -346,6 +347,11 @@ function startImplementationStream(
         setIsStreaming(false);
         clearPreviewForChat(setPreview, chatId);
         syncChatFromDb(chatId, setMessages, "[CHAT] Plan onEnd", store);
+        // This stream ran OUTSIDE the chat stream machine, so the machine
+        // never emits its own queue dispatch for it. Poke it now that the
+        // projection is cleared so prompts queued during this stream drain
+        // (no-op when the queue is empty or paused).
+        ensureChatStreamController(chatId).send({ type: "queue-poked" });
       },
       onError: ({ error }) => {
         console.error("Plan implementation stream error:", error);
@@ -357,6 +363,8 @@ function startImplementationStream(
         setIsStreaming(false);
         clearPreviewForChat(setPreview, chatId);
         syncChatFromDb(chatId, setMessages, "[CHAT] Plan onError", store);
+        // See onEnd: drain prompts queued during this non-machine stream.
+        ensureChatStreamController(chatId).send({ type: "queue-poked" });
       },
     },
   );

@@ -69,6 +69,14 @@ export function createUserInputCommandRunner(deps: {
               requestId: descriptor.requestId,
               questions: descriptor.questions,
             });
+          } else if (descriptor.kind === "integration") {
+            // Kept for the in-PR dual-emission window. Renderer consumers use
+            // user-input:requested; Phase 3 item 5 removes this legacy event.
+            deps.broadcast("integration:prompt", {
+              chatId: descriptor.chatId,
+              requestId: descriptor.requestId,
+              provider: descriptor.provider,
+            });
           }
           return;
         }

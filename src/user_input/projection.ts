@@ -70,6 +70,15 @@ export type UserInputProjectionIpc = Pick<typeof defaultIpc, "userInput"> & {
   events: Pick<typeof defaultIpc.events, "userInput">;
 };
 
+export interface UserInputChatStreamFacade {
+  submit(request: {
+    chatId: number;
+    prompt: string;
+    selectedComponents: [];
+    requestedChatMode: "local-agent";
+  }): void | Promise<void>;
+}
+
 export interface UserInputProjectionAdapter {
   start(): () => void;
   respond(
@@ -81,6 +90,7 @@ export interface UserInputProjectionAdapter {
 interface AdapterOptions {
   store: JotaiStore;
   ipcClient?: UserInputProjectionIpc;
+  chatStream?: UserInputChatStreamFacade;
   showErrorToast?: (message: unknown) => unknown;
 }
 
@@ -104,6 +114,7 @@ function snapshotToProjection(
 export function getUserInputProjectionAdapter({
   store,
   ipcClient = defaultIpc,
+  chatStream,
   showErrorToast = showError,
 }: AdapterOptions): UserInputProjectionAdapter {
   const existing = adapters.get(store);
@@ -122,6 +133,7 @@ export function getUserInputProjectionAdapter({
     { prompt: string; revision: number }
   >();
   const pendingResponses = new Map<string, UserInputResponsePayload>();
+  const dispatchingFollowUps = new Set<string>();
 
   const markChanged = (requestId: string): number => {
     const revision = (revisions.get(requestId) ?? 0) + 1;
@@ -175,6 +187,46 @@ export function getUserInputProjectionAdapter({
         scheduleSettledCleanup,
         Math.max(0, nextExpiry - Date.now()),
       );
+    }
+  };
+
+  const dispatchDueFollowUp = async (requestId: string): Promise<void> => {
+    if (dispatchingFollowUps.has(requestId)) return;
+    const request = store.get(writableUserInputRequestsAtom).get(requestId);
+    if (
+      !request ||
+      request.status !== "due" ||
+      request.descriptor.kind !== "integration" ||
+      !request.followUpPrompt ||
+      !chatStream
+    ) {
+      return;
+    }
+
+    dispatchingFollowUps.add(requestId);
+    try {
+      await chatStream.submit({
+        chatId: request.descriptor.chatId,
+        prompt: request.followUpPrompt,
+        selectedComponents: [],
+        requestedChatMode: "local-agent",
+      });
+      await ipcClient.userInput.respond({
+        requestId,
+        response: { kind: "follow-up-dispatched" },
+      });
+    } catch (error) {
+      showErrorToast(error);
+    } finally {
+      dispatchingFollowUps.delete(requestId);
+    }
+  };
+
+  const dispatchAllDueFollowUps = () => {
+    for (const [requestId, request] of store.get(
+      writableUserInputRequestsAtom,
+    )) {
+      if (request.status === "due") void dispatchDueFollowUp(requestId);
     }
   };
 
@@ -248,6 +300,7 @@ export function getUserInputProjectionAdapter({
       }
       return next;
     });
+    dispatchAllDueFollowUps();
   };
 
   const adapter: UserInputProjectionAdapter = {
@@ -336,6 +389,7 @@ export function getUserInputProjectionAdapter({
             });
             return next;
           });
+          void dispatchDueFollowUp(requestId);
         }),
       ];
 
@@ -362,6 +416,29 @@ export function getUserInputProjectionAdapter({
       });
       try {
         await ipcClient.userInput.respond({ requestId, response });
+        if (response.kind === "integration") {
+          removeResponding(requestId);
+          updateRequests((current) => {
+            const entry = current.get(requestId);
+            if (
+              !entry ||
+              entry.status !== "awaiting" ||
+              entry.descriptor.kind !== "integration"
+            ) {
+              return current as Map<string, ProjectedUserInputRequest>;
+            }
+            const followUpPrompt = response.provider
+              ? `Continue. I have completed the ${response.provider} integration.`
+              : entry.followUpPrompt;
+            const next = new Map(current);
+            next.set(requestId, {
+              ...entry,
+              status: "armed",
+              followUpPrompt,
+            });
+            return next;
+          });
+        }
         return true;
       } catch (error) {
         pendingResponses.delete(requestId);

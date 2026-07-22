@@ -63,6 +63,7 @@ export const UserInputResponseSchema = z.discriminatedUnion("kind", [
     provider: z.enum(["supabase", "neon"]).nullable(),
     completed: z.boolean(),
   }),
+  z.object({ kind: z.literal("follow-up-dispatched") }),
 ]);
 
 const PendingSnapshotSchema = z.object({

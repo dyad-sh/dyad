@@ -94,6 +94,18 @@ function questionnaireDescriptor(
   };
 }
 
+function integrationDescriptor(requestId: string): UserInputDescriptorPayload {
+  return {
+    kind: "integration",
+    requestId,
+    chatId: 42,
+    deadlineAt: 30_000,
+    provider: "supabase",
+    classifier: "none",
+    followUpPrompt: "Continue. I have completed the supabase integration.",
+  };
+}
+
 function createFakeIpc() {
   const requested = new Set<RequestedListener>();
   const classified = new Set<ClassifiedListener>();
@@ -134,6 +146,8 @@ function createFakeIpc() {
       classified.forEach((listener) => listener(payload)),
     sendSettled: (payload: Parameters<SettledListener>[0]) =>
       settled.forEach((listener) => listener(payload)),
+    sendFollowUpDue: (payload: Parameters<FollowUpDueListener>[0]) =>
+      followUpDue.forEach((listener) => listener(payload)),
   };
 }
 
@@ -403,5 +417,119 @@ describe("user-input renderer projection", () => {
     expect(store.get(userInputRequestsAtom).has("questionnaire-2")).toBe(false);
     stop();
     vi.useRealTimers();
+  });
+
+  it("dispatches one due follow-up through the injected chat-stream facade", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const submit = vi.fn();
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+    });
+    const stop = adapter.start();
+    await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(1));
+    fake.sendRequested(integrationDescriptor("integration-1"));
+
+    const due = {
+      requestId: "integration-1",
+      chatId: 42,
+      prompt: "Continue. I have completed the supabase integration.",
+    };
+    fake.sendFollowUpDue(due);
+    fake.sendFollowUpDue(due);
+
+    await vi.waitFor(() =>
+      expect(submit).toHaveBeenCalledExactlyOnceWith({
+        chatId: 42,
+        prompt: due.prompt,
+        selectedComponents: [],
+        requestedChatMode: "local-agent",
+      }),
+    );
+    expect(fake.respond).toHaveBeenCalledWith({
+      requestId: "integration-1",
+      response: { kind: "follow-up-dispatched" },
+    });
+    stop();
+  });
+
+  it("rehydrates an armed continuation across remount and dispatches after stream end", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const descriptor = integrationDescriptor("integration-2");
+    fake.getPending.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        status: "armed",
+        descriptor,
+        deadlineAt: descriptor.deadlineAt,
+        followUpPrompt: descriptor.followUpPrompt,
+      },
+    ]);
+    const submit = vi.fn();
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+    });
+    const stopFirstMount = adapter.start();
+    await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(1));
+    fake.sendRequested(descriptor);
+
+    await expect(
+      adapter.respond("integration-2", {
+        kind: "integration",
+        provider: "supabase",
+        completed: true,
+      }),
+    ).resolves.toBe(true);
+    expect(store.get(userInputRequestsAtom).get("integration-2")?.status).toBe(
+      "armed",
+    );
+
+    stopFirstMount();
+    const stopSecondMount = adapter.start();
+    await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(2));
+    expect(store.get(userInputRequestsAtom).get("integration-2")?.status).toBe(
+      "armed",
+    );
+    expect(submit).not.toHaveBeenCalled();
+
+    fake.sendFollowUpDue({
+      requestId: "integration-2",
+      chatId: 42,
+      prompt: descriptor.followUpPrompt!,
+    });
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    stopSecondMount();
+  });
+
+  it("dispatches a due continuation returned by getPending after reload", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const descriptor = integrationDescriptor("integration-3");
+    fake.getPending.mockResolvedValueOnce([
+      {
+        status: "due",
+        descriptor,
+        deadlineAt: descriptor.deadlineAt,
+        followUpPrompt: descriptor.followUpPrompt,
+      },
+    ]);
+    const submit = vi.fn();
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+    });
+    const stop = adapter.start();
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(fake.respond).toHaveBeenCalledWith({
+      requestId: "integration-3",
+      response: { kind: "follow-up-dispatched" },
+    });
+    stop();
   });
 });

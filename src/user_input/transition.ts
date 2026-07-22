@@ -142,13 +142,22 @@ export function transition(
         ? [{ type: "persist-always", descriptor, response: event.response }]
         : [];
       if (descriptor.followUpPrompt) {
+        const followUpPrompt =
+          descriptor.kind === "integration" &&
+          event.response.kind === "integration" &&
+          event.response.provider
+            ? `Continue. I have completed the ${event.response.provider} integration.`
+            : descriptor.followUpPrompt;
         return applied(
           {
             status: "armed",
-            descriptor: descriptor as UserInputDescriptor & {
+            descriptor: {
+              ...descriptor,
+              followUpPrompt,
+            } as UserInputDescriptor & {
               followUpPrompt: string;
             },
-            followUpPrompt: descriptor.followUpPrompt,
+            followUpPrompt,
           },
           [
             ...persist,

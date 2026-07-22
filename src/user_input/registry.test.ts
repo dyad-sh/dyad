@@ -189,6 +189,36 @@ describe("user-input registry", () => {
     });
   });
 
+  it("never makes an armed continuation due after the chat is swept", async () => {
+    const { registry, broadcast } = setup();
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 8,
+      provider: "neon",
+      classifier: "none",
+      followUpPrompt: "Continue. I have completed the neon integration.",
+    });
+    await registry.respond(requestId, {
+      kind: "integration",
+      provider: "neon",
+      completed: true,
+    });
+
+    registry.sweepChat(8);
+    registry.streamFinished(8);
+
+    expect(registry.getPending()).toEqual([]);
+    expect(
+      broadcast.mock.calls.filter(
+        ([channel]) => channel === "user-input:follow-up-due",
+      ),
+    ).toHaveLength(0);
+    expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
+      requestId,
+      outcome: "swept",
+    });
+  });
+
   it("dispose aborts all live parks and clears deadlines", async () => {
     const { registry, clock } = setup();
     const requestId = registry.request({

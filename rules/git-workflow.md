@@ -93,6 +93,11 @@ When a worktree symlinks `node_modules` from another checkout (common in agent w
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+When native Git commands accept a revision followed by optional paths, append
+`--` after the revision even when no paths are supplied. A branch name can also
+name a project file or directory (for example `src`), and omitting the separator
+makes commands such as `git log src` fail with an ambiguous-argument error.
+
 If `pr_push.sh` fails while staging a rename with `fatal: pathspec '<old path>' did not match any files`, run the required format/lint/type checks, commit the already-staged rename manually, then rerun the script so it can complete its checks, push, and PR handling.
 
 For filesystem traversal or bulk sync, do not run `git check-ignore` once per path: it spawns excessive Git processes, and a Git-enumeration fallback may fail open because it depends on the same valid-repository state. Use the cached standalone `ignore` parser for `.gitignore` rules, and stop evaluating nested ignore files below an ignored parent directory because Git never descends into it.

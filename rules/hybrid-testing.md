@@ -133,6 +133,11 @@ can retain handles briefly on Windows, so teardown should use bounded
 `fs.rm` retries (`maxRetries` plus `retryDelay`) rather than making successful
 test logic fail with a transient `EBUSY`.
 
+When a hybrid Git fixture creates commits directly, pass an explicit test
+identity with `git -c user.email=... -c user.name=... commit` (or configure it
+locally first). CI and fresh developer environments may have no global Git
+identity, causing `Author identity unknown` before the UI flow runs.
+
 For cross-platform path assertions, match the path contract being exercised.
 Use `path.normalize()` when the code preserves a rooted path such as `/tmp/...`;
 `path.resolve()` adds the runner's current drive on Windows and is only correct

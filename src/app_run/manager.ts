@@ -1,5 +1,6 @@
 import { setPreviewRunStateForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
+import { createTraceObserver } from "@/state_machines/trace";
 import { createIpcRunCommandExecutor, type JotaiStore } from "./commands";
 import {
   AppRunController,
@@ -34,7 +35,7 @@ export class AppRunManager {
               state: projectRunState(state),
             });
           },
-          observer,
+          observer: observer ?? createTraceObserver("app_run", appId),
         }),
     );
   }

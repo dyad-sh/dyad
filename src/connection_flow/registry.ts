@@ -27,6 +27,7 @@ import {
 } from "./state";
 import { transition, type IgnoreReason } from "./transition";
 import type { TransitionObserver } from "@/state_machines/types";
+import { createTraceObserver } from "@/state_machines/trace";
 
 /**
  * How long a provider waits in `awaiting-return` before the flow times out.
@@ -104,7 +105,7 @@ export function createConnectionFlowRegistry(
     onStateChange,
     onUnsolicitedReturn,
     onIgnoredEvent,
-    observer,
+    observer = createTraceObserver("connection_flow"),
     scheduleTimeout = (callback, ms) => setTimeout(callback, ms),
     clearScheduledTimeout = (handle) =>
       clearTimeout(handle as ReturnType<typeof setTimeout>),

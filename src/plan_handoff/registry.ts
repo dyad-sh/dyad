@@ -1,5 +1,6 @@
 import type { HandoffState } from "./state";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
+import { createTraceObserver } from "@/state_machines/trace";
 import type { TransitionObserver } from "@/state_machines/types";
 import type { HandoffCommand, HandoffEvent } from "./state";
 import {
@@ -18,8 +19,11 @@ export function createPlanHandoffRegistry(
   runCommand: HandoffCommandRunner,
   observer?: TransitionObserver<HandoffState, HandoffEvent, HandoffCommand>,
 ) {
-  const host = new KeyedControllerHost<number, HandoffController>(() =>
-    createHandoffController(runCommand, observer),
+  const host = new KeyedControllerHost<number, HandoffController>((chatId) =>
+    createHandoffController(
+      runCommand,
+      observer ?? createTraceObserver("plan_handoff", chatId),
+    ),
   );
 
   return {

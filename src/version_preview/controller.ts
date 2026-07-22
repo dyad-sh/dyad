@@ -17,7 +17,6 @@ import type {
 } from "./state";
 import { CLOSED_STATE } from "./state";
 import { transition } from "./transition";
-import { createVersionPreviewTransitionObserver } from "./debug";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
   observeTransition,
@@ -84,11 +83,11 @@ export class VersionPreviewController {
   constructor(
     readonly appId: number,
     private readonly runtime: VersionPreviewRuntime,
-    private readonly observer: TransitionObserver<
+    private readonly observer?: TransitionObserver<
       PreviewState,
       PreviewEvent,
       PreviewCommand
-    > = createVersionPreviewTransitionObserver(appId),
+    >,
   ) {}
 
   getSnapshot = this.store.getSnapshot;

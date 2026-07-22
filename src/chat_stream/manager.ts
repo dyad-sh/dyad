@@ -7,6 +7,7 @@ import {
   queuedMessagesByIdAtom,
 } from "@/atoms/chatAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
+import { createTraceObserver } from "@/state_machines/trace";
 
 import {
   createProductionChatStreamCommands,
@@ -56,6 +57,9 @@ export class ChatStreamManager {
         initialLastStreamId: this.lastStreamIdByChatId.get(chatId),
         getCommands: () => this.commands,
         onQuiescent: (controller) => this.releaseIfQuiescent(controller),
+        observer: createTraceObserver("chat_stream", chatId, {
+          mute: (event) => event.type === "chunk-received",
+        }),
       }),
   );
 

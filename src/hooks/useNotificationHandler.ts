@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAtomValue } from "jotai";
 import { useRouterState } from "@tanstack/react-router";
 import { chatCompletionEventAtom } from "@/atoms/chatAtoms";
+import { userInputRequestsAtom } from "@/user_input/projection";
 import { useSelectChat } from "./useSelectChat";
 import { ipc } from "../ipc/types";
 import { showWarning } from "../lib/toast";
@@ -15,6 +16,7 @@ import {
 
 import { useSettings } from "./useSettings";
 import { planEventClient } from "../ipc/types/plan";
+import type { UserInputDescriptorPayload } from "../ipc/types/user_input";
 
 // Auto-close timer for completion notifications (give user enough time to navigate to chat completed)
 const AUTO_CLOSE_MS = 10_000;
@@ -69,6 +71,17 @@ export function useNotificationHandler() {
   const notificationChatIdByTagRef = useRef(new Map<string, number>());
   const activeConsentNotificationRequestsRef = useRef(new Set<string>());
   const settledConsentNotificationRequestsRef = useRef(new Set<string>());
+  const userInputConsentDescriptorsRef = useRef(
+    new Map<
+      string,
+      Extract<
+        UserInputDescriptorPayload,
+        { kind: "agent-consent" | "mcp-consent" }
+      >
+    >(),
+  );
+  const pendingClassifiedNotificationRequestIdsRef = useRef(new Set<string>());
+  const projectedUserInputRequests = useAtomValue(userInputRequestsAtom);
 
   useEffect(() => {
     selectChatRef.current = selectChat;
@@ -283,6 +296,37 @@ export function useNotificationHandler() {
     [closeNativeNotification],
   );
 
+  // getPending hydrates the projection after a renderer reload. Seed the
+  // notification lookup from that same source so a later classified event can
+  // still identify a racing MCP request. If classification beats hydration,
+  // replay the notification once the descriptor appears in the projection.
+  useEffect(() => {
+    for (const [requestId, request] of projectedUserInputRequests) {
+      if (request.status === "settled") continue;
+      const descriptor = request.descriptor;
+      if (
+        descriptor.kind !== "agent-consent" &&
+        descriptor.kind !== "mcp-consent"
+      ) {
+        continue;
+      }
+      userInputConsentDescriptorsRef.current.set(requestId, descriptor);
+      if (
+        descriptor.kind === "mcp-consent" &&
+        request.classifier === "review" &&
+        pendingClassifiedNotificationRequestIdsRef.current.delete(requestId)
+      ) {
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: descriptor.toolName,
+          requestId,
+          sourceLabel: descriptor.serverName || "an MCP server",
+          tagPrefix: "dyad-mcp-consent",
+        });
+      }
+    }
+  }, [projectedUserInputRequests, startConsentNotification]);
+
   const completionEvent = useAtomValue(chatCompletionEventAtom);
 
   useEffect(() => {
@@ -388,61 +432,72 @@ export function useNotificationHandler() {
     requestNotificationPermission,
   ]);
 
-  // Agent Tool Consent Listener (IPC)
+  // Consent requests now arrive through the generic user-input projection
+  // protocol. Questionnaire notifications remain on their legacy event until
+  // Phase 3 PR 3.
   useEffect(() => {
-    const unsubscribe = ipc.events.agent.onConsentRequest((payload) => {
-      startConsentNotification({
-        chatId: payload.chatId,
-        toolName: payload.toolName,
-        requestId: payload.requestId,
-        tagPrefix: "dyad-agent-consent",
-      });
+    const unsubscribe = ipc.events.userInput.onRequested((descriptor) => {
+      if (
+        descriptor.kind !== "agent-consent" &&
+        descriptor.kind !== "mcp-consent"
+      ) {
+        return;
+      }
+      userInputConsentDescriptorsRef.current.set(
+        descriptor.requestId,
+        descriptor,
+      );
+      if (descriptor.kind === "agent-consent") {
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: descriptor.toolName,
+          requestId: descriptor.requestId,
+          tagPrefix: "dyad-agent-consent",
+        });
+      } else if (descriptor.classifier !== "racing") {
+        startConsentNotification({
+          chatId: descriptor.chatId,
+          toolName: descriptor.toolName,
+          requestId: descriptor.requestId,
+          sourceLabel: descriptor.serverName || "an MCP server",
+          tagPrefix: "dyad-mcp-consent",
+        });
+      }
     });
     return () => unsubscribe();
   }, [startConsentNotification]);
 
   useEffect(() => {
-    const unsubscribe = ipc.events.agent.onConsentResolved(({ requestId }) => {
-      resolveConsentNotification("dyad-agent-consent", requestId);
-    });
-    return () => unsubscribe();
-  }, [resolveConsentNotification]);
-
-  // MCP Tool Consent Listener (IPC). When the auto-approve classifier is still
-  // running we wait for its verdict: a notification fires only once we know the
-  // user is needed (see the classified listener), not for tools it auto-approves.
-  useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
-      if (payload.classifierPending) return;
+    const unsubscribe = ipc.events.userInput.onClassified(({ requestId }) => {
+      const descriptor = userInputConsentDescriptorsRef.current.get(requestId);
+      if (!descriptor) {
+        pendingClassifiedNotificationRequestIdsRef.current.add(requestId);
+        return;
+      }
+      if (descriptor.kind !== "mcp-consent") return;
       startConsentNotification({
-        chatId: payload.chatId,
-        toolName: payload.toolName,
-        requestId: payload.requestId,
-        sourceLabel: payload.serverName || "an MCP server",
+        chatId: descriptor.chatId,
+        toolName: descriptor.toolName,
+        requestId,
+        sourceLabel: descriptor.serverName || "an MCP server",
         tagPrefix: "dyad-mcp-consent",
       });
     });
     return () => unsubscribe();
   }, [startConsentNotification]);
 
-  // Classifier asked for manual review: notify now, evaluating backgrounded
-  // state at this moment rather than when the request first arrived.
   useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentClassified((payload) => {
-      startConsentNotification({
-        chatId: payload.chatId,
-        toolName: payload.toolName,
-        requestId: payload.requestId,
-        sourceLabel: payload.serverName || "an MCP server",
-        tagPrefix: "dyad-mcp-consent",
-      });
-    });
-    return () => unsubscribe();
-  }, [startConsentNotification]);
-
-  useEffect(() => {
-    const unsubscribe = ipc.events.mcp.onConsentResolved(({ requestId }) => {
-      resolveConsentNotification("dyad-mcp-consent", requestId);
+    const unsubscribe = ipc.events.userInput.onSettled(({ requestId }) => {
+      const descriptor = userInputConsentDescriptorsRef.current.get(requestId);
+      pendingClassifiedNotificationRequestIdsRef.current.delete(requestId);
+      if (!descriptor) return;
+      userInputConsentDescriptorsRef.current.delete(requestId);
+      resolveConsentNotification(
+        descriptor.kind === "agent-consent"
+          ? "dyad-agent-consent"
+          : "dyad-mcp-consent",
+        requestId,
+      );
     });
     return () => unsubscribe();
   }, [resolveConsentNotification]);

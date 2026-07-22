@@ -81,6 +81,7 @@ export type UserInputState =
       status: "awaiting";
       descriptor: UserInputDescriptor;
       classifier: "none" | "racing" | "review";
+      classifierReason?: string;
     }
   | {
       status: "armed";

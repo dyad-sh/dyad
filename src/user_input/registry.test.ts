@@ -100,6 +100,25 @@ describe("user-input registry", () => {
     });
   });
 
+  it("retains the classifier review reason in pending snapshots", async () => {
+    const { registry } = setup();
+    const requestId = registry.request({
+      kind: "mcp-consent",
+      chatId: 1,
+      serverId: 1,
+      serverName: "server",
+      toolName: "read",
+      classifier: "racing",
+    });
+
+    await registry.classifierDecided(requestId, false, "sensitive input");
+
+    expect(registry.getPending()[0]).toMatchObject({
+      classifier: "review",
+      classifierReason: "sensitive input",
+    });
+  });
+
   it("supersedes a duplicate live request without orphaning its old park", async () => {
     const { registry } = setup();
     const input = {

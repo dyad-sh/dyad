@@ -70,6 +70,7 @@ const PendingSnapshotSchema = z.object({
   descriptor: UserInputDescriptorSchema,
   deadlineAt: z.number(),
   classifier: z.enum(["none", "racing", "review"]).optional(),
+  classifierReason: z.string().optional(),
   followUpPrompt: z.string().optional(),
 });
 const OutcomeSchema = z.enum([

@@ -77,6 +77,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Prefer derived selectors for values computable from the snapshot. Do not add
   generation counters or mirrored booleans beside a machine-owned identity or
   lifecycle state.
+- When a later event carries only an identity, consumers that need additional
+  context after reload must recover it from the hydrated projection. Buffer
+  identity-only events that can arrive before hydration completes instead of
+  assuming the consumer observed an earlier, self-contained event.
 
 ## Persistence and hydration
 

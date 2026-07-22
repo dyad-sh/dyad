@@ -173,9 +173,10 @@ export function transition(
           reason: event.reason,
         });
       }
-      return applied({ ...state, classifier: "review" }, [
-        { type: "broadcast-classified", descriptor, reason: event.reason },
-      ]);
+      return applied(
+        { ...state, classifier: "review", classifierReason: event.reason },
+        [{ type: "broadcast-classified", descriptor, reason: event.reason }],
+      );
     }
     case "timed-out":
       return settle(descriptor, "timed-out", null);

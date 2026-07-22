@@ -362,10 +362,13 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("agent-tool:consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "test-request",
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "agent-consent",
           toolName: "test_tool",
+          classifier: "none",
         });
       },
       { chatId },
@@ -393,10 +396,13 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("agent-tool:consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "agent-resolved-request",
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "agent-consent",
           toolName: "test_tool",
+          classifier: "none",
         });
       },
       { chatId },
@@ -409,8 +415,9 @@ testWithNotificationsEnabled(
 
     await electronApp.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
-      window.webContents.send("agent-tool:consent-resolved", {
+      window.webContents.send("user-input:settled", {
         requestId: "agent-resolved-request",
+        outcome: "human",
       });
     });
 
@@ -448,15 +455,19 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("mcp:tool-consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "mcp-in-flight-request",
           serverId: 1,
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "mcp-consent",
           toolName: "mcp_tool",
           serverName: "Test Server",
+          classifier: "none",
         });
-        window.webContents.send("mcp:tool-consent-resolved", {
+        window.webContents.send("user-input:settled", {
           requestId: "mcp-in-flight-request",
+          outcome: "human",
         });
       },
       { chatId },
@@ -489,10 +500,13 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("agent-tool:consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "test-request",
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "agent-consent",
           toolName: "test_tool",
+          classifier: "none",
         });
       },
       { chatId },
@@ -521,10 +535,13 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("agent-tool:consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "test-request",
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "agent-consent",
           toolName: "test_tool",
+          classifier: "none",
         });
       },
       { chatId },
@@ -554,12 +571,15 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("mcp:tool-consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "mcp-request",
           serverId: 1,
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "mcp-consent",
           toolName: "mcp_tool",
           serverName: "Test Server",
+          classifier: "none",
         });
       },
       { chatId },
@@ -589,12 +609,15 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("mcp:tool-consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "mcp-request",
           serverId: 1,
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "mcp-consent",
           toolName: "mcp_tool",
           serverName: "Test Server",
+          classifier: "none",
         });
       },
       { chatId },
@@ -624,12 +647,15 @@ testWithNotificationsEnabled(
     await electronApp.evaluate(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("mcp:tool-consent-request", {
+        window.webContents.send("user-input:requested", {
           requestId: "mcp-request",
           serverId: 1,
           chatId,
+          deadlineAt: Date.now() + 300_000,
+          kind: "mcp-consent",
           toolName: "mcp_tool",
           serverName: "Test Server",
+          classifier: "none",
         });
       },
       { chatId },

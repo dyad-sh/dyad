@@ -34,7 +34,7 @@ import {
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
-import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
+import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
@@ -113,6 +113,10 @@ import { isDyadProEnabled } from "@/lib/schemas";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
+import {
+  getUserInputProjectionAdapter,
+  respondingRequestIdsAtom,
+} from "@/user_input/projection";
 
 const showTokenBarAtom = atom(false);
 
@@ -192,47 +196,26 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setIsRestoringQueuedSelection = useSetAtom(
     isRestoringQueuedSelectionAtom,
   );
-  const [pendingToolConsents, setPendingToolConsents] = useAtom(
-    pendingToolConsentsAtom,
-  );
+  const store = useStore();
+  const userInputProjection = getUserInputProjectionAdapter({ store });
+  const pendingToolConsents = useAtomValue(pendingToolConsentsAtom);
+  const respondingRequestIds = useAtomValue(respondingRequestIdsAtom);
   // Get the first consent in the queue for this chat (if any)
   const consentsForThisChat = pendingToolConsents.filter(
-    (c) => c.chatId === chatId,
+    (c) => c.chatId === chatId && !respondingRequestIds.has(c.requestId),
   );
   const pendingToolConsent = consentsForThisChat[0] ?? null;
 
-  // Route a consent decision back to the channel that requested it.
-  const respondToPendingConsent = (
-    consent: PendingToolConsent,
-    decision: "accept-once" | "accept-always" | "decline",
-  ) => {
-    if (consent.kind === "mcp") {
-      return ipc.mcp.respondToConsent({
-        requestId: consent.requestId,
-        decision,
-      });
-    }
-    return ipc.agent.respondToConsent({
-      requestId: consent.requestId,
-      decision,
-    });
-  };
-
-  // Remove the banner immediately for instant feedback, then send the decision.
-  // If the send fails, re-queue the consent so the decision is not lost.
+  // The projection adapter owns optimistic hiding, rollback, and stale-request
+  // reconciliation so the request atom retains exactly one writer.
   const decideConsent = async (
     consent: PendingToolConsent,
     decision: "accept-once" | "accept-always" | "decline",
   ) => {
-    setPendingToolConsents((prev) =>
-      prev.filter((c) => c.requestId !== consent.requestId),
-    );
-    try {
-      await respondToPendingConsent(consent, decision);
-    } catch (error) {
-      setPendingToolConsents((prev) => [consent, ...prev]);
-      showErrorToast(error as Error);
-    }
+    await userInputProjection.respond(consent.requestId, {
+      kind: consent.kind === "mcp" ? "mcp-consent" : "agent-consent",
+      decision,
+    });
   };
 
   // Get todos for this chat

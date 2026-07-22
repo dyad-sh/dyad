@@ -76,9 +76,12 @@ describe("local-agent consent banner (integration)", () => {
         ).toBeNull(),
       { timeout: 10_000 },
     );
-    expect(
-      harness.bridge.lastInvoke("agent-tool:consent-response")?.args,
-    ).toEqual([{ requestId: expect.any(String), decision: "accept-always" }]);
+    expect(harness.bridge.lastInvoke("user-input:respond")?.args).toEqual([
+      {
+        requestId: expect.any(String),
+        response: { kind: "agent-consent", decision: "accept-always" },
+      },
+    ]);
   });
 
   it("allow once permits the current tool run without persisting consent", async () => {
@@ -93,9 +96,12 @@ describe("local-agent consent banner (integration)", () => {
     await expect(consent).resolves.toBe(true);
     expect(readSettings().agentToolConsents?.add_dependency).toBe("ask");
     expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
-    expect(
-      harness.bridge.lastInvoke("agent-tool:consent-response")?.args,
-    ).toEqual([{ requestId: expect.any(String), decision: "accept-once" }]);
+    expect(harness.bridge.lastInvoke("user-input:respond")?.args).toEqual([
+      {
+        requestId: expect.any(String),
+        response: { kind: "agent-consent", decision: "accept-once" },
+      },
+    ]);
   });
 
   it("decline rejects the tool run and clears the banner", async () => {
@@ -114,9 +120,12 @@ describe("local-agent consent banner (integration)", () => {
       { timeout: 10_000 },
     );
     expect(readSettings().agentToolConsents?.add_dependency).toBe("ask");
-    expect(
-      harness.bridge.lastInvoke("agent-tool:consent-response")?.args,
-    ).toEqual([{ requestId: expect.any(String), decision: "decline" }]);
+    expect(harness.bridge.lastInvoke("user-input:respond")?.args).toEqual([
+      {
+        requestId: expect.any(String),
+        response: { kind: "agent-consent", decision: "decline" },
+      },
+    ]);
   });
 
   it("keeps the local abort signal out of the renderer IPC payload", async () => {
@@ -260,9 +269,12 @@ describe("local-agent consent banner (integration)", () => {
     await waitFor(() =>
       expect(readSettings().agentToolConsents?.add_dependency).toBe("always"),
     );
-    expect(
-      harness.bridge.lastInvoke("agent-tool:consent-response")?.args,
-    ).toEqual([{ requestId: expect.any(String), decision: "accept-always" }]);
+    expect(harness.bridge.lastInvoke("user-input:respond")?.args).toEqual([
+      {
+        requestId: expect.any(String),
+        response: { kind: "agent-consent", decision: "accept-always" },
+      },
+    ]);
 
     // Approval let execution proceed into executeAddDependency, which failed on
     // the invalid package name — proving the tool ran past the gate rather than
@@ -296,15 +308,64 @@ describe("local-agent consent banner (integration)", () => {
     await harness.waitForStreamEnd(chatId);
 
     expect(readSettings().agentToolConsents?.add_dependency).toBe("ask");
-    expect(
-      harness.bridge.lastInvoke("agent-tool:consent-response")?.args,
-    ).toEqual([{ requestId: expect.any(String), decision: "decline" }]);
+    expect(harness.bridge.lastInvoke("user-input:respond")?.args).toEqual([
+      {
+        requestId: expect.any(String),
+        response: { kind: "agent-consent", decision: "decline" },
+      },
+    ]);
 
     // Declining threw before executeAddDependency ran, so nothing was installed.
     const content = await lastAssistantContent(chatId);
     expect(content).toContain('<dyad-output type="error"');
     expect(content).toContain("User denied permission for add_dependency");
     expect(content).not.toContain("Successfully installed");
+  }, 60_000);
+
+  it("rehydrates a consent banner after the renderer remounts mid-stream", async () => {
+    writeSettings({ agentToolConsents: { add_dependency: "ask" } });
+
+    const chatId = await harness.createChat();
+    const firstRenderer = harness.mount({ chatId });
+    await harness.selectChatMode("local-agent");
+
+    const { send } = await harness.typeInChat("tc=local-agent/add-dependency", {
+      chatId,
+    });
+    send();
+    await screen.findByRole(
+      "button",
+      { name: "Always allow" },
+      {
+        timeout: 20_000,
+      },
+    );
+
+    // The stream is parked main-side. Recreate the renderer with a fresh Jotai
+    // store; no legacy event is replayed, so only getPending can restore this.
+    firstRenderer.unmount();
+    harness.mount({ chatId });
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: "Always allow" },
+        { timeout: 20_000 },
+      ),
+    );
+
+    await harness.waitForStreamEnd(chatId);
+    await waitFor(() =>
+      expect(readSettings().agentToolConsents?.add_dependency).toBe("always"),
+    );
+    expect(harness.bridge.lastInvoke("user-input:get-pending")?.status).toBe(
+      "fulfilled",
+    );
+    expect(harness.bridge.lastInvoke("user-input:respond")?.args).toEqual([
+      {
+        requestId: expect.any(String),
+        response: { kind: "agent-consent", decision: "accept-always" },
+      },
+    ]);
   }, 60_000);
 
   it("cancels promptly while a streamed tool is waiting for consent", async () => {

@@ -1,15 +1,9 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useManagerLifecycle } from "@/state_machines/react";
 import { createVersionPreviewRuntime } from "./commands";
 import { VersionPreviewManager } from "./manager";
 
@@ -73,21 +67,6 @@ function OwnedVersionPreviewProvider({ children }: { children: ReactNode }) {
       {children}
     </VersionPreviewContext.Provider>
   );
-}
-
-function useManagerLifecycle(manager: VersionPreviewManager) {
-  const generation = useRef(0);
-  useEffect(() => {
-    const currentGeneration = ++generation.current;
-    manager.start();
-    return () => {
-      // React StrictMode immediately replays effects without recreating state.
-      // Defer irreversible disposal so the replay setup can claim the manager.
-      queueMicrotask(() => {
-        if (generation.current === currentGeneration) manager.dispose();
-      });
-    };
-  }, [manager]);
 }
 
 export function useVersionPreviewManager(): VersionPreviewManager {

@@ -1,12 +1,6 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { useStore } from "jotai";
+import { useManagerLifecycle } from "@/state_machines/react";
 import { AppRunManager } from "./manager";
 
 const AppRunContext = createContext<AppRunManager | null>(null);
@@ -50,19 +44,6 @@ function OwnedAppRunProvider({ children }: { children: ReactNode }) {
   return (
     <AppRunContext.Provider value={manager}>{children}</AppRunContext.Provider>
   );
-}
-
-function useManagerLifecycle(manager: AppRunManager) {
-  const generation = useRef(0);
-  useEffect(() => {
-    const currentGeneration = ++generation.current;
-    return () => {
-      // React StrictMode immediately replays effects without recreating state.
-      queueMicrotask(() => {
-        if (generation.current === currentGeneration) manager.dispose();
-      });
-    };
-  }, [manager]);
 }
 
 export function useAppRunManager(): AppRunManager {

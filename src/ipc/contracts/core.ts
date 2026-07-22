@@ -168,6 +168,7 @@ export interface SerializedIpcError {
   name?: string;
   message: string;
   kind?: DyadErrorKind;
+  code?: string;
   stack?: string;
 }
 
@@ -212,11 +213,19 @@ export function isIpcInvokeEnvelope(
 }
 
 export function serializeIpcError(error: unknown): SerializedIpcError {
+  const code =
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : undefined;
+
   if (isDyadError(error)) {
     return {
       name: error.name,
       message: error.message,
       kind: error.kind,
+      code,
       stack: error.stack,
     };
   }
@@ -225,11 +234,12 @@ export function serializeIpcError(error: unknown): SerializedIpcError {
     return {
       name: error.name,
       message: error.message,
+      code,
       stack: error.stack,
     };
   }
 
-  return { message: String(error) };
+  return { message: String(error), code };
 }
 
 function isDyadErrorKind(value: unknown): value is DyadErrorKind {
@@ -242,12 +252,19 @@ function isDyadErrorKind(value: unknown): value is DyadErrorKind {
 export function deserializeIpcError(error: SerializedIpcError): Error {
   if (isDyadErrorKind(error.kind)) {
     const dyadError = new DyadError(error.message, error.kind);
+    dyadError.name = error.name ?? dyadError.name;
+    if (error.code !== undefined) {
+      (dyadError as DyadError & { code: string }).code = error.code;
+    }
     dyadError.stack = error.stack;
     return dyadError;
   }
 
   const genericError = new Error(error.message);
   genericError.name = error.name ?? genericError.name;
+  if (error.code !== undefined) {
+    (genericError as Error & { code: string }).code = error.code;
+  }
   genericError.stack = error.stack;
   return genericError;
 }

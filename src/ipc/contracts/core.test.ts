@@ -79,6 +79,25 @@ describe("IPC invoke envelopes", () => {
     expect(deserialized.message).toBe("Name already exists");
   });
 
+  it("preserves custom DyadError names and codes through a round trip", () => {
+    const error = new DyadError(
+      "A rebase is already in progress",
+      DyadErrorKind.Precondition,
+    ) as DyadError & { code: string };
+    error.name = "GitStateError";
+    error.code = "REBASE_IN_PROGRESS";
+
+    const deserialized = deserializeIpcError(serializeIpcError(error));
+
+    expect(deserialized).toBeInstanceOf(DyadError);
+    expect(deserialized).toMatchObject({
+      name: "GitStateError",
+      code: "REBASE_IN_PROGRESS",
+      kind: DyadErrorKind.Precondition,
+      message: "A rebase is already in progress",
+    });
+  });
+
   it("deserializes plain errors without treating them as DyadError", () => {
     const deserialized = deserializeIpcError({
       name: "TypeError",

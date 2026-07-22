@@ -58,10 +58,6 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("@/ipc/utils/lock_utils", () => ({
-  withLock: vi.fn(),
-}));
-
 vi.mock("@/ipc/handlers/github_handlers", () => ({
   updateAppGithubRepo: vi.fn(),
   ensureCleanWorkspace: vi.fn(),
@@ -87,6 +83,7 @@ import {
   gitDeleteBranch,
 } from "@/ipc/utils/git_utils";
 import { db } from "@/db";
+import { createAppMutationLock } from "@/ipc/utils/app_mutation_lock";
 
 const mockEvent = {} as IpcMainInvokeEvent;
 
@@ -96,6 +93,51 @@ const mockApp = {
   githubOrg: "test-org",
   githubRepo: "test-repo",
 };
+
+describe("whole-operation app mutation locks", () => {
+  it("serializes push and switch for one app without blocking another app", async () => {
+    const events: string[] = [];
+    let releasePush!: () => void;
+    const pushCanFinish = new Promise<void>((resolve) => {
+      releasePush = resolve;
+    });
+    let markPushStarted!: () => void;
+    const pushStarted = new Promise<void>((resolve) => {
+      markPushStarted = resolve;
+    });
+
+    const push = createAppMutationLock(
+      async (_event: unknown, { appId }: { appId: number }) => {
+        events.push(`push:${appId}:start`);
+        markPushStarted();
+        await pushCanFinish;
+        events.push(`push:${appId}:end`);
+      },
+    );
+    const switchBranch = createAppMutationLock(
+      async (_event: unknown, { appId }: { appId: number }) => {
+        events.push(`switch:${appId}`);
+      },
+    );
+
+    const pushPromise = push({}, { appId: 1 });
+    await pushStarted;
+    const sameAppSwitch = switchBranch({}, { appId: 1 });
+    const otherAppSwitch = switchBranch({}, { appId: 2 });
+    await otherAppSwitch;
+
+    expect(events).toEqual(["push:1:start", "switch:2"]);
+
+    releasePush();
+    await Promise.all([pushPromise, sameAppSwitch]);
+    expect(events).toEqual([
+      "push:1:start",
+      "switch:2",
+      "push:1:end",
+      "switch:1",
+    ]);
+  });
+});
 
 describe("handleDeleteBranch", () => {
   beforeEach(() => {

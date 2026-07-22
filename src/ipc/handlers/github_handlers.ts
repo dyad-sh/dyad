@@ -18,7 +18,9 @@ import {
   isGitStatusClean,
   isGitMergeInProgress,
   isGitRebaseInProgress,
-  GitConflictError,
+  GitStateError,
+  GIT_ERROR_CODES,
+  isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
 import * as schema from "../../db/schema";
@@ -31,8 +33,8 @@ import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import path from "node:path";
-import { withLock } from "../utils/lock_utils";
 import { createTypedHandler } from "./base";
+import { createAppMutationLock } from "../utils/app_mutation_lock";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -193,98 +195,85 @@ export async function prepareLocalBranch({
       }
     }
 
-    // Use locking to prevent race conditions when multiple operations attempt to modify the repository
-    // This ensures atomicity and prevents conflicts between concurrent operations
-    await withLock(appId, async () => {
-      const isClean = await isGitStatusClean({ path: appPath });
-      if (!isClean) {
-        if (isGitMergeInProgress({ path: appPath })) {
-          throw new Error(
-            "Cannot auto-commit changes because a merge is in progress. " +
-              "Please complete or abort the merge and try again.",
-          );
-        }
-        if (isGitRebaseInProgress({ path: appPath })) {
-          throw new Error(
-            "Cannot auto-commit changes because a rebase is in progress. " +
-              "Please complete or abort the rebase and try again.",
-          );
-        }
-
-        try {
-          const commitHash = await gitService.stageAllAndCommit({
-            path: appPath,
-            message:
-              "chore: auto-commit local changes before connecting to GitHub",
-          });
-          logger.info(
-            `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,
-          );
-        } catch (commitError) {
-          logger.error(
-            "[GitHub Handler] Failed to auto-commit local changes before preparing branch:",
-            commitError,
-          );
-          throw new Error(
-            "Failed to auto-commit uncommitted changes. Please commit or stash your changes manually and try again.",
-          );
-        }
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      if (isGitMergeInProgress({ path: appPath })) {
+        throw GitStateError(
+          "Cannot auto-commit changes because a merge is in progress. " +
+            "Please complete or abort the merge and try again.",
+          GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+        );
+      }
+      if (isGitRebaseInProgress({ path: appPath })) {
+        throw GitStateError(
+          "Cannot auto-commit changes because a rebase is in progress. " +
+            "Please complete or abort the rebase and try again.",
+          GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+        );
       }
 
-      await ensureCleanWorkspace(appPath, `preparing branch '${targetBranch}'`);
-
-      // List branches and check if target branch exists
-      const localBranches = await gitListBranches({ path: appPath });
-
-      // Check if branch exists remotely (if remote was set up)
-      let remoteBranches: string[] = [];
-      if (remoteUrl && accessToken) {
-        remoteBranches = await gitListRemoteBranches({
+      try {
+        const commitHash = await gitService.stageAllAndCommit({
           path: appPath,
-          remote: "origin",
+          message:
+            "chore: auto-commit local changes before connecting to GitHub",
         });
+        logger.info(
+          `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,
+        );
+      } catch (commitError) {
+        logger.error(
+          "[GitHub Handler] Failed to auto-commit local changes before preparing branch:",
+          commitError,
+        );
+        throw new Error(
+          "Failed to auto-commit uncommitted changes. Please commit or stash your changes manually and try again.",
+        );
       }
+    }
 
-      if (!localBranches.includes(targetBranch)) {
-        // If branch exists remotely, create local tracking branch
-        // Otherwise, create a new local branch
-        if (remoteBranches.includes(targetBranch)) {
-          await gitCreateBranch({
-            path: appPath,
-            branch: targetBranch,
-            from: `origin/${targetBranch}`,
-          });
-          await gitCheckout({ path: appPath, ref: targetBranch });
-        } else {
-          // Create new local branch
-          await gitCreateBranch({
-            path: appPath,
-            branch: targetBranch,
-          });
-          await gitCheckout({ path: appPath, ref: targetBranch });
-        }
+    await ensureCleanWorkspace(appPath, `preparing branch '${targetBranch}'`);
+
+    // List branches and check if target branch exists
+    const localBranches = await gitListBranches({ path: appPath });
+
+    // Check if branch exists remotely (if remote was set up)
+    let remoteBranches: string[] = [];
+    if (remoteUrl && accessToken) {
+      remoteBranches = await gitListRemoteBranches({
+        path: appPath,
+        remote: "origin",
+      });
+    }
+
+    if (!localBranches.includes(targetBranch)) {
+      // If branch exists remotely, create local tracking branch
+      // Otherwise, create a new local branch
+      if (remoteBranches.includes(targetBranch)) {
+        await gitCreateBranch({
+          path: appPath,
+          branch: targetBranch,
+          from: `origin/${targetBranch}`,
+        });
+        await gitCheckout({ path: appPath, ref: targetBranch });
       } else {
-        // Branch exists locally, just checkout
+        // Create new local branch
+        await gitCreateBranch({
+          path: appPath,
+          branch: targetBranch,
+        });
         await gitCheckout({ path: appPath, ref: targetBranch });
       }
-    });
+    } else {
+      // Branch exists locally, just checkout
+      await gitCheckout({ path: appPath, ref: targetBranch });
+    }
   } catch (gitError: any) {
     logger.error("[GitHub Handler] Failed to prepare local branch:", gitError);
-    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    if (gitError instanceof DyadError) throw gitError;
     const errorMessage =
       gitError?.message ||
       "Failed to prepare local branch for the connected repository.";
-    const lowerMessage = errorMessage.toLowerCase();
-    if (
-      lowerMessage.includes("local changes") ||
-      lowerMessage.includes("would be overwritten") ||
-      lowerMessage.includes("please commit or stash")
-    ) {
-      throw new Error(
-        `Failed to prepare local branch: uncommitted changes detected. ` +
-          "Unable to automatically handle uncommitted changes. Please commit or stash your changes manually and try again.",
-      );
-    }
     throw new Error(errorMessage);
   }
 }
@@ -854,35 +843,8 @@ async function handlePushToGithub(
         accessToken,
       });
     } catch (pullError: any) {
-      // Check if it's a conflict error (including GitConflictError)
-      if ((pullError as any)?.name === "GitConflictError") {
-        throw GitConflictError(
-          "Merge conflict detected during pull. Please resolve conflicts before pushing.",
-        );
-      }
-
-      // Check for conflict in error message
       const errorMessage = pullError?.message || "";
-      if (
-        errorMessage.includes("merge conflict") ||
-        errorMessage.includes("Merge conflict") ||
-        errorMessage.includes("CONFLICT (") ||
-        errorMessage.match(/failed to merge.*conflict/i)
-      ) {
-        throw GitConflictError(
-          "Merge conflict detected during pull. Please resolve conflicts before pushing.",
-        );
-      }
-
-      // Check if it's a missing remote branch error
-      const isMissingRemoteBranch =
-        pullError?.code === "MissingRefError" ||
-        (pullError?.code === "NotFoundError" &&
-          (errorMessage.includes("remote ref") ||
-            errorMessage.includes("remote branch"))) ||
-        errorMessage.includes("couldn't find remote ref") ||
-        // Git operations fail when the remote repository is empty.
-        errorMessage.includes("Cannot read properties of null");
+      const isMissingRemoteBranch = isMissingRemoteBranchError(pullError);
 
       // If it's just that remote doesn't have the branch yet, we can ignore and push
       if (!isMissingRemoteBranch) {
@@ -963,10 +925,8 @@ async function handleRebaseFromGithub(
     accessToken,
   });
 
-  // Check for uncommitted changes - Git requires a clean working directory for rebase
-  await withLock(appId, async () => {
-    await ensureCleanWorkspace(appPath, "rebase");
-  });
+  // Git requires a clean working directory for rebase.
+  await ensureCleanWorkspace(appPath, "rebase");
   // Perform the rebase
   await gitRebase({
     path: appPath,
@@ -983,9 +943,10 @@ export async function ensureCleanWorkspace(
 ): Promise<void> {
   const isClean = await isGitStatusClean({ path: appPath });
   if (isClean) return;
-  throw new Error(
+  throw GitStateError(
     `Workspace is not clean before ${operationDescription}. ` +
       "Please commit or stash your changes manually and try again.",
+    GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
   );
 }
 
@@ -1358,32 +1319,35 @@ export function registerGithubHandlers() {
     return handleIsRepoAvailable(event, params);
   });
 
-  createTypedHandler(githubContracts.createRepo, async (event, params) => {
-    return handleCreateRepo(event, params);
-  });
+  createTypedHandler(
+    githubContracts.createRepo,
+    createAppMutationLock(handleCreateRepo),
+  );
 
   createTypedHandler(
     githubContracts.connectExistingRepo,
-    async (event, params) => {
-      return handleConnectToExistingRepo(event, params);
-    },
+    createAppMutationLock(handleConnectToExistingRepo),
   );
 
-  createTypedHandler(githubContracts.push, async (event, params) => {
-    return handlePushToGithub(event, params);
-  });
+  createTypedHandler(
+    githubContracts.push,
+    createAppMutationLock(handlePushToGithub),
+  );
 
-  createTypedHandler(githubContracts.rebase, async (event, params) => {
-    return handleRebaseFromGithub(event, params);
-  });
+  createTypedHandler(
+    githubContracts.rebase,
+    createAppMutationLock(handleRebaseFromGithub),
+  );
 
-  createTypedHandler(githubContracts.rebaseAbort, async (event, params) => {
-    return handleAbortRebase(event, params);
-  });
+  createTypedHandler(
+    githubContracts.rebaseAbort,
+    createAppMutationLock(handleAbortRebase),
+  );
 
-  createTypedHandler(githubContracts.rebaseContinue, async (event, params) => {
-    return handleContinueRebase(event, params);
-  });
+  createTypedHandler(
+    githubContracts.rebaseContinue,
+    createAppMutationLock(handleContinueRebase),
+  );
 
   createTypedHandler(
     githubContracts.listCollaborators,
@@ -1414,9 +1378,10 @@ export function registerGithubHandlers() {
     return handleGetGitState(event, params);
   });
 
-  createTypedHandler(githubContracts.disconnect, async (event, params) => {
-    return handleDisconnectGithubRepo(event, params);
-  });
+  createTypedHandler(
+    githubContracts.disconnect,
+    createAppMutationLock(handleDisconnectGithubRepo),
+  );
 
   createTypedHandler(
     githubContracts.cloneRepoFromUrl,

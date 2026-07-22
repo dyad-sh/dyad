@@ -20,6 +20,7 @@ import {
   getGitUncommittedFilesWithStatus,
   gitDiscardAllChanges,
   getFileAtCommit,
+  isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
 import { getDyadAppPath } from "../../paths/paths";
@@ -32,6 +33,7 @@ import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
+import { createAppMutationLock } from "../utils/app_mutation_lock";
 import { githubContracts, gitContracts } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import type {
@@ -204,32 +206,11 @@ async function handleSwitchBranch(
     );
   }
 
-  // Check for uncommitted changes
-  await withLock(appId, async () => {
-    await ensureCleanWorkspace(appPath, `switching to branch '${branch}'`);
+  await ensureCleanWorkspace(appPath, `switching to branch '${branch}'`);
+  await gitCheckout({
+    path: appPath,
+    ref: branch,
   });
-  try {
-    await gitCheckout({
-      path: appPath,
-      ref: branch,
-    });
-  } catch (checkoutError: any) {
-    const errorMessage = checkoutError?.message || "Failed to switch branch.";
-    // Check if error is about uncommitted changes (fallback in case check above missed it)
-    const lowerMessage = errorMessage.toLowerCase();
-    if (
-      lowerMessage.includes("local changes") ||
-      lowerMessage.includes("would be overwritten") ||
-      lowerMessage.includes("please commit or stash")
-    ) {
-      throw new DyadError(
-        `Failed to switch branch: uncommitted changes detected. ` +
-          "Please commit or stash your changes manually and try again.",
-        DyadErrorKind.Conflict,
-      );
-    }
-    throw checkoutError;
-  }
 
   // Update DB with new branch
   await updateAppGithubRepo({
@@ -270,14 +251,6 @@ async function handleRenameBranch(
   }
 }
 
-// Custom error class for merge conflicts (name kept for UI checks)
-class MergeConflictError extends DyadError {
-  constructor(message: string) {
-    super(message, DyadErrorKind.Conflict);
-    this.name = "MergeConflictError";
-  }
-}
-
 async function handleMergeBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: GitBranchParams,
@@ -305,39 +278,11 @@ async function handleMergeBranch(
     mergeBranchRef = `origin/${branch}`;
   }
 
-  // Check for uncommitted changes
-  await withLock(appId, async () => {
-    await ensureCleanWorkspace(appPath, `merging branch '${branch}'`);
+  await ensureCleanWorkspace(appPath, `merging branch '${branch}'`);
+  await gitMerge({
+    path: appPath,
+    branch: mergeBranchRef,
   });
-  try {
-    await gitMerge({
-      path: appPath,
-      branch: mergeBranchRef,
-    });
-  } catch (mergeError: any) {
-    // Convert to MergeConflictError for component compatibility
-    if (mergeError?.name === "GitConflictError") {
-      throw new MergeConflictError(mergeError.message);
-    }
-
-    // Fallback: Check if error is about uncommitted changes
-    const errorMessage = mergeError?.message || "Failed to merge branch.";
-    const lowerMessage = errorMessage.toLowerCase();
-    if (
-      lowerMessage.includes("local changes") ||
-      lowerMessage.includes("would be overwritten") ||
-      lowerMessage.includes("please commit or stash")
-    ) {
-      throw new DyadError(
-        `Failed to merge branch: uncommitted changes detected. ` +
-          "Please commit or stash your changes manually and try again.",
-        DyadErrorKind.Conflict,
-      );
-    }
-
-    // Otherwise, throw the original error
-    throw mergeError;
-  }
 }
 
 async function handleListLocalBranches(
@@ -510,13 +455,7 @@ async function handlePullFromGithub(
   } catch (pullError: any) {
     // Check if it's a missing remote branch error
     const errorMessage = pullError?.message || "";
-    const isMissingRemoteBranch =
-      pullError?.code === "MissingRefError" ||
-      (pullError?.code === "NotFoundError" &&
-        (errorMessage.includes("remote ref") ||
-          errorMessage.includes("remote branch"))) ||
-      errorMessage.includes("couldn't find remote ref") ||
-      errorMessage.includes("Cannot read properties of null");
+    const isMissingRemoteBranch = isMissingRemoteBranchError(pullError);
 
     // If the remote branch doesn't exist yet, we can ignore this
     // (e.g., user hasn't pushed the branch yet)
@@ -533,14 +472,38 @@ async function handlePullFromGithub(
 
 // --- Registration ---
 export function registerGithubBranchHandlers() {
-  createTypedHandler(githubContracts.mergeAbort, handleAbortMerge);
-  createTypedHandler(githubContracts.fetch, handleFetchFromGithub);
-  createTypedHandler(githubContracts.pull, handlePullFromGithub);
-  createTypedHandler(githubContracts.createBranch, handleCreateBranch);
-  createTypedHandler(githubContracts.deleteBranch, handleDeleteBranch);
-  createTypedHandler(githubContracts.switchBranch, handleSwitchBranch);
-  createTypedHandler(githubContracts.renameBranch, handleRenameBranch);
-  createTypedHandler(githubContracts.mergeBranch, handleMergeBranch);
+  createTypedHandler(
+    githubContracts.mergeAbort,
+    createAppMutationLock(handleAbortMerge),
+  );
+  createTypedHandler(
+    githubContracts.fetch,
+    createAppMutationLock(handleFetchFromGithub),
+  );
+  createTypedHandler(
+    githubContracts.pull,
+    createAppMutationLock(handlePullFromGithub),
+  );
+  createTypedHandler(
+    githubContracts.createBranch,
+    createAppMutationLock(handleCreateBranch),
+  );
+  createTypedHandler(
+    githubContracts.deleteBranch,
+    createAppMutationLock(handleDeleteBranch),
+  );
+  createTypedHandler(
+    githubContracts.switchBranch,
+    createAppMutationLock(handleSwitchBranch),
+  );
+  createTypedHandler(
+    githubContracts.renameBranch,
+    createAppMutationLock(handleRenameBranch),
+  );
+  createTypedHandler(
+    githubContracts.mergeBranch,
+    createAppMutationLock(handleMergeBranch),
+  );
   createTypedHandler(
     githubContracts.listLocalBranches,
     handleListLocalBranches,

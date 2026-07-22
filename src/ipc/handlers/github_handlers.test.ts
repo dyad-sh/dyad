@@ -1,5 +1,38 @@
-import { normalizeGitHubRepoName } from "@/ipc/handlers/github_handlers";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("@/db", () => ({
+  db: {
+    query: { apps: { findFirst: vi.fn() } },
+  },
+}));
+
+vi.mock("@/paths/paths", () => ({
+  getDyadAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
+  isAppLocationAccessible: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/git_utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/git_utils")>()),
+  gitCheckout: vi.fn(),
+  gitFetch: vi.fn(),
+  gitListBranches: vi.fn(),
+  gitListRemoteBranches: vi.fn(),
+  gitSetRemoteUrl: vi.fn(),
+  isGitStatusClean: vi.fn(),
+}));
+
+import {
+  ensureCleanWorkspace,
+  normalizeGitHubRepoName,
+  prepareLocalBranch,
+} from "@/ipc/handlers/github_handlers";
+import { createAppMutationLock } from "@/ipc/utils/app_mutation_lock";
+import { db } from "@/db";
+import {
+  gitCheckout,
+  gitListBranches,
+  isGitStatusClean,
+} from "@/ipc/utils/git_utils";
 
 describe("normalizeGitHubRepoName", () => {
   it("should replace single space with hyphen", () => {
@@ -40,5 +73,45 @@ describe("normalizeGitHubRepoName", () => {
 
   it("should split acronym boundaries", () => {
     expect(normalizeGitHubRepoName("APIClient")).toBe("api-client");
+  });
+});
+
+describe("prepareLocalBranch locking", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue({
+      id: 1,
+      path: "test-app",
+    } as never);
+    vi.mocked(isGitStatusClean).mockResolvedValue(true);
+    vi.mocked(gitListBranches).mockResolvedValue(["main"]);
+    vi.mocked(gitCheckout).mockResolvedValue(undefined);
+  });
+
+  it("completes when called by a whole-operation locked handler", async () => {
+    const lockedConnectHandler = createAppMutationLock(
+      async (_event: unknown, input: { appId: number }) => {
+        await prepareLocalBranch(input);
+      },
+    );
+
+    await expect(
+      lockedConnectHandler({}, { appId: 1 }),
+    ).resolves.toBeUndefined();
+    expect(gitCheckout).toHaveBeenCalledWith({
+      path: "/mock/apps/test-app",
+      ref: "main",
+    });
+  });
+
+  it("throws the structured uncommitted-changes code", async () => {
+    vi.mocked(isGitStatusClean).mockResolvedValue(false);
+
+    await expect(
+      ensureCleanWorkspace("/mock/apps/test-app", "switching branches"),
+    ).rejects.toMatchObject({
+      name: "GitStateError",
+      code: "UNCOMMITTED_CHANGES",
+    });
   });
 });

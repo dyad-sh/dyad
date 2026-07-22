@@ -17,6 +17,7 @@ export type IgnoreReason = SharedIgnoreReason<
   | "state-mismatch"
   | "invalid-in-current-state"
   | "no-active-flow"
+  | "duplicate-connect"
 >;
 
 export type McpOAuthTransitionResult = StateTransitionResult<
@@ -65,6 +66,13 @@ export function transition(
       case "timedOut":
         return advance({ status: "binding", ...next });
       case "superseding":
+        if (
+          state.next.flowId === next.flowId &&
+          state.next.expectedState === next.expectedState &&
+          state.next.serverId === next.serverId
+        ) {
+          return ignore(state, "duplicate-connect");
+        }
         return advance({ ...state, next });
       case "binding":
       case "awaitingCallback":

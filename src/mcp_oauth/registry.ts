@@ -361,6 +361,13 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
       expectedState: request.expectedState,
       serverId: request.serverId,
     };
+    if (runtimes.has(identity.flowId)) {
+      request.onAbort();
+      return Promise.resolve({
+        success: false,
+        error: `OAuth flow ID collision: ${identity.flowId}`,
+      });
+    }
     const promise = new Promise<McpOAuthConnectResult>((resolve) => {
       runtimes.set(identity.flowId, {
         authorize: request.authorize,

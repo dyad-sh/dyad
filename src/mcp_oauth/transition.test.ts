@@ -110,7 +110,11 @@ describe("MCP OAuth transition", () => {
       for (const event of eventsFor(state)) {
         const result = transition(state, event);
         expect(result).toBeDefined();
-        if (!result.changed) expect(result.state).toBe(state);
+        if (result.changed) {
+          expect(result.state).not.toEqual(state);
+        } else {
+          expect(result.state).toBe(state);
+        }
       }
     }
   });
@@ -152,5 +156,25 @@ describe("MCP OAuth transition", () => {
       closing: flow("flow-1"),
       next: flow("flow-3"),
     });
+  });
+
+  it("ignores a duplicate queued Connect without allocating a snapshot", () => {
+    const state: McpOAuthState = {
+      status: "superseding",
+      closing: flow("flow-1"),
+      next: flow("flow-2"),
+    };
+
+    const result = transition(state, {
+      type: "CONNECT",
+      ...flow("flow-2"),
+    });
+
+    expect(result).toEqual({
+      changed: false,
+      state,
+      reason: "duplicate-connect",
+    });
+    expect(result.state).toBe(state);
   });
 });

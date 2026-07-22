@@ -1,9 +1,17 @@
 /**
  * MCP OAuth loopback state machine — pure per-port lifecycle types.
  *
- * A callback port is the concurrency boundary: different MCP servers may use
- * the same configured port, but only one listener can own it at a time. Every
- * asynchronous event is correlated with a flowId minted by the registry.
+ * A callback port is the concurrency boundary: different ports progress in
+ * parallel, while transitions for one port are synchronously serialized and
+ * listener close/bind work is barrier-ordered. Different MCP servers may use
+ * the same configured port, but only one listener can own it at a time.
+ *
+ * Asynchronous bind, authorization, exchange, timeout, and socket-close events
+ * may be dropped after their flowId becomes stale or their phase has already
+ * advanced. A callback with mismatched OAuth state is rejected without ending
+ * the active flow. CONNECT is never silently dropped: every caller settles as
+ * connected, failed, timed out, or explicitly superseded, including queued
+ * attempts replaced while the prior listener is still closing.
  */
 
 export interface McpOAuthFlowIdentity {

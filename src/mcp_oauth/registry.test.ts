@@ -50,6 +50,43 @@ function connectRequest(
 }
 
 describe("MCP OAuth registry", () => {
+  it("rejects an ID collision without overwriting the active runtime", async () => {
+    const bindings: McpOAuthListenerRequest[] = [];
+    const registry = createMcpOAuthRegistry({
+      ids: { next: () => "mcp-oauth:collision" },
+      bindListener(request) {
+        bindings.push(request);
+        return {
+          settled: Promise.resolve({
+            boundHosts: ["127.0.0.1"],
+            anyInUse: false,
+          }),
+          close: async () => undefined,
+        };
+      },
+      observer: undefined,
+    });
+    const firstRequest = connectRequest(1);
+    const secondRequest = connectRequest(2);
+    const first = registry.connect(firstRequest);
+    await flush();
+
+    await expect(registry.connect(secondRequest)).resolves.toEqual({
+      success: false,
+      error: "OAuth flow ID collision: mcp-oauth:collision",
+    });
+    expect(secondRequest.onAbort).toHaveBeenCalledOnce();
+    expect(firstRequest.onAbort).not.toHaveBeenCalled();
+    expect(bindings).toHaveLength(1);
+    expect(registry.getState(53682)).toMatchObject({
+      status: "awaitingCallback",
+      serverId: 1,
+    });
+
+    registry.dispose();
+    await expect(first).resolves.toMatchObject({ success: false });
+  });
+
   it("keeps exactly the third flow after three rapid Connect attempts", async () => {
     let releaseClose!: () => void;
     const closeBarrier = new Promise<void>((resolve) => {

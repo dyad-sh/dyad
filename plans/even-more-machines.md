@@ -27,21 +27,33 @@ verification are incorporated. Two proposed candidates were killed in
 verification (ImportAppDialog saga, chat-mode latch) and are recorded in the
 rejected list.
 
-**Progress record.** Phase 0 is COMPLETE, landed as 448e2a4dd (#4014 — the
-machine-followup kernel migration), b44e54c3d ("Phase 0 machine concurrency
-safeguards"), 1a7b9964a (deep-review fixes), and 8ad56501c (consent prompts
-broadcast a terminal settlement event on every path — now codified at
-rules/electron-ipc.md:93). Phase 0 over-delivered against its own scope: it
-also banked Part 1A item 5 (the `chatStream` facade) and the plan_handoff
-half of item 4 (`startImplementationStream` deleted; plan implementation
-submits through `PlanHandoffDeps.chatStream`, adapter at
-src/app/layout.tsx:35-46), plus candidate 1's staging step (a) (both consent
-maps on the shared resolver with timeout + abort). Evidence sections below
-are point-in-time records from the survey; where Phase 0 changed the ground,
-the **Phase plans** section is authoritative. The detailed phase specs there
-were produced the same way as the survey: five drafter agents grounded in
-the post-Phase-0 tree, each adversarially critiqued, with cross-phase
-conflicts adjudicated in the "Cross-phase handshakes" subsection.
+**Progress record (updated 2026-07-22).** Phases 0, 1, 2, and 4 stage 1 are
+COMPLETE; Phase 3 is more than half landed; Phase 5 is the active frontier.
+
+- Phase 0: 448e2a4dd (#4014 kernel migration), b44e54c3d, 1a7b9964a,
+  8ad56501c. Over-delivered: banked Part 1A item 5, the plan_handoff half
+  of item 4, and candidate 1's staging (a).
+- Phase 1: #4019 (PR 1 kernel adoption), #4021 + #4024 (PR 2 manager +
+  lifecycle centralization), #4025 (PR 3 merge-conflict fold), #4028
+  (PR 4 stream-finished signal + edge-detector cascade), #4023 (PR 5
+  streamId echo).
+- Phase 2: #4026 (trace observer), #4029 (voice + Clock/IdSource), #4030
+  (image-gen main abort fix), #4032 (image-gen machine), #4036 (MCP OAuth
+  registry), #4040 (home first-prompt saga).
+- Phase 3: #4033 (items 1+2a — machine core + main-side consent port),
+  #4037 (2b — renderer projection + rehydration). Items 3, 4, 5 remain.
+- Phase 4: #4027 (PR A cosim driver), #4031 (PR B protocol + model +
+  suite + tripwire). Stage 2 remains unscheduled; both of its entry gates
+  are now satisfied, so opening it is a decision, not a wait. The two
+  compaction chores its audit recorded are still open.
+- Also landed: docs/why-state-machines.md (#4038, contributor rationale).
+
+Evidence sections below are point-in-time records from the survey; where
+landed work changed the ground, the **Phase plans** section is
+authoritative. The detailed phase specs were produced the same way as the
+survey: five drafter agents grounded in the post-Phase-0 tree, each
+adversarially critiqued, with cross-phase conflicts adjudicated in the
+"Cross-phase handshakes" subsection.
 
 ## Three findings shape this plan
 
@@ -610,9 +622,12 @@ single-flight; PreviewIframe is keyed `${selectedAppId}-${token}`; the
 screenshot pending atom is per-app (`pendingScreenshotAppIdsAtom`); queued
 items persist `redo`/`appId`/`requestedChatMode` (zod-optional,
 src/ipc/types/queue.ts); the vestigial broadcasts are deleted from main.ts;
-both consent maps ride the shared resolver. Two NEW chore candidates were
-recorded by the Phase 4 compaction audit — see Phase 4 item 6._ Original
-list, kept for the record:
+both consent maps ride the shared resolver. Two NEW chores from the Phase 4
+compaction audit are OPEN: (8) thread `abortController.signal` into
+`performCompaction` so Stop doesn't wait out a full summary generation;
+(9) single-flight the `pendingCompaction` flag so two concurrent streams on
+one chat can't both compact. Plus the chat-tab hydrate-as-merge chore from
+Phase 5 item 7a._ Original list, kept for the record:
 
 1. **OAuth token refresh single-flight** — `refreshSupabaseToken` /
    `refreshNeonToken` are check-then-act across an await with refresh-token
@@ -674,14 +689,14 @@ Phases gate on dependencies, not the calendar; items within a phase are
 independent PRs unless a gate is stated. Overview (details in the per-phase
 sections below):
 
-| Phase | Contents                                                        | Gates on                        | Status |
-| ----- | --------------------------------------------------------------- | ------------------------------- | ------ |
-| 0     | Chores, doc rules, boundary test, resolver migration            | —                               | DONE   |
-| 1     | chat_stream convention program (Part 1A remainder)              | —                               | next   |
-| 2     | voice, image gen, home saga, MCP OAuth + trace/Clock facilities | — (independent of Phase 1)      | open   |
-| 3     | user-input round-trip machine (`src/user_input/`)               | Phase 1 PR 3 (gates its item 4) | open   |
-| 4     | stream protocol spec + co-simulation (stage 1)                  | — (stage 2 gated separately)    | open   |
-| 5     | github_ops, preview iframe, screenshot + triggered tail         | Phase 1 PRs 3/4; Phase 2 kernel | open   |
+| Phase | Contents                                                        | Gates on                   | Status         |
+| ----- | --------------------------------------------------------------- | -------------------------- | -------------- |
+| 0     | Chores, doc rules, boundary test, resolver migration            | —                          | DONE           |
+| 1     | chat_stream convention program (Part 1A remainder)              | —                          | DONE           |
+| 2     | voice, image gen, home saga, MCP OAuth + trace/Clock facilities | — (independent of Phase 1) | DONE           |
+| 3     | user-input round-trip machine (`src/user_input/`)               | gates met                  | items 3–5 left |
+| 4     | stream protocol spec + co-simulation (stage 1)                  | stage 2 gates now met      | stage 1 DONE   |
+| 5     | github_ops, preview iframe, screenshot + triggered tail         | gates met                  | next           |
 
 ### Cross-phase handshakes (adjudicated)
 
@@ -728,7 +743,10 @@ Landed as 448e2a4dd, b44e54c3d, 1a7b9964a, 8ad56501c. Receipts:
   done; candidate 1 staging (a) done; consent settlement broadcasts
   (8ad56501c).
 
-### Phase 1 — the chat_stream program
+### Phase 1 — the chat_stream program (DONE)
+
+Landed as: PR 1 → #4019, PR 2 → #4021 + #4024, PR 3 → #4025, PR 4 → #4028,
+PR 5 → #4023. All exit criteria met; spec below kept as the record.
 
 Bring chat_stream to full convention compliance, fold the last external
 stream, and replace every ad-hoc "did a stream just finish?" detector with
@@ -991,7 +1009,10 @@ after PR 2 before landing PR 3, and consider landing PR 5 early (it is
 parallel-eligible after PR 1) so generation-tagged events are in
 production before PRs 3/4 change stream behavior.
 
-### Phase 2 — first new machines + kernel facilities
+### Phase 2 — first new machines + kernel facilities (DONE)
+
+Landed as: item 1 → #4026, item 2 → #4029, 3a → #4030, 3b → #4032,
+item 4 → #4036, item 5 → #4040. Spec below kept as the record.
 
 Four machines on the frozen kernel — image generation (§3), voice-to-text
 (§9), home first-prompt saga (§2), MCP OAuth loopback (§5) — plus the two
@@ -1266,7 +1287,11 @@ generation; (4) MCP OAuth; (5) home saga last — largest, spans pages,
 benefits from every facility proved earlier. Items 2–4 are mutually
 independent once (1) merges; (5) gates only on (1) and (2)'s Clock.
 
-### Phase 3 — the user-input round-trip machine
+### Phase 3 — the user-input round-trip machine (IN PROGRESS)
+
+Landed as: items 1+2a → #4033, 2b → #4037. REMAINING: item 3
+(questionnaire port), item 4 (continuation port — its Phase 1 gate is now
+open), item 5 (deletion + hardening sweep, strictly last).
 
 One machine replaces the three hand-synced copies of the agent-paused
 user-input round-trip (evidence in Part 2 §1; Phase 0 banked staging (a) —
@@ -1487,7 +1512,15 @@ rebases on 2b's projection plumbing); item 4 additionally waits on Phase 1
 PR 3 and can land any time after that gate opens; item 5 strictly last.
 Items 2–4 may interleave with Phase 4 work.
 
-### Phase 4 — stream protocol spec + co-simulation (3.1 stage 1)
+### Phase 4 — stream protocol spec + co-simulation (STAGE 1 DONE)
+
+Landed as: PR A → #4027 (driver), PR B → #4031 (protocol + model + suite +
+tripwire + compaction scenarios). Stage 2 (item 7) remains unscheduled —
+but note both of its entry gates are NOW SATISFIED (cosim suite green;
+streamId echo landed as #4023), so opening it is a decision to make, not a
+dependency to wait on. Still open from item 6's audit: the two compaction
+chores (thread the abort signal into `performCompaction`; single-flight
+the `pendingCompaction` flag).
 
 Build the cross-process stream protocol as a checked artifact instead of
 comments: a pure shared protocol module, a pure model of main's stream
@@ -1708,7 +1741,11 @@ and 3 in parallel; item 4 gates on both and is the bulk; items 5 and 6
 branch off item 4's skeleton. Item 7 is a recorded gate, not work. Nothing
 here blocks or is blocked by Phases 1–3.
 
-### Phase 5 — big renderer machines + triggered tail
+### Phase 5 — big renderer machines + triggered tail (NEXT — nothing landed)
+
+Both entry criteria are now met (#4025 folded the merge-conflict stream;
+#4029/#4026 landed Clock/IdSource and the trace observer). Every item below
+remains to do.
 
 The two large renderer machines (github_ops; preview iframe
 identity/navigation/picker), the screenshot machine sharing the iframe's

@@ -36,7 +36,14 @@ import {
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
-import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
+import type { ChatStreamParams } from "@/ipc/types";
+import type {
+  ChatStreamChunkPayload,
+  ChatStreamEndPayload,
+  ChatStreamErrorPayload,
+  ChatStreamStartPayload,
+  ChatStreamTransportEndPayload,
+} from "@/chat_stream/protocol";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { CodebaseFile, extractCodebase } from "../../utils/codebase";
 import {
@@ -158,6 +165,8 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 
 const logger = log.scope("chat_stream_handlers");
 
+// MODEL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
+// src/chat_stream/main_model.ts and its co-simulation suite.
 interface TrackedStream {
   abortController: AbortController;
   streamId?: number;
@@ -328,6 +337,8 @@ export function takePartialResponseForStream(
   return response;
 }
 
+// MODEL-GROUNDED REGION: cancellation selection, early terminals, and unwind
+// waiting. Keep in sync with src/chat_stream/main_model.ts.
 async function cancelTrackedStreams(
   chatIds: number[],
   sender: WebContents,
@@ -378,9 +389,11 @@ async function cancelTrackedStreams(
         streamId,
         updatedFiles: false,
         wasCancelled: true,
-      } satisfies ChatResponseEnd);
+      } satisfies ChatStreamEndPayload);
     }
-    safeSend(sender, "chat:stream:end", { chatId });
+    safeSend(sender, "chat:stream:end", {
+      chatId,
+    } satisfies ChatStreamTransportEndPayload);
   }
 
   await Promise.all(
@@ -642,6 +655,8 @@ export function registerChatStreamHandlers() {
         );
       }
 
+      // MODEL-GROUNDED REGION: admission barrier loop and atomic admission.
+      // Keep in sync with src/chat_stream/main_model.ts.
       while (true) {
         if ((chatStreamAdmissionBlockCounts.get(req.chatId) ?? 0) > 0) {
           const admitted = await waitForAdmissionBlockToClear({
@@ -705,7 +720,7 @@ export function registerChatStreamHandlers() {
       safeSend(event.sender, "chat:stream:start", {
         chatId: req.chatId,
         streamId: req.streamId,
-      });
+      } satisfies ChatStreamStartPayload);
 
       // Record the streaming chat in the crash sentinel so a later force-close
       // can offer to upload it. We intentionally don't clear this when the
@@ -1102,7 +1117,7 @@ ${componentSnippet}
         streamId: req.streamId,
         effectiveChatMode: selectedChatMode,
         chatModeFallbackReason,
-      });
+      } satisfies ChatStreamChunkPayload);
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message
@@ -1147,7 +1162,7 @@ ${componentSnippet}
         chatId: req.chatId,
         streamId: req.streamId,
         messages: updatedChat.messages.map(toRendererMessage),
-      });
+      } satisfies ChatStreamChunkPayload);
 
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
@@ -1718,7 +1733,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 chatId: req.chatId,
                 streamId: req.streamId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
-              });
+              } satisfies ChatStreamErrorPayload);
             },
             abortSignal: abortController.signal,
           });
@@ -1776,7 +1791,7 @@ This conversation includes one or more image attachments. When the user uploads 
             streamId: req.streamId,
             streamingMessageId: placeholderAssistantMessage.id,
             streamingPatch: patch,
-          });
+          } satisfies ChatStreamChunkPayload);
           return fullResponse;
         };
 
@@ -1876,7 +1891,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   hoursUntilReset: quotaStatus.hoursUntilReset,
                   resetTime: quotaStatus.resetTime,
                 }),
-              });
+              } satisfies ChatStreamErrorPayload);
               return;
             }
           }
@@ -2140,6 +2155,9 @@ This conversation includes one or more image attachments. When the user uploads 
         }
       }
 
+      // MODEL-GROUNDED REGION: handler terminal emission, outer catch, guarded
+      // transport end, and completion resolution. Keep in sync with
+      // src/chat_stream/main_model.ts.
       // Only save the response and process it if we weren't aborted
       if (!abortController.signal.aborted && fullResponse) {
         // Scrape from: <dyad-chat-summary>Renaming profile file</dyad-chat-title>
@@ -2192,7 +2210,7 @@ This conversation includes one or more image attachments. When the user uploads 
             chatId: req.chatId,
             streamId: req.streamId,
             messages: chat!.messages.map(toRendererMessage),
-          });
+          } satisfies ChatStreamChunkPayload);
 
           if (status.error) {
             safeSend(event.sender, "chat:response:error", {
@@ -2200,7 +2218,7 @@ This conversation includes one or more image attachments. When the user uploads 
               streamId: req.streamId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
               warningMessages: status.warningMessages,
-            });
+            } satisfies ChatStreamErrorPayload);
           }
 
           // Signal that the stream has completed
@@ -2212,14 +2230,14 @@ This conversation includes one or more image attachments. When the user uploads 
             extraFilesError: status.extraFilesError,
             warningMessages: status.warningMessages,
             chatSummary,
-          } satisfies ChatResponseEnd);
+          } satisfies ChatStreamEndPayload);
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             streamId: req.streamId,
             updatedFiles: false,
             chatSummary,
-          } satisfies ChatResponseEnd);
+          } satisfies ChatStreamEndPayload);
         }
       }
 
@@ -2232,7 +2250,7 @@ This conversation includes one or more image attachments. When the user uploads 
         chatId: req.chatId,
         streamId: req.streamId,
         error: `Sorry, there was an error processing your request: ${errorMessage}`,
-      });
+      } satisfies ChatStreamErrorPayload);
 
       return "error";
     } finally {
@@ -2250,7 +2268,9 @@ This conversation includes one or more image attachments. When the user uploads 
       // would deliver a duplicate end event to the renderer, so skip it on the
       // aborted path.
       if (!abortController.signal.aborted) {
-        safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+        safeSend(event.sender, "chat:stream:end", {
+          chatId: req.chatId,
+        } satisfies ChatStreamTransportEndPayload);
       }
       // Unblock any pending MCP consents (their banners are cleared on stream end).
       if (!activeStreams.has(req.chatId)) {

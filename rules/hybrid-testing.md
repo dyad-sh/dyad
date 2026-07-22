@@ -17,6 +17,11 @@ or the renderer+IPC chat harness without needing the packaged Electron app.
 These tests are faster, easier to debug, and avoid Electron launch/package
 overhead.
 
+In a fresh worktree, the root `npm install` does not install the nested
+`testing/fake-llm-server` package. Before chat-flow or hybrid suites that load
+its Git routes, run `npm ci --prefix testing/fake-llm-server`; otherwise test
+collection fails with `Cannot find module 'git-http-mock-server/middleware'`.
+
 Use Playwright E2E when the behavior depends on the packaged Electron runtime,
 real browser/Electron behavior, native dialogs, screenshots/visual layout,
 Monaco or Lexical browser interactions, drag/click/focus behavior that

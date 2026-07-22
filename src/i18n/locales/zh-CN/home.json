@@ -46,6 +46,8 @@
   "dyadApps": "Dyad 应用",
   "dyadAppsDescription": "您 GitHub 账户中由 Dyad 创建的仓库。导入它们即可在此设备上继续开发。",
   "noDyadReposFound": "未在您的 GitHub 账户中找到由 Dyad 创建的仓库。",
+  "dyadReposLoadError": "无法加载您的 Dyad 仓库。这可能是 GitHub 的临时问题。",
+  "retry": "重试",
   "alreadyImported": "已导入",
   "selectAll": "全选",
   "importSelected": "导入所选（{{count}}）",

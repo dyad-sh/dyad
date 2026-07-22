@@ -49,6 +49,8 @@
   "dyadApps": "Apps de Dyad",
   "dyadAppsDescription": "Repositorios creados con Dyad en tu cuenta de GitHub. Impórtalos para seguir trabajando en este dispositivo.",
   "noDyadReposFound": "No se encontraron repositorios creados con Dyad en tu cuenta de GitHub.",
+  "dyadReposLoadError": "No se pudieron cargar tus repositorios de Dyad. Puede ser un problema temporal de GitHub.",
+  "retry": "Reintentar",
   "alreadyImported": "Ya importado",
   "selectAll": "Seleccionar todo",
   "importSelected": "Importar seleccionados ({{count}})",

@@ -94,6 +94,7 @@ export function FirstPromptProvider({
     useLanguageModelProviders();
   const [isSetupDialogOpen, setIsSetupDialogOpen] = useState(false);
   const previousPathnameRef = useRef(pathname);
+  const awaitingStartedWithProviderRef = useRef<boolean | null>(null);
   const settleDelayMsRef = useRef(settleDelayMs);
   settleDelayMsRef.current = settleDelayMs;
 
@@ -221,6 +222,25 @@ export function FirstPromptProvider({
     controller.send({ type: "PROVIDERS_LOADED", anySetup });
   }, [controller, isAnyProviderSetup, providersLoading, snapshot.type]);
 
+  const hasConfiguredProvider = isAnyProviderSetup();
+  useEffect(() => {
+    if (snapshot.type !== "awaitingProviderSetup") {
+      awaitingStartedWithProviderRef.current = null;
+      return;
+    }
+    if (awaitingStartedWithProviderRef.current === null) {
+      awaitingStartedWithProviderRef.current = hasConfiguredProvider;
+      return;
+    }
+    if (
+      pathname !== "/" &&
+      !awaitingStartedWithProviderRef.current &&
+      hasConfiguredProvider
+    ) {
+      controller.send({ type: "PROVIDER_CONFIGURED" });
+    }
+  }, [controller, hasConfiguredProvider, pathname, snapshot.type]);
+
   useEffect(() => {
     const previousPathname = previousPathnameRef.current;
     previousPathnameRef.current = pathname;
@@ -234,7 +254,6 @@ export function FirstPromptProvider({
     }
   }, [controller, pathname]);
 
-  const hasConfiguredProvider = isAnyProviderSetup();
   return (
     <FirstPromptContext.Provider value={controller}>
       {children}

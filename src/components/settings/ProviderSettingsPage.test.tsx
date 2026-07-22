@@ -155,7 +155,7 @@ describe("ProviderSettingsPage", () => {
     });
   });
 
-  it("notifies an armed saga when replacing an existing provider key", async () => {
+  it("does not auto-submit when replacing an existing provider key", async () => {
     mocks.anyProviderSetup = true;
     mocks.hasArmedPayload = true;
     mocks.validateProviderApiKey.mockResolvedValue(undefined);
@@ -164,11 +164,8 @@ describe("ProviderSettingsPage", () => {
     renderProviderSettingsPage();
     await saveApiKey();
 
-    await waitFor(() =>
-      expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({
-        type: "PROVIDER_CONFIGURED",
-      }),
-    );
+    await waitFor(() => expect(mocks.updateSettings).toHaveBeenCalled());
+    expect(mocks.sendFirstPrompt).not.toHaveBeenCalled();
   });
 
   it("nudges toward Paste & Save after returning from the provider website", async () => {

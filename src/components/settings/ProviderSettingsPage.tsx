@@ -264,7 +264,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
-      if (hasArmedPayload) {
+      if (isFirstProviderSetup && hasArmedPayload) {
         sendFirstPrompt({ type: "PROVIDER_CONFIGURED" });
       } else if (isFirstProviderSetup) {
         setShowStartBuildingBanner(true);

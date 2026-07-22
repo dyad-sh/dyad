@@ -16,9 +16,15 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -193,6 +199,10 @@ describe("undo (integration)", () => {
     await harness?.dispose();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it("undo with git", async () => {
     await runUndoCycle();
   }, 60_000);
@@ -209,6 +219,10 @@ describe("undo (integration)", () => {
       () => expect(screen.getByText(/And it's done!/)).toBeTruthy(),
       { timeout: 15_000 },
     );
+    // The stream-end event can arrive just before the main-side handler has
+    // finished its Git commit. Drain that invoke before starting another Git
+    // operation, or both processes can contend for .git/index.lock.
+    await settleRendererActions();
 
     const manualPath = path.join(harness.appDir, "manual-change.txt");
     fs.writeFileSync(manualPath, "keep me\n");

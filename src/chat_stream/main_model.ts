@@ -23,6 +23,8 @@ import {
  * controller (420-425); after a chat is selected it aborts all its controllers,
  * including pending ones (352-353). Those asymmetries are deliberate model
  * boundaries, not normalized behavior.
+ * Streams are keyed by a model-only invocation identity because the wire
+ * `streamId` generation is scoped to a chat and may collide across chats.
  *
  * Admission states model the loop at lines 645-700. The final barrier check,
  * pending-marker clear, and start emission (670-708) are one atomic action.
@@ -51,7 +53,10 @@ export type MainStreamPhase =
   | "finalized";
 
 export interface MainStream {
-  id: number;
+  /** Model-only identity, unique across concurrent handler invocations. */
+  invocationId: number;
+  /** Renderer generation, unique only within a chat. */
+  streamId: number;
   chatId: number;
   appId: number;
   phase: MainStreamPhase;
@@ -68,6 +73,7 @@ export interface MainStream {
 }
 
 export interface MainModelState {
+  /** Indexed by model-only invocationId, never by the chat-scoped streamId. */
   streams: Readonly<Record<number, MainStream>>;
   chatBarrierCounts: Readonly<Record<number, number>>;
   appBarrierCounts: Readonly<Record<number, number>>;
@@ -84,13 +90,14 @@ export type BarrierScope =
 export type MainModelEvent =
   | {
       type: "request-received";
+      invocationId: number;
       streamId: number;
       chatId: number;
       appId: number;
     }
   | {
       type: "handler-advanced";
-      streamId: number;
+      invocationId: number;
       applyError?: boolean;
       throws?: boolean;
     }
@@ -100,13 +107,13 @@ export type MainModelEvent =
   | { type: "cancel-app"; appId: number }
   | {
       type: "llm-settled";
-      streamId: number;
+      invocationId: number;
       outcome: "completed" | "errored" | "aborted";
       hasResponse?: boolean;
     }
-  | { type: "compaction-started"; streamId: number }
-  | { type: "compaction-finished"; streamId: number }
-  | { type: "handler-unwound"; streamId: number }
+  | { type: "compaction-started"; invocationId: number }
+  | { type: "compaction-finished"; invocationId: number }
+  | { type: "handler-unwound"; invocationId: number }
   | { type: "quit" };
 
 type EmissionOrigin = "admission" | "handler" | "cancel" | "finalizer";
@@ -137,7 +144,11 @@ export type MainModelEmission =
       payload: ChatStreamTransportEndPayload;
       origin: EmissionOrigin;
     }
-  | { type: "completion-resolved"; streamId: number; origin: "finalizer" };
+  | {
+      type: "completion-resolved";
+      invocationId: number;
+      origin: "finalizer";
+    };
 
 export interface MainModelTransitionResult {
   state: MainModelState;
@@ -174,23 +185,26 @@ function replaceStream(
   state: MainModelState,
   stream: MainStream,
 ): MainModelState {
-  return { ...state, streams: { ...state.streams, [stream.id]: stream } };
+  return {
+    ...state,
+    streams: { ...state.streams, [stream.invocationId]: stream },
+  };
 }
 
 function waiterRecord(
   waiters: Readonly<Record<number, readonly number[]>>,
   key: number,
-  streamId: number,
+  invocationId: number,
 ): Readonly<Record<number, readonly number[]>> {
   const values = waiters[key] ?? [];
-  if (values.includes(streamId)) return waiters;
-  return { ...waiters, [key]: [...values, streamId] };
+  if (values.includes(invocationId)) return waiters;
+  return { ...waiters, [key]: [...values, invocationId] };
 }
 
 function handlerError(stream: MainStream, error: string): MainModelEmission {
   return {
     type: "chat:response:error",
-    payload: { chatId: stream.chatId, streamId: stream.id, error },
+    payload: { chatId: stream.chatId, streamId: stream.streamId, error },
     origin: "handler",
   };
 }
@@ -224,7 +238,10 @@ function cancelStreams(
           Object.entries(waiters)
             .map(
               ([key, values]) =>
-                [key, values.filter((id) => id !== stream.id)] as const,
+                [
+                  key,
+                  values.filter((id) => id !== stream.invocationId),
+                ] as const,
             )
             .filter(([, values]) => values.length > 0),
         );
@@ -242,7 +259,7 @@ function cancelStreams(
       type: "chat:response:end",
       payload: {
         chatId: stream.chatId,
-        streamId: stream.id,
+        streamId: stream.streamId,
         updatedFiles: false,
         wasCancelled: true,
       },
@@ -280,8 +297,8 @@ function releaseBarrier(
 
   const waiters =
     scope.type === "chat" ? state.chatWaiters[key] : state.appWaiters[key];
-  for (const streamId of waiters ?? []) {
-    const stream = next.streams[streamId];
+  for (const invocationId of waiters ?? []) {
+    const stream = next.streams[invocationId];
     if (stream && !stream.aborted && stream.phase.startsWith("waiting-")) {
       next = replaceStream(next, { ...stream, phase: "admission-pending" });
     }
@@ -303,11 +320,12 @@ export function transitionMainModel(
 
   switch (event.type) {
     case "request-received": {
-      if (state.streams[event.streamId]) return { state, commands: [] };
+      if (state.streams[event.invocationId]) return { state, commands: [] };
       // Lines 593-615, before the first handler await at 629.
       return {
         state: replaceStream(state, {
-          id: event.streamId,
+          invocationId: event.invocationId,
+          streamId: event.streamId,
           chatId: event.chatId,
           appId: event.appId,
           phase: "tracked",
@@ -321,7 +339,7 @@ export function transitionMainModel(
       };
     }
     case "handler-advanced": {
-      const stream = state.streams[event.streamId];
+      const stream = state.streams[event.invocationId];
       if (!stream || stream.phase === "finalized")
         return { state, commands: [] };
       if (
@@ -362,7 +380,7 @@ export function transitionMainModel(
               chatWaiters: waiterRecord(
                 state.chatWaiters,
                 stream.chatId,
-                stream.id,
+                stream.invocationId,
               ),
             },
             commands: [],
@@ -378,7 +396,7 @@ export function transitionMainModel(
               appWaiters: waiterRecord(
                 state.appWaiters,
                 stream.appId,
-                stream.id,
+                stream.invocationId,
               ),
             },
             commands: [],
@@ -391,7 +409,7 @@ export function transitionMainModel(
           commands: [
             {
               type: "chat:stream:start",
-              payload: { chatId: stream.chatId, streamId: stream.id },
+              payload: { chatId: stream.chatId, streamId: stream.streamId },
               origin: "admission",
             },
           ],
@@ -409,7 +427,7 @@ export function transitionMainModel(
           commands: [
             {
               type: "chat:response:chunk",
-              payload: { chatId: stream.chatId, streamId: stream.id },
+              payload: { chatId: stream.chatId, streamId: stream.streamId },
               origin: "handler",
             },
           ],
@@ -466,7 +484,7 @@ export function transitionMainModel(
                     type: "chat:response:error",
                     payload: {
                       chatId: stream.chatId,
-                      streamId: stream.id,
+                      streamId: stream.streamId,
                       error: "modeled apply error",
                     },
                     origin: "handler",
@@ -477,7 +495,7 @@ export function transitionMainModel(
               type: "chat:response:end",
               payload: {
                 chatId: stream.chatId,
-                streamId: stream.id,
+                streamId: stream.streamId,
                 updatedFiles: false,
               },
               origin: "handler",
@@ -530,7 +548,7 @@ export function transitionMainModel(
       return cancelStreams(state, (stream) => selectedChats.has(stream.chatId));
     }
     case "llm-settled": {
-      const stream = state.streams[event.streamId];
+      const stream = state.streams[event.invocationId];
       if (
         !stream ||
         stream.phase !== "streaming" ||
@@ -573,7 +591,7 @@ export function transitionMainModel(
       };
     }
     case "compaction-started": {
-      const stream = state.streams[event.streamId];
+      const stream = state.streams[event.invocationId];
       if (
         !stream ||
         stream.phase !== "streaming" ||
@@ -593,7 +611,7 @@ export function transitionMainModel(
       };
     }
     case "compaction-finished": {
-      const stream = state.streams[event.streamId];
+      const stream = state.streams[event.invocationId];
       if (
         !stream ||
         stream.phase !== "streaming" ||
@@ -606,7 +624,7 @@ export function transitionMainModel(
       };
     }
     case "handler-unwound": {
-      const stream = state.streams[event.streamId];
+      const stream = state.streams[event.invocationId];
       if (!stream || !stream.phase.startsWith("unwinding-"))
         return { state, commands: [] };
       const finalized = {
@@ -625,7 +643,7 @@ export function transitionMainModel(
       }
       commands.push({
         type: "completion-resolved",
-        streamId: stream.id,
+        invocationId: stream.invocationId,
         origin: "finalizer",
       });
       return { state: replaceStream(state, finalized), commands };
@@ -634,7 +652,7 @@ export function transitionMainModel(
       if (state.quit) return { state, commands: [] };
       const streams = Object.fromEntries(
         Object.values(state.streams).map((stream) => [
-          stream.id,
+          stream.invocationId,
           {
             ...stream,
             aborted: true,
@@ -669,7 +687,11 @@ export function assertMainModelTransitionInvariants(
 ): void {
   for (const emission of result.commands) {
     if (emission.type === "chat:stream:start") {
-      const stream = result.state.streams[emission.payload.streamId ?? -1];
+      const stream = Object.values(result.state.streams).find(
+        (candidate) =>
+          candidate.chatId === emission.payload.chatId &&
+          candidate.streamId === emission.payload.streamId,
+      );
       if (!stream || coveringBarrierCount(previous, stream) > 0) {
         throw new Error(
           `${CHAT_STREAM_INVARIANT_I1}: admission fired under a covering barrier`,
@@ -696,7 +718,7 @@ export function assertMainModelTransitionInvariants(
     ) {
       const stream =
         event.type === "handler-unwound"
-          ? result.state.streams[event.streamId]
+          ? result.state.streams[event.invocationId]
           : undefined;
       if (stream?.aborted)
         throw new Error(

@@ -311,9 +311,13 @@ function routeCommand(
           participant: "main" as const,
           event: mainEvent({
             type: "request-received",
+            // This bounded scenario has one chat, so its generation is also a
+            // unique invocation identity. Multi-chat collisions are covered
+            // by main_model.test.ts with distinct invocation IDs.
+            invocationId: value.streamId,
             streamId: value.streamId,
-            chatId: 7,
-            appId: 9,
+            chatId: value.request.chatId,
+            appId: value.request.appId ?? 9,
           }),
         },
       ];
@@ -438,7 +442,7 @@ function actions(fullAlphabet: boolean): Action[] {
         id,
         target: "participant",
         participant: "main",
-        event: mainEvent({ type: "handler-advanced", streamId }),
+        event: mainEvent({ type: "handler-advanced", invocationId: streamId }),
         enabled: (snapshot) => {
           const current = phase(snapshot, streamId);
           const nextResume = snapshot.remainingActionIds.find((candidate) =>
@@ -469,7 +473,7 @@ function actions(fullAlphabet: boolean): Action[] {
         participant: "main",
         event: mainEvent({
           type: "llm-settled",
-          streamId,
+          invocationId: streamId,
           outcome: "completed",
         }),
         enabled: (snapshot) =>
@@ -481,7 +485,7 @@ function actions(fullAlphabet: boolean): Action[] {
         id: `unwind-${streamId}`,
         target: "participant",
         participant: "main",
-        event: mainEvent({ type: "handler-unwound", streamId }),
+        event: mainEvent({ type: "handler-unwound", invocationId: streamId }),
         enabled: (snapshot) =>
           phase(snapshot, streamId)?.startsWith("unwinding-") === true,
       },
@@ -507,7 +511,7 @@ function errorActions(scenario: ErrorScenario): Action[] {
       id,
       target: "participant",
       participant: "main",
-      event: mainEvent({ type: "handler-advanced", streamId: 1 }),
+      event: mainEvent({ type: "handler-advanced", invocationId: 1 }),
       enabled: (snapshot) => {
         const nextResume = snapshot.remainingActionIds.find((candidate) =>
           candidate.startsWith("enter-streaming-"),
@@ -528,7 +532,7 @@ function errorActions(scenario: ErrorScenario): Action[] {
       participant: "main",
       event: mainEvent({
         type: "llm-settled",
-        streamId: 1,
+        invocationId: 1,
         outcome: "errored",
       }),
       enabled: (snapshot) =>
@@ -542,7 +546,7 @@ function errorActions(scenario: ErrorScenario): Action[] {
         participant: "main",
         event: mainEvent({
           type: "llm-settled",
-          streamId: 1,
+          invocationId: 1,
           outcome: "completed",
         }),
         enabled: (snapshot) =>
@@ -552,7 +556,7 @@ function errorActions(scenario: ErrorScenario): Action[] {
         id: "finish-post-guard-db",
         target: "participant",
         participant: "main",
-        event: mainEvent({ type: "handler-advanced", streamId: 1 }),
+        event: mainEvent({ type: "handler-advanced", invocationId: 1 }),
         enabled: (snapshot) =>
           participantValue(snapshot, "main").streams[1]?.awaitPoint ===
           "post-abort-db",
@@ -576,7 +580,7 @@ function errorActions(scenario: ErrorScenario): Action[] {
       participant: "main",
       event: mainEvent({
         type: "handler-advanced",
-        streamId: 1,
+        invocationId: 1,
         throws: scenario === "post-guard-error",
         applyError: scenario === "apply-error",
       }),
@@ -593,7 +597,7 @@ function errorActions(scenario: ErrorScenario): Action[] {
     id: "unwind-error-stream",
     target: "participant",
     participant: "main",
-    event: mainEvent({ type: "handler-unwound", streamId: 1 }),
+    event: mainEvent({ type: "handler-unwound", invocationId: 1 }),
     enabled: (snapshot) =>
       phase(snapshot, 1)?.startsWith("unwinding-") === true,
   });
@@ -645,7 +649,7 @@ function appBarrierActions(): Action[] {
       id: "resume-after-app-barrier",
       target: "participant",
       participant: "main",
-      event: mainEvent({ type: "handler-advanced", streamId: 1 }),
+      event: mainEvent({ type: "handler-advanced", invocationId: 1 }),
       enabled: (snapshot) =>
         phase(snapshot, 1) === "admitted" &&
         !snapshot.remainingActionIds.some((id) =>

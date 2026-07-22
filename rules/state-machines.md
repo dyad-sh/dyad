@@ -42,6 +42,9 @@ events that may arrive after an operation has been superseded.
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.
+- Before keying a cross-entity registry by a generation counter, verify the
+  counter's scope. If generations restart per entity, use a composite key or a
+  separate invocation ID and test two entities with the same generation.
 
 ## Deliberate degrees of freedom
 

@@ -19,43 +19,52 @@ function apply(state: MainModelState, event: MainModelEvent): MainModelState {
 
 function advanceToStreaming(
   state = initialMainModelState,
-  streamId = 1,
+  invocationId = 1,
+  chatId = 7,
+  streamId = invocationId,
 ): MainModelState {
   let next = apply(state, {
     type: "request-received",
+    invocationId,
     streamId,
-    chatId: 7,
+    chatId,
     appId: 9,
   });
-  next = apply(next, { type: "handler-advanced", streamId });
-  next = apply(next, { type: "handler-advanced", streamId });
-  next = apply(next, { type: "handler-advanced", streamId });
+  next = apply(next, { type: "handler-advanced", invocationId });
+  next = apply(next, { type: "handler-advanced", invocationId });
+  next = apply(next, { type: "handler-advanced", invocationId });
   return next;
 }
 
 const explorationEvents: MainModelEvent[] = [
-  { type: "request-received", streamId: 1, chatId: 7, appId: 9 },
-  { type: "handler-advanced", streamId: 1 },
-  { type: "handler-advanced", streamId: 1, throws: true },
-  { type: "handler-advanced", streamId: 1, applyError: true },
+  {
+    type: "request-received",
+    invocationId: 1,
+    streamId: 1,
+    chatId: 7,
+    appId: 9,
+  },
+  { type: "handler-advanced", invocationId: 1 },
+  { type: "handler-advanced", invocationId: 1, throws: true },
+  { type: "handler-advanced", invocationId: 1, applyError: true },
   { type: "barrier-installed", scope: { type: "chat", chatId: 7 } },
   { type: "barrier-released", scope: { type: "chat", chatId: 7 } },
   { type: "barrier-installed", scope: { type: "app", appId: 9 } },
   { type: "barrier-released", scope: { type: "app", appId: 9 } },
   { type: "cancel-chat", chatId: 7 },
   { type: "cancel-app", appId: 9 },
-  { type: "llm-settled", streamId: 1, outcome: "completed" },
+  { type: "llm-settled", invocationId: 1, outcome: "completed" },
   {
     type: "llm-settled",
-    streamId: 1,
+    invocationId: 1,
     outcome: "completed",
     hasResponse: false,
   },
-  { type: "llm-settled", streamId: 1, outcome: "errored" },
-  { type: "llm-settled", streamId: 1, outcome: "aborted" },
-  { type: "compaction-started", streamId: 1 },
-  { type: "compaction-finished", streamId: 1 },
-  { type: "handler-unwound", streamId: 1 },
+  { type: "llm-settled", invocationId: 1, outcome: "errored" },
+  { type: "llm-settled", invocationId: 1, outcome: "aborted" },
+  { type: "compaction-started", invocationId: 1 },
+  { type: "compaction-finished", invocationId: 1 },
+  { type: "handler-unwound", invocationId: 1 },
   { type: "quit" },
 ];
 
@@ -66,7 +75,7 @@ function reachableStates(): MainModelState[] {
       explorationEvents.filter((event) => {
         if (state.quit) return event.type === "quit";
         if (event.type === "request-received")
-          return state.streams[event.streamId] === undefined;
+          return state.streams[event.invocationId] === undefined;
         if (event.type === "barrier-installed") {
           return event.scope.type === "chat"
             ? (state.chatBarrierCounts[event.scope.chatId] ?? 0) === 0
@@ -96,16 +105,17 @@ describe("main chat stream model", () => {
   it("I1 keeps admission atomic with both covering barriers", () => {
     let state = apply(initialMainModelState, {
       type: "request-received",
+      invocationId: 1,
       streamId: 1,
       chatId: 7,
       appId: 9,
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     state = apply(state, {
       type: "barrier-installed",
       scope: { type: "chat", chatId: 7 },
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     expect(state.streams[1].phase).toBe("waiting-chat-barrier");
     state = apply(state, {
       type: "barrier-released",
@@ -115,7 +125,7 @@ describe("main chat stream model", () => {
       type: "barrier-installed",
       scope: { type: "app", appId: 9 },
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     expect(state.streams[1].phase).toBe("waiting-app-barrier");
   });
 
@@ -143,12 +153,12 @@ describe("main chat stream model", () => {
     state = cancelled.state;
     state = apply(state, {
       type: "llm-settled",
-      streamId: 1,
+      invocationId: 1,
       outcome: "aborted",
     });
     const finalized = transitionMainModel(state, {
       type: "handler-unwound",
-      streamId: 1,
+      invocationId: 1,
     });
     expect(finalized.commands.map((command) => command.type)).toEqual([
       "completion-resolved",
@@ -158,11 +168,12 @@ describe("main chat stream model", () => {
   it("I3 permits early cancellation terminals but not admission through a barrier", () => {
     let state = apply(initialMainModelState, {
       type: "request-received",
+      invocationId: 1,
       streamId: 1,
       chatId: 7,
       appId: 9,
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     state = apply(state, {
       type: "barrier-installed",
       scope: { type: "app", appId: 9 },
@@ -175,24 +186,28 @@ describe("main chat stream model", () => {
       "chat:response:end",
       "chat:stream:end",
     ]);
-    state = apply(cancelled.state, { type: "handler-advanced", streamId: 1 });
+    state = apply(cancelled.state, {
+      type: "handler-advanced",
+      invocationId: 1,
+    });
     expect(state.streams[1].phase).toBe("unwinding-aborted");
 
     let pending = apply(initialMainModelState, {
       type: "request-received",
+      invocationId: 2,
       streamId: 2,
       chatId: 7,
       appId: 9,
     });
-    pending = apply(pending, { type: "handler-advanced", streamId: 2 });
+    pending = apply(pending, { type: "handler-advanced", invocationId: 2 });
     const admitted = transitionMainModel(pending, {
       type: "handler-advanced",
-      streamId: 2,
+      invocationId: 2,
     });
     expect(() =>
       assertMainModelTransitionInvariants(
         pending,
-        { type: "handler-advanced", streamId: 2 },
+        { type: "handler-advanced", invocationId: 2 },
         {
           ...admitted,
           state: {
@@ -210,16 +225,17 @@ describe("main chat stream model", () => {
   it("I4 wakes waiters and clears released barrier bookkeeping", () => {
     let state = apply(initialMainModelState, {
       type: "request-received",
+      invocationId: 1,
       streamId: 1,
       chatId: 7,
       appId: 9,
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     state = apply(state, {
       type: "barrier-installed",
       scope: { type: "chat", chatId: 7 },
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     state = apply(state, {
       type: "barrier-released",
       scope: { type: "chat", chatId: 7 },
@@ -238,7 +254,7 @@ describe("main chat stream model", () => {
         expect(stream.phase).toBe("quit-cleared");
         expect(stream.aborted).toBe(true);
         expect(stream.completionResolved).toBe(
-          state.streams[stream.id].completionResolved,
+          state.streams[stream.invocationId].completionResolved,
         );
       }
       expect(() => assertMainModelQuiescence(result.state)).not.toThrow();
@@ -247,7 +263,7 @@ describe("main chat stream model", () => {
 
   it("models cancel during compaction as legal and completion-covered", () => {
     let state = advanceToStreaming();
-    state = apply(state, { type: "compaction-started", streamId: 1 });
+    state = apply(state, { type: "compaction-started", invocationId: 1 });
     const cancelled = transitionMainModel(state, {
       type: "cancel-chat",
       chatId: 7,
@@ -259,15 +275,15 @@ describe("main chat stream model", () => {
     });
     state = apply(cancelled.state, {
       type: "compaction-finished",
-      streamId: 1,
+      invocationId: 1,
     });
     state = apply(state, {
       type: "llm-settled",
-      streamId: 1,
+      invocationId: 1,
       outcome: "aborted",
     });
     expect(state.streams[1].completionResolved).toBe(false);
-    state = apply(state, { type: "handler-unwound", streamId: 1 });
+    state = apply(state, { type: "handler-unwound", invocationId: 1 });
     expect(state.streams[1].completionResolved).toBe(true);
   });
 
@@ -275,13 +291,13 @@ describe("main chat stream model", () => {
     let state = advanceToStreaming();
     state = apply(state, {
       type: "llm-settled",
-      streamId: 1,
+      invocationId: 1,
       outcome: "completed",
     });
-    state = apply(state, { type: "handler-advanced", streamId: 1 });
+    state = apply(state, { type: "handler-advanced", invocationId: 1 });
     const result = transitionMainModel(state, {
       type: "handler-advanced",
-      streamId: 1,
+      invocationId: 1,
       applyError: true,
     });
     expect(result.commands.map((command) => command.type)).toEqual([
@@ -299,7 +315,7 @@ describe("main chat stream model", () => {
     state = apply(state, { type: "cancel-chat", chatId: 7 });
     const result = transitionMainModel(state, {
       type: "llm-settled",
-      streamId: 1,
+      invocationId: 1,
       outcome: "completed",
     });
     expect(result.state.streams[1].phase).toBe("unwinding-aborted");
@@ -307,7 +323,7 @@ describe("main chat stream model", () => {
 
     const errored = transitionMainModel(state, {
       type: "llm-settled",
-      streamId: 1,
+      invocationId: 1,
       outcome: "errored",
     });
     expect(errored.state.streams[1].phase).toBe("unwinding-aborted");
@@ -318,7 +334,7 @@ describe("main chat stream model", () => {
     const state = advanceToStreaming();
     const result = transitionMainModel(state, {
       type: "llm-settled",
-      streamId: 1,
+      invocationId: 1,
       outcome: "completed",
       hasResponse: false,
     });
@@ -332,16 +348,16 @@ describe("main chat stream model", () => {
       let state = advanceToStreaming();
       state = apply(state, {
         type: "llm-settled",
-        streamId: 1,
+        invocationId: 1,
         outcome: "completed",
       });
       if (awaitPoint === "post-abort-apply") {
-        state = apply(state, { type: "handler-advanced", streamId: 1 });
+        state = apply(state, { type: "handler-advanced", invocationId: 1 });
       }
       state = apply(state, { type: "cancel-chat", chatId: 7 });
       const result = transitionMainModel(state, {
         type: "handler-advanced",
-        streamId: 1,
+        invocationId: 1,
         throws: true,
       });
       expect(result.state.streams[1].phase).toBe("unwinding-errored");
@@ -377,11 +393,37 @@ describe("main chat stream model", () => {
     ]);
   });
 
+  it("keeps same-generation streams from different chats as distinct invocations", () => {
+    let state = advanceToStreaming(initialMainModelState, 1, 7, 1);
+    state = advanceToStreaming(state, 2, 8, 1);
+    expect(Object.keys(state.streams)).toEqual(["1", "2"]);
+    expect(state.streams[1]).toMatchObject({ chatId: 7, streamId: 1 });
+    expect(state.streams[2]).toMatchObject({ chatId: 8, streamId: 1 });
+
+    const cancelled = transitionMainModel(state, {
+      type: "cancel-app",
+      appId: 9,
+    });
+    expect(
+      cancelled.commands
+        .filter((command) => command.type === "chat:response:end")
+        .map((command) => [command.payload.chatId, command.payload.streamId]),
+    ).toEqual([
+      [7, 1],
+      [8, 1],
+    ]);
+    expect(
+      cancelled.commands
+        .filter((command) => command.type === "chat:stream:end")
+        .map((command) => command.payload.chatId),
+    ).toEqual([7, 8]);
+  });
+
   it("documents two concurrent streams observing pendingCompaction=true", () => {
     let state = advanceToStreaming();
     state = advanceToStreaming(state, 2);
-    state = apply(state, { type: "compaction-started", streamId: 1 });
-    state = apply(state, { type: "compaction-started", streamId: 2 });
+    state = apply(state, { type: "compaction-started", invocationId: 1 });
+    state = apply(state, { type: "compaction-started", invocationId: 2 });
     expect(state.streams[1].awaitPoint).toBe("compaction");
     expect(state.streams[2].awaitPoint).toBe("compaction");
     expect(state.pendingCompactionChats).toEqual([7]);

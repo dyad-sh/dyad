@@ -21,6 +21,11 @@ testSkipIfWindows("select component", async ({ po }) => {
   await expect(
     po.previewPanel.getSelectedComponentsDisplay(),
   ).not.toBeVisible();
+  await expect(po.previewPanel.getPreviewPickElementButton()).toBeEnabled();
+  await expect(po.previewPanel.getPreviewPickElementButton()).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 
   await po.snapshotServerDump("all-messages");
 
@@ -55,6 +60,11 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
   await expect(
     po.previewPanel.getSelectedComponentsDisplay(),
   ).not.toBeVisible();
+  await expect(po.previewPanel.getPreviewPickElementButton()).toBeEnabled();
+  await expect(po.previewPanel.getPreviewPickElementButton()).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 
   await po.snapshotServerDump("last-message");
 });

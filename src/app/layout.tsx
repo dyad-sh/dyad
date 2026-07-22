@@ -10,7 +10,10 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
 import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
-import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import {
+  isPickingComponentAtom,
+  selectedComponentsPreviewAtom,
+} from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
 import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
@@ -70,6 +73,7 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
+  const setIsPickingComponent = useSetAtom(isPickingComponentAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
 
   // Initialize plan events listener
@@ -167,7 +171,8 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setSelectedComponentsPreview([]);
-  }, [selectedAppId, setSelectedComponentsPreview]);
+    setIsPickingComponent(false);
+  }, [selectedAppId, setIsPickingComponent, setSelectedComponentsPreview]);
 
   return (
     <>

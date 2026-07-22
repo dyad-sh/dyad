@@ -3,6 +3,8 @@ import { atom } from "jotai";
 
 export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
 
+export const isPickingComponentAtom = atom<boolean>(false);
+
 export const visualEditingSelectedComponentAtom =
   atom<ComponentSelection | null>(null);
 

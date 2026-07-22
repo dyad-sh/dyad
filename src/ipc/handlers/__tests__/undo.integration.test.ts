@@ -18,7 +18,7 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -43,6 +43,13 @@ describe("undo (integration)", () => {
     harness.bridge.sentEvents.filter(
       (e) => e.channel === "chat:response:error",
     );
+
+  const settleRendererActions = async () => {
+    await act(async () => {
+      await harness.bridge.settleInFlight();
+      await Promise.resolve();
+    });
+  };
 
   /** Type + send a prompt through the real UI and gate on ITS stream end. */
   const sendTurn = async (prompt: string) => {
@@ -148,6 +155,7 @@ describe("undo (integration)", () => {
 
     // No error events were emitted during the whole cycle.
     expect(errorEvents()).toHaveLength(0);
+    await settleRendererActions();
   };
 
   beforeAll(async () => {
@@ -192,15 +200,36 @@ describe("undo (integration)", () => {
       cwd: harness.appDir,
     });
 
-    await clickUndo();
+    await settleRendererActions();
+    const versionInvokeBaseline = harness.bridge.invokeLog.filter(
+      (entry) => entry.channel === "list-versions",
+    ).length;
+    const undoButton = screen.getByRole("button", { name: /Undo/ });
+    fireEvent.click(undoButton);
+    fireEvent.click(undoButton);
     expect(
       await screen.findByTestId("extra-commits-revert-dialog"),
     ).toBeTruthy();
+    expect(
+      harness.bridge.invokeLog.filter(
+        (entry) => entry.channel === "list-versions",
+      ).length - versionInvokeBaseline,
+    ).toBe(1);
     expect(screen.getByText("Manual work after AI turn")).toBeTruthy();
     expect(fs.existsSync(manualPath)).toBe(true);
     expect(await loadMessages()).toHaveLength(2);
 
-    fireEvent.click(screen.getByTestId("cancel-revert-button"));
+    harness.setSelectedAppId(null);
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+    harness.setSelectedAppId(harness.appId);
+    await waitFor(() =>
+      expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
+    );
+
+    await clickUndo();
+    fireEvent.click(await screen.findByTestId("cancel-revert-button"));
     await waitFor(() =>
       expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull(),
     );
@@ -228,7 +257,7 @@ describe("undo (integration)", () => {
     await waitFor(async () => expect(await loadMessages()).toHaveLength(0), {
       timeout: 15_000,
     });
-    await harness.bridge.settleInFlight();
+    await settleRendererActions();
   }, 60_000);
 
   it("undo after assistant with no code", async () => {

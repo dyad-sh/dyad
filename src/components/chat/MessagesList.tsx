@@ -1,6 +1,13 @@
 import React from "react";
 import type { Message, Version } from "@/ipc/types";
-import { forwardRef, useState, useCallback, useMemo } from "react";
+import {
+  forwardRef,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { Virtuoso } from "react-virtuoso";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
@@ -56,6 +63,9 @@ interface FooterContext {
 }
 
 type RevertConfirmation = {
+  appId: number;
+  chatId: number;
+  messageId: number | undefined;
   targetVersionId: string;
   expectedHeadOid: string;
   extraCommits: Version[];
@@ -76,6 +86,35 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   const [pendingRevert, setPendingRevert] = useState<PendingRevert | null>(
     null,
   );
+  const actionInFlightRef = useRef(false);
+  const contextAppId = context?.appId ?? null;
+  const contextChatId = context?.selectedChatId ?? null;
+  const contextMessageId = context?.messages.at(-1)?.id;
+  const contextIdentityRef = useRef({
+    appId: contextAppId,
+    chatId: contextChatId,
+    messageId: contextMessageId,
+  });
+  contextIdentityRef.current = {
+    appId: contextAppId,
+    chatId: contextChatId,
+    messageId: contextMessageId,
+  };
+
+  useEffect(() => {
+    setPendingRevert((pending) => {
+      if (
+        !pending ||
+        (pending.appId === contextAppId &&
+          pending.chatId === contextChatId &&
+          pending.messageId === contextMessageId)
+      ) {
+        return pending;
+      }
+      return null;
+    });
+  }, [contextAppId, contextChatId, contextMessageId]);
+
   if (!context) return null;
 
   const {
@@ -103,67 +142,89 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     ? messages[messages.length - 1]
     : undefined;
   const isLastMessageAssistant = lastMessage?.role === "assistant";
+  const isCurrentContext = (
+    expectedAppId: number,
+    expectedChatId: number,
+    expectedMessageId: number | undefined,
+  ) => {
+    const current = contextIdentityRef.current;
+    return (
+      current.appId === expectedAppId &&
+      current.chatId === expectedChatId &&
+      current.messageId === expectedMessageId
+    );
+  };
 
-  const performUndo = async ({
+  const beginAction = (
+    kind: "undo" | "retry",
+    { allowPending = false }: { allowPending?: boolean } = {},
+  ) => {
+    if (
+      actionInFlightRef.current ||
+      (!allowPending && pendingRevert !== null) ||
+      isAnyVersionMutationPending
+    ) {
+      return false;
+    }
+    actionInFlightRef.current = true;
+    if (kind === "undo") setIsUndoLoading(true);
+    else setIsRetryLoading(true);
+    return true;
+  };
+
+  const endAction = (kind: "undo" | "retry") => {
+    actionInFlightRef.current = false;
+    if (kind === "undo") setIsUndoLoading(false);
+    else setIsRetryLoading(false);
+  };
+
+  const executeUndo = async ({
+    appId: actionAppId,
     targetVersionId,
     expectedHeadOid,
     currentChatMessageId,
-  }: Pick<
-    Extract<PendingRevert, { kind: "undo" }>,
-    "targetVersionId" | "currentChatMessageId"
-  > & {
+  }: {
+    appId: number;
+    targetVersionId: string;
     expectedHeadOid?: string;
+    currentChatMessageId?: { chatId: number; messageId: number };
   }) => {
-    setIsUndoLoading(true);
-    try {
-      console.debug("Reverting to previous version", targetVersionId);
-      await sendPreviewMutation({
-        type: "RESTORE",
-        appId: appId!,
-        versionId: targetVersionId,
-        expectedHeadOid,
-        currentChatMessageId,
-      });
-    } catch (error) {
-      console.error("Error during undo operation:", error);
-      showError("Failed to undo changes");
-    } finally {
-      setIsUndoLoading(false);
-    }
+    console.debug("Reverting to previous version", targetVersionId);
+    await sendPreviewMutation({
+      type: "RESTORE",
+      appId: actionAppId,
+      versionId: targetVersionId,
+      expectedHeadOid,
+      currentChatMessageId,
+    });
   };
 
-  const performRetry = async ({
+  const executeRetry = async ({
+    appId: actionAppId,
     targetVersionId,
     expectedHeadOid,
     retry,
   }: {
+    appId: number;
     targetVersionId?: string;
     expectedHeadOid?: string;
     retry: RetryDetails;
   }) => {
-    setIsRetryLoading(true);
-    try {
-      if (targetVersionId) {
-        await sendPreviewMutation({
-          type: "RESTORE",
-          appId: appId!,
-          versionId: targetVersionId,
-          expectedHeadOid,
-        });
-      }
-
-      console.debug("Streaming message with redo", retry.redo);
-      streamMessage({
-        prompt: retry.prompt,
-        chatId: retry.chatId,
-        redo: retry.redo,
+    if (targetVersionId) {
+      await sendPreviewMutation({
+        type: "RESTORE",
+        appId: actionAppId,
+        versionId: targetVersionId,
+        expectedHeadOid,
       });
-    } catch (error) {
-      console.error("Error during retry operation:", error);
-      showError("Failed to retry message");
-    } finally {
-      setIsRetryLoading(false);
     }
+
+    console.debug("Streaming message with redo", retry.redo);
+    streamMessage({
+      prompt: retry.prompt,
+      chatId: retry.chatId,
+      redo: retry.redo,
+    });
   };
 
   // Reverts the whole last generation: targets the version just before the last
@@ -171,17 +232,18 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // messages produced by that turn. Shared by the modified-files card and the
   // standalone Undo button below.
   const handleUndo = async () => {
-    if (isAnyVersionMutationPending) return;
     if (!selectedChatId || !appId) {
       console.error("No chat selected or app ID not available");
       return;
     }
+    if (!beginAction("undo")) return;
 
     try {
       const freshVersions = restoreTargetBranch
         ? await ipc.version.listVersions({ appId, ref: restoreTargetBranch })
         : ((await refreshVersions()).data ?? []);
       const currentMessage = messages[messages.length - 1];
+      if (!isCurrentContext(appId, selectedChatId, currentMessage?.id)) return;
       // The user message that triggered this assistant response
       const userMessage = messages[messages.length - 2];
       const currentCommitIndex = currentMessage?.commitHash
@@ -212,6 +274,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         if (extraCommits?.length && expectedHeadOid) {
           setPendingRevert({
             kind: "undo",
+            appId,
+            chatId: selectedChatId,
+            messageId: currentMessage?.id,
             targetVersionId: revertTargetVersionId,
             expectedHeadOid,
             extraCommits,
@@ -220,7 +285,8 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           return;
         }
 
-        await performUndo({
+        await executeUndo({
+          appId,
           targetVersionId: revertTargetVersionId,
           currentChatMessageId,
         });
@@ -232,6 +298,8 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     } catch (error) {
       console.error("Error during undo operation:", error);
       showError("Failed to undo changes");
+    } finally {
+      endAction("undo");
     }
   };
 
@@ -240,11 +308,11 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // otherwise the prompt is redone. Shared by the modified-files card and the
   // standalone Retry button below.
   const handleRetry = async () => {
-    if (isAnyVersionMutationPending) return;
     if (!selectedChatId || !appId) {
       console.error("No chat selected or app ID not available");
       return;
     }
+    if (!beginAction("retry")) return;
 
     try {
       const freshVersions = restoreTargetBranch
@@ -293,6 +361,8 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         }
       }
 
+      if (!isCurrentContext(appId, selectedChatId, lastMessage?.id)) return;
+
       const retry = {
         prompt: lastUserMessage.content,
         chatId: selectedChatId,
@@ -311,6 +381,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         if (extraCommits?.length && expectedHeadOid) {
           setPendingRevert({
             kind: "retry",
+            appId,
+            chatId: selectedChatId,
+            messageId: lastMessage?.id,
             targetVersionId: revertTargetVersionId,
             expectedHeadOid,
             extraCommits,
@@ -320,10 +393,16 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         }
       }
 
-      await performRetry({ targetVersionId: revertTargetVersionId, retry });
+      await executeRetry({
+        appId,
+        targetVersionId: revertTargetVersionId,
+        retry,
+      });
     } catch (error) {
       console.error("Error during retry operation:", error);
       showError("Failed to retry message");
+    } finally {
+      endAction("retry");
     }
   };
 
@@ -332,6 +411,15 @@ function FooterComponent({ context }: { context?: FooterContext }) {
   // buttons so text-only replies keep those affordances.
   const showModifiedFilesCard =
     isLastMessageAssistant && !!lastMessage?.commitHash && appId != null;
+  const currentPendingRevert =
+    pendingRevert &&
+    isCurrentContext(
+      pendingRevert.appId,
+      pendingRevert.chatId,
+      pendingRevert.messageId,
+    )
+      ? pendingRevert
+      : null;
 
   return (
     <>
@@ -385,22 +473,39 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         </div>
       )}
 
-      {pendingRevert && (
+      {currentPendingRevert && (
         <ExtraCommitsRevertDialog
           open
-          kind={pendingRevert.kind}
-          extraCommits={pendingRevert.extraCommits}
+          kind={currentPendingRevert.kind}
+          extraCommits={currentPendingRevert.extraCommits}
           onOpenChange={(open) => {
             if (!open) setPendingRevert(null);
           }}
           onConfirm={() => {
-            const action = pendingRevert;
+            const action = currentPendingRevert;
             setPendingRevert(null);
-            if (action.kind === "undo") {
-              void performUndo(action);
-            } else {
-              void performRetry(action);
+            if (
+              action.appId !== appId ||
+              action.chatId !== selectedChatId ||
+              action.messageId !== lastMessage?.id ||
+              !beginAction(action.kind, { allowPending: true })
+            ) {
+              return;
             }
+            const operation =
+              action.kind === "undo"
+                ? executeUndo(action)
+                : executeRetry(action);
+            void operation
+              .catch((error) => {
+                console.error(`Error during ${action.kind} operation:`, error);
+                showError(
+                  action.kind === "undo"
+                    ? "Failed to undo changes"
+                    : "Failed to retry message",
+                );
+              })
+              .finally(() => endAction(action.kind));
           }}
         />
       )}

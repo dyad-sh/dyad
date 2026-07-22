@@ -30,6 +30,9 @@ events that may arrive after an operation has been superseded.
 - Controllers are disposable and their owner must call `dispose()` on provider
   unmount or entity deletion. Renderer controller collections belong to a
   provider-owned `KeyedControllerHost`; never keep them in module globals.
+- Renderer providers must bind manager startup and disposal with the shared
+  `useManagerLifecycle` hook; it preserves managers across React StrictMode
+  effect replay while still disposing managers that are genuinely replaced.
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.

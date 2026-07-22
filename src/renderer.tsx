@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
@@ -30,6 +30,8 @@ import {
   shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
 import { registerRendererIpcListeners } from "./app_wiring/registerRendererIpcListeners";
+import { ChatStreamManager } from "./chat_stream/manager";
+import { ChatStreamProvider } from "./chat_stream/ChatStreamProvider";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -129,6 +131,7 @@ const posthogClient = posthog.init(
 function App() {
   const queryClient = useQueryClient();
   const store = useStore();
+  const [chatStreamManager] = useState(() => new ChatStreamManager(store));
 
   // Fetch user budget on app load
   useEffect(() => {
@@ -164,6 +167,7 @@ function App() {
       ipcClient: ipc,
       store,
       queryClient,
+      chatStreamManager,
       onTelemetryEvent: ({ eventName, properties }) => {
         if (eventName === "$exception") {
           posthog.captureException(
@@ -176,9 +180,13 @@ function App() {
         posthog.capture(eventName, properties);
       },
     });
-  }, [queryClient, store]);
+  }, [chatStreamManager, queryClient, store]);
 
-  return <RouterProvider router={router} />;
+  return (
+    <ChatStreamProvider manager={chatStreamManager}>
+      <RouterProvider router={router} />
+    </ChatStreamProvider>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(

@@ -77,19 +77,31 @@ export interface StreamRequest {
  */
 export type StreamState =
   | { type: "idle"; lastStreamId: number }
-  | { type: "starting"; streamId: number; request: StreamRequest }
-  | { type: "streaming"; streamId: number; request: StreamRequest }
+  | {
+      type: "starting";
+      streamId: number;
+      request: StreamRequest;
+      targetAppId: number | null;
+    }
+  | {
+      type: "streaming";
+      streamId: number;
+      request: StreamRequest;
+      targetAppId: number | null;
+    }
   | {
       type: "cancelling";
       streamId: number;
       request: StreamRequest;
       registered: boolean;
+      targetAppId: number | null;
     }
   | {
       type: "finalizing";
       streamId: number;
       request: StreamRequest;
       wasCancelled: boolean;
+      targetAppId: number | null;
     }
   | { type: "errored"; lastStreamId: number; error: string };
 
@@ -101,6 +113,8 @@ export type StreamEvent =
   | { type: "cancel" }
   /** Main confirmed AbortController registration (`chat:stream:start`). Carries no streamId (keyed by chat only). */
   | { type: "registered" }
+  /** The command adapter resolved the app targeted by this stream. */
+  | { type: "stream-context"; streamId: number; targetAppId: number | null }
   /** A content chunk arrived for the given stream generation. */
   | { type: "chunk-received"; streamId: number }
   /** The terminal end event arrived for the given stream generation. */
@@ -130,6 +144,7 @@ export type StreamCommand =
       type: "run-end-side-effects";
       streamId: number;
       request: StreamRequest;
+      targetAppId: number | null;
       response: ChatResponseEnd;
     }
   /** Run all error side effects (error atom, invalidations, DB re-sync). */
@@ -137,6 +152,7 @@ export type StreamCommand =
       type: "run-error-side-effects";
       streamId: number;
       request: StreamRequest;
+      targetAppId: number | null;
       error: string;
       warningMessages?: string[];
     }

@@ -13,12 +13,11 @@ import type { Chat } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 import {
-  productionChatStreamCommands,
-  registerChatStreamRuntimeDeps,
+  createProductionChatStreamCommands,
   type ChatStreamCommands,
 } from "../commands";
 import { createChatStreamController } from "../controller";
-import { ensureController, peekController } from "../registry";
+import { ChatStreamManager } from "../manager";
 
 const CHAT_ID = 11;
 
@@ -36,27 +35,36 @@ function setup({
 }: { queue?: QueuedMessageItem[]; chatId?: number } = {}) {
   const store = createStore();
   const queryClient = new QueryClient();
-  registerChatStreamRuntimeDeps({
+  const runtimeDeps = {
     store,
     queryClient,
     getSettings: () => undefined,
     getPosthog: () => null,
-  });
+  };
   if (queue.length > 0) {
     store.set(queuedMessagesByIdAtom, new Map([[chatId, queue]]));
   }
   const startStream = vi.fn(
     async (_args: Parameters<ChatStreamCommands["startStream"]>[0]) => {},
   );
+  const productionCommands = createProductionChatStreamCommands(
+    () => runtimeDeps,
+  );
   const commands: ChatStreamCommands = {
-    ...productionChatStreamCommands,
+    ...productionCommands,
     startStream,
   };
   const controller = createChatStreamController({
     chatId,
     getCommands: () => commands,
   });
-  return { store, queryClient, controller, startStream };
+  return {
+    store,
+    queryClient,
+    controller,
+    startStream,
+    productionCommands,
+  };
 }
 
 async function flush(): Promise<void> {
@@ -113,10 +121,12 @@ describe("queue dispatch after non-machine streams (regression)", () => {
 
 describe("queued request fidelity", () => {
   it("preserves redo/appId/requestedChatMode through the queue and dispatches the original request verbatim", async () => {
-    const { store, controller, startStream } = setup({ queue: [] });
+    const { store, controller, startStream, productionCommands } = setup({
+      queue: [],
+    });
 
     const onSettled = vi.fn();
-    productionChatStreamCommands.enqueueMessage({
+    productionCommands.enqueueMessage({
       chatId: CHAT_ID,
       request: {
         prompt: "retry me",
@@ -184,12 +194,13 @@ describe("queued request fidelity", () => {
   });
 });
 
-describe("registry disposal", () => {
+describe("manager disposal", () => {
   it("disposes controllers that end up errored once quiescent and unobserved", async () => {
     const chatId = 77;
     const store = createStore();
     const queryClient = new QueryClient();
-    registerChatStreamRuntimeDeps({
+    const manager = new ChatStreamManager(store);
+    manager.registerRuntimeDeps({
       store,
       queryClient,
       getSettings: () => undefined,
@@ -206,12 +217,12 @@ describe("registry disposal", () => {
     // The production adapter has no IPC bridge in this environment, so the
     // stream errors out immediately; the controller must reach `errored` and
     // then be disposed from the registry (not leak forever).
-    ensureController(chatId).send({
+    manager.ensure(chatId).send({
       type: "submit",
       request: { prompt: "hello", chatId },
     });
     await vi.waitFor(() => {
-      expect(peekController(chatId)).toBeUndefined();
+      expect(manager.peek(chatId)).toBeUndefined();
     });
     expect(store.get(chatErrorByIdAtom).get(chatId)).toBeTruthy();
     consoleError.mockRestore();

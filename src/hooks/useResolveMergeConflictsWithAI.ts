@@ -10,7 +10,7 @@ import {
   streamingPreviewByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { ensureController } from "@/chat_stream/registry";
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -51,6 +51,7 @@ export function useResolveMergeConflictsWithAI({
   const { invalidateChats } = useChats(appId);
   const { refreshApp } = useLoadApp(appId);
   const { settings } = useSettings();
+  const chatStreamManager = useChatStreamManager();
 
   const resolveWithAI = useCallback(async () => {
     if (!appId) {
@@ -188,7 +189,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
             // This stream ran OUTSIDE the chat stream machine; poke it now
             // that the projection is cleared so prompts queued during this
             // stream drain (no-op when the queue is empty or paused).
-            ensureController(newChatId).send({ type: "queue-poked" });
+            chatStreamManager.ensure(newChatId).send({ type: "queue-poked" });
           },
           onError: ({ error }) => {
             showError(error || "Failed to resolve conflicts");
@@ -210,7 +211,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
             );
             // See onEnd: drain prompts queued during this non-machine
             // stream.
-            ensureController(newChatId).send({ type: "queue-poked" });
+            chatStreamManager.ensure(newChatId).send({ type: "queue-poked" });
           },
         },
       );
@@ -241,6 +242,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     refreshApp,
     settings,
     store,
+    chatStreamManager,
   ]);
 
   return { resolveWithAI, isResolving };

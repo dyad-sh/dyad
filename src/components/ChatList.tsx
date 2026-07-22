@@ -55,6 +55,7 @@ import { useSetChatFavorite } from "@/hooks/useSetChatFavorite";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { cn } from "@/lib/utils";
 import { usePlanHandoffManager } from "@/plan_handoff/PlanHandoffProvider";
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 
 const CHAT_ACTION_SPRING = {
   type: "spring" as const,
@@ -79,6 +80,7 @@ export function ChatList({
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
   const initialChatMode = useInitialChatMode();
   const planHandoffManager = usePlanHandoffManager();
+  const chatStreamManager = useChatStreamManager();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
   const { apps } = useLoadApps();
@@ -240,6 +242,7 @@ export function ChatList({
     try {
       await ipc.chat.deleteChat(chatId);
       planHandoffManager.disposeKey(chatId);
+      chatStreamManager.disposeChat(chatId);
       showSuccess(t("chatDeleted"));
 
       // Remove from tab tracking to prevent stale IDs

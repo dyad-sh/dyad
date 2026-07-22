@@ -5,7 +5,7 @@ import {
   pendingToolConsentsAtom,
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
-import { notifyStreamRegistered } from "@/chat_stream/registry";
+import type { ChatStreamManager } from "@/chat_stream/manager";
 import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
 import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import { ipc as defaultIpc, type TelemetryEventPayload } from "@/ipc/types";
@@ -19,6 +19,7 @@ export interface RegisterRendererIpcListenersOptions {
   ipcClient: RendererIpcClient;
   store: JotaiStore;
   queryClient: QueryClient;
+  chatStreamManager: ChatStreamManager;
   onTelemetryEvent?: (payload: TelemetryEventPayload) => void;
 }
 
@@ -26,6 +27,7 @@ export function registerRendererIpcListeners({
   ipcClient,
   store,
   queryClient,
+  chatStreamManager,
   onTelemetryEvent,
 }: RegisterRendererIpcListenersOptions): () => void {
   const unsubscribes: Array<() => void> = [];
@@ -66,7 +68,7 @@ export function registerRendererIpcListeners({
       // Registration confirmation for the chat stream machine: main has
       // registered the AbortController for this chat's stream (drives the
       // starting -> streaming transition and cancel reconciliation).
-      notifyStreamRegistered(chatId);
+      chatStreamManager.notifyStreamRegistered(chatId);
     }),
   );
 

@@ -147,5 +147,32 @@ describe("ChatList favorites (integration)", () => {
         within(screen.getByTestId("chat-group-older")).getByText("Older chat"),
       ).toBeTruthy();
     });
+
+    harness.seedChatStreamResidue(olderChat.id);
+    expect(harness.hasChatStreamResidue(olderChat.id)).toBe(true);
+    await harness.openPopover(
+      screen.getByRole("button", {
+        name: "Chat actions for Older chat",
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("menu")).getByRole("menuitem", {
+        name: "Delete Chat",
+      }),
+    );
+    const deleteDialog = await screen.findByRole("alertdialog", {
+      name: "Delete Chat",
+    });
+    fireEvent.click(
+      within(deleteDialog).getByRole("button", { name: "Delete Chat" }),
+    );
+
+    await waitFor(async () => {
+      const deleted = await harness.db.query.chats.findFirst({
+        where: eq(chats.id, olderChat.id),
+      });
+      expect(deleted).toBeUndefined();
+      expect(harness.hasChatStreamResidue(olderChat.id)).toBe(false);
+    });
   }, 60_000);
 });

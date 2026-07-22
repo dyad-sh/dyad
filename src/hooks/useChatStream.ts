@@ -3,8 +3,7 @@ import { useStore } from "jotai";
 import { usePostHog } from "posthog-js/react";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
-import { registerChatStreamRuntimeDeps } from "@/chat_stream/commands";
-import { ensureController } from "@/chat_stream/registry";
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { StreamState } from "@/chat_stream/state";
 
 import { useSettings } from "./useSettings";
@@ -19,17 +18,18 @@ const IDLE_UNSUBSCRIBE = () => {};
 export function useChatStreamState(
   chatId: number | undefined,
 ): StreamState | undefined {
+  const manager = useChatStreamManager();
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (chatId === undefined) return IDLE_UNSUBSCRIBE;
-      return ensureController(chatId).subscribe(onStoreChange);
+      return manager.ensure(chatId).subscribe(onStoreChange);
     },
-    [chatId],
+    [chatId, manager],
   );
   const getSnapshot = useCallback(
     () =>
-      chatId === undefined ? undefined : ensureController(chatId).getSnapshot(),
-    [chatId],
+      chatId === undefined ? undefined : manager.ensure(chatId).getSnapshot(),
+    [chatId, manager],
   );
   return useSyncExternalStore(subscribe, getSnapshot);
 }
@@ -42,6 +42,7 @@ export function useChatStreamState(
  * chats whose page is not open.
  */
 export function useChatStreamRuntime(): void {
+  const manager = useChatStreamManager();
   const store = useStore();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
@@ -53,13 +54,13 @@ export function useChatStreamRuntime(): void {
   posthogRef.current = posthog;
 
   const register = useCallback(() => {
-    registerChatStreamRuntimeDeps({
+    manager.registerRuntimeDeps({
       store,
       queryClient,
       getSettings: () => settingsRef.current,
       getPosthog: () => posthogRef.current ?? null,
     });
-  }, [store, queryClient]);
+  }, [manager, store, queryClient]);
 
   // Register synchronously on the first render too: child components mount
   // (and can submit) before the parent layout's effects run.

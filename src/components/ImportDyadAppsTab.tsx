@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,13 +32,28 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
   const [statuses, setStatuses] = useAtom(importDyadAppStatusesAtom);
   const [isImporting, setIsImporting] = useAtom(isImportingDyadAppsAtom);
 
-  // Pre-select every repo that hasn't been imported on this device yet.
+  // Pre-select every not-yet-imported repo the first time repos load. On
+  // later refetches (window focus, the post-import refetch) keep the user's
+  // manual selections and only drop repos that have since been imported —
+  // otherwise a refetch would silently re-check everything they unchecked.
+  const hasPreSelected = useRef(false);
   useEffect(() => {
-    setSelected(
-      new Set(
-        repos.filter((repo) => !repo.alreadyImported).map((r) => r.full_name),
-      ),
-    );
+    if (repos.length === 0) return;
+    setSelected((prev) => {
+      if (!hasPreSelected.current) {
+        hasPreSelected.current = true;
+        return new Set(
+          repos.filter((repo) => !repo.alreadyImported).map((r) => r.full_name),
+        );
+      }
+      const next = new Set(prev);
+      for (const repo of repos) {
+        if (repo.alreadyImported) {
+          next.delete(repo.full_name);
+        }
+      }
+      return next;
+    });
   }, [repos]);
 
   const importableRepos = repos.filter((repo) => !repo.alreadyImported);

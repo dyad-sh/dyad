@@ -615,113 +615,127 @@ async function addDyadTopicToRepo({
  * created before topic tagging existed.
  */
 async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
-  const settings = readSettings();
-  const accessToken = settings.githubAccessToken?.value;
-  if (!accessToken) {
-    throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
-  }
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-    Accept: "application/vnd.github+json",
-  };
-
-  type RepoInfo = { name: string; full_name: string; private: boolean };
-  const dyadRepos = new Map<string, RepoInfo>();
-
-  // 1) Repos explicitly tagged with the "dyad" topic.
   try {
-    const userRes = await fetch(`${getGitHubApiBase()}/user`, { headers });
-    if (!userRes.ok) {
-      throw new Error(`Failed to fetch user (${userRes.status})`);
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new DyadError("Not authenticated with GitHub.", DyadErrorKind.Auth);
     }
-    const user = (await userRes.json()) as { login?: string };
-    if (user.login) {
-      const query = encodeURIComponent(
-        `topic:${DYAD_REPO_TOPIC} user:${user.login}`,
-      );
-      const searchRes = await fetch(
-        `${getGitHubApiBase()}/search/repositories?q=${query}&per_page=100`,
-        { headers },
-      );
-      if (searchRes.ok) {
-        const data = (await searchRes.json()) as { items?: any[] };
-        for (const repo of data.items ?? []) {
-          dyadRepos.set(repo.full_name, {
-            name: repo.name,
-            full_name: repo.full_name,
-            private: repo.private,
-          });
-        }
-      }
-    }
-  } catch (err) {
-    // Fall through to the heuristic below; search may be unavailable.
-    logger.warn("Topic search for Dyad repos failed:", err);
-  }
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
+    };
 
-  // 2) Heuristic for repos created before Dyad tagged them with a topic:
-  //    any accessible repo with an AI_RULES.md at its root.
-  const reposRes = await fetch(
-    `${getGitHubApiBase()}/user/repos?per_page=100&sort=updated`,
-    { headers },
-  );
-  if (!reposRes.ok) {
-    const errorData = (await reposRes.json()) as any;
-    throw new Error(
-      `GitHub API error: ${errorData.message || reposRes.statusText}`,
-    );
-  }
-  const allRepos = (await reposRes.json()) as any[];
-  const candidates = allRepos.filter((repo) => !dyadRepos.has(repo.full_name));
-  const CONCURRENCY = 8;
-  for (let i = 0; i < candidates.length; i += CONCURRENCY) {
-    await Promise.all(
-      candidates.slice(i, i + CONCURRENCY).map(async (repo) => {
-        try {
-          const res = await fetch(
-            `${getGitHubApiBase()}/repos/${repo.full_name}/contents/AI_RULES.md`,
-            { headers },
-          );
-          if (res.ok) {
+    type RepoInfo = { name: string; full_name: string; private: boolean };
+    const dyadRepos = new Map<string, RepoInfo>();
+
+    // 1) Repos explicitly tagged with the "dyad" topic.
+    try {
+      const userRes = await fetch(`${getGitHubApiBase()}/user`, { headers });
+      if (!userRes.ok) {
+        throw new Error(`Failed to fetch user (${userRes.status})`);
+      }
+      const user = (await userRes.json()) as { login?: string };
+      if (user.login) {
+        const query = encodeURIComponent(
+          `topic:${DYAD_REPO_TOPIC} user:${user.login}`,
+        );
+        const searchRes = await fetch(
+          `${getGitHubApiBase()}/search/repositories?q=${query}&per_page=100`,
+          { headers },
+        );
+        if (searchRes.ok) {
+          const data = (await searchRes.json()) as { items?: any[] };
+          for (const repo of data.items ?? []) {
             dyadRepos.set(repo.full_name, {
               name: repo.name,
               full_name: repo.full_name,
               private: repo.private,
             });
           }
-        } catch {
-          // Treat lookup failures as "not a Dyad repo".
         }
-      }),
-    );
-  }
-
-  // Mark repos already linked to a local app so the UI can skip them.
-  const linkedApps = await db.query.apps.findMany({
-    columns: { githubOrg: true, githubRepo: true },
-  });
-  const linked = new Set(
-    linkedApps
-      .filter((app) => app.githubOrg && app.githubRepo)
-      .map((app) => `${app.githubOrg}/${app.githubRepo}`.toLowerCase()),
-  );
-
-  // Preserve the recently-updated ordering of /user/repos, then append any
-  // topic-search matches that fell outside that first page.
-  const ordered: RepoInfo[] = [];
-  for (const repo of allRepos) {
-    const match = dyadRepos.get(repo.full_name);
-    if (match) {
-      ordered.push(match);
-      dyadRepos.delete(repo.full_name);
+      }
+    } catch (err) {
+      // Fall through to the heuristic below; search may be unavailable.
+      logger.warn("Topic search for Dyad repos failed:", err);
     }
-  }
-  ordered.push(...dyadRepos.values());
 
-  return ordered.map((repo) => ({
-    ...repo,
-    alreadyImported: linked.has(repo.full_name.toLowerCase()),
-  }));
+    // 2) Heuristic for repos created before Dyad tagged them with a topic:
+    //    any accessible repo with an AI_RULES.md at its root.
+    //
+    // Known limitation (mirrors handleListGithubRepos): only the first page of
+    // 100 most-recently-updated repos is scanned. Users with >100 repos whose
+    // Dyad repos are neither topic-tagged nor in that first page won't have them
+    // discovered here. Pagination via the Link header can be a fast-follow.
+    const reposRes = await fetch(
+      `${getGitHubApiBase()}/user/repos?per_page=100&sort=updated`,
+      { headers },
+    );
+    if (!reposRes.ok) {
+      const errorData = (await reposRes.json()) as any;
+      throw new DyadError(
+        `GitHub API error: ${errorData.message || reposRes.statusText}`,
+        DyadErrorKind.External,
+      );
+    }
+    const allRepos = (await reposRes.json()) as any[];
+    const candidates = allRepos.filter(
+      (repo) => !dyadRepos.has(repo.full_name),
+    );
+    const CONCURRENCY = 8;
+    for (let i = 0; i < candidates.length; i += CONCURRENCY) {
+      await Promise.all(
+        candidates.slice(i, i + CONCURRENCY).map(async (repo) => {
+          try {
+            const res = await fetch(
+              `${getGitHubApiBase()}/repos/${repo.full_name}/contents/AI_RULES.md`,
+              { headers },
+            );
+            if (res.ok) {
+              dyadRepos.set(repo.full_name, {
+                name: repo.name,
+                full_name: repo.full_name,
+                private: repo.private,
+              });
+            }
+          } catch {
+            // Treat lookup failures as "not a Dyad repo".
+          }
+        }),
+      );
+    }
+
+    // Mark repos already linked to a local app so the UI can skip them.
+    const linkedApps = await db.query.apps.findMany({
+      columns: { githubOrg: true, githubRepo: true },
+    });
+    const linked = new Set(
+      linkedApps
+        .filter((app) => app.githubOrg && app.githubRepo)
+        .map((app) => `${app.githubOrg}/${app.githubRepo}`.toLowerCase()),
+    );
+
+    // Preserve the recently-updated ordering of /user/repos, then append any
+    // topic-search matches that fell outside that first page.
+    const ordered: RepoInfo[] = [];
+    for (const repo of allRepos) {
+      const match = dyadRepos.get(repo.full_name);
+      if (match) {
+        ordered.push(match);
+        dyadRepos.delete(repo.full_name);
+      }
+    }
+    ordered.push(...dyadRepos.values());
+
+    return ordered.map((repo) => ({
+      ...repo,
+      alreadyImported: linked.has(repo.full_name.toLowerCase()),
+    }));
+  } catch (err: any) {
+    if (err instanceof DyadError) throw err;
+    logger.error("[GitHub Handler] Failed to list Dyad repos:", err);
+    throw new Error(err.message || "Failed to list Dyad GitHub repositories.");
+  }
 }
 
 // --- GitHub Get Repo Branches Handler ---
@@ -894,8 +908,10 @@ async function handleCreateRepo(
     throw new Error(errorMessage);
   }
 
-  // Tag the repo so it can be rediscovered as a Dyad app (best-effort).
-  await addDyadTopicToRepo({ owner, repo: normalizedRepo, accessToken });
+  // Tag the repo so it can be rediscovered as a Dyad app. Fire-and-forget:
+  // it's best-effort (swallows its own errors) and awaiting the extra GET+PUT
+  // topic requests would add user-visible latency to the create flow.
+  void addDyadTopicToRepo({ owner, repo: normalizedRepo, accessToken });
 
   // Set up remote URL before preparing branch.
   // The URL is stored without credentials; auth is injected per-invocation
@@ -955,8 +971,10 @@ async function handleConnectToExistingRepo(
       );
     }
 
-    // Tag the repo so it can be rediscovered as a Dyad app (best-effort).
-    await addDyadTopicToRepo({ owner, repo, accessToken });
+    // Tag the repo so it can be rediscovered as a Dyad app. Fire-and-forget:
+    // it's best-effort (swallows its own errors) and awaiting the extra GET+PUT
+    // topic requests would add user-visible latency to the connect flow.
+    void addDyadTopicToRepo({ owner, repo, accessToken });
 
     // Set up remote URL before preparing branch (credentials are never
     // stored in the URL; auth is injected per-invocation in git_utils)

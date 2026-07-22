@@ -99,6 +99,19 @@ jobs:
 
           claude_args: |
             --model claude-opus-4-8
+            --setting-sources user
+            --allowedTools "Agent,Read,Glob,Grep,Edit(tmp/pr-review/**)"
+
+      - name: Verify Claude review outputs
+        run: |
+          if [[ ! -s "$REVIEW_OUTPUT_PATH" ]]; then
+            echo "::error::Claude did not write $REVIEW_OUTPUT_PATH"
+            exit 1
+          fi
+          if [[ ! -s "$REVIEW_FINDINGS_PATH" ]]; then
+            echo "::error::Claude did not write $REVIEW_FINDINGS_PATH"
+            exit 1
+          fi
 
       - name: Upload Claude review artifact
         uses: actions/upload-artifact@v6

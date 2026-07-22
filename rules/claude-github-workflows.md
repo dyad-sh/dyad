@@ -18,6 +18,8 @@ If a workflow's behavior depends on a deterministic check (identity comparisons,
 
 When a Claude workflow needs write credentials, prefer a two-job shape: the Claude job runs with read-only permissions and uploads a constrained JSON/Markdown artifact, then a separate `needs:` job downloads the artifact, checks out trusted helper scripts from `github.sha`, validates the artifact, creates the GitHub App token, and performs deterministic GitHub mutations.
 
+When a headless Claude job must write local handoff artifacts, exclude project/local settings with `claude_args --setting-sources user`, explicitly pre-approve its inspection tools, and scope `Edit(...)` to the output directory via `--allowedTools`. Without the setting-source restriction, the repository's broad project allowlist merges with the scoped rule and defeats the intended boundary. After the action, verify every mandatory file with `test -s` before upload: `actions/upload-artifact`'s `if-no-files-found: error` still succeeds when only one of several listed paths exists, and Claude Code can report a successful session after denied tool calls.
+
 ## Harden the agent's permissions — `.claude/settings.json` merges into CI
 
 Both `claude-code-action` and `claude-code-base-action` read `.claude/settings.json` from the workspace after `actions/checkout`, and the project's file is committed (tracked in git). **`permissions.allow` arrays merge across scopes — they do not replace each other.** From the Claude Code docs: _"Array settings merge across scopes. When the same array-valued setting (such as `permissions.allow`) appears in multiple scopes, the arrays are concatenated and deduplicated, not replaced."_ ([source](https://code.claude.com/docs/en/settings)).
@@ -32,7 +34,7 @@ This has two consequences that bite in CI:
 **How to apply** (layered defenses, pick what fits the job):
 
 1. **Skip `actions/checkout` entirely** when the agent doesn't need repo contents (classification, summarization, structured-output jobs). Without checkout, `.claude/settings.json` is never in the workspace.
-2. **Strip the file after checkout** when the job does need the repo: add a step `run: rm -f .claude/settings.json .claude/settings.local.json` immediately after `actions/checkout`, before invoking the action. This is the right move for fork checkouts where the file is attacker-controlled.
+2. **Disable project/local setting sources** when the job needs the repo but not its Claude configuration: pass `--setting-sources user` in `claude_args`. This is more reliable than deleting `.claude/settings*.json` before `claude-code-action`, because newer action versions restore sensitive configuration paths from the trusted base ref before launching Claude. For `claude-code-base-action`, which does not restore project configuration, stripping the files after checkout remains an option.
 3. **Pass an inline `settings:` input** with an explicit `deny` list. This merges too, but `deny` beats `allow`, so it's an additional belt-and-suspenders layer. The action's `settings` input accepts a JSON string or a file path. Example for a tool-less classifier:
    ```yaml
    settings: |

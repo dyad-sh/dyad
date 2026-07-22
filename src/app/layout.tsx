@@ -31,6 +31,7 @@ import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
+import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const chatStreamManager = useChatStreamManager();
@@ -51,9 +52,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   );
   return (
     <AppRunProvider>
-      <PlanHandoffProvider chatStream={planHandoffChatStream}>
-        <RootLayoutContent>{children}</RootLayoutContent>
-      </PlanHandoffProvider>
+      <ImageGenerationProvider>
+        <PlanHandoffProvider chatStream={planHandoffChatStream}>
+          <RootLayoutContent>{children}</RootLayoutContent>
+        </PlanHandoffProvider>
+      </ImageGenerationProvider>
     </AppRunProvider>
   );
 }

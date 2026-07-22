@@ -25,7 +25,7 @@ import type {
   ImageGenerationStatus,
 } from "@/atoms/imageGenerationAtoms";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
-import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
+import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 
 const THEME_LABELS: Record<string, string> = {
@@ -96,7 +96,7 @@ function RelativeTime({ timestamp }: { timestamp: number }) {
 
 function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
   const [expanded, setExpanded] = useState(false);
-  const cancelGeneration = useCancelImageGeneration();
+  const { cancel } = useGenerateImage();
   const [imgError, setImgError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -192,7 +192,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
               size="sm"
               variant="outline"
               className="text-xs"
-              onClick={() => cancelGeneration(job.id)}
+              onClick={() => cancel(job.id)}
             >
               Cancel
             </Button>

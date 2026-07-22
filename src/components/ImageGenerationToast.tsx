@@ -7,7 +7,7 @@ import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import type { GenerateImageResponse } from "@/ipc/types";
 import { getDefaultStore } from "jotai";
-import { imageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
+import { pendingImageGenerationsCountAtom } from "@/atoms/imageGenerationAtoms";
 
 const GENERATING_TOAST_ID = "image-gen-progress";
 const SUCCESS_TOAST_ID = "image-gen-success";
@@ -15,9 +15,7 @@ const SUCCESS_AUTO_DISMISS_MS = 10_000;
 
 function restoreGeneratingToastIfNeeded() {
   const store = getDefaultStore();
-  const pending = store
-    .get(imageGenerationJobsAtom)
-    .filter((j) => j.status === "pending").length;
+  const pending = store.get(pendingImageGenerationsCountAtom);
   if (pending > 0) {
     showImageGeneratingToast(pending);
   }

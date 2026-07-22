@@ -18,30 +18,22 @@ export interface ImageGenerationJob {
   result?: GenerateImageResponse;
   error?: string;
   source?: "chat" | "media-library";
+  /** Success crossed the IPC boundary after cancellation was requested. */
+  lateAfterCancel?: boolean;
 }
-
-const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 const _imageGenerationJobsAtom = atom<ImageGenerationJob[]>([]);
 
-/** Writable atom that auto-prunes completed jobs older than 30 minutes on every write. */
-export const imageGenerationJobsAtom = atom(
-  (get) => get(_imageGenerationJobsAtom),
-  (
-    _get,
-    set,
-    update:
-      | ImageGenerationJob[]
-      | ((prev: ImageGenerationJob[]) => ImageGenerationJob[]),
-  ) => {
-    set(_imageGenerationJobsAtom, (prev) => {
-      const next = typeof update === "function" ? update(prev) : update;
-      const cutoff = Date.now() - THIRTY_MINUTES_MS;
-      return next.filter(
-        (job) => job.status === "pending" || job.startedAt > cutoff,
-      );
-    });
-  },
+/** Read-only legacy projection owned by ImageGenerationProvider. */
+export const imageGenerationJobsAtom = atom((get) =>
+  get(_imageGenerationJobsAtom),
+);
+
+/** The provider is the sole writer of the renderer machine projection. */
+export const setImageGenerationJobsProjectionAtom = atom(
+  null,
+  (_get, set, jobs: ImageGenerationJob[]) =>
+    set(_imageGenerationJobsAtom, jobs),
 );
 
 export const pendingImageGenerationsCountAtom = atom((get) => {

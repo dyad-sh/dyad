@@ -74,7 +74,7 @@ export function ImageGeneratorDialog({
   const [targetAppId, setTargetAppId] = useState<number | null>(null);
 
   const { apps } = useLoadApps();
-  const generateImage = useGenerateImage();
+  const { start } = useGenerateImage();
   const { userBudget, isLoadingUserBudget: isBudgetLoading } =
     useUserBudgetInfo();
 
@@ -95,8 +95,7 @@ export function ImageGeneratorDialog({
     const targetApp = apps.find((a) => a.id === effectiveTargetAppId);
     if (!targetApp) return;
 
-    generateImage.mutate({
-      requestId: crypto.randomUUID(),
+    start({
       prompt: prompt.trim(),
       themeMode,
       targetAppId: effectiveTargetAppId,
@@ -113,7 +112,6 @@ export function ImageGeneratorDialog({
       setPrompt("");
       setThemeMode("plain");
       setTargetAppId(null);
-      generateImage.reset();
     }
     onOpenChange(nextOpen);
   };

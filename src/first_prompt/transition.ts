@@ -6,6 +6,7 @@ import type {
   FirstPromptState,
   FirstPromptTransitionResult,
 } from "./state";
+import { hasPromptContent } from "./state";
 
 function ignore(
   state: FirstPromptState,
@@ -164,6 +165,9 @@ export function transition(
                 commands: [{ type: "ShowSetupDialog" }],
               };
         case "PROVIDER_CONFIGURED":
+          if (!hasPromptContent(state.payload)) {
+            return { state: { type: "idle" }, commands: [] };
+          }
           return {
             ...startCreating(state.payload),
             commands: [{ type: "NavigateHome" }, createCommand(state.payload)],
@@ -177,6 +181,9 @@ export function transition(
     case "awaitingProviderSetup":
       switch (event.type) {
         case "PROVIDER_CONFIGURED":
+          if (!hasPromptContent(state.payload)) {
+            return { state: { type: "idle" }, commands: [] };
+          }
           return {
             ...startCreating(state.payload),
             commands: [{ type: "NavigateHome" }, createCommand(state.payload)],

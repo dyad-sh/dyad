@@ -36,6 +36,9 @@ Background and before/after examples of why this pattern exists:
 - Command runners convert expected failures into events. A runner throw is a
   programming error: log it and keep the service usable; never wedge a queue or
   silently rewrite state.
+- When a resume event can come from a global watcher as well as explicit UI
+  senders, validate the captured payload in the transition. Caller-only guards
+  can be bypassed after navigation or another asynchronous detour.
 - When a multi-step side effect can fail partway through, retain the exact
   completed/next step in the failure state. Retrying from the start can repeat
   non-idempotent external work or deterministically fail on an existing-resource

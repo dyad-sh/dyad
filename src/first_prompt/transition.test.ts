@@ -89,4 +89,18 @@ describe("first-prompt transition", () => {
     expect(result.state).toBe(idle);
     expect(result.ignoredReason).toBe("not-awaiting-setup");
   });
+
+  it.each(["checkingProviders", "awaitingProviderSetup"] as const)(
+    "disarms an empty payload when provider setup completes from %s",
+    (type) => {
+      const state: FirstPromptState = {
+        type,
+        payload: { prompt: "   ", attachments: [] },
+      };
+
+      const result = transition(state, { type: "PROVIDER_CONFIGURED" });
+
+      expect(result).toEqual({ state: { type: "idle" }, commands: [] });
+    },
+  );
 });

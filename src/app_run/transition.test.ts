@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunCommand, RunEvent, RunState, RunUrl } from "./state";
 import { ignore, projectRunState, transition } from "./transition";
+import { assertReferenceStability } from "@/state_machines/testing";
 
 const APP_ID = 7;
 const CURRENT_RUN_ID = 3;
@@ -138,6 +139,11 @@ describe("transition totality and invariants", () => {
         if (result.state === state && result.commands.length === 0) {
           expect(result.ignoredReason).toBeTruthy();
         }
+        assertReferenceStability(
+          state,
+          result,
+          (left, right) => JSON.stringify(left) === JSON.stringify(right),
+        );
 
         // At most one mutating (process-affecting IPC) command per result.
         const mutating = result.commands.filter((command: RunCommand) =>
@@ -272,6 +278,41 @@ describe("transition scenarios", () => {
       url: makeUrl(2),
     });
     expect(second.state).toMatchObject({ pendingUrl: makeUrl(2) });
+  });
+
+  it("reuses snapshots for structurally identical proxy URLs", () => {
+    const url = makeUrl(1);
+    const ready: RunState = {
+      type: "ready",
+      appId: APP_ID,
+      runId: CURRENT_RUN_ID,
+      url,
+    };
+    const readyResult = transition(ready, {
+      type: "PROXY_READY",
+      appId: APP_ID,
+      runId: CURRENT_RUN_ID,
+      url: { ...url },
+    });
+    expect(readyResult.state).toBe(ready);
+    expect(readyResult.commands).toHaveLength(1);
+
+    const starting: RunState = {
+      type: "starting",
+      appId: APP_ID,
+      runId: CURRENT_RUN_ID,
+      operation: "run",
+      startedAt: 100,
+      pendingUrl: url,
+    };
+    const startingResult = transition(starting, {
+      type: "PROXY_READY",
+      appId: APP_ID,
+      runId: CURRENT_RUN_ID,
+      url: { ...url },
+    });
+    expect(startingResult.state).toBe(starting);
+    expect(startingResult.ignoredReason).toBe("no-change");
   });
 
   it("handles stop during starting: stale run completion is ignored", () => {

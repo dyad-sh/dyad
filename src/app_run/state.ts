@@ -155,5 +155,8 @@ export type TransitionResult =
   import("@/state_machines/types").TransitionResult<
     RunState,
     RunCommand,
-    "invalid-in-current-state" | "stale-run-id" | "stale-proxy-output"
+    | "invalid-in-current-state"
+    | "stale-run-id"
+    | "stale-proxy-output"
+    | "no-change"
   >;

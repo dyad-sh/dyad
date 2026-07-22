@@ -25,6 +25,29 @@ function ignore(
   return ignoreTransition(state, reason);
 }
 
+function ignoreEvent(
+  state: HandoffState,
+  event: HandoffEvent,
+): TransitionResult {
+  switch (event.type) {
+    case "PLAN_ACCEPTED":
+    case "STREAM_CANCEL_FINISHED":
+    case "TRANSITION_DISPLAY_DONE":
+    case "PLAN_PERSISTED":
+    case "PLAN_DATA_MISSING":
+    case "PLAN_PERSIST_FAILED":
+    case "CHAT_READY":
+    case "CHAT_PREPARE_FAILED":
+    case "STREAM_BECAME_IDLE":
+    case "IMPLEMENTATION_STARTED":
+      return ignore(state, "invalid-in-current-state");
+    default: {
+      const exhaustive: never = event;
+      return exhaustive;
+    }
+  }
+}
+
 function startHandoff(event: {
   chatId: number;
   appId: number;
@@ -66,7 +89,7 @@ export function transition(
         case "PLAN_ACCEPTED":
           return startHandoff(event);
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 
@@ -78,7 +101,7 @@ export function transition(
             commands: [{ type: "wait", ms: TRANSITION_DISPLAY_MS }],
           };
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 
@@ -99,7 +122,7 @@ export function transition(
             ],
           };
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 
@@ -147,7 +170,7 @@ export function transition(
             ],
           };
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 
@@ -197,7 +220,7 @@ export function transition(
             ],
           };
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 
@@ -238,7 +261,7 @@ export function transition(
           };
         }
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 
@@ -247,7 +270,7 @@ export function transition(
         case "IMPLEMENTATION_STARTED":
           return { state: { type: "idle" }, commands: [] };
         default:
-          return ignore(state, "invalid-in-current-state");
+          return ignoreEvent(state, event);
       }
     }
 

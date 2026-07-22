@@ -4,9 +4,19 @@ import type {
   RunCommand,
   RunEvent,
   RunState,
+  RunUrl,
   TransitionResult,
 } from "./state";
 import { ignore as ignoreTransition } from "@/state_machines/types";
+
+function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
+  return (
+    left !== null &&
+    left.appUrl === right.appUrl &&
+    left.originalUrl === right.originalUrl &&
+    left.mode === right.mode
+  );
+}
 
 /**
  * Pure transition function for the per-app run-state machine.
@@ -190,20 +200,27 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           // one from before this operation) clear a fresh operation's
           // loading state or show a stale URL mid-operation. Applied when
           // the run IPC resolves. Last line wins.
+          if (sameRunUrl(state.pendingUrl, event.url)) {
+            return ignore(state, "no-change");
+          }
           return {
             state: { ...state, pendingUrl: event.url },
             commands: [],
           };
         case "ready":
           return {
-            state: { ...state, url: event.url },
+            state: sameRunUrl(state.url, event.url)
+              ? state
+              : { ...state, url: event.url },
             commands: [
               { type: "applyUrl", appId: state.appId, url: event.url },
             ],
           };
         case "reloading":
           return {
-            state: { ...state, url: event.url },
+            state: sameRunUrl(state.url, event.url)
+              ? state
+              : { ...state, url: event.url },
             commands: [
               { type: "applyUrl", appId: state.appId, url: event.url },
             ],

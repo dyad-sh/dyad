@@ -5,7 +5,6 @@
 import {
   getAllAgentToolConsents,
   setAgentToolConsent,
-  resolveAgentToolConsent,
   TOOL_DEFINITIONS,
   getDefaultConsent,
   type AgentToolName,
@@ -17,6 +16,8 @@ import type {
   SetAgentToolConsentParams,
   AgentToolConsentResponseParams,
 } from "@/ipc/types";
+import { userInputRegistry } from "@/user_input/main";
+import { isDyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);
@@ -45,7 +46,15 @@ export function registerAgentToolHandlers() {
   handle(
     "agent-tool:consent-response",
     async (_event, params: AgentToolConsentResponseParams) => {
-      resolveAgentToolConsent(params.requestId, params.decision);
+      try {
+        await userInputRegistry.respond(params.requestId, {
+          kind: "agent-consent",
+          decision: params.decision,
+        });
+      } catch (error) {
+        if (isDyadError(error) && error.kind === DyadErrorKind.NotFound) return;
+        throw error;
+      }
     },
   );
 }

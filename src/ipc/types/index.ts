@@ -63,6 +63,7 @@ export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
 export { appCollectionContracts } from "./app_collections";
 export { terminalContracts } from "./terminal";
 export { testsContracts, testsEvents } from "./tests";
+export { userInputContracts, userInputEvents } from "./user_input";
 
 // =============================================================================
 // Client Exports
@@ -105,6 +106,7 @@ export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 export { appCollectionClient } from "./app_collections";
 export { terminalClient } from "./terminal";
 export { testsClient, testsEventClient } from "./tests";
+export { userInputClient, userInputEventClient } from "./user_input";
 
 // =============================================================================
 // Type Exports
@@ -378,6 +380,11 @@ export type {
   TestIsolation,
   TestOutputPayload,
 } from "./tests";
+export type {
+  UserInputDescriptorPayload,
+  UserInputResponsePayload,
+  PendingUserInputPayload,
+} from "./user_input";
 
 // App blueprint types
 export type {
@@ -460,6 +467,7 @@ import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
 import { testsClient, testsEventClient } from "./tests";
 import { queueClient } from "./queue";
+import { userInputClient, userInputEventClient } from "./user_input";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -526,6 +534,7 @@ export const ipc = {
   terminal: terminalClient,
   tests: testsClient,
   queue: queueClient,
+  userInput: userInputClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -536,5 +545,6 @@ export const ipc = {
     misc: miscEventClient,
     appBlueprint: appBlueprintEventClient,
     tests: testsEventClient,
+    userInput: userInputEventClient,
   },
 } as const;

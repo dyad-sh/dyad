@@ -1,4 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
@@ -11,6 +19,9 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { readSettings, writeSettings } from "@/main/settings";
 import { requireAgentToolConsent } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
+import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { mcpClient } from "@/ipc/types/mcp";
+import { getTraceLog } from "@/state_machines/trace";
 
 describe("local-agent consent banner (integration)", () => {
   let harness: HybridChatHarness;
@@ -157,6 +168,53 @@ describe("local-agent consent banner (integration)", () => {
       harness.bridge.sentEvents.some(
         (event) => event.channel === "agent-tool:consent-resolved",
       ),
+    ).toBe(true);
+  });
+
+  it("keeps classifier approval when a legacy decline arrives afterward", async () => {
+    let approve!: (value: { approved: boolean; reason?: string }) => void;
+    const classification = new Promise<{ approved: boolean; reason?: string }>(
+      (resolve) => {
+        approve = resolve;
+      },
+    );
+    const eventBaseline = harness.bridge.sentEvents.length;
+    const traceBaseline = getTraceLog("user_input").length;
+    const consent = requireMcpToolConsent(harness.bridge.fakeEvent as any, {
+      serverId: 999,
+      serverName: "race-server",
+      toolName: "safe-tool",
+      chatId: harness.chatId,
+      autoApprove: () => classification,
+    });
+    let request: (typeof harness.bridge.sentEvents)[number] | undefined;
+    await vi.waitFor(() => {
+      request = harness.bridge.sentEvents
+        .slice(eventBaseline)
+        .find((event) => event.channel === "mcp:tool-consent-request");
+      expect(request).toBeDefined();
+    });
+    if (!request) throw new Error("Missing MCP consent request event");
+    const requestId = (request.args[0] as { requestId: string }).requestId;
+
+    approve({ approved: true, reason: "safe" });
+    await vi.waitFor(() =>
+      expect(
+        getTraceLog("user_input")
+          .slice(traceBaseline)
+          .some((entry) => entry.to === "settled"),
+      ).toBe(true),
+    );
+    await mcpClient.respondToConsent({ requestId, decision: "decline" });
+
+    await expect(consent).resolves.toEqual({
+      approved: true,
+      autoApprovedReason: "safe",
+    });
+    expect(
+      getTraceLog("user_input")
+        .slice(traceBaseline)
+        .some((entry) => entry.ignoredReason === "already-settled"),
     ).toBe(true);
   });
 

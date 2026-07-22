@@ -18,10 +18,7 @@ import { db } from "@/db";
 import { chats, messages, mcpServers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
-import {
-  requireMcpToolConsent,
-  clearPendingMcpConsentsForChat,
-} from "@/ipc/utils/mcp_consent";
+import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { buildMcpAutoApprove } from "./mcp_auto_consent";
 import { scheduleChatSearchIndexing } from "./chat_search_indexer";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
@@ -55,7 +52,6 @@ import {
   buildAgentToolSet,
   shouldIncludeTool,
   requireAgentToolConsent,
-  clearPendingConsentsForChat,
 } from "./tool_definitions";
 import {
   questionnaireResolver,
@@ -132,13 +128,14 @@ import {
 } from "./retry_replay_utils";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { computeStreamingPatch } from "@/ipc/utils/stream_text_utils";
+import { userInputRegistry } from "@/user_input/main";
 import {
   toRendererMessage,
   type RendererMessageRow,
 } from "@/ipc/utils/renderer_chat_message";
 
 export function clearPendingLocalAgentInputsForChat(chatId: number): void {
-  clearPendingConsentsForChat(chatId);
+  userInputRegistry.sweepChat(chatId);
   questionnaireResolver.abortChat(chatId);
   integrationResolver.abortChat(chatId);
 }
@@ -1274,7 +1271,6 @@ export async function handleLocalAgentStream(
                 logger.log(`Stream aborted for chat ${req.chatId}`);
                 // Clean up pending consent/questionnaire/integration requests to prevent stale UI banners
                 clearPendingLocalAgentInputsForChat(req.chatId);
-                clearPendingMcpConsentsForChat(req.chatId);
                 deleteAppBlueprintForChat(req.chatId);
                 break;
               }
@@ -1793,7 +1789,6 @@ export async function handleLocalAgentStream(
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingLocalAgentInputsForChat(req.chatId);
-    clearPendingMcpConsentsForChat(req.chatId);
     // Only drop the app blueprint itself on explicit cancellation — a transient
     // stream error should leave the plan around so the user can retry from
     // the same approval state instead of losing their edits.

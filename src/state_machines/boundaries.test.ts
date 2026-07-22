@@ -11,6 +11,7 @@ const MACHINE_DIRECTORIES = [
   "plan_handoff",
   "version_preview",
   "voice_to_text",
+  "user_input",
 ] as const;
 
 function productionFiles(directory: string): string[] {

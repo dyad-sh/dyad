@@ -67,13 +67,13 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
-import { clearPendingMcpConsentsForChat } from "../utils/mcp_consent";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import {
   clearPendingLocalAgentInputsForChat,
   handleLocalAgentStream,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { userInputRegistry } from "../../user_input/main";
 
 import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
@@ -352,7 +352,6 @@ async function cancelTrackedStreams(
   for (const { chatId, streams } of trackedStreams) {
     streams.forEach(({ abortController }) => abortController.abort());
     clearPendingLocalAgentInputsForChat(chatId);
-    clearPendingMcpConsentsForChat(chatId);
     logger.log(`Aborted ${streams.length} stream(s) for chat ${chatId}`);
   }
 
@@ -590,6 +589,7 @@ export function registerChatStreamHandlers() {
     let attachmentPaths: string[] = [];
     const abortController = new AbortController();
     let trackedStream: TrackedStream | undefined;
+    let finishedNaturally = false;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -2224,6 +2224,7 @@ This conversation includes one or more image attachments. When the user uploads 
       }
 
       // Return the chat ID for backwards compatibility
+      finishedNaturally = true;
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
@@ -2252,9 +2253,12 @@ This conversation includes one or more image attachments. When the user uploads 
       if (!abortController.signal.aborted) {
         safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
       }
-      // Unblock any pending MCP consents (their banners are cleared on stream end).
-      if (!activeStreams.has(req.chatId)) {
-        clearPendingMcpConsentsForChat(req.chatId);
+      if (finishedNaturally) {
+        userInputRegistry.streamFinished(req.chatId);
+      } else if (!activeStreams.has(req.chatId)) {
+        // Errors and cancellation sweep pending user inputs; only successful
+        // natural completion can arm a follow-up dispatch.
+        userInputRegistry.sweepChat(req.chatId);
       }
 
       // Signal any awaiting `cancelStream` call that all writes have settled,

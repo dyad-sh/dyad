@@ -4,11 +4,12 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
-import { createUserInputResolver } from "@/ipc/utils/user_input_resolver";
-import { safeSend } from "@/ipc/utils/safe_sender";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
+import {
+  rememberUserInputSubscriber,
+  userInputRegistry,
+} from "@/user_input/main";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
@@ -163,39 +164,6 @@ function getAgentToolConsentSettings(
 // Agent Tool Consent Management
 // ============================================================================
 
-type AgentToolConsentDecision = "accept-once" | "accept-always" | "decline";
-
-const agentToolConsentResolver =
-  createUserInputResolver<AgentToolConsentDecision>({
-    timeoutMs: 5 * 60 * 1000,
-  });
-
-export function waitForAgentToolConsent(
-  requestId: string,
-  chatId: number,
-  abortSignal?: AbortSignal,
-): Promise<AgentToolConsentDecision> {
-  return agentToolConsentResolver
-    .wait(requestId, chatId, abortSignal)
-    .then((decision) => decision ?? "decline");
-}
-
-export function resolveAgentToolConsent(
-  requestId: string,
-  decision: "accept-once" | "accept-always" | "decline",
-) {
-  agentToolConsentResolver.resolve(requestId, decision);
-}
-
-/**
- * Clean up all pending consent requests for a given chat.
- * Called when a stream is cancelled/aborted to prevent orphaned promises
- * and stale UI banners.
- */
-export function clearPendingConsentsForChat(chatId: number): void {
-  agentToolConsentResolver.abortChat(chatId);
-}
-
 export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   const tool = TOOL_DEFINITIONS.find((t) => t.name === toolName);
   return tool?.defaultConsent ?? "ask";
@@ -287,29 +255,18 @@ export async function requireAgentToolConsent(
     return true;
   }
 
-  // Ask renderer for a decision via event bridge
-  const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
-  const { abortSignal, ...rendererParams } = params;
-  (event.sender as any).send("agent-tool:consent-request", {
-    requestId,
-    ...rendererParams,
+  rememberUserInputSubscriber(event.sender);
+  const requestId = userInputRegistry.request({
+    kind: "agent-consent",
+    chatId: params.chatId,
+    toolName: params.toolName,
+    toolDescription: params.toolDescription,
+    inputPreview: params.inputPreview,
+    metadata: params.metadata,
+    classifier: "none",
   });
-
-  const response = await waitForAgentToolConsent(
-    requestId,
-    params.chatId,
-    abortSignal,
-  );
-  safeSend(event.sender, "agent-tool:consent-resolved", { requestId });
-
-  if (response === "accept-always") {
-    setAgentToolConsent(params.toolName, "always");
-    return true;
-  }
-  if (response === "decline") {
-    return false;
-  }
-  return response === "accept-once";
+  const response = await userInputRegistry.park(requestId, params.abortSignal);
+  return response?.kind === "agent-consent" && response.decision !== "decline";
 }
 
 // ============================================================================

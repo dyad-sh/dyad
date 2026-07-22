@@ -155,10 +155,23 @@ function replaceLast(
   );
 }
 
+function replaceOnce(
+  source: string,
+  needle: string,
+  replacement: string,
+): string {
+  const index = source.indexOf(needle);
+  if (index < 0) throw new Error(`Mutation anchor not found: ${needle}`);
+  return (
+    source.slice(0, index) + replacement + source.slice(index + needle.length)
+  );
+}
+
 describe("chat stream protocol drift tripwire", () => {
   it("pins admission atomicity and proves its mutant trips", () => {
     expect(() => assertAtomicAdmission(HANDLER_SOURCE)).not.toThrow();
-    const mutant = HANDLER_SOURCE.replace(
+    const mutant = replaceOnce(
+      HANDLER_SOURCE,
       "        admissionPendingStreams.delete(abortController);",
       "        await Promise.resolve();\n        admissionPendingStreams.delete(abortController);",
     );
@@ -169,7 +182,8 @@ describe("chat stream protocol drift tripwire", () => {
 
   it("pins the sole cancelled-end sender and proves its mutant trips", () => {
     expect(() => assertSoleCancelledSender(HANDLER_SOURCE)).not.toThrow();
-    const mutant = `const unrelated = { wasCancelled: true };\n${HANDLER_SOURCE.replace(
+    const mutant = `const unrelated = { wasCancelled: true };\n${replaceOnce(
+      HANDLER_SOURCE,
       "wasCancelled: true,",
       "wasCancelled: false,",
     )}`;

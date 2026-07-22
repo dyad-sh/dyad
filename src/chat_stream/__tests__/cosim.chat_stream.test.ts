@@ -31,11 +31,11 @@ import { CHAT_STREAM_WIRE_EVENTS } from "../protocol";
 
 /**
  * Bounded exhaustive alphabet: one chat, two total submits (the second queues),
- * one cancel, one chat barrier pair, and one app barrier pair. Quit and error
- * paths use separate exhaustive alphabets below so lifecycle coverage stays
- * below the 300,000-configuration / ~30 second budget instead of raising the
- * landed driver's maxSchedules bound. Resume actions are phase-enabled; the
- * bound counts configurations, not quiescent leaves.
+ * one cancel and one chat barrier pair. The app barrier, quit, and error paths
+ * use separate exhaustive alphabets below so lifecycle coverage stays below
+ * the 300,000-configuration / ~30 second budget instead of raising the landed
+ * driver's maxSchedules bound. Resume actions are phase-enabled; the bound
+ * counts configurations, not quiescent leaves.
  */
 
 type ParticipantName = "main" | "renderer" | "scenario";
@@ -427,28 +427,6 @@ function actions(fullAlphabet: boolean): Action[] {
       enabled: (snapshot) =>
         (participantValue(snapshot, "main").chatBarrierCounts[7] ?? 0) > 0,
     },
-    {
-      id: "install-app-barrier",
-      target: "participant",
-      participant: "main",
-      event: mainEvent({
-        type: "barrier-installed",
-        scope: { type: "app", appId: 9 },
-      }),
-      enabled: (snapshot) =>
-        participantValue(snapshot, "main").streams[1] !== undefined,
-    },
-    {
-      id: "release-app-barrier",
-      target: "participant",
-      participant: "main",
-      event: mainEvent({
-        type: "barrier-released",
-        scope: { type: "app", appId: 9 },
-      }),
-      enabled: (snapshot) =>
-        (participantValue(snapshot, "main").appBarrierCounts[9] ?? 0) > 0,
-    },
   );
 
   for (const streamId of [1, 2]) {
@@ -638,6 +616,46 @@ function quitWhileActiveActions(): Action[] {
   ];
 }
 
+function appBarrierActions(): Action[] {
+  const result = errorActions("apply-error");
+  result.push(
+    {
+      id: "install-app-barrier",
+      target: "participant",
+      participant: "main",
+      event: mainEvent({
+        type: "barrier-installed",
+        scope: { type: "app", appId: 9 },
+      }),
+      enabled: (snapshot) =>
+        participantValue(snapshot, "main").streams[1] !== undefined,
+    },
+    {
+      id: "release-app-barrier",
+      target: "participant",
+      participant: "main",
+      event: mainEvent({
+        type: "barrier-released",
+        scope: { type: "app", appId: 9 },
+      }),
+      enabled: (snapshot) =>
+        (participantValue(snapshot, "main").appBarrierCounts[9] ?? 0) > 0,
+    },
+    {
+      id: "resume-after-app-barrier",
+      target: "participant",
+      participant: "main",
+      event: mainEvent({ type: "handler-advanced", streamId: 1 }),
+      enabled: (snapshot) =>
+        phase(snapshot, 1) === "admitted" &&
+        !snapshot.remainingActionIds.some((id) =>
+          id.startsWith("enter-streaming-"),
+        ),
+    },
+  );
+  return result;
+}
+
 function perStepAssertions(step: Step): void {
   for (const item of step.transitions) {
     if (
@@ -768,13 +786,27 @@ describe("chat stream main/renderer co-simulation", () => {
   it("exhausts the bounded stream, queue, cancel, and barrier alphabet", () => {
     const result = run(transition, actions(true), 300_000);
     expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
-    expect(result.exhaustive).toBe(true);
+    expect(
+      result.exhaustive,
+      `co-sim reached its 300,000-configuration bound after exploring ${result.schedulesExplored}; shrink the primary alphabet`,
+    ).toBe(true);
+    expect(
+      result.schedulesExplored,
+      "keep at least 50,000 configurations of headroom below maxSchedules",
+    ).toBeLessThan(250_000);
     expect(result.quiescentSchedules).toBeGreaterThan(0);
   }, 30_000);
 
   it("regresses #4008: cancel before registration still finalizes", () => {
     const result = run(transition, actions(false), 1_000);
     expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
+  });
+
+  it("exhausts the app-barrier scope in a focused alphabet", () => {
+    const result = run(transition, appBarrierActions(), 5_000);
+    expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
+    expect(result.exhaustive).toBe(true);
+    expect(result.quiescentSchedules).toBeGreaterThan(0);
   });
 
   it("exhausts quit interleavings while the renderer is still active", () => {

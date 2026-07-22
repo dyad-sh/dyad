@@ -40,21 +40,32 @@ export const HttpCatalogEntrySchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
-// Exact-version package spec: `name@1.2.3` or `@scope/name@1.2.3` with an
-// optional prerelease/build suffix. Rejects tags and ranges. The name
-// can't start with `-`, so a flag-shaped token isn't read as a spec. Also
-// used by the UI to show an entry's package name.
+// A package spec pinned to an exact version (`name@1.2.3` or
+// `@scope/name@1.2.3`). Version grammar is the official semver.org regex
+// (https://semver.org); the name can't start with `-` so flags aren't specs.
 const PINNED_PACKAGE_SPEC_REGEX =
-  /^(@[a-z0-9~._][a-z0-9~._-]*\/)?[a-z0-9~._][a-z0-9~._-]*@\d+\.\d+\.\d+(-[0-9a-z.-]+)?(\+[0-9a-z.-]+)?$/i;
+  /^(@[a-z0-9~._][a-z0-9~._-]*\/)?[a-z0-9~._][a-z0-9~._-]*@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/i;
 
 export function isPinnedPackageSpec(arg: string): boolean {
   return PINNED_PACKAGE_SPEC_REGEX.test(arg);
 }
 
-// Enforces our npx and exact-version convention, dropping a malformed
-// entry like an @latest slip. Real protection against a bad package comes
-// from curation, cloud CI, and the consent prompt. Refine returns false
-// instead of throwing so one bad entry does not abort the batch.
+// An arg shaped like `name@version` (optionally scoped), used to spot
+// specs that aren't pinned, e.g. `pkg@latest`.
+const VERSIONED_SPEC_REGEX = /^(@[a-z0-9~._-]+\/)?[a-z0-9~._-]+@/i;
+
+// Requires every package-spec-shaped arg to be pinned, so a repeated
+// `--package foo@latest` can't float a version. Returns false instead of
+// throwing so one bad entry doesn't abort the batch.
+function argsPinPackages(args: string[]): boolean {
+  return (
+    args.some(isPinnedPackageSpec) &&
+    args.every(
+      (arg) => !VERSIONED_SPEC_REGEX.test(arg) || isPinnedPackageSpec(arg),
+    )
+  );
+}
+
 export const StdioCatalogEntrySchema = z.object({
   ...baseEntry,
   transport: z.literal("stdio"),
@@ -63,8 +74,8 @@ export const StdioCatalogEntrySchema = z.object({
     .array(z.string())
     .min(1)
     .refine(
-      (args) => args.some(isPinnedPackageSpec),
-      "args must include an exact-version-pinned package spec",
+      argsPinPackages,
+      "every package arg must be pinned to an exact version",
     ),
   env: z.record(z.string(), z.string()).optional(),
 });

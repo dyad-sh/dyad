@@ -106,15 +106,37 @@ describe("remote_mcp_catalog", () => {
   });
 
   it("drops stdio entries without an exact-version-pinned package", async () => {
-    // A flag-shaped token like `--package@1.0.0` must not count as a spec.
+    // A flag-shaped token like `--package@1.0.0` must not count as a spec,
+    // and malformed versions like leading-zero `01.2.3` are not pinned.
     mockCatalogResponse([
       { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@latest"] },
       { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server"] },
       { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@^1.13.0"] },
       { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@1.x"] },
+      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@01.2.3"] },
+      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@1.02.3"] },
       { ...VALID_STDIO_ENTRY, args: ["--package@1.0.0"] },
       { ...VALID_STDIO_ENTRY, args: ["-y@1.0.0"] },
       { ...VALID_STDIO_ENTRY, args: [] },
+      VALID_STDIO_ENTRY,
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["mongodb"]);
+  });
+
+  it("drops stdio entries that leave a second package unpinned", async () => {
+    // A pinned positional does not excuse a repeated `--package` that
+    // floats another package's version.
+    mockCatalogResponse([
+      {
+        ...VALID_STDIO_ENTRY,
+        args: [
+          "-y",
+          "--package",
+          "other-mcp@latest",
+          "mongodb-mcp-server@1.13.0",
+        ],
+      },
       VALID_STDIO_ENTRY,
     ]);
     const entries = await getRemoteMcpCatalog();
@@ -172,7 +194,10 @@ describe("remote_mcp_catalog", () => {
     const entry = entries[0];
     expect(entry.transport).toBe("stdio");
     if (entry.transport === "stdio") {
-      expect(entry.env).toEqual({ MDB_MCP_READ_ONLY: "true", LOG_LEVEL: "debug" });
+      expect(entry.env).toEqual({
+        MDB_MCP_READ_ONLY: "true",
+        LOG_LEVEL: "debug",
+      });
     }
   });
 

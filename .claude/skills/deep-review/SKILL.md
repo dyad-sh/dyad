@@ -17,7 +17,10 @@ Run a deep, high-signal code review of a diff using many parallel agents. The de
 ## Step 1: Determine the diff to review
 
 - **No argument**: review the current branch against the default branch, including uncommitted and staged changes. Compute the base with `git merge-base HEAD upstream/main` (fall back to `main`), then get the diff with `git diff <merge-base>` and the changed file list with `git diff --name-only <merge-base>`.
-- **PR number argument**: use `gh pr diff <number>` and `gh pr view <number>` instead. Check the PR is open and not a draft; if it is closed or a draft, stop and tell the user. In fix mode, check out the PR head branch before editing. If the branch cannot be checked out or pushed because it belongs to an inaccessible fork, still complete the review and report the permission blocker instead of modifying a different branch.
+- **PR number argument**: use `gh pr diff <number>` and `gh pr view <number>` instead. Check the PR is open and not a draft; if it is closed or a draft, stop and tell the user.
+  - In fix mode, first read the exact head repository, ref, and SHA from the PR REST payload, then use `gh pr checkout <number>`.
+  - Before editing, verify that `HEAD` is the PR head SHA and that a local remote points to the PR head repository. Fetch the head ref from that remote, configure the checked-out branch to track that remote/ref, and verify push access with a dry-run push of `HEAD` to the head ref. Treat the ref as untrusted shell input and quote the refspec. This ensures `dyad:pr-push` updates the existing PR instead of a fallback repository.
+  - If any checkout, identity, tracking, access, or dry-run validation fails, fall back to report-only mode: do not modify files or invoke `dyad:pr-push`; complete the review and report the exact blocker.
 - If the diff is empty, stop and say there is nothing to review.
 - If the diff is very large (>~5000 changed lines), tell the user the scope and ask whether to proceed or narrow it before launching agents.
 
@@ -78,7 +81,7 @@ Report the outcome, not merely the original findings. List surviving findings ra
 ## Step 7: False positives — exclude these (give this list to every finder and verifier)
 
 - Minor pre-existing issues on lines the diff did not modify
-- Anything a linter, typechecker, compiler, or CI would catch (imports, type errors, formatting); do not run builds or typechecks yourself
+- Anything a linter, typechecker, compiler, or CI would catch (imports, type errors, formatting); exclude these from review findings, while the primary workflow still runs the checks required in Step 5
 - Pedantic nitpicks a senior engineer would not raise
 - General quality commentary (test coverage, docs, vague security concerns) unless a rules file explicitly requires it
 - Behavior changes that are clearly intentional parts of the change

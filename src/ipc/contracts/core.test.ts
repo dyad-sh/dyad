@@ -28,20 +28,31 @@ function setupStreamClient() {
   const client = createStreamClient(
     defineStream({
       channel: "test:stream",
-      input: z.object({ streamId: z.number() }),
-      keyField: "streamId",
+      input: z.object({ chatId: z.number() }),
+      keyField: "chatId",
       events: {
         chunk: {
           channel: "test:stream:chunk",
-          payload: z.object({ streamId: z.number(), value: z.string() }),
+          payload: z.object({
+            chatId: z.number(),
+            streamId: z.number().optional(),
+            value: z.string(),
+          }),
         },
         end: {
           channel: "test:stream:end",
-          payload: z.object({ streamId: z.number() }),
+          payload: z.object({
+            chatId: z.number(),
+            streamId: z.number().optional(),
+          }),
         },
         error: {
           channel: "test:stream:error",
-          payload: z.object({ streamId: z.number(), error: z.string() }),
+          payload: z.object({
+            chatId: z.number(),
+            streamId: z.number().optional(),
+            error: z.string(),
+          }),
         },
       },
     }),
@@ -150,12 +161,12 @@ describe("IPC stream callback cleanup", () => {
     const replacementOnChunk = vi.fn();
 
     client.start(
-      { streamId: 1 },
+      { chatId: 1 },
       {
         onChunk: vi.fn(),
         onEnd: () => {
           client.start(
-            { streamId: 1 },
+            { chatId: 1 },
             {
               onChunk: replacementOnChunk,
               onEnd: vi.fn(),
@@ -167,11 +178,11 @@ describe("IPC stream callback cleanup", () => {
       },
     );
 
-    listeners.get("test:stream:end")?.({ streamId: 1 });
-    listeners.get("test:stream:chunk")?.({ streamId: 1, value: "next" });
+    listeners.get("test:stream:end")?.({ chatId: 1 });
+    listeners.get("test:stream:chunk")?.({ chatId: 1, value: "next" });
 
     expect(replacementOnChunk).toHaveBeenCalledWith({
-      streamId: 1,
+      chatId: 1,
       value: "next",
     });
   });
@@ -181,13 +192,13 @@ describe("IPC stream callback cleanup", () => {
     const replacementOnChunk = vi.fn();
 
     client.start(
-      { streamId: 1 },
+      { chatId: 1 },
       {
         onChunk: vi.fn(),
         onEnd: vi.fn(),
         onError: () => {
           client.start(
-            { streamId: 1 },
+            { chatId: 1 },
             {
               onChunk: replacementOnChunk,
               onEnd: vi.fn(),
@@ -198,11 +209,11 @@ describe("IPC stream callback cleanup", () => {
       },
     );
 
-    listeners.get("test:stream:error")?.({ streamId: 1, error: "failed" });
-    listeners.get("test:stream:chunk")?.({ streamId: 1, value: "next" });
+    listeners.get("test:stream:error")?.({ chatId: 1, error: "failed" });
+    listeners.get("test:stream:chunk")?.({ chatId: 1, value: "next" });
 
     expect(replacementOnChunk).toHaveBeenCalledWith({
-      streamId: 1,
+      chatId: 1,
       value: "next",
     });
   });
@@ -213,13 +224,13 @@ describe("IPC stream callback cleanup", () => {
     invoke.mockRejectedValueOnce(new Error("invoke failed"));
 
     client.start(
-      { streamId: 1 },
+      { chatId: 1 },
       {
         onChunk: vi.fn(),
         onEnd: vi.fn(),
         onError: () => {
           client.start(
-            { streamId: 1 },
+            { chatId: 1 },
             {
               onChunk: replacementOnChunk,
               onEnd: vi.fn(),
@@ -231,11 +242,87 @@ describe("IPC stream callback cleanup", () => {
     );
 
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
-    listeners.get("test:stream:chunk")?.({ streamId: 1, value: "next" });
+    listeners.get("test:stream:chunk")?.({ chatId: 1, value: "next" });
 
     expect(replacementOnChunk).toHaveBeenCalledWith({
-      streamId: 1,
+      chatId: 1,
       value: "next",
+    });
+  });
+
+  it("routes matching generation events and keeps the absent-id fallback", () => {
+    const { client, listeners } = setupStreamClient();
+    const onChunk = vi.fn();
+    const streamId = client.start(
+      { chatId: 1 },
+      { onChunk, onEnd: vi.fn(), onError: vi.fn() },
+    );
+
+    listeners.get("test:stream:chunk")?.({
+      chatId: 1,
+      streamId,
+      value: "matched",
+    });
+    listeners.get("test:stream:chunk")?.({
+      chatId: 1,
+      value: "legacy",
+    });
+
+    expect(onChunk).toHaveBeenNthCalledWith(1, {
+      chatId: 1,
+      streamId,
+      value: "matched",
+    });
+    expect(onChunk).toHaveBeenNthCalledWith(2, {
+      chatId: 1,
+      value: "legacy",
+    });
+  });
+
+  it("drops stale events after a same-key stream is replaced", () => {
+    const { client, listeners } = setupStreamClient();
+    const staleCallbacks = {
+      onChunk: vi.fn(),
+      onEnd: vi.fn(),
+      onError: vi.fn(),
+    };
+    const currentCallbacks = {
+      onChunk: vi.fn(),
+      onEnd: vi.fn(),
+      onError: vi.fn(),
+    };
+    const staleStreamId = client.start({ chatId: 1 }, staleCallbacks);
+    const currentStreamId = client.start({ chatId: 1 }, currentCallbacks);
+
+    listeners.get("test:stream:chunk")?.({
+      chatId: 1,
+      streamId: staleStreamId,
+      value: "stale",
+    });
+    listeners.get("test:stream:end")?.({
+      chatId: 1,
+      streamId: staleStreamId,
+    });
+    listeners.get("test:stream:error")?.({
+      chatId: 1,
+      streamId: staleStreamId,
+      error: "stale",
+    });
+    listeners.get("test:stream:chunk")?.({
+      chatId: 1,
+      streamId: currentStreamId,
+      value: "current",
+    });
+
+    expect(staleCallbacks.onChunk).not.toHaveBeenCalled();
+    expect(staleCallbacks.onEnd).not.toHaveBeenCalled();
+    expect(staleCallbacks.onError).not.toHaveBeenCalled();
+    expect(currentCallbacks.onEnd).not.toHaveBeenCalled();
+    expect(currentCallbacks.onError).not.toHaveBeenCalled();
+    expect(currentCallbacks.onChunk).toHaveBeenCalledWith({
+      chatId: 1,
+      streamId: currentStreamId,
+      value: "current",
     });
   });
 });

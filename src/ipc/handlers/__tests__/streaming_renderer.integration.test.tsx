@@ -88,4 +88,39 @@ describe("streaming renderer (integration)", () => {
     ).toBeTruthy();
     await waitFor(() => expect(screen.queryByText("Writing...")).toBeNull());
   }, 60_000);
+
+  it("echoes one stream generation through registration, chunks, and completion", async () => {
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+    const eventStart = harness.bridge.sentEvents.length;
+
+    const { send } = await harness.typeInChat(
+      "tc=streaming-render-multi-write",
+      {
+        chatId,
+      },
+    );
+    send();
+    await harness.waitForStreamEnd(chatId, 60_000);
+
+    const payloads = harness.bridge.sentEvents
+      .slice(eventStart)
+      .filter((event) =>
+        [
+          "chat:stream:start",
+          "chat:response:chunk",
+          "chat:response:end",
+        ].includes(event.channel),
+      )
+      .map((event) => event.args[0] as { chatId?: number; streamId?: number })
+      .filter((payload) => payload.chatId === chatId);
+
+    expect(payloads.some((payload) => payload.streamId !== undefined)).toBe(
+      true,
+    );
+    expect(new Set(payloads.map((payload) => payload.streamId)).size).toBe(1);
+    expect(
+      payloads.every((payload) => typeof payload.streamId === "number"),
+    ).toBe(true);
+  }, 60_000);
 });

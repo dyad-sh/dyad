@@ -532,7 +532,10 @@ export const miscEvents = {
 
   chatStreamStart: defineEvent({
     channel: "chat:stream:start",
-    payload: z.object({ chatId: z.number() }),
+    payload: z.object({
+      chatId: z.number(),
+      streamId: z.number().optional(),
+    }),
   }),
 
   chatStreamEnd: defineEvent({

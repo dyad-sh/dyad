@@ -111,8 +111,8 @@ export type StreamEvent =
   | { type: "submit"; request: StreamRequest }
   /** The user asked to cancel the active stream. */
   | { type: "cancel" }
-  /** Main confirmed AbortController registration (`chat:stream:start`). Carries no streamId (keyed by chat only). */
-  | { type: "registered" }
+  /** Main confirmed AbortController registration (`chat:stream:start`). Absent streamId means the current generation. */
+  | { type: "registered"; streamId?: number }
   /** The command adapter resolved the app targeted by this stream. */
   | { type: "stream-context"; streamId: number; targetAppId: number | null }
   /** A content chunk arrived for the given stream generation. */

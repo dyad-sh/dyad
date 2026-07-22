@@ -137,6 +137,7 @@ const ChatAttachmentsSchema = z
 export const ChatStreamParamsSchema = z
   .object({
     chatId: z.number(),
+    streamId: z.number().optional(),
     prompt: z.string(),
     redo: z.boolean().optional(),
     attachments: ChatAttachmentsSchema.optional(),
@@ -214,6 +215,7 @@ export type StreamingPreview = z.infer<typeof StreamingPreviewSchema>;
  */
 export const ChatResponseChunkSchema = z.object({
   chatId: z.number(),
+  streamId: z.number().optional(),
   messages: z.array(MessageSchema).optional(),
   streamingMessageId: z.number().optional(),
   streamingPatch: StreamingPatchSchema.optional(),
@@ -233,6 +235,7 @@ export type ChatResponseChunk = z.infer<typeof ChatResponseChunkSchema>;
  */
 export const ChatResponseEndSchema = z.object({
   chatId: z.number(),
+  streamId: z.number().optional(),
   updatedFiles: z.boolean(),
   extraFiles: z.array(z.string()).optional(),
   extraFilesError: z.string().optional(),
@@ -253,6 +256,7 @@ export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;
  */
 export const ChatResponseErrorSchema = z.object({
   chatId: z.number(),
+  streamId: z.number().optional(),
   error: z.string(),
   warningMessages: z.array(z.string()).optional(),
 });

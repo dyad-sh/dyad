@@ -40,6 +40,8 @@ export interface ChatStreamController {
 
 export interface ChatStreamControllerOptions {
   chatId: number;
+  /** Last generation used by a previous controller for this chat. */
+  initialLastStreamId?: number;
   /** Read fresh on every command so tests / the runtime can swap adapters. */
   getCommands: () => ChatStreamCommands;
   /** Invoked whenever the controller becomes fully quiescent (no pending commands). */
@@ -55,9 +57,12 @@ export interface ChatStreamControllerOptions {
 export function createChatStreamController(
   options: ChatStreamControllerOptions,
 ): ChatStreamController {
-  const { chatId, getCommands, onQuiescent, observer } = options;
+  const { chatId, initialLastStreamId, getCommands, onQuiescent, observer } =
+    options;
 
-  const store = new SnapshotStore<StreamState>(initialStreamState());
+  const store = new SnapshotStore<StreamState>(
+    initialStreamState(initialLastStreamId),
+  );
   const commandQueue: StreamCommand[] = [];
   let draining = false;
   let disposed = false;

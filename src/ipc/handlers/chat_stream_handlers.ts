@@ -158,8 +158,14 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 
 const logger = log.scope("chat_stream_handlers");
 
-// Track active streams for cancellation
-const activeStreams = new Map<number, Set<AbortController>>();
+interface TrackedStream {
+  abortController: AbortController;
+  streamId?: number;
+}
+
+// Track active streams for cancellation together with the renderer generation
+// that owns each controller. Legacy callers may omit streamId.
+const activeStreams = new Map<number, Set<TrackedStream>>();
 const admissionPendingStreams = new Set<AbortController>();
 
 // How many chats are currently streaming a response. Used by the
@@ -329,12 +335,12 @@ async function cancelTrackedStreams(
   const trackedStreams = chatIds
     .map((chatId) => ({
       chatId,
-      abortControllers: [...(activeStreams.get(chatId) ?? [])],
+      streams: [...(activeStreams.get(chatId) ?? [])],
       completions: [...(streamCompletions.get(chatId) ?? [])],
     }))
     .filter(
-      ({ abortControllers, completions }) =>
-        abortControllers.length > 0 || completions.length > 0,
+      ({ streams, completions }) =>
+        streams.length > 0 || completions.length > 0,
     );
 
   if (trackedStreams.length === 0) {
@@ -343,13 +349,11 @@ async function cancelTrackedStreams(
 
   // Resolve consent prompts before awaiting completion. A stream parked on a
   // consent prompt cannot unwind until that prompt is resolved.
-  for (const { chatId, abortControllers } of trackedStreams) {
-    abortControllers.forEach((controller) => controller.abort());
+  for (const { chatId, streams } of trackedStreams) {
+    streams.forEach(({ abortController }) => abortController.abort());
     clearPendingLocalAgentInputsForChat(chatId);
     clearPendingMcpConsentsForChat(chatId);
-    logger.log(
-      `Aborted ${abortControllers.length} stream(s) for chat ${chatId}`,
-    );
+    logger.log(`Aborted ${streams.length} stream(s) for chat ${chatId}`);
   }
 
   // Notify the renderer that the stream ended as soon as it is aborted, before
@@ -363,12 +367,19 @@ async function cancelTrackedStreams(
   // notification moves earlier, matching the pre-cancellation-refactor timing.
   // A new stream the renderer starts for a chat under an active restore barrier
   // simply waits at admission, so notifying early stays safe.
-  for (const { chatId } of trackedStreams) {
-    safeSend(sender, "chat:response:end", {
-      chatId,
-      updatedFiles: false,
-      wasCancelled: true,
-    } satisfies ChatResponseEnd);
+  for (const { chatId, streams } of trackedStreams) {
+    const generations =
+      streams.length > 0
+        ? streams.map(({ streamId }) => streamId)
+        : [undefined];
+    for (const streamId of generations) {
+      safeSend(sender, "chat:response:end", {
+        chatId,
+        streamId,
+        updatedFiles: false,
+        wasCancelled: true,
+      } satisfies ChatResponseEnd);
+    }
     safeSend(sender, "chat:stream:end", { chatId });
   }
 
@@ -410,7 +421,7 @@ export async function cancelActiveStreamsForApp(
     ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
   ].filter((chatId) =>
     [...(activeStreams.get(chatId) ?? [])].some(
-      (controller) => !admissionPendingStreams.has(controller),
+      ({ abortController }) => !admissionPendingStreams.has(abortController),
     ),
   );
   if (inFlightChatIds.length === 0) {
@@ -553,7 +564,7 @@ export function registerChatStreamHandlers() {
   // (Guarded: `app` is undefined when this module is imported in unit tests.)
   app?.on?.("before-quit", () => {
     for (const controllers of activeStreams.values()) {
-      controllers.forEach((controller) => controller.abort());
+      controllers.forEach(({ abortController }) => abortController.abort());
     }
     activeStreams.clear();
     partialResponses.clear();
@@ -578,6 +589,7 @@ export function registerChatStreamHandlers() {
   ) => {
     let attachmentPaths: string[] = [];
     const abortController = new AbortController();
+    let trackedStream: TrackedStream | undefined;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -598,7 +610,8 @@ export function registerChatStreamHandlers() {
       req = parsedRequest.data;
 
       let dyadRequestId: string | undefined;
-      addTrackedValue(activeStreams, req.chatId, abortController);
+      trackedStream = { abortController, streamId: req.streamId };
+      addTrackedValue(activeStreams, req.chatId, trackedStream);
       admissionPendingStreams.add(abortController);
 
       const loadChatForStream = () =>
@@ -689,7 +702,10 @@ export function registerChatStreamHandlers() {
       // Notify the renderer only after admission succeeds. Requests that arrive
       // during an in-progress restore wait above and then start normally,
       // keeping the submitted prompt owned by the stream instead of dropping it.
-      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
+      safeSend(event.sender, "chat:stream:start", {
+        chatId: req.chatId,
+        streamId: req.streamId,
+      });
 
       // Record the streaming chat in the crash sentinel so a later force-close
       // can offer to upload it. We intentionally don't clear this when the
@@ -1083,6 +1099,7 @@ ${componentSnippet}
         );
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
+        streamId: req.streamId,
         effectiveChatMode: selectedChatMode,
         chatModeFallbackReason,
       });
@@ -1128,6 +1145,7 @@ ${componentSnippet}
       // Send the messages right away so that the loading state is shown for the message.
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
+        streamId: req.streamId,
         messages: updatedChat.messages.map(toRendererMessage),
       });
 
@@ -1142,6 +1160,7 @@ ${componentSnippet}
         fullResponse = await streamTestResponse(
           event,
           req.chatId,
+          req.streamId,
           testResponse,
           abortController,
           placeholderAssistantMessage.id,
@@ -1697,6 +1716,7 @@ This conversation includes one or more image attachments. When the user uploads 
               );
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
+                streamId: req.streamId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
             },
@@ -1753,6 +1773,7 @@ This conversation includes one or more image attachments. When the user uploads 
           }
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
+            streamId: req.streamId,
             streamingMessageId: placeholderAssistantMessage.id,
             streamingPatch: patch,
           });
@@ -1849,6 +1870,7 @@ This conversation includes one or more image attachments. When the user uploads 
             if (quotaStatus.isQuotaExceeded) {
               safeSend(event.sender, "chat:response:error", {
                 chatId: req.chatId,
+                streamId: req.streamId,
                 error: JSON.stringify({
                   type: "FREE_AGENT_QUOTA_EXCEEDED",
                   hoursUntilReset: quotaStatus.hoursUntilReset,
@@ -2168,12 +2190,14 @@ This conversation includes one or more image attachments. When the user uploads 
 
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
+            streamId: req.streamId,
             messages: chat!.messages.map(toRendererMessage),
           });
 
           if (status.error) {
             safeSend(event.sender, "chat:response:error", {
               chatId: req.chatId,
+              streamId: req.streamId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
               warningMessages: status.warningMessages,
             });
@@ -2182,6 +2206,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Signal that the stream has completed
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
+            streamId: req.streamId,
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
@@ -2191,6 +2216,7 @@ This conversation includes one or more image attachments. When the user uploads 
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
+            streamId: req.streamId,
             updatedFiles: false,
             chatSummary,
           } satisfies ChatResponseEnd);
@@ -2204,13 +2230,16 @@ This conversation includes one or more image attachments. When the user uploads 
       const errorMessage = isDyadError(error) ? error.message : String(error);
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
+        streamId: req.streamId,
         error: `Sorry, there was an error processing your request: ${errorMessage}`,
       });
 
       return "error";
     } finally {
       // Clean up the abort controller
-      removeTrackedValue(activeStreams, req.chatId, abortController);
+      if (trackedStream) {
+        removeTrackedValue(activeStreams, req.chatId, trackedStream);
+      }
       admissionPendingStreams.delete(abortController);
       partialResponses.delete(abortController);
 

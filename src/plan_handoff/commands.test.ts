@@ -23,7 +23,7 @@ function setup() {
       invalidateQueries: vi.fn(),
     } as unknown as PlanHandoffDeps["queryClient"],
     navigate: vi.fn(),
-    settings: null,
+    chatStream: { submit: vi.fn() },
   };
   const run = createPlanHandoffCommandRunner(() => deps);
   const events: HandoffEvent[] = [];
@@ -37,10 +37,24 @@ function setup() {
       return next;
     });
   };
-  return { run, events, emit, setStreaming };
+  return { run, deps, events, emit, setStreaming };
 }
 
 describe("plan handoff commands — stream idle watcher", () => {
+  it("submits implementation through the injected chat-stream facade", async () => {
+    const { run, deps, events, emit } = setup();
+    await run(
+      { type: "start-implementation", chatId: 7, planSlug: "my-plan" },
+      emit,
+    );
+    expect(deps.chatStream.submit).toHaveBeenCalledWith({
+      chatId: 7,
+      prompt: "/implement-plan=my-plan",
+      selectedComponents: [],
+    });
+    expect(events).toContainEqual({ type: "IMPLEMENTATION_STARTED" });
+  });
+
   it("emits immediately when the stream is already idle", async () => {
     const { run, events, emit } = setup();
     await run({ type: "watch-stream-idle", chatId: 7 }, emit);

@@ -30,11 +30,24 @@ import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
+import { ensureController as ensureChatStreamController } from "@/chat_stream/registry";
+
+const planHandoffChatStream = {
+  submit: (request: {
+    chatId: number;
+    prompt: string;
+    selectedComponents: [];
+  }) =>
+    ensureChatStreamController(request.chatId).send({
+      type: "submit",
+      request,
+    }),
+};
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <AppRunProvider>
-      <PlanHandoffProvider>
+      <PlanHandoffProvider chatStream={planHandoffChatStream}>
         <RootLayoutContent>{children}</RootLayoutContent>
       </PlanHandoffProvider>
     </AppRunProvider>

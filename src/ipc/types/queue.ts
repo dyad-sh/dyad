@@ -6,6 +6,7 @@ import {
   createSendClient,
 } from "../contracts/core";
 import { ChatAttachmentShapeSchema, ComponentSelectionSchema } from "./chat";
+import { ChatModeSchema } from "../../lib/schemas";
 
 // =============================================================================
 // Queued Prompts Persistence Contracts
@@ -27,6 +28,10 @@ export const PersistedQueuedMessageSchema = z.object({
   prompt: z.string(),
   attachments: z.array(ChatAttachmentShapeSchema).optional(),
   selectedComponents: z.array(ComponentSelectionSchema).optional(),
+  redo: z.boolean().optional(),
+  appId: z.number().int().positive().optional(),
+  // `null` is an intentional skip-cache sentinel, distinct from omission.
+  requestedChatMode: ChatModeSchema.nullable().optional(),
 });
 
 export type PersistedQueuedMessage = z.infer<

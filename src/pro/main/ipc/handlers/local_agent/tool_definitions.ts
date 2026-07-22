@@ -6,6 +6,7 @@
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
+import { createUserInputResolver } from "@/ipc/utils/user_input_resolver";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
@@ -161,52 +162,28 @@ function getAgentToolConsentSettings(
 // Agent Tool Consent Management
 // ============================================================================
 
-interface PendingConsentEntry {
-  chatId: number;
-  resolve: (d: "accept-once" | "accept-always" | "decline") => void;
-}
+type AgentToolConsentDecision = "accept-once" | "accept-always" | "decline";
 
-const pendingConsentResolvers = new Map<string, PendingConsentEntry>();
+const agentToolConsentResolver =
+  createUserInputResolver<AgentToolConsentDecision>({
+    timeoutMs: 5 * 60 * 1000,
+  });
 
 export function waitForAgentToolConsent(
   requestId: string,
   chatId: number,
   abortSignal?: AbortSignal,
-): Promise<"accept-once" | "accept-always" | "decline"> {
-  return new Promise((resolve) => {
-    if (abortSignal?.aborted) {
-      resolve("decline");
-      return;
-    }
-
-    const onAbort = () => {
-      const entry = pendingConsentResolvers.get(requestId);
-      if (entry) {
-        pendingConsentResolvers.delete(requestId);
-        entry.resolve("decline");
-      }
-    };
-    abortSignal?.addEventListener("abort", onAbort, { once: true });
-
-    pendingConsentResolvers.set(requestId, {
-      chatId,
-      resolve: (decision) => {
-        abortSignal?.removeEventListener("abort", onAbort);
-        resolve(decision);
-      },
-    });
-  });
+): Promise<AgentToolConsentDecision> {
+  return agentToolConsentResolver
+    .wait(requestId, chatId, abortSignal)
+    .then((decision) => decision ?? "decline");
 }
 
 export function resolveAgentToolConsent(
   requestId: string,
   decision: "accept-once" | "accept-always" | "decline",
 ) {
-  const entry = pendingConsentResolvers.get(requestId);
-  if (entry) {
-    pendingConsentResolvers.delete(requestId);
-    entry.resolve(decision);
-  }
+  agentToolConsentResolver.resolve(requestId, decision);
 }
 
 /**
@@ -215,13 +192,7 @@ export function resolveAgentToolConsent(
  * and stale UI banners.
  */
 export function clearPendingConsentsForChat(chatId: number): void {
-  for (const [requestId, entry] of pendingConsentResolvers) {
-    if (entry.chatId === chatId) {
-      pendingConsentResolvers.delete(requestId);
-      // Resolve with decline so the tool execution fails gracefully
-      entry.resolve("decline");
-    }
-  }
+  agentToolConsentResolver.abortChat(chatId);
 }
 
 export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {

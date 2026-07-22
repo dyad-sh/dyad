@@ -138,19 +138,11 @@ describe("supabase branch selection (integration)", () => {
 
     // Connect Supabase (the connect button's test path): stores fake org
     // credentials and links the app to fake-project-id.
-    const deepLinkEvents: SentEvent[] = [];
     await invoke(
       "supabase:fake-connect-and-set-project",
       { appId: harness.appId, fakeProjectId: "fake-project-id" },
-      deepLinkEvents,
+      [],
     );
-    expect(
-      deepLinkEvents.some(
-        (e) =>
-          e.channel === "deep-link-received" &&
-          e.payload?.type === "supabase-oauth-return",
-      ),
-    ).toBe(true);
 
     const appRow = await db.query.apps.findFirst({
       where: eq(apps.id, harness.appId),

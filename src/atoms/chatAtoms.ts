@@ -528,7 +528,7 @@ export interface QueuedMessageItem {
   // Extra stream-request fields preserved when the chat stream machine queues
   // a submission that arrived while a stream was active, so the queued
   // dispatch replays the ORIGINAL request (e.g. a Retry keeps its redo
-  // semantics). In-memory only: not round-tripped through queue persistence.
+  // semantics). These fields are round-tripped through queue persistence.
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;

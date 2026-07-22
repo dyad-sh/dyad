@@ -3,6 +3,7 @@ import {
   assertReferenceStability,
   createRecordingCommandRunner,
   driveTransitionMatrix,
+  exploreReachableStates,
 } from "./testing";
 import { ignore, type TransitionResult } from "./types";
 
@@ -40,5 +41,33 @@ describe("state-machine test kit", () => {
     expect(runner.commands).toEqual(["run"]);
     expect(runner.events).toEqual([3]);
     expect(emitted).toEqual([3]);
+  });
+
+  it("explores reachable states without revisiting equivalent snapshots", () => {
+    const states = exploreReachableStates<number, "increment" | "reset", never>(
+      {
+        initialState: 0,
+        events: ["increment", "reset"],
+        transition: (state, event) => ({
+          state: event === "reset" ? 0 : Math.min(state + 1, 2),
+          commands: [],
+        }),
+        stateKey: String,
+      },
+    );
+
+    expect(states).toEqual([0, 1, 2]);
+  });
+
+  it("bounds accidental infinite state spaces", () => {
+    expect(() =>
+      exploreReachableStates<number, "increment", never>({
+        initialState: 0,
+        events: ["increment"],
+        transition: (state) => ({ state: state + 1, commands: [] }),
+        stateKey: String,
+        maxStates: 3,
+      }),
+    ).toThrow(/maxStates/);
   });
 });

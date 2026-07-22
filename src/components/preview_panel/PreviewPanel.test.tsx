@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PreviewPanel,
@@ -19,8 +19,11 @@ const mocks = vi.hoisted(() => ({
   refetchNodeStatus: vi.fn(),
   reloadEnvPath: vi.fn(),
   runApp: vi.fn(),
+  previewIframeMounted: vi.fn(),
+  previewIframeUnmounted: vi.fn(),
   selectAppForPreview: vi.fn(),
   selectedAppIdAtom: Symbol("selectedAppIdAtom"),
+  selectedAppId: 1,
   settings: {
     disablePreviewNodeAutoInstall: false,
   } as Record<string, unknown>,
@@ -34,7 +37,7 @@ vi.mock("jotai", async (importOriginal) => ({
       return "preview";
     }
     if (atom === mocks.selectedAppIdAtom) {
-      return 1;
+      return mocks.selectedAppId;
     }
     if (atom === mocks.currentPreviewReloadTokenAtom) {
       return 0;
@@ -108,7 +111,7 @@ vi.mock("@/hooks/useRunApp", () => ({
 
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({
-    app: { id: 1 },
+    app: { id: mocks.selectedAppId },
   }),
 }));
 
@@ -136,7 +139,13 @@ vi.mock("react-resizable-panels", () => ({
 }));
 
 vi.mock("./PreviewIframe", () => ({
-  PreviewIframe: () => <div>Preview iframe</div>,
+  PreviewIframe: () => {
+    useEffect(() => {
+      mocks.previewIframeMounted();
+      return () => mocks.previewIframeUnmounted();
+    }, []);
+    return <div>Preview iframe</div>;
+  },
 }));
 
 vi.mock("./PreviewToolbar", () => ({
@@ -187,6 +196,9 @@ describe("PreviewPanel", () => {
     mocks.refetchNodeStatus.mockReset();
     mocks.reloadEnvPath.mockReset();
     mocks.runApp.mockReset();
+    mocks.previewIframeMounted.mockReset();
+    mocks.previewIframeUnmounted.mockReset();
+    mocks.selectedAppId = 1;
     mocks.selectAppForPreview.mockReset();
     mocks.settings = {
       disablePreviewNodeAutoInstall: false,
@@ -206,6 +218,17 @@ describe("PreviewPanel", () => {
     expect(
       screen.queryByText("Install Node.js to see your preview"),
     ).toBeNull();
+  });
+
+  it("remounts the iframe when switching apps with the same reload token", () => {
+    const { rerender } = render(<PreviewPanel />);
+    expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(1);
+
+    mocks.selectedAppId = 2;
+    rerender(<PreviewPanel />);
+
+    expect(mocks.previewIframeUnmounted).toHaveBeenCalledTimes(1);
+    expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(2);
   });
 
   it("auto-starts managed Node install and skips running the app when Node.js is missing", async () => {

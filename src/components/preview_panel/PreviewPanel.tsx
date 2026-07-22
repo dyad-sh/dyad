@@ -226,7 +226,10 @@ export function PreviewPanel() {
                     }}
                   />
                 ) : previewMode === "preview" ? (
-                  <PreviewIframe key={key} loading={loading} />
+                  <PreviewIframe
+                    key={`${selectedAppId}-${key}`}
+                    loading={loading}
+                  />
                 ) : previewMode === "code" ? (
                   <CodeView loading={loading} app={app ?? null} />
                 ) : previewMode === "configure" ? (

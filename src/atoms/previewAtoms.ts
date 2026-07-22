@@ -24,4 +24,5 @@ export const pendingVisualChangesAtom = atom<Map<string, VisualEditingChange>>(
   new Map(),
 );
 
-export const pendingScreenshotAppIdAtom = atom<number | null>(null);
+// A screenshot can become pending for multiple background apps at once.
+export const pendingScreenshotAppIdsAtom = atom<Set<number>>(new Set<number>());

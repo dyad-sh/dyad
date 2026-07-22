@@ -61,7 +61,7 @@ import {
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
   isRestoringQueuedSelectionAtom,
-  pendingScreenshotAppIdAtom,
+  pendingScreenshotAppIdsAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/types";
 import { mergePendingChange } from "@/ipc/types/visual-editing";
@@ -301,10 +301,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
-  const [pendingScreenshotAppId, setPendingScreenshotAppId] = useAtom(
-    pendingScreenshotAppIdAtom,
+  const [pendingScreenshotAppIds, setPendingScreenshotAppIds] = useAtom(
+    pendingScreenshotAppIdsAtom,
   );
-  const pendingScreenshotAppIdRef = useRef<number | null>(null);
+  const pendingScreenshotAppIdsRef = useRef<Set<number>>(new Set());
   // Track the latest screenshot requests so stale responses from earlier reloads
   // don't get mistaken for annotator screenshots.
   const pendingCommitScreenshotRequestRef = useRef<{
@@ -325,8 +325,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Keep refs in sync so the message handler and timeout callbacks always read
   // the latest values.
   useEffect(() => {
-    pendingScreenshotAppIdRef.current = pendingScreenshotAppId;
-  }, [pendingScreenshotAppId]);
+    pendingScreenshotAppIdsRef.current = pendingScreenshotAppIds;
+  }, [pendingScreenshotAppIds]);
+
+  const clearPendingScreenshot = useCallback(
+    (appId: number) => {
+      setPendingScreenshotAppIds((pending) => {
+        if (!pending.has(appId)) return pending;
+        const next = new Set(pending);
+        next.delete(appId);
+        return next;
+      });
+    },
+    [setPendingScreenshotAppIds],
+  );
 
   useEffect(() => {
     selectedAppIdRef.current = selectedAppId;
@@ -395,18 +407,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // Read from a ref so the comparison uses the current selection, not the
       // render closure that scheduled this timeout.
       if (selectedAppIdRef.current !== appId) {
-        if (pendingScreenshotAppIdRef.current === appId) {
-          setPendingScreenshotAppId(null);
-        }
+        // Keep this app pending; its remounted iframe will capture when the
+        // user returns instead of letting another app erase the request.
         return;
       }
       // Re-read contentWindow inside the timeout to avoid stale references
       // (e.g. if the iframe reloads or gets replaced during the delay).
       const contentWindow = iframeRef.current?.contentWindow;
       if (!contentWindow) {
-        if (pendingScreenshotAppIdRef.current === appId) {
-          setPendingScreenshotAppId(null);
-        }
+        clearPendingScreenshot(appId);
         return;
       }
       // Resolve the commit hash at capture time so the saved screenshot
@@ -420,16 +429,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         console.warn("Failed to resolve commit hash for screenshot", err);
       }
       if (!commitHash) {
-        if (pendingScreenshotAppIdRef.current === appId) {
-          setPendingScreenshotAppId(null);
-        }
+        clearPendingScreenshot(appId);
         return;
       }
       // The user may have switched apps while resolving the commit hash.
       if (selectedAppIdRef.current !== appId) {
-        if (pendingScreenshotAppIdRef.current === appId) {
-          setPendingScreenshotAppId(null);
-        }
+        // Preserve the per-app request for the next time its iframe mounts.
         return;
       }
       const requestId = crypto.randomUUID();
@@ -447,8 +452,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   const requestCommitScreenshot = () => {
     if (
-      pendingScreenshotAppIdRef.current === null ||
-      pendingScreenshotAppIdRef.current !== selectedAppId ||
+      selectedAppId === null ||
+      !pendingScreenshotAppIdsRef.current.has(selectedAppId) ||
       !iframeRef.current?.contentWindow
     ) {
       return;
@@ -882,8 +887,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Take a screenshot if a commit just happened for this app.
         // Read from ref to avoid stale closure issues.
         if (
-          pendingScreenshotAppIdRef.current !== null &&
-          pendingScreenshotAppIdRef.current === selectedAppId &&
+          selectedAppId !== null &&
+          pendingScreenshotAppIdsRef.current.has(selectedAppId) &&
           iframeRef.current?.contentWindow
         ) {
           requestCommitScreenshot();
@@ -1050,14 +1055,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           const appId = pendingCommitScreenshotRequest.appId;
           const commitHash = pendingCommitScreenshotRequest.commitHash;
           pendingCommitScreenshotRequestRef.current = null;
-          // Only clear the pending-screenshot atom if it still points to the
-          // same app — otherwise another flow may have queued a newer capture
-          // for a different app and we'd erase its pending state.
-          const clearPendingIfMatches = () => {
-            if (pendingScreenshotAppIdRef.current === appId) {
-              setPendingScreenshotAppId(null);
-            }
-          };
+          const clearPendingIfMatches = () => clearPendingScreenshot(appId);
           if (event.data.success && event.data.dataUrl) {
             console.debug("App screenshot taken for app", appId);
             clearPendingIfMatches();
@@ -1273,7 +1271,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setVisualEditingSelectedComponent,
     setPreservedUrls,
     queryClient,
-    setPendingScreenshotAppId,
+    clearPendingScreenshot,
   ]);
 
   useEffect(() => {

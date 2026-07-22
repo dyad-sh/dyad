@@ -1,33 +1,22 @@
-import type { SetStateAction } from "react";
 import type { getDefaultStore } from "jotai";
 import type { QueryClient } from "@tanstack/react-query";
 
 import { planStateAtom, type PlanState } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
-import {
-  chatErrorByIdAtom,
-  chatMessagesByIdAtom,
-  chatStreamCountByIdAtom,
-  isStreamingByIdAtom,
-  selectedChatIdAtom,
-  streamingPreviewByChatIdAtom,
-} from "@/atoms/chatAtoms";
-import { ipc, type Message } from "@/ipc/types";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { ipc } from "@/ipc/types";
 import { planClient } from "@/ipc/types/plan";
-import { ensureController as ensureChatStreamController } from "@/chat_stream/registry";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
-import { handleEffectiveChatModeChunk } from "@/lib/chatModeStream";
-import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
-import { triggerResync, syncChatFromDb } from "@/lib/resyncChat";
-import {
-  applyPreviewChunk,
-  clearPreviewForChat,
-} from "@/lib/streamingPreviewSync";
-import type { UserSettings } from "@/lib/schemas";
 
 import type { HandoffCommandRunner } from "./controller";
 import type { HandoffCommand, HandoffEvent } from "./state";
+
+/**
+ * Machine dependency graph: plan_handoff -> chat_stream facade. The concrete
+ * adapter is injected at the application root; this module never imports the
+ * chat-stream registry/controller boundary.
+ */
 
 type JotaiStore = ReturnType<typeof getDefaultStore>;
 
@@ -43,7 +32,13 @@ export interface PlanHandoffDeps {
     to: "/chat";
     search: { id: number; appId: number };
   }) => void;
-  settings: UserSettings | null | undefined;
+  chatStream: {
+    submit(request: {
+      chatId: number;
+      prompt: string;
+      selectedComponents: [];
+    }): void;
+  };
 }
 
 function updatePlanState(
@@ -213,7 +208,11 @@ export function createPlanHandoffCommandRunner(
       }
 
       case "start-implementation": {
-        startImplementationStream(command.chatId, command.planSlug, getDeps);
+        deps.chatStream.submit({
+          chatId: command.chatId,
+          prompt: `/implement-plan=${command.planSlug}`,
+          selectedComponents: [],
+        });
         emit({ type: "IMPLEMENTATION_STARTED" });
         return;
       }
@@ -248,124 +247,4 @@ export function createPlanHandoffCommandRunner(
       }
     }
   };
-}
-
-/**
- * Starts the `/implement-plan=<slug>` stream and mirrors chunks into the
- * global chat atoms. Moved verbatim (minus the mount guard — this runs at the
- * app root now) from the legacy `usePlanImplementation` hook; the machine's
- * job ends once the stream has been started.
- */
-function startImplementationStream(
-  chatId: number,
-  planSlug: string,
-  getDeps: () => PlanHandoffDeps,
-): void {
-  const { store } = getDeps();
-
-  const setIsStreaming = (value: boolean) => {
-    store.set(isStreamingByIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.set(chatId, value);
-      return next;
-    });
-  };
-  const setMessages = (update: SetStateAction<Map<number, Message[]>>) =>
-    store.set(chatMessagesByIdAtom, update);
-  const setPreview = (update: SetStateAction<Map<number, string>>) =>
-    store.set(streamingPreviewByChatIdAtom, update);
-
-  setIsStreaming(true);
-  store.set(chatErrorByIdAtom, (prev) => {
-    const next = new Map(prev);
-    next.set(chatId, null);
-    return next;
-  });
-
-  let hasIncrementedStreamCount = false;
-
-  ipc.chatStream.start(
-    {
-      chatId,
-      // Expanded server-side in chat_stream_handlers.
-      prompt: `/implement-plan=${planSlug}`,
-      selectedComponents: [],
-    },
-    {
-      onChunk: ({
-        messages: updatedMessages,
-        streamingMessageId,
-        streamingPatch,
-        streamingPreview,
-        effectiveChatMode,
-        chatModeFallbackReason,
-      }) => {
-        if (
-          handleEffectiveChatModeChunk(
-            { effectiveChatMode, chatModeFallbackReason },
-            getDeps().settings,
-            chatId,
-          )
-        ) {
-          return;
-        }
-
-        if (!hasIncrementedStreamCount) {
-          store.set(chatStreamCountByIdAtom, (prev) => {
-            const next = new Map(prev);
-            next.set(chatId, (prev.get(chatId) ?? 0) + 1);
-            return next;
-          });
-          hasIncrementedStreamCount = true;
-        }
-
-        applyPreviewChunk(setPreview, chatId, streamingPreview);
-
-        if (updatedMessages) {
-          // Full messages update (initial load, post-compaction, etc.)
-          setMessages((prev) => {
-            const next = new Map(prev);
-            next.set(chatId, updatedMessages);
-            return next;
-          });
-        } else if (
-          streamingMessageId !== undefined &&
-          streamingPatch !== undefined
-        ) {
-          const applied = applyStreamingPatch(
-            setMessages,
-            chatId,
-            streamingMessageId,
-            streamingPatch,
-          );
-          if (!applied) {
-            triggerResync(chatId, setMessages, store);
-          }
-        }
-      },
-      onEnd: () => {
-        setIsStreaming(false);
-        clearPreviewForChat(setPreview, chatId);
-        syncChatFromDb(chatId, setMessages, "[CHAT] Plan onEnd", store);
-        // This stream ran OUTSIDE the chat stream machine, so the machine
-        // never emits its own queue dispatch for it. Poke it now that the
-        // projection is cleared so prompts queued during this stream drain
-        // (no-op when the queue is empty or paused).
-        ensureChatStreamController(chatId).send({ type: "queue-poked" });
-      },
-      onError: ({ error }) => {
-        console.error("Plan implementation stream error:", error);
-        store.set(chatErrorByIdAtom, (prev) => {
-          const next = new Map(prev);
-          next.set(chatId, error);
-          return next;
-        });
-        setIsStreaming(false);
-        clearPreviewForChat(setPreview, chatId);
-        syncChatFromDb(chatId, setMessages, "[CHAT] Plan onError", store);
-        // See onEnd: drain prompts queued during this non-machine stream.
-        ensureChatStreamController(chatId).send({ type: "queue-poked" });
-      },
-    },
-  );
 }

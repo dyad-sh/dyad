@@ -9,7 +9,6 @@ import {
 import { useStore } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSettings } from "@/hooks/useSettings";
 import {
   createPlanHandoffCommandRunner,
   type PlanHandoffDeps,
@@ -20,17 +19,22 @@ export type PlanHandoffManager = ReturnType<typeof createPlanHandoffRegistry>;
 
 const PlanHandoffContext = createContext<PlanHandoffManager | null>(null);
 
-export function PlanHandoffProvider({ children }: { children: ReactNode }) {
+export function PlanHandoffProvider({
+  children,
+  chatStream,
+}: {
+  children: ReactNode;
+  chatStream: PlanHandoffDeps["chatStream"];
+}) {
   const store = useStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { settings } = useSettings();
   const dependencies = useRef<PlanHandoffDeps | null>(null);
   dependencies.current = {
     store,
     queryClient,
     navigate: (options) => void navigate(options),
-    settings,
+    chatStream,
   };
   const [manager] = useState(() =>
     createPlanHandoffRegistry(

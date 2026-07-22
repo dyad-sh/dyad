@@ -29,7 +29,9 @@ function isTokenExpired(expiresIn?: number): boolean {
  * Refreshes the Neon access token using the refresh token
  * Updates settings with new tokens and expiration time
  */
-export async function refreshNeonToken(): Promise<void> {
+let refreshNeonTokenPromise: Promise<void> | null = null;
+
+async function refreshNeonTokenOnce(): Promise<void> {
   const settings = readSettings();
   const refreshToken = settings.neon?.refreshToken?.value;
 
@@ -90,6 +92,15 @@ export async function refreshNeonToken(): Promise<void> {
     logger.error("Error refreshing Neon token:", error);
     throw error;
   }
+}
+
+export function refreshNeonToken(): Promise<void> {
+  if (!refreshNeonTokenPromise) {
+    refreshNeonTokenPromise = refreshNeonTokenOnce().finally(() => {
+      refreshNeonTokenPromise = null;
+    });
+  }
+  return refreshNeonTokenPromise;
 }
 
 // Stable timestamp for mock branches so the apply-time staleness check in

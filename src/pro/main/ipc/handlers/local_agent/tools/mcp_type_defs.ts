@@ -165,6 +165,7 @@ export function buildMcpCapabilityMap(params: {
           inputPreview,
           chatId: params.ctx.chatId,
           autoApprove,
+          abortSignal: params.ctx.abortSignal,
         },
       );
       if (!approved) {

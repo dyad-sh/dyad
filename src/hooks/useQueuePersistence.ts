@@ -90,6 +90,9 @@ export function useQueuePersistence() {
             prompt: item.prompt,
             attachments: item.attachments?.map(chatAttachmentToFileAttachment),
             selectedComponents: item.selectedComponents,
+            redo: item.redo,
+            appId: item.appId,
+            requestedChatMode: item.requestedChatMode,
           })),
         );
       }
@@ -236,6 +239,9 @@ async function encodeQueuedItem(
       ? await convertFileAttachmentsToChatAttachments(item.attachments)
       : undefined,
     selectedComponents: item.selectedComponents,
+    redo: item.redo,
+    appId: item.appId,
+    requestedChatMode: item.requestedChatMode,
   };
   cache.set(item, encoded);
   return encoded;

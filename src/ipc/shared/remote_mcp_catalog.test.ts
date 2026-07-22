@@ -95,52 +95,30 @@ describe("remote_mcp_catalog", () => {
     }
   });
 
-  it("drops stdio entries whose command is not npx", async () => {
+  it("drops stdio entries with a non-npx command or no args", async () => {
     mockCatalogResponse([
       { ...VALID_STDIO_ENTRY, command: "node" },
       { ...VALID_STDIO_ENTRY, slug: "bash-server", command: "bash" },
+      { ...VALID_STDIO_ENTRY, slug: "no-args", args: [] },
       VALID_ENTRY,
     ]);
     const entries = await getRemoteMcpCatalog();
     expect(entries.map((e) => e.slug)).toEqual(["figma"]);
   });
 
-  it("drops stdio entries without an exact-version-pinned package", async () => {
-    // A flag-shaped token like `--package@1.0.0` must not count as a spec,
-    // and malformed versions like leading-zero `01.2.3` are not pinned.
+  it("keeps unpinned stdio entries (pinning is enforced upstream)", async () => {
+    // The desktop only checks the shape; cloud CI pins the catalog data
+    // and the consent prompt shows the exact command.
     mockCatalogResponse([
       { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@latest"] },
-      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server"] },
-      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@^1.13.0"] },
-      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@1.x"] },
-      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@01.2.3"] },
-      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@1.02.3"] },
-      { ...VALID_STDIO_ENTRY, args: ["--package@1.0.0"] },
-      { ...VALID_STDIO_ENTRY, args: ["-y@1.0.0"] },
-      { ...VALID_STDIO_ENTRY, args: [] },
-      VALID_STDIO_ENTRY,
-    ]);
-    const entries = await getRemoteMcpCatalog();
-    expect(entries.map((e) => e.slug)).toEqual(["mongodb"]);
-  });
-
-  it("drops stdio entries that leave a second package unpinned", async () => {
-    // A pinned positional does not excuse a repeated `--package` that
-    // floats another package's version.
-    mockCatalogResponse([
       {
         ...VALID_STDIO_ENTRY,
-        args: [
-          "-y",
-          "--package",
-          "other-mcp@latest",
-          "mongodb-mcp-server@1.13.0",
-        ],
+        slug: "eq-package",
+        args: ["-y", "--package=other@latest", "mongodb-mcp-server@1.13.0"],
       },
-      VALID_STDIO_ENTRY,
     ]);
     const entries = await getRemoteMcpCatalog();
-    expect(entries.map((e) => e.slug)).toEqual(["mongodb"]);
+    expect(entries.map((e) => e.slug)).toEqual(["mongodb", "eq-package"]);
   });
 
   it("accepts scoped and prerelease pinned packages", async () => {

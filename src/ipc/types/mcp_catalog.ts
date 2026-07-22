@@ -40,43 +40,21 @@ export const HttpCatalogEntrySchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
-// A package spec pinned to an exact version (`name@1.2.3` or
-// `@scope/name@1.2.3`). Version grammar is the official semver.org regex
-// (https://semver.org); the name can't start with `-` so flags aren't specs.
-const PINNED_PACKAGE_SPEC_REGEX =
-  /^(@[a-z0-9~._][a-z0-9~._-]*\/)?[a-z0-9~._][a-z0-9~._-]*@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/i;
+// Matches a `name@version` arg (optionally scoped) so the UI can show the
+// package name. Display-only, so a loose shape is enough.
+const PACKAGE_SPEC_REGEX = /^(@[a-z0-9~._-]+\/)?[a-z0-9~._-]+@\d/i;
 
-export function isPinnedPackageSpec(arg: string): boolean {
-  return PINNED_PACKAGE_SPEC_REGEX.test(arg);
+export function looksLikePackageSpec(arg: string): boolean {
+  return PACKAGE_SPEC_REGEX.test(arg);
 }
 
-// An arg shaped like `name@version` (optionally scoped), used to spot
-// specs that aren't pinned, e.g. `pkg@latest`.
-const VERSIONED_SPEC_REGEX = /^(@[a-z0-9~._-]+\/)?[a-z0-9~._-]+@/i;
-
-// Requires every package-spec-shaped arg to be pinned, so a repeated
-// `--package foo@latest` can't float a version. Returns false instead of
-// throwing so one bad entry doesn't abort the batch.
-function argsPinPackages(args: string[]): boolean {
-  return (
-    args.some(isPinnedPackageSpec) &&
-    args.every(
-      (arg) => !VERSIONED_SPEC_REGEX.test(arg) || isPinnedPackageSpec(arg),
-    )
-  );
-}
-
+// Version pinning is enforced by cloud CI on the catalog data and shown to
+// the user by the consent prompt, so the desktop only checks the shape.
 export const StdioCatalogEntrySchema = z.object({
   ...baseEntry,
   transport: z.literal("stdio"),
   command: z.literal("npx"),
-  args: z
-    .array(z.string())
-    .min(1)
-    .refine(
-      argsPinPackages,
-      "every package arg must be pinned to an exact version",
-    ),
+  args: z.array(z.string()).min(1),
   env: z.record(z.string(), z.string()).optional(),
 });
 

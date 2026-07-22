@@ -55,16 +55,15 @@ testSkipIfWindows(
     await po.setUp();
     await po.navigation.goToPluginsTab();
 
-    // 7 entries served; the policy-violating stdio ones (non-npx
-    // command, unpinned version) and the malformed one must be dropped.
+    // 6 entries served; the non-npx stdio entry and the malformed one
+    // must be dropped.
     await expect(po.page.getByTestId("catalog-card")).toHaveCount(4, {
       timeout: 15_000,
     });
     await expect(po.page.getByText("E2E Stdio Node Server")).toHaveCount(0);
-    await expect(po.page.getByText("E2E Stdio Unpinned Server")).toHaveCount(0);
 
-    // The valid stdio entry renders with its pinned package and a
-    // "Local" tag instead of a hostname.
+    // The valid stdio entry renders with its package and a "Local" tag
+    // instead of a hostname.
     const stdioCard = po.catalog.card("E2E Stdio Server");
     await expect(stdioCard).toBeVisible();
     await expect(stdioCard.getByText("Local", { exact: true })).toBeVisible();

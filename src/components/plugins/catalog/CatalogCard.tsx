@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  isPinnedPackageSpec,
+  looksLikePackageSpec,
   type McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
 
@@ -16,12 +16,11 @@ function hostnameOf(url: string): string {
   }
 }
 
-// What the entry connects to: the hostname for http entries, the
-// pinned package for stdio ones. The schema guarantees a pinned spec
-// exists; fall back to the command just in case.
+// What the entry connects to: the hostname for http entries, the package
+// for stdio ones, falling back to the command if no arg looks like one.
 function sourceOf(entry: McpCatalogEntry): string {
   if (entry.transport === "stdio") {
-    return entry.args.find(isPinnedPackageSpec) ?? entry.command;
+    return entry.args.find(looksLikePackageSpec) ?? entry.command;
   }
   return hostnameOf(entry.url);
 }

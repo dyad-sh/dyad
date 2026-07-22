@@ -308,22 +308,14 @@ export function createFakeLlmApp(getPort: () => number) {
           command: "npx",
           args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
         },
-        // The desktop client must drop these three: a stdio entry that
-        // violates the npx policy, one without an exact version pin, and
-        // a malformed one.
+        // The desktop client must drop these: a stdio entry whose command
+        // isn't npx, and a malformed one.
         {
           slug: "e2e-stdio-node",
           name: "E2E Stdio Node Server",
           transport: "stdio",
           command: "node",
           args: ["server.mjs"],
-        },
-        {
-          slug: "e2e-stdio-unpinned",
-          name: "E2E Stdio Unpinned Server",
-          transport: "stdio",
-          command: "npx",
-          args: ["-y", "fake-mcp@latest"],
         },
         { slug: "e2e-broken" },
       ],

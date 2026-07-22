@@ -21,8 +21,22 @@ export const TEST_SPEC_EXTENSIONS = ["ts", "tsx", "js", "jsx"] as const;
 /** Regex alternation fragment ("ts|tsx|js|jsx") for building spec-path regexes. */
 export const TEST_SPEC_EXT_ALTERNATION = TEST_SPEC_EXTENSIONS.join("|");
 
-/** Glob matching every E2E spec under an app's `tests/` folder. */
-export const TEST_SPEC_GLOB = `tests/**/*.spec.{${TEST_SPEC_EXTENSIONS.join(",")}}`;
+/**
+ * The app-relative directory where Dyad keeps a user app's Playwright E2E
+ * specs. Everything that discovers, validates, or runs specs derives from this
+ * constant, so the directory convention lives in exactly one place.
+ */
+export const E2E_TEST_DIR = "e2e-tests";
+
+/**
+ * The directory Dyad used for E2E specs before `E2E_TEST_DIR`. Existing apps may
+ * still have specs here; the migration flow detects them and offers to move them
+ * into `E2E_TEST_DIR`.
+ */
+export const LEGACY_TEST_DIR = "tests";
+
+/** Glob matching every E2E spec under an app's `e2e-tests/` folder. */
+export const TEST_SPEC_GLOB = `${E2E_TEST_DIR}/**/*.spec.{${TEST_SPEC_EXTENSIONS.join(",")}}`;
 
 /** Matches a filename with a spec extension (any directory). */
 export const SPEC_FILE_RE = new RegExp(
@@ -47,7 +61,7 @@ export const TestCaseSchema = z.object({
 export type TestCase = z.infer<typeof TestCaseSchema>;
 
 export const TestSpecSchema = z.object({
-  /** Path relative to the app root, e.g. "tests/signup.spec.ts". */
+  /** Path relative to the app root, e.g. "e2e-tests/signup.spec.ts". */
   file: z.string(),
   /**
    * Individual test cases found in the file (best-effort static parse). Empty
@@ -176,6 +190,54 @@ export const GetTestScreenshotResultSchema = z.object({
 });
 
 // =============================================================================
+// Legacy test migration (`tests/` -> `e2e-tests/`)
+// =============================================================================
+
+/** A Playwright spec detected in the legacy `tests/` directory. */
+export const LegacyTestFileSchema = z.object({
+  /** Path relative to the app root, e.g. "tests/signup.spec.ts". */
+  file: z.string(),
+  /**
+   * Whether `e2e-tests/<same relative path>` already exists — a move would
+   * collide, so the dialog pre-warns and leaves it unchecked.
+   */
+  targetExists: z.boolean(),
+});
+export type LegacyTestFile = z.infer<typeof LegacyTestFileSchema>;
+
+export const DetectLegacyTestsParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export const DetectLegacyTestsResultSchema = z.object({
+  files: z.array(LegacyTestFileSchema),
+});
+
+export const MigrateLegacyTestsParamsSchema = z.object({
+  appId: z.number(),
+  /** Selected legacy spec paths to move, e.g. ["tests/signup.spec.ts"]. */
+  files: z.array(z.string()).min(1),
+});
+
+/** Outcome of moving a single legacy spec into `e2e-tests/`. */
+export const MigrateLegacyTestResultSchema = z.object({
+  /** The requested legacy path, e.g. "tests/signup.spec.ts". */
+  file: z.string(),
+  ok: z.boolean(),
+  /** New path on success, e.g. "e2e-tests/signup.spec.ts". */
+  movedTo: z.string().optional(),
+  /** Why the move was skipped/failed (e.g. destination already exists). */
+  error: z.string().optional(),
+});
+export type MigrateLegacyTestResult = z.infer<
+  typeof MigrateLegacyTestResultSchema
+>;
+
+export const MigrateLegacyTestsResultSchema = z.object({
+  results: z.array(MigrateLegacyTestResultSchema),
+});
+
+// =============================================================================
 // Tests Contracts
 // =============================================================================
 
@@ -202,6 +264,18 @@ export const testsContracts = {
     channel: "tests:screenshot",
     input: GetTestScreenshotParamsSchema,
     output: GetTestScreenshotResultSchema,
+  }),
+
+  detectLegacyTests: defineContract({
+    channel: "tests:detect-legacy",
+    input: DetectLegacyTestsParamsSchema,
+    output: DetectLegacyTestsResultSchema,
+  }),
+
+  migrateLegacyTests: defineContract({
+    channel: "tests:migrate-legacy",
+    input: MigrateLegacyTestsParamsSchema,
+    output: MigrateLegacyTestsResultSchema,
   }),
 } as const;
 

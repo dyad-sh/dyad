@@ -109,10 +109,7 @@ export class ChatStreamManager {
       controller.isSettled() &&
       controller.subscriberCount() <= 1
     ) {
-      this.lastStreamIdByChatId.set(
-        controller.chatId,
-        snapshot.lastStreamId,
-      );
+      this.lastStreamIdByChatId.set(controller.chatId, snapshot.lastStreamId);
       this.host.disposeKey(controller.chatId);
     }
   }

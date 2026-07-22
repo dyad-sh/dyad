@@ -1,78 +1,109 @@
-# Why Dyad Uses Explicit State Machines
+# Why Dyad uses state machines
 
-Dyad's renderer and main process now contain a family of small, hand-rolled
-state machines: version preview, plan handoff, app run, connection flow, chat
-streaming, and more on the way. This document explains **why** we migrated —
-what the code looked like before, what kept breaking, and what a machine buys
-us — using real before/after examples from the migration.
-
-This is the rationale document. The **how** — file layout, invariants, test
-requirements — lives in [rules/state-machines.md](../rules/state-machines.md),
-and the shared plumbing lives in `src/state_machines/`.
-
-A "state machine" here is deliberately boring: a plain TypeScript module with
-a pure function `transition(state, event) → { state, commands }`, a small
-controller that executes the returned commands, and a `useSyncExternalStore`
-binding for React. No XState, no framework — the safety comes from the model,
-not a library.
-
-## The disease: orchestration written as component state
-
-Every machine we built replaced the same pattern: a multi-step async workflow
-(where ordering matters) implemented as ordinary React/module state. It never
-starts out broken. It accretes:
-
-1. A boolean in-progress flag stands in for a state that was never named.
-2. An async callback needs fresh values, so a ref starts mirroring reactive
-   state.
-3. A stale response sneaks through, so a hand-rolled request-id or generation
-   counter appears.
-4. Two code paths race, so a `setTimeout` "lets state settle".
-5. An effect starts *inferring* that a transition happened by diffing
-   previous vs. current values.
-
-Each patch is locally reasonable. Together they produce code where the actual
-workflow — the thing the user experiences — exists only as an emergent
-property of flags that several writers must keep coherent by hand. The bugs
-that follow are not typos; they are *unrepresentable-state* bugs: the code
-reaches a combination of flags that no one designed, and there is no line to
-point at.
-
-The four examples below are real code from this repository.
-
-## Example 1: "Is this chat streaming?" — five answers, three bugs
-
-Before the chat stream machine, "is this chat streaming" was represented in
-five places at once — a module-level set, two Jotai atoms, a scroll counter,
-and main-process bookkeeping — each patched against the others' races:
+For a long time, this comment sat in our chat streaming code:
 
 ```ts
-// src/hooks/useStreamChat.ts (before)
-
-// Module-level set to track chatIds with active/pending streams
 // This prevents race conditions when clicking rapidly before state updates
 const pendingStreamChatIds = new Set<number>();
-
-// …meanwhile, elsewhere:
-//   isStreamingByIdAtom            — set false from ~6 different code paths
-//   streamCompletedSuccessfullyByIdAtom — a success latch the queue
-//                                    processor watched as a covert signal
-//   chatStreamCountByIdAtom        — a hand-rolled generation counter
 ```
 
-That comment — "prevents race conditions when clicking rapidly before state
-updates" — is the tell. The set exists because the atom lags renders. Three
-concrete, user-reachable bugs fell out of this arrangement: a message
-submitted in the lag window was silently dropped after the input was already
-cleared; a cancel racing stream startup could desync the UI from disk; and
-the queue could dispatch the same message twice.
+That's a description of a bug, kept as a comment. And the workaround had its
+own bug: if you hit Enter at the wrong moment, your message was silently
+dropped after the input box had already cleared it. It looked sent. It never
+went anywhere.
 
-After: one machine per chat owns the lifecycle. "Starting" — the state the
-flags never represented — is a real state, and submitting during it is a
-*transition*, decided synchronously, not a flag check that can lag:
+We kept fixing versions of this bug all over the app. Chat streaming, OAuth
+sign-in, the plan-mode handoff, the version history preview. Different
+features, same root cause. Starting in mid-2026 we rewrote these workflows as
+small state machines, and this doc explains what that means, why we did it,
+and shows real before/after code from the migration.
+
+The conventions for writing one live in
+[rules/state-machines.md](../rules/state-machines.md). This doc is the why.
+
+## A quick primer, if state machines aren't familiar
+
+A state machine is two lists and a rule:
+
+- a list of named states the workflow can be in
+- a list of events that can happen
+- a rule that says, for every state and every event, what the next state is
+
+Here's the chat streaming machine's happy path:
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> starting: submit
+    starting --> streaming: registered
+    streaming --> finalizing: stream ended
+    finalizing --> idle: cleanup done
+    starting --> cancelling: cancel
+    streaming --> cancelling: cancel
+    cancelling --> finalizing: stream ended
+```
+
+The important part is what this replaces. Without a machine, "where are we in
+this workflow?" is answered by reading several booleans and hoping they
+agree. With a machine there is one value, and it's always one of the named
+states.
+
+In Dyad, a machine is a plain TypeScript function. No library:
 
 ```ts
-// src/chat_stream/transition.ts (after)
+function transition(state: State, event: Event): { state: State; commands: Command[] }
+```
+
+It takes the current state and an event, and returns the next state plus a
+list of commands. Commands are the side effects: "start the stream", "show a
+toast", "wait 2.5 seconds". The function itself never does anything, it just
+returns data. A small controller runs the commands and feeds the results back
+in as new events. React components subscribe to the current state and render
+it.
+
+Because `transition` is a pure function, you can test the entire workflow as
+a table: for each state, for each event, assert what comes out. No React, no
+timers, no mocks.
+
+## How the old code went wrong
+
+None of the old code started out broken. It grew, one reasonable patch at a
+time. The pattern went like this:
+
+1. You add `isStreaming`. It works.
+2. An async callback reads it after a delay and gets a stale value. So you
+   add `isStreamingRef` and keep it in sync with an effect.
+3. A response from an old request overwrites a new one. So you add a counter
+   and check it before applying results.
+4. Two things race on startup. So you add `setTimeout(..., 100)` to "let
+   state settle".
+5. A feature needs to react to streaming *ending*. There's no event for
+   that, so you save the previous value and diff it against the current one
+   every render.
+
+Every step is a sensible fix for the bug in front of you. After a couple of
+years you have five flags, three refs, and a timer, and they're only
+correct when they all agree. The bugs live in the moments they don't.
+
+The examples below are real code from this repository.
+
+## Five flags for one question
+
+Before the chat stream machine, "is this chat streaming?" had five separate
+answers: the module-level set from the top of this doc, two Jotai atoms
+(one of which existed only so the queue processor could watch it flip), a
+counter used to trigger scrolling, and the main process's own bookkeeping.
+Six different code paths set the main atom to `false`.
+
+Three real bugs came out of this. Messages submitted in the wrong few
+milliseconds were dropped. A cancel racing stream startup could leave the UI
+saying "cancelled" while files kept changing on disk. And the message queue
+could send the same message twice.
+
+Now one machine per chat owns the answer. Here's what submitting looks like:
+
+```ts
+// src/chat_stream/transition.ts
 case "idle": {
   switch (event.type) {
     case "submit": {
@@ -82,31 +113,30 @@ case "idle": {
         commands: [{ type: "start-stream", streamId, request: event.request }],
       };
     }
-    // …
   }
 }
 case "starting": {
   switch (event.type) {
     case "submit":
-      // A stream is already starting: queue, never drop.
+      // A stream is already starting: queue it, never drop it.
       return {
         state,
         commands: [{ type: "enqueue-message", request: event.request }],
       };
-    // …
   }
 }
 ```
 
-The five representations collapsed into one snapshot plus a read-only
-projection. The message-drop bug is not "fixed" so much as *unwritable*: there
-is no flag to check too early.
+"Starting" used to be a gap between two flag updates. Now it's a state, and
+submitting during it has a defined answer: the message goes in the queue.
+The dropped-message bug can't be written anymore, because there's no flag to
+check too early.
 
-## Example 2: detecting "the stream just finished" by diffing renders
+## Guessing when a stream ends
 
-Several features needed to react to a stream ending. Without an event to
-subscribe to, they reconstructed the transition by comparing the previous
-render's value to the current one:
+Several features needed to know when a stream finished. There was no event
+for it, so each one reconstructed the answer by saving last render's value
+and comparing:
 
 ```ts
 // src/hooks/useIntegrationContinuation.ts (before)
@@ -122,43 +152,34 @@ useEffect(() => {
     }
   }
   prevStreamingRef.current = new Map(isStreamingById);
-  // … dispatch continuations for justStopped …
+  // ... do things with justStopped ...
 });
 ```
 
-This works only if React renders between the `true` and `false` writes, runs
-on every unrelated render, and each feature that needs it copies the pattern
-(we had four copies: integration continuation, chat tab notification dots,
-chat panel scroll, test-panel invalidation).
+This ran on every render, and only worked if React happened to render
+between the `true` and the `false`. We had four copies of it.
 
-After: the machine already *knows* the exact transition — `finalizing → idle`
-— so it emits a signal, and consumers subscribe:
+The machine knows the exact moment a stream finishes, because finishing is
+one of its transitions. So it emits an event, and the four copies became
+four subscriptions:
 
 ```ts
 // src/hooks/useIntegrationContinuation.ts (after)
 useStreamFinished(({ chatId }) => {
-  const continuationProvider = store
-    .get(pendingContinuationProviderAtom)
-    .get(chatId);
-  // … dispatch the continuation for exactly this chat, exactly once …
+  // runs once, exactly when this chat's stream finishes
 });
 ```
 
-An edge detector *guesses* that a transition happened from its side effects.
-A machine *announces* its transitions. The four ref-diffing copies became
-four one-line subscriptions.
+## The 2.5 second sleep
 
-## Example 3: the load-bearing sleep
-
-The plan-mode handoff (accept a plan → cancel the stream → show confirmation
-→ persist → start implementation) was a multi-await saga with a hardcoded
-pause in the middle:
+Accepting a plan kicks off a chain: cancel the current stream, show a
+confirmation, save the plan, start the implementation. It used to be one
+long async function, with a sleep in the middle:
 
 ```ts
 // src/hooks/usePlanEvents.ts (before)
 await ipc.chat.cancelStream(payload.chatId);
 
-// Show transitioning state while we prepare the implementation
 setPlanState((prev) => { /* add chatId to transitioningChatIds */ });
 
 // Pause so the user can see the "Plan accepted" confirmation
@@ -170,13 +191,12 @@ setPlanState((prev) => { /* remove chatId from transitioningChatIds */ });
 const currentState = planStateRef.current;
 ```
 
-Nothing guarded re-entry: a second accept, an unmount, or a stream that ended
-on its own mid-sleep would interleave with the saga at whatever await it
-happened to be parked on. The sleep wasn't a delay — it was a synchronization
-primitive, and the refs existed because the closure went stale across it.
+Nothing stopped a second accept, an unmount, or the stream ending on its own
+while this function was parked at an `await`. Whatever happened during those
+2.5 seconds just interleaved with the middle of the chain.
 
-After: each step is a state, and the pause is a command whose completion is
-just another event:
+Now each step of the chain is a state, and the pause is a command like any
+other:
 
 ```ts
 // src/plan_handoff/transition.ts (after)
@@ -191,45 +211,31 @@ case "cancelling-stream": {
       return ignoreEvent(state, event);
   }
 }
-case "transitioning": {
-  switch (event.type) {
-    case "TRANSITION_DISPLAY_DONE":
-      return {
-        state: { type: "persisting", session: state.session },
-        commands: [{ type: "set-preview-mode", mode: "preview" }, /* … */],
-      };
-  }
-}
 ```
 
-A second accept arriving mid-handoff now hits an exhaustive `switch` and is
-deliberately ignored — visible in telemetry — instead of silently interleaving.
-And because `transition()` is pure, the whole saga is tested as a table of
-(state, event) pairs with no timers and no React.
+A second accept arriving mid-chain now hits `ignoreEvent` and is recorded in
+the debug log. Before, it interleaved silently. And the whole chain is
+tested without a single real timer.
 
-## Example 4: OAuth returns correlated by timestamp
+## Which sign-in attempt is this reply for?
 
-Connecting Neon (and Supabase) used a global "last deep link" broadcast.
-Every mounted connector inferred "a return happened" from a timestamp edge,
-and start/timeout/return were coordinated by a ref-managed timer:
+Connecting Neon or Supabase opens the browser for OAuth, then waits for a
+deep link back. The old code detected "a reply arrived" by watching a
+timestamp change, and handled timeouts with a ref-managed timer:
 
 ```tsx
 // src/components/NeonConnector.tsx (before)
 useEffect(() => {
-  const handleDeepLink = async () => {
-    if (lastDeepLink?.type === "neon-oauth-return") {
-      if (oauthTimeoutRef.current) clearTimeout(oauthTimeoutRef.current);
-      setIsOpeningOauth(false);
-      await refreshSettings();
-      // … refetch, toast, clearLastDeepLink() …
-    }
-  };
-  handleDeepLink();
+  if (lastDeepLink?.type === "neon-oauth-return") {
+    if (oauthTimeoutRef.current) clearTimeout(oauthTimeoutRef.current);
+    setIsOpeningOauth(false);
+    // ... save settings, refetch, toast ...
+  }
 }, [lastDeepLink?.timestamp]);
 
 const handleConnect = async () => {
   setIsOpeningOauth(true);
-  await ipc.system.openExternalUrl("https://oauth.dyad.sh/…/neon/login");
+  await ipc.system.openExternalUrl("https://oauth.dyad.sh/.../neon/login");
   // Reset after 20s if the OAuth return never arrives
   oauthTimeoutRef.current = setTimeout(() => {
     setIsOpeningOauth(false);
@@ -238,81 +244,72 @@ const handleConnect = async () => {
 };
 ```
 
-Reachable absurdities: double-clicking Connect orphaned a timer that later
-fired a spurious "timed out" toast; auth completing at second 25 showed
-"timed out" *then* "connected"; and a stale or replayed return link would
-write credentials with no pending flow to validate against.
+Real things users saw: double-clicking Connect left an orphaned timer that
+later showed "timed out" out of nowhere. Finishing sign-in at second 25
+showed "timed out" and then "connected". And a stale reply link would write
+credentials with nothing checking which attempt it belonged to.
 
-After: the connection flow is a main-process machine. Every start mints a
-`flowId`; returns and timeouts carry it, so timeout-vs-return is mutually
-exclusive by construction and stale returns are ignored — with a reason:
+The fix: every attempt gets an id, and replies must carry it back.
+
+```mermaid
+stateDiagram-v2
+    disconnected --> starting: connect (new flowId)
+    starting --> awaitingReturn: prepared
+    awaitingReturn --> exchangingToken: return (flowId matches)
+    awaitingReturn --> failed: timed out
+    exchangingToken --> connected: token saved
+```
 
 ```ts
 // src/connection_flow/transition.ts (after)
-case "prepared": {
-  if (state.status === "disconnected") {
-    return ignore(state, "no-active-flow");
-  }
-  if (state.flowId !== event.flowId) {
-    return ignore(state, "flow-id-mismatch");
-  }
-  switch (state.status) {
-    case "starting":
-      return advance({
-        status: "awaiting-return",
-        flowId: state.flowId,
-        provider: state.provider,
-        // …
-      });
-    // …
-  }
+if (state.flowId !== event.flowId) {
+  return ignore(state, "flow-id-mismatch");
 }
 ```
 
-The timestamp hack, the timer trio, and the credential-overwrite hazard all
-reduce to one question the machine can actually answer: *does this event
-belong to the flow I started?*
+A reply from an old attempt can't touch a new one. Timeout and success can't
+both fire, because they're two different transitions out of the same state
+and only one can happen.
 
-## What a machine buys you
+## What this buys us
 
-- **Impossible states become unrepresentable.** "Timed out AND connected" or
-  "submitted but not starting" aren't flag combinations to defend against —
-  they simply cannot be constructed.
-- **Races become transitions.** Instead of patching each interleaving as it's
-  discovered, the state × event matrix forces a decision for *every* pair up
-  front, and totality tests hold you to it.
-- **Deliberate no-ops are visible.** `ignore(state, "flow-id-mismatch")` is
-  distinguishable from a forgotten case, and observable in telemetry — a
-  silent `if` bail-out is neither.
-- **One writer.** UI reads a snapshot (or a read-only atom projection);
-  nothing else may mutate the workflow state. Multi-writer drift is a lint
-  away instead of a debugging session away.
-- **Tests need no React and no clocks.** A pure `transition()` is tested as
-  data; command runners are faked; timers are injected.
+- The bad states can't be constructed. "Timed out and connected" isn't a
+  flag combination to guard against, it just doesn't exist. This is the
+  "make impossible states impossible" idea, applied to async workflows.
+- Every race gets decided up front. The transition function has to answer
+  every state/event combination, and a test walks the whole table.
+- Ignoring an event is explicit. `ignore(state, "flow-id-mismatch")` shows
+  up in the debug log. A silent early return in an effect shows up nowhere.
+- One thing writes the state. Components read a snapshot. When something
+  looks wrong, there's one place to look.
+- Tests are plain functions. No React, no fake timers, no flaky waits.
 
-## What we deliberately did not do
+## Why not XState?
 
-- **No XState, no framework.** Four machines produced four *different*,
-  load-bearing concurrency models (FIFO queue, runId epochs, flowId
-  correlation, per-command rules). A generic controller would be a policy
-  framework bigger than the ~150-line controllers it replaced.
-- **No premature abstraction.** The shared kernel (`src/state_machines/`)
-  contains only what was literally identical across machines: snapshot store,
-  keyed controller host, transition/ignore types, React bindings, test kit.
-  Concurrency policy stays per-machine, documented in each machine's header.
+We considered it. Our machines turned out to need very different rules about
+what runs at the same time and what gets dropped as stale: plan handoff
+queues events and drains them in order, app run stamps everything with a
+generation number, connection flow checks flow ids. A framework big enough
+to express all of that would be bigger than the machines themselves, which
+are each 100-200 lines. The shared code we did extract
+(`src/state_machines/`) is only the parts that were literally identical:
+the snapshot store, the React binding, the test helpers.
 
-## When to reach for one — and when not to
+## When shouldn't I do this?
 
-Reach for a machine when a workflow has async races, queued work, ordering
-that matters, or events that can arrive after the operation was superseded —
-especially if you catch yourself adding a ref-mirror, a generation counter,
-or a `setTimeout` to "let state settle".
+Don't wrap a machine around things that aren't multi-step workflows. A ref
+holding an xterm or Monaco instance is fine. A "latest callback" ref is
+fine. A plain TanStack Query fetch is fine. If there's no ordering problem
+and no event that can arrive late, a machine adds ceremony and nothing else.
 
-Don't machine-ify plumbing: imperative library handles (xterm, Monaco, DOM
-refs), "latest callback" refs, scroll bookkeeping, or plain TanStack Query
-fetches are fine as they are. A machine that wraps a single request-response
-adds ceremony, not safety.
+The warning signs that you do want one: you're adding a ref that mirrors
+state so a callback can read it, a counter to reject stale responses, or a
+`setTimeout` to "let state settle". That's the pattern from the top of this
+doc, starting again.
 
-Start with [rules/state-machines.md](../rules/state-machines.md) for the
-conventions, and read any of the existing machines — `src/plan_handoff/` is
-the smallest complete example — before writing a new one.
+## Where to look next
+
+[rules/state-machines.md](../rules/state-machines.md) has the conventions:
+file layout, invariants, and what tests are expected. For a complete example
+to read, `src/plan_handoff/` is the smallest one. The shared plumbing is in
+`src/state_machines/`.

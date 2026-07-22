@@ -2243,6 +2243,7 @@ async function getMcpTools(
                   inputPreview,
                   chatId: ctx.chatId,
                   autoApprove,
+                  abortSignal: ctx.abortSignal,
                 });
 
               if (!approved)

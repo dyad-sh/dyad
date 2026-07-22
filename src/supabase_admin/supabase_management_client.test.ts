@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listSupabaseOrganizations } from "./supabase_management_client";
+import {
+  listSupabaseOrganizations,
+  refreshSupabaseToken,
+} from "./supabase_management_client";
+import { readSettings } from "@/main/settings";
 
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
@@ -52,5 +56,49 @@ describe("listSupabaseOrganizations", () => {
       "Failed to fetch organizations: Forbidden",
     );
     expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe("refreshSupabaseToken", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shares one refresh request across concurrent callers", async () => {
+    vi.mocked(readSettings).mockReturnValue({
+      supabase: {
+        refreshToken: { value: "rotating-refresh-token" },
+        expiresIn: 1,
+        tokenTimestamp: 0,
+      },
+    } as ReturnType<typeof readSettings>);
+    let release: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      ),
+    );
+
+    const first = refreshSupabaseToken();
+    const second = refreshSupabaseToken();
+    expect(second).toBe(first);
+    expect(fetch).toHaveBeenCalledOnce();
+
+    release(
+      new Response(
+        JSON.stringify({
+          accessToken: "access",
+          refreshToken: "rotated",
+          expiresIn: 3600,
+        }),
+        { status: 200 },
+      ),
+    );
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 });

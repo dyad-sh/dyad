@@ -90,6 +90,20 @@ import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider
 import { AppRunManager } from "@/app_run/manager";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
+import { ensureController as ensureChatStreamController } from "@/chat_stream/registry";
+
+const planHandoffChatStream = {
+  submit: (request: {
+    chatId: number;
+    prompt: string;
+    selectedComponents: [];
+    requestedChatMode: "local-agent";
+  }) =>
+    ensureChatStreamController(request.chatId).send({
+      type: "submit",
+      request,
+    }),
+};
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -633,7 +647,7 @@ export async function setupHybridChatHarness(
       store.set(selectedChatIdAtom, route === "/chat" ? chatId : null);
 
       const RootComponent = () => (
-        <PlanHandoffProvider>
+        <PlanHandoffProvider chatStream={planHandoffChatStream}>
           <div data-testid="hybrid-surface-root">
             {opts.wireAppEvents !== false && <HybridAppShellHooks />}
             {opts.withTitleBar && <TitleBar />}

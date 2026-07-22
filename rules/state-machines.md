@@ -40,6 +40,33 @@ dropped. Main-process machines should use an explicitly constructed registry
 with injected timers, IDs, and broadcasts; renderer machines use the shared
 keyed host.
 
+## Composition
+
+- Machines communicate through typed facades injected in their dependency
+  objects, or through explicit events. A machine must never import another
+  machine's registry or controller module.
+- Record the machine dependency graph in each participating module's header
+  and keep it acyclic. Construct concrete facade adapters at an application
+  composition root, outside both machines.
+
+## Projections
+
+- A machine projection has one writer: its controller or manager. Jotai atoms
+  exposed to legacy UI are read-only views and are updated from snapshots in
+  one subscription, not opportunistically by individual commands.
+- Prefer derived selectors for values computable from the snapshot. Do not add
+  generation counters or mirrored booleans beside a machine-owned identity or
+  lifecycle state.
+
+## Persistence and hydration
+
+- Model hydration explicitly when persisted state gates machine behavior.
+  Persist through an adapter-owned, debounced command using a versioned zod
+  schema; do not let components write snapshots independently.
+- Define merge/replacement semantics for events received during hydration.
+  On teardown, flush the latest accepted snapshot through a transport that is
+  safe for the lifecycle boundary (for example, one-way IPC during pagehide).
+
 ## Tests
 
 - Exercise every reachable state against every event type and assert totality.
@@ -47,3 +74,9 @@ keyed host.
   transitions do not create value-equal snapshots.
 - Use fake command runners. Tests must get isolation from constructed owners,
   never from a module-global reset helper.
+- `driveTransitionMatrix` remains available for hand-enumerated totality
+  tests; new machines may instead use `exploreReachableStates` when a finite
+  event generator can discover the reachable graph. Existing bespoke suites
+  need not be migrated mechanically.
+- `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
+  add new machine directories to its inventory when they are introduced.

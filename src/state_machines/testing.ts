@@ -18,6 +18,45 @@ export function driveTransitionMatrix<State, Event, Command>(options: {
   return results;
 }
 
+/**
+ * Breadth-first exploration for machines whose reachable states can be
+ * generated from a finite event set. State keys deliberately come from the
+ * domain so the shared kit does not prescribe serialization or equality.
+ */
+export function exploreReachableStates<State, Event, Command>(options: {
+  initialState: State;
+  events: readonly Event[] | ((state: State) => readonly Event[]);
+  transition: (state: State, event: Event) => TransitionResult<State, Command>;
+  stateKey: (state: State) => string;
+  maxStates?: number;
+}): State[] {
+  const maxStates = options.maxStates ?? 1_000;
+  const states: State[] = [options.initialState];
+  const seen = new Set([options.stateKey(options.initialState)]);
+
+  for (let index = 0; index < states.length; index += 1) {
+    const state = states[index];
+    const events =
+      typeof options.events === "function"
+        ? options.events(state)
+        : options.events;
+    for (const event of events) {
+      const result = options.transition(state, event);
+      const key = options.stateKey(result.state);
+      if (seen.has(key)) continue;
+      if (states.length >= maxStates) {
+        throw new Error(
+          `Reachable-state exploration exceeded maxStates (${maxStates})`,
+        );
+      }
+      seen.add(key);
+      states.push(result.state);
+    }
+  }
+
+  return states;
+}
+
 export function assertReferenceStability<
   State,
   Command,

@@ -133,6 +133,33 @@ describe("local-agent consent banner (integration)", () => {
     await expect(consent).resolves.toBe(false);
   });
 
+  it("clears the consent banner when the main-process waiter aborts", async () => {
+    writeSettings({ agentToolConsents: { add_dependency: "ask" } });
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+    const abortController = new AbortController();
+
+    const consent = requireAgentToolConsent(harness.bridge.fakeEvent as any, {
+      chatId,
+      toolName: "add_dependency",
+      toolDescription: "Install npm packages",
+      abortSignal: abortController.signal,
+    });
+    await screen.findByRole("button", { name: "Decline" });
+
+    abortController.abort();
+
+    await expect(consent).resolves.toBe(false);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Decline" })).toBeNull(),
+    );
+    expect(
+      harness.bridge.sentEvents.some(
+        (event) => event.channel === "agent-tool:consent-resolved",
+      ),
+    ).toBe(true);
+  });
+
   async function lastAssistantContent(chatId: number) {
     const stored = await harness.db.query.messages.findMany({
       where: eq(messages.chatId, chatId),

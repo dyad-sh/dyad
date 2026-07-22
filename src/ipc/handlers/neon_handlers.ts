@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
+import type { IpcMainInvokeEvent } from "electron";
+import { z } from "zod";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { createTypedHandler } from "./base";
+import type { IpcContract } from "../contracts/core";
 import { handleNeonOAuthReturn } from "../../neon_admin/neon_return_handler";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import {
@@ -41,8 +44,23 @@ import {
   type EnsureNitroResult,
 } from "../utils/nitro_setup";
 import { getDyadAppPath } from "@/paths/paths";
+import { createAppMutationLock } from "@/ipc/utils/app_mutation_lock";
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
+
+function createLockedHandler<
+  TChannel extends string,
+  TInput extends z.ZodType,
+  TOutput extends z.ZodType,
+>(
+  contract: IpcContract<TChannel, TInput, TOutput>,
+  handler: (
+    event: IpcMainInvokeEvent,
+    input: z.infer<TInput>,
+  ) => Promise<z.infer<TOutput>>,
+): void {
+  createTypedHandler(contract, createAppMutationLock(handler));
+}
 
 async function restoreEnvFileSnapshot({
   appPath,
@@ -66,7 +84,7 @@ async function restoreEnvFileSnapshot({
 
 export function registerNeonHandlers() {
   // Do not use log handler because there's sensitive data in the response
-  createTypedHandler(neonContracts.createProject, async (_, params) => {
+  createLockedHandler(neonContracts.createProject, async (_, params) => {
     const { name, appId } = params;
     const neonClient = await getNeonClient();
 
@@ -479,7 +497,7 @@ export function registerNeonHandlers() {
   });
 
   // Link an existing Neon project to a Dyad app
-  createTypedHandler(neonContracts.setAppProject, async (_, params) => {
+  createLockedHandler(neonContracts.setAppProject, async (_, params) => {
     const { appId, projectId } = params;
     logger.info(`Setting Neon project ${projectId} for app ${appId}`);
 
@@ -640,7 +658,7 @@ export function registerNeonHandlers() {
   });
 
   // Unlink a Neon project from a Dyad app
-  createTypedHandler(neonContracts.unsetAppProject, async (_, params) => {
+  createLockedHandler(neonContracts.unsetAppProject, async (_, params) => {
     const { appId } = params;
     logger.info(`Unsetting Neon project for app ${appId}`);
 
@@ -686,7 +704,7 @@ export function registerNeonHandlers() {
   });
 
   // Set the active branch for SQL execution
-  createTypedHandler(neonContracts.setActiveBranch, async (_, params) => {
+  createLockedHandler(neonContracts.setActiveBranch, async (_, params) => {
     const { appId, branchId } = params;
     logger.info(`Setting active Neon branch ${branchId} for app ${appId}`);
 
@@ -903,7 +921,7 @@ export function registerNeonHandlers() {
   // against. This is a lightweight view/deploy preference, intentionally
   // distinct from neonActiveBranchId (the SQL-execution branch). The main
   // process reads it when syncing env vars + trusted domains to Vercel.
-  createTypedHandler(
+  createLockedHandler(
     neonContracts.setSelectedDatabaseBranchType,
     async (_, params) => {
       const { appId, branchType } = params;
@@ -950,7 +968,7 @@ export function registerNeonHandlers() {
     },
   );
 
-  testOnlyHandle("neon:fake-connect", async (event) => {
+  testOnlyHandle("neon:fake-connect", async () => {
     // Call handleNeonOAuthReturn with fake data, running it through the
     // connection flow machine so an active flow (started by the connector's
     // Connect click) advances just like a real dyad://neon-oauth-return.
@@ -965,12 +983,5 @@ export function registerNeonHandlers() {
       throw outcome.error;
     }
     logger.info("Called handleNeonOAuthReturn with fake data during testing.");
-
-    // Simulate the deep link event
-    event.sender.send("deep-link-received", {
-      type: "neon-oauth-return",
-      url: "https://oauth.dyad.sh/api/integrations/neon/login",
-    });
-    logger.info("Sent fake neon deep-link-received event during testing.");
   });
 }

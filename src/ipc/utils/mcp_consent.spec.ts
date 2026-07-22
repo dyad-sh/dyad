@@ -106,9 +106,27 @@ describe("requireMcpToolConsent (classifier race)", () => {
     await vi.waitFor(() => expect(send).toHaveBeenCalled());
     resolveConsent(lastRequestId(send), "decline");
     await expect(pending).resolves.toEqual({ approved: false });
-    expect(send).not.toHaveBeenCalledWith(
+    expect(send).toHaveBeenCalledWith(
       "mcp:tool-consent-resolved",
-      expect.anything(),
+      expect.objectContaining({ requestId: expect.any(String) }),
+    );
+  });
+
+  it("declines on stream abort without sending the AbortSignal to renderer", async () => {
+    const { event, send } = makeEvent();
+    const controller = new AbortController();
+    const pending = requireMcpToolConsent(event, {
+      ...baseParams,
+      abortSignal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0][1]).not.toHaveProperty("abortSignal");
+    controller.abort();
+    await expect(pending).resolves.toEqual({ approved: false });
+    expect(send).toHaveBeenCalledWith(
+      "mcp:tool-consent-resolved",
+      expect.objectContaining({ requestId: expect.any(String) }),
     );
   });
 });

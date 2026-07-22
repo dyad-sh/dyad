@@ -111,7 +111,9 @@ function isTokenExpired(expiresIn?: number): boolean {
  * Refreshes the Supabase access token using the refresh token
  * Updates settings with new tokens and expiration time
  */
-export async function refreshSupabaseToken(): Promise<void> {
+let refreshSupabaseTokenPromise: Promise<void> | null = null;
+
+async function refreshSupabaseTokenOnce(): Promise<void> {
   const settings = readSettings();
   const refreshToken = settings.supabase?.refreshToken?.value;
 
@@ -172,6 +174,15 @@ export async function refreshSupabaseToken(): Promise<void> {
     logger.error("Error refreshing Supabase token:", error);
     throw error;
   }
+}
+
+export function refreshSupabaseToken(): Promise<void> {
+  if (!refreshSupabaseTokenPromise) {
+    refreshSupabaseTokenPromise = refreshSupabaseTokenOnce().finally(() => {
+      refreshSupabaseTokenPromise = null;
+    });
+  }
+  return refreshSupabaseTokenPromise;
 }
 
 // Function to get the Supabase Management API client

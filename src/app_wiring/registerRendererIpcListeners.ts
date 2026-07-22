@@ -88,6 +88,14 @@ export function registerRendererIpcListeners({
   );
 
   unsubscribes.push(
+    ipcClient.events.agent.onConsentResolved((payload) => {
+      store.set(pendingToolConsentsAtom, (prev) =>
+        prev.filter((consent) => consent.requestId !== payload.requestId),
+      );
+    }),
+  );
+
+  unsubscribes.push(
     ipcClient.events.mcp.onConsentRequest((payload) => {
       store.set(pendingToolConsentsAtom, (prev) => [
         ...prev,

@@ -53,6 +53,10 @@ export type AgentToolConsentResponseParams = z.infer<
   typeof AgentToolConsentResponseParamsSchema
 >;
 
+export const AgentToolConsentResolvedSchema = z.object({
+  requestId: z.string(),
+});
+
 /**
  * Schema for agent todo item.
  */
@@ -171,6 +175,12 @@ export const agentEvents = {
   consentRequest: defineEvent({
     channel: "agent-tool:consent-request",
     payload: AgentToolConsentRequestSchema,
+  }),
+
+  /** Emitted whenever the main-process waiter settles, including timeout/abort. */
+  consentResolved: defineEvent({
+    channel: "agent-tool:consent-resolved",
+    payload: AgentToolConsentResolvedSchema,
   }),
 
   /**

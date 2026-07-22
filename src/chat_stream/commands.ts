@@ -15,7 +15,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { pendingScreenshotAppIdAtom } from "@/atoms/previewAtoms";
+import { pendingScreenshotAppIdsAtom } from "@/atoms/previewAtoms";
 import { bumpPreviewReloadTokenForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { ipc } from "@/ipc/types";
@@ -464,7 +464,10 @@ export const productionChatStreamCommands: ChatStreamCommands = {
         }
         if (targetAppId !== null) {
           store.set(bumpPreviewReloadTokenForAppAtom, targetAppId);
-          store.set(pendingScreenshotAppIdAtom, targetAppId);
+          store.set(pendingScreenshotAppIdsAtom, (pending) => {
+            if (pending.has(targetAppId)) return pending;
+            return new Set(pending).add(targetAppId);
+          });
         }
       }
 

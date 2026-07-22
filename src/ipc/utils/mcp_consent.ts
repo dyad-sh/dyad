@@ -4,45 +4,35 @@ import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import crypto from "node:crypto";
 import { safeSend } from "./safe_sender";
+import { createUserInputResolver } from "./user_input_resolver";
 
 export type Consent = "ask" | "always" | "denied";
 
 type ConsentDecision = "accept-once" | "accept-always" | "decline";
 
-interface PendingMcpConsent {
-  chatId: number;
-  resolve: (d: ConsentDecision) => void;
-}
-
-const pendingConsentResolvers = new Map<string, PendingMcpConsent>();
+const consentResolver = createUserInputResolver<ConsentDecision>({
+  timeoutMs: 5 * 60 * 1000,
+});
 
 export function waitForConsent(
   requestId: string,
   chatId: number,
+  abortSignal?: AbortSignal,
 ): Promise<ConsentDecision> {
-  return new Promise((resolve) => {
-    pendingConsentResolvers.set(requestId, { chatId, resolve });
-  });
+  return consentResolver
+    .wait(requestId, chatId, abortSignal)
+    .then((decision) => decision ?? "decline");
 }
 
 export function resolveConsent(requestId: string, decision: ConsentDecision) {
-  const entry = pendingConsentResolvers.get(requestId);
-  if (entry) {
-    pendingConsentResolvers.delete(requestId);
-    entry.resolve(decision);
-  }
+  consentResolver.resolve(requestId, decision);
 }
 
 // Resolve any pending MCP consents for a chat as declined. Called when a stream
 // is cancelled or ends so the tool calls unblock instead of hanging once their
 // consent UI has been cleared.
 export function clearPendingMcpConsentsForChat(chatId: number): void {
-  for (const [requestId, entry] of pendingConsentResolvers) {
-    if (entry.chatId === chatId) {
-      pendingConsentResolvers.delete(requestId);
-      entry.resolve("decline");
-    }
-  }
+  consentResolver.abortChat(chatId);
 }
 
 export async function getStoredConsent(
@@ -117,6 +107,7 @@ export async function requireMcpToolConsent(
     // Optional auto-approve hook (agent mode, Pro). Runs only on the "ask"
     // path, so explicit always/denied choices still win.
     autoApprove?: () => Promise<McpAutoApproveResult>;
+    abortSignal?: AbortSignal;
   },
 ): Promise<McpConsentResult> {
   const current = await getStoredConsent(params.serverId, params.toolName);
@@ -124,7 +115,7 @@ export async function requireMcpToolConsent(
   if (current === "denied") return { approved: false };
 
   // Strip the non-serializable callback before sending over IPC.
-  const { autoApprove, ...serializableParams } = params;
+  const { autoApprove, abortSignal, ...serializableParams } = params;
   const requestId = `${params.serverId}:${params.toolName}:${crypto.randomUUID()}`;
   // Some of these sends fire after an await, so guard against a renderer that
   // was destroyed (window closed, e2e teardown) in the meantime.
@@ -144,7 +135,13 @@ export async function requireMcpToolConsent(
   // No classifier: show the prompt and wait for the user.
   if (!autoApprove) {
     send("mcp:tool-consent-request", { requestId, ...serializableParams });
-    return finalize(await waitForConsent(requestId, params.chatId));
+    const response = await waitForConsent(
+      requestId,
+      params.chatId,
+      abortSignal,
+    );
+    send("mcp:tool-consent-resolved", { requestId });
+    return finalize(response);
   }
 
   // Classifier active: show the prompt immediately with a spinner and race the
@@ -157,9 +154,11 @@ export async function requireMcpToolConsent(
     ...serializableParams,
     classifierPending: true,
   });
-  const humanPromise = waitForConsent(requestId, params.chatId).then(
-    (decision) => ({ source: "human" as const, decision }),
-  );
+  const humanPromise = waitForConsent(
+    requestId,
+    params.chatId,
+    abortSignal,
+  ).then((decision) => ({ source: "human" as const, decision }));
   // Fail closed if the classifier rejects: fall back to asking the user so the
   // race always settles and the prompt never sticks on the spinner.
   const classifierPromise = autoApprove()
@@ -174,6 +173,7 @@ export async function requireMcpToolConsent(
     // The classifier promise is intentionally left to finish on its own; it is
     // a stateless call whose result we no longer need. The .catch() above keeps
     // a late rejection from going unhandled.
+    send("mcp:tool-consent-resolved", { requestId });
     return finalize(winner.decision);
   }
   if (winner.result.approved) {
@@ -192,5 +192,7 @@ export async function requireMcpToolConsent(
     toolName: params.toolName,
     serverName: params.serverName,
   });
-  return finalize((await humanPromise).decision);
+  const response = (await humanPromise).decision;
+  send("mcp:tool-consent-resolved", { requestId });
+  return finalize(response);
 }

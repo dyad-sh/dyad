@@ -1081,10 +1081,6 @@ async function handleDeepLinkReturn(url: string) {
         return;
       }
     }
-    // Send message to renderer to trigger re-render
-    mainWindow?.webContents.send("deep-link-received", {
-      type: parsed.hostname,
-    });
     return;
   }
   if (parsed.hostname === "supabase-oauth-return") {
@@ -1113,10 +1109,6 @@ async function handleDeepLinkReturn(url: string) {
         return;
       }
     }
-    // Send message to renderer to trigger re-render
-    mainWindow?.webContents.send("deep-link-received", {
-      type: parsed.hostname,
-    });
     return;
   }
   // dyad://dyad-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100

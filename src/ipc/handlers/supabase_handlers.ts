@@ -13,7 +13,6 @@ import {
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
 import { createTypedHandler } from "./base";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
-import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -291,15 +290,6 @@ export function registerSupabaseHandlers() {
         .where(eq(apps.id, appId));
       logger.info(
         `Set fake Supabase project ${fakeProjectId} for app ${appId} during testing.`,
-      );
-
-      // Simulate the deep link event
-      safeSend(event.sender, "deep-link-received", {
-        type: "supabase-oauth-return",
-        url: "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
-      });
-      logger.info(
-        `Sent fake deep-link-received event for app ${appId} during testing.`,
       );
     },
   );

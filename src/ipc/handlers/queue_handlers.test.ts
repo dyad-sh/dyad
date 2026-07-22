@@ -49,7 +49,17 @@ describe("registerQueueHandlers - one-way write", () => {
   });
 
   it("persists a valid queue payload", async () => {
-    const queue = { "1": [{ id: "a", prompt: "hello" }] };
+    const queue = {
+      "1": [
+        {
+          id: "a",
+          prompt: "hello",
+          redo: true,
+          appId: 9,
+          requestedChatMode: null,
+        },
+      ],
+    };
     getWriteListener()({}, queue);
     await flush();
     expect(storeMock.writePersistedQueue).toHaveBeenCalledTimes(1);
@@ -60,6 +70,14 @@ describe("registerQueueHandlers - one-way write", () => {
     // Non-array value and non-canonical chat-id key are both rejected.
     expect(() => getWriteListener()({}, { "1": "not-an-array" })).not.toThrow();
     expect(() => getWriteListener()({}, { "01": [] })).not.toThrow();
+    expect(() =>
+      getWriteListener()(
+        {},
+        {
+          "1": [{ id: "a", prompt: "hello", requestedChatMode: "bogus" }],
+        },
+      ),
+    ).not.toThrow();
     await flush();
     expect(storeMock.writePersistedQueue).not.toHaveBeenCalled();
   });

@@ -371,10 +371,105 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-agent-consent-${chatId}-test_tool`;
+    const tag = "dyad-agent-consent-test-request";
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(tag);
     expect(notification.requireInteraction).toBe(true);
+  },
+);
+
+testWithNotificationsEnabled(
+  "consent resolution closes existing notifications and suppresses in-flight ones",
+  async ({ po, electronApp }) => {
+    await po.setUp({ autoApprove: false });
+    await po.importApp("minimal");
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
+    await enableNotifications(po);
+
+    const chatId = await createChat(po);
+    await triggerHidden(po);
+    await po.browserNotifications.injectFakeNotifications();
+
+    await electronApp.evaluate(
+      ({ BrowserWindow }, { chatId }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        window.webContents.send("agent-tool:consent-request", {
+          requestId: "agent-resolved-request",
+          chatId,
+          toolName: "test_tool",
+        });
+      },
+      { chatId },
+    );
+
+    const agentTag = "dyad-agent-consent-agent-resolved-request";
+    const agentNotification =
+      await po.browserNotifications.waitForNotificationWithTag(agentTag);
+    expect(agentNotification.closed).toBe(false);
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.webContents.send("agent-tool:consent-resolved", {
+        requestId: "agent-resolved-request",
+      });
+    });
+
+    await expect
+      .poll(async () => {
+        const notifications =
+          await po.browserNotifications.getCreatedNotifications();
+        return notifications.find((item) => item.tag === agentTag)?.closed;
+      })
+      .toBe(true);
+
+    await po.browserNotifications.clearNotifications();
+    await po.page.evaluate(() => {
+      const FakeNotification = window.Notification;
+      Object.defineProperty(FakeNotification, "permission", {
+        configurable: true,
+        value: "default",
+        writable: true,
+      });
+      FakeNotification.requestPermission = () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            Object.defineProperty(FakeNotification, "permission", {
+              configurable: true,
+              value: "granted",
+              writable: true,
+            });
+            resolve("granted");
+          }, 250);
+        });
+    });
+
+    // Send the terminal event while notification permission is still pending.
+    // This deterministically covers resolution during asynchronous setup.
+    await electronApp.evaluate(
+      ({ BrowserWindow }, { chatId }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        window.webContents.send("mcp:tool-consent-request", {
+          requestId: "mcp-in-flight-request",
+          serverId: 1,
+          chatId,
+          toolName: "mcp_tool",
+          serverName: "Test Server",
+        });
+        window.webContents.send("mcp:tool-consent-resolved", {
+          requestId: "mcp-in-flight-request",
+        });
+      },
+      { chatId },
+    );
+
+    await po.page.waitForTimeout(500);
+    const notifications =
+      await po.browserNotifications.getCreatedNotifications();
+    expect(
+      notifications.some(
+        (item) => item.tag === "dyad-mcp-consent-mcp-in-flight-request",
+      ),
+    ).toBe(false);
   },
 );
 
@@ -403,7 +498,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-agent-consent-${chatId}-test_tool`;
+    const tag = "dyad-agent-consent-test-request";
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(tag);
     expect(notification.requireInteraction).toBe(true);
@@ -435,7 +530,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-agent-consent-${chatId}-test_tool`;
+    const tag = "dyad-agent-consent-test-request";
     await po.browserNotifications.waitForNotificationWithTag(tag);
 
     await po.browserNotifications.clickNotificationWithTag(tag);
@@ -470,7 +565,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-mcp-consent-${chatId}-mcp_tool`;
+    const tag = "dyad-mcp-consent-mcp-request";
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(tag);
     expect(notification.body).toContain("mcp_tool");
@@ -505,7 +600,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-mcp-consent-${chatId}-mcp_tool`;
+    const tag = "dyad-mcp-consent-mcp-request";
     const notification =
       await po.browserNotifications.waitForNotificationWithTag(tag);
     expect(notification.body).toContain("mcp_tool");
@@ -540,7 +635,7 @@ testWithNotificationsEnabled(
       { chatId },
     );
 
-    const tag = `dyad-mcp-consent-${chatId}-mcp_tool`;
+    const tag = "dyad-mcp-consent-mcp-request";
     await po.browserNotifications.waitForNotificationWithTag(tag);
 
     await po.browserNotifications.clickNotificationWithTag(tag);

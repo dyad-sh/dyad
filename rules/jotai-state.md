@@ -93,3 +93,10 @@ For provider-owned disposable services, keep constructors side-effect-free and
 start external subscriptions only after the provider commits. React StrictMode
 replays effect setup/cleanup while retaining hook state, so cleanup must not
 permanently dispose an instance that the replayed setup will reuse.
+
+## App run-state event identity
+
+Proxy-ready output does not carry an operation generation. Stamping it with the
+current run epoch does not prove it belongs to that run, so never use a buffered
+proxy URL to override a failed destructive restart or reapply a potentially dead
+proxy; require producer-side identity before treating it as current-run evidence.

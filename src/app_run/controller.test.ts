@@ -233,6 +233,42 @@ describe("AppRunController", () => {
     });
   });
 
+  it("does not apply a buffered stale proxy URL when a restart fails", async () => {
+    const executor = createFakeExecutor();
+    const controller = new AppRunController({ appId: APP_ID, executor });
+
+    void controller.dispatch({
+      type: "RESTART",
+      startedAt: 100,
+      options: { removeNodeModules: false, recreateSandbox: false },
+    });
+    await flushMicrotasks();
+    const runId = lastStartCommand(executor).runId;
+
+    controller.send({ type: "PROXY_READY", url: makeUrl(2) });
+    executor.emit({
+      type: "RUN_IPC_FAILED",
+      runId,
+      error: { message: "restart failed" },
+    });
+    await flushMicrotasks();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      type: "errored",
+      error: { message: "restart failed" },
+    });
+    expect(executor.executed).toContainEqual({
+      type: "setError",
+      appId: APP_ID,
+      error: { message: "restart failed" },
+    });
+    expect(executor.executed).toContainEqual({
+      type: "bumpReloadToken",
+      appId: APP_ID,
+    });
+    expect(executor.executed.filter((c) => c.type === "applyUrl")).toEqual([]);
+  });
+
   it("runs the HMR reload cycle and drops RELOAD_DONE after a new operation", async () => {
     const executor = createFakeExecutor({ autoCompleteReloads: false });
     const controller = new AppRunController({ appId: APP_ID, executor });

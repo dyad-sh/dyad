@@ -458,10 +458,9 @@ describe("transition scenarios", () => {
     ]);
   });
 
-  it("lands in ready with the buffered URL when the IPC fails after the proxy reported ready", () => {
-    // e.g. a cloud restart where the proxy came up but a later step in the
-    // restart IPC failed: the app is verifiably serving, so show it (with
-    // the error surfaced) instead of blanking a working preview.
+  it("does not trust a buffered proxy URL when the restart IPC fails", () => {
+    // Proxy output has no operation identity, so a line buffered during the
+    // restart may belong to the old process whose proxy has been terminated.
     const restarting: RunState = {
       type: "starting",
       appId: APP_ID,
@@ -475,10 +474,13 @@ describe("transition scenarios", () => {
       runId: CURRENT_RUN_ID,
       error: { message: "boom" },
     });
-    expect(result.state).toMatchObject({ type: "ready", url: makeUrl(3) });
+    expect(result.state).toMatchObject({
+      type: "errored",
+      error: { message: "boom" },
+    });
     expect(result.commands).toEqual([
       { type: "setError", appId: APP_ID, error: { message: "boom" } },
-      { type: "applyUrl", appId: APP_ID, url: makeUrl(3) },
+      { type: "bumpReloadToken", appId: APP_ID },
     ]);
   });
 

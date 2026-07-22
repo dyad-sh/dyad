@@ -133,26 +133,6 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
       if (state.type !== "starting" || state.runId !== event.runId) {
         return ignore(state);
       }
-      if (state.pendingUrl) {
-        // The dev server verifiably reported ready (buffered proxy line)
-        // even though the run/restart IPC failed — e.g. a cloud restart
-        // where a step after proxy setup errored. Matching the pre-machine
-        // behavior (which had already applied the proxy line by this
-        // point): surface the error AND show the served app, rather than
-        // blanking a preview that is actually working.
-        return {
-          state: {
-            type: "ready",
-            appId: state.appId,
-            runId: state.runId,
-            url: state.pendingUrl,
-          },
-          commands: [
-            { type: "setError", appId: state.appId, error: event.error },
-            { type: "applyUrl", appId: state.appId, url: state.pendingUrl },
-          ],
-        };
-      }
       const commands: RunCommand[] = [
         { type: "setError", appId: state.appId, error: event.error },
       ];

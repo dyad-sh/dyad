@@ -28,7 +28,7 @@ import {
   normalizeLegacyTestFile,
   planLegacyMigration,
 } from "../utils/legacy_test_migration";
-import { safeJoin } from "../utils/path_utils";
+import { assertMutationPathAllowed, safeJoin } from "../utils/path_utils";
 import { gitAdd, gitRemove } from "../utils/git_utils";
 import { runningApps } from "../utils/process_manager";
 import { isLockHeld, withLock } from "../utils/lock_utils";
@@ -827,27 +827,62 @@ export function registerTestsHandlers() {
         const results: MigrateLegacyTestResult[] = [];
 
         // Validate + normalize the requested specs up front; invalid ones are
-        // reported and excluded from the move plan.
+        // reported and excluded from the move plan. Deduplicate so the same
+        // path submitted twice doesn't produce a spurious second failure.
         const validSpecs: string[] = [];
+        const seenSpecs = new Set<string>();
         for (const requested of params.files) {
           const sourceRel = normalizeLegacyTestFile(requested);
-          if (sourceRel) {
-            validSpecs.push(sourceRel);
-          } else {
+          if (!sourceRel) {
             results.push({
               file: requested,
               ok: false,
-              error: "Not a valid tests/*.spec.ts path",
+              error: "Not a valid tests/*.spec.{ts,tsx,js,jsx} path",
+            });
+            continue;
+          }
+          if (seenSpecs.has(sourceRel)) {
+            continue; // Duplicate request; already accounted for.
+          }
+          seenSpecs.add(sourceRel);
+          validSpecs.push(sourceRel);
+        }
+
+        // Only ever move files detection actually classified as legacy
+        // Playwright specs, regardless of what the renderer submitted — a
+        // valid-looking path alone must not move an unrelated tests/ spec.
+        const detected = new Set(await detectLegacyPlaywrightSpecs(appPath));
+        const plannableSpecs: string[] = [];
+        for (const sourceRel of validSpecs) {
+          if (detected.has(sourceRel)) {
+            plannableSpecs.push(sourceRel);
+          } else {
+            results.push({
+              file: sourceRel,
+              ok: false,
+              error: "Not a Playwright spec in tests/",
             });
           }
         }
 
         // Move one tests/ file into e2e-tests/ (git-aware, never overwriting).
+        // Both paths are canonically validated (`assertMutationPathAllowed`) so
+        // a symlinked e2e-tests/ can't redirect the write outside the app.
         const moveOne = async (
           sourceRel: string,
         ): Promise<{ ok: boolean; movedTo?: string; error?: string }> => {
           const destRel = legacyToE2ePath(sourceRel);
           try {
+            await assertMutationPathAllowed({
+              appPath,
+              relativePath: sourceRel,
+              followFinalSymlink: false,
+            });
+            await assertMutationPathAllowed({
+              appPath,
+              relativePath: destRel,
+              followFinalSymlink: false,
+            });
             const src = safeJoin(appPath, sourceRel);
             const dst = safeJoin(appPath, destRel);
             if (!fs.existsSync(src)) {
@@ -861,7 +896,16 @@ export function registerTestsHandlers() {
             await moveFileWithFallback(src, dst);
             // Stage the move (add new, remove old) without committing, so the
             // user reviews it through the normal uncommitted-changes flow.
-            await gitAdd({ path: appPath, filepath: destRel });
+            // Staging is best-effort: the file has already moved on disk, so a
+            // git failure (lock contention, untracked source, non-repo app)
+            // must not report the move itself as failed.
+            try {
+              await gitAdd({ path: appPath, filepath: destRel });
+            } catch (error) {
+              logger.warn(
+                `Moved ${sourceRel} but couldn't git-add ${destRel}: ${error}`,
+              );
+            }
             try {
               await gitRemove({ path: appPath, filepath: sourceRel });
             } catch (error) {
@@ -881,18 +925,24 @@ export function registerTestsHandlers() {
           }
         };
 
-        // Carry along the fixtures/helpers the selected specs import, unless a
-        // spec staying behind still needs them.
+        // Plan by connected component: a spec is moved only when its whole
+        // import group can move (no shared fixture or dependency left behind,
+        // no destination collision). Specs that can't move are reported as
+        // blocked rather than migrated into a broken state.
         const plan =
-          validSpecs.length > 0
-            ? await planLegacyMigration(appPath, validSpecs)
-            : { moveFiles: [], supportFiles: [], sharedLeftBehind: [] };
+          plannableSpecs.length > 0
+            ? await planLegacyMigration(appPath, plannableSpecs)
+            : {
+                movableSpecs: [] as string[],
+                supportFiles: [] as string[],
+                blockedSpecs: [] as { file: string; reason: string }[],
+                skippedSupportFiles: [] as string[],
+              };
 
         // Move support files first so a spec never lands beside a fixture that
-        // hasn't moved yet. A support file that can't move (destination exists)
-        // joins the dependency-shared ones as "skipped".
+        // hasn't moved yet.
         const movedSupportFiles: string[] = [];
-        const skippedSupportFiles = [...plan.sharedLeftBehind];
+        const skippedSupportFiles = [...plan.skippedSupportFiles];
         for (const support of plan.supportFiles) {
           const outcome = await moveOne(support);
           if (outcome.ok && outcome.movedTo) {
@@ -902,8 +952,8 @@ export function registerTestsHandlers() {
           }
         }
 
-        // Move the selected specs.
-        for (const sourceRel of validSpecs) {
+        // Move the specs that planned cleanly.
+        for (const sourceRel of plan.movableSpecs) {
           const outcome = await moveOne(sourceRel);
           results.push({
             file: sourceRel,
@@ -913,10 +963,19 @@ export function registerTestsHandlers() {
           });
         }
 
+        // Report specs that couldn't move without breaking an import.
+        for (const blocked of plan.blockedSpecs) {
+          results.push({
+            file: blocked.file,
+            ok: false,
+            error: blocked.reason,
+          });
+        }
+
         return {
           results,
           movedSupportFiles,
-          skippedSupportFiles: skippedSupportFiles.sort((a, b) =>
+          skippedSupportFiles: [...new Set(skippedSupportFiles)].sort((a, b) =>
             a.localeCompare(b),
           ),
         };

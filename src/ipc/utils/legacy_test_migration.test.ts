@@ -67,11 +67,25 @@ describe("detectLegacyPlaywrightSpecs", () => {
     ]);
   });
 
-  it("ignores non-spec files and non-.ts specs", async () => {
+  it("includes every supported spec extension and ignores non-spec files", async () => {
     const appPath = makeApp({
-      "tests/helper.ts": PLAYWRIGHT_SPEC,
+      "tests/helper.ts": PLAYWRIGHT_SPEC, // not a *.spec file
       "tests/widget.spec.tsx": PLAYWRIGHT_SPEC,
       "tests/legacy.spec.js": PLAYWRIGHT_SPEC,
+      "tests/legacy.spec.jsx": PLAYWRIGHT_SPEC,
+      "tests/real.spec.ts": PLAYWRIGHT_SPEC,
+    });
+    expect(await detectLegacyPlaywrightSpecs(appPath)).toEqual([
+      "tests/legacy.spec.js",
+      "tests/legacy.spec.jsx",
+      "tests/real.spec.ts",
+      "tests/widget.spec.tsx",
+    ]);
+  });
+
+  it("excludes a spec that only mentions @playwright/test in a comment", async () => {
+    const appPath = makeApp({
+      "tests/comment.spec.ts": `// This is not really a @playwright/test spec\nimport { test } from "vitest";\ntest("x", () => {});\n`,
       "tests/real.spec.ts": PLAYWRIGHT_SPEC,
     });
     expect(await detectLegacyPlaywrightSpecs(appPath)).toEqual([
@@ -81,10 +95,17 @@ describe("detectLegacyPlaywrightSpecs", () => {
 });
 
 describe("normalizeLegacyTestFile", () => {
-  it("accepts a valid tests/*.spec.ts path", () => {
+  it("accepts a valid tests/*.spec.{ts,tsx,js,jsx} path", () => {
     expect(normalizeLegacyTestFile("tests/a.spec.ts")).toBe("tests/a.spec.ts");
     expect(normalizeLegacyTestFile("tests/sub/a.spec.ts")).toBe(
       "tests/sub/a.spec.ts",
+    );
+    expect(normalizeLegacyTestFile("tests/a.spec.tsx")).toBe(
+      "tests/a.spec.tsx",
+    );
+    expect(normalizeLegacyTestFile("tests/a.spec.js")).toBe("tests/a.spec.js");
+    expect(normalizeLegacyTestFile("tests/a.spec.jsx")).toBe(
+      "tests/a.spec.jsx",
     );
   });
 
@@ -97,7 +118,7 @@ describe("normalizeLegacyTestFile", () => {
     expect(normalizeLegacyTestFile("/etc/tests/a.spec.ts")).toBeNull();
     expect(normalizeLegacyTestFile("e2e-tests/a.spec.ts")).toBeNull();
     expect(normalizeLegacyTestFile("tests/a.ts")).toBeNull();
-    expect(normalizeLegacyTestFile("tests/a.spec.tsx")).toBeNull();
+    expect(normalizeLegacyTestFile("tests/a.spec.mts")).toBeNull();
     expect(normalizeLegacyTestFile("tests/-flag.spec.ts")).toBeNull();
   });
 });
@@ -151,29 +172,35 @@ describe("planLegacyMigration", () => {
       "tests/fixtures/base.ts": `export const base = 1;\n`,
     });
     const plan = await planLegacyMigration(appPath, ["tests/signup.spec.ts"]);
+    expect(plan.movableSpecs).toEqual(["tests/signup.spec.ts"]);
     expect(plan.supportFiles).toEqual([
       "tests/fixtures/base.ts",
       "tests/fixtures/test-user.ts",
     ]);
-    expect(plan.moveFiles.sort()).toEqual([
+    expect(plan.moveFiles.slice().sort()).toEqual([
       "tests/fixtures/base.ts",
       "tests/fixtures/test-user.ts",
       "tests/signup.spec.ts",
     ]);
-    expect(plan.sharedLeftBehind).toEqual([]);
+    expect(plan.blockedSpecs).toEqual([]);
+    expect(plan.skippedSupportFiles).toEqual([]);
   });
 
-  it("leaves a fixture shared with a spec that stays behind", async () => {
+  it("blocks a spec that shares a fixture with an unselected spec", async () => {
     const appPath = makeApp({
       "tests/a.spec.ts": spec(["./fixtures/shared"]),
       "tests/b.spec.ts": spec(["./fixtures/shared"]),
       "tests/fixtures/shared.ts": `export const shared = 1;\n`,
     });
-    // Only a moves; b stays and still needs the shared fixture.
+    // Only a is selected; b stays and still needs the shared fixture, so
+    // moving a (and leaving the fixture) would break a's import — block it.
     const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.movableSpecs).toEqual([]);
+    expect(plan.moveFiles).toEqual([]);
     expect(plan.supportFiles).toEqual([]);
-    expect(plan.sharedLeftBehind).toEqual(["tests/fixtures/shared.ts"]);
-    expect(plan.moveFiles).toEqual(["tests/a.spec.ts"]);
+    expect(plan.blockedSpecs.map((b) => b.file)).toEqual(["tests/a.spec.ts"]);
+    expect(plan.blockedSpecs[0].reason).toContain("didn't select");
+    expect(plan.skippedSupportFiles).toEqual(["tests/fixtures/shared.ts"]);
   });
 
   it("moves a shared fixture when all its importers are selected", async () => {
@@ -186,8 +213,41 @@ describe("planLegacyMigration", () => {
       "tests/a.spec.ts",
       "tests/b.spec.ts",
     ]);
+    expect(plan.movableSpecs).toEqual(["tests/a.spec.ts", "tests/b.spec.ts"]);
     expect(plan.supportFiles).toEqual(["tests/fixtures/shared.ts"]);
-    expect(plan.sharedLeftBehind).toEqual([]);
+    expect(plan.blockedSpecs).toEqual([]);
+    expect(plan.skippedSupportFiles).toEqual([]);
+  });
+
+  it("blocks a spec whose transitive dependency is shared with a stay-behind spec", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["./fixtures/helper"]),
+      "tests/fixtures/helper.ts": `import "./deep";\nexport const h = 1;\n`,
+      "tests/fixtures/deep.ts": `export const d = 1;\n`,
+      // b (not selected) also depends on the deep fixture.
+      "tests/b.spec.ts": spec(["./fixtures/deep"]),
+    });
+    const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.movableSpecs).toEqual([]);
+    expect(plan.blockedSpecs.map((b) => b.file)).toEqual(["tests/a.spec.ts"]);
+    expect(plan.skippedSupportFiles).toEqual([
+      "tests/fixtures/deep.ts",
+      "tests/fixtures/helper.ts",
+    ]);
+  });
+
+  it("blocks a spec whose fixture destination already exists", async () => {
+    const appPath = makeApp({
+      "tests/a.spec.ts": spec(["./fixtures/shared"]),
+      "tests/fixtures/shared.ts": `export const shared = 1;\n`,
+      // A same-named fixture already lives at the destination.
+      "e2e-tests/fixtures/shared.ts": `export const shared = 2;\n`,
+    });
+    const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.movableSpecs).toEqual([]);
+    expect(plan.blockedSpecs.map((b) => b.file)).toEqual(["tests/a.spec.ts"]);
+    expect(plan.blockedSpecs[0].reason).toContain("already exists");
+    expect(plan.skippedSupportFiles).toEqual(["tests/fixtures/shared.ts"]);
   });
 
   it("resolves a directory import to its index file", async () => {
@@ -196,17 +256,19 @@ describe("planLegacyMigration", () => {
       "tests/fixtures/index.ts": `export const f = 1;\n`,
     });
     const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.movableSpecs).toEqual(["tests/a.spec.ts"]);
     expect(plan.supportFiles).toEqual(["tests/fixtures/index.ts"]);
   });
 
-  it("never moves another spec file as a support file", async () => {
+  it("blocks a spec that imports another unselected spec", async () => {
     const appPath = makeApp({
       "tests/a.spec.ts": spec(["./b.spec"]),
       "tests/b.spec.ts": spec([]),
     });
     const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
-    expect(plan.supportFiles).toEqual([]);
-    expect(plan.moveFiles).toEqual(["tests/a.spec.ts"]);
+    expect(plan.movableSpecs).toEqual([]);
+    expect(plan.moveFiles).toEqual([]);
+    expect(plan.blockedSpecs.map((b) => b.file)).toEqual(["tests/a.spec.ts"]);
   });
 
   it("ignores imports that escape tests/ or resolve to nothing", async () => {
@@ -214,7 +276,9 @@ describe("planLegacyMigration", () => {
       "tests/a.spec.ts": spec(["../src/app", "./missing", "@playwright/test"]),
     });
     const plan = await planLegacyMigration(appPath, ["tests/a.spec.ts"]);
+    expect(plan.movableSpecs).toEqual(["tests/a.spec.ts"]);
     expect(plan.supportFiles).toEqual([]);
     expect(plan.moveFiles).toEqual(["tests/a.spec.ts"]);
+    expect(plan.blockedSpecs).toEqual([]);
   });
 });

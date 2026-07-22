@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,11 +37,16 @@ export function MigrateTestsDialog({
     [files],
   );
 
+  // Seed the default selection only on the closed→open transition. A background
+  // refetch that changes `files` while the dialog is open must not reset the
+  // user's choices (e.g. re-checking files they deliberately deselected).
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
       // Default to moving everything that can be moved.
       setSelected(new Set(selectableFiles.map((f) => f.file)));
     }
+    wasOpen.current = open;
   }, [open, selectableFiles]);
 
   const toggle = (file: string) => {

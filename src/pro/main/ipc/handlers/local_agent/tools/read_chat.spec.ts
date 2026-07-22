@@ -19,6 +19,10 @@ vi.mock("electron-log", () => ({
 }));
 
 describe("readChatTool schema", () => {
+  it("allows chat reads without prompting by default", () => {
+    expect(readChatTool.defaultConsent).toBe("always");
+  });
+
   it("rejects offset/limit combined with around_message_id", () => {
     expect(() =>
       readChatTool.inputSchema.parse({

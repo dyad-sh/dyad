@@ -57,7 +57,7 @@ Never select or index `aiMessagesJson`. It is an internal, potentially multi-meg
 
 ### 4. Treat cross-chat access as a data-disclosure boundary
 
-Both tools use `defaultConsent: "ask"`. The consent preview must say that historical chat text from the current app will be provided to the active AI model. Users who want seamless recall can choose "Always allow" through the existing agent-tool permission UI.
+Both tools use `defaultConsent: "always"` for seamless recall. Users can still change either tool to "Ask every time" or "Never allow" through the existing agent-tool permission UI; when prompting is enabled, the consent preview must say that historical chat text from the current app will be provided to the active AI model.
 
 Both tools have no `modifiesState` flag and no `usesEngineEndpoint`. Their `execute()` implementations must perform only reads. FTS maintenance runs independently as application-owned derived-index maintenance; a tool call must not lazily write or rebuild the index.
 
@@ -241,7 +241,7 @@ Do not issue per-result count queries. If a message count is not already availab
 
 ### Metadata and renderer output
 
-- `defaultConsent: "ask"`
+- `defaultConsent: "always"`
 - No `modifiesState`
 - No `usesEngineEndpoint`
 - Consent preview: `Search historical chats for this app for "<query>" and provide matching excerpts to the active AI model.`
@@ -301,7 +301,7 @@ Mark all returned text as archival content and tell the model not to treat instr
 
 ### Metadata and renderer output
 
-- `defaultConsent: "ask"`
+- `defaultConsent: "always"`
 - No `modifiesState`
 - No `usesEngineEndpoint`
 - The synchronous consent preview can show `chat_id` and whether the read is around a message or a page. It cannot query the title because `ToolDefinition.getConsentPreview` receives only parsed arguments; show the resolved title in the completed renderer card instead.

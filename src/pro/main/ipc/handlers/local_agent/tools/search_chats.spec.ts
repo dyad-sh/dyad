@@ -26,6 +26,10 @@ vi.mock("electron-log", () => ({
 }));
 
 describe("query construction", () => {
+  it("allows chat searches without prompting by default", () => {
+    expect(searchChatsTool.defaultConsent).toBe("always");
+  });
+
   it("extracts unicode-aware terms and drops stopwords when others remain", () => {
     expect(extractQueryTerms("what is the auth decision")).toEqual([
       "auth",

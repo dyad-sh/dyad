@@ -8,7 +8,7 @@ import {
 /**
  * Background maintenance for the chat_search_fts index.
  *
- * SQLite triggers (drizzle/0039_chat-search-fts.sql) enqueue changed source
+ * SQLite triggers (drizzle/0040_chat-search-fts.sql) enqueue changed source
  * rows into chat_search_dirty_messages / chat_search_dirty_chats; this module
  * drains those queues, builds the TypeScript text projection for each
  * message, and replaces the corresponding FTS row.

@@ -1,6 +1,16 @@
 import type { ChatStreamCommands } from "./commands";
-import type { StreamCommand, StreamEvent, StreamState } from "./state";
+import type {
+  ChatStreamIgnoreReason,
+  StreamCommand,
+  StreamEvent,
+  StreamState,
+} from "./state";
 import { initialStreamState, transition } from "./transition";
+import { SnapshotStore } from "@/state_machines/snapshot_store";
+import {
+  observeTransition,
+  type TransitionObserver,
+} from "@/state_machines/types";
 
 /**
  * Per-chat driver for the chat stream machine.
@@ -22,6 +32,8 @@ export interface ChatStreamController {
   isSettled(): boolean;
   /** True while any React subscriber is attached. */
   hasSubscribers(): boolean;
+  /** Permanently stop this controller and release renderer transport state. */
+  dispose(): void;
 }
 
 export interface ChatStreamControllerOptions {
@@ -30,64 +42,72 @@ export interface ChatStreamControllerOptions {
   getCommands: () => ChatStreamCommands;
   /** Invoked whenever the controller becomes fully quiescent (no pending commands). */
   onQuiescent?: (controller: ChatStreamController) => void;
+  observer?: TransitionObserver<
+    StreamState,
+    StreamEvent,
+    StreamCommand,
+    ChatStreamIgnoreReason
+  >;
 }
 
 export function createChatStreamController(
   options: ChatStreamControllerOptions,
 ): ChatStreamController {
-  const { chatId, getCommands, onQuiescent } = options;
+  const { chatId, getCommands, onQuiescent, observer } = options;
 
-  let state: StreamState = initialStreamState();
-  const listeners = new Set<() => void>();
+  const store = new SnapshotStore<StreamState>(initialStreamState());
   const commandQueue: StreamCommand[] = [];
   let draining = false;
+  let disposed = false;
 
   const controller: ChatStreamController = {
     chatId,
-    getSnapshot: () => state,
+    getSnapshot: store.getSnapshot,
     subscribe(listener) {
-      listeners.add(listener);
+      const unsubscribe = store.subscribe(listener);
       return () => {
-        listeners.delete(listener);
+        unsubscribe();
         notifyQuiescentIfIdle();
       };
     },
     send,
     isSettled: () => !draining && commandQueue.length === 0,
-    hasSubscribers: () => listeners.size > 0,
+    hasSubscribers: () => store.subscriberCount() > 0,
+    dispose,
   };
 
-  function notify(): void {
-    // Copy first: listeners may unsubscribe while being notified.
-    for (const listener of Array.from(listeners)) {
-      listener();
-    }
-  }
-
   function notifyQuiescentIfIdle(): void {
-    if (controller.isSettled()) {
+    if (!disposed && controller.isSettled()) {
       onQuiescent?.(controller);
     }
   }
 
   function send(event: StreamEvent): void {
-    const result = transition(state, event);
-    const changed = result.state !== state;
-    state = result.state;
+    const previous = store.getSnapshot();
+    if (disposed) {
+      observer?.onEventIgnored?.({
+        state: previous,
+        event,
+        reason: "no-active-stream",
+      });
+      return;
+    }
+
+    const result = transition(previous, event);
+    observeTransition(observer, previous, event, result);
     commandQueue.push(...result.commands);
-    if (changed) {
+    store.setState(result.state, () => {
       // Keep the legacy isStreaming projection in lockstep with the machine
       // (single writer), then notify React subscribers.
       try {
-        getCommands().syncProjection({ chatId, state });
+        getCommands().syncProjection({ chatId, state: result.state });
       } catch (error) {
         console.error(
           `[chat-stream] Failed to sync projection for chat ${chatId}:`,
           error,
         );
       }
-      notify();
-    }
+    });
     void drain();
   }
 
@@ -95,7 +115,7 @@ export function createChatStreamController(
     if (draining) return;
     draining = true;
     try {
-      while (commandQueue.length > 0) {
+      while (!disposed && commandQueue.length > 0) {
         const command = commandQueue.shift()!;
         await execute(command);
       }
@@ -125,6 +145,15 @@ export function createChatStreamController(
             streamId: command.streamId,
             error: error instanceof Error ? error.message : String(error),
           });
+        } finally {
+          // Disposal may have released the transport before startStream
+          // finished its async setup and registered the IPC entry. Release
+          // again after setup settles so that late registration cannot leak.
+          if (disposed) {
+            runSafely(() =>
+              commands.releaseTransport({ chatId, streamId: command.streamId }),
+            );
+          }
         }
         return;
       }
@@ -184,6 +213,44 @@ export function createChatStreamController(
     } catch (error) {
       console.error(`[chat-stream] Command failed for chat ${chatId}:`, error);
     }
+  }
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    commandQueue.length = 0;
+
+    const state = store.getSnapshot();
+    if (
+      state.type === "starting" ||
+      state.type === "streaming" ||
+      state.type === "cancelling"
+    ) {
+      try {
+        getCommands().syncProjection({
+          chatId,
+          state: { type: "idle", lastStreamId: state.streamId },
+        });
+      } catch (error) {
+        console.error(
+          `[chat-stream] Failed to clear projection for disposed chat ${chatId}:`,
+          error,
+        );
+      }
+      try {
+        state.request.onSettled?.({ success: false });
+      } catch (error) {
+        console.error(
+          `[chat-stream] Failed to settle disposed stream for chat ${chatId}:`,
+          error,
+        );
+      }
+      runSafely(() =>
+        getCommands().releaseTransport({ chatId, streamId: state.streamId }),
+      );
+    }
+
+    store.dispose();
   }
 
   return controller;

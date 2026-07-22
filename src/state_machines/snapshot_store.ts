@@ -7,6 +7,11 @@ export class SnapshotStore<State> {
 
   getSnapshot = (): State => this.state;
 
+  /** Read-only listener count for owner-level quiescence policies. */
+  subscriberCount(): number {
+    return this.listeners.size;
+  }
+
   setState(nextState: State, beforeNotify?: () => void): boolean {
     if (this.disposed || nextState === this.state) return false;
     this.state = nextState;

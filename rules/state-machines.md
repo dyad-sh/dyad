@@ -30,6 +30,9 @@ events that may arrive after an operation has been superseded.
 - Controllers are disposable and their owner must call `dispose()` on provider
   unmount or entity deletion. Renderer controller collections belong to a
   provider-owned `KeyedControllerHost`; never keep them in module globals.
+- When disposal can race an async command that registers external state after
+  an `await`, clean up both immediately and again after the command settles.
+  Disposal must also clear any machine-owned legacy projection synchronously.
 
 ## Deliberate degrees of freedom
 

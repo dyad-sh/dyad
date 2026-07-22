@@ -88,7 +88,6 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               registered: false,
-              sawSyntheticEnd: false,
             },
             commands: [{ type: "request-abort" }],
           };
@@ -170,7 +169,6 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               registered: true,
-              sawSyntheticEnd: false,
             },
             commands: [{ type: "request-abort" }],
           };
@@ -236,20 +234,13 @@ export function transition(
           };
         case "stream-ended": {
           if (isStale(state, event)) return ignore(state);
-          if (
-            !state.registered &&
-            !state.sawSyntheticEnd &&
-            event.response.wasCancelled === true
-          ) {
-            // Synthetic end fabricated by main's cancel handler before the
-            // real stream registered. The real stream is still running:
-            // stay in `cancelling` and reconcile with its real terminal
-            // event (fixes cancel-before-registration).
-            return {
-              state: { ...state, sawSyntheticEnd: true },
-              commands: [],
-            };
-          }
+          // Always finalize on a non-stale end, even while `registered` is
+          // still false. Main aborts the tracked stream and then sends the
+          // SOLE terminal `wasCancelled` end; a stream aborted before
+          // admission never sends `chat:stream:start`, so waiting for
+          // registration here would deadlock the machine in `cancelling`
+          // (the stale check on `streamId` already rejects ends belonging
+          // to an older generation).
           return {
             state: {
               type: "finalizing",

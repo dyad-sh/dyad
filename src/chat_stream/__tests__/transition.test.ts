@@ -31,7 +31,6 @@ const STATE_FACTORIES: Record<StreamState["type"], () => StreamState> = {
     streamId: 4,
     request: makeRequest(),
     registered: false,
-    sawSyntheticEnd: false,
   }),
   finalizing: () => ({
     type: "finalizing",
@@ -273,8 +272,9 @@ describe("bug 1: submit while a stream is active queues instead of dropping", ()
 });
 
 describe("bug 2: cancel before main registers the stream", () => {
-  it("holds in cancelling through the synthetic end and reconciles with the real terminal event", () => {
-    // Submit, then cancel while still starting (main hasn't registered yet).
+  it("finalizes on the sole wasCancelled end when the stream was aborted before admission", () => {
+    // Submit, then cancel while still starting (main hasn't confirmed
+    // registration yet).
     let result = step(initialStreamState(), {
       type: "submit",
       request: makeRequest(),
@@ -283,32 +283,13 @@ describe("bug 2: cancel before main registers the stream", () => {
     expect(result.state).toMatchObject({
       type: "cancelling",
       registered: false,
-      sawSyntheticEnd: false,
     });
     expect(result.commands).toEqual([{ type: "request-abort" }]);
 
-    // Main's cancel handler found no active stream and fabricated a
-    // wasCancelled end. The real stream is still running: do NOT finalize.
-    result = step(result.state, {
-      type: "stream-ended",
-      streamId: 1,
-      response: endResponse(true),
-    });
-    expect(result.state).toMatchObject({
-      type: "cancelling",
-      sawSyntheticEnd: true,
-    });
-    expect(result.commands).toEqual([]);
-
-    // The real stream registers: re-issue the abort so it actually stops.
-    result = step(result.state, { type: "registered" });
-    expect(result.state).toMatchObject({
-      type: "cancelling",
-      registered: true,
-    });
-    expect(result.commands).toEqual([{ type: "request-abort" }]);
-
-    // The REAL terminal event arrives and drives finalization exactly once.
+    // Main tracked the AbortController synchronously, so the abort hit the
+    // real stream pre-admission. Main sends the SOLE terminal wasCancelled
+    // end and will never send chat:stream:start for this stream — the
+    // machine must finalize now or deadlock in `cancelling` forever.
     result = step(result.state, {
       type: "stream-ended",
       streamId: 1,
@@ -330,20 +311,50 @@ describe("bug 2: cancel before main registers the stream", () => {
     expect(result.commands).toEqual([]);
   });
 
-  it("finalizes with the real outcome when the stream completed before the re-issued abort landed", () => {
+  it("re-issues the abort on registration when the cancel raced ahead of the stream request", () => {
+    // The abort reached main before `chat:stream` did: main found nothing,
+    // sent nothing, and the stream proceeds to registration.
     let result = step(initialStreamState(), {
       type: "submit",
       request: makeRequest(),
     });
     result = step(result.state, { type: "cancel" });
+    expect(result.state).toMatchObject({
+      type: "cancelling",
+      registered: false,
+    });
+
+    // Registration arrives: re-issue the abort so the stream actually stops.
+    result = step(result.state, { type: "registered" });
+    expect(result.state).toMatchObject({
+      type: "cancelling",
+      registered: true,
+    });
+    expect(result.commands).toEqual([{ type: "request-abort" }]);
+
+    // The terminal event of the (now aborted) stream drives finalization
+    // exactly once.
     result = step(result.state, {
       type: "stream-ended",
       streamId: 1,
-      response: endResponse(true), // synthetic
+      response: endResponse(true),
     });
-    // Real end: the stream ran to completion (file changes applied) before
-    // any abort could land. It must be finalized as a success so refreshes
-    // and invalidations run.
+    expect(result.state).toMatchObject({
+      type: "finalizing",
+      wasCancelled: true,
+    });
+    expect(result.commands[0]?.type).toBe("run-end-side-effects");
+  });
+
+  it("finalizes with the real outcome when the stream completed before the abort landed", () => {
+    let result = step(initialStreamState(), {
+      type: "submit",
+      request: makeRequest(),
+    });
+    result = step(result.state, { type: "cancel" });
+    // The stream ran to completion (file changes applied) before the abort
+    // could land. It must be finalized as a success so refreshes and
+    // invalidations run.
     result = step(result.state, {
       type: "stream-ended",
       streamId: 1,

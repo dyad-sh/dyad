@@ -374,8 +374,9 @@ export const productionChatStreamCommands: ChatStreamCommands = {
           emit({ type: "stream-errored", streamId, error, warningMessages });
         },
       },
-      // The controller owns the stream lifetime: keep routing events (e.g. the
-      // real end after a synthetic cancel end) until it releases the stream.
+      // The controller owns the stream lifetime: keep routing events until
+      // finalization completes and releases the entry (stale-streamId checks
+      // in the machine drop anything that arrives after the terminal event).
       { streamId, autoRelease: false },
     );
   },

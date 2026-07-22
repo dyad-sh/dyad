@@ -60,10 +60,14 @@ export interface StreamRequest {
  *   the `chat:stream:start` event, or implicitly by the first chunk).
  * - `cancelling`: the user requested a cancel while a stream was in flight.
  *   `registered` records whether main had confirmed registration when we last
- *   checked; `sawSyntheticEnd` records that we received a synthetic
- *   `wasCancelled` end while unregistered (main's cancel handler fabricates
- *   one when it cannot find an active stream), meaning the real stream is
- *   still running and its real terminal event must be awaited.
+ *   checked. Main tracks the AbortController synchronously when `chat:stream`
+ *   arrives (before `chat:stream:start` is sent), so an abort issued while
+ *   still unregistered normally aborts the real stream — whose sole terminal
+ *   `wasCancelled` end then arrives with `registered` still false and MUST
+ *   finalize (main never sends `chat:stream:start` for a stream aborted
+ *   before admission). If the abort instead raced ahead of `chat:stream`
+ *   entirely, main found nothing, sent nothing, and the stream proceeds to
+ *   registration — the `registered` event re-issues the abort.
  * - `finalizing`: the terminal end event arrived; end side effects (DB
  *   re-sync, invalidations, file refresh) are running.
  * - `errored`: the stream terminated with an error. A new submit is allowed.
@@ -80,7 +84,6 @@ export type StreamState =
       streamId: number;
       request: StreamRequest;
       registered: boolean;
-      sawSyntheticEnd: boolean;
     }
   | {
       type: "finalizing";

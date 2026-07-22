@@ -188,7 +188,7 @@ describe("chat stream controller", () => {
     expect(commands.dispatchNextQueued).toHaveBeenCalledTimes(1);
   });
 
-  it("reconciles cancel-before-registration with the real terminal event", async () => {
+  it("finalizes a cancel-before-registration on the sole wasCancelled end", async () => {
     const { controller, commands, startDeferreds, endDeferreds } =
       createController();
 
@@ -201,24 +201,44 @@ describe("chat stream controller", () => {
     expect(commands.requestAbort).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot().type).toBe("cancelling");
 
-    // Synthetic end from main's cancel handler (stream not yet registered):
-    // no finalization, the machine keeps waiting for the real event.
+    // Main tracked the AbortController synchronously, aborted the stream
+    // pre-admission, and sent the SOLE terminal end — chat:stream:start will
+    // never arrive. The machine must finalize now (waiting for registration
+    // would deadlock it in `cancelling`); no queue dispatch after a
+    // cancelled turn.
     controller.send({
       type: "stream-ended",
       streamId: 1,
       response: endResponse(true),
     });
     await flush();
-    expect(commands.runEndSideEffects).not.toHaveBeenCalled();
+    expect(commands.runEndSideEffects).toHaveBeenCalledTimes(1);
+    endDeferreds[0].resolve();
+    await flush();
+    expect(controller.getSnapshot()).toEqual({ type: "idle", lastStreamId: 1 });
+    expect(commands.dispatchNextQueued).not.toHaveBeenCalled();
+  });
+
+  it("re-issues the abort on registration when the cancel raced ahead of the stream request", async () => {
+    const { controller, commands, startDeferreds, endDeferreds } =
+      createController();
+
+    controller.send({ type: "submit", request: makeRequest() });
+    await flush();
+    startDeferreds[0].resolve();
+
+    controller.send({ type: "cancel" });
+    await flush();
+    expect(commands.requestAbort).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot().type).toBe("cancelling");
 
-    // Real stream registers: the abort is re-issued.
+    // The abort reached main before `chat:stream` did (found nothing, sent
+    // nothing). Registration arrives: the abort is re-issued.
     controller.send({ type: "registered" });
     await flush();
     expect(commands.requestAbort).toHaveBeenCalledTimes(2);
 
-    // Real terminal event finalizes exactly once; no queue dispatch after a
-    // cancelled turn.
+    // The terminal event of the now-aborted stream finalizes exactly once.
     controller.send({
       type: "stream-ended",
       streamId: 1,

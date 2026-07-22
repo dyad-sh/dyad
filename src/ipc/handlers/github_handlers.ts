@@ -1,4 +1,4 @@
-import { BrowserWindow, IpcMainInvokeEvent } from "electron";
+import { IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
 import {
@@ -41,6 +41,11 @@ import {
   isComponentTaggerUpgradeNeeded,
   applyComponentTagger,
 } from "../utils/app_upgrade_utils";
+import {
+  connectionFlowRegistry,
+  registerConnectionFlowProvider,
+  runOAuthReturnExchange,
+} from "./connection_flow_handlers";
 
 const logger = log.scope("github_handlers");
 
@@ -94,18 +99,18 @@ function getGitHubGitBase() {
 
 const GITHUB_SCOPES = "repo,user,workflow"; // Define the scopes needed
 
-// --- State Management (Simple in-memory, consider alternatives for robustness) ---
-interface DeviceFlowState {
+// --- Device Flow State ---
+//
+// The authoritative flow state (what the renderer sees) lives in the
+// connection flow registry, keyed per provider and correlated by flowId.
+// This map only holds GitHub-specific polling internals for each flow.
+interface DeviceFlowRecord {
   deviceCode: string;
   interval: number;
   timeoutId: NodeJS.Timeout | null;
-  isPolling: boolean;
-  window: BrowserWindow | null; // Reference to the window that initiated the flow
 }
 
-// Simple map to track ongoing flows (key could be appId or a unique flow ID if needed)
-// For simplicity, let's assume only one flow can happen at a time for now.
-let currentFlowState: DeviceFlowState | null = null;
+const deviceFlows = new Map<string, DeviceFlowRecord>();
 
 // --- Helper Functions ---
 
@@ -283,24 +288,21 @@ export async function prepareLocalBranch({
     throw new Error(errorMessage);
   }
 }
-// function event.sender.send(channel: string, data: any) {
-//   if (currentFlowState?.window && !currentFlowState.window.isDestroyed()) {
-//     currentFlowState.window.webContents.send(channel, data);
-//   }
-// }
-
-async function pollForAccessToken(event: IpcMainInvokeEvent) {
-  if (!currentFlowState || !currentFlowState.isPolling) {
+async function pollForAccessToken(flowId: string) {
+  const record = deviceFlows.get(flowId);
+  const flowState = connectionFlowRegistry.getState("github");
+  if (
+    !record ||
+    flowState.status !== "awaiting-return" ||
+    flowState.flowId !== flowId
+  ) {
+    // Flow was cancelled, failed, or superseded — stop polling.
     logger.debug("[GitHub Handler] Polling stopped or no active flow.");
+    cleanupDeviceFlow(flowId);
     return;
   }
 
-  const { deviceCode, interval } = currentFlowState;
-
   logger.debug("[GitHub Handler] Polling for token with device code");
-  event.sender.send("github:flow-update", {
-    message: "Polling GitHub for authorization...",
-  });
 
   try {
     const response = await fetch(getGitHubAccessTokenUrl(), {
@@ -311,7 +313,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
       },
       body: JSON.stringify({
         client_id: GITHUB_CLIENT_ID,
-        device_code: deviceCode,
+        device_code: record.deviceCode,
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
       }),
     });
@@ -324,64 +326,80 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
 
     if (response.ok && data.access_token) {
       logger.log("Successfully obtained GitHub Access Token.");
-      event.sender.send("github:flow-success", {
-        message: "Successfully connected!",
-      });
-      writeSettings({
-        githubAccessToken: {
-          value: data.access_token,
+      // The token is always written, even if the flow was cancelled while
+      // this request was in flight — GitHub already authorized us, and
+      // dropping the token would leave the account half-connected.
+      // `expectedFlowId` correlates the write with THIS poll chain's flow:
+      // if the user cancelled and started a newer flow while this request
+      // was in flight, the stale result lands as unsolicited instead of
+      // advancing the newer flow.
+      const outcome = await runOAuthReturnExchange(
+        "github",
+        () => {
+          writeSettings({
+            githubAccessToken: {
+              value: data.access_token!,
+            },
+          });
         },
-      });
-
-      stopPolling();
+        { expectedFlowId: flowId },
+      );
+      if (!outcome.ok) {
+        // A claimed failure was already recorded on the flow; rethrow only
+        // unclaimed failures so the generic network-error handling applies.
+        if (!outcome.claimed) {
+          throw outcome.error;
+        }
+      }
+      cleanupDeviceFlow(flowId);
       return;
     } else if (data.error) {
       switch (data.error) {
         case "authorization_pending":
           logger.debug("Authorization pending...");
-          event.sender.send("github:flow-update", {
-            message: "Waiting for user authorization...",
-          });
-          // Schedule next poll
-          currentFlowState.timeoutId = setTimeout(
-            () => pollForAccessToken(event),
-            interval * 1000,
+          record.timeoutId = setTimeout(
+            () => pollForAccessToken(flowId),
+            record.interval * 1000,
           );
           break;
-        case "slow_down":
-          const newInterval = interval + 5;
+        case "slow_down": {
+          const newInterval = record.interval + 5;
           logger.debug(`Slow down requested. New interval: ${newInterval}s`);
-          currentFlowState.interval = newInterval; // Update interval
-          event.sender.send("github:flow-update", {
-            message: `GitHub asked to slow down. Retrying in ${newInterval}s...`,
-          });
-          currentFlowState.timeoutId = setTimeout(
-            () => pollForAccessToken(event),
+          record.interval = newInterval;
+          record.timeoutId = setTimeout(
+            () => pollForAccessToken(flowId),
             newInterval * 1000,
           );
           break;
+        }
         case "expired_token":
           logger.error("Device code expired.");
-          event.sender.send("github:flow-error", {
-            error: "Verification code expired. Please try again.",
-          });
-          stopPolling();
+          connectionFlowRegistry.fail(
+            "github",
+            flowId,
+            "timeout",
+            "Verification code expired. Please try again.",
+          );
           break;
         case "access_denied":
           logger.error("Access denied by user.");
-          event.sender.send("github:flow-error", {
-            error: "Authorization denied by user.",
-          });
-          stopPolling();
+          connectionFlowRegistry.fail(
+            "github",
+            flowId,
+            "user_cancelled",
+            "Authorization denied by user.",
+          );
           break;
         default:
           logger.error(
             `Unknown GitHub error: ${data.error_description || data.error}`,
           );
-          event.sender.send("github:flow-error", {
-            error: `GitHub authorization error: ${data.error_description || data.error}`,
-          });
-          stopPolling();
+          connectionFlowRegistry.fail(
+            "github",
+            flowId,
+            "token_invalid",
+            `GitHub authorization error: ${data.error_description || data.error}`,
+          );
           break;
       }
     } else {
@@ -392,118 +410,105 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
     }
   } catch (error) {
     logger.error("Error polling for GitHub access token:", error);
-    event.sender.send("github:flow-error", {
-      error: `Network or unexpected error during polling: ${
+    connectionFlowRegistry.fail(
+      "github",
+      flowId,
+      "network",
+      `Network or unexpected error during polling: ${
         error instanceof Error ? error.message : String(error)
       }`,
-    });
-    stopPolling();
+    );
   }
 }
 
-function stopPolling() {
-  if (currentFlowState) {
-    if (currentFlowState.timeoutId) {
-      clearTimeout(currentFlowState.timeoutId);
-    }
-    currentFlowState.isPolling = false;
-    currentFlowState.timeoutId = null;
-
-    logger.debug("[GitHub Handler] Polling stopped.");
+/**
+ * Releases the polling timer and device code for a flow. Wired as the
+ * registry's `onFlowEnded` hook, so it runs whenever the flow reaches a
+ * terminal state — cancel IPC, timeout, failure, or success — even if the
+ * renderer that started the flow is long gone.
+ */
+function cleanupDeviceFlow(flowId: string) {
+  const record = deviceFlows.get(flowId);
+  if (!record) {
+    return;
   }
+  if (record.timeoutId) {
+    clearTimeout(record.timeoutId);
+  }
+  deviceFlows.delete(flowId);
+  logger.debug("[GitHub Handler] Device flow cleaned up:", flowId);
 }
 
-// --- IPC Handlers ---
-
-function handleStartGithubFlow(
-  event: IpcMainInvokeEvent,
-  args: { appId: number | null },
-) {
-  logger.debug(`Received github:start-flow for appId: ${args.appId}`);
-
-  // If a flow is already in progress, maybe cancel it or send an error
-  if (currentFlowState && currentFlowState.isPolling) {
-    logger.warn("Another GitHub flow is already in progress.");
-    event.sender.send("github:flow-error", {
-      error: "Another connection process is already active.",
+/**
+ * Starts the GitHub device flow for a freshly allocated flowId. Invoked via
+ * the connection flow registry (`connection-flow:start` with provider
+ * "github"), which guarantees at most one active GitHub flow at a time —
+ * without blocking flows for other providers.
+ */
+async function startGithubDeviceFlow({
+  flowId,
+}: {
+  flowId: string;
+  appId: number | null;
+}) {
+  logger.debug(`Starting GitHub device flow ${flowId}`);
+  try {
+    const res = await fetch(getGitHubDeviceCodeUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        scope: GITHUB_SCOPES,
+      }),
     });
-    return;
-  }
-
-  // Store the window that initiated the request
-  const window = BrowserWindow.fromWebContents(event.sender);
-  if (!window) {
-    logger.error("Could not get BrowserWindow instance.");
-    return;
-  }
-
-  currentFlowState = {
-    deviceCode: "",
-    interval: 5, // Default interval
-    timeoutId: null,
-    isPolling: false,
-    window: window,
-  };
-
-  event.sender.send("github:flow-update", {
-    message: "Requesting device code from GitHub...",
-  });
-
-  fetch(getGitHubDeviceCodeUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      client_id: GITHUB_CLIENT_ID,
-      scope: GITHUB_SCOPES,
-    }),
-  })
-    .then((res) => {
-      if (!res.ok) {
-        return res.json().then((errData: any) => {
-          throw new Error(
-            `GitHub API Error: ${errData.error_description || res.statusText}`,
-          );
-        });
-      }
-      return res.json() as Promise<{
-        device_code: string;
-        interval?: number;
-        user_code: string;
-        verification_uri: string;
-      }>;
-    })
-    .then((data) => {
-      logger.info("Received device code response");
-      if (!currentFlowState) return; // Flow might have been cancelled
-
-      currentFlowState.deviceCode = data.device_code;
-      currentFlowState.interval = data.interval || 5;
-      currentFlowState.isPolling = true;
-
-      // Send user code and verification URI to renderer
-      event.sender.send("github:flow-update", {
-        userCode: data.user_code,
-        verificationUri: data.verification_uri,
-        message: "Please authorize in your browser.",
-      });
-
-      // Start polling after the initial interval
-      currentFlowState.timeoutId = setTimeout(
-        () => pollForAccessToken(event),
-        currentFlowState.interval * 1000,
+    if (!res.ok) {
+      const errData = (await res.json()) as any;
+      throw new Error(
+        `GitHub API Error: ${errData.error_description || res.statusText}`,
       );
-    })
-    .catch((error) => {
-      logger.error("Error initiating GitHub device flow:", error);
-      event.sender.send("github:flow-error", {
-        error: `Failed to start GitHub connection: ${error.message}`,
-      });
-      stopPolling(); // Ensure polling stops on initial error
-      currentFlowState = null; // Clear state on initial error
+    }
+    const data = (await res.json()) as {
+      device_code: string;
+      interval?: number;
+      user_code: string;
+      verification_uri: string;
+    };
+
+    logger.info("Received device code response");
+    const record: DeviceFlowRecord = {
+      deviceCode: data.device_code,
+      interval: data.interval || 5,
+      timeoutId: null,
+    };
+    deviceFlows.set(flowId, record);
+
+    // The flow may have been cancelled while the device code request was in
+    // flight; markPrepared is then ignored by the machine and we stand down.
+    const prepared = connectionFlowRegistry.markPrepared("github", flowId, {
+      userCode: data.user_code,
+      verificationUri: data.verification_uri,
     });
+    if (!prepared) {
+      cleanupDeviceFlow(flowId);
+      return;
+    }
+
+    record.timeoutId = setTimeout(
+      () => pollForAccessToken(flowId),
+      record.interval * 1000,
+    );
+  } catch (error: any) {
+    logger.error("Error initiating GitHub device flow:", error);
+    connectionFlowRegistry.fail(
+      "github",
+      flowId,
+      "network",
+      `Failed to start GitHub connection: ${error.message}`,
+    );
+  }
 }
 
 // --- GitHub List Repos Handler ---
@@ -1333,8 +1338,12 @@ async function handleCloneRepoFromUrl(
 
 // --- Registration ---
 export function registerGithubHandlers() {
-  createTypedHandler(githubContracts.startFlow, async (event, params) => {
-    return handleStartGithubFlow(event, params);
+  // The GitHub device flow is started/cancelled through the generic
+  // connection-flow IPC (per-provider registry, flowId-correlated), so no
+  // github-specific start handler remains.
+  registerConnectionFlowProvider("github", {
+    start: startGithubDeviceFlow,
+    onFlowEnded: cleanupDeviceFlow,
   });
 
   createTypedHandler(githubContracts.listRepos, async () => {

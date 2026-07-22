@@ -18,6 +18,7 @@ import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { assertNoNeonProject } from "../utils/neon_utils";
+import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("supabase_handlers");
@@ -248,26 +249,34 @@ export function registerSupabaseHandlers() {
       // Directly store fake credentials in the organizations map
       // We don't call handleSupabaseOAuthReturn because it attempts a real API call
       // which fails with fake tokens, causing credentials to be stored in legacy format
-      const settings = readSettings();
-      const existingOrgs = settings.supabase?.organizations ?? {};
-      writeSettings({
-        supabase: {
-          ...settings.supabase,
-          organizations: {
-            ...existingOrgs,
-            [fakeOrgId]: {
-              accessToken: {
-                value: "fake-access-token",
+      // Run the write through the connection flow machine so an active flow
+      // (started by the connector's Connect click) advances just like a real
+      // dyad://supabase-oauth-return deep link would.
+      const outcome = await runOAuthReturnExchange("supabase", () => {
+        const settings = readSettings();
+        const existingOrgs = settings.supabase?.organizations ?? {};
+        writeSettings({
+          supabase: {
+            ...settings.supabase,
+            organizations: {
+              ...existingOrgs,
+              [fakeOrgId]: {
+                accessToken: {
+                  value: "fake-access-token",
+                },
+                refreshToken: {
+                  value: "fake-refresh-token",
+                },
+                expiresIn: 3600,
+                tokenTimestamp: Math.floor(Date.now() / 1000),
               },
-              refreshToken: {
-                value: "fake-refresh-token",
-              },
-              expiresIn: 3600,
-              tokenTimestamp: Math.floor(Date.now() / 1000),
             },
           },
-        },
+        });
       });
+      if (!outcome.ok && !outcome.claimed) {
+        throw outcome.error;
+      }
       logger.info(
         `Stored fake Supabase credentials for organization ${fakeOrgId} for app ${appId} during testing.`,
       );

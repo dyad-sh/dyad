@@ -1,4 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import {
+  acknowledgeConnectionFlow,
+  cancelConnectionFlow,
+  reportConnectionFlowResourcesLoaded,
+  startConnectionFlow,
+  useConnectionFlow,
+  useUnsolicitedConnectionReturn,
+} from "@/hooks/useConnectionFlow";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
@@ -27,7 +35,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { useDeepLink } from "@/contexts/DeepLinkContext";
 
 // @ts-ignore
 import supabaseLogoLight from "../../assets/supabase/supabase-logo-wordmark--light.svg";
@@ -53,7 +60,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
-  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
 
   // Check if there are any connected organizations
@@ -82,18 +88,50 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     branchesOrganizationSlug: app?.supabaseOrganizationSlug,
   });
 
+  // The connection flow lives in the main process; this component only
+  // projects it. Timeouts (Supabase historically had none — a closed
+  // browser left it silently stuck), double-start protection and
+  // OAuth-return correlation are handled by the flowId-keyed state machine.
+  const { flowState, isFlowActive } = useConnectionFlow("supabase");
+
+  const refreshAfterConnectRef = useRef<() => Promise<void>>(async () => {});
+  refreshAfterConnectRef.current = async () => {
+    await refreshSettings();
+    await refetchOrganizations();
+    await refetchProjects();
+    await refreshApp();
+  };
+
   useEffect(() => {
-    const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "supabase-oauth-return") {
-        await refreshSettings();
-        await refetchOrganizations();
-        await refetchProjects();
-        await refreshApp();
-        clearLastDeepLink();
+    const flow = flowState;
+    if (flow.status === "loading-resources") {
+      void (async () => {
+        try {
+          await refreshAfterConnectRef.current();
+        } finally {
+          await reportConnectionFlowResourcesLoaded("supabase", flow.flowId);
+        }
+      })();
+    } else if (flow.status === "connected") {
+      void acknowledgeConnectionFlow("supabase", flow.flowId);
+    } else if (flow.status === "failed") {
+      if (flow.reason === "timeout") {
+        toast.warning(t("integrations.supabase.signInTimedOut"));
+      } else if (flow.reason !== "user_cancelled") {
+        toast.error(flow.message ?? t("integrations.supabase.connectFailed"));
       }
-    };
-    handleDeepLink();
-  }, [lastDeepLink?.timestamp]);
+      void acknowledgeConnectionFlow("supabase", flow.flowId);
+    } else if (flow.status === "cancelled") {
+      void acknowledgeConnectionFlow("supabase", flow.flowId);
+    }
+  }, [flowState, t]);
+
+  // A dyad://supabase-oauth-return processed with no active flow (cold
+  // start, app restarted mid-flow, or a return that arrived after the flow
+  // timed out): tokens are already stored, just refresh what we show.
+  useUnsolicitedConnectionReturn("supabase", () => {
+    void refreshAfterConnectRef.current();
+  });
 
   const handleProjectSelect = async (projectValue: string) => {
     try {
@@ -144,15 +182,29 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   );
 
   const handleAddAccount = async () => {
-    if (settings?.isTestMode) {
-      await ipc.supabase.fakeConnectAndSetProject({
-        appId,
-        fakeProjectId: "fake-project-id",
-      });
-    } else {
-      await ipc.system.openExternalUrl(
-        "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
-      );
+    try {
+      // Starting is a no-op while a flow is already active (double-click).
+      const { started, flowId } = await startConnectionFlow("supabase");
+      if (!started) {
+        return;
+      }
+      try {
+        if (settings?.isTestMode) {
+          await ipc.supabase.fakeConnectAndSetProject({
+            appId,
+            fakeProjectId: "fake-project-id",
+          });
+        } else {
+          await ipc.system.openExternalUrl(
+            "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
+          );
+        }
+      } catch (error) {
+        await cancelConnectionFlow("supabase", flowId);
+        throw error;
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error));
     }
   };
 
@@ -324,11 +376,24 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 variant="outline"
                 size="sm"
                 onClick={handleAddAccount}
+                disabled={isFlowActive}
                 className="gap-1"
               >
                 <Plus className="h-4 w-4" />
                 {t("integrations.supabase.addOrganization")}
               </Button>
+              {isFlowActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void cancelConnectionFlow("supabase");
+                  }}
+                  data-testid="cancel-supabase-flow-button"
+                >
+                  {t("integrations.supabase.cancelSignIn")}
+                </Button>
+              )}
             </div>
           </CardTitle>
           <CardDescription>
@@ -452,13 +517,30 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       <div className="flex flex-col md:flex-row items-center justify-between">
         <h2 className="text-lg font-medium">Integrations</h2>
         <img
-          onClick={handleAddAccount}
+          onClick={isFlowActive ? undefined : handleAddAccount}
           src={isDarkMode ? connectSupabaseDark : connectSupabaseLight}
           alt="Connect to Supabase"
-          className="w-full h-10 min-h-8 min-w-20 cursor-pointer"
+          aria-busy={isFlowActive}
+          className={`w-full h-10 min-h-8 min-w-20 ${
+            isFlowActive ? "cursor-wait opacity-60" : "cursor-pointer"
+          }`}
           data-testid="connect-supabase-button"
         />
       </div>
+      {isFlowActive && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void cancelConnectionFlow("supabase");
+            }}
+            data-testid="cancel-supabase-flow-button"
+          >
+            {t("integrations.supabase.cancelSignIn")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

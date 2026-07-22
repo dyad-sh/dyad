@@ -558,7 +558,10 @@
       "branchNotFound": "브랜치를 찾을 수 없습니다",
       "branchSelected": "브랜치가 선택되었습니다",
       "failedSetBranch": "브랜치 설정 실패: {{error}}",
-      "failedDisconnectProject": "앱에서 프로젝트 연결 해제 실패"
+      "failedDisconnectProject": "앱에서 프로젝트 연결 해제 실패",
+      "signInTimedOut": "로그인 시간이 초과되었습니다 — 다시 시도하거나 브라우저를 확인하세요",
+      "cancelSignIn": "로그인 취소",
+      "connectFailed": "Supabase 연결에 실패했습니다"
     },
     "neon": {
       "title": "Neon 연동",
@@ -613,12 +616,14 @@
       "completingSignIn": "브라우저에서 로그인을 완료하세요…",
       "projectDisconnected": "프로젝트 연결이 성공적으로 해제되었습니다",
       "signInTimedOut": "로그인 시간이 초과되었습니다 — 다시 시도하거나 브라우저를 확인하세요",
+      "cancelSignIn": "로그인 취소",
       "connecting": "연결 중...",
       "disconnectAccountTitle": "Neon 계정 연결 해제",
       "disconnectAccountConfirmation": "Neon 계정 연결을 해제하시겠습니까? 다시 연결하려면 OAuth로 재인증해야 합니다.",
       "removeVercelEnvVars": "Vercel에서 Neon 환경 변수 제거",
       "removeVercelEnvVarsHelp": "연결된 Vercel 프로젝트가 연결 해제된 데이터베이스를 가리키지 않도록 DATABASE_URL 및 Neon Auth 변수를 삭제합니다.",
-      "failedRemoveVercelEnvVars": "연결은 해제되었지만 Vercel에서 Neon 환경 변수 제거에 실패했습니다."
+      "failedRemoveVercelEnvVars": "연결은 해제되었지만 Vercel에서 Neon 환경 변수 제거에 실패했습니다.",
+      "connectFailed": "Neon 연결에 실패했습니다"
     },
     "db": {
       "projectInfo": "{{provider}} 프로젝트 정보",

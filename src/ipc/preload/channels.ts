@@ -19,7 +19,11 @@ import { settingsContracts } from "../types/settings";
 import { appContracts } from "../types/app";
 import { chatContracts, chatStreamContract } from "../types/chat";
 import { agentContracts, agentEvents } from "../types/agent";
-import { githubContracts, gitContracts, githubEvents } from "../types/github";
+import { githubContracts, gitContracts } from "../types/github";
+import {
+  connectionFlowContracts,
+  connectionFlowEvents,
+} from "../types/connection_flow";
 import { mcpContracts, mcpEvents } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
 import { supabaseContracts } from "../types/supabase";
@@ -85,6 +89,7 @@ export const VALID_INVOKE_CHANNELS = [
   HELP_STREAM_CHANNELS.invoke,
 
   // Integrations
+  ...getInvokeChannels(connectionFlowContracts),
   ...getInvokeChannels(githubContracts),
   ...getInvokeChannels(gitContracts),
   ...getInvokeChannels(mcpContracts),
@@ -152,7 +157,7 @@ export const VALID_RECEIVE_CHANNELS = [
 
   // Event channels
   ...getReceiveChannels(agentEvents),
-  ...getReceiveChannels(githubEvents),
+  ...getReceiveChannels(connectionFlowEvents),
   ...getReceiveChannels(mcpEvents),
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),

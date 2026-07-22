@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  defineContract,
-  defineEvent,
-  createClient,
-  createEventClient,
-} from "../contracts/core";
+import { defineContract, createClient } from "../contracts/core";
 import { AppSchema } from "./app";
 
 // =============================================================================
@@ -127,32 +122,15 @@ export const CloneRepoResultSchema = z.union([
   }),
 ]);
 
-// GitHub Device Flow schemas
-export const GitHubDeviceFlowUpdateSchema = z.object({
-  userCode: z.string().optional(),
-  verificationUri: z.string().optional(),
-  message: z.string().optional(),
-});
-
-export const GitHubDeviceFlowSuccessSchema = z.object({
-  message: z.string().optional(),
-});
-
-export const GitHubDeviceFlowErrorSchema = z.object({
-  error: z.string(),
-});
-
 // =============================================================================
 // GitHub Contracts
 // =============================================================================
 
-export const githubContracts = {
-  startFlow: defineContract({
-    channel: "github:start-flow",
-    input: z.object({ appId: z.number().nullable() }),
-    output: z.void(),
-  }),
+// Note: the GitHub device flow (start/cancel + state updates) goes through
+// the connection-flow contracts (`connection_flow.ts`) — it is driven by the
+// flowId-correlated state machine shared with Supabase/Neon.
 
+export const githubContracts = {
   listRepos: defineContract({
     channel: "github:list-repos",
     input: z.void(),
@@ -352,33 +330,11 @@ export const gitContracts = {
 } as const;
 
 // =============================================================================
-// GitHub Event Contracts
-// =============================================================================
-
-export const githubEvents = {
-  flowUpdate: defineEvent({
-    channel: "github:flow-update",
-    payload: GitHubDeviceFlowUpdateSchema,
-  }),
-
-  flowSuccess: defineEvent({
-    channel: "github:flow-success",
-    payload: GitHubDeviceFlowSuccessSchema,
-  }),
-
-  flowError: defineEvent({
-    channel: "github:flow-error",
-    payload: GitHubDeviceFlowErrorSchema,
-  }),
-} as const;
-
-// =============================================================================
 // GitHub Clients
 // =============================================================================
 
 export const githubClient = createClient(githubContracts);
 export const gitClient = createClient(gitContracts);
-export const githubEventClient = createEventClient(githubEvents);
 
 // =============================================================================
 // Type Exports

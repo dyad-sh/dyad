@@ -577,7 +577,7 @@ async function addDyadTopicToRepo({
   accessToken: string;
 }): Promise<void> {
   try {
-    const topicsUrl = `${GITHUB_API_BASE}/repos/${owner}/${repo}/topics`;
+    const topicsUrl = `${getGitHubApiBase()}/repos/${owner}/${repo}/topics`;
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
@@ -630,7 +630,7 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
 
   // 1) Repos explicitly tagged with the "dyad" topic.
   try {
-    const userRes = await fetch(`${GITHUB_API_BASE}/user`, { headers });
+    const userRes = await fetch(`${getGitHubApiBase()}/user`, { headers });
     if (!userRes.ok) {
       throw new Error(`Failed to fetch user (${userRes.status})`);
     }
@@ -640,7 +640,7 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
         `topic:${DYAD_REPO_TOPIC} user:${user.login}`,
       );
       const searchRes = await fetch(
-        `${GITHUB_API_BASE}/search/repositories?q=${query}&per_page=100`,
+        `${getGitHubApiBase()}/search/repositories?q=${query}&per_page=100`,
         { headers },
       );
       if (searchRes.ok) {
@@ -662,7 +662,7 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
   // 2) Heuristic for repos created before Dyad tagged them with a topic:
   //    any accessible repo with an AI_RULES.md at its root.
   const reposRes = await fetch(
-    `${GITHUB_API_BASE}/user/repos?per_page=100&sort=updated`,
+    `${getGitHubApiBase()}/user/repos?per_page=100&sort=updated`,
     { headers },
   );
   if (!reposRes.ok) {
@@ -679,7 +679,7 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
       candidates.slice(i, i + CONCURRENCY).map(async (repo) => {
         try {
           const res = await fetch(
-            `${GITHUB_API_BASE}/repos/${repo.full_name}/contents/AI_RULES.md`,
+            `${getGitHubApiBase()}/repos/${repo.full_name}/contents/AI_RULES.md`,
             { headers },
           );
           if (res.ok) {

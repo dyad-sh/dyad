@@ -1,6 +1,7 @@
 import type { createStore } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
+import { createTraceObserver } from "@/state_machines/trace";
 import {
   VersionPreviewController,
   type VersionPreviewRuntime,
@@ -32,7 +33,12 @@ export class VersionPreviewManager {
     private readonly store: JotaiStore,
   ) {
     this.host = new KeyedControllerHost(
-      (appId) => new VersionPreviewController(appId, runtime),
+      (appId) =>
+        new VersionPreviewController(
+          appId,
+          runtime,
+          createTraceObserver("version_preview", appId),
+        ),
     );
     this.previousAppId = store.get(selectedAppIdAtom);
     this.unsubscribeHost = this.host.subscribeAny(() => {

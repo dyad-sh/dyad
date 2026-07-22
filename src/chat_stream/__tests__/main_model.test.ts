@@ -164,6 +164,34 @@ describe("main chat stream model", () => {
     ]);
     state = apply(cancelled.state, { type: "handler-advanced", streamId: 1 });
     expect(state.streams[1].phase).toBe("unwinding-aborted");
+
+    let pending = apply(initialMainModelState, {
+      type: "request-received",
+      streamId: 2,
+      chatId: 7,
+      appId: 9,
+    });
+    pending = apply(pending, { type: "handler-advanced", streamId: 2 });
+    const admitted = transitionMainModel(pending, {
+      type: "handler-advanced",
+      streamId: 2,
+    });
+    expect(() =>
+      assertMainModelTransitionInvariants(
+        pending,
+        { type: "handler-advanced", streamId: 2 },
+        {
+          ...admitted,
+          state: {
+            ...admitted.state,
+            streams: {
+              ...admitted.state.streams,
+              2: { ...admitted.state.streams[2], cancelNotified: true },
+            },
+          },
+        },
+      ),
+    ).toThrow(/early-notify admission safety/);
   });
 
   it("I4 wakes waiters and clears released barrier bookkeeping", () => {

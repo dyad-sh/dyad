@@ -5,6 +5,12 @@ import type {
   ChatStreamStartPayload,
   ChatStreamTransportEndPayload,
 } from "./protocol";
+import {
+  CHAT_STREAM_INVARIANT_I1,
+  CHAT_STREAM_INVARIANT_I2,
+  CHAT_STREAM_INVARIANT_I3,
+  CHAT_STREAM_INVARIANT_I4,
+} from "./protocol";
 
 /**
  * Pure executable model of the imperative main-process chat stream engine.
@@ -622,11 +628,13 @@ export function assertMainModelTransitionInvariants(
     if (emission.type === "chat:stream:start") {
       const stream = result.state.streams[emission.payload.streamId ?? -1];
       if (!stream || coveringBarrierCount(previous, stream) > 0) {
-        throw new Error("I1: admission fired under a covering barrier");
-      }
-      if (stream.cancelNotified && coveringBarrierCount(previous, stream) > 0) {
         throw new Error(
-          "I3: an early-notified stream admitted before barrier release",
+          `${CHAT_STREAM_INVARIANT_I1}: admission fired under a covering barrier`,
+        );
+      }
+      if (stream.cancelNotified) {
+        throw new Error(
+          `${CHAT_STREAM_INVARIANT_I3}: an early-notified stream was admitted`,
         );
       }
     }
@@ -635,7 +643,9 @@ export function assertMainModelTransitionInvariants(
       emission.payload.wasCancelled === true &&
       emission.origin !== "cancel"
     ) {
-      throw new Error("I2: wasCancelled was emitted outside the cancel action");
+      throw new Error(
+        `${CHAT_STREAM_INVARIANT_I2}: wasCancelled was emitted outside the cancel action`,
+      );
     }
     if (
       emission.type === "chat:stream:end" &&
@@ -647,7 +657,7 @@ export function assertMainModelTransitionInvariants(
           : undefined;
       if (stream?.aborted)
         throw new Error(
-          "I2: finalized emitted transport end for an aborted stream",
+          `${CHAT_STREAM_INVARIANT_I2}: finalized emitted transport end for an aborted stream`,
         );
     }
   }
@@ -660,7 +670,7 @@ export function assertMainModelQuiescence(state: MainModelState): void {
     Object.keys(state.appBarrierCounts).length > 0
   ) {
     throw new Error(
-      "I4: released scenario finished with non-empty barrier counts",
+      `${CHAT_STREAM_INVARIANT_I4}: released scenario finished with non-empty barrier counts`,
     );
   }
   if (
@@ -668,13 +678,17 @@ export function assertMainModelQuiescence(state: MainModelState): void {
       stream.phase.startsWith("waiting-"),
     )
   ) {
-    throw new Error("I4: released scenario left a stream parked on a barrier");
+    throw new Error(
+      `${CHAT_STREAM_INVARIANT_I4}: released scenario left a stream parked on a barrier`,
+    );
   }
   if (
     Object.keys(state.chatWaiters).length > 0 ||
     Object.keys(state.appWaiters).length > 0
   ) {
-    throw new Error("I4: released scenario left admission waiters registered");
+    throw new Error(
+      `${CHAT_STREAM_INVARIANT_I4}: released scenario left admission waiters registered`,
+    );
   }
 }
 

@@ -27,6 +27,7 @@ import {
   type MainModelEvent,
   type MainModelState,
 } from "../main_model";
+import { CHAT_STREAM_WIRE_EVENTS } from "../protocol";
 
 /**
  * Bounded exhaustive alphabet: one chat, two total submits (the second queues),
@@ -233,27 +234,27 @@ function emissionToRenderer(
   emission: MainModelEmission,
 ): StreamEvent | undefined {
   switch (emission.type) {
-    case "chat:stream:start":
+    case CHAT_STREAM_WIRE_EVENTS.start:
       return { type: "registered", streamId: emission.payload.streamId };
-    case "chat:response:chunk":
+    case CHAT_STREAM_WIRE_EVENTS.chunk:
       return {
         type: "chunk-received",
         streamId: emission.payload.streamId ?? 0,
       };
-    case "chat:response:end":
+    case CHAT_STREAM_WIRE_EVENTS.end:
       return {
         type: "stream-ended",
         streamId: emission.payload.streamId ?? 0,
         response: emission.payload,
       };
-    case "chat:response:error":
+    case CHAT_STREAM_WIRE_EVENTS.error:
       return {
         type: "stream-errored",
         streamId: emission.payload.streamId ?? 0,
         error: emission.payload.error,
         warningMessages: emission.payload.warningMessages,
       };
-    case "chat:stream:end":
+    case CHAT_STREAM_WIRE_EVENTS.transportEnd:
     case "completion-resolved":
       return undefined;
   }

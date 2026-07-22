@@ -288,6 +288,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         await executeUndo({
           appId,
           targetVersionId: revertTargetVersionId,
+          expectedHeadOid,
           currentChatMessageId,
         });
       } else {
@@ -396,6 +397,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       await executeRetry({
         appId,
         targetVersionId: revertTargetVersionId,
+        expectedHeadOid: freshVersions[0]?.oid,
         retry,
       });
     } catch (error) {

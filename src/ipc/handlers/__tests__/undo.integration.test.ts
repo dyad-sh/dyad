@@ -135,6 +135,9 @@ describe("undo (integration)", () => {
     await waitFor(async () => expect(await loadMessages()).toHaveLength(2), {
       timeout: 15_000,
     });
+    expect(harness.bridge.lastInvoke("revert-version")?.args[0]).toMatchObject({
+      expectedHeadOid: expect.any(String),
+    });
     expect(harness.readAppFile(INDEX_PATH)).toContain("Testing:write-index!");
     expect(harness.readAppFile(INDEX_PATH)).not.toContain(
       "Testing:write-index(2)!",

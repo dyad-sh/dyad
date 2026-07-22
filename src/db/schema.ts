@@ -442,6 +442,30 @@ export const mcpToolConsents = sqliteTable(
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
 
+// --- Chat search (FTS5) support tables ---
+// Dirty queues for the chat_search_fts index (created in a custom migration —
+// drizzle cannot model FTS5 virtual tables). Rows are enqueued by SQLite
+// triggers when source rows change and drained by ChatSearchIndexer, which
+// builds the searchable text projection in TypeScript. No foreign keys:
+// triggers own the row lifecycle, including cleanup on delete.
+export const chatSearchDirtyMessages = sqliteTable(
+  "chat_search_dirty_messages",
+  {
+    messageId: integer("message_id").primaryKey(),
+  },
+);
+
+export const chatSearchDirtyChats = sqliteTable("chat_search_dirty_chats", {
+  chatId: integer("chat_id").primaryKey(),
+});
+
+// Key/value metadata for the chat-search index (e.g. projection version so a
+// policy change can trigger a background rebuild).
+export const chatSearchMeta = sqliteTable("chat_search_meta", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
 // --- Custom Themes table ---
 export const customThemes = sqliteTable("custom_themes", {
   id: integer("id").primaryKey({ autoIncrement: true }),

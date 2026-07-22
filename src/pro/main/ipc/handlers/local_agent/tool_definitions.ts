@@ -34,6 +34,8 @@ import { runTestsTool } from "./tools/run_tests";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import { exploreCodeTool } from "./tools/explore_code";
+import { searchChatsTool } from "./tools/search_chats";
+import { readChatTool } from "./tools/read_chat";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -107,6 +109,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   grepTool,
   codeSearchTool,
   exploreCodeTool,
+  searchChatsTool,
+  readChatTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,

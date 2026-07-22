@@ -105,6 +105,21 @@
   "approve": "Aprobar",
   "reject": "Rechazar",
   "noChanges": "Sin cambios",
+  "searchChatsTool": {
+    "badge": "BÚSQUEDA DE CHATS",
+    "searching": "Buscando en el historial de chats...",
+    "didNotFinish": "No terminó",
+    "stillIndexing": "el índice aún se está actualizando",
+    "chatCount_one": "{{count}} chat",
+    "chatCount_other": "{{count}} chats"
+  },
+  "readChatTool": {
+    "badge": "HISTORIAL DE CHAT",
+    "reading": "Leyendo el chat...",
+    "didNotFinish": "No terminó",
+    "chatNumber": "Chat n.º {{chatId}}",
+    "messagesRange": "mensajes {{range}}"
+  },
   "git": {
     "checkingChanges": "Comprobando los cambios del proyecto",
     "checkedChanges": "Cambios del proyecto comprobados",

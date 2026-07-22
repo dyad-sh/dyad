@@ -10,6 +10,8 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadLogs } from "./DyadLogs";
 import { DyadGrep } from "./DyadGrep";
+import { DyadSearchChats } from "./DyadSearchChats";
+import { DyadReadChat } from "./DyadReadChat";
 import { DyadExploreCode } from "./DyadExploreCode";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
@@ -550,6 +552,44 @@ function renderCustomTag(
         >
           {content}
         </DyadWebSearch>
+      );
+    case "dyad-search-chats":
+      return (
+        <DyadSearchChats
+          node={{
+            properties: {
+              query: attributes.query || "",
+              indexStatus: attributes["index-status"] || "",
+              resultCount: attributes["result-count"],
+              state: getState({
+                isStreaming,
+                inProgress,
+                explicitState: attributes.state as CustomTagState,
+              }),
+            },
+          }}
+        >
+          {content}
+        </DyadSearchChats>
+      );
+    case "dyad-read-chat":
+      return (
+        <DyadReadChat
+          node={{
+            properties: {
+              chatId: attributes["chat-id"] || "",
+              title: attributes.title || "",
+              range: attributes.range || "",
+              state: getState({
+                isStreaming,
+                inProgress,
+                explicitState: attributes.state as CustomTagState,
+              }),
+            },
+          }}
+        >
+          {content}
+        </DyadReadChat>
       );
     case "dyad-web-crawl":
       return (

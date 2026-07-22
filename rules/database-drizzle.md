@@ -10,6 +10,8 @@ npm run db:generate
 
 IMPORTANT: Do NOT generate SQL migration files by hand! This is wrong.
 
+For SQL that drizzle cannot model (FTS5 virtual tables, triggers), generate a correctly numbered scaffold with `npm run db:generate -- --custom --name <slug>` and put the hand-written SQL inside it (statements separated by `--> statement-breakpoint`). Model any ordinary companion tables in `schema.ts` and generate their migration normally first. `createInMemoryTestDb()` applies the real `./drizzle` migrations, so virtual tables and triggers are exercised in unit tests automatically.
+
 ## Neon migration preview
 
 When diffing Neon branches with `ts-pg-schema-diff`, use unpooled connection

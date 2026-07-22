@@ -67,13 +67,13 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
-import { clearPendingMcpConsentsForChat } from "../utils/mcp_consent";
 import { sanitizeMcpToolResult } from "../utils/mcp_result_sanitizer";
 
 import {
   clearPendingLocalAgentInputsForChat,
   handleLocalAgentStream,
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { userInputRegistry } from "../../user_input/main";
 
 import { safeSend } from "../utils/safe_sender";
 import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
@@ -352,7 +352,6 @@ async function cancelTrackedStreams(
   for (const { chatId, streams } of trackedStreams) {
     streams.forEach(({ abortController }) => abortController.abort());
     clearPendingLocalAgentInputsForChat(chatId);
-    clearPendingMcpConsentsForChat(chatId);
     logger.log(`Aborted ${streams.length} stream(s) for chat ${chatId}`);
   }
 
@@ -2251,10 +2250,11 @@ This conversation includes one or more image attachments. When the user uploads 
       // aborted path.
       if (!abortController.signal.aborted) {
         safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+        userInputRegistry.streamFinished(req.chatId);
       }
-      // Unblock any pending MCP consents (their banners are cleared on stream end).
+      // Unblock pending user inputs once the final stream for the chat ends.
       if (!activeStreams.has(req.chatId)) {
-        clearPendingMcpConsentsForChat(req.chatId);
+        userInputRegistry.sweepChat(req.chatId);
       }
 
       // Signal any awaiting `cancelStream` call that all writes have settled,

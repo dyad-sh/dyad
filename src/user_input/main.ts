@@ -1,0 +1,80 @@
+/** Main-process composition root for the user-input registry. */
+import { BrowserWindow, type WebContents } from "electron";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { mcpToolConsents } from "../db/schema";
+import { readSettings, writeSettings } from "../main/settings";
+import { systemClock, uuidIdSource } from "../state_machines/clock";
+import { safeSend } from "../ipc/utils/safe_sender";
+import { createUserInputRegistry } from "./registry";
+
+const subscribers = new Set<WebContents>();
+
+export function rememberUserInputSubscriber(sender: WebContents): void {
+  if (subscribers.has(sender)) return;
+  subscribers.add(sender);
+  sender.once?.("destroyed", () => subscribers.delete(sender));
+}
+
+function broadcast(channel: string, payload: unknown): void {
+  const targets = new Set<WebContents>(subscribers);
+  const windows = BrowserWindow?.getAllWindows?.() ?? [];
+  for (const window of windows) {
+    if (!window.isDestroyed()) targets.add(window.webContents);
+  }
+  for (const target of targets) safeSend(target, channel, payload);
+}
+
+export const userInputRegistry = createUserInputRegistry({
+  clock: systemClock,
+  idSource: uuidIdSource,
+  broadcast,
+  async persistAlways(descriptor, response) {
+    if (
+      descriptor.kind === "mcp-consent" &&
+      response.kind === "mcp-consent" &&
+      response.decision === "accept-always"
+    ) {
+      const rows = await db
+        .select()
+        .from(mcpToolConsents)
+        .where(
+          and(
+            eq(mcpToolConsents.serverId, descriptor.serverId),
+            eq(mcpToolConsents.toolName, descriptor.toolName),
+          ),
+        );
+      if (rows.length > 0) {
+        await db
+          .update(mcpToolConsents)
+          .set({ consent: "always" })
+          .where(
+            and(
+              eq(mcpToolConsents.serverId, descriptor.serverId),
+              eq(mcpToolConsents.toolName, descriptor.toolName),
+            ),
+          );
+      } else {
+        await db.insert(mcpToolConsents).values({
+          serverId: descriptor.serverId,
+          toolName: descriptor.toolName,
+          consent: "always",
+        });
+      }
+      return;
+    }
+    if (
+      descriptor.kind === "agent-consent" &&
+      response.kind === "agent-consent" &&
+      response.decision === "accept-always"
+    ) {
+      const settings = readSettings();
+      writeSettings({
+        agentToolConsents: {
+          ...settings.agentToolConsents,
+          [descriptor.toolName]: "always",
+        },
+      });
+    }
+  },
+});

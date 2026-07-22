@@ -110,6 +110,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Prefer derived selectors for values computable from the snapshot. Do not add
   generation counters or mirrored booleans beside a machine-owned identity or
   lifecycle state.
+- When an epoch keys a mounted resource, capture props such as an iframe `src`
+  from the epoch-changing snapshot. Do not let later same-epoch state updates
+  rewrite identity-defining DOM attributes and trigger an implicit reload.
 - When a later event carries only an identity, consumers that need additional
   context after reload must recover it from the hydrated projection. Buffer
   identity-only events that can arrive before hydration completes instead of

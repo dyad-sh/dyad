@@ -91,6 +91,7 @@ import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner"
 import { createVersionPreviewRuntime } from "@/version_preview/commands";
 import { VersionPreviewManager } from "@/version_preview/manager";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
+import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
 import { AppRunManager } from "@/app_run/manager";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
@@ -957,21 +958,23 @@ export async function setupHybridChatHarness(
               <AppRunProvider manager={appRunManager}>
                 <ImageGenerationProvider manager={imageGenerationManager}>
                   <VersionPreviewProvider manager={versionPreviewManager}>
-                    <ThemeProvider>
-                      <DeepLinkProvider>
-                        <SidebarProvider defaultOpen={false}>
-                          {opts.wireAppEvents !== false && (
-                            <HybridAppEventWiring
-                              store={store}
-                              queryClient={queryClient}
-                              chatStreamManager={chatStreamManager}
-                            />
-                          )}
-                          <RouterProvider router={router as never} />
-                          <Toaster richColors expand duration={500} />
-                        </SidebarProvider>
-                      </DeepLinkProvider>
-                    </ThemeProvider>
+                    <PreviewIframeProvider>
+                      <ThemeProvider>
+                        <DeepLinkProvider>
+                          <SidebarProvider defaultOpen={false}>
+                            {opts.wireAppEvents !== false && (
+                              <HybridAppEventWiring
+                                store={store}
+                                queryClient={queryClient}
+                                chatStreamManager={chatStreamManager}
+                              />
+                            )}
+                            <RouterProvider router={router as never} />
+                            <Toaster richColors expand duration={500} />
+                          </SidebarProvider>
+                        </DeepLinkProvider>
+                      </ThemeProvider>
+                    </PreviewIframeProvider>
                   </VersionPreviewProvider>
                 </ImageGenerationProvider>
               </AppRunProvider>

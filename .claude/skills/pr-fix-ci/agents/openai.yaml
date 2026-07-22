@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Fix CI"
+  short_description: "Diagnose and fix PR test failures from CI"
+  default_prompt: "Use $dyad:pr-fix:ci to fix the latest failing CI run for this pull request."

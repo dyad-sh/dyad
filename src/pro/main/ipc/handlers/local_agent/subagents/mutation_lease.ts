@@ -21,7 +21,7 @@ export function acquireMutationLease(params: {
   if (current && current.threadId !== params.threadId) return false;
   leases.set(params.appId, {
     threadId: params.threadId,
-    scope: params.scope.map(normalizeScope),
+    scope: params.scope.map(normalizeMutationScope),
   });
   return true;
 }
@@ -74,8 +74,8 @@ export function assertImplementerPathAllowed(
   relativePath: string,
 ): void {
   if (ctx.subagentPersona !== "implementer") return;
-  const normalizedPath = normalizeScope(relativePath);
-  const scope = ctx.subagentPathScope?.map(normalizeScope) ?? [];
+  const normalizedPath = normalizeMutationScope(relativePath);
+  const scope = ctx.subagentPathScope ?? [];
   if (
     scope.length === 0 ||
     !scope.some(
@@ -90,7 +90,7 @@ export function assertImplementerPathAllowed(
   }
 }
 
-function normalizeScope(value: string): string {
+export function normalizeMutationScope(value: string): string {
   const normalized = path.posix.normalize(value.replaceAll("\\", "/"));
   return normalized.replace(/^\.\//, "").replace(/\/$/, "");
 }

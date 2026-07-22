@@ -79,9 +79,11 @@ describe("spawn_agent schema", () => {
       ].every((tool) => tool.subagentOnly),
     ).toBe(true);
     expect(spawnAgentTool.requiresMutationLease).toBe(false);
+    expect(spawnAgentTool.usesEngineEndpoint).toBe(true);
     expect(cancelAgentTool.requiresMutationLease).toBe(false);
     expect(sendMessageTool.requiresMutationLease).toBe(false);
     expect(followupTaskTool.requiresMutationLease).toBe(false);
+    expect(followupTaskTool.usesEngineEndpoint).toBe(true);
   });
 
   it("exposes bounded compiler exploration arguments", () => {

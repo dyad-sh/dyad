@@ -65,6 +65,18 @@ describe("sub-agent mutation lease", () => {
     ).toThrow(/assigned paths/);
   });
 
+  it("uses the pre-normalized Implementer path scope", () => {
+    const ctx = {
+      subagentPersona: "implementer",
+      subagentPathScope: ["src/components"],
+    } as AgentContext;
+
+    expect(() =>
+      assertImplementerPathAllowed(ctx, "src\\components\\Card.tsx"),
+    ).not.toThrow();
+    expect(ctx.subagentPathScope).toEqual(["src/components"]);
+  });
+
   it("rejects Implementer mutations after its writer lease is gone", () => {
     expect(() =>
       assertMutationLease({

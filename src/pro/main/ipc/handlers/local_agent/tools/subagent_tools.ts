@@ -10,6 +10,7 @@ import {
   spawnModelSubagent,
   waitForSubagents,
 } from "../subagents/subagent_manager";
+import { normalizeMutationScope } from "../subagents/mutation_lease";
 import type { AgentContext, ToolDefinition } from "./types";
 import {
   formatRawExploreCodeResult,
@@ -58,7 +59,7 @@ function buildSubagentToolSet(params: {
     ...ctx,
     subagentThreadId: threadId,
     subagentPersona: persona,
-    subagentPathScope: scope,
+    subagentPathScope: scope.map(normalizeMutationScope),
     allowDeploySideEffects: false,
     onSharedServerModuleChange: (relativePath) => {
       ctx.isSharedModulesChanged = true;
@@ -220,6 +221,7 @@ export const followupTaskTool: ToolDefinition<z.infer<typeof messageSchema>> = {
     "Queue a durable follow-up assignment on an existing child thread. An idle child will consume it on its next turn.",
   subagentOnly: true,
   requiresMutationLease: false,
+  usesEngineEndpoint: true,
   execute: async (args, ctx) => {
     const persona = await followupSubagent(
       ctx.chatId,

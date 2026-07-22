@@ -145,6 +145,15 @@ export function createChatStreamController(
             streamId: command.streamId,
             error: error instanceof Error ? error.message : String(error),
           });
+        } finally {
+          // Disposal may have released the transport before startStream
+          // finished its async setup and registered the IPC entry. Release
+          // again after setup settles so that late registration cannot leak.
+          if (disposed) {
+            runSafely(() =>
+              commands.releaseTransport({ chatId, streamId: command.streamId }),
+            );
+          }
         }
         return;
       }
@@ -217,6 +226,17 @@ export function createChatStreamController(
       state.type === "streaming" ||
       state.type === "cancelling"
     ) {
+      try {
+        getCommands().syncProjection({
+          chatId,
+          state: { type: "idle", lastStreamId: state.streamId },
+        });
+      } catch (error) {
+        console.error(
+          `[chat-stream] Failed to clear projection for disposed chat ${chatId}:`,
+          error,
+        );
+      }
       try {
         state.request.onSettled?.({ success: false });
       } catch (error) {

@@ -199,6 +199,7 @@ function showWarningMessage(
 }
 
 function cleanupStreamTransport(chatId: number, streamId: number): void {
+  turnContexts.delete(turnKey(chatId, streamId));
   latestChunkByChatId.delete(chatId);
   cancelAckTimer(chatId);
   clearPreviewForChat(

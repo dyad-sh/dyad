@@ -169,6 +169,10 @@ describe("chat stream controller", () => {
     controller.dispose();
 
     expect(onSettled).toHaveBeenCalledExactlyOnceWith({ success: false });
+    expect(commands.syncProjection).toHaveBeenLastCalledWith({
+      chatId: CHAT_ID,
+      state: { type: "idle", lastStreamId: 1 },
+    });
     expect(commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
       chatId: CHAT_ID,
       streamId: 1,
@@ -183,7 +187,11 @@ describe("chat stream controller", () => {
 
     startDeferreds[0].resolve();
     await flush();
-    expect(commands.releaseTransport).toHaveBeenCalledTimes(1);
+    expect(commands.releaseTransport).toHaveBeenCalledTimes(2);
+    expect(commands.releaseTransport).toHaveBeenLastCalledWith({
+      chatId: CHAT_ID,
+      streamId: 1,
+    });
   });
 
   it("runs the happy path and dispatches the queue exactly once per finalization", async () => {

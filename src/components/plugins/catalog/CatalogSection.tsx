@@ -5,11 +5,18 @@ import { Input } from "@/components/ui/input";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { CatalogCard } from "./CatalogCard";
+import { StdioCatalogConsentDialog } from "./StdioCatalogConsentDialog";
 import { useAddFromCatalog } from "./useAddFromCatalog";
 
 export function CatalogSection() {
   const [search, setSearch] = useState("");
-  const { addFromCatalog, addingSlug } = useAddFromCatalog();
+  const {
+    addFromCatalog,
+    addingSlug,
+    pendingStdioEntry,
+    confirmPendingStdio,
+    cancelPendingStdio,
+  } = useAddFromCatalog();
 
   const catalogQuery = useQuery({
     queryKey: queryKeys.mcp.catalog,
@@ -64,6 +71,11 @@ export function CatalogSection() {
 
   return (
     <div className="mt-10" data-testid="catalog-section">
+      <StdioCatalogConsentDialog
+        entry={pendingStdioEntry}
+        onConfirm={confirmPendingStdio}
+        onCancel={cancelPendingStdio}
+      />
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">

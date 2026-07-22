@@ -12,6 +12,14 @@ const VALID_ENTRY = {
   oauth: { required: true },
 };
 
+const VALID_STDIO_ENTRY = {
+  slug: "mongodb",
+  name: "MongoDB",
+  transport: "stdio",
+  command: "npx",
+  args: ["-y", "mongodb-mcp-server@1.13.0"],
+};
+
 function mockCatalogResponse(servers: unknown[], extra?: object) {
   vi.stubGlobal(
     "fetch",
@@ -57,20 +65,115 @@ describe("remote_mcp_catalog", () => {
   });
 
   it("drops entries with transports this client does not support", async () => {
-    // Forward compatibility: a newer catalog may serve stdio entries.
+    // Forward compatibility: a newer catalog may serve entry kinds this
+    // client doesn't know about yet.
+    mockCatalogResponse([{ ...VALID_ENTRY, transport: "sse" }, VALID_ENTRY]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["figma"]);
+  });
+
+  it("keeps stdio entries alongside http ones", async () => {
     mockCatalogResponse([
+      VALID_STDIO_ENTRY,
+      VALID_ENTRY,
       {
-        slug: "mongodb",
-        name: "MongoDB",
-        transport: "stdio",
-        command: "npx",
-        args: ["-y", "mongodb-mcp-server@1.13.0"],
+        ...VALID_STDIO_ENTRY,
+        slug: "mongodb-env",
+        env: { MDB_MCP_READ_ONLY: "true" },
       },
-      { ...VALID_ENTRY, transport: "sse" },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual([
+      "mongodb",
+      "figma",
+      "mongodb-env",
+    ]);
+    const withEnv = entries[2];
+    expect(withEnv.transport).toBe("stdio");
+    if (withEnv.transport === "stdio") {
+      expect(withEnv.env).toEqual({ MDB_MCP_READ_ONLY: "true" });
+    }
+  });
+
+  it("drops stdio entries whose command is not npx", async () => {
+    mockCatalogResponse([
+      { ...VALID_STDIO_ENTRY, command: "node" },
+      { ...VALID_STDIO_ENTRY, slug: "bash-server", command: "bash" },
       VALID_ENTRY,
     ]);
     const entries = await getRemoteMcpCatalog();
     expect(entries.map((e) => e.slug)).toEqual(["figma"]);
+  });
+
+  it("drops stdio entries without an exact-version-pinned package", async () => {
+    // A flag-shaped token like `--package@1.0.0` must not count as a spec.
+    mockCatalogResponse([
+      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@latest"] },
+      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server"] },
+      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@^1.13.0"] },
+      { ...VALID_STDIO_ENTRY, args: ["-y", "mongodb-mcp-server@1.x"] },
+      { ...VALID_STDIO_ENTRY, args: ["--package@1.0.0"] },
+      { ...VALID_STDIO_ENTRY, args: ["-y@1.0.0"] },
+      { ...VALID_STDIO_ENTRY, args: [] },
+      VALID_STDIO_ENTRY,
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["mongodb"]);
+  });
+
+  it("accepts scoped and prerelease pinned packages", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_STDIO_ENTRY,
+        slug: "scoped",
+        args: ["-y", "@azure/mcp@0.9.3"],
+      },
+      {
+        ...VALID_STDIO_ENTRY,
+        slug: "prerelease",
+        args: ["-y", "snyk-mcp@2.0.0-beta.1"],
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["scoped", "prerelease"]);
+  });
+
+  it("accepts npx flags and server-CLI args around the spec", async () => {
+    // Real catalog shapes: leading npx flags and trailing subcommands.
+    mockCatalogResponse([
+      {
+        ...VALID_STDIO_ENTRY,
+        slug: "azure",
+        args: ["-y", "@azure/mcp@3.0.0-beta.23", "server", "start"],
+      },
+      {
+        ...VALID_STDIO_ENTRY,
+        slug: "snyk",
+        args: ["-y", "snyk@1.1305.2", "mcp", "-t", "stdio"],
+      },
+      {
+        ...VALID_STDIO_ENTRY,
+        slug: "meta-quest",
+        args: ["-y", "--ignore-scripts", "@meta-quest/metavr@1.3.2", "mcp"],
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["azure", "snyk", "meta-quest"]);
+  });
+
+  it("passes through stdio env vars", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_STDIO_ENTRY,
+        env: { MDB_MCP_READ_ONLY: "true", LOG_LEVEL: "debug" },
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    const entry = entries[0];
+    expect(entry.transport).toBe("stdio");
+    if (entry.transport === "stdio") {
+      expect(entry.env).toEqual({ MDB_MCP_READ_ONLY: "true", LOG_LEVEL: "debug" });
+    }
   });
 
   it("drops duplicate slugs, keeping the first", async () => {

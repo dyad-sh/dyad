@@ -149,18 +149,30 @@ export function registerMcpHandlers() {
       return toMcpServer(existing[0]);
     }
 
+    const values =
+      entry.transport === "stdio"
+        ? {
+            name: entry.name,
+            transport: "stdio" as const,
+            command: entry.command,
+            args: entry.args,
+            envJson: entry.env ?? null,
+            enabled: true,
+            catalogSlug: entry.slug,
+          }
+        : {
+            name: entry.name,
+            transport: "http" as const,
+            url: entry.url,
+            headersJson: entry.headers ?? null,
+            enabled: true,
+            oauthEnabled: entry.oauth != null,
+            oauthScope: entry.oauth?.scope ?? null,
+            catalogSlug: entry.slug,
+          };
     const [created] = await db
       .insert(mcpServers)
-      .values({
-        name: entry.name,
-        transport: "http",
-        url: entry.url,
-        headersJson: entry.headers ?? null,
-        enabled: true,
-        oauthEnabled: entry.oauth != null,
-        oauthScope: entry.oauth?.scope ?? null,
-        catalogSlug: entry.slug,
-      })
+      .values(values)
       .onConflictDoNothing({ target: mcpServers.catalogSlug })
       .returning();
     if (!created) {

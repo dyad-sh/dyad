@@ -7,6 +7,7 @@
   "buildMeA": "Build me a {{label}}",
   "failedCreateApp": "Failed to create app. {{error}}",
   "failedCreateChat": "Failed to create chat. {{error}}",
+  "failedFinishSetup": "Failed to finish setting up the app. {{error}}",
   "startingChat": "Starting new chat",
   "creatingNewChat": "Creating a new chat in your existing app.",
   "whatsNew": "What's new in v{{version}}?",

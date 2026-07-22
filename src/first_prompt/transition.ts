@@ -58,12 +58,14 @@ function startDispatching(
   payload: FirstPromptPayload,
   appId: number,
   chatId: number,
+  isExistingAppSubmission: boolean,
 ): FirstPromptTransitionResult {
   return {
     state: {
       type: "dispatching",
       appId,
       chatId,
+      isExistingAppSubmission,
       settled: false,
       previewDecided: false,
     },
@@ -84,6 +86,7 @@ function finishDispatching(
       type: "navigating",
       appId: state.appId,
       chatId: state.chatId,
+      isExistingAppSubmission: state.isExistingAppSubmission,
     },
     commands: [{ type: "RefreshQueries", appId: state.appId }],
   };
@@ -210,7 +213,7 @@ export function transition(
           const appId = state.payload.selectedApp?.id;
           if (appId === undefined)
             return ignore(state, "invalid-in-current-state");
-          return startDispatching(state.payload, appId, event.chatId);
+          return startDispatching(state.payload, appId, event.chatId, true);
         }
         case "CREATE_FAILED":
           return {
@@ -243,7 +246,12 @@ export function transition(
             commands: [{ type: "ApplyTheme", appId: state.appId }],
           };
         case "POST_CREATE_DONE":
-          return startDispatching(state.payload, state.appId, state.chatId);
+          return startDispatching(
+            state.payload,
+            state.appId,
+            state.chatId,
+            false,
+          );
         case "POST_CREATE_FAILED":
           return {
             state: {

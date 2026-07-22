@@ -93,6 +93,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   context after reload must recover it from the hydrated projection. Buffer
   identity-only events that can arrive before hydration completes instead of
   assuming the consumer observed an earlier, self-contained event.
+- If retries may replace an input payload, carry operation facts established
+  by earlier transitions (such as create-vs-update) explicitly in state. Do not
+  re-derive UI or analytics semantics from the replacement payload.
 
 ## Persistence and hydration
 

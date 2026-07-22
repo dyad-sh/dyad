@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: false,
   isSettingsLoading: false,
+  isExistingAppSubmission: false,
   navigate: vi.fn(),
   phase: "idle",
   posthogCapture: vi.fn(),
@@ -31,7 +32,11 @@ vi.mock("jotai", async (importOriginal) => ({
       return mocks.hasManuallySelectedChatMode;
     }
     if (atom.debugLabel === "firstPromptSagaAtom") {
-      return { phase: mocks.phase, hasArmedPayload: false };
+      return {
+        phase: mocks.phase,
+        hasArmedPayload: false,
+        isExistingAppSubmission: mocks.isExistingAppSubmission,
+      };
     }
     return undefined;
   },
@@ -108,6 +113,7 @@ describe("HomePage first-prompt projection", () => {
     mocks.isAnyProviderSetup = false;
     mocks.isLoadingLanguageModelProviders = false;
     mocks.isSettingsLoading = false;
+    mocks.isExistingAppSubmission = false;
     mocks.phase = "idle";
     mocks.posthogCapture.mockReset();
     mocks.selectedApp = null;
@@ -157,6 +163,7 @@ describe("HomePage first-prompt projection", () => {
 
   it("shows the loading projection for every active orchestration phase", () => {
     for (const phase of [
+      "checkingProviders",
       "creating",
       "postCreate",
       "dispatching",
@@ -167,6 +174,16 @@ describe("HomePage first-prompt projection", () => {
       expect(screen.getByText("buildingApp")).toBeTruthy();
       view.unmount();
     }
+  });
+
+  it("preserves existing-app loading copy", () => {
+    mocks.phase = "dispatching";
+    mocks.isExistingAppSubmission = true;
+    render(<HomePage />);
+
+    expect(screen.getByText("startingChat")).toBeTruthy();
+    expect(screen.getByText("creatingNewChat")).toBeTruthy();
+    expect(screen.queryByText("buildingApp")).toBeNull();
   });
 
   it("keeps the effective default chat-mode synchronization", async () => {

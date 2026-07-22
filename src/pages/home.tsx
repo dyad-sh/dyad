@@ -176,6 +176,7 @@ export default function HomePage() {
   );
 
   const isLoading = [
+    "checkingProviders",
     "creating",
     "postCreate",
     "dispatching",
@@ -193,11 +194,19 @@ export default function HomePage() {
             <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
           </div>
           <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-            {t("buildingApp")}
+            {firstPromptSaga.isExistingAppSubmission
+              ? t("startingChat")
+              : t("buildingApp")}
           </h2>
           <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
-            {t("settingUp")} <br />
-            {t("mightTakeMoment")}
+            {firstPromptSaga.isExistingAppSubmission ? (
+              t("creatingNewChat")
+            ) : (
+              <>
+                {t("settingUp")} <br />
+                {t("mightTakeMoment")}
+              </>
+            )}
           </p>
         </div>
       </div>

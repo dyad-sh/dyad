@@ -6,6 +6,7 @@
   "moreIdeas": "更多创意",
   "buildMeA": "帮我构建一个{{label}}",
   "failedCreateApp": "创建应用失败。{{error}}",
+  "failedFinishSetup": "无法完成应用设置。{{error}}",
   "whatsNew": "v{{version}} 有什么新功能？",
   "releaseNotesTitle": "v{{version}} 发行说明",
   "importApp": "导入应用",

@@ -14,6 +14,7 @@ describe("first-prompt projection", () => {
       expect(projectFirstPromptState({ type, payload })).toEqual({
         phase: type,
         hasArmedPayload: true,
+        isExistingAppSubmission: false,
       });
     },
   );
@@ -27,6 +28,22 @@ describe("first-prompt projection", () => {
     ).toEqual({
       phase: "awaitingProviderSetup",
       hasArmedPayload: false,
+      isExistingAppSubmission: false,
+    });
+  });
+
+  it("preserves the actual existing-app path through navigation", () => {
+    expect(
+      projectFirstPromptState({
+        type: "navigating",
+        appId: 1,
+        chatId: 2,
+        isExistingAppSubmission: true,
+      }),
+    ).toEqual({
+      phase: "navigating",
+      hasArmedPayload: false,
+      isExistingAppSubmission: true,
     });
   });
 });

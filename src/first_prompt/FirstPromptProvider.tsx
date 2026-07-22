@@ -172,11 +172,13 @@ export function FirstPromptProvider({
       store.set(homeSelectedAppAtom, null);
     },
     showError(message, failure) {
-      showError(
-        t(failure === "createChat" ? "failedCreateChat" : "failedCreateApp", {
-          error: message,
-        }),
-      );
+      const key =
+        failure === "createChat"
+          ? "failedCreateChat"
+          : failure === "postCreate"
+            ? "failedFinishSetup"
+            : "failedCreateApp";
+      showError(t(key, { error: message }));
     },
   };
 

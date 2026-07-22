@@ -9,8 +9,9 @@
  * the failed side effect against the existing app without creating a second
  * app or repeating a completed Neon hook. NEON_HOOK_DONE is an internal
  * sequencing event that keeps RunNeonTemplateHook and ApplyTheme as separate
- * commands. dispatching also retains settle/preview completion flags so those
- * independent operations can preserve current-main concurrency and join
+ * commands. dispatching also retains the submission target plus settle/preview
+ * completion flags so the UI preserves its existing-app copy while those
+ * independent operations preserve current-main concurrency and join
  * deterministically before navigation.
  */
 
@@ -53,6 +54,7 @@ export type FirstPromptState =
       readonly type: "dispatching";
       readonly appId: number;
       readonly chatId: number;
+      readonly isExistingAppSubmission: boolean;
       readonly settled: boolean;
       readonly previewDecided: boolean;
     }
@@ -60,6 +62,7 @@ export type FirstPromptState =
       readonly type: "navigating";
       readonly appId: number;
       readonly chatId: number;
+      readonly isExistingAppSubmission: boolean;
     }
   | {
       readonly type: "failed";

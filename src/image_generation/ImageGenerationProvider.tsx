@@ -109,7 +109,11 @@ function orchestrateToasts(
   const previousById = new Map(previous.map((job) => [job.id, job]));
   const settled = next.find((job) => {
     const prior = previousById.get(job.id);
-    return prior?.status === "pending" && job.status !== "pending";
+    return (
+      (prior?.status === "pending" || prior?.status === "cancelling") &&
+      job.status !== "pending" &&
+      job.status !== "cancelling"
+    );
   });
 
   if (settled?.status === "success" && !settled.lateAfterCancel) {

@@ -139,8 +139,9 @@ export function projectImageGenerationState(
   const base = state.job;
   switch (state.type) {
     case "pending":
-    case "cancelling":
       return { ...base, status: "pending" };
+    case "cancelling":
+      return { ...base, status: "cancelling" };
     case "succeeded":
       return {
         ...base,

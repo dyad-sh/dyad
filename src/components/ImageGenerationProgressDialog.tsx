@@ -39,6 +39,10 @@ function StatusIcon({ status }: { status: ImageGenerationStatus }) {
   switch (status) {
     case "pending":
       return <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />;
+    case "cancelling":
+      return (
+        <Loader2 className="w-4 h-4 text-muted-foreground animate-spin shrink-0" />
+      );
     case "success":
       return <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />;
     case "error":
@@ -54,6 +58,12 @@ function StatusLabel({ status }: { status: ImageGenerationStatus }) {
       return (
         <Badge variant="secondary" className="text-xs">
           Generating
+        </Badge>
+      );
+    case "cancelling":
+      return (
+        <Badge variant="secondary" className="text-xs text-muted-foreground">
+          Cancelling
         </Badge>
       );
     case "success":
@@ -134,10 +144,18 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
 
           {/* Image preview or placeholder */}
           <div>
-            {job.status === "pending" ? (
+            {job.status === "pending" || job.status === "cancelling" ? (
               <div className="w-full aspect-video max-w-xs rounded-lg border-2 border-dashed border-muted-foreground/25 flex flex-col items-center justify-center gap-2 bg-muted/10">
-                <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                <p className="text-xs text-muted-foreground">Generating...</p>
+                <Loader2
+                  className={`h-6 w-6 animate-spin ${
+                    job.status === "pending"
+                      ? "text-primary"
+                      : "text-muted-foreground"
+                  }`}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {job.status === "pending" ? "Generating..." : "Cancelling..."}
+                </p>
               </div>
             ) : job.status === "success" && job.result ? (
               imgError ? (

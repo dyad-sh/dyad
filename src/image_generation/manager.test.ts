@@ -48,6 +48,41 @@ describe("ImageGenerationManager", () => {
     ]);
   });
 
+  it("projects cancellation requests separately from pending work", () => {
+    let emitJob: ((event: ImageGenerationEvent) => void) | undefined;
+    const manager = new ImageGenerationManager({
+      clock: createFakeClock(),
+      idSource: createSequentialIdSource(),
+      runner: {
+        run(command, emit) {
+          if (command.type === "GenerateImage") emitJob = emit;
+        },
+      },
+    });
+    const id = manager.submit({
+      prompt: "A lighthouse",
+      themeMode: "plain",
+      targetAppId: 1,
+      targetAppName: "App",
+      source: "chat",
+    });
+
+    manager.cancel(id);
+
+    expect(manager.getProjection()).toEqual([
+      expect.objectContaining({ id, status: "cancelling" }),
+    ]);
+
+    emitJob?.({ type: "JOB_SUCCEEDED", result });
+    expect(manager.getProjection()).toEqual([
+      expect.objectContaining({
+        id,
+        status: "success",
+        lateAfterCancel: true,
+      }),
+    ]);
+  });
+
   it("prunes terminal controllers older than 30 minutes on submit", () => {
     const clock = createFakeClock();
     let emitFirst: ((event: ImageGenerationEvent) => void) | undefined;

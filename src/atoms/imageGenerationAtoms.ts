@@ -3,6 +3,7 @@ import type { ImageThemeMode, GenerateImageResponse } from "@/ipc/types";
 
 export type ImageGenerationStatus =
   | "pending"
+  | "cancelling"
   | "success"
   | "error"
   | "cancelled";
@@ -46,7 +47,9 @@ export const chatImageGenerationJobsAtom = atom((get) => {
   // Only jobs with source === "chat" appear in the chat strip.
   // Jobs from media.tsx / library-home.tsx intentionally omit `source`
   // and therefore never appear here.
-  return jobs.filter((job) => job.source === "chat");
+  // A late success after cancellation is retained in recent jobs, but must not
+  // reappear in chat or be attached to the user's next message.
+  return jobs.filter((job) => job.source === "chat" && !job.lateAfterCancel);
 });
 
 /** Tracks dismissed job IDs globally so dismissals persist across mounts. */

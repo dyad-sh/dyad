@@ -14,7 +14,6 @@ import { AnimatePresence, motion, type Transition } from "framer-motion";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
-  chatStreamCountByIdAtom,
   isStreamingByIdAtom,
   scrollToBottomRequestedChatIdsAtom,
 } from "../atoms/chatAtoms";
@@ -43,6 +42,9 @@ import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { isPaneVisibleState } from "@/version_preview/state";
+import { useChatStreamState } from "@/hooks/useChatStream";
+import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
+import { streamGeneration } from "@/chat_stream/transition";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
@@ -90,8 +92,8 @@ export function ChatPanel({
     useVersionPreview(selectedAppId);
   const isVersionPaneOpen = isPaneVisibleState(versionPreviewState);
   const [terminalFitSignal, setTerminalFitSignal] = useState(0);
-  const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
+  const streamState = useChatStreamState(chatId);
   const store = useStore();
   const { settings } = useSettings();
   const { selectedMode, setChatMode } = useChatMode(chatId);
@@ -138,7 +140,7 @@ export function ChatPanel({
   }, [scrollToBottom]);
 
   // Scroll to bottom when a new stream starts (user sent a message)
-  const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
+  const streamCount = streamState ? streamGeneration(streamState) : 0;
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
   const isTerminalOpen = chatId
@@ -272,27 +274,15 @@ export function ChatPanel({
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
 
   // Scroll to bottom when streaming completes to ensure footer content is
-  // visible, but only if the user was following (at bottom) during the
-  // stream. Subscribes to the isStreaming projection (written by the chat
-  // stream machine) directly on the store, so the true -> false edge is
-  // observed exactly once per stream, without render-lagged refs.
-  useEffect(() => {
-    if (!chatId) return;
-    let prevStreaming = store.get(isStreamingByIdAtom).get(chatId) ?? false;
-    return store.sub(isStreamingByIdAtom, () => {
-      const nowStreaming = store.get(isStreamingByIdAtom).get(chatId) ?? false;
-      const wasStreaming = prevStreaming;
-      prevStreaming = nowStreaming;
-      if (wasStreaming && !nowStreaming && isAtBottomRef.current) {
-        // Double RAF ensures DOM is fully updated with footer content
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            scrollToBottom("smooth");
-          });
-        });
-      }
+  // Keep the completed footer visible if the user was following the stream.
+  useStreamFinished(({ chatId: finishedChatId }) => {
+    if (finishedChatId !== chatId || !isAtBottomRef.current) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToBottom("smooth");
+      });
     });
-  }, [chatId, store, scrollToBottom]);
+  });
 
   // Keep footer actions (including Retry) visible when stream errors render below.
   useEffect(() => {

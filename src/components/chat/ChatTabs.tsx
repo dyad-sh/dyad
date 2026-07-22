@@ -24,6 +24,7 @@ import {
   type ClosedTabRecord,
 } from "@/atoms/chatAtoms";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
+import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { cn } from "@/lib/utils";
 import { AppAvatar } from "@/components/AppAvatar";
 import {
@@ -96,6 +97,22 @@ export function getOrderedRecentChatIds(
   }
 
   return ordered;
+}
+
+export function addFinishedChatNotification(
+  notifiedChatIds: Set<number>,
+  finishedChatId: number,
+  selectedChatId: number | null,
+): Set<number> {
+  if (
+    finishedChatId === selectedChatId ||
+    notifiedChatIds.has(finishedChatId)
+  ) {
+    return notifiedChatIds;
+  }
+  const next = new Set(notifiedChatIds);
+  next.add(finishedChatId);
+  return next;
 }
 
 export function getVisibleTabCapacity(
@@ -252,7 +269,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const [notifiedChatIds, setNotifiedChatIds] = useState<Set<number>>(
     new Set(),
   );
-  const prevStreamingRef = useRef<Map<number, boolean>>(new Map());
   const hasHydratedTabSessionRef = useRef(false);
   const [hasHydratedTabSession, setHasHydratedTabSession] = useState(false);
 
@@ -401,34 +417,22 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     };
   }, [hasChats]);
 
-  // Detect streaming → finished transitions for non-active tabs to show a
-  // notification dot.
+  useStreamFinished(({ chatId }) => {
+    setNotifiedChatIds((current) =>
+      addFinishedChatNotification(current, chatId, selectedChatId),
+    );
+  });
+
+  // Clear notification for the currently viewed tab.
   useEffect(() => {
-    const prev = prevStreamingRef.current;
-
-    setNotifiedChatIds((currentNotified) => {
-      const newNotified = new Set(currentNotified);
-      let changed = false;
-
-      for (const [chatId, wasStreaming] of prev) {
-        const isNowStreaming = isStreamingById.get(chatId) === true;
-        if (wasStreaming && !isNowStreaming && chatId !== selectedChatId) {
-          newNotified.add(chatId);
-          changed = true;
-        }
-      }
-
-      // Clear notification for the currently viewed tab
-      if (selectedChatId !== null && newNotified.has(selectedChatId)) {
-        newNotified.delete(selectedChatId);
-        changed = true;
-      }
-
-      return changed ? newNotified : currentNotified;
+    if (selectedChatId === null) return;
+    setNotifiedChatIds((current) => {
+      if (!current.has(selectedChatId)) return current;
+      const next = new Set(current);
+      next.delete(selectedChatId);
+      return next;
     });
-
-    prevStreamingRef.current = new Map(isStreamingById);
-  }, [isStreamingById, selectedChatId]);
+  }, [selectedChatId]);
 
   const clearNotification = useCallback((chatId: number) => {
     setNotifiedChatIds((prev) => {

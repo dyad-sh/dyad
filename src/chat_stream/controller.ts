@@ -5,7 +5,7 @@ import type {
   StreamEvent,
   StreamState,
 } from "./state";
-import { initialStreamState, transition } from "./transition";
+import { initialStreamState, streamGeneration, transition } from "./transition";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
   observeTransition,
@@ -143,6 +143,9 @@ export function createChatStreamController(
             streamId: command.streamId,
             request: command.request,
             emit: send,
+            isStale: () =>
+              disposed ||
+              streamGeneration(store.getSnapshot()) !== command.streamId,
           });
         } catch (error) {
           // Failures inside the stream (invoke rejection, IPC errors) come

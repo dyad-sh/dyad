@@ -224,6 +224,29 @@ describe("chat stream controller", () => {
     expect(controller.isSettled()).toBe(true);
   });
 
+  it("exposes generation-aware staleness to stream recovery commands", async () => {
+    const { controller, commands } = createController();
+
+    controller.send({ type: "submit", request: makeRequest() });
+    await flush();
+    const firstStart = vi.mocked(commands.startStream).mock.calls[0][0];
+    expect(firstStart.isStale()).toBe(false);
+
+    controller.send({
+      type: "stream-ended",
+      streamId: 1,
+      response: endResponse(),
+    });
+    controller.send({ type: "finalize-complete", streamId: 1, ok: true });
+    expect(firstStart.isStale()).toBe(false);
+
+    controller.send({ type: "submit", request: makeRequest() });
+    expect(firstStart.isStale()).toBe(true);
+
+    controller.dispose();
+    expect(firstStart.isStale()).toBe(true);
+  });
+
   it("never overlaps streams for a chat: a submit during an active stream is enqueued", async () => {
     const { controller, commands, startDeferreds } = createController();
 

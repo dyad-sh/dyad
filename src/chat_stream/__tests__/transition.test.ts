@@ -9,7 +9,12 @@ import type {
   StreamRequest,
   StreamState,
 } from "../state";
-import { initialStreamState, isStreamActive, transition } from "../transition";
+import {
+  initialStreamState,
+  isStreamActive,
+  streamGeneration,
+  transition,
+} from "../transition";
 
 const CHAT_ID = 7;
 
@@ -96,6 +101,17 @@ const ALL_IGNORE_REASONS = new Set<ChatStreamIgnoreReason>([
   "stream-active",
   "too-late-to-cancel",
 ]);
+
+describe("streamGeneration", () => {
+  it("selects the active or last terminal generation", () => {
+    expect(streamGeneration(STATE_FACTORIES.idle())).toBe(3);
+    expect(streamGeneration(STATE_FACTORIES.starting())).toBe(4);
+    expect(streamGeneration(STATE_FACTORIES.streaming())).toBe(4);
+    expect(streamGeneration(STATE_FACTORIES.cancelling())).toBe(4);
+    expect(streamGeneration(STATE_FACTORIES.finalizing())).toBe(4);
+    expect(streamGeneration(STATE_FACTORIES.errored())).toBe(4);
+  });
+});
 
 /**
  * Invariant checker applied to every transition in this suite.

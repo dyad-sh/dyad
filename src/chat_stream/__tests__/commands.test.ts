@@ -42,12 +42,14 @@ describe("chat stream command adapter instances", () => {
         streamId: 1,
         request: { chatId: 9, appId: 4, prompt: "first" },
         emit: vi.fn(),
+        isStale: () => false,
       }),
       second.startStream({
         chatId: 9,
         streamId: 1,
         request: { chatId: 9, appId: 4, prompt: "second" },
         emit: vi.fn(),
+        isStale: () => false,
       }),
     ]);
     await vi.advanceTimersByTimeAsync(250);

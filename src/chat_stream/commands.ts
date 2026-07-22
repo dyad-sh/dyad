@@ -5,7 +5,6 @@ import type { PostHog } from "posthog-js";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
-  chatStreamCountByIdAtom,
   publishChatCompletionEventAtom,
   queuePausedByIdAtom,
   queuedMessagesByIdAtom,
@@ -58,6 +57,7 @@ export interface ChatStreamCommands {
     streamId: number;
     request: StreamRequest;
     emit: (event: StreamEvent) => void;
+    isStale: () => boolean;
   }): Promise<void>;
   /** Append a submission to the per-chat prompt queue. */
   enqueueMessage(args: { chatId: number; request: StreamRequest }): void;
@@ -203,7 +203,7 @@ export function createProductionChatStreamCommands(
   }
 
   return {
-    async startStream({ chatId, streamId, request, emit }) {
+    async startStream({ chatId, streamId, request, emit, isStale }) {
       const { store, queryClient, getSettings } = deps();
       const settings = getSettings();
 
@@ -251,8 +251,6 @@ export function createProductionChatStreamCommands(
           : queryClient.getQueryData<Chat>(queryKeys.chats.detail({ chatId }));
 
       const setMessagesById = makeSetMessagesById(store);
-      let hasIncrementedStreamCount = false;
-
       ipc.chatStream.start(
         {
           chatId,
@@ -297,15 +295,6 @@ export function createProductionChatStreamCommands(
               return;
             }
 
-            if (!hasIncrementedStreamCount) {
-              store.set(chatStreamCountByIdAtom, (prev) => {
-                const next = new Map(prev);
-                next.set(chatId, (prev.get(chatId) ?? 0) + 1);
-                return next;
-              });
-              hasIncrementedStreamCount = true;
-            }
-
             applyPreviewChunk(
               (update) => store.set(streamingPreviewByChatIdAtom, update),
               chatId,
@@ -330,7 +319,7 @@ export function createProductionChatStreamCommands(
                 streamingPatch,
               );
               if (!applied) {
-                triggerResync(chatId, setMessagesById, store);
+                triggerResync(chatId, setMessagesById, isStale);
               }
             }
 

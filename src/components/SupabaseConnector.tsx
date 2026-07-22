@@ -382,6 +382,18 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 <Plus className="h-4 w-4" />
                 {t("integrations.supabase.addOrganization")}
               </Button>
+              {isFlowActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void cancelConnectionFlow("supabase");
+                  }}
+                  data-testid="cancel-supabase-flow-button"
+                >
+                  {t("integrations.supabase.cancelSignIn")}
+                </Button>
+              )}
             </div>
           </CardTitle>
           <CardDescription>
@@ -515,6 +527,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           data-testid="connect-supabase-button"
         />
       </div>
+      {isFlowActive && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void cancelConnectionFlow("supabase");
+            }}
+            data-testid="cancel-supabase-flow-button"
+          >
+            {t("integrations.supabase.cancelSignIn")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

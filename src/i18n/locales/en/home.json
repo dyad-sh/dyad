@@ -580,6 +580,7 @@
       "failedSetBranch": "Failed to set branch: {{error}}",
       "failedDisconnectProject": "Failed to disconnect project from app",
       "signInTimedOut": "Sign-in timed out — try again or check your browser",
+      "cancelSignIn": "Cancel sign-in",
       "connectFailed": "Failed to connect to Supabase"
     },
     "neon": {
@@ -635,6 +636,7 @@
       "completingSignIn": "Complete sign-in in your browser…",
       "projectDisconnected": "Project disconnected successfully",
       "signInTimedOut": "Sign-in timed out — try again or check your browser",
+      "cancelSignIn": "Cancel sign-in",
       "connectFailed": "Failed to connect to Neon",
       "connecting": "Connecting...",
       "disconnectAccountTitle": "Disconnect Neon Account",

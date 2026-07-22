@@ -552,6 +552,7 @@
       "failedSetBranch": "Falha ao definir branch: {{error}}",
       "failedDisconnectProject": "Falha ao desconectar projeto do app",
       "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
+      "cancelSignIn": "Cancelar login",
       "connectFailed": "Falha ao conectar ao Supabase"
     },
     "neon": {
@@ -607,6 +608,7 @@
       "completingSignIn": "Complete o login no seu navegador…",
       "projectDisconnected": "Projeto desconectado com sucesso",
       "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
+      "cancelSignIn": "Cancelar login",
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar conta Neon",
       "disconnectAccountConfirmation": "Tem certeza de que deseja desconectar sua conta Neon? Você precisará autenticar novamente via OAuth para reconectar.",

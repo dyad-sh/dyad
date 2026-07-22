@@ -868,26 +868,40 @@ export function NeonConnector({ appId }: { appId: number }) {
         <CardDescription>{t("integrations.neon.freeTier")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <Button
-          variant="outline"
-          onClick={handleConnect}
-          disabled={isFlowActive}
-          className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-          data-testid="connect-neon-button"
-          aria-label={t("integrations.neon.connectTo") + " Neon"}
-        >
-          {isFlowActive ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              <span>{t("integrations.neon.completingSignIn")}</span>
-            </>
-          ) : (
-            <>
-              <span className="mr-2">{t("integrations.neon.connectTo")}</span>
-              <NeonSvg isDarkMode={isDarkMode} />
-            </>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleConnect}
+            disabled={isFlowActive}
+            className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+            data-testid="connect-neon-button"
+            aria-label={t("integrations.neon.connectTo") + " Neon"}
+          >
+            {isFlowActive ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <span>{t("integrations.neon.completingSignIn")}</span>
+              </>
+            ) : (
+              <>
+                <span className="mr-2">{t("integrations.neon.connectTo")}</span>
+                <NeonSvg isDarkMode={isDarkMode} />
+              </>
+            )}
+          </Button>
+          {isFlowActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                void cancelConnectionFlow("neon");
+              }}
+              data-testid="cancel-neon-flow-button"
+            >
+              {t("integrations.neon.cancelSignIn")}
+            </Button>
           )}
-        </Button>
+        </div>
       </CardContent>
     </Card>
   );

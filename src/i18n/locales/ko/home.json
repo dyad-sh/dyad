@@ -559,6 +559,7 @@
       "failedSetBranch": "브랜치 설정 실패: {{error}}",
       "failedDisconnectProject": "앱에서 프로젝트 연결 해제 실패",
       "signInTimedOut": "로그인 시간이 초과되었습니다 — 다시 시도하거나 브라우저를 확인하세요",
+      "cancelSignIn": "로그인 취소",
       "connectFailed": "Supabase 연결에 실패했습니다"
     },
     "neon": {
@@ -614,6 +615,7 @@
       "completingSignIn": "브라우저에서 로그인을 완료하세요…",
       "projectDisconnected": "프로젝트 연결이 성공적으로 해제되었습니다",
       "signInTimedOut": "로그인 시간이 초과되었습니다 — 다시 시도하거나 브라우저를 확인하세요",
+      "cancelSignIn": "로그인 취소",
       "connecting": "연결 중...",
       "disconnectAccountTitle": "Neon 계정 연결 해제",
       "disconnectAccountConfirmation": "Neon 계정 연결을 해제하시겠습니까? 다시 연결하려면 OAuth로 재인증해야 합니다.",

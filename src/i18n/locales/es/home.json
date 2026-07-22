@@ -556,6 +556,7 @@
       "failedSetBranch": "Error al establecer la rama: {{error}}",
       "failedDisconnectProject": "Error al desconectar el proyecto de la aplicación",
       "signInTimedOut": "El inicio de sesión expiró — inténtalo de nuevo o revisa tu navegador",
+      "cancelSignIn": "Cancelar inicio de sesión",
       "connectFailed": "Error al conectar con Supabase"
     },
     "neon": {
@@ -610,6 +611,7 @@
       "completingSignIn": "Completa el inicio de sesión en tu navegador...",
       "projectDisconnected": "Proyecto desconectado con éxito",
       "signInTimedOut": "El inicio de sesión expiró — inténtalo de nuevo o revisa tu navegador",
+      "cancelSignIn": "Cancelar inicio de sesión",
       "connecting": "Conectando...",
       "disconnectAccountTitle": "Desconectar Cuenta de Neon",
       "disconnectAccountConfirmation": "¿Estás seguro de que quieres desconectar tu cuenta de Neon? Necesitarás volver a autenticarte a través de OAuth para reconectarte.",

@@ -552,6 +552,7 @@
       "failedSetBranch": "设置分支失败：{{error}}",
       "failedDisconnectProject": "断开应用的项目连接失败",
       "signInTimedOut": "登录超时 — 请重试或检查浏览器",
+      "cancelSignIn": "取消登录",
       "connectFailed": "连接 Supabase 失败"
     },
     "neon": {
@@ -607,6 +608,7 @@
       "completingSignIn": "请在浏览器中完成登录…",
       "projectDisconnected": "项目已成功断开连接",
       "signInTimedOut": "登录超时 — 请重试或检查浏览器",
+      "cancelSignIn": "取消登录",
       "connecting": "连接中...",
       "disconnectAccountTitle": "断开 Neon 账户",
       "disconnectAccountConfirmation": "确定要断开 Neon 账户吗？您需要通过 OAuth 重新认证才能重新连接。",

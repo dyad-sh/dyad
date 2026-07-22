@@ -129,12 +129,21 @@ export function transition(
       );
     case "IFRAME_REPLACED": {
       const history = state.currentUrl ? [state.currentUrl] : [];
+      if (
+        state.history.length === history.length &&
+        state.history[0] === history[0] &&
+        state.position === 0 &&
+        state.preservedUrl === state.currentUrl &&
+        !state.selectorReady &&
+        !state.picking
+      ) {
+        return ignore(state, "already-replaced");
+      }
       return applied({
         ...state,
         history,
         position: 0,
         preservedUrl: state.currentUrl,
-        iframeEpoch: state.iframeEpoch + 1,
         selectorReady: false,
         picking: false,
       });

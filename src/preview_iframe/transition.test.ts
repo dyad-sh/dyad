@@ -7,6 +7,7 @@ import {
   INITIAL_PREVIEW_IFRAME_STATE,
   selectCanGoBack,
   selectCanGoForward,
+  selectIframeSrc,
   type PreviewIframeEvent,
   type PreviewIframeState,
 } from "./state";
@@ -24,6 +25,7 @@ const EVENTS: readonly PreviewIframeEvent[] = [
   },
   { type: "GO_BACK" },
   { type: "GO_FORWARD" },
+  { type: "RELOAD_REQUESTED" },
   { type: "IFRAME_REPLACED", reason: "external" },
   { type: "IFRAME_LOADED" },
   { type: "SELECTOR_READY" },
@@ -37,20 +39,16 @@ describe("preview iframe transition", () => {
   it("is total across the reachable identity, picker, and restore graph", () => {
     const states = exploreReachableStates({
       initialState: INITIAL_PREVIEW_IFRAME_STATE,
-      events: (state) => [
-        ...EVENTS.filter(
+      events: (state) =>
+        EVENTS.filter(
           (event) =>
             ((event.type !== "NAVIGATE" &&
               !(
                 event.type === "NAVIGATED_IN_APP" && event.kind === "pushState"
               )) ||
               state.history.length < 3) &&
-            (event.type !== "IFRAME_REPLACED" || state.iframeEpoch < 2),
+            (event.type !== "RELOAD_REQUESTED" || state.iframeEpoch < 2),
         ),
-        ...(state.iframeEpoch < 2
-          ? ([{ type: "RELOAD_REQUESTED" }] as const)
-          : []),
-      ],
       transition,
       stateKey: JSON.stringify,
       maxStates: 5_000,
@@ -146,6 +144,47 @@ describe("preview iframe transition", () => {
       transition(ready.state, { type: "SELECTION_RESTORED" }).state
         .restoreQueued,
     ).toBe(false);
+  });
+
+  it("records an external replacement without replacing the new iframe again", () => {
+    const state: PreviewIframeState = {
+      ...INITIAL_PREVIEW_IFRAME_STATE,
+      history: [URL, `${URL}/settings`],
+      position: 1,
+      currentUrl: `${URL}/settings`,
+      preservedUrl: `${URL}/settings`,
+      iframeEpoch: 4,
+      selectorReady: true,
+      picking: true,
+    };
+
+    const replaced = transition(state, {
+      type: "IFRAME_REPLACED",
+      reason: "external",
+    });
+    expect(replaced.state).toMatchObject({
+      history: [`${URL}/settings`],
+      position: 0,
+      iframeEpoch: 4,
+      selectorReady: false,
+      picking: false,
+    });
+    const replayed = transition(replaced.state, {
+      type: "IFRAME_REPLACED",
+      reason: "external",
+    });
+    expect(replayed.state).toBe(replaced.state);
+    expect(replayed.ignoredReason).toBe("already-replaced");
+  });
+
+  it("uses the trusted app URL when preserved navigation is cross-origin", () => {
+    const state: PreviewIframeState = {
+      ...INITIAL_PREVIEW_IFRAME_STATE,
+      history: ["https://untrusted.example/path"],
+      currentUrl: "https://untrusted.example/path",
+      preservedUrl: "https://untrusted.example/path",
+    };
+    expect(selectIframeSrc(state, URL)).toBe(URL);
   });
 
   it("derives browser navigation availability from history and position", () => {

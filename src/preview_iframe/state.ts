@@ -74,6 +74,7 @@ export type PreviewIframeIgnoreReason =
   | "picker-not-ready"
   | "picker-already-inactive"
   | "already-selector-ready"
+  | "already-replaced"
   | "restore-already-queued"
   | "restore-not-queued";
 
@@ -85,15 +86,15 @@ export const selectCanGoForward = (state: PreviewIframeState): boolean =>
 
 export const selectIframeSrc = (
   state: PreviewIframeState,
+  appUrl: string | null,
 ): string | undefined => {
-  const candidate = state.preservedUrl ?? state.currentUrl ?? undefined;
-  const base = state.history[0];
-  if (!candidate || !base) return candidate;
+  if (!appUrl) return undefined;
+  const candidate = state.preservedUrl ?? state.currentUrl ?? appUrl;
   try {
-    return new URL(candidate).origin === new URL(base).origin
+    return new URL(candidate).origin === new URL(appUrl).origin
       ? candidate
-      : base;
+      : appUrl;
   } catch {
-    return base;
+    return appUrl;
   }
 };

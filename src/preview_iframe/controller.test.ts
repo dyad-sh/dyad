@@ -30,4 +30,41 @@ describe("PreviewIframeController", () => {
     expect(controller.getSnapshot().restoreQueued).toBe(false);
     expect(listener).toHaveBeenCalledTimes(3);
   });
+
+  it("notifies and continues when a command runner throws", () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let throwOnCleanup = false;
+    const execute = vi.fn((_appId, command: PreviewIframeCommand) => {
+      if (
+        throwOnCleanup &&
+        command.type === "post-to-iframe" &&
+        command.message.type === "cleanup-all-text-editing"
+      ) {
+        throw new Error("runner failed");
+      }
+    });
+    const controller = new PreviewIframeController(1, { execute });
+    controller.send({ type: "APP_URL_CHANGED", url: "http://localhost:3000" });
+    controller.send({ type: "SELECTOR_READY" });
+    controller.send({ type: "PICKER_TOGGLED" });
+    execute.mockClear();
+    const listener = vi.fn();
+    controller.subscribe(listener);
+    throwOnCleanup = true;
+
+    expect(() => controller.send({ type: "PICKER_TOGGLED" })).not.toThrow();
+
+    expect(controller.getSnapshot().picking).toBe(false);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledOnce();
+
+    throwOnCleanup = false;
+    controller.send({ type: "PICKER_TOGGLED" });
+    expect(controller.getSnapshot().picking).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(2);
+    error.mockRestore();
+  });
 });

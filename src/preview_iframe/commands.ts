@@ -111,14 +111,15 @@ export function routePreviewIframeMessage(input: {
     send({ type: "SELECTOR_READY" });
   } else if (type === "pushState" || type === "replaceState") {
     const rawUrl = event.data?.payload?.newUrl;
-    if (typeof rawUrl === "string" && rawUrl) {
-      let url = rawUrl;
+    if (typeof rawUrl === "string" && rawUrl && appUrl) {
       try {
-        url = new URL(rawUrl, appUrl ?? undefined).href;
+        const trustedAppUrl = new URL(appUrl);
+        const url = new URL(rawUrl, trustedAppUrl);
+        if (url.origin !== trustedAppUrl.origin) return;
+        send({ type: "NAVIGATED_IN_APP", kind: type, url: url.href });
       } catch {
-        // Preserve the iframe's raw value when it cannot be resolved.
+        return;
       }
-      send({ type: "NAVIGATED_IN_APP", kind: type, url });
     }
   }
 

@@ -35,7 +35,10 @@ export function usePreviewIframe(input: {
   // same machine snapshot so SPA navigation updates history without asking
   // React to navigate the live iframe a second time.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const iframeSrc = useMemo(() => selectIframeSrc(state), [state.iframeEpoch]);
+  const iframeSrc = useMemo(
+    () => selectIframeSrc(state, appUrl),
+    [state.iframeEpoch, appUrl],
+  );
 
   useEffect(() => {
     if (appId === null) return;

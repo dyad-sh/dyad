@@ -53,6 +53,28 @@ describe("preview iframe command adapter", () => {
     });
   });
 
+  it("rejects iframe navigation outside the trusted app origin", () => {
+    const contentWindow = { postMessage: vi.fn() };
+    const send = vi.fn<(event: PreviewIframeEvent) => void>();
+    const onComponentMessage = vi.fn();
+
+    for (const newUrl of ["https://untrusted.example/path", "http://["]) {
+      routePreviewIframeMessage({
+        event: {
+          source: contentWindow,
+          data: { type: "replaceState", payload: { newUrl } },
+        } as unknown as MessageEvent,
+        contentWindow,
+        appUrl: "http://localhost:3000",
+        send,
+        onComponentMessage,
+      });
+    }
+
+    expect(send).not.toHaveBeenCalled();
+    expect(onComponentMessage).not.toHaveBeenCalled();
+  });
+
   it("posts navigation and restores the current selection exactly once", () => {
     const store = createStore();
     store.set(selectedComponentsPreviewAtom, [

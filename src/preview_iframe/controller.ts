@@ -47,7 +47,14 @@ export class PreviewIframeController {
     observeTransition(this.observer, previous, event, result);
     const execute = () => {
       for (const command of result.commands) {
-        this.runner.execute(this.appId, command, this.send);
+        try {
+          this.runner.execute(this.appId, command, this.send);
+        } catch (error) {
+          console.error(
+            `Preview iframe command execution failed for app ${this.appId}:`,
+            error,
+          );
+        }
       }
     };
     if (result.state !== previous) {

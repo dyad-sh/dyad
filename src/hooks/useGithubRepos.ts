@@ -26,7 +26,8 @@ export function useDyadGithubRepos({ enabled }: { enabled: boolean }) {
     // requests, so avoid re-scanning on every tab open / window refocus.
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    meta: { showErrorToast: true },
+    // No showErrorToast: the tab renders a first-class inline error + Retry
+    // surface for load failures, so a global toast would be redundant noise.
   });
 
   return {

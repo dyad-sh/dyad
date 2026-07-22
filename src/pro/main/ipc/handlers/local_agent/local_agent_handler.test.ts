@@ -2250,14 +2250,10 @@ describe("handleLocalAgentStream", () => {
 
       const invalidInput = {
         chat_id: 703,
-        around_message_id: 4134,
         before: 6,
         after: 3,
-        offset: 0,
-        limit: 10,
       };
-      const validationMessage =
-        "offset/limit cannot be combined with around_message_id; use before/after instead";
+      const validationMessage = "before/after require around_message_id";
       const validationError = new InvalidToolInputError({
         toolName: "read_chat",
         toolInput: JSON.stringify(invalidInput),

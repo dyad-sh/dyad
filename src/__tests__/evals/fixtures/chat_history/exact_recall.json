@@ -1,0 +1,410 @@
+{
+  "category": "exact_recall",
+  "domain": "Fitness tracking app with workout logging, rest timers, wearable sync, and social features",
+  "app": { "key": "main", "name": "pulsetrack" },
+  "chats": [
+    {
+      "key": "adaptive_rest_exploration",
+      "title": "Smarter rest suggestions?",
+      "days_ago": 78,
+      "messages": [
+        {
+          "role": "user",
+          "text": "random idea: what if the rest timer adapted to how hard the set was instead of being a fixed number"
+        },
+        {
+          "role": "assistant",
+          "text": "It's a real idea with real prior art in coaching tools. Two signals we could adapt on: perceived exertion — ask for an RPE rating after each set and stretch the suggested rest after grinders — or physiological recovery, watching heart rate come back down toward baseline and prompting the next set once it has. The RPE version is easy to build but adds a rating step to every single set, and logging friction is the top reason people abandon trackers, so taxing every set just to occasionally tune rest is a questionable trade. The heart-rate version is genuinely cool but depends on wearable data we don't ingest today, plus recovery-curve modeling to interpret it sensibly. And there's a coaching caveat: for general hypertrophy training the evidence on precisely tuned rest lengths is honestly mixed, so we'd be adding real complexity for a benefit sports science hasn't firmly established. Worth exploring — but clear-eyed, as a differentiator experiment rather than a table-stakes feature."
+        },
+        {
+          "role": "user",
+          "text": "the RPE thing every set does sound annoying. could we infer hardness from the numbers instead?"
+        },
+        {
+          "role": "assistant",
+          "text": "Partially. We know load and reps against that person's recent history for the same movement, so a set near a recent best, or an unusually high rep count at a given load, was probably hard. From that we can estimate proximity to failure and stretch or shrink the suggested rest without asking the user anything. The catch is that inference breaks on exactly the sets where it matters most: a deliberate light technique day looks easy on paper and gets a short suggestion it shouldn't, while a grinder on terrible sleep looks routine. We'd be confidently wrong in ways users can feel in their legs. So any inferred adjustment has to present as a gentle suggestion layered on top of whatever the user configured, never a silent override — the first time the guess is badly off, trust in the whole timer goes with it."
+        },
+        {
+          "role": "user",
+          "text": "hmm. and the heart rate version needs the watch stuff we havent even started"
+        },
+        {
+          "role": "assistant",
+          "text": "Right — the heart-rate-driven version has a hard dependency on wearable ingestion, which is its own sizable project we haven't scoped, let alone started. Building adaptive rest now means shipping the inference-only version, which is its weakest form, and first impressions of a feature stick. The sensible sequencing: wearable data lands first, adaptive rest becomes credible second. That ordering also means months of real logged rest behavior to calibrate against, instead of tuning the model on guesswork."
+        },
+        {
+          "role": "user",
+          "text": "yeah lets not build a science project before the basics are solid. park it?"
+        },
+        {
+          "role": "assistant",
+          "text": "Parked, with a breadcrumb so the thinking isn't lost: I'll write the notes into the product backlog under recovery features, tagged as blocked on wearable ingestion. Meanwhile the humble fixed-duration countdown stays the workhorse, and honestly it has plenty of unglamorous problems worth fixing first — how it starts, how noticeable the end-of-rest cue is, the size of the controls mid-workout. None of that needs research and all of it shows up in beta feedback already. When the adaptive idea comes back around we'll also have months of real rest-duration logs to learn from, which makes even the inference version smarter than anything we could train today."
+        },
+        {
+          "role": "user",
+          "text": "ha, fair. one more thing — should rest even be a countdown? maybe just a subtle clock counting up"
+        },
+        {
+          "role": "assistant",
+          "text": "A passive elapsed-time display instead of a countdown is a legitimate school of thought — countdowns create urgency, elapsed clocks create awareness, and some lifters find the ticking pressure actively counterproductive. But a countdown gives us a natural moment to notify, and that cue is what brings attention back to the app mid-session; an open-ended clock just quietly runs forever. My call: keep the countdown as the default, note the passive-clock idea in the same backlog entry, and if beta feedback surfaces timer anxiety as a recurring theme we already have the alternative sketched."
+        }
+      ]
+    },
+    {
+      "key": "rest_timer_defaults",
+      "title": "Rest timer behavior",
+      "days_ago": 62,
+      "messages": [
+        {
+          "role": "user",
+          "text": "the rest timer between sets feels clunky. right now it doesnt start until you tap it and half the time i forget"
+        },
+        {
+          "role": "assistant",
+          "text": "Right now the timer is fully manual: after you log a set, a start button appears and nothing happens until you tap it. That made sense when logging itself was slower, but now that set logging is one tap, the extra tap is pure friction. Two ways to fix it. One: auto-start the timer the moment a set is saved, with a small undo window in case you logged by accident. Two: keep it manual but make the start control much larger and put it in the thumb zone. Auto-start is what most people expect from other trackers at this point, and it also gives us cleaner data on actual rest lengths, which matters later if we ever do recovery-based suggestions. The risk is that people who superset or rest in unusual patterns will find auto-start noisy, so we'd want an easy per-exercise override either way we go."
+        },
+        {
+          "role": "user",
+          "text": "auto-start sounds right. what should the default length be?"
+        },
+        {
+          "role": "assistant",
+          "text": "Depends who we optimize for. The rough guidance most coaches use: heavy strength work wants long rests, several minutes; hypertrophy-focused training sits in the middle; conditioning circuits go short. Most apps ship presets at 60, 90, and 120 and let people pick per exercise. A few things worth deciding separately here: the global default a brand-new user gets, whether overrides live per-exercise or per-workout, and how easy it is to nudge the time mid-rest. My suggestion is one global default that applies everywhere until a user overrides it for a specific exercise, plus quick plus and minus controls on the running timer so adjusting never requires a settings dive. For the actual number, I'd rather pick based on what our beta users actually train than copy other apps' presets blindly — do we know the split between strength-focused and hypertrophy-focused folks in the beta?"
+        },
+        {
+          "role": "user",
+          "text": "most of the beta crowd does hypertrophy stuff. 90 feels long for that, 60 too short honestly"
+        },
+        {
+          "role": "assistant",
+          "text": "Then splitting the difference is genuinely reasonable — an in-between default with quick adjust controls means nobody is ever more than a couple of taps from their preferred time. If we make the adjustment increments five-second steps, the default doesn't even need to be a round number. Pick whatever feels right to you and we'll make it official."
+        },
+        {
+          "role": "user",
+          "text": "lets do 85 then. weird number but whatever, its adjustable"
+        },
+        {
+          "role": "assistant",
+          "text": "Locking it in: the default rest timer is 85 seconds, and it auto-starts the moment a set is logged. Full behavior spec so we're aligned: the countdown begins immediately on set save; plus and minus controls on the running timer move it in five-second steps; a per-exercise override gets saved automatically the first time someone adjusts the same movement twice in a row; and a three-second undo toast covers accidental logs so the timer doesn't fire on a mislog. When the countdown ends we surface a gentle cue rather than something jarring. New users get this default globally, while existing beta users keep whatever they've already configured so nobody's setup changes underneath them. I'll wire the default into the workout session store and update the settings screen copy so both stay consistent with what we just agreed."
+        },
+        {
+          "role": "user",
+          "text": "can it buzz when times up? i never notice silent countdowns"
+        },
+        {
+          "role": "assistant",
+          "text": "Yes — end-of-rest gets a double haptic pulse plus an optional chime. I'd ship the chime off by default since plenty of people train with gym audio or calls in their ears, but the haptic on by default because it's private and hard to miss with a phone in a pocket. If the phone is face up on a bench we can also flash the timer card as a visual cue. One subtlety worth knowing about: when the app is backgrounded we have to deliver the cue as a local notification, and local notifications respect system focus modes, so someone in a do-not-disturb focus will still miss it through no fault of ours. I'll add a one-time hint explaining that, shown the first time we detect a rest ending while the app is backgrounded and the device is muted, so people understand why a buzz didn't arrive."
+        },
+        {
+          "role": "user",
+          "text": "also the skip rest button is way too small, i fat finger the log button instead"
+        },
+        {
+          "role": "assistant",
+          "text": "Good catch — right now skip is a text link under the countdown, which is both small and dangerously close to the log button. I'll promote it to a full-width secondary button below the timer with comfortable spacing, and move the countdown adjustment controls above it so the timer actions cluster together away from logging. While I'm in there I'll bump the countdown digits so they're readable from a phone propped against a dumbbell across the bench. The default duration we agreed on earlier stays untouched by any of this — it's purely layout."
+        }
+      ]
+    },
+    {
+      "key": "cross_device_plan_sync",
+      "title": "Workout plans not syncing across devices",
+      "days_ago": 47,
+      "messages": [
+        {
+          "role": "user",
+          "text": "bug report from beta: guy edits his workout plan on his ipad, opens his phone at the gym, edits are gone until he force restarts the app"
+        },
+        {
+          "role": "assistant",
+          "text": "That matches the sync architecture, unfortunately. Plans are cached locally and we only reconcile with the server on a cold start, so a warm app on the phone happily serves a stale cache no matter what the iPad wrote. Nothing is lost — his edits are safe on the server — but the phone has no idea it should look. Two-part fix. First, reconcile whenever the app returns to the foreground, not just on launch; that alone covers the edit-at-home-then-open-at-the-gym pattern, since the app is almost always backgrounded between those two moments. Second, a silent push when a plan changes server-side, so an app that's already open and in the foreground picks up edits within seconds. Foreground reconcile is small and low-risk; the silent push needs a bit of plumbing but rides on infrastructure we already have for workout reminders."
+        },
+        {
+          "role": "user",
+          "text": "how bad is the fix?"
+        },
+        {
+          "role": "assistant",
+          "text": "Foreground reconcile is about a day of work including tests — the fetch logic already exists, it's just only wired to launch. The silent push is maybe three days: a server-side hook when a plan row changes, the push plumbing, and client handling that merges quietly without yanking the UI around if the user happens to be looking at the very plan being updated. The genuinely tricky part isn't either of those — it's what happens when both devices edited the same plan while offline, because right now the answer is that whichever device syncs last silently wins, and that's the kind of data loss people describe as the app eating their program. I'd sequence it: ship foreground reconcile immediately since it's nearly free, then the push, then sit down properly for the conflict story rather than bolting it on."
+        },
+        {
+          "role": "user",
+          "text": "what happens if he edits on both devices while offline lol"
+        },
+        {
+          "role": "assistant",
+          "text": "Then we have a genuine conflict and need a merge policy. The spectrum runs from crude to fancy. Crudest: last-write-wins for the whole plan — whichever device syncs later replaces everything, silently discarding the other session's edits. Fanciest: field-level merge with per-change timestamps, where edits to different exercises both survive and only a same-field collision needs a tiebreak. The sync payload already carries enough structure to support something in between — each save ships a revision number and the list of changed sections, roughly like:\n\n```json\n{ \"plan_id\": \"pl_218\", \"revision\": 14, \"changed\": [\"day_3.exercises\"] }\n```\n\nso we can tell the iPad touched Wednesday while the phone touched Friday, and merging those two is safe and automatic. The open question is granularity: merging per exercise is the most surgical but multiplies edge cases, while per day is coarser but dramatically simpler to reason about and to explain to a user when something really does collide."
+        },
+        {
+          "role": "user",
+          "text": "per exercise merge sounds fancy. is last-write-wins for the whole plan really that bad?"
+        },
+        {
+          "role": "assistant",
+          "text": "For a single-user personal plan it's less catastrophic than in collaborative tools, but the failure still stings: whole-plan last-write-wins means a twenty-minute program redesign on the iPad can vanish because the phone later synced a one-rep tweak. The victim has no idea why, and \"the app deleted my program\" is the review that follows. Per-day granularity hits the sweet spot: the realistic conflict is editing different training days from different devices, which merges cleanly, while a true same-day collision — genuinely rare — falls back to most-recent-wins with a toast telling the user which version won, so nothing ever disappears silently. I'd commit to per-day merge with that visible tiebreak; per-exercise granularity buys marginal precision for a lot more state-tracking complexity than a personal fitness plan warrants."
+        },
+        {
+          "role": "user",
+          "text": "ok per day it is. also can the app show a little \"updated just now\" thing so people trust it?"
+        },
+        {
+          "role": "assistant",
+          "text": "Easy and worth it. A small freshness row on the plan screen — synced just now, or last synced two hours ago with a subtle retry affordance when we know we're stale. It doubles as our escape hatch on flaky gym wifi: rather than blocking edits or throwing errors, we queue changes locally, show the row as pending, and retry with backoff until the connection cooperates. People forgive latency they can see; what they don't forgive is silence followed by surprise. I'll also log how often retries exhaust completely, since gyms are hostile network environments and that number tells us whether we need a more aggressive offline story later."
+        }
+      ]
+    },
+    {
+      "key": "friend_feed_ordering",
+      "title": null,
+      "days_ago": 41,
+      "messages": [
+        {
+          "role": "user",
+          "text": "the friends activity feed is strictly chronological right now and it feels dead. thoughts?"
+        },
+        {
+          "role": "assistant",
+          "text": "Chronological-only feels dead for exactly the reason you'd guess: most people follow a handful of friends, so the feed is either empty or dominated by whoever trains most. Three ways to liven it up. Pure recency with better density — smaller cards, more per screen — is the cheapest but doesn't fix the one-prolific-friend problem. Engagement-weighted ranking floats interesting items, but with tiny friend graphs there isn't enough reaction signal to rank on, and reordering makes the feed feel haunted when three-day-old items jump around. Third option: a grouped digest, where each friend's day collapses into a single card — their sessions, any standout moments — so the feed reads as one card per friend per day. That fixes domination without needing signal we don't have, keeps ordering predictable, and honestly matches how people check on friends: \"what did Dana do today\", not \"show me every set as a separate item\". I'd prototype the digest and keep raw chronological as a secondary tab so we can compare which one people actually scroll."
+        },
+        {
+          "role": "user",
+          "text": "grouped cards could work. what goes on the card, their whole workout?"
+        },
+        {
+          "role": "assistant",
+          "text": "Keep the card scannable: session type and name, total duration, and one standout — heaviest set, longest distance, or a new personal record if one happened, picked by a simple precedence rule. A photo slot if they attached one. What I would not show by default is exact loads and body-weight-adjusted numbers, because a chunk of users are genuinely shy about their working weights; make precise numbers an opt-in share setting, defaulting to showing effort without the exact kilograms. Tapping the card expands to the full session for friends who want detail. That split — celebrate that you trained, share how much only if you choose — keeps the feed encouraging rather than comparative, which matters if we want beginners posting next to experienced lifters without feeling exposed."
+        },
+        {
+          "role": "user",
+          "text": "what about highlighting big weeks? like \"sarah crushed it this week\" pinned at the top"
+        },
+        {
+          "role": "assistant",
+          "text": "Tempting, but \"crushed it\" needs a definition and that's where it gets sticky. If we quantify a big week as raw volume, the same three gym rats get celebrated every week and everyone else learns the highlight isn't for them. We could sketch some normalized weekly volume score to make it fairer, but I'd rather not invent a bespoke metric ad hoc just for feed highlights — if we ever build a proper leaderboard, whatever scoring system gets designed there should power highlights too, so the two surfaces never disagree about who had a good week. For now I'd highlight rule-based moments that need no scoring at all: first session back after a two-week gap, any personal record, a round-number streak milestone. Those are unambiguous, feel earned, and nobody has to reverse-engineer a formula to understand why their friend got celebrated."
+        },
+        {
+          "role": "user",
+          "text": "makes sense, PRs and comebacks are the feel-good moments anyway. can friends react to cards?"
+        },
+        {
+          "role": "assistant",
+          "text": "Reactions yes, comments not yet. A fixed reaction set — think fist bump, flame, raised arms — gives friends a one-tap way to acknowledge a workout with zero moderation surface. Free-text comments mean we immediately own harassment reporting, blocking, and content review, which is a lot of infrastructure for a feature the friend graph is honestly too small to need at launch. The reaction set should stay deliberately small and positive; no thumbs-down equivalent, because the failure mode of negative feedback on someone's training is that they quietly stop logging. We can revisit comments once group features exist and there's a real social contract, and when we do, comments should probably start restricted to mutuals rather than open."
+        },
+        {
+          "role": "user",
+          "text": "no comments at launch feels safe yeah. whats the notification story, i dont want spam"
+        },
+        {
+          "role": "assistant",
+          "text": "Batched, with one exception. Activity from friends rolls up into a single evening digest notification — three friends trained today — instead of pinging per workout, because per-event social notifications are the fastest way to teach someone to disable notifications entirely. The exception: reactions to your own workout arrive immediately, since that's personal, infrequent, and reliably pleasant, exactly the notification type people keep enabled. Everything respects a quiet-hours window we already need for the reminder system anyway. And every social notification deep-links straight to the relevant card, not the app home screen — notification taps that dump you somewhere generic erode trust fast."
+        }
+      ]
+    },
+    {
+      "key": "wearable_hr_sync",
+      "title": "Pulling heart rate from watches",
+      "days_ago": 34,
+      "messages": [
+        {
+          "role": "user",
+          "text": "big beta request: pull heart rate from peoples watches so cardio sessions actually show effort. how painful is this"
+        },
+        {
+          "role": "assistant",
+          "text": "Painful in direct proportion to how many watch brands you want on day one. Two architectures: integrate each source directly, or pay an aggregator. Direct means we implement Apple's health store on iOS, the Android health platform, and then separate cloud APIs for the watch brands that don't write into those reliably — every one has its own auth dance, rate limits, data formats, and quiet breaking changes, and keeping five integrations healthy is a part-time job forever. Aggregators sit in the middle: users connect their device account once, and we consume a single normalized API for heart rate, workouts, and sleep regardless of brand. The trade-offs are cost, added latency since data hops through their pipeline, and a privacy story we have to explain, because a third party now processes health data on our behalf. From a first pass at the space, two aggregators look plausible for our stage: Fitwire, the biggest and most polished, priced per connected user per month, and HeartMesh, cheaper and simpler but with a shorter supported-device list. Given the team size I'd lean aggregator and revisit direct integrations only if unit costs get silly at scale."
+        },
+        {
+          "role": "user",
+          "text": "yeah no chance we maintain five watch integrations ourselves. break down fitwire vs heartmesh?"
+        },
+        {
+          "role": "assistant",
+          "text": "Fitwire: supports basically everything with a heart rate sensor, webhooks are reliable, docs are genuinely good, and they carry the security audits that shortcut a lot of privacy diligence. The catch is pricing — per connected user per month, which for a free app means our costs scale with adoption while revenue doesn't, and their entry tier clearly assumes a paid-app business model. HeartMesh: flat monthly tiers, so costs are predictable, but the supported list skews to the big two watch brands; Polar and Suunto users — and endurance folks overrepresent there — are out of luck, and their status page shows more incidents than I'd like over the past quarter. Neither is a slam dunk: Fitwire is the better product with a pricing model that punishes our growth, HeartMesh is affordable with coverage gaps that will generate exactly the support tickets this feature was meant to kill. Before you pick between two compromises, want me to check whether there's a third option sitting in the gap between them?"
+        },
+        {
+          "role": "user",
+          "text": "fitwires pricing scares me and heartmesh missing polar is rough, half the runners i know wear polar. yes find a third"
+        },
+        {
+          "role": "assistant",
+          "text": "Found one worth taking seriously — a newer aggregator out of Helsinki, launched about a year and a half ago, positioned exactly in that gap. Coverage: the big two plus Garmin, Polar, Suunto, and Fitbit, and they read from both phone health platforms as a fallback for anything else. Pricing is a flat monthly tier by connected-user band rather than a strict per-user meter, so costs step rather than climb smoothly, which suits a free app much better. Their API is webhook-first with a backfill endpoint for historical data, and they publish an EU data-residency option, which helps the privacy story given they'd be processing health data for us. Being newer is the real risk — smaller track record, fewer public case studies, and if they fold we're migrating. But everything I can verify from the outside looks solid, and their device list is honestly the best fit for our actual user base of the three."
+        },
+        {
+          "role": "user",
+          "text": "flat pricing plus polar support sounds exactly right. newer is fine, we're tiny too. lets go with them — what are they even called?"
+        },
+        {
+          "role": "assistant",
+          "text": "They're called CadenceLink — and locking it in: CadenceLink is our heart-rate sync vendor for wearables. Integration plan: users connect their watch account from the profile screen, we receive workout and heart-rate webhooks on our backend, normalize them into our session model, and attach effort data to any pulsetrack workout that overlaps the recorded time window. Historical backfill pulls the last ninety days on first connect so new users see immediate value instead of an empty graph. On the privacy side, the consent screen will name them explicitly as a processor of health data and link to their EU residency docs, and disconnecting a watch triggers a deletion request to their API rather than just hiding the data on our end. I'll start with sandbox credentials this week and put a test harness around the webhook payloads before we touch production data."
+        },
+        {
+          "role": "user",
+          "text": "how long till its usable in beta?"
+        },
+        {
+          "role": "assistant",
+          "text": "Roughly three weeks to something beta-worthy. Week one: the OAuth connect flow, webhook receiver, signature verification, and payload storage behind a feature flag. Week two: normalization into our session model and the matching logic that decides which pulsetrack workout a heart-rate stream belongs to — that matching is the genuinely fiddly part, since watch workout boundaries rarely line up perfectly with what people log in the app. Week three: the backfill job, failure handling for their occasionally delayed webhooks, and the connect and disconnect settings UI. I'd stage the rollout to ten beta users first; wearable data is full of edge cases like paused workouts and devices that report in odd batches, and I want those surprises on a small blast radius before everyone connects a watch."
+        },
+        {
+          "role": "user",
+          "text": "do we store the raw heart rate stream or just summaries? feels like a lot of sensitive data"
+        },
+        {
+          "role": "assistant",
+          "text": "Summaries, not raw streams. The product needs per-workout effort: average and peak heart rate, time in zones, and a per-minute aggregate for the session graph. Storing beat-level samples means holding dramatically more sensitive data than the features require, which is exactly what data-minimization guidance says not to do, and it bloats storage for zero user-visible benefit. So we compute per-minute aggregates at ingest, keep those, and discard the finer-grained payload after processing. If a future feature genuinely needs higher resolution — say, recovery analysis — we start retaining from that point forward with a fresh consent step, because we can't retroactively un-collect data we never should have kept. I'll write this into the data-retention doc so the decision has a paper trail for any future privacy review."
+        }
+      ]
+    },
+    {
+      "key": "social_engagement_mechanics",
+      "title": "Leaderboards and streaks",
+      "days_ago": 9,
+      "messages": [
+        {
+          "role": "user",
+          "text": "ok time to make the social side actually sticky. thinking a weekly leaderboard between friends"
+        },
+        {
+          "role": "assistant",
+          "text": "A weekly friends-only leaderboard is a good anchor for the social loop, but the ranking metric decides whether it motivates people or quietly humiliates them. If we rank on raw training volume, whoever spends ten hours in the gym wins every single week and everyone else stops looking by Wednesday. The versions of this that work normalize for the person: rank on consistency against your own plan, effort relative to your own recent baselines, and improvement events like personal records. Concretely I'd build a composite: a consistency component for completing planned sessions, an effort component comparing this week's work against your own trailing average rather than against other people's absolute numbers, and a bonus component for PRs. That way a busy parent doing three focused sessions can legitimately beat a student living at the squat rack, which is exactly the property that keeps casual users engaged. We'd also cap how much any single day can contribute, so nobody games a whole week with one heroic Saturday. Friends-only by default, opt-in to anything wider — public leaderboards among strangers are a moderation and demotivation minefield I'd avoid for launch."
+        },
+        {
+          "role": "user",
+          "text": "yeah raw volume is unfair. composite sounds right. does the metric need a name? \"points\" is so boring"
+        },
+        {
+          "role": "assistant",
+          "text": "It needs a name people can trash-talk with, so yes, it's worth five minutes of thought. Constraints: short enough to say out loud, works as a noun, and doesn't sound like a bank product or a crypto coin. Two candidates to react to. Momentum Index — descriptive, a little corporate, abbreviates awkwardly. FlexRank — playful, but it emphasizes ranking over personal progress, and half our design language is about beating your own baseline rather than other people. There's also the boring-but-safe route of just calling it your weekly score and skipping branding entirely, though named metrics measurably get talked about more, and word of mouth is the whole point of the social layer. None of these feel inevitable yet — happy to keep riffing if neither lands."
+        },
+        {
+          "role": "user",
+          "text": "momentum index sounds like a mutual fund lol. something grittier? training is supposed to feel earned"
+        },
+        {
+          "role": "assistant",
+          "text": "Grittier is a good brief — how about GritScore? One word, capital G, capital S, and it says exactly what the composite rewards: showing up and doing the work, not being the biggest person in the room. It reads naturally on every surface we need it on: the leaderboard column header, the weekly recap card, a push notification, and trash talk in a group chat. It also frames the capped-daily-contribution rule nicely — grit is about repeated effort, so a single monster session shouldn't buy the whole week. Under the hood nothing changes from what we sketched: consistency against your own plan, effort against your own trailing baseline, and PR bonuses, combined weekly and reset for the new week. If that lands for you I'll use the name consistently across the leaderboard designs and the recap copy so it sticks."
+        },
+        {
+          "role": "user",
+          "text": "love it, thats the one. next problem: streaks. my friend lost a 40 day streak to a stomach bug and basically quit the app he was using"
+        },
+        {
+          "role": "assistant",
+          "text": "That failure mode is well documented — a long streak is a huge retention asset right up until it breaks, and then it flips into the single biggest churn trigger, because starting over from one feels insulting. The standard fix is a streak freeze: an item that, when you miss a day, spends itself to keep the streak alive. Design questions we should answer deliberately rather than copy from language-learning apps: how freezes are acquired — earned by activity, bought with real money, or both — how many you can hold at once, and whether they apply automatically or ask first. My strong opinion is that freezes should be earnable through training itself, not purchasable with cash: paying money to preserve a fitness streak undermines the thing the streak is supposed to represent, and app-store review has been rough on pay-to-keep-progress mechanics lately. We already planned an earnable reward currency for challenge completions in the challenges spec, but we never actually named it or priced anything in it. This would be its first real sink, which is a good forcing function to finally pin both down."
+        },
+        {
+          "role": "user",
+          "text": "ha right, the mystery currency. ok name it something energetic and price the freeze so it stings a little but doesnt feel impossible"
+        },
+        {
+          "role": "assistant",
+          "text": "Naming and pricing in one go, then. The currency: Surge Tokens — energetic, on-brand for a training app, and generic enough that we can price other things in it later, like custom themes or bonus challenges. Earning stays exactly as the challenges spec sketched: finishing a weekly challenge pays out a small bundle, harder challenges pay more. For the freeze price, the number I'd commit to: a streak freeze costs 35 Surge Tokens. Back-of-napkin math on why: a typically active user completing most weekly challenges earns roughly twenty tokens a week, so a freeze is about a week and a half of normal engagement — enough that spending one feels like a real decision, cheap enough that a sick day doesn't nuke a two-month streak. If the earn rates shift when challenges ship for real, we revisit the price before this goes live rather than after people have banked balances."
+        },
+        {
+          "role": "user",
+          "text": "good. should you be able to stockpile freezes?"
+        },
+        {
+          "role": "assistant",
+          "text": "Cap it at three banked freezes. Uncapped stockpiles let power users bank months of insurance and turn the streak into a formality, which drains its meaning for everyone around them on the leaderboard. Three covers a bad week — illness, travel, a family thing — without covering a bad month, and it keeps the currency sink working, since anyone sitting at the cap has a reason to spend elsewhere once we add more things to buy. I'd show the banked count right on the streak flame so the safety net is visible; a lot of the anxiety around streaks comes from not knowing whether you're protected, and visible protection is most of the psychological benefit."
+        },
+        {
+          "role": "user",
+          "text": "auto-spend when i miss a day? feels sneaky if it just happens"
+        },
+        {
+          "role": "assistant",
+          "text": "Agreed, silent auto-spend reads as the app taking your stuff. Instead: when a day is about to lapse, we send an evening notification — your streak ends at midnight, use a freeze? — with one-tap yes. If they don't respond by midnight we auto-apply as a backstop, but the recap card the next morning says exactly what happened and why, so it never feels like sleight of hand. Protection people chose beats protection that just silently happened."
+        },
+        {
+          "role": "user",
+          "text": "works. last thing — does the leaderboard week reset monday or is it a rolling 7 days?"
+        },
+        {
+          "role": "assistant",
+          "text": "Fixed weeks, resetting Monday at midnight in each user's local timezone. Rolling seven-day windows sound smoother but they're genuinely confusing in a competitive context: your total changes even on days nobody trains, because old days fall out of the window, and explaining to someone why they dropped two places overnight while everyone slept is a support-ticket generator. A fixed Monday start gives everyone the same mental model — new week, clean slate — and it lines up with how most people already plan their training. Timezone-per-user does mean friends in different countries reset at slightly different moments, but the alternative of one global reset time is worse: somebody always gets their week rolled over at four in the afternoon. I'll note the reset rule in the leaderboard header for the first week so nobody's surprised by it."
+        }
+      ]
+    },
+    {
+      "key": "exercise_library_cleanup",
+      "title": "Exercise library cleanup",
+      "days_ago": 4,
+      "messages": [
+        {
+          "role": "user",
+          "text": "the exercise library is a mess, three different rows called \"lat pulldown\" and no dumbbell lunges at all"
+        },
+        {
+          "role": "assistant",
+          "text": "Agreed it needs a proper cleanup, and it's worth doing before the social features make exercise names publicly visible on feed cards. Plan of attack: first, a canonicalization pass — one canonical entry per movement with a curated display name, and every duplicate converted into an alias that points at it, so the three pulldown variants collapse into one. Second, gap-filling from a curated base list so obvious movements like dumbbell lunges exist before users have to create them by hand; user-created custom exercises stay untouched. Third, consistent metadata on every canonical entry: primary and secondary muscle groups, equipment, and movement pattern, which is what makes filtering and any future recommendation work possible at all. The alias table is the piece that keeps this safe — nothing gets deleted, everything old points somewhere new."
+        },
+        {
+          "role": "user",
+          "text": "if you merge duplicates my old logs dont break right?"
+        },
+        {
+          "role": "assistant",
+          "text": "Right — no history breaks, that's the whole point of aliasing rather than deleting. Concretely: your old logs keep their original exercise references, those references resolve through the alias table to the canonical entry, and history, charts, and personal records all recompute against the canonical movement. The nice side effect is your records actually get more useful — if your pulldown history was split across three duplicate entries, your true best set was probably hiding in whichever duplicate you weren't looking at, and merging surfaces it. The one visible change is cosmetic: old sessions will display the canonical name rather than whatever variant spelling they were logged under. I'll run the merge in dry-run mode first and eyeball the mapping for the fifty most-logged movements before letting it touch real data."
+        },
+        {
+          "role": "user",
+          "text": "good. can we add little demo animations for each exercise? gifs or whatever"
+        },
+        {
+          "role": "assistant",
+          "text": "Demo clips are worth it — exercise names alone genuinely fail beginners, and a two-second loop communicates form better than any text description. Practical route: license a starter pack from a stock fitness-media provider for the most common movements rather than commissioning custom footage, which gets expensive fast and matters more for brand polish than utility. Technical handling: short looped clips, lazy-loaded only when an exercise detail sheet opens, cached aggressively on device after first view, and definitely not bundled into the app download, since a full video library would balloon install size. Entries without a clip yet fall back to a simple line-art illustration so the detail sheet never looks broken. We can track which no-clip exercises get opened most and use that to prioritize the next licensing batch."
+        },
+        {
+          "role": "user",
+          "text": "starting with the top 50 sounds fine. who tags the muscle groups, please dont make me do 400 exercises by hand"
+        },
+        {
+          "role": "assistant",
+          "text": "Not by hand, promise. The curated base list we're importing already ships with muscle-group and equipment tags, which covers the large majority of entries. For user-created customs, we auto-suggest tags by fuzzy-matching the name against the canonical list — someone's \"db incline press\" matches closely enough to inherit sensible defaults — and anything below a confidence threshold gets left untagged rather than guessed wrong. Then a lightweight flag control on the detail sheet lets users report a wrong tag. Honestly, mislabeled secondary muscle groups is about the lowest-stakes data quality problem in the app, so I'd spot-check the hundred most-logged movements manually and let the long tail get corrected organically."
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "id": "exact_recall-1",
+      "question": "What did we decide the default rest timer duration should be?",
+      "expected": "found",
+      "gold_answer": "The default rest timer is 85 seconds. It auto-starts as soon as a set is logged and is adjustable in five-second steps, with per-exercise overrides.",
+      "gold_atoms": [["85 seconds", "85-second"]],
+      "gold_evidence": [{ "chat": "rest_timer_defaults", "message_index": 7 }],
+      "judge_notes": "Correct iff the answer states the default rest timer is 85 seconds (mentioning auto-start or adjustability is a bonus, not required). Partial iff it describes the auto-start decision or the five-second adjustment steps but omits or hedges on the 85-second figure. Incorrect iff it gives any other duration (e.g. 60, 90, or 120 seconds), claims the timer adapts dynamically, or says no default was decided."
+    },
+    {
+      "id": "exact_recall-2",
+      "question": "What name did we land on for the weekly leaderboard scoring metric?",
+      "expected": "found",
+      "gold_answer": "GritScore — the composite weekly metric combining consistency against your own plan, effort versus your own trailing baseline, and PR bonuses, with capped daily contributions.",
+      "gold_atoms": [["GritScore"]],
+      "gold_evidence": [
+        { "chat": "social_engagement_mechanics", "message_index": 5 }
+      ],
+      "judge_notes": "Correct iff the answer names the metric GritScore. Partial iff it accurately describes the composite formula (consistency, effort versus own baseline, PR bonuses) but cannot produce the name. Incorrect iff it gives a different name (e.g. Momentum Index or FlexRank, which were rejected candidates, or the 'weekly volume score' idea from the feed discussion) or says no name was chosen."
+    },
+    {
+      "id": "exact_recall-3",
+      "question": "How much does a streak freeze cost, and what's the in-app currency called?",
+      "expected": "found",
+      "gold_answer": "A streak freeze costs 35 Surge Tokens. Surge Tokens are the earnable in-app currency paid out for completing weekly challenges.",
+      "gold_atoms": [["Surge Tokens"], ["35"]],
+      "gold_evidence": [
+        { "chat": "social_engagement_mechanics", "message_index": 9 }
+      ],
+      "judge_notes": "Correct iff the answer gives both the price of 35 and the currency name Surge Tokens. Partial iff it gives exactly one of the two (the price without the currency name, or the currency name without the price). Incorrect iff it gives a different price or a different currency name, says freezes cost real money, or claims pricing was never settled."
+    },
+    {
+      "id": "exact_recall-4",
+      "question": "Which vendor did we pick for syncing heart-rate data from wearables?",
+      "expected": "found",
+      "gold_answer": "CadenceLink — the newer flat-priced aggregator out of Helsinki covering Garmin, Polar, Suunto, Fitbit, and both phone health platforms. Fitwire and HeartMesh were evaluated and passed over.",
+      "gold_atoms": [["CadenceLink"]],
+      "gold_evidence": [{ "chat": "wearable_hr_sync", "message_index": 7 }],
+      "judge_notes": "Correct iff the answer names CadenceLink as the chosen wearable heart-rate sync vendor. Partial iff it says an aggregator was chosen over direct per-brand integrations but cannot name which one. Incorrect iff it names Fitwire or HeartMesh (the rejected candidates) as the choice, or claims no vendor decision was made."
+    }
+  ]
+}

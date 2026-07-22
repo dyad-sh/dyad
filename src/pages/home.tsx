@@ -169,10 +169,16 @@ export default function HomePage() {
           attachments: submittedAttachments,
           selectedApp: options?.selectedApp,
           chatMode: homeSubmitChatMode,
+          isChatModeExplicit: hasManuallySelectedChatMode,
         },
       });
     },
-    [homeSubmitChatMode, inputValue, sendFirstPrompt],
+    [
+      hasManuallySelectedChatMode,
+      homeSubmitChatMode,
+      inputValue,
+      sendFirstPrompt,
+    ],
   );
 
   const isLoading = [
@@ -250,6 +256,7 @@ export default function HomePage() {
                         attachments,
                         selectedApp: selectedApp ?? undefined,
                         chatMode: homeSubmitChatMode,
+                        isChatModeExplicit: hasManuallySelectedChatMode,
                       },
                     });
                   }}

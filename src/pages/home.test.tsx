@@ -76,7 +76,8 @@ vi.mock("@/hooks/useFreeAgentQuota", () => ({
 vi.mock("@/hooks/useInitialChatMode", () => ({
   useInitialChatMode: () => mocks.initialChatMode,
 }));
-vi.mock("@/lib/schemas", () => ({
+vi.mock("@/lib/schemas", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/schemas")>()),
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
   hasDyadProKey: () => false,
 }));
@@ -140,6 +141,7 @@ describe("HomePage first-prompt projection", () => {
         attachments: [attachment],
         selectedApp: { id: 9, name: "Existing" },
         chatMode: "plan",
+        isChatModeExplicit: true,
       },
     });
   });
@@ -157,6 +159,7 @@ describe("HomePage first-prompt projection", () => {
         attachments: [],
         selectedApp: undefined,
         chatMode: "build",
+        isChatModeExplicit: false,
       },
     });
   });

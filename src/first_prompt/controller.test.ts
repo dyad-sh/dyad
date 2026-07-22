@@ -11,6 +11,7 @@ const payload: FirstPromptPayload = {
   prompt: "Build a notes app",
   attachments: [],
   chatMode: "build",
+  isChatModeExplicit: false,
 };
 
 async function flushCommands(): Promise<void> {

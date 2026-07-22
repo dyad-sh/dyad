@@ -30,6 +30,20 @@ function startCreating(
   };
 }
 
+function applyProviderDefaultChatMode(
+  payload: FirstPromptPayload,
+  defaultChatMode: FirstPromptPayload["chatMode"],
+): FirstPromptPayload {
+  if (
+    payload.isChatModeExplicit ||
+    defaultChatMode === undefined ||
+    payload.chatMode === defaultChatMode
+  ) {
+    return payload;
+  }
+  return { ...payload, chatMode: defaultChatMode };
+}
+
 function resumePartial(
   state: Extract<FirstPromptState, { type: "failedPartial" }>,
   payload: FirstPromptPayload = state.payload,
@@ -168,9 +182,16 @@ export function transition(
           if (!hasPromptContent(state.payload)) {
             return { state: { type: "idle" }, commands: [] };
           }
+          const checkingPayload = applyProviderDefaultChatMode(
+            state.payload,
+            event.defaultChatMode,
+          );
           return {
-            ...startCreating(state.payload),
-            commands: [{ type: "NavigateHome" }, createCommand(state.payload)],
+            ...startCreating(checkingPayload),
+            commands: [
+              { type: "NavigateHome" },
+              createCommand(checkingPayload),
+            ],
           };
         case "RESET":
           return { state: { type: "idle" }, commands: [] };
@@ -184,9 +205,16 @@ export function transition(
           if (!hasPromptContent(state.payload)) {
             return { state: { type: "idle" }, commands: [] };
           }
+          const awaitingPayload = applyProviderDefaultChatMode(
+            state.payload,
+            event.defaultChatMode,
+          );
           return {
-            ...startCreating(state.payload),
-            commands: [{ type: "NavigateHome" }, createCommand(state.payload)],
+            ...startCreating(awaitingPayload),
+            commands: [
+              { type: "NavigateHome" },
+              createCommand(awaitingPayload),
+            ],
           };
         case "SETUP_DISMISSED":
         case "DISARM":

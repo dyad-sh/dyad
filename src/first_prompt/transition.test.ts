@@ -14,6 +14,7 @@ const payload: FirstPromptPayload = {
   prompt: "Build a notes app",
   attachments: [],
   chatMode: "build",
+  isChatModeExplicit: false,
 };
 
 const events: readonly FirstPromptEvent[] = [
@@ -95,7 +96,11 @@ describe("first-prompt transition", () => {
     (type) => {
       const state: FirstPromptState = {
         type,
-        payload: { prompt: "   ", attachments: [] },
+        payload: {
+          prompt: "   ",
+          attachments: [],
+          isChatModeExplicit: false,
+        },
       };
 
       const result = transition(state, { type: "PROVIDER_CONFIGURED" });
@@ -103,4 +108,50 @@ describe("first-prompt transition", () => {
       expect(result).toEqual({ state: { type: "idle" }, commands: [] });
     },
   );
+
+  it("recomputes an implicit chat mode when provider setup changes the default", () => {
+    const state: FirstPromptState = {
+      type: "awaitingProviderSetup",
+      payload,
+    };
+
+    const result = transition(state, {
+      type: "PROVIDER_CONFIGURED",
+      defaultChatMode: "local-agent",
+    });
+
+    expect(result.state).toEqual({
+      type: "creating",
+      payload: { ...payload, chatMode: "local-agent" },
+    });
+    expect(result.commands).toEqual([
+      { type: "NavigateHome" },
+      {
+        type: "CreateApp",
+        payload: { ...payload, chatMode: "local-agent" },
+      },
+    ]);
+  });
+
+  it("preserves an explicitly selected chat mode after provider setup", () => {
+    const explicitPayload: FirstPromptPayload = {
+      ...payload,
+      chatMode: "plan",
+      isChatModeExplicit: true,
+    };
+    const state: FirstPromptState = {
+      type: "awaitingProviderSetup",
+      payload: explicitPayload,
+    };
+
+    const result = transition(state, {
+      type: "PROVIDER_CONFIGURED",
+      defaultChatMode: "local-agent",
+    });
+
+    expect(result.state).toEqual({
+      type: "creating",
+      payload: explicitPayload,
+    });
+  });
 });

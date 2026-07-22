@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   validateProviderApiKey: vi.fn(),
   openExternalUrl: vi.fn(),
   sendFirstPrompt: vi.fn(),
+  settings: {
+    providerSettings: {},
+    enableDyadPro: false,
+    defaultChatMode: "build",
+  } as any,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -28,10 +33,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
-    settings: {
-      providerSettings: {},
-      enableDyadPro: false,
-    },
+    settings: mocks.settings,
     envVars: {},
     loading: false,
     error: null,
@@ -54,6 +56,10 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
     error: null,
     isAnyProviderSetup: () => mocks.anyProviderSetup,
   }),
+}));
+
+vi.mock("@/hooks/useFreeAgentQuota", () => ({
+  useFreeAgentQuota: () => ({ isQuotaExceeded: false, isLoading: false }),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -80,7 +86,7 @@ function validationError(message: string, kind: DyadErrorKind) {
   return Object.assign(new Error(message), { kind });
 }
 
-function renderProviderSettingsPage() {
+function renderProviderSettingsPage(provider = "google") {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -92,20 +98,20 @@ function renderProviderSettingsPage() {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 
-  return render(<ProviderSettingsPage provider="google" />, {
+  return render(<ProviderSettingsPage provider={provider} />, {
     wrapper: Wrapper,
   });
 }
 
-async function saveApiKey() {
-  fireEvent.change(screen.getByLabelText("Set Google API Key"), {
+async function saveApiKey(providerName = "Google", provider = "google") {
+  fireEvent.change(screen.getByLabelText(`Set ${providerName} API Key`), {
     target: { value: "test-google-key" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
 
   await waitFor(() => {
     expect(mocks.validateProviderApiKey).toHaveBeenCalledWith({
-      provider: "google",
+      provider,
       apiKey: "test-google-key",
     });
   });
@@ -121,6 +127,11 @@ describe("ProviderSettingsPage", () => {
     mocks.validateProviderApiKey.mockReset();
     mocks.openExternalUrl.mockReset();
     mocks.sendFirstPrompt.mockReset();
+    mocks.settings = {
+      providerSettings: {},
+      enableDyadPro: false,
+      defaultChatMode: "build",
+    };
   });
 
   it("titles auth validation errors as rejected API keys", async () => {
@@ -146,6 +157,7 @@ describe("ProviderSettingsPage", () => {
     await waitFor(() =>
       expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({
         type: "PROVIDER_CONFIGURED",
+        defaultChatMode: "build",
       }),
     );
     expect(mocks.navigate).not.toHaveBeenCalledWith({
@@ -153,6 +165,22 @@ describe("ProviderSettingsPage", () => {
       search: {},
       replace: true,
     });
+  });
+
+  it("resumes an implicit first prompt with the new Dyad Pro default", async () => {
+    mocks.hasArmedPayload = true;
+    mocks.validateProviderApiKey.mockResolvedValue(undefined);
+    mocks.updateSettings.mockResolvedValue(undefined);
+
+    renderProviderSettingsPage("auto");
+    await saveApiKey("Dyad", "auto");
+
+    await waitFor(() =>
+      expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({
+        type: "PROVIDER_CONFIGURED",
+        defaultChatMode: "local-agent",
+      }),
+    );
   });
 
   it("does not auto-submit when replacing an existing provider key", async () => {

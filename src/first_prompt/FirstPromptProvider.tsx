@@ -239,9 +239,18 @@ export function FirstPromptProvider({
       !awaitingStartedWithProviderRef.current &&
       hasConfiguredProvider
     ) {
-      controller.send({ type: "PROVIDER_CONFIGURED" });
+      controller.send({
+        type: "PROVIDER_CONFIGURED",
+        defaultChatMode: settings?.defaultChatMode,
+      });
     }
-  }, [controller, hasConfiguredProvider, pathname, snapshot.type]);
+  }, [
+    controller,
+    hasConfiguredProvider,
+    pathname,
+    settings?.defaultChatMode,
+    snapshot.type,
+  ]);
 
   useEffect(() => {
     const previousPathname = previousPathnameRef.current;

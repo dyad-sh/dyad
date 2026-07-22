@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { BackButton } from "@/components/ui/back-button";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAtomValue } from "jotai";
@@ -31,8 +32,13 @@ import {
   UserSettings,
   AzureProviderSetting,
   VertexProviderSetting,
+  getEffectiveDefaultChatMode,
   hasDyadProKey,
 } from "@/lib/schemas";
+import {
+  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
+  isFreeProBuildModeCombination,
+} from "@/lib/freeProModel";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -97,6 +103,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     error: providersError,
     isAnyProviderSetup,
   } = useLanguageModelProviders();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   // Find the specific provider data from the fetched list
   const providerData = allProviders?.find((p) => p.id === provider);
@@ -262,10 +269,32 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           settingsUpdate.defaultChatMode = "local-agent";
         }
       }
+      const nextSettings = settings
+        ? ({ ...settings, ...settingsUpdate } as UserSettings)
+        : undefined;
+      let resumeDefaultChatMode = nextSettings
+        ? getEffectiveDefaultChatMode(
+            nextSettings,
+            envVars,
+            isQuotaLoading ? undefined : !isQuotaExceeded,
+          )
+        : settingsUpdate.defaultChatMode;
+      if (
+        nextSettings &&
+        isFreeProBuildModeCombination(
+          nextSettings.selectedModel,
+          resumeDefaultChatMode,
+        )
+      ) {
+        resumeDefaultChatMode = FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
+      }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       if (isFirstProviderSetup && hasArmedPayload) {
-        sendFirstPrompt({ type: "PROVIDER_CONFIGURED" });
+        sendFirstPrompt({
+          type: "PROVIDER_CONFIGURED",
+          defaultChatMode: resumeDefaultChatMode,
+        });
       } else if (isFirstProviderSetup) {
         setShowStartBuildingBanner(true);
       }

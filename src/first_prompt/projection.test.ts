@@ -5,6 +5,7 @@ import type { FirstPromptPayload } from "./state";
 const payload: FirstPromptPayload = {
   prompt: "Build an app",
   attachments: [],
+  isChatModeExplicit: false,
 };
 
 describe("first-prompt projection", () => {
@@ -23,7 +24,11 @@ describe("first-prompt projection", () => {
     expect(
       projectFirstPromptState({
         type: "awaitingProviderSetup",
-        payload: { prompt: "", attachments: [] },
+        payload: {
+          prompt: "",
+          attachments: [],
+          isChatModeExplicit: false,
+        },
       }),
     ).toEqual({
       phase: "awaitingProviderSetup",

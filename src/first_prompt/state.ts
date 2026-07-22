@@ -32,6 +32,7 @@ export interface FirstPromptPayload {
   readonly attachments: readonly FirstPromptAttachment[];
   readonly selectedApp?: FirstPromptSelectedApp;
   readonly chatMode?: FirstPromptChatMode;
+  readonly isChatModeExplicit: boolean;
 }
 
 export type FirstPromptState =
@@ -84,7 +85,10 @@ export type FirstPromptEvent =
   | { readonly type: "ARM_FOR_SETUP"; readonly payload: FirstPromptPayload }
   | { readonly type: "DISARM" }
   | { readonly type: "PROVIDERS_LOADED"; readonly anySetup: boolean }
-  | { readonly type: "PROVIDER_CONFIGURED" }
+  | {
+      readonly type: "PROVIDER_CONFIGURED";
+      readonly defaultChatMode?: FirstPromptChatMode;
+    }
   | { readonly type: "SETUP_DISMISSED" }
   | {
       readonly type: "APP_CREATED";

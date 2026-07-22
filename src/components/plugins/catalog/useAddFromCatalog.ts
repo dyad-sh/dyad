@@ -17,7 +17,19 @@ export function useAddFromCatalog() {
 
   const mutation = useMutation({
     mutationFn: async (entry: McpCatalogEntry) => {
-      const created = await ipc.mcp.addFromCatalog({ slug: entry.slug });
+      // Send the reviewed command so the handler can abort if the catalog
+      // changed since the consent prompt.
+      const created = await ipc.mcp.addFromCatalog({
+        slug: entry.slug,
+        expectedStdioConfig:
+          entry.transport === "stdio"
+            ? {
+                command: entry.command,
+                args: entry.args,
+                env: entry.env ?? null,
+              }
+            : undefined,
+      });
       return { entry, created };
     },
     onSuccess: async () => {

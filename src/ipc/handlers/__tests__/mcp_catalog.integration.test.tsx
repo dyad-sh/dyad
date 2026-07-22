@@ -22,6 +22,9 @@ describe("Plugins catalog (integration)", () => {
   let catalogServer: http.Server;
   let mcpServerProcess: ChildProcess;
   let mcpPort: number;
+  // The payload the catalog endpoint serves. Mutable so a test can swap
+  // in a different set of entries; reset it in a finally.
+  let catalogPayload: unknown;
 
   beforeAll(async () => {
     // A real fake MCP server for the catalog entry to point at.
@@ -49,22 +52,21 @@ describe("Plugins catalog (integration)", () => {
       mcpServerProcess.once("error", reject);
     });
 
-    // A local catalog endpoint serving one addable entry.
+    // A local catalog endpoint serving one addable entry by default.
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-open",
+          name: "Integration Open Server",
+          category: "Testing",
+          transport: "http",
+          url: `http://localhost:${mcpPort}/mcp`,
+        },
+      ],
+    };
     catalogServer = http.createServer((_req, res) => {
       res.setHeader("content-type", "application/json");
-      res.end(
-        JSON.stringify({
-          servers: [
-            {
-              slug: "integration-open",
-              name: "Integration Open Server",
-              category: "Testing",
-              transport: "http",
-              url: `http://localhost:${mcpPort}/mcp`,
-            },
-          ],
-        }),
-      );
+      res.end(JSON.stringify(catalogPayload));
     });
     await new Promise<void>((resolve) =>
       catalogServer.listen(0, "127.0.0.1", resolve),
@@ -212,6 +214,50 @@ describe("Plugins catalog (integration)", () => {
     } finally {
       process.env.DYAD_MCP_CATALOG_URL = previousUrl;
       featuredServer.close();
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
+
+  it("aborts an stdio add when the catalog no longer matches the consent", async () => {
+    const previousPayload = catalogPayload;
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-stdio",
+          name: "Integration Stdio Server",
+          category: "Testing",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+        },
+      ],
+    };
+    clearMcpCatalogCacheForTests();
+    try {
+      // A config that differs from the served entry (as if the catalog
+      // changed after the consent prompt) is rejected and adds nothing.
+      await expect(
+        ipc.mcp.addFromCatalog({
+          slug: "integration-stdio",
+          expectedStdioConfig: {
+            command: "npx",
+            args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@2.0.0"],
+          },
+        }),
+      ).rejects.toThrow(/changed/i);
+      expect(await ipc.mcp.listServers()).toHaveLength(0);
+
+      // The matching config adds the row.
+      const created = await ipc.mcp.addFromCatalog({
+        slug: "integration-stdio",
+        expectedStdioConfig: {
+          command: "npx",
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+        },
+      });
+      expect(created.catalogSlug).toBe("integration-stdio");
+    } finally {
+      catalogPayload = previousPayload;
       clearMcpCatalogCacheForTests();
     }
   }, 40_000);

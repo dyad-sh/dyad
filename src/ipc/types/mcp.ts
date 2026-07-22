@@ -221,10 +221,19 @@ export const mcpContracts = {
 
   addFromCatalog: defineContract({
     channel: "mcp:add-from-catalog",
-    // Slug only: the main process resolves it against the fetched
-    // catalog, so the renderer can't inject arbitrary server configs
-    // through this channel.
-    input: z.object({ slug: z.string().min(1) }),
+    // expectedStdioConfig is the command the consent prompt showed. The
+    // handler aborts if the catalog it re-fetches no longer matches, so a
+    // stale dialog can't add something the user didn't review.
+    input: z.object({
+      slug: z.string().min(1),
+      expectedStdioConfig: z
+        .object({
+          command: z.string(),
+          args: z.array(z.string()),
+          env: z.record(z.string(), z.string()).nullable().optional(),
+        })
+        .optional(),
+    }),
     output: McpServerSchema,
   }),
 

@@ -12,20 +12,28 @@
  */
 
 import type { ConnectionFlowEvent, ConnectionFlowState } from "./state";
+import {
+  advanceState,
+  ignoreState,
+  type IgnoreReason as SharedIgnoreReason,
+  type StateTransitionResult,
+} from "@/state_machines/types";
 
 /** Why an event was ignored instead of transitioning the machine. */
-export type IgnoreReason =
+export type IgnoreReason = SharedIgnoreReason<
   | "flow-already-active"
   | "no-active-flow"
   | "flow-id-mismatch"
-  | "invalid-in-current-state";
+  | "invalid-in-current-state"
+>;
 
-export type TransitionResult =
-  | { changed: true; state: ConnectionFlowState }
-  | { changed: false; state: ConnectionFlowState; reason: IgnoreReason };
+export type TransitionResult = StateTransitionResult<
+  ConnectionFlowState,
+  IgnoreReason
+>;
 
 function advance(state: ConnectionFlowState): TransitionResult {
-  return { changed: true, state };
+  return advanceState(state);
 }
 
 /** Explicitly ignore an event, keeping the current state. */
@@ -33,7 +41,7 @@ function ignore(
   state: ConnectionFlowState,
   reason: IgnoreReason,
 ): TransitionResult {
-  return { changed: false, state, reason };
+  return ignoreState(state, reason);
 }
 
 export function transition(

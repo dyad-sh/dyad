@@ -117,6 +117,7 @@ describe("plan handoff transition — totality over state × event", () => {
         const result = transition(state, event);
         if (result.state === state) {
           expect(result.commands).toEqual([]);
+          expect(result.ignoredReason).toBeTruthy();
         }
       }
     }

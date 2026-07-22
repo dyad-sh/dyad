@@ -135,6 +135,9 @@ describe("transition totality and invariants", () => {
         expect(result).toBeDefined();
         expect(STATE_TYPES.has(result.state.type)).toBe(true);
         expect(Array.isArray(result.commands)).toBe(true);
+        if (result.state === state && result.commands.length === 0) {
+          expect(result.ignoredReason).toBeTruthy();
+        }
 
         // At most one mutating (process-affecting IPC) command per result.
         const mutating = result.commands.filter((command: RunCommand) =>
@@ -165,6 +168,7 @@ describe("transition totality and invariants", () => {
         const result = transition(state, event);
         expect(result.state).toBe(state);
         expect(result.commands).toEqual([]);
+        expect(result.ignoredReason).toBe("stale-run-id");
       }
     }
   });
@@ -549,7 +553,11 @@ describe("projectRunState", () => {
 describe("ignore", () => {
   it("returns the same state reference with no commands", () => {
     const state: RunState = { type: "idle" };
-    expect(ignore(state)).toEqual({ state, commands: [] });
-    expect(ignore(state).state).toBe(state);
+    expect(ignore(state, "invalid-in-current-state")).toEqual({
+      state,
+      commands: [],
+      ignoredReason: "invalid-in-current-state",
+    });
+    expect(ignore(state, "invalid-in-current-state").state).toBe(state);
   });
 });

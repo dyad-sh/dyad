@@ -1,6 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useKeyedController, type KeyedSnapshotSource } from "./react";
+import {
+  useControllerSnapshot,
+  useKeyedController,
+  type KeyedSnapshotSource,
+} from "./react";
+import { SnapshotStore } from "./snapshot_store";
 
 class Source implements KeyedSnapshotSource<number, number> {
   private values = new Map<number, number>();
@@ -26,5 +31,23 @@ describe("useKeyedController", () => {
     expect(result.current).toBe(0);
     act(() => source.set(1, 1));
     expect(result.current).toBe(1);
+  });
+
+  it("supports an explicit keyed snapshot selector", () => {
+    const source = new Source();
+    const { result } = renderHook(() =>
+      useKeyedController(source, 1, (current, key) => current.getSnapshot(key)),
+    );
+    act(() => source.set(1, 4));
+    expect(result.current).toBe(4);
+  });
+});
+
+describe("useControllerSnapshot", () => {
+  it("binds a non-keyed disposable controller", () => {
+    const controller = new SnapshotStore(0);
+    const { result } = renderHook(() => useControllerSnapshot(controller));
+    act(() => controller.setState(2));
+    expect(result.current).toBe(2);
   });
 });

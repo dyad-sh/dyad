@@ -6,6 +6,7 @@ import type {
   RunState,
   TransitionResult,
 } from "./state";
+import { ignore as ignoreTransition } from "@/state_machines/types";
 
 /**
  * Pure transition function for the per-app run-state machine.
@@ -102,7 +103,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "RUN_IPC_RESOLVED": {
       if (state.type !== "starting" || state.runId !== event.runId) {
-        return ignore(state);
+        return ignore(state, "stale-run-id");
       }
       const commands: RunCommand[] = [
         { type: "clearError", appId: state.appId },
@@ -131,7 +132,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "RUN_IPC_FAILED": {
       if (state.type !== "starting" || state.runId !== event.runId) {
-        return ignore(state);
+        return ignore(state, "stale-run-id");
       }
       const commands: RunCommand[] = [
         { type: "setError", appId: state.appId, error: event.error },
@@ -154,7 +155,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "STOP_IPC_RESOLVED":
       if (state.type !== "stopping" || state.runId !== event.runId) {
-        return ignore(state);
+        return ignore(state, "stale-run-id");
       }
       return {
         state: {
@@ -168,7 +169,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "STOP_IPC_FAILED":
       if (state.type !== "stopping" || state.runId !== event.runId) {
-        return ignore(state);
+        return ignore(state, "stale-run-id");
       }
       return {
         state: {
@@ -210,7 +211,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         case "stopping":
           // A proxy line while stopping is stale by construction; applying
           // it would stomp the stop operation's state.
-          return ignore(state);
+          return ignore(state, "stale-proxy-output");
         case "idle":
         case "stopped":
         case "errored":
@@ -265,7 +266,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "RELOAD_DONE":
       if (state.type !== "reloading" || state.runId !== event.runId) {
-        return ignore(state);
+        return ignore(state, "stale-run-id");
       }
       return {
         state: {
@@ -292,7 +293,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
       // During starting/stopping the IPC settlement drives the state (as
       // before); in idle/stopped/errored there is nothing to do. The exit
       // details atom is written by the output subscription either way.
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
 
     default:
       return assertNever(event);
@@ -300,8 +301,11 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 }
 
 /** Explicitly ignore an event: same state reference, no commands. */
-export function ignore(state: RunState): TransitionResult {
-  return { state, commands: [] };
+export function ignore(
+  state: RunState,
+  reason: NonNullable<TransitionResult["ignoredReason"]>,
+): TransitionResult {
+  return ignoreTransition(state, reason);
 }
 
 /**

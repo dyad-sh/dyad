@@ -18,18 +18,33 @@ import type {
   PreviewState,
 } from "./state";
 import { CLOSED_STATE } from "./state";
+import {
+  ignore as ignoreTransition,
+  type IgnoreReason,
+  type TransitionResult as SharedTransitionResult,
+} from "@/state_machines/types";
 
-export interface TransitionResult {
-  state: PreviewState;
-  commands: PreviewCommand[];
-}
+export type PreviewIgnoreReason = IgnoreReason<
+  "invalid-in-current-state" | "no-change"
+>;
+export type TransitionResult = SharedTransitionResult<
+  PreviewState,
+  PreviewCommand,
+  PreviewIgnoreReason
+>;
 
 export const BRANCH_UNAVAILABLE_MESSAGE =
   "Unable to determine the current Git branch. Version preview was cancelled to avoid switching branches.";
 
 /** Explicitly ignore an event: same state reference, no commands. */
-function ignore(state: PreviewState): TransitionResult {
-  return { state, commands: [] };
+function ignore(
+  state: PreviewState,
+  reason: PreviewIgnoreReason,
+): TransitionResult {
+  return ignoreTransition<PreviewState, PreviewCommand, PreviewIgnoreReason>(
+    state,
+    reason,
+  );
 }
 
 function freshSession(appId: number): PreviewSession {
@@ -161,9 +176,9 @@ export function transition(
 ): TransitionResult {
   if (event.type === "CLOSE_VERSION_DIFF") {
     if (state.type === "closed" || state.type === "switching-branch") {
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
-    if (!state.session.isDiffVisible) return ignore(state);
+    if (!state.session.isDiffVisible) return ignore(state, "no-change");
     if (state.type === "viewing-diff") {
       return { state: CLOSED_STATE, commands: [] };
     }
@@ -186,7 +201,7 @@ export function transition(
       state.type === "switching-branch" ||
       !state.session.isDiffVisible
     ) {
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
     const selected = state.session.selectedDiffFile;
     if (
@@ -196,7 +211,7 @@ export function transition(
         selected.versionId === event.file.versionId &&
         selected.path === event.file.path)
     ) {
-      return ignore(state);
+      return ignore(state, "no-change");
     }
     return {
       state: {
@@ -235,7 +250,7 @@ export function transition(
           commands: [],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "viewing-diff": {
@@ -286,7 +301,7 @@ export function transition(
         return beginBranchSwitch(state, event);
       }
       if (exitIntentFor(event)) return { state: CLOSED_STATE, commands: [] };
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "browsing": {
@@ -325,7 +340,7 @@ export function transition(
       if (exitIntentFor(event)) {
         return { state: CLOSED_STATE, commands: [] };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "resolving-origin": {
@@ -334,7 +349,7 @@ export function transition(
           state.session.targetVersionId === event.versionId &&
           state.session.selectedDiffFile === null
         ) {
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
         }
         // Latest selection wins; the superseded resolve is dropped by the
         // controller's epoch check.
@@ -351,7 +366,7 @@ export function transition(
       }
       if (event.type === "ORIGIN_RESOLVED") {
         if (state.session.targetVersionId === null) {
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
         }
         const session: PreviewSession = {
           ...state.session,
@@ -408,7 +423,7 @@ export function transition(
           commands: [returnCommand(session)],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "checking-out": {
@@ -444,7 +459,7 @@ export function transition(
       const intent = exitIntentFor(event);
       if (intent) {
         if (sameExitIntent(state.session.exitIntent, intent)) {
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
         }
         return {
           state: {
@@ -454,7 +469,7 @@ export function transition(
           commands: [],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "previewing": {
@@ -464,7 +479,7 @@ export function transition(
             state.session.selectedDiffFile === null &&
             state.session.isDiffVisible
           ) {
-            return ignore(state);
+            return ignore(state, "no-change");
           }
           return {
             state: {
@@ -512,7 +527,7 @@ export function transition(
           commands: [returnCommand(session)],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "restoring": {
@@ -554,7 +569,7 @@ export function transition(
       const intent = exitIntentFor(event);
       if (intent) {
         if (sameExitIntent(state.session.exitIntent, intent)) {
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
         }
         return {
           state: {
@@ -565,7 +580,7 @@ export function transition(
           commands: [],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "returning": {
@@ -592,7 +607,7 @@ export function transition(
       if (intent) {
         // Already exiting; just record the most recent intent.
         if (sameExitIntent(state.session.exitIntent, intent)) {
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
         }
         return {
           state: {
@@ -602,7 +617,7 @@ export function transition(
           commands: [],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "switching-branch": {
@@ -627,7 +642,7 @@ export function transition(
           commands: [],
         };
       }
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
 
     case "recovery-required": {
@@ -658,7 +673,7 @@ export function transition(
         ]);
       }
       // SELECT_VERSION and completion events are deliberately ignored.
-      return ignore(state);
+      return ignore(state, "invalid-in-current-state");
     }
   }
 }

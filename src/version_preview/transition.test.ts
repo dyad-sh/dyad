@@ -291,6 +291,9 @@ describe("transition totality", () => {
         expect(result).toBeDefined();
         expect(result.state).toBeDefined();
         expect(Array.isArray(result.commands)).toBe(true);
+        if (result.state === state && result.commands.length === 0) {
+          expect(result.ignoredReason).toBeTruthy();
+        }
         if (result.state !== state) {
           expect(result.state, `${state.type} + ${event.type}`).not.toEqual(
             state,
@@ -305,6 +308,7 @@ describe("transition totality", () => {
     const result = transition(previewing, { type: "RETURN_SUCCEEDED" });
     expect(result.state).toBe(previewing);
     expect(result.commands).toEqual([]);
+    expect(result.ignoredReason).toBe("invalid-in-current-state");
   });
 });
 

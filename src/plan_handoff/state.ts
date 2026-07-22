@@ -155,7 +155,9 @@ export type HandoffCommand =
       readonly error?: string;
     };
 
-export interface TransitionResult {
-  readonly state: HandoffState;
-  readonly commands: readonly HandoffCommand[];
-}
+export type TransitionResult =
+  import("@/state_machines/types").TransitionResult<
+    HandoffState,
+    HandoffCommand,
+    "invalid-in-current-state" | "chat-id-mismatch"
+  >;

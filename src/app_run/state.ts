@@ -151,7 +151,9 @@ export type RunCommand =
   /** Set the per-app preview error. */
   | { type: "setError"; appId: number; error: RunErrorInfo };
 
-export interface TransitionResult {
-  state: RunState;
-  commands: RunCommand[];
-}
+export type TransitionResult =
+  import("@/state_machines/types").TransitionResult<
+    RunState,
+    RunCommand,
+    "invalid-in-current-state" | "stale-run-id" | "stale-proxy-output"
+  >;

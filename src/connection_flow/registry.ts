@@ -11,6 +11,10 @@
  *
  * The registry itself is dependency-free (timers, id allocation and
  * broadcasting are injected) so it can be unit-tested without Electron.
+ * Unlike renderer machines, it has no command channel: as an explicitly
+ * constructed main-process registry it derives injected timer/broadcast
+ * effects from applied transitions, keeping flowId correlation authoritative
+ * in one process.
  */
 
 import {
@@ -22,6 +26,7 @@ import {
   type ConnectionFlowState,
 } from "./state";
 import { transition, type IgnoreReason } from "./transition";
+import type { TransitionObserver } from "@/state_machines/types";
 
 /**
  * How long a provider waits in `awaiting-return` before the flow times out.
@@ -63,6 +68,12 @@ export interface ConnectionFlowRegistryOptions {
     event: ConnectionFlowEvent,
     reason: IgnoreReason,
   ) => void;
+  observer?: TransitionObserver<
+    ConnectionFlowState,
+    ConnectionFlowEvent,
+    never,
+    IgnoreReason
+  >;
   timeoutsMs?: Partial<Record<ConnectionFlowProvider, number | null>>;
   createFlowId?: (provider: ConnectionFlowProvider) => string;
   scheduleTimeout?: (callback: () => void, ms: number) => unknown;
@@ -93,6 +104,7 @@ export function createConnectionFlowRegistry(
     onStateChange,
     onUnsolicitedReturn,
     onIgnoredEvent,
+    observer,
     scheduleTimeout = (callback, ms) => setTimeout(callback, ms),
     clearScheduledTimeout = (handle) =>
       clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -111,6 +123,16 @@ export function createConnectionFlowRegistry(
 
   const states = new Map<ConnectionFlowProvider, ConnectionFlowState>();
   const pendingTimeouts = new Map<ConnectionFlowProvider, unknown>();
+
+  function notifyIgnored(
+    provider: ConnectionFlowProvider,
+    state: ConnectionFlowState,
+    event: ConnectionFlowEvent,
+    reason: IgnoreReason,
+  ): void {
+    onIgnoredEvent?.(provider, event, reason);
+    observer?.onEventIgnored?.({ state, event, reason });
+  }
 
   function getState(provider: ConnectionFlowProvider): ConnectionFlowState {
     return states.get(provider) ?? DISCONNECTED_FLOW_STATE;
@@ -144,7 +166,7 @@ export function createConnectionFlowRegistry(
     const previous = getState(provider);
     const result = transition(previous, event);
     if (!result.changed) {
-      onIgnoredEvent?.(provider, event, result.reason);
+      notifyIgnored(provider, previous, event, result.reason);
       return false;
     }
 
@@ -170,6 +192,12 @@ export function createConnectionFlowRegistry(
     }
 
     onStateChange?.(provider, result.state, previous);
+    observer?.onTransitionApplied?.({
+      previous,
+      event,
+      state: result.state,
+      commands: [],
+    });
     return true;
   }
 
@@ -226,8 +254,9 @@ export function createConnectionFlowRegistry(
       return { claimed: false };
     }
     if (expectedFlowId !== undefined && current.flowId !== expectedFlowId) {
-      onIgnoredEvent?.(
+      notifyIgnored(
         provider,
+        current,
         { type: "return-received", flowId: expectedFlowId },
         "flow-id-mismatch",
       );

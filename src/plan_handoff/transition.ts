@@ -6,6 +6,7 @@ import type {
   ReadyHandoffSession,
   TransitionResult,
 } from "./state";
+import { ignore as ignoreTransition } from "@/state_machines/types";
 
 /**
  * How long the "Plan accepted → preparing…" confirmation stays on screen.
@@ -17,8 +18,11 @@ export const TRANSITION_DISPLAY_MS = 2500;
  * Event not relevant in this state: keep the same state (by reference, so the
  * controller can skip notifying subscribers) and run nothing.
  */
-function ignore(state: HandoffState): TransitionResult {
-  return { state, commands: [] };
+function ignore(
+  state: HandoffState,
+  reason: NonNullable<TransitionResult["ignoredReason"]>,
+): TransitionResult {
+  return ignoreTransition(state, reason);
 }
 
 function startHandoff(event: {
@@ -62,7 +66,7 @@ export function transition(
         case "PLAN_ACCEPTED":
           return startHandoff(event);
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 
@@ -74,7 +78,7 @@ export function transition(
             commands: [{ type: "wait", ms: TRANSITION_DISPLAY_MS }],
           };
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 
@@ -95,7 +99,7 @@ export function transition(
             ],
           };
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 
@@ -143,7 +147,7 @@ export function transition(
             ],
           };
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 
@@ -193,7 +197,7 @@ export function transition(
             ],
           };
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 
@@ -202,7 +206,7 @@ export function transition(
         case "STREAM_BECAME_IDLE": {
           // Only the implementation chat's stream matters here.
           if (event.chatId !== state.session.implementationChatId) {
-            return ignore(state);
+            return ignore(state, "chat-id-mismatch");
           }
           return {
             state: { type: "implementing", session: state.session },
@@ -234,7 +238,7 @@ export function transition(
           };
         }
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 
@@ -243,7 +247,7 @@ export function transition(
         case "IMPLEMENTATION_STARTED":
           return { state: { type: "idle" }, commands: [] };
         default:
-          return ignore(state);
+          return ignore(state, "invalid-in-current-state");
       }
     }
 

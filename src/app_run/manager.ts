@@ -7,6 +7,8 @@ import {
   type RunProducerInput,
 } from "./controller";
 import type { RunState } from "./state";
+import type { RunCommand, RunEvent } from "./state";
+import type { TransitionObserver } from "@/state_machines/types";
 import { projectRunState } from "./transition";
 
 const IDLE_STATE: RunState = { type: "idle" };
@@ -15,7 +17,10 @@ const IDLE_STATE: RunState = { type: "idle" };
 export class AppRunManager {
   private readonly host: KeyedControllerHost<number, AppRunController>;
 
-  constructor(store: JotaiStore) {
+  constructor(
+    store: JotaiStore,
+    observer?: TransitionObserver<RunState, RunEvent, RunCommand>,
+  ) {
     this.host = new KeyedControllerHost(
       (appId) =>
         new AppRunController({
@@ -29,6 +34,7 @@ export class AppRunManager {
               state: projectRunState(state),
             });
           },
+          observer,
         }),
     );
   }

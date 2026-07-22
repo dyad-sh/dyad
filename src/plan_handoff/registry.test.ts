@@ -44,7 +44,7 @@ describe("plan handoff controller registry", () => {
     }
     await flush();
 
-    registry.dispose(1);
+    registry.disposeKey(1);
     gates.get(1)?.resolve();
     gates.get(2)?.resolve();
     await flush();
@@ -56,6 +56,7 @@ describe("plan handoff controller registry", () => {
     expect(executed).toContain("2:mark-plan-accepted");
     expect(executed).toContain("2:cancel-stream");
 
-    registry.dispose(2);
+    registry.disposeKey(2);
+    registry.dispose();
   });
 });

@@ -8,7 +8,10 @@ import {
 } from "react";
 import { useAtomValue, useStore } from "jotai";
 import { previewRunStateByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
-import { useManagerLifecycle } from "@/state_machines/react";
+import {
+  useManagerLifecycle,
+  useRegisterEntityDisposer,
+} from "@/state_machines/react";
 import { createPreviewIframeCommandAdapter } from "./commands";
 import { PreviewIframeManager } from "./manager";
 
@@ -42,6 +45,7 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   }, [manager, runStates]);
 
   useManagerLifecycle(manager);
+  useRegisterEntityDisposer("app", manager.disposeKey);
   return (
     <PreviewIframeContext.Provider value={manager}>
       {children}

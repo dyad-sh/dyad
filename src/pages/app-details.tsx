@@ -7,10 +7,7 @@ import {
 import { useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
-import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
-import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
+import { useEntityDisposal } from "@/state_machines/react";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
@@ -100,9 +97,7 @@ function UnavailableIntegrationCard({
 }
 
 export default function AppDetailsPage() {
-  const versionPreviewManager = useVersionPreviewManager();
-  const appRunManager = useAppRunManager();
-  const previewIframeManager = usePreviewIframeManager();
+  const entityDisposal = useEntityDisposal();
   const navigate = useNavigate();
   const search = useSearch({ from: "/app-details" as const });
   const appId = search.appId ? Number(search.appId) : null;
@@ -130,7 +125,6 @@ export default function AppDetailsPage() {
   const queryClient = useQueryClient();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
 
   const trimmedNewCopyAppName = newCopyAppName.trim();
   const debouncedNewCopyAppName = useDebounce(trimmedNewCopyAppName, 150);
@@ -199,10 +193,7 @@ export default function AppDetailsPage() {
       setIsDeleting(true);
       await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
-      versionPreviewManager.disposeApp(appId);
-      clearPreviewRuntimeForApp(appId);
-      appRunManager.disposeKey(appId);
-      previewIframeManager.disposeKey(appId);
+      entityDisposal.disposeForApp(appId);
       setSelectedAppId(null);
       setSelectedChatId(null);
       await refreshApps();

@@ -90,7 +90,7 @@ describe("VersionPreviewManager", () => {
       expect.objectContaining({ appId: 1 }),
     );
 
-    manager.disposeApp(1);
+    manager.disposeKey(1);
     expect(runtime.dismissRecovery).toHaveBeenCalledWith(1);
     expect(manager.getRecoveryEntries()).toEqual([]);
     manager.dispose();

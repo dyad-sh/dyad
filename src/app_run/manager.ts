@@ -1,6 +1,10 @@
 import { setPreviewRunStateForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
 import { createTraceObserver } from "@/state_machines/trace";
+import {
+  registerAtomWriter,
+  type AtomProjectionWriter,
+} from "@/state_machines/projection";
 import { createIpcRunCommandExecutor, type JotaiStore } from "./commands";
 import {
   AppRunController,
@@ -17,9 +21,10 @@ const IDLE_STATE: RunState = { type: "idle" };
 /** Provider-owned facade for the app-keyed run-state controllers. */
 export class AppRunManager {
   private readonly host: KeyedControllerHost<number, AppRunController>;
+  private projectionWriter: AtomProjectionWriter<unknown> | null = null;
 
   constructor(
-    store: JotaiStore,
+    private readonly store: JotaiStore,
     observer?: TransitionObserver<RunState, RunEvent, RunCommand>,
   ) {
     this.host = new KeyedControllerHost(
@@ -30,7 +35,7 @@ export class AppRunManager {
           onStateChange: (state) => {
             // The machine is the sole writer of the legacy run-state
             // projection consumed by preview runtime atoms.
-            store.set(setPreviewRunStateForAppAtom, {
+            this.writeProjection({
               appId,
               state: projectRunState(state),
             });
@@ -38,6 +43,10 @@ export class AppRunManager {
           observer: observer ?? createTraceObserver("app_run", appId),
         }),
     );
+  }
+
+  start(): void {
+    this.ensureProjectionWriter();
   }
 
   getSnapshot = (appId: number): RunState =>
@@ -54,11 +63,25 @@ export class AppRunManager {
     this.host.ensure(appId).send(input);
   }
 
-  disposeKey(appId: number): void {
+  disposeKey = (appId: number): void => {
     this.host.disposeKey(appId);
-  }
+  };
 
   dispose(): void {
     this.host.dispose();
+    this.projectionWriter?.dispose();
+    this.projectionWriter = null;
+  }
+
+  private writeProjection(value: unknown): void {
+    this.ensureProjectionWriter().write(value);
+  }
+
+  private ensureProjectionWriter(): AtomProjectionWriter<unknown> {
+    this.projectionWriter ??= registerAtomWriter(
+      this.store,
+      setPreviewRunStateForAppAtom,
+    );
+    return this.projectionWriter;
   }
 }

@@ -140,6 +140,9 @@ function invalidatePostStreamQueries(
 
 export function createProductionChatStreamCommands(
   getDeps: () => ChatStreamRuntimeDeps,
+  writeStreamingProjection?: (
+    update: (previous: Map<number, boolean>) => Map<number, boolean>,
+  ) => void,
 ): ChatStreamCommands {
   const latestChunkByChatId = new Map<number, number>();
   const ackTimerByChatId = new Map<number, ReturnType<typeof setTimeout>>();
@@ -663,11 +666,13 @@ export function createProductionChatStreamCommands(
       const streaming = isStreamActive(state);
       const current = store.get(isStreamingByIdAtom).get(chatId) ?? false;
       if (current === streaming) return;
-      store.set(isStreamingByIdAtom, (prev) => {
+      const update = (prev: Map<number, boolean>) => {
         const next = new Map(prev);
         next.set(chatId, streaming);
         return next;
-      });
+      };
+      if (writeStreamingProjection) writeStreamingProjection(update);
+      else store.set(isStreamingByIdAtom, update);
     },
   };
 }

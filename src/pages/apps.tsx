@@ -8,7 +8,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import {
@@ -27,11 +27,7 @@ import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
-import { clearTestRuntimeForAppAtom } from "@/atoms/testRuntimeAtoms";
-import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
-import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
+import { useEntityDisposal } from "@/state_machines/react";
 import { showError } from "@/lib/toast";
 import { AppsViewTabs, type AppsView } from "@/components/AppsViewTabs";
 import {
@@ -45,9 +41,7 @@ import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectio
 import { DeleteCollectionDialog } from "@/components/DeleteCollectionDialog";
 
 export default function AppsPage() {
-  const versionPreviewManager = useVersionPreviewManager();
-  const appRunManager = useAppRunManager();
-  const previewIframeManager = usePreviewIframeManager();
+  const entityDisposal = useEntityDisposal();
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const { collections, isLoading: collectionsLoading } = useAppCollections();
@@ -82,8 +76,6 @@ export default function AppsPage() {
     if (!q) return collections;
     return collections.filter((c) => c.name.toLowerCase().includes(q));
   }, [collections, searchQuery]);
-  const clearPreviewRuntimeForApp = useSetAtom(clearPreviewRuntimeForAppAtom);
-  const clearTestRuntimeForApp = useSetAtom(clearTestRuntimeForAppAtom);
 
   const filteredApps = useMemo(() => {
     const sorted = sortAppsForShowcase(apps);
@@ -162,11 +154,7 @@ export default function AppsPage() {
         setSelectedAppId(null);
       }
       for (const appId of succeededIds) {
-        versionPreviewManager.disposeApp(appId);
-        clearPreviewRuntimeForApp(appId);
-        clearTestRuntimeForApp(appId);
-        appRunManager.disposeKey(appId);
-        previewIframeManager.disposeKey(appId);
+        entityDisposal.disposeForApp(appId);
       }
       if (failed.length > 0) {
         const failedNames = failed

@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
@@ -30,8 +30,16 @@ import {
   shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
 import { registerRendererIpcListeners } from "./app_wiring/registerRendererIpcListeners";
-import { ChatStreamManager } from "./chat_stream/manager";
-import { ChatStreamProvider } from "./chat_stream/ChatStreamProvider";
+import {
+  ChatStreamProvider,
+  useChatStreamManager,
+} from "./chat_stream/ChatStreamProvider";
+import {
+  EntityDisposalProvider,
+  useRegisterEntityDisposer,
+} from "./state_machines/react";
+import { clearPreviewRuntimeForAppAtom } from "./atoms/previewRuntimeAtoms";
+import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -129,9 +137,25 @@ const posthogClient = posthog.init(
 );
 
 function App() {
+  return (
+    <ChatStreamProvider>
+      <RendererServices />
+    </ChatStreamProvider>
+  );
+}
+
+function RendererServices() {
   const queryClient = useQueryClient();
   const store = useStore();
-  const [chatStreamManager] = useState(() => new ChatStreamManager(store));
+  const chatStreamManager = useChatStreamManager();
+  const clearAppRuntime = useCallback(
+    (appId: number) => {
+      store.set(clearPreviewRuntimeForAppAtom, appId);
+      store.set(clearTestRuntimeForAppAtom, appId);
+    },
+    [store],
+  );
+  useRegisterEntityDisposer("app", clearAppRuntime);
 
   // Fetch user budget on app load
   useEffect(() => {
@@ -182,18 +206,16 @@ function App() {
     });
   }, [chatStreamManager, queryClient, store]);
 
-  return (
-    <ChatStreamProvider manager={chatStreamManager}>
-      <RouterProvider router={router} />
-    </ChatStreamProvider>
-  );
+  return <RouterProvider router={router} />;
 }
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <PostHogProvider client={posthogClient}>
-        <App />
+        <EntityDisposalProvider>
+          <App />
+        </EntityDisposalProvider>
       </PostHogProvider>
     </QueryClientProvider>
   </StrictMode>,

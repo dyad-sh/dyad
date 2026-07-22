@@ -1,14 +1,18 @@
 import { StrictMode, type ReactNode } from "react";
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   useControllerSnapshot,
+  createMachineProvider,
+  EntityDisposalProvider,
+  useEntityDisposal,
   useKeyedController,
   useManagerLifecycle,
   useManagerPagehideDisposal,
   type KeyedSnapshotSource,
 } from "./react";
 import { SnapshotStore } from "./snapshot_store";
+import { EntityDisposalRegistry } from "./entity_disposal";
 
 class Source implements KeyedSnapshotSource<number, number> {
   private values = new Map<number, number>();
@@ -122,6 +126,51 @@ describe("useManagerPagehideDisposal", () => {
 
     expect(manager.dispose).not.toHaveBeenCalled();
     hook.unmount();
+  });
+});
+
+describe("createMachineProvider", () => {
+  it("constructs an owned manager and accepts an injected manager", async () => {
+    const owned = { dispose: vi.fn() };
+    const injected = { dispose: vi.fn() };
+    const machine = createMachineProvider({
+      name: "Example",
+      useOwnedManager: () => owned,
+    });
+    function Consumer() {
+      return (
+        <span>{machine.useManager() === injected ? "injected" : "owned"}</span>
+      );
+    }
+
+    const view = render(
+      <machine.Provider manager={injected}>
+        <Consumer />
+      </machine.Provider>,
+    );
+    expect(screen.getByText("injected")).toBeTruthy();
+    view.unmount();
+    await flushMicrotasks();
+    expect(injected.dispose).toHaveBeenCalledOnce();
+
+    const ownedView = render(
+      <machine.Provider>
+        <Consumer />
+      </machine.Provider>,
+    );
+    expect(screen.getByText("owned")).toBeTruthy();
+    ownedView.unmount();
+    await flushMicrotasks();
+    expect(owned.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("EntityDisposalProvider", () => {
+  it("exposes one provider-owned registry", () => {
+    const { result } = renderHook(() => useEntityDisposal(), {
+      wrapper: EntityDisposalProvider,
+    });
+    expect(result.current).toBeInstanceOf(EntityDisposalRegistry);
   });
 });
 

@@ -153,7 +153,7 @@ describe("ChatStreamManager", () => {
     store.set(chatErrorByIdAtom, new Map([[CHAT_ID, "boom"]]));
     store.set(isStreamingByIdAtom, new Map([[CHAT_ID, false]]));
 
-    manager.disposeChat(CHAT_ID);
+    manager.disposeKey(CHAT_ID);
 
     expect(manager.peek(CHAT_ID)).toBeUndefined();
     expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);

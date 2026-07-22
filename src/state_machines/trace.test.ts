@@ -7,6 +7,7 @@ import type {
 import { CLOSED_STATE } from "@/version_preview/state";
 import { transition } from "@/version_preview/transition";
 import { createTraceObserver, getTraceLog } from "./trace";
+import { replayTrace } from "./testing";
 
 let sequence = 0;
 
@@ -140,10 +141,11 @@ describe("machine trace observer", () => {
       state = result.state;
     }
 
-    let replayed: PreviewState = CLOSED_STATE;
-    for (const entry of getTraceLog(machine)) {
-      replayed = transition(replayed, entry.event as PreviewEvent).state;
-    }
+    const replayed = replayTrace({
+      initialState: CLOSED_STATE,
+      entries: getTraceLog(machine) as readonly { event: PreviewEvent }[],
+      transition,
+    });
     expect(replayed).toEqual(state);
   });
 });

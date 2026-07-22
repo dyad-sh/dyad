@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import {
@@ -19,34 +13,12 @@ import {
 } from "@/components/ImageGenerationToast";
 import { showError } from "@/lib/toast";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
-import { useManagerLifecycle } from "@/state_machines/react";
+import { projectToAtom } from "@/state_machines/projection";
+import { createMachineProvider } from "@/state_machines/react";
 import { createImageGenerationCommandRunner } from "./commands";
 import { ImageGenerationManager } from "./manager";
 
-const ImageGenerationContext = createContext<ImageGenerationManager | null>(
-  null,
-);
-
-export function ImageGenerationProvider({
-  children,
-  manager: providedManager,
-}: {
-  children: ReactNode;
-  manager?: ImageGenerationManager;
-}) {
-  if (providedManager) {
-    return (
-      <ProvidedImageGenerationProvider manager={providedManager}>
-        {children}
-      </ProvidedImageGenerationProvider>
-    );
-  }
-  return (
-    <OwnedImageGenerationProvider>{children}</OwnedImageGenerationProvider>
-  );
-}
-
-function OwnedImageGenerationProvider({ children }: { children: ReactNode }) {
+function useOwnedImageGenerationManager(): ImageGenerationManager {
   const queryClient = useQueryClient();
   const [manager] = useState(
     () =>
@@ -56,28 +28,25 @@ function OwnedImageGenerationProvider({ children }: { children: ReactNode }) {
         runner: createImageGenerationCommandRunner({ queryClient }),
       }),
   );
-  return (
-    <ProvidedImageGenerationProvider manager={manager}>
-      {children}
-    </ProvidedImageGenerationProvider>
-  );
+  return manager;
 }
 
-function ProvidedImageGenerationProvider({
-  children,
-  manager,
-}: {
-  children: ReactNode;
-  manager: ImageGenerationManager;
-}) {
+function useImageGenerationMount(manager: ImageGenerationManager): void {
   const store = useStore();
-  useManagerLifecycle(manager);
-
   useEffect(() => {
-    let previous: ImageGenerationJob[] = [];
-    const project = () => {
+    const stopProjection = projectToAtom(
+      store,
+      setImageGenerationJobsProjectionAtom,
+      {
+        getSnapshot: manager.getProjection,
+        subscribe: manager.subscribeProjection,
+      },
+      (jobs) => jobs,
+      { cleanupValue: [] },
+    );
+    let previous: ImageGenerationJob[] = manager.getProjection();
+    const orchestrate = () => {
       const next = manager.getProjection();
-      store.set(setImageGenerationJobsProjectionAtom, next);
       orchestrateToasts(
         previous,
         next,
@@ -85,21 +54,24 @@ function ProvidedImageGenerationProvider({
       );
       previous = next;
     };
-    project();
-    const unsubscribe = manager.subscribeProjection(project);
+    orchestrate();
+    const unsubscribeToasts = manager.subscribeProjection(orchestrate);
     return () => {
-      unsubscribe();
-      store.set(setImageGenerationJobsProjectionAtom, []);
+      unsubscribeToasts();
+      stopProjection();
       dismissImageGenerationToast();
     };
   }, [manager, store]);
-
-  return (
-    <ImageGenerationContext.Provider value={manager}>
-      {children}
-    </ImageGenerationContext.Provider>
-  );
 }
+
+const imageGenerationProvider = createMachineProvider({
+  name: "ImageGeneration",
+  useOwnedManager: useOwnedImageGenerationManager,
+  useOnMount: useImageGenerationMount,
+});
+
+export const ImageGenerationProvider = imageGenerationProvider.Provider;
+export const useImageGenerationManager = imageGenerationProvider.useManager;
 
 function orchestrateToasts(
   previous: ImageGenerationJob[],
@@ -127,14 +99,4 @@ function orchestrateToasts(
   if (settled?.status === "error") {
     showError(settled.error ?? "Image generation failed");
   }
-}
-
-export function useImageGenerationManager(): ImageGenerationManager {
-  const manager = useContext(ImageGenerationContext);
-  if (!manager) {
-    throw new Error(
-      "useImageGenerationManager requires ImageGenerationProvider",
-    );
-  }
-  return manager;
 }

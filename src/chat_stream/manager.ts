@@ -8,6 +8,10 @@ import {
 } from "@/atoms/chatAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
 import { createTraceObserver } from "@/state_machines/trace";
+import {
+  registerAtomWriter,
+  type AtomProjectionWriter,
+} from "@/state_machines/projection";
 
 import {
   createProductionChatStreamCommands,
@@ -46,51 +50,36 @@ function withoutChatId<Value>(
  * remains. This is the intentional release path for idle chats that are never
  * deleted; their last generation is retained so replacement controllers do
  * not reuse IDs while delayed IPC events may still be in flight. Deleted chats
- * are disposed explicitly through `disposeChat`.
+ * are disposed explicitly through `disposeKey`.
  */
 export class ChatStreamManager {
   private runtimeDeps: ChatStreamRuntimeDeps | null = null;
   private readonly lastStreamIdByChatId = new Map<number, number>();
   private readonly streamFinishedListeners = new Set<StreamFinishedListener>();
-  private readonly commands = createProductionChatStreamCommands(() => {
-    if (!this.runtimeDeps) {
-      throw new Error(
-        "Chat stream runtime deps not registered. Mount useChatStreamRuntime() before streaming.",
-      );
-    }
-    return this.runtimeDeps;
-  });
-  private readonly host = new KeyedControllerHost<number, ChatStreamController>(
-    (chatId) => {
-      const traceObserver = createTraceObserver<
-        StreamState,
-        StreamEvent,
-        StreamCommand
-      >("chat_stream", chatId, {
-        mute: (event) => event.type === "chunk-received",
-      });
-      return createChatStreamController({
-        chatId,
-        initialLastStreamId: this.lastStreamIdByChatId.get(chatId),
-        getCommands: () => this.commands,
-        onQuiescent: (controller) => this.releaseIfQuiescent(controller),
-        observer: {
-          onTransitionApplied: (transition) => {
-            traceObserver.onTransitionApplied?.(transition);
-            this.notifyStreamFinished(
-              chatId,
-              transition.previous,
-              transition.event,
-              transition.state,
-            );
-          },
-          onEventIgnored: (event) => traceObserver.onEventIgnored?.(event),
-        },
-      });
-    },
-  );
+  private readonly commands;
+  private readonly host: KeyedControllerHost<number, ChatStreamController>;
+  private projectionWriter: AtomProjectionWriter<unknown> | null = null;
 
-  constructor(private readonly store: JotaiStore) {}
+  constructor(private readonly store: JotaiStore) {
+    this.commands = createProductionChatStreamCommands(
+      () => {
+        if (!this.runtimeDeps) {
+          throw new Error(
+            "Chat stream runtime deps not registered. Mount useChatStreamRuntime() before streaming.",
+          );
+        }
+        return this.runtimeDeps;
+      },
+      (update) => this.writeProjection(update),
+    );
+    this.host = new KeyedControllerHost((chatId) =>
+      this.createController(chatId),
+    );
+  }
+
+  start(): void {
+    this.ensureProjectionWriter();
+  }
 
   registerRuntimeDeps(deps: ChatStreamRuntimeDeps): void {
     this.runtimeDeps = deps;
@@ -115,7 +104,7 @@ export class ChatStreamManager {
     };
   }
 
-  disposeChat(chatId: number): void {
+  disposeKey = (chatId: number): void => {
     this.host.disposeKey(chatId);
     this.lastStreamIdByChatId.delete(chatId);
     this.store.set(queuedMessagesByIdAtom, (previous) =>
@@ -127,17 +116,59 @@ export class ChatStreamManager {
     this.store.set(chatErrorByIdAtom, (previous) =>
       withoutChatId(previous, chatId),
     );
-    this.store.set(isStreamingByIdAtom, (previous) =>
+    this.writeProjection((previous: Map<number, boolean>) =>
       withoutChatId(previous, chatId),
     );
-  }
+  };
 
   dispose(): void {
     this.host.dispose();
+    this.projectionWriter?.dispose();
+    this.projectionWriter = null;
     this.streamFinishedListeners.clear();
     // An in-flight startStream may register its IPC transport after an await.
     // Its controller releases again once setup settles, so retain deps until
     // that promise releases this otherwise-unreferenced manager graph.
+  }
+
+  private writeProjection(value: unknown): void {
+    this.ensureProjectionWriter().write(value);
+  }
+
+  private ensureProjectionWriter(): AtomProjectionWriter<unknown> {
+    this.projectionWriter ??= registerAtomWriter(
+      this.store,
+      isStreamingByIdAtom,
+    );
+    return this.projectionWriter;
+  }
+
+  private createController(chatId: number): ChatStreamController {
+    const traceObserver = createTraceObserver<
+      StreamState,
+      StreamEvent,
+      StreamCommand
+    >("chat_stream", chatId, {
+      mute: (event) => event.type === "chunk-received",
+    });
+    return createChatStreamController({
+      chatId,
+      initialLastStreamId: this.lastStreamIdByChatId.get(chatId),
+      getCommands: () => this.commands,
+      onQuiescent: (controller) => this.releaseIfQuiescent(controller),
+      observer: {
+        onTransitionApplied: (transition) => {
+          traceObserver.onTransitionApplied?.(transition);
+          this.notifyStreamFinished(
+            chatId,
+            transition.previous,
+            transition.event,
+            transition.state,
+          );
+        },
+        onEventIgnored: (event) => traceObserver.onEventIgnored?.(event),
+      },
+    });
   }
 
   private notifyStreamFinished(

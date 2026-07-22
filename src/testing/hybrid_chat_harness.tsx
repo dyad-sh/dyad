@@ -97,6 +97,7 @@ import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamManager } from "@/chat_stream/manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
+import { EntityDisposalProvider } from "@/state_machines/react";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationManager } from "@/image_generation/manager";
@@ -954,31 +955,33 @@ export async function setupHybridChatHarness(
       const result = render(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
-            <ChatStreamProvider manager={chatStreamManager}>
-              <AppRunProvider manager={appRunManager}>
-                <ImageGenerationProvider manager={imageGenerationManager}>
-                  <VersionPreviewProvider manager={versionPreviewManager}>
-                    <PreviewIframeProvider>
-                      <ThemeProvider>
-                        <DeepLinkProvider>
-                          <SidebarProvider defaultOpen={false}>
-                            {opts.wireAppEvents !== false && (
-                              <HybridAppEventWiring
-                                store={store}
-                                queryClient={queryClient}
-                                chatStreamManager={chatStreamManager}
-                              />
-                            )}
-                            <RouterProvider router={router as never} />
-                            <Toaster richColors expand duration={500} />
-                          </SidebarProvider>
-                        </DeepLinkProvider>
-                      </ThemeProvider>
-                    </PreviewIframeProvider>
-                  </VersionPreviewProvider>
-                </ImageGenerationProvider>
-              </AppRunProvider>
-            </ChatStreamProvider>
+            <EntityDisposalProvider>
+              <ChatStreamProvider manager={chatStreamManager}>
+                <AppRunProvider manager={appRunManager}>
+                  <ImageGenerationProvider manager={imageGenerationManager}>
+                    <VersionPreviewProvider manager={versionPreviewManager}>
+                      <PreviewIframeProvider>
+                        <ThemeProvider>
+                          <DeepLinkProvider>
+                            <SidebarProvider defaultOpen={false}>
+                              {opts.wireAppEvents !== false && (
+                                <HybridAppEventWiring
+                                  store={store}
+                                  queryClient={queryClient}
+                                  chatStreamManager={chatStreamManager}
+                                />
+                              )}
+                              <RouterProvider router={router as never} />
+                              <Toaster richColors expand duration={500} />
+                            </SidebarProvider>
+                          </DeepLinkProvider>
+                        </ThemeProvider>
+                      </PreviewIframeProvider>
+                    </VersionPreviewProvider>
+                  </ImageGenerationProvider>
+                </AppRunProvider>
+              </ChatStreamProvider>
+            </EntityDisposalProvider>
           </Provider>
         </QueryClientProvider>,
       );

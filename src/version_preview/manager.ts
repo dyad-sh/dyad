@@ -92,13 +92,13 @@ export class VersionPreviewManager {
     return () => this.recoveryListeners.delete(listener);
   };
 
-  disposeApp(appId: number): void {
+  disposeKey = (appId: number): void => {
     const snapshot = this.host.get(appId)?.getSnapshot();
     if (snapshot?.type === "recovery-required") {
       this.runtime.dismissRecovery(appId);
     }
     this.host.disposeKey(appId);
-  }
+  };
 
   dispose(): void {
     if (this.disposed) return;

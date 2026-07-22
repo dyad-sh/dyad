@@ -9,9 +9,7 @@ import {
   ToolSet,
   stepCountIs,
   hasToolCall,
-  InvalidToolInputError,
   ModelMessage,
-  NoSuchToolError,
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
@@ -472,6 +470,7 @@ export async function handleLocalAgentStream(
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
+  let streamingPreviewToolCallId: string | null = null;
   // Tracks what was last sent to the renderer for the placeholder
   // assistant message so we can emit only the tail diff. Updated by both
   // streaming-patch sends and full-messages-replacement sends so that the
@@ -747,6 +746,7 @@ export async function handleLocalAgentStream(
         const xmlChunk = `${finalXml}\n`;
         fullResponse += xmlChunk;
         streamingPreview = "";
+        streamingPreviewToolCallId = null;
         updateResponseInDb(placeholderMessageId, fullResponse);
         sendChunk(fullResponse);
         // Empty preview = renderer clears its overlay atom for this chat.
@@ -1010,6 +1010,7 @@ export async function handleLocalAgentStream(
         const sanitizedAttemptMessages =
           sanitizeToolCallTranscript(attemptMessages);
         const attemptToolInputIds = new Set<string>();
+        const invalidToolCallIds = new Set<string>();
         const cleanupAttemptToolStreamingEntries = () => {
           for (const toolCallId of attemptToolInputIds) {
             cleanupStreamingEntry(toolCallId);
@@ -1371,6 +1372,7 @@ export async function handleLocalAgentStream(
                       );
                       const xml = toolDef.buildXml(argsPartial, false);
                       if (xml) {
+                        streamingPreviewToolCallId = part.id;
                         ctx.onXmlStream(xml);
                       }
                     }
@@ -1401,6 +1403,14 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-call":
+                  // AI SDK keeps the original validation exception on the
+                  // invalid tool-call part, but stringifies it before the
+                  // following tool-error part. Remember the call identity so
+                  // the string-valued error can still be classified as a
+                  // pre-execution failure.
+                  if ("invalid" in part && part.invalid === true) {
+                    invalidToolCallIds.add(part.toolCallId);
+                  }
                   if (isAttachmentAccessToolCall(part.toolName, part.input)) {
                     usedAttachmentAccessTool = true;
                   }
@@ -1421,15 +1431,13 @@ export async function handleLocalAgentStream(
                   // that status has reached the renderer. Execution errors
                   // are excluded because buildAgentToolSet already renders
                   // those as dyad-output cards.
-                  if (
-                    InvalidToolInputError.isInstance(part.error) ||
-                    NoSuchToolError.isInstance(part.error)
-                  ) {
+                  if (invalidToolCallIds.delete(part.toolCallId)) {
                     chunk += `${buildPreExecutionToolErrorStatus(
                       part.toolName,
                       part.error,
                     )}\n`;
-                    clearStreamingPreviewAfterChunk = true;
+                    clearStreamingPreviewAfterChunk =
+                      streamingPreviewToolCallId === part.toolCallId;
                   }
                   break;
               }
@@ -1442,6 +1450,7 @@ export async function handleLocalAgentStream(
 
               if (clearStreamingPreviewAfterChunk) {
                 streamingPreview = "";
+                streamingPreviewToolCallId = null;
                 sendPreview("");
               }
 
@@ -1867,6 +1876,7 @@ export async function handleLocalAgentStream(
     if (streamingPreview.length > 0) {
       sendPreview("");
       streamingPreview = "";
+      streamingPreviewToolCallId = null;
     }
   }
 }

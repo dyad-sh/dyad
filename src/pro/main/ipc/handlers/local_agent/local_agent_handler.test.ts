@@ -280,7 +280,15 @@ vi.mock("@/ipc/utils/mcp_consent", () => ({
 }));
 
 vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
-  TOOL_DEFINITIONS: [],
+  TOOL_DEFINITIONS: [
+    {
+      name: "read_chat",
+      buildXml: (args: { chat_id?: number }, isComplete: boolean) =>
+        args.chat_id && !isComplete
+          ? `<dyad-read-chat chat-id="${args.chat_id}" state="pending">Reading chat...</dyad-read-chat>`
+          : undefined,
+    },
+  ],
   buildAgentToolSet: vi.fn(() => ({})),
   shouldIncludeTool: vi.fn(() => false),
   requireAgentToolConsent: vi.fn(async () => true),
@@ -2238,11 +2246,7 @@ describe("handleLocalAgentStream", () => {
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
-      let toolContext: any;
-      vi.mocked(buildAgentToolSet).mockImplementation((ctx) => {
-        toolContext = ctx;
-        return { read_chat: {} };
-      });
+      vi.mocked(buildAgentToolSet).mockReturnValue({ read_chat: {} });
 
       const invalidInput = {
         chat_id: 703,
@@ -2261,15 +2265,36 @@ describe("handleLocalAgentStream", () => {
       });
       mockStreamTextImpl = () => ({
         fullStream: (async function* () {
-          toolContext.onXmlStream(
-            '<dyad-read-chat chat-id="703" state="pending">Reading chat...</dyad-read-chat>',
-          );
+          yield {
+            type: "tool-input-start",
+            id: "call-read-chat",
+            toolName: "read_chat",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-read-chat",
+            delta: JSON.stringify(invalidInput),
+          };
+          yield { type: "tool-input-end", id: "call-read-chat" };
+          // This is the event shape emitted by AI SDK before its matching
+          // tool-error: the exception lives on an invalid dynamic tool-call.
+          yield {
+            type: "tool-call",
+            toolCallId: "call-read-chat",
+            toolName: "read_chat",
+            input: invalidInput,
+            invalid: true,
+            dynamic: true,
+            error: validationError,
+          };
           yield {
             type: "tool-error",
             toolCallId: "call-read-chat",
             toolName: "read_chat",
             input: invalidInput,
-            error: validationError,
+            // AI SDK stringifies the exception before emitting tool-error.
+            error: validationMessage,
+            dynamic: true,
           };
           yield {
             type: "text-delta",
@@ -2328,6 +2353,82 @@ describe("handleLocalAgentStream", () => {
       expect(finalContent).toContain(validationMessage);
       expect(finalContent).toContain("</dyad-status>");
       expect(finalContent).toContain("I could not inspect that citation.");
+    });
+
+    it("does not clear another tool call's active preview", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ read_chat: {} });
+      let previewClearedBeforeStreamEnd: boolean | undefined;
+
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-read-chat",
+            toolName: "read_chat",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-read-chat",
+            delta: JSON.stringify({ chat_id: 703 }),
+          };
+          yield {
+            type: "tool-call",
+            toolCallId: "call-unknown",
+            toolName: "unknown_tool",
+            input: {},
+            invalid: true,
+            dynamic: true,
+            error: new Error("Unknown tool"),
+          };
+          yield {
+            type: "tool-error",
+            toolCallId: "call-unknown",
+            toolName: "unknown_tool",
+            input: {},
+            error: "Unknown tool",
+            dynamic: true,
+          };
+          previewClearedBeforeStreamEnd = getMessagesByChannel(
+            "chat:response:chunk",
+          ).some(
+            (message) =>
+              (message.args[0] as any).streamingPreview?.content === "",
+          );
+          yield { type: "text-delta", text: "Continuing." };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "inspect chat" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(previewClearedBeforeStreamEnd).toBe(false);
+      const chunks = getMessagesByChannel("chat:response:chunk");
+      expect(
+        chunks.some((message) =>
+          (message.args[0] as any).streamingPatch?.content?.includes(
+            'title="Tool &quot;unknown_tool&quot; failed"',
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        chunks.some(
+          (message) =>
+            (message.args[0] as any).streamingPreview?.content === "",
+        ),
+      ).toBe(true);
     });
   });
 

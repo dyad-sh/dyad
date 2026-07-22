@@ -97,3 +97,7 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   need not be migrated mechanically.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
+- In `runCosim` suites, `maxSchedules` bounds visited configurations, not only
+  quiescent leaves. If one orthogonal action (for example quit at every phase)
+  causes a bound hit, split it into a focused exhaustive alphabet instead of
+  raising the bound and slowing the primary scenario.

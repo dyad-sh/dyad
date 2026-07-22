@@ -33,46 +33,59 @@ function advanceToStreaming(
   return next;
 }
 
+const explorationEvents: MainModelEvent[] = [
+  { type: "request-received", streamId: 1, chatId: 7, appId: 9 },
+  { type: "handler-advanced", streamId: 1 },
+  { type: "handler-advanced", streamId: 1, throws: true },
+  { type: "handler-advanced", streamId: 1, applyError: true },
+  { type: "barrier-installed", scope: { type: "chat", chatId: 7 } },
+  { type: "barrier-released", scope: { type: "chat", chatId: 7 } },
+  { type: "barrier-installed", scope: { type: "app", appId: 9 } },
+  { type: "barrier-released", scope: { type: "app", appId: 9 } },
+  { type: "cancel-chat", chatId: 7 },
+  { type: "cancel-app", appId: 9 },
+  { type: "llm-settled", streamId: 1, outcome: "completed" },
+  {
+    type: "llm-settled",
+    streamId: 1,
+    outcome: "completed",
+    hasResponse: false,
+  },
+  { type: "llm-settled", streamId: 1, outcome: "errored" },
+  { type: "llm-settled", streamId: 1, outcome: "aborted" },
+  { type: "compaction-started", streamId: 1 },
+  { type: "compaction-finished", streamId: 1 },
+  { type: "handler-unwound", streamId: 1 },
+  { type: "quit" },
+];
+
+function reachableStates(): MainModelState[] {
+  return exploreReachableStates({
+    initialState: initialMainModelState,
+    events: (state) =>
+      explorationEvents.filter((event) => {
+        if (state.quit) return event.type === "quit";
+        if (event.type === "request-received")
+          return state.streams[event.streamId] === undefined;
+        if (event.type === "barrier-installed") {
+          return event.scope.type === "chat"
+            ? (state.chatBarrierCounts[event.scope.chatId] ?? 0) === 0
+            : (state.appBarrierCounts[event.scope.appId] ?? 0) === 0;
+        }
+        return true;
+      }),
+    transition: transitionMainModel,
+    stateKey: mainModelStateKey,
+    maxStates: 20_000,
+  });
+}
+
 describe("main chat stream model", () => {
   it("is total over every reachable state and event", () => {
-    const events: MainModelEvent[] = [
-      { type: "request-received", streamId: 1, chatId: 7, appId: 9 },
-      { type: "handler-advanced", streamId: 1 },
-      { type: "barrier-installed", scope: { type: "chat", chatId: 7 } },
-      { type: "barrier-released", scope: { type: "chat", chatId: 7 } },
-      { type: "barrier-installed", scope: { type: "app", appId: 9 } },
-      { type: "barrier-released", scope: { type: "app", appId: 9 } },
-      { type: "cancel-chat", chatId: 7 },
-      { type: "cancel-app", appId: 9 },
-      { type: "llm-settled", streamId: 1, outcome: "completed" },
-      { type: "llm-settled", streamId: 1, outcome: "errored" },
-      { type: "llm-settled", streamId: 1, outcome: "aborted" },
-      { type: "compaction-started", streamId: 1 },
-      { type: "compaction-finished", streamId: 1 },
-      { type: "handler-unwound", streamId: 1 },
-      { type: "quit" },
-    ];
-    const states = exploreReachableStates({
-      initialState: initialMainModelState,
-      events: (state) =>
-        events.filter((event) => {
-          if (state.quit) return event.type === "quit";
-          if (event.type === "request-received")
-            return state.streams[event.streamId] === undefined;
-          if (event.type === "barrier-installed") {
-            return event.scope.type === "chat"
-              ? (state.chatBarrierCounts[event.scope.chatId] ?? 0) === 0
-              : (state.appBarrierCounts[event.scope.appId] ?? 0) === 0;
-          }
-          return true;
-        }),
-      transition: transitionMainModel,
-      stateKey: mainModelStateKey,
-      maxStates: 10_000,
-    });
+    const states = reachableStates();
     expect(states.length).toBeGreaterThan(10);
     for (const state of states) {
-      for (const event of events) {
+      for (const event of explorationEvents) {
         const result = transitionMainModel(state, event);
         expect(result).toBeDefined();
         assertMainModelTransitionInvariants(state, event, result);
@@ -215,24 +228,20 @@ describe("main chat stream model", () => {
   });
 
   it("accepts quit from every reachable phase", () => {
-    const states = [
-      initialMainModelState,
-      apply(initialMainModelState, {
-        type: "request-received",
-        streamId: 1,
-        chatId: 7,
-        appId: 9,
-      }),
-      advanceToStreaming(),
-    ];
-    for (const state of states) {
+    for (const state of reachableStates().filter(
+      (candidate) => !candidate.quit,
+    )) {
       const result = transitionMainModel(state, { type: "quit" });
       expect(result.state.quit).toBe(true);
-      expect(
-        Object.values(result.state.streams).every(
-          (stream) => stream.phase === "finalized",
-        ),
-      ).toBe(true);
+      expect(result.commands).toEqual([]);
+      for (const stream of Object.values(result.state.streams)) {
+        expect(stream.phase).toBe("quit-cleared");
+        expect(stream.aborted).toBe(true);
+        expect(stream.completionResolved).toBe(
+          state.streams[stream.id].completionResolved,
+        );
+      }
+      expect(() => assertMainModelQuiescence(result.state)).not.toThrow();
     }
   });
 
@@ -285,20 +294,86 @@ describe("main chat stream model", () => {
     });
   });
 
-  it("keeps the outer-catch error legal after abort", () => {
+  it("suppresses handler terminals when cancellation is observed before the final guard", () => {
     let state = advanceToStreaming();
     state = apply(state, { type: "cancel-chat", chatId: 7 });
     const result = transitionMainModel(state, {
       type: "llm-settled",
       streamId: 1,
+      outcome: "completed",
+    });
+    expect(result.state.streams[1].phase).toBe("unwinding-aborted");
+    expect(result.commands).toEqual([]);
+
+    const errored = transitionMainModel(state, {
+      type: "llm-settled",
+      streamId: 1,
       outcome: "errored",
     });
-    expect(result.state.streams[1].aborted).toBe(true);
-    expect(result.commands).toEqual([
-      expect.objectContaining({
-        type: "chat:response:error",
-        origin: "handler",
-      }),
+    expect(errored.state.streams[1].phase).toBe("unwinding-aborted");
+    expect(errored.commands).toEqual([]);
+  });
+
+  it("models empty responses without a handler response-end", () => {
+    const state = advanceToStreaming();
+    const result = transitionMainModel(state, {
+      type: "llm-settled",
+      streamId: 1,
+      outcome: "completed",
+      hasResponse: false,
+    });
+    expect(result.state.streams[1].phase).toBe("unwinding-completed");
+    expect(result.commands).toEqual([]);
+  });
+
+  it.each(["post-abort-db", "post-abort-apply"] as const)(
+    "keeps outer-catch errors legal after the %s await, including after cancel",
+    (awaitPoint) => {
+      let state = advanceToStreaming();
+      state = apply(state, {
+        type: "llm-settled",
+        streamId: 1,
+        outcome: "completed",
+      });
+      if (awaitPoint === "post-abort-apply") {
+        state = apply(state, { type: "handler-advanced", streamId: 1 });
+      }
+      state = apply(state, { type: "cancel-chat", chatId: 7 });
+      const result = transitionMainModel(state, {
+        type: "handler-advanced",
+        streamId: 1,
+        throws: true,
+      });
+      expect(result.state.streams[1].phase).toBe("unwinding-errored");
+      expect(result.commands).toEqual([
+        expect.objectContaining({
+          type: "chat:response:error",
+          origin: "handler",
+        }),
+      ]);
+    },
+  );
+
+  it("emits cancellation responses per generation and transport ends per chat on every call", () => {
+    let state = advanceToStreaming();
+    state = advanceToStreaming(state, 2);
+    const first = transitionMainModel(state, {
+      type: "cancel-chat",
+      chatId: 7,
+    });
+    expect(first.commands.map((command) => command.type)).toEqual([
+      "chat:response:end",
+      "chat:response:end",
+      "chat:stream:end",
+    ]);
+    const second = transitionMainModel(first.state, {
+      type: "cancel-chat",
+      chatId: 7,
+    });
+    expect(second.commands.map((command) => command.type)).toEqual([
+      "chat:response:end",
+      "chat:response:end",
+      "chat:stream:end",
     ]);
   });
 

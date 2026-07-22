@@ -65,12 +65,42 @@ function assertAtomicAdmission(source: string): void {
 
 function assertSoleCancelledSender(source: string): void {
   const file = parse(source);
-  const cancelledSites = descendants(file).filter(
-    (node): node is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(node) &&
-      node.name.getText(file) === "wasCancelled" &&
-      node.initializer.kind === ts.SyntaxKind.TrueKeyword,
-  );
+  const cancelledSites = descendants(file).filter((node) => {
+    if (
+      !ts.isCallExpression(node) ||
+      node.expression.getText(file) !== "safeSend"
+    ) {
+      return false;
+    }
+    const channel = node.arguments[1];
+    if (
+      !channel ||
+      !ts.isStringLiteralLike(channel) ||
+      channel.text !== "chat:response:end"
+    ) {
+      return false;
+    }
+    let payload: ts.Expression | undefined = node.arguments[2];
+    while (
+      payload &&
+      (ts.isSatisfiesExpression(payload) ||
+        ts.isAsExpression(payload) ||
+        ts.isTypeAssertionExpression(payload) ||
+        ts.isParenthesizedExpression(payload))
+    ) {
+      payload = payload.expression;
+    }
+    return (
+      payload !== undefined &&
+      ts.isObjectLiteralExpression(payload) &&
+      payload.properties.some(
+        (property) =>
+          ts.isPropertyAssignment(property) &&
+          property.name.getText(file) === "wasCancelled" &&
+          property.initializer.kind === ts.SyntaxKind.TrueKeyword,
+      )
+    );
+  });
   if (cancelledSites.length !== 1) {
     throw new Error(
       `Expected exactly one production wasCancelled: true emission site, found ${cancelledSites.length}. ${UPDATE_MESSAGE}`,
@@ -139,10 +169,10 @@ describe("chat stream protocol drift tripwire", () => {
 
   it("pins the sole cancelled-end sender and proves its mutant trips", () => {
     expect(() => assertSoleCancelledSender(HANDLER_SOURCE)).not.toThrow();
-    const mutant = HANDLER_SOURCE.replace(
-      "updatedFiles: status.updatedFiles ?? false,",
-      "updatedFiles: status.updatedFiles ?? false,\n            wasCancelled: true,",
-    );
+    const mutant = `const unrelated = { wasCancelled: true };\n${HANDLER_SOURCE.replace(
+      "wasCancelled: true,",
+      "wasCancelled: false,",
+    )}`;
     expect(() => assertSoleCancelledSender(mutant)).toThrow(
       /main_model\.ts.*cosim\.chat_stream\.test\.ts/,
     );

@@ -30,6 +30,8 @@ import {
  * post-check awaits at 2150-2207. Unwind/finalization models lines 2228-2265:
  * the outer catch can emit error while aborted, final transport-end is guarded,
  * and completion resolves before it is untracked.
+ * `quit-cleared` models before-quit clearing the tracking maps (lines 554-574),
+ * not handler completion: the process is exiting, so no completion is resolved.
  *
  * Unlike renderer machines this model returns emissions directly as commands:
  * it is a specification/test oracle, not a production command runner.
@@ -45,6 +47,7 @@ export type MainStreamPhase =
   | "unwinding-completed"
   | "unwinding-errored"
   | "unwinding-aborted"
+  | "quit-cleared"
   | "finalized";
 
 export interface MainStream {
@@ -85,7 +88,12 @@ export type MainModelEvent =
       chatId: number;
       appId: number;
     }
-  | { type: "handler-advanced"; streamId: number; applyError?: boolean }
+  | {
+      type: "handler-advanced";
+      streamId: number;
+      applyError?: boolean;
+      throws?: boolean;
+    }
   | { type: "barrier-installed"; scope: BarrierScope }
   | { type: "barrier-released"; scope: BarrierScope }
   | { type: "cancel-chat"; chatId: number }
@@ -94,6 +102,7 @@ export type MainModelEvent =
       type: "llm-settled";
       streamId: number;
       outcome: "completed" | "errored" | "aborted";
+      hasResponse?: boolean;
     }
   | { type: "compaction-started"; streamId: number }
   | { type: "compaction-finished"; streamId: number }
@@ -178,19 +187,23 @@ function waiterRecord(
   return { ...waiters, [key]: [...values, streamId] };
 }
 
+function handlerError(stream: MainStream, error: string): MainModelEmission {
+  return {
+    type: "chat:response:error",
+    payload: { chatId: stream.chatId, streamId: stream.id, error },
+    origin: "handler",
+  };
+}
+
 function cancelStreams(
   state: MainModelState,
   selected: (stream: MainStream) => boolean,
 ): MainModelTransitionResult {
   let next = state;
   const commands: MainModelEmission[] = [];
+  const affectedChatIds = new Set<number>();
   for (const stream of Object.values(state.streams)) {
-    if (
-      !selected(stream) ||
-      stream.phase === "finalized" ||
-      stream.cancelNotified
-    )
-      continue;
+    if (!selected(stream) || stream.phase === "finalized") continue;
     const wasWaiting =
       stream.phase === "waiting-chat-barrier" ||
       stream.phase === "waiting-app-barrier";
@@ -221,25 +234,29 @@ function cancelStreams(
         appWaiters: remove(next.appWaiters),
       };
     }
-    // cancelTrackedStreams lines 350-383: abort all selected controllers and
-    // synchronously send the sole cancelled response end + transport end.
-    commands.push(
-      {
-        type: "chat:response:end",
-        payload: {
-          chatId: stream.chatId,
-          streamId: stream.id,
-          updatedFiles: false,
-          wasCancelled: true,
-        },
-        origin: "cancel",
+    affectedChatIds.add(stream.chatId);
+    // cancelTrackedStreams lines 366-379: every invocation sends one cancelled
+    // response end per tracked controller, even if that controller was already
+    // aborted by an earlier invocation.
+    commands.push({
+      type: "chat:response:end",
+      payload: {
+        chatId: stream.chatId,
+        streamId: stream.id,
+        updatedFiles: false,
+        wasCancelled: true,
       },
-      {
-        type: "chat:stream:end",
-        payload: { chatId: stream.chatId },
-        origin: "cancel",
-      },
-    );
+      origin: "cancel",
+    });
+  }
+  // The transport end is outside the per-generation loop (lines 379-382): one
+  // is sent per selected chat, not per controller.
+  for (const chatId of affectedChatIds) {
+    commands.push({
+      type: "chat:stream:end",
+      payload: { chatId },
+      origin: "cancel",
+    });
   }
   return { state: next, commands };
 }
@@ -402,6 +419,16 @@ export function transitionMainModel(
         stream.phase === "streaming" &&
         stream.awaitPoint === "post-abort-db"
       ) {
+        if (event.throws) {
+          return {
+            state: replaceStream(state, {
+              ...stream,
+              phase: "unwinding-errored",
+              awaitPoint: null,
+            }),
+            commands: [handlerError(stream, "modeled post-guard DB error")],
+          };
+        }
         return {
           state: replaceStream(state, {
             ...stream,
@@ -414,6 +441,16 @@ export function transitionMainModel(
         stream.phase === "streaming" &&
         stream.awaitPoint === "post-abort-apply"
       ) {
+        if (event.throws) {
+          return {
+            state: replaceStream(state, {
+              ...stream,
+              phase: "unwinding-errored",
+              awaitPoint: null,
+            }),
+            commands: [handlerError(stream, "modeled post-guard apply error")],
+          };
+        }
         // Lines 2197-2222: apply error + response end is legal; a cancel may
         // have landed after the guard at line 2144.
         return {
@@ -501,6 +538,21 @@ export function transitionMainModel(
       )
         return { state, commands: [] };
       if (event.outcome === "completed") {
+        // Lines 2124-2144: cancellation observed before the final guard skips
+        // all normal handler terminals. Empty responses take the same no-end
+        // path, even when not aborted.
+        if (stream.aborted || event.hasResponse === false) {
+          return {
+            state: replaceStream(state, {
+              ...stream,
+              phase: stream.aborted
+                ? "unwinding-aborted"
+                : "unwinding-completed",
+              awaitPoint: null,
+            }),
+            commands: [],
+          };
+        }
         return {
           state: replaceStream(state, {
             ...stream,
@@ -509,24 +561,15 @@ export function transitionMainModel(
           commands: [],
         };
       }
-      const phase =
-        event.outcome === "errored" ? "unwinding-errored" : "unwinding-aborted";
+      // Lines 2094-2120: an error observed while aborted is handled by the
+      // inner cancellation path and never reaches the outer error sender.
+      const errored = event.outcome === "errored" && !stream.aborted;
+      const phase = errored ? "unwinding-errored" : "unwinding-aborted";
       return {
         state: replaceStream(state, { ...stream, phase, awaitPoint: null }),
-        commands:
-          event.outcome === "errored"
-            ? [
-                {
-                  type: "chat:response:error",
-                  payload: {
-                    chatId: stream.chatId,
-                    streamId: stream.id,
-                    error: "modeled handler error",
-                  },
-                  origin: "handler",
-                },
-              ]
-            : [],
+        commands: errored
+          ? [handlerError(stream, "modeled handler error")]
+          : [],
       };
     }
     case "compaction-started": {
@@ -595,13 +638,13 @@ export function transitionMainModel(
           {
             ...stream,
             aborted: true,
-            phase: "finalized" as const,
-            completionResolved: true,
+            phase: "quit-cleared" as const,
             awaitPoint: null,
           },
         ]),
       );
-      // Lines 554-574: quit aborts and clears tracking/barriers/waiters without renderer terminals.
+      // Lines 554-574: quit aborts and clears tracking/barriers/waiters without
+      // renderer terminals or resolving the handler-owned completion promises.
       return {
         state: {
           ...state,

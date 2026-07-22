@@ -31,11 +31,11 @@ import { CHAT_STREAM_WIRE_EVENTS } from "../protocol";
 
 /**
  * Bounded exhaustive alphabet: one chat, two total submits (the second queues),
- * one cancel, one chat barrier pair, one app barrier pair, and one quit. Model
- * resume actions are phase-enabled, which preserves every meaningful boundary
- * interleaving without spending the 300,000-configuration bound on inert
- * permutations. The bound is configurations (the landed driver's semantics),
- * not quiescent leaves.
+ * one cancel, one chat barrier pair, and one app barrier pair. Quit and error
+ * paths use separate exhaustive alphabets below so lifecycle coverage stays
+ * below the 300,000-configuration / ~30 second budget instead of raising the
+ * landed driver's maxSchedules bound. Resume actions are phase-enabled; the
+ * bound counts configurations, not quiescent leaves.
  */
 
 type ParticipantName = "main" | "renderer" | "scenario";
@@ -452,9 +452,9 @@ function actions(fullAlphabet: boolean): Action[] {
   );
 
   for (const streamId of [1, 2]) {
-    // Eight ordered resume tokens cover initial tracking, both barrier
+    // Seven ordered resume tokens cover initial tracking, both barrier
     // re-loops, admission/body entry, and the two post-abort-check awaits.
-    for (let index = 0; index < 8; index += 1) {
+    for (let index = 0; index < 7; index += 1) {
       const id = `advance-${streamId}-${index}`;
       result.push({
         id,
@@ -509,32 +509,133 @@ function actions(fullAlphabet: boolean): Action[] {
       },
     );
   }
+  return result;
+}
+
+type ErrorScenario = "llm-error" | "post-guard-error" | "apply-error";
+
+function errorActions(scenario: ErrorScenario): Action[] {
+  const result: Action[] = [
+    {
+      id: "submit-error-stream",
+      target: "participant",
+      participant: "renderer",
+      event: rendererEvent({ type: "submit", request: request(scenario) }),
+    },
+  ];
+  for (let index = 0; index < 3; index += 1) {
+    const id = `enter-streaming-${index}`;
+    result.push({
+      id,
+      target: "participant",
+      participant: "main",
+      event: mainEvent({ type: "handler-advanced", streamId: 1 }),
+      enabled: (snapshot) => {
+        const nextResume = snapshot.remainingActionIds.find((candidate) =>
+          candidate.startsWith("enter-streaming-"),
+        );
+        return (
+          nextResume === id &&
+          ["tracked", "admission-pending", "admitted"].includes(
+            phase(snapshot, 1) ?? "",
+          )
+        );
+      },
+    });
+  }
+  if (scenario === "llm-error") {
+    result.push({
+      id: "llm-error",
+      target: "participant",
+      participant: "main",
+      event: mainEvent({
+        type: "llm-settled",
+        streamId: 1,
+        outcome: "errored",
+      }),
+      enabled: (snapshot) =>
+        participantValue(snapshot, "main").streams[1]?.awaitPoint === "llm",
+    });
+  } else {
+    result.push(
+      {
+        id: "llm-completed",
+        target: "participant",
+        participant: "main",
+        event: mainEvent({
+          type: "llm-settled",
+          streamId: 1,
+          outcome: "completed",
+        }),
+        enabled: (snapshot) =>
+          participantValue(snapshot, "main").streams[1]?.awaitPoint === "llm",
+      },
+      {
+        id: "finish-post-guard-db",
+        target: "participant",
+        participant: "main",
+        event: mainEvent({ type: "handler-advanced", streamId: 1 }),
+        enabled: (snapshot) =>
+          participantValue(snapshot, "main").streams[1]?.awaitPoint ===
+          "post-abort-db",
+      },
+    );
+    if (scenario === "post-guard-error") {
+      result.push({
+        id: "cancel-after-guard",
+        target: "participant",
+        participant: "renderer",
+        event: rendererEvent({ type: "cancel" }),
+        enabled: (snapshot) =>
+          participantValue(snapshot, "main").streams[1]?.awaitPoint ===
+            "post-abort-apply" &&
+          isStreamActive(participantValue(snapshot, "renderer")),
+      });
+    }
+    result.push({
+      id: scenario,
+      target: "participant",
+      participant: "main",
+      event: mainEvent({
+        type: "handler-advanced",
+        streamId: 1,
+        throws: scenario === "post-guard-error",
+        applyError: scenario === "apply-error",
+      }),
+      enabled: (snapshot) => {
+        const stream = participantValue(snapshot, "main").streams[1];
+        return (
+          stream?.awaitPoint === "post-abort-apply" &&
+          (scenario !== "post-guard-error" || stream.aborted)
+        );
+      },
+    });
+  }
   result.push({
-    id: "quit",
+    id: "unwind-error-stream",
     target: "participant",
     participant: "main",
-    event: mainEvent({ type: "quit" }),
-    enabled: (snapshot) => {
-      const renderer = participantValue(snapshot, "renderer");
-      const main = participantValue(snapshot, "main");
-      const scenario = participantValue(snapshot, "scenario");
-      return (
-        !isStreamActive(renderer) &&
-        renderer.type !== "finalizing" &&
-        scenario.queued.length === 0 &&
-        Object.values(main.streams).every(
-          (stream) => stream.phase === "finalized",
-        ) &&
-        Object.values(snapshot.pendingCommands).every(
-          (commands) => commands.length === 0,
-        ) &&
-        (main.chatBarrierCounts[7] ?? 0) === 0 &&
-        (main.appBarrierCounts[9] ?? 0) === 0 &&
-        !snapshot.remainingActionIds.some((id) => id.includes("barrier"))
-      );
-    },
+    event: mainEvent({ type: "handler-unwound", streamId: 1 }),
+    enabled: (snapshot) =>
+      phase(snapshot, 1)?.startsWith("unwinding-") === true,
   });
   return result;
+}
+
+function quitWhileActiveActions(): Action[] {
+  return [
+    ...errorActions("llm-error").filter(
+      (action) =>
+        action.id !== "llm-error" && action.id !== "unwind-error-stream",
+    ),
+    {
+      id: "quit-mid-stream",
+      target: "participant",
+      participant: "main",
+      event: mainEvent({ type: "quit" }),
+      enabled: (snapshot) => phase(snapshot, 1) === "streaming",
+    },
+  ];
 }
 
 function perStepAssertions(step: Step): void {
@@ -597,8 +698,9 @@ function perStepAssertions(step: Step): void {
 
 function run(
   rendererTransition: typeof transition,
-  fullAlphabet: boolean,
+  scenarioActions: Action[],
   maxSchedules: number,
+  expectedRendererState?: "idle" | "errored",
 ) {
   return runCosim<ParticipantName, ChannelName, State, Event, Command>({
     participants: {
@@ -634,17 +736,28 @@ function run(
     channels: {
       "main-to-renderer": { recipient: "renderer", eventKey: JSON.stringify },
     },
-    scenario: { actions: actions(fullAlphabet), routeCommand },
+    scenario: { actions: scenarioActions, routeCommand },
     assertions: {
       perStep: perStepAssertions,
       atQuiescence: (snapshot) => {
         const renderer = participantValue(snapshot, "renderer");
-        if (renderer.type !== "idle" && renderer.type !== "errored") {
-          throw new Error(`renderer quiesced in ${renderer.type}`);
+        const main = participantValue(snapshot, "main");
+        if (!main.quit) {
+          if (renderer.type !== "idle" && renderer.type !== "errored") {
+            throw new Error(`renderer quiesced in ${renderer.type}`);
+          }
+          if (isStreamActive(renderer))
+            throw new Error("renderer quiesced with isStreamActive=true");
+          if (
+            expectedRendererState &&
+            renderer.type !== expectedRendererState
+          ) {
+            throw new Error(
+              `renderer quiesced in ${renderer.type}, expected ${expectedRendererState}`,
+            );
+          }
         }
-        if (isStreamActive(renderer))
-          throw new Error("renderer quiesced with isStreamActive=true");
-        assertMainModelQuiescence(participantValue(snapshot, "main"));
+        assertMainModelQuiescence(main);
       },
     },
     maxSchedules,
@@ -652,16 +765,23 @@ function run(
 }
 
 describe("chat stream main/renderer co-simulation", () => {
-  it("exhausts the bounded stream, queue, cancel, barrier, and quit alphabet", () => {
-    const result = run(transition, true, 300_000);
+  it("exhausts the bounded stream, queue, cancel, and barrier alphabet", () => {
+    const result = run(transition, actions(true), 300_000);
     expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
     expect(result.exhaustive).toBe(true);
     expect(result.quiescentSchedules).toBeGreaterThan(0);
   }, 30_000);
 
   it("regresses #4008: cancel before registration still finalizes", () => {
-    const result = run(transition, false, 1_000);
+    const result = run(transition, actions(false), 1_000);
     expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
+  });
+
+  it("exhausts quit interleavings while the renderer is still active", () => {
+    const result = run(transition, quitWhileActiveActions(), 5_000);
+    expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
+    expect(result.exhaustive).toBe(true);
+    expect(result.quiescentSchedules).toBeGreaterThan(0);
   });
 
   it("self-tests the harness with the pre-3ac500962 registered-gated mutant", () => {
@@ -676,11 +796,29 @@ describe("chat stream main/renderer co-simulation", () => {
       }
       return transition(state, event);
     };
-    const result = run(mutant, false, 1_000);
+    const result = run(mutant, actions(false), 1_000);
     expect(result.failure?.message).toContain(
       "the first terminal for the current generation did not advance",
     );
     expect(result.failure?.trace.join("\n")).toContain("cancel");
     expect(result.failure?.trace.length).toBeLessThanOrEqual(8);
   });
+
+  it.each([
+    ["llm-error", "errored"],
+    ["post-guard-error", "idle"],
+    ["apply-error", "errored"],
+  ] as const)(
+    "co-simulates the %s terminal path to renderer %s",
+    (scenario, expectedRendererState) => {
+      const result = run(
+        transition,
+        errorActions(scenario),
+        5_000,
+        expectedRendererState,
+      );
+      expect(result.failure, result.failure?.formattedTrace).toBeUndefined();
+      expect(result.quiescentSchedules).toBeGreaterThan(0);
+    },
+  );
 });

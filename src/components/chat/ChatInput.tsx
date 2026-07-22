@@ -69,6 +69,7 @@ import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 import {
   selectedComponentsPreviewAtom,
+  isPickingComponentAtom,
   previewIframeRefAtom,
   visualEditingSelectedComponentAtom,
   currentComponentCoordinatesAtom,
@@ -185,6 +186,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );
+  const setIsPickingComponent = useSetAtom(isPickingComponentAtom);
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
   const setVisualEditingSelectedComponent = useSetAtom(
     visualEditingSelectedComponentAtom,
@@ -392,6 +394,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const clearComposerAfterSubmit = useCallback(() => {
     setInputValue("");
     setSelectedComponents([]);
+    setIsPickingComponent(false);
     setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
@@ -403,6 +406,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [
     setInputValue,
     setSelectedComponents,
+    setIsPickingComponent,
     setVisualEditingSelectedComponent,
     previewIframeRef,
   ]);
@@ -876,18 +880,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onReset={() => {
                 // Exit component selection mode and visual editing
                 setSelectedComponents([]);
+                setIsPickingComponent(false);
                 setVisualEditingSelectedComponent(null);
                 setCurrentComponentCoordinates(null);
                 setPendingVisualChanges(new Map());
                 refreshAppIframe();
-
-                // Deactivate component selector in iframe
-                if (previewIframeRef?.contentWindow) {
-                  previewIframeRef.contentWindow.postMessage(
-                    { type: "deactivate-dyad-component-selector" },
-                    "*",
-                  );
-                }
               }}
             />
           ) : (

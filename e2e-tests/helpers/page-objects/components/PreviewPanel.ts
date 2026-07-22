@@ -167,9 +167,13 @@ export class PreviewPanel {
   }
 
   async clickPreviewPickElement() {
-    await this.page
-      .getByTestId("preview-pick-element-button")
-      .click({ timeout: Timeout.EXTRA_LONG });
+    await this.getPreviewPickElementButton().click({
+      timeout: Timeout.EXTRA_LONG,
+    });
+  }
+
+  getPreviewPickElementButton() {
+    return this.page.getByTestId("preview-pick-element-button");
   }
 
   async clickDeselectComponent(options?: { index?: number }) {

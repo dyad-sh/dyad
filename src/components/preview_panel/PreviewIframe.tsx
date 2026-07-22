@@ -54,6 +54,7 @@ import {
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   selectedComponentsPreviewAtom,
+  isPickingComponentAtom,
   visualEditingSelectedComponentAtom,
   currentComponentCoordinatesAtom,
   previewIframeRefAtom,
@@ -211,6 +212,21 @@ const SCREENSHOT_CAPTURE_DELAY_MS = 3_000;
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
+function syncComponentSelectorState(contentWindow: Window, isPicking: boolean) {
+  if (!isPicking) {
+    contentWindow.postMessage({ type: "cleanup-all-text-editing" }, "*");
+  }
+
+  contentWindow.postMessage(
+    {
+      type: isPicking
+        ? "activate-dyad-component-selector"
+        : "deactivate-dyad-component-selector",
+    },
+    "*",
+  );
+}
+
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { t } = useTranslation("home");
@@ -284,7 +300,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Ref to store the URL that the iframe should be showing - initialize with preserved URL if available
   // This is different from appUrl - it tracks the CURRENT route, not just the base URL
   const currentIframeUrlRef = useRef<string | null>(initialUrl || appUrl);
-  const [isPicking, setIsPicking] = useState(false);
+  const [isPicking, setIsPicking] = useAtom(isPickingComponentAtom);
+  const isPickingRef = useRef(isPicking);
+  isPickingRef.current = isPicking;
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
@@ -879,10 +897,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selector-initialized") {
         setIsComponentSelectorInitialized(true);
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "dyad-pro-mode", enabled: isProMode },
-          "*",
-        );
+        const contentWindow = iframeRef.current?.contentWindow;
+        if (contentWindow) {
+          contentWindow.postMessage(
+            { type: "dyad-pro-mode", enabled: isProMode },
+            "*",
+          );
+          syncComponentSelectorState(contentWindow, isPickingRef.current);
+        }
 
         // Take a screenshot if a commit just happened for this app.
         // Read from ref to avoid stale closure issues.
@@ -1304,26 +1326,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to activate component selector in the iframe
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
-      const newIsPicking = !isPicking;
-      if (!newIsPicking) {
-        // Clean up any text editing states when deactivating
-        iframeRef.current.contentWindow.postMessage(
-          { type: "cleanup-all-text-editing" },
-          "*",
-        );
-      }
-      setIsPicking(newIsPicking);
+      setIsPicking((current) => !current);
       setVisualEditingSelectedComponent(null);
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: newIsPicking
-            ? "activate-dyad-component-selector"
-            : "deactivate-dyad-component-selector",
-        },
-        "*",
-      );
     }
   };
+
+  // Keep the toolbar state and selector running inside the iframe synchronized.
+  // This also reapplies the current mode after the iframe is reinitialized.
+  useEffect(() => {
+    if (!iframeRef.current?.contentWindow || !isComponentSelectorInitialized) {
+      return;
+    }
+
+    syncComponentSelectorState(iframeRef.current.contentWindow, isPicking);
+  }, [isPicking, isComponentSelectorInitialized]);
 
   // Function to handle annotator button click
   const handleAnnotatorClick = () => {

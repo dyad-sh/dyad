@@ -56,7 +56,7 @@ flowchart TD
 | `draft-stale-prs.yml`        | `Draft stale PRs`              | Converts inactive open PRs to draft after 7 days without meaningful activity.                                   | Daily cron (`0 0 * * *`) or `workflow_dispatch`.                                                                     | None.                                                                                                                                                                                               |
 | `label-rebase-prs.yml`       | `Label PRs needing rebase`     | Finds conflicting open PRs from allowed authors and flags them for rebase.                                      | `push` to `main`.                                                                                                    | Adds `cc:rebase` when eligible PR is conflicted (`mergeable_state == dirty`) and not already in rebase states.                                                                                      |
 | `merge-pr.yml`               | `Merge PR when ready`          | Auto-merges eligible PRs after successful CI when all checks pass.                                              | `workflow_run` for `CI` on `completed` (successful PR-triggered CI only).                                            | None (reads `merge-when-ready`, does not set labels).                                                                                                                                               |
-| `nightly-runner-cleanup.yml` | `Nightly Runner Cleanup`       | Safely frees disk space on self-hosted macOS runners ci1-ci4 (caches, npm, runner \_work).                      | Daily cron (4 AM PST); or `workflow_dispatch`.                                                                       | None.                                                                                                                                                                                               |
+| `nightly-runner-cleanup.yml` | `Nightly Runner Cleanup`       | Safely frees disk space on self-hosted macOS runners ci1-ci4 (caches, npm, runner \_work), then reboots them.   | Daily cron (`0 12 * * *`, 4 AM PST / 5 AM PDT); or `workflow_dispatch`.                                              | None.                                                                                                                                                                                               |
 | `playwright-comment.yml`     | `Playwright Report Comment`    | Posts a Playwright summary comment on the PR tied to a completed CI run.                                        | `workflow_run` for `CI` on `completed`.                                                                              | None.                                                                                                                                                                                               |
 | `pr-review-responder.yml`    | `PR Review Responder`          | Runs Claude fix loops for trusted PRs, retriggers checks/reviews, and advances request-state labels.            | `pull_request_target` on `labeled` (only `cc:request:now`); `workflow_run` for `CI` on `completed`.                  | `cc:request`/`cc:request:N` -> `cc:pending`; then `cc:request:N+1` on pushed commits, `cc:done` on clean finish, `cc:failed` on failure; may add `needs-human:review-issue` when retries exhausted. |
 | `pr-status-labeler.yml`      | `PR Status Labeler`            | Applies human-attention labels based on CI outcome and review freshness/verdict.                                | `workflow_run` for `CI` on `completed`.                                                                              | Swaps between `needs-human:final-check` (clean + passing) and `needs-human:review-issue` (failing/stale/missing/issueful review).                                                                   |
@@ -64,13 +64,25 @@ flowchart TD
 
 ## Nightly Runner Cleanup
 
-The `nightly-runner-cleanup.yml` workflow runs at 4:00 AM PST on self-hosted macOS runners `ci1` through `ci4` to reclaim disk space.
+The `nightly-runner-cleanup.yml` workflow runs at 12:00 UTC (4:00 AM PST / 5:00 AM PDT) on self-hosted macOS runners `ci1` through `ci4` to reclaim disk space and reboot each machine.
+
+Each runner account must be allowed to schedule the workflow's exact reboot command without a password. Configure this with `visudo` in a file under `/etc/sudoers.d/`:
+
+```sudoers
+# ci1, ci2, and ci3
+ci ALL=(root) NOPASSWD: /sbin/shutdown -r +1
+
+# ci4
+ci4 ALL=(root) NOPASSWD: /sbin/shutdown -r +1
+```
+
+The Actions runner service must also start without an interactive login after reboot. The workflow waits three minutes before dispatching verification jobs and fails verification if a machine's uptime is greater than 15 minutes.
 
 **Validation (manual run):**
 
 1. Go to Actions → Nightly Runner Cleanup → Run workflow.
 2. Confirm the run completes successfully and logs show cleanup running on each runner.
-3. Check logs for "Disk before" and "Disk after" to verify space reclaimed.
-4. Confirm each runner re-registers and the verify job prints post-reboot disk space.
+3. Check logs for "Disk before" and "Disk after" to verify space reclaimed from `/System/Volumes/Data`.
+4. Confirm each runner re-registers and verification reports an uptime under 15 minutes.
 
-**Expected behavior:** Deletes only allowlisted paths (npm cache, Playwright browsers, runner \_work dirs older than 2 days, Library/Caches subdirs). Never removes runner binaries, config, or user data outside caches.
+**Expected behavior:** Deletes only allowlisted paths (npm cache, Playwright browsers, inactive runner repository workspaces older than 2 days, Library/Caches subdirs). It preserves the active workspace and runner-owned `_work` directories such as `_temp` and `_PipelineMapping`, and never removes runner binaries, config, or user data outside caches.

@@ -18,15 +18,22 @@
 
 set -euo pipefail
 
+DISK_VOLUME="/System/Volumes/Data"
+if [ ! -d "$DISK_VOLUME" ]; then
+  # Keep the script testable on non-macOS hosts while targeting the writable
+  # Data volume on APFS-based macOS runners.
+  DISK_VOLUME="/"
+fi
+
 echo "=== CI Cleanup (macOS self-hosted) ==="
 if [ "${CI_NIGHTLY_CLEANUP:-0}" = "1" ]; then
   echo "Mode: nightly (host-level + workspace)"
 else
   echo "Mode: per-job (workspace only)"
 fi
-df -h / | tail -1 | awk '{print "Disk before cleanup: "$4" available ("$5" used)"}'
+df -h "$DISK_VOLUME" | tail -1 | awk '{print "Disk before cleanup: "$4" available ("$5" used)"}'
 
-bytes_before=$(df -k / | tail -1 | awk '{print $4}')
+bytes_before=$(df -k "$DISK_VOLUME" | tail -1 | awk '{print $4}')
 
 # ---------------------------------------------------------------------------
 # 1. Build outputs in the workspace
@@ -148,22 +155,34 @@ if [ "${CI_NIGHTLY_CLEANUP:-0}" = "1" ]; then
     rm -rf "$d"
   done
 
-  # Runner _work: remove stale job workspaces older than 2 days
+  # Runner _work: remove stale repository workspaces older than 2 days.
+  # Never remove runner-owned directories (for example _temp or
+  # _PipelineMapping), or the top-level directory containing the currently
+  # executing GITHUB_WORKSPACE.
   if [ -d "$RUNNER_DIR/_work" ]; then
-    stale=$(find "$RUNNER_DIR/_work" -mindepth 1 -maxdepth 1 -type d -mtime +2 2>/dev/null || true)
-    if [ -n "$stale" ]; then
-      echo "Removing stale _work dirs (older than 2 days):"
-      echo "$stale"
-      echo "$stale" | while IFS= read -r dir; do rm -rf "$dir"; done
+    active_workspace="${GITHUB_WORKSPACE:-$PWD}"
+    find "$RUNNER_DIR/_work" -mindepth 1 -maxdepth 1 -type d -mtime +2 -print0 2>/dev/null |
+      while IFS= read -r -d '' dir; do
+        dir_name=$(basename "$dir")
+        if [[ "$dir_name" == _* ]]; then
+          echo "Keeping runner-owned _work dir: $dir"
+          continue
+        fi
+        if [[ "$active_workspace" == "$dir" || "$active_workspace" == "$dir/"* ]]; then
+          echo "Keeping active _work dir: $dir"
+          continue
+        fi
 
-    fi
+        echo "Removing stale _work dir: $dir"
+        rm -rf "$dir"
+      done
   fi
 fi
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
-bytes_after=$(df -k / | tail -1 | awk '{print $4}')
+bytes_after=$(df -k "$DISK_VOLUME" | tail -1 | awk '{print $4}')
 freed_kb=$((bytes_after - bytes_before))
 if [ "$freed_kb" -gt 1024 ]; then
   freed_mb=$((freed_kb / 1024))
@@ -172,5 +191,5 @@ else
   echo "Freed ~${freed_kb} KB"
 fi
 
-df -h / | tail -1 | awk '{print "Disk after cleanup:  "$4" available ("$5" used)"}'
+df -h "$DISK_VOLUME" | tail -1 | awk '{print "Disk after cleanup:  "$4" available ("$5" used)"}'
 echo "=== Cleanup complete ==="

@@ -206,4 +206,61 @@ describe("interleaving co-simulation", () => {
     expect(result.boundReached).toBe(true);
     expect(result.exhaustive).toBe(false);
   });
+
+  it("drains configurations admitted before reaching the bound", () => {
+    type State = "initial" | "after-first" | "failing" | "combined";
+    type Event = "first" | "fail";
+
+    const result = runCosim<"participant", never, State, Event, never>({
+      participants: {
+        participant: {
+          initialState: "initial",
+          stateKey: (state) => state,
+          commandKey: (command) => command,
+          transition: (state, event) => ({
+            state:
+              event === "first"
+                ? "after-first"
+                : state === "after-first"
+                  ? "combined"
+                  : "failing",
+            commands: [],
+          }),
+        },
+      },
+      channels: {},
+      scenario: {
+        actions: [
+          {
+            id: "first",
+            target: "participant",
+            participant: "participant",
+            event: "first",
+            enabled: ({ participants }) =>
+              participants.participant === "initial",
+          },
+          {
+            id: "fail",
+            target: "participant",
+            participant: "participant",
+            event: "fail",
+          },
+        ],
+        routeCommand: () => [],
+      },
+      assertions: {
+        atQuiescence: ({ participants }) => {
+          expect(participants.participant).not.toBe("failing");
+        },
+      },
+      maxSchedules: 3,
+    });
+
+    expect(result.schedulesExplored).toBe(3);
+    expect(result.boundReached).toBe(true);
+    expect(result.failure?.phase).toBe("quiescence");
+    expect(result.failure?.trace).toEqual([
+      'inject "fail": send fail to "participant"',
+    ]);
+  });
 });

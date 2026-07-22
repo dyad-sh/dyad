@@ -518,7 +518,7 @@ export function runCosim<
   let boundReached = false;
   let failure: CosimFailure | undefined;
 
-  while (stack.length > 0 && !boundReached) {
+  while (stack.length > 0) {
     const current = stack.pop();
     if (current === undefined) break;
     const currentKey = configurationKey(current.configuration);
@@ -585,7 +585,7 @@ export function runCosim<
       }
       if (previousDepth === undefined && bestDepth.size >= maxSchedules) {
         boundReached = true;
-        break;
+        continue;
       }
       bestDepth.set(key, nextTrace.length);
       successors.push({

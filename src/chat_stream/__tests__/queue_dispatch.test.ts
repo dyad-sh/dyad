@@ -24,7 +24,7 @@ const CHAT_ID = 11;
 function queuedItem(overrides: Partial<QueuedMessageItem> = {}) {
   return {
     id: "item-1",
-    prompt: "queued while external stream ran",
+    prompt: "queued prompt",
     ...overrides,
   } satisfies QueuedMessageItem;
 }
@@ -77,30 +77,20 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("queue dispatch after non-machine streams (regression)", () => {
-  it("drains a prompt queued during an external stream once the stream ends and pokes the machine", async () => {
+describe("queue dispatch", () => {
+  it("uses machine state instead of the legacy streaming projection", async () => {
     const { store, controller, startStream } = setup();
 
-    // An external (non-machine) stream is running: it wrote the isStreaming
-    // projection directly and the machine is idle.
+    // Projection writes can lag behind machine transitions. An idle machine
+    // remains authoritative and must dispatch its queued prompt.
     store.set(isStreamingByIdAtom, new Map([[CHAT_ID, true]]));
 
-    // A poke while the external stream is active must NOT dequeue (the
-    // legacy useQueueProcessor "never dequeue while streaming" guard).
-    controller.send({ type: "queue-poked" });
-    await flush();
-    expect(startStream).not.toHaveBeenCalled();
-    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toHaveLength(1);
-
-    // The external stream ends: its terminal handler clears the projection
-    // and pokes the machine (usePlanImplementation / merge-conflict flows).
-    store.set(isStreamingByIdAtom, new Map([[CHAT_ID, false]]));
     controller.send({ type: "queue-poked" });
     await flush();
 
     expect(startStream).toHaveBeenCalledTimes(1);
     expect(startStream.mock.calls[0][0].request).toMatchObject({
-      prompt: "queued while external stream ran",
+      prompt: "queued prompt",
       chatId: CHAT_ID,
     });
     expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toBeUndefined();

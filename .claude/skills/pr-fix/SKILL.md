@@ -29,7 +29,7 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    - Use product principles to resolve ambiguous feedback autonomously
    - Only flag issues for human attention when product principles are insufficient to decide
 
-2. **Run `/dyad:pr-fix:actions`** to handle failing CI checks:
+2. **Run `/dyad:pr-fix:ci`** to handle failing CI checks from the latest PR run:
    - Fix failing tests (unit and E2E)
    - Update snapshots if needed
    - Ensure all checks pass

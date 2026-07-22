@@ -234,6 +234,13 @@ describe("Plugins catalog (integration)", () => {
     };
     clearMcpCatalogCacheForTests();
     try {
+      // A stdio add with no reviewed config never went through consent, so
+      // it is rejected.
+      await expect(
+        ipc.mcp.addFromCatalog({ slug: "integration-stdio" }),
+      ).rejects.toThrow(/changed/i);
+      expect(await ipc.mcp.listServers()).toHaveLength(0);
+
       // A config that differs from the served entry (as if the catalog
       // changed after the consent prompt) is rejected and adds nothing.
       await expect(

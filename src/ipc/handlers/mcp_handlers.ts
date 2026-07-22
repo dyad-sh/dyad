@@ -52,6 +52,16 @@ async function isPortFreeOnBothLoopbacks(port: number): Promise<boolean> {
   return v4 === "free" || v6 === "free";
 }
 
+function envsEqual(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+  );
+}
+
 // Parse a JSON string from the renderer and surface a clear error
 // instead of letting the main process see a raw SyntaxError. Returns
 // `null` if the input is falsy.
@@ -151,29 +161,26 @@ export function registerMcpHandlers() {
         return toMcpServer(existing[0]);
       }
 
-      // The catalog can refresh between the consent prompt and this add.
-      // Abort if the fetched command no longer matches what the user
-      // reviewed.
-      if (entry.transport === "stdio" && expectedStdioConfig) {
-        const argsMatch =
-          entry.args.length === expectedStdioConfig.args.length &&
-          entry.args.every((arg, i) => arg === expectedStdioConfig.args[i]);
-        const entryEnv = entry.env ?? {};
-        const expectedEnv = expectedStdioConfig.env ?? {};
-        const envKeys = Object.keys(entryEnv);
-        const envMatch =
-          envKeys.length === Object.keys(expectedEnv).length &&
-          envKeys.every((key) => entryEnv[key] === expectedEnv[key]);
-        if (
-          entry.command !== expectedStdioConfig.command ||
-          !argsMatch ||
-          !envMatch
-        ) {
-          throw new DyadError(
-            "The plugin catalog changed since you reviewed this plugin. Please try adding it again.",
-            DyadErrorKind.Precondition,
-          );
-        }
+      // A stdio add must run exactly the command the consent prompt showed.
+      // Abort if the fetched entry wasn't reviewed, no longer matches, or
+      // the slug changed transport since the prompt.
+      const stdioMatchesReview =
+        entry.transport === "stdio" &&
+        expectedStdioConfig != null &&
+        entry.command === expectedStdioConfig.command &&
+        entry.args.length === expectedStdioConfig.args.length &&
+        entry.args.every((arg, i) => arg === expectedStdioConfig.args[i]) &&
+        envsEqual(entry.env ?? {}, expectedStdioConfig.env ?? {});
+      const transportMismatch =
+        (entry.transport === "stdio") !== (expectedStdioConfig != null);
+      if (
+        (entry.transport === "stdio" && !stdioMatchesReview) ||
+        transportMismatch
+      ) {
+        throw new DyadError(
+          "The plugin catalog changed since you reviewed this plugin. Please try adding it again.",
+          DyadErrorKind.Precondition,
+        );
       }
 
       const values =

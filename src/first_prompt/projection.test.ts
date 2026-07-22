@@ -12,7 +12,11 @@ describe("first-prompt projection", () => {
   it.each(["checkingProviders", "awaitingProviderSetup"] as const)(
     "projects a content-bearing %s payload as armed",
     (type) => {
-      expect(projectFirstPromptState({ type, payload })).toEqual({
+      const state =
+        type === "awaitingProviderSetup"
+          ? ({ type, payload, reason: "missing-provider" } as const)
+          : ({ type, payload } as const);
+      expect(projectFirstPromptState(state)).toEqual({
         phase: type,
         hasArmedPayload: true,
         isExistingAppSubmission: false,
@@ -29,6 +33,7 @@ describe("first-prompt projection", () => {
           attachments: [],
           isChatModeExplicit: false,
         },
+        reason: "manual",
       }),
     ).toEqual({
       phase: "awaitingProviderSetup",

@@ -59,6 +59,7 @@ export type App = z.infer<typeof AppSchema>;
 export const CreateAppParamsSchema = z.object({
   name: z.string().min(1),
   initialChatMode: ChatModeSchema.optional(),
+  firstPromptCreationOperationId: z.string().min(1).optional(),
 });
 
 /**

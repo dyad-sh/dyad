@@ -1,4 +1,4 @@
-import type { Clock, ClockHandle } from "@/state_machines/clock";
+import type { Clock, ClockHandle, IdSource } from "@/state_machines/clock";
 import type {
   FirstPromptChatMode,
   FirstPromptCommand,
@@ -16,8 +16,17 @@ export interface CreatedFirstPromptApp {
 }
 
 export interface FirstPromptDeps {
-  createApp(chatMode?: FirstPromptChatMode): Promise<CreatedFirstPromptApp>;
-  createChat(appId: number, chatMode?: FirstPromptChatMode): Promise<number>;
+  createApp(
+    operationId: string,
+    chatMode?: FirstPromptChatMode,
+  ): Promise<CreatedFirstPromptApp>;
+  createChat(
+    appId: number,
+    operationId: string,
+    chatMode?: FirstPromptChatMode,
+  ): Promise<number>;
+  commitCreation(operationId: string): void;
+  cancelCreation(operationId: string): void;
   runNeonTemplateHook(appId: number, appName: string): Promise<void>;
   applyTheme(appId: number): Promise<void>;
   openPreviewIfSetupRequired(appId: number): Promise<boolean>;
@@ -43,12 +52,28 @@ function errorMessage(error: unknown): string {
 
 export function createFirstPromptCommandRunner(options: {
   clock: Clock;
+  idSource: IdSource;
   getSettleDelayMs: () => number;
   getDeps: () => FirstPromptDeps;
 }): FirstPromptCommandRunner {
   const settleHandles = new Set<ClockHandle>();
   let providerCheckHandle: ClockHandle | undefined;
   let disposed = false;
+  let ownedCreationOperationId: string | undefined;
+  let cancelledCreationOperationId: string | undefined;
+
+  function retryCreationCancellation(deps: FirstPromptDeps): void {
+    const operationId =
+      ownedCreationOperationId ?? cancelledCreationOperationId;
+    if (operationId) deps.cancelCreation(operationId);
+  }
+
+  function relinquishOwnedCreation(deps: FirstPromptDeps): void {
+    if (!ownedCreationOperationId) return;
+    deps.commitCreation(ownedCreationOperationId);
+    ownedCreationOperationId = undefined;
+    cancelledCreationOperationId = undefined;
+  }
 
   return {
     async run(
@@ -77,9 +102,20 @@ export function createFirstPromptCommandRunner(options: {
           }
           return;
 
-        case "CreateApp":
+        case "CreateApp": {
+          relinquishOwnedCreation(deps);
+          const operationId = options.idSource.next("first-prompt-create-app");
+          ownedCreationOperationId = operationId;
           try {
-            const result = await deps.createApp(command.payload.chatMode);
+            const result = await deps.createApp(
+              operationId,
+              command.payload.chatMode,
+            );
+            if (disposed) {
+              deps.cancelCreation(operationId);
+              ownedCreationOperationId = undefined;
+              return;
+            }
             emit({
               type: "APP_CREATED",
               appId: result.appId,
@@ -87,27 +123,58 @@ export function createFirstPromptCommandRunner(options: {
               chatId: result.chatId,
             });
           } catch (error) {
-            emit({ type: "CREATE_FAILED", message: errorMessage(error) });
+            if (disposed) {
+              deps.cancelCreation(operationId);
+            } else {
+              deps.commitCreation(operationId);
+              emit({ type: "CREATE_FAILED", message: errorMessage(error) });
+            }
+            ownedCreationOperationId = undefined;
           }
           return;
+        }
 
-        case "CreateChat":
+        case "CreateChat": {
+          relinquishOwnedCreation(deps);
+          const operationId = options.idSource.next("first-prompt-create-chat");
+          ownedCreationOperationId = operationId;
           try {
             const chatId = await deps.createChat(
               command.appId,
+              operationId,
               command.payload.chatMode,
             );
+            if (disposed) {
+              deps.cancelCreation(operationId);
+              ownedCreationOperationId = undefined;
+              return;
+            }
             emit({ type: "CHAT_CREATED", chatId });
           } catch (error) {
-            emit({ type: "CREATE_FAILED", message: errorMessage(error) });
+            if (disposed) {
+              deps.cancelCreation(operationId);
+            } else {
+              deps.commitCreation(operationId);
+              emit({ type: "CREATE_FAILED", message: errorMessage(error) });
+            }
+            ownedCreationOperationId = undefined;
           }
           return;
+        }
 
         case "RunNeonTemplateHook":
           try {
             await deps.runNeonTemplateHook(command.appId, command.appName);
+            if (disposed) {
+              retryCreationCancellation(deps);
+              return;
+            }
             emit({ type: "NEON_HOOK_DONE" });
           } catch (error) {
+            if (disposed) {
+              retryCreationCancellation(deps);
+              return;
+            }
             emit({ type: "POST_CREATE_FAILED", message: errorMessage(error) });
           }
           return;
@@ -115,8 +182,16 @@ export function createFirstPromptCommandRunner(options: {
         case "ApplyTheme":
           try {
             await deps.applyTheme(command.appId);
+            if (disposed) {
+              retryCreationCancellation(deps);
+              return;
+            }
             emit({ type: "POST_CREATE_DONE" });
           } catch (error) {
+            if (disposed) {
+              retryCreationCancellation(deps);
+              return;
+            }
             emit({ type: "POST_CREATE_FAILED", message: errorMessage(error) });
           }
           return;
@@ -126,8 +201,10 @@ export function createFirstPromptCommandRunner(options: {
             const opened = await deps.openPreviewIfSetupRequired(command.appId);
             emit({ type: "PREVIEW_DECISION", opened });
           } catch (error) {
-            deps.showError(errorMessage(error), "postCreate");
-            emit({ type: "PREVIEW_DECISION", opened: false });
+            emit({
+              type: "PREVIEW_DECISION_FAILED",
+              message: errorMessage(error),
+            });
           }
           return;
         }
@@ -138,6 +215,7 @@ export function createFirstPromptCommandRunner(options: {
             chatId: command.chatId,
             payload: command.payload,
           });
+          relinquishOwnedCreation(deps);
           return;
 
         case "ScheduleSettle":
@@ -153,10 +231,10 @@ export function createFirstPromptCommandRunner(options: {
         case "RefreshQueries":
           try {
             await deps.refreshQueries(command.appId);
+            emit({ type: "REFRESHED" });
           } catch (error) {
-            deps.showError(errorMessage(error), "postCreate");
+            emit({ type: "REFRESH_FAILED", message: errorMessage(error) });
           }
-          emit({ type: "REFRESHED" });
           return;
 
         case "NavigateHome":
@@ -164,11 +242,7 @@ export function createFirstPromptCommandRunner(options: {
           return;
 
         case "SelectChat":
-          try {
-            deps.selectChat(command.appId, command.chatId);
-          } catch (error) {
-            deps.showError(errorMessage(error), "postCreate");
-          }
+          deps.selectChat(command.appId, command.chatId);
           return;
 
         case "ShowSetupDialog":
@@ -198,6 +272,11 @@ export function createFirstPromptCommandRunner(options: {
       }
       for (const handle of settleHandles) options.clock.cancel(handle);
       settleHandles.clear();
+      if (ownedCreationOperationId) {
+        cancelledCreationOperationId = ownedCreationOperationId;
+        options.getDeps().cancelCreation(ownedCreationOperationId);
+        ownedCreationOperationId = undefined;
+      }
     },
   };
 }

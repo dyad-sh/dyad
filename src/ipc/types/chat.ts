@@ -360,6 +360,7 @@ export const chatContracts = {
       z.object({
         appId: z.number(),
         initialChatMode: ChatModeSchema.optional(),
+        firstPromptCreationOperationId: z.string().min(1).optional(),
       }),
     ]),
     output: CreateChatResultSchema,

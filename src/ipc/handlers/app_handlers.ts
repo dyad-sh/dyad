@@ -114,6 +114,7 @@ import {
 import { gitService } from "../services/git_service";
 import { normalizePath } from "../../../shared/normalizePath";
 import { safeJoin } from "../utils/path_utils";
+import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
 import {
   isServerFunction,
   isSharedServerModule,
@@ -491,6 +492,13 @@ export function registerAppHandlers() {
         initialCommitHash: commitHash,
       })
       .where(eq(chats.id, chat.id));
+
+    if (params.firstPromptCreationOperationId) {
+      await firstPromptCreationRegistry.complete(
+        params.firstPromptCreationOperationId,
+        () => deleteAppById(app.id),
+      );
+    }
 
     return {
       app: { ...app, resolvedPath: fullAppPath },

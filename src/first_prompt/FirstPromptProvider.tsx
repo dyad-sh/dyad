@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { useTranslation } from "react-i18next";
 import { usePostHog } from "posthog-js/react";
-import { ipc, type FreeAgentQuotaStatus } from "@/ipc/types";
+import { ipc } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
@@ -23,6 +23,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import { queryKeys } from "@/lib/queryKeys";
 import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { showError } from "@/lib/toast";
 import {
   attachmentsAtom,
@@ -30,7 +31,7 @@ import {
   homeSelectedAppAtom,
 } from "@/atoms/chatAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import type { Clock } from "@/state_machines/clock";
+import type { Clock, IdSource } from "@/state_machines/clock";
 import { createTraceObserver } from "@/state_machines/trace";
 import {
   useControllerSnapshot,
@@ -72,11 +73,13 @@ export function FirstPromptProvider({
   children,
   chatStream,
   clock,
+  idSource,
   settleDelayMs,
 }: {
   children: ReactNode;
   chatStream: FirstPromptChatStream;
   clock: Clock;
+  idSource: IdSource;
   settleDelayMs: number;
 }) {
   const store = useStore();
@@ -88,6 +91,7 @@ export function FirstPromptProvider({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const { settings, envVars } = useSettings();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const { refreshApps } = useLoadApps();
   const { selectChat } = useSelectChat();
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -101,10 +105,11 @@ export function FirstPromptProvider({
 
   const dependencies = useRef<FirstPromptDeps | null>(null);
   dependencies.current = {
-    async createApp(chatMode) {
+    async createApp(operationId, chatMode) {
       const result = await ipc.app.createApp({
         name: generateCuteAppName(),
         initialChatMode: chatMode,
+        firstPromptCreationOperationId: operationId,
       });
       return {
         appId: result.app.id,
@@ -112,8 +117,16 @@ export function FirstPromptProvider({
         chatId: result.chatId,
       };
     },
-    createChat: (appId, chatMode) =>
-      ipc.chat.createChat({ appId, initialChatMode: chatMode }),
+    createChat: (appId, operationId, chatMode) =>
+      ipc.chat.createChat({
+        appId,
+        initialChatMode: chatMode,
+        firstPromptCreationOperationId: operationId,
+      }),
+    commitCreation: (operationId) =>
+      ipc.firstPrompt.commitCreation({ operationId }),
+    cancelCreation: (operationId) =>
+      ipc.firstPrompt.cancelCreation({ operationId }),
     async runNeonTemplateHook(appId, appName) {
       if (
         settings?.selectedTemplateId &&
@@ -188,6 +201,7 @@ export function FirstPromptProvider({
       new FirstPromptController({
         runner: createFirstPromptCommandRunner({
           clock,
+          idSource,
           getSettleDelayMs: () => settleDelayMsRef.current,
           getDeps: () => {
             const current = dependencies.current;
@@ -219,11 +233,39 @@ export function FirstPromptProvider({
   }, [controller, store]);
 
   useEffect(() => {
-    if (snapshot.type !== "checkingProviders") return;
     const anySetup = isAnyProviderSetup();
-    if (providersLoading && !anySetup) return;
-    controller.send({ type: "PROVIDERS_LOADED", anySetup });
-  }, [controller, isAnyProviderSetup, providersLoading, snapshot.type]);
+    if (snapshot.type === "checkingProviders") {
+      if (providersLoading && !anySetup) return;
+      controller.send({ type: "PROVIDERS_LOADED", anySetup });
+      return;
+    }
+    if (
+      snapshot.type === "awaitingProviderSetup" &&
+      snapshot.reason === "provider-check-timeout" &&
+      !providersLoading &&
+      anySetup
+    ) {
+      controller.send({
+        type: "PROVIDER_CONFIGURED",
+        defaultChatMode: settings
+          ? getHomeDefaultChatMode(
+              settings,
+              envVars,
+              isQuotaLoading ? undefined : !isQuotaExceeded,
+            )
+          : undefined,
+      });
+    }
+  }, [
+    controller,
+    envVars,
+    isAnyProviderSetup,
+    isQuotaExceeded,
+    isQuotaLoading,
+    providersLoading,
+    settings,
+    snapshot,
+  ]);
 
   const hasConfiguredProvider = isAnyProviderSetup();
   useEffect(() => {
@@ -240,16 +282,13 @@ export function FirstPromptProvider({
       !awaitingStartedWithProviderRef.current &&
       hasConfiguredProvider
     ) {
-      const quotaStatus = queryClient.getQueryData<FreeAgentQuotaStatus>(
-        queryKeys.freeAgentQuota.status,
-      );
       controller.send({
         type: "PROVIDER_CONFIGURED",
         defaultChatMode: settings
           ? getHomeDefaultChatMode(
               settings,
               envVars,
-              quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
+              isQuotaLoading ? undefined : !isQuotaExceeded,
             )
           : undefined,
       });
@@ -258,8 +297,9 @@ export function FirstPromptProvider({
     controller,
     hasConfiguredProvider,
     envVars,
+    isQuotaExceeded,
+    isQuotaLoading,
     pathname,
-    queryClient,
     settings,
     snapshot.type,
   ]);

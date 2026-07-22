@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createFakeClock } from "@/state_machines/testing";
+import {
+  createFakeClock,
+  createSequentialIdSource,
+} from "@/state_machines/testing";
 import {
   createFirstPromptCommandRunner,
   type FirstPromptDeps,
@@ -18,6 +21,14 @@ async function flushCommands(): Promise<void> {
   for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function createHarness() {
   const clock = createFakeClock();
   let neonError: Error | undefined;
@@ -29,6 +40,8 @@ function createHarness() {
       chatId: 2,
     }),
     createChat: vi.fn().mockResolvedValue(3),
+    commitCreation: vi.fn(),
+    cancelCreation: vi.fn(),
     runNeonTemplateHook: vi.fn(async () => {
       if (neonError) throw neonError;
     }),
@@ -47,6 +60,7 @@ function createHarness() {
   const controller = new FirstPromptController({
     runner: createFirstPromptCommandRunner({
       clock,
+      idSource: createSequentialIdSource(),
       getSettleDelayMs: () => 2_000,
       getDeps: () => deps,
     }),
@@ -132,8 +146,33 @@ describe("FirstPromptController", () => {
     expect(harness.controller.getSnapshot()).toEqual({
       type: "awaitingProviderSetup",
       payload,
+      reason: "provider-check-timeout",
     });
     expect(harness.deps.showSetupDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes when provider detection succeeds after the timeout", async () => {
+    const harness = createHarness();
+    harness.controller.send({ type: "SUBMIT", payload });
+    await flushCommands();
+    harness.clock.advanceBy(10_000);
+    await flushCommands();
+
+    harness.controller.send({
+      type: "PROVIDER_CONFIGURED",
+      defaultChatMode: "local-agent",
+    });
+    await flushCommands();
+
+    expect(harness.deps.createApp).toHaveBeenCalledWith(
+      "first-prompt-create-app:1",
+      "local-agent",
+    );
+    expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
+      appId: 1,
+      chatId: 2,
+      payload: { ...payload, chatMode: "local-agent" },
+    });
   });
 
   it("keeps rapid submissions single-flight through creation", async () => {
@@ -190,7 +229,17 @@ describe("FirstPromptController", () => {
     await flushCommands();
 
     expect(harness.deps.createApp).toHaveBeenCalledTimes(1);
-    expect(harness.deps.createChat).toHaveBeenCalledWith(41, "build");
+    expect(harness.deps.createChat).toHaveBeenCalledWith(
+      41,
+      "first-prompt-create-chat:2",
+      "build",
+    );
+    expect(harness.deps.commitCreation).toHaveBeenCalledWith(
+      "first-prompt-create-app:1",
+    );
+    expect(harness.deps.commitCreation).toHaveBeenCalledWith(
+      "first-prompt-create-chat:2",
+    );
     expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
       appId: 41,
       chatId: 3,
@@ -213,7 +262,11 @@ describe("FirstPromptController", () => {
     await flushCommands();
 
     expect(harness.deps.createApp).not.toHaveBeenCalled();
-    expect(harness.deps.createChat).toHaveBeenCalledWith(41, "build");
+    expect(harness.deps.createChat).toHaveBeenCalledWith(
+      41,
+      "first-prompt-create-chat:1",
+      "build",
+    );
     expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
       appId: 41,
       chatId: 3,
@@ -270,5 +323,109 @@ describe("FirstPromptController", () => {
     await flushCommands();
     expect(harness.deps.refreshQueries).toHaveBeenCalledWith(1);
     expect(harness.deps.selectChat).toHaveBeenCalledWith(1, 2);
+  });
+
+  it("cleans up an app whose creation settles after disposal", async () => {
+    const harness = createHarness();
+    const creation = deferred<{
+      appId: number;
+      appName: string;
+      chatId: number;
+    }>();
+    (harness.deps.createApp as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      creation.promise,
+    );
+
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    harness.controller.dispose();
+
+    creation.resolve({ appId: 11, appName: "Late app", chatId: 12 });
+    await flushCommands();
+
+    expect(harness.deps.cancelCreation).toHaveBeenCalledWith(
+      "first-prompt-create-app:1",
+    );
+    expect(harness.deps.cancelCreation).toHaveBeenCalledTimes(2);
+    expect(harness.deps.runNeonTemplateHook).not.toHaveBeenCalled();
+  });
+
+  it("cleans up a chat whose creation settles after disposal", async () => {
+    const harness = createHarness();
+    const creation = deferred<number>();
+    (harness.deps.createChat as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      creation.promise,
+    );
+    const existingAppPayload: FirstPromptPayload = {
+      ...payload,
+      selectedApp: { id: 41, name: "Existing app" },
+    };
+
+    harness.controller.send({ type: "SUBMIT", payload: existingAppPayload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    harness.controller.dispose();
+
+    creation.resolve(13);
+    await flushCommands();
+
+    expect(harness.deps.cancelCreation).toHaveBeenCalledWith(
+      "first-prompt-create-chat:1",
+    );
+    expect(harness.deps.cancelCreation).toHaveBeenCalledTimes(2);
+    expect(harness.deps.submitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("cleans up an owned app immediately when disposed during post-create", async () => {
+    const harness = createHarness();
+    const neon = deferred<void>();
+    (
+      harness.deps.runNeonTemplateHook as ReturnType<typeof vi.fn>
+    ).mockReturnValueOnce(neon.promise);
+
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    expect(harness.controller.getSnapshot().type).toBe("postCreate");
+
+    harness.controller.dispose();
+    await flushCommands();
+
+    expect(harness.deps.cancelCreation).toHaveBeenCalledWith(
+      "first-prompt-create-app:1",
+    );
+    neon.resolve();
+    await flushCommands();
+    expect(harness.deps.cancelCreation).toHaveBeenCalledTimes(2);
+  });
+
+  it("models preview and refresh failures before continuing best-effort", async () => {
+    const harness = createHarness();
+    (
+      harness.deps.openPreviewIfSetupRequired as ReturnType<typeof vi.fn>
+    ).mockRejectedValueOnce(new Error("preview failed"));
+    (
+      harness.deps.refreshQueries as ReturnType<typeof vi.fn>
+    ).mockRejectedValueOnce(new Error("refresh failed"));
+
+    harness.controller.send({ type: "SUBMIT", payload });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+    harness.clock.advanceBy(2_000);
+    await flushCommands();
+
+    expect(harness.deps.showError).toHaveBeenNthCalledWith(
+      1,
+      "preview failed",
+      "postCreate",
+    );
+    expect(harness.deps.showError).toHaveBeenNthCalledWith(
+      2,
+      "refresh failed",
+      "postCreate",
+    );
+    expect(harness.deps.selectChat).toHaveBeenCalledWith(1, 2);
+    expect(harness.controller.getSnapshot().type).toBe("idle");
   });
 });

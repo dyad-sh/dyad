@@ -56,6 +56,10 @@ Background and before/after examples of why this pattern exists:
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.
+- When that external state is created in the main process, renderer disposal
+  cannot rely on reply-based IPC cleanup. Mint an operation ID before creation,
+  send teardown cancellation one-way, and retain a main-owned cancellation
+  tombstone so late creation completion performs the cleanup.
 - Before keying a cross-entity registry by a generation counter, verify the
   counter's scope. If generations restart per entity, use a composite key or a
   separate invocation ID and test two entities with the same generation.

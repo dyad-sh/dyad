@@ -52,6 +52,7 @@ import { registerTerminalHandlers } from "./handlers/terminal_handlers";
 import { registerTestsHandlers } from "./handlers/tests_handlers";
 import { registerQueueHandlers } from "./handlers/queue_handlers";
 import { registerUserInputHandlers } from "./handlers/user_input_handlers";
+import { registerFirstPromptHandlers } from "./handlers/first_prompt_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -109,4 +110,5 @@ export function registerIpcHandlers() {
   registerTestsHandlers();
   registerQueueHandlers();
   registerUserInputHandlers();
+  registerFirstPromptHandlers();
 }

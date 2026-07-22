@@ -687,6 +687,7 @@ export async function setupHybridChatHarness(
         <FirstPromptProvider
           chatStream={firstPromptChatStream}
           clock={systemClock}
+          idSource={uuidIdSource}
           settleDelayMs={0}
         >
           <PlanHandoffProvider chatStream={planHandoffChatStream}>

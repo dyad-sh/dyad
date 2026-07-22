@@ -39,7 +39,7 @@ import {
   FirstPromptProvider,
   type FirstPromptChatStream,
 } from "@/first_prompt/FirstPromptProvider";
-import { systemClock } from "@/state_machines/clock";
+import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { useStreamChat } from "@/hooks/useStreamChat";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -77,6 +77,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <FirstPromptProvider
           chatStream={firstPromptChatStream}
           clock={systemClock}
+          idSource={uuidIdSource}
           settleDelayMs={settings?.isTestMode ? 0 : 2_000}
         >
           <PlanHandoffProvider chatStream={planHandoffChatStream}>

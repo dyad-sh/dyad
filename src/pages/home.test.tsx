@@ -85,9 +85,16 @@ vi.mock("@/lib/homeChatMode", () => ({
   getHomeDefaultChatMode: () => mocks.effectiveDefaultChatMode,
 }));
 vi.mock("@/components/chat/HomeChatInput", () => ({
-  HomeChatInput: ({ onSubmit }: { onSubmit: (options?: any) => boolean }) => (
+  HomeChatInput: ({
+    onSubmit,
+    disabled,
+  }: {
+    onSubmit: (options?: any) => boolean;
+    disabled?: boolean;
+  }) => (
     <button
       type="button"
+      disabled={disabled}
       onClick={() =>
         onSubmit({
           attachments: mocks.attachments,
@@ -181,13 +188,15 @@ describe("HomePage first-prompt projection", () => {
     }
   });
 
-  it("keeps the composer visible while checking providers", () => {
+  it("keeps the composer visible but locked while checking providers", () => {
     mocks.phase = "checkingProviders";
     render(<HomePage />);
 
     expect(
-      screen.getByRole("button", { name: "Submit home prompt" }),
-    ).toBeTruthy();
+      screen
+        .getByRole("button", { name: "Submit home prompt" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
     expect(screen.queryByText("buildingApp")).toBeNull();
   });
 

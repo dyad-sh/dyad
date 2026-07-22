@@ -171,6 +171,7 @@ export default function HomePage() {
     "dispatching",
     "navigating",
   ].includes(firstPromptSaga.phase);
+  const isCheckingProviders = firstPromptSaga.phase === "checkingProviders";
 
   // Loading overlay for app creation
   if (isLoading) {
@@ -222,7 +223,10 @@ export default function HomePage() {
               />
             </div>
           </div>
-          <HomeChatInput onSubmit={handleSubmit} />
+          <HomeChatInput
+            onSubmit={handleSubmit}
+            disabled={isCheckingProviders}
+          />
 
           {!isSettingsLoading &&
             !isLoadingLanguageModelProviders &&
@@ -262,8 +266,9 @@ export default function HomePage() {
               <button
                 type="button"
                 key={item.label}
+                disabled={isCheckingProviders}
                 onClick={() => setInputValue(item.prompt)}
-                className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50"
               >
                 <span aria-hidden="true" className="[&_svg]:size-4">
                   {item.icon}
@@ -273,8 +278,9 @@ export default function HomePage() {
             ))}
             <button
               type="button"
+              disabled={isCheckingProviders}
               onClick={() => setRandomPrompts(getRandomPrompts())}
-              className="group flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+              className="group flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <RefreshCw className="size-4 transition-transform duration-200 group-hover:rotate-[-25deg]" />
               {t("moreIdeas")}

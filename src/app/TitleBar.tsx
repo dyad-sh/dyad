@@ -29,6 +29,7 @@ import { firstPromptSagaAtom } from "@/first_prompt/projection";
 import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
 import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 import type { UserSettings } from "@/lib/schemas";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -38,6 +39,7 @@ export const TitleBar = () => {
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
   const { settings, envVars, refreshSettings } = useSettings();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
   const queryClient = useQueryClient();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
@@ -57,7 +59,11 @@ export const TitleBar = () => {
           sendFirstPrompt({
             type: "PROVIDER_CONFIGURED",
             defaultChatMode: refreshedSettings
-              ? getHomeDefaultChatMode(refreshedSettings, envVars)
+              ? getHomeDefaultChatMode(
+                  refreshedSettings,
+                  envVars,
+                  isQuotaLoading ? undefined : !isQuotaExceeded,
+                )
               : "local-agent",
           });
         } else {
@@ -72,6 +78,8 @@ export const TitleBar = () => {
     envVars,
     lastDeepLink,
     hasArmedPayload,
+    isQuotaExceeded,
+    isQuotaLoading,
     queryClient,
     refreshSettings,
     sendFirstPrompt,

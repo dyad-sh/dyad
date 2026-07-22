@@ -98,9 +98,10 @@ testSetup.describe("Setup Flow", () => {
   );
 
   testSetup(
-    "OpenRouter API key setup resumes the pending first prompt",
+    "OpenRouter API key setup switches the pending first prompt from Build to Basic Agent",
     async ({ po }) => {
       await seedFakeModelSelection(po);
+      await expectInitialBuildMode(po);
       const prompt = "Build a tiny meal planner";
       const dialog = await openAiSetupDialog(po, prompt);
 
@@ -127,6 +128,7 @@ testSetup.describe("Setup Flow", () => {
       });
       await expect(po.page.getByRole("dialog")).not.toBeVisible();
       await expectSelectedApp(po);
+      await expectLocalAgentMode(po, "Basic Agent");
     },
   );
 
@@ -277,8 +279,9 @@ testSetup.describe("Setup Flow", () => {
   );
 
   testSetup(
-    "Dyad Pro return deep link resumes the pending first prompt",
+    "Dyad Pro return deep link switches the pending first prompt from Build to Agent",
     async ({ po, electronApp }) => {
+      await expectInitialBuildMode(po);
       const prompt = "Build a tiny workout planner";
       await openAiSetupDialog(po, prompt);
 
@@ -293,9 +296,33 @@ testSetup.describe("Setup Flow", () => {
       await expect(po.page.getByRole("dialog")).not.toBeVisible();
       await expect(po.page.getByText("Welcome to Dyad Pro!")).not.toBeVisible();
       await expectSelectedApp(po);
+      await expectLocalAgentMode(po, "Agent");
     },
   );
 });
+
+async function expectInitialBuildMode(po: PageObject) {
+  await po.navigation.goToAppsTab();
+  await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
+    "Build",
+    { timeout: Timeout.MEDIUM },
+  );
+}
+
+async function expectLocalAgentMode(
+  po: PageObject,
+  expectedDisplayName: "Basic Agent" | "Agent",
+) {
+  await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
+    expectedDisplayName,
+    { timeout: Timeout.MEDIUM },
+  );
+  await expect
+    .poll(() => po.settings.recordSettings().selectedChatMode, {
+      timeout: Timeout.MEDIUM,
+    })
+    .toBe("local-agent");
+}
 
 async function setupGoogleKeyAndExpectResume(
   po: PageObject,

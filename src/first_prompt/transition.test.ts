@@ -34,7 +34,9 @@ const events: readonly FirstPromptEvent[] = [
   { type: "POST_CREATE_FAILED", message: "hook failed" },
   { type: "SETTLED" },
   { type: "PREVIEW_DECISION", opened: false },
+  { type: "PREVIEW_DECISION_FAILED", message: "preview failed" },
   { type: "REFRESHED" },
+  { type: "REFRESH_FAILED", message: "refresh failed" },
   { type: "RETRY" },
   { type: "RESET" },
 ];
@@ -95,14 +97,15 @@ describe("first-prompt transition", () => {
   it.each(["checkingProviders", "awaitingProviderSetup"] as const)(
     "disarms an empty payload when provider setup completes from %s",
     (type) => {
-      const state: FirstPromptState = {
-        type,
-        payload: {
-          prompt: "   ",
-          attachments: [],
-          isChatModeExplicit: false,
-        },
+      const emptyPayload: FirstPromptPayload = {
+        prompt: "   ",
+        attachments: [],
+        isChatModeExplicit: false,
       };
+      const state: FirstPromptState =
+        type === "awaitingProviderSetup"
+          ? { type, payload: emptyPayload, reason: "missing-provider" }
+          : { type, payload: emptyPayload };
 
       const result = transition(state, { type: "PROVIDER_CONFIGURED" });
 
@@ -120,6 +123,7 @@ describe("first-prompt transition", () => {
     const state: FirstPromptState = {
       type: "awaitingProviderSetup",
       payload,
+      reason: "missing-provider",
     };
 
     const result = transition(state, {
@@ -149,6 +153,7 @@ describe("first-prompt transition", () => {
     const state: FirstPromptState = {
       type: "awaitingProviderSetup",
       payload: explicitPayload,
+      reason: "missing-provider",
     };
 
     const result = transition(state, {
@@ -166,7 +171,11 @@ describe("first-prompt transition", () => {
     const state: FirstPromptState = { type: "checkingProviders", payload };
 
     expect(transition(state, { type: "PROVIDER_CHECK_TIMED_OUT" })).toEqual({
-      state: { type: "awaitingProviderSetup", payload },
+      state: {
+        type: "awaitingProviderSetup",
+        payload,
+        reason: "provider-check-timeout",
+      },
       commands: [{ type: "ShowSetupDialog" }],
     });
   });

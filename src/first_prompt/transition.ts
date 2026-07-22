@@ -138,7 +138,9 @@ function ignoreEvent(
     case "POST_CREATE_FAILED":
     case "SETTLED":
     case "PREVIEW_DECISION":
+    case "PREVIEW_DECISION_FAILED":
     case "REFRESHED":
+    case "REFRESH_FAILED":
     case "RETRY":
     case "RESET":
       return ignore(state, "invalid-in-current-state");
@@ -163,6 +165,7 @@ export function transition(
             state: {
               type: "awaitingProviderSetup",
               payload: event.payload,
+              reason: "manual",
             },
             commands: [{ type: "ShowSetupDialog" }],
           };
@@ -188,6 +191,7 @@ export function transition(
                 state: {
                   type: "awaitingProviderSetup",
                   payload: state.payload,
+                  reason: "missing-provider",
                 },
                 commands: [
                   { type: "CancelProviderCheckTimeout" },
@@ -199,6 +203,7 @@ export function transition(
             state: {
               type: "awaitingProviderSetup",
               payload: state.payload,
+              reason: "provider-check-timeout",
             },
             commands: [{ type: "ShowSetupDialog" }],
           };
@@ -362,6 +367,27 @@ export function transition(
                 state: { ...state, previewDecided: true },
                 commands: [],
               };
+        case "PREVIEW_DECISION_FAILED": {
+          if (state.previewDecided)
+            return ignore(state, "invalid-in-current-state");
+          const result = state.settled
+            ? finishDispatching(state)
+            : {
+                state: { ...state, previewDecided: true },
+                commands: [],
+              };
+          return {
+            ...result,
+            commands: [
+              {
+                type: "ShowError",
+                message: event.message,
+                failure: "postCreate",
+              },
+              ...result.commands,
+            ],
+          };
+        }
         case "RESET":
           return { state: { type: "idle" }, commands: [] };
         default:
@@ -374,6 +400,18 @@ export function transition(
           return {
             state: { type: "idle" },
             commands: [
+              { type: "SelectChat", appId: state.appId, chatId: state.chatId },
+            ],
+          };
+        case "REFRESH_FAILED":
+          return {
+            state: { type: "idle" },
+            commands: [
+              {
+                type: "ShowError",
+                message: event.message,
+                failure: "postCreate",
+              },
               { type: "SelectChat", appId: state.appId, chatId: state.chatId },
             ],
           };

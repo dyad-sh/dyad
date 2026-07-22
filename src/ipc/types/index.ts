@@ -64,6 +64,7 @@ export { appCollectionContracts } from "./app_collections";
 export { terminalContracts } from "./terminal";
 export { testsContracts, testsEvents } from "./tests";
 export { userInputContracts, userInputEvents } from "./user_input";
+export { firstPromptSendContracts } from "./first_prompt";
 
 // =============================================================================
 // Client Exports
@@ -107,6 +108,7 @@ export { appCollectionClient } from "./app_collections";
 export { terminalClient } from "./terminal";
 export { testsClient, testsEventClient } from "./tests";
 export { userInputClient, userInputEventClient } from "./user_input";
+export { firstPromptClient } from "./first_prompt";
 
 // =============================================================================
 // Type Exports
@@ -468,6 +470,7 @@ import { terminalClient } from "./terminal";
 import { testsClient, testsEventClient } from "./tests";
 import { queueClient } from "./queue";
 import { userInputClient, userInputEventClient } from "./user_input";
+import { firstPromptClient } from "./first_prompt";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -535,6 +538,7 @@ export const ipc = {
   tests: testsClient,
   queue: queueClient,
   userInput: userInputClient,
+  firstPrompt: firstPromptClient,
 
   // Event clients for main->renderer pub/sub
   events: {

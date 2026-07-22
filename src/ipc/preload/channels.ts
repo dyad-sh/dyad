@@ -59,6 +59,7 @@ import { terminalContracts } from "../types/terminal";
 import { testsContracts, testsEvents } from "../types/tests";
 import { queueContracts, queueSendContracts } from "../types/queue";
 import { userInputContracts, userInputEvents } from "../types/user_input";
+import { firstPromptSendContracts } from "../types/first_prompt";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -142,6 +143,7 @@ export const VALID_INVOKE_CHANNELS = [
  */
 export const VALID_SEND_CHANNELS = [
   ...getSendChannels(queueSendContracts),
+  ...getSendChannels(firstPromptSendContracts),
 ] as const;
 
 // =============================================================================

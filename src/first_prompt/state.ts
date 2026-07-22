@@ -41,6 +41,7 @@ export type FirstPromptState =
   | {
       readonly type: "awaitingProviderSetup";
       readonly payload: FirstPromptPayload;
+      readonly reason: "manual" | "missing-provider" | "provider-check-timeout";
     }
   | { readonly type: "creating"; readonly payload: FirstPromptPayload }
   | {
@@ -104,7 +105,9 @@ export type FirstPromptEvent =
   | { readonly type: "POST_CREATE_FAILED"; readonly message: string }
   | { readonly type: "SETTLED" }
   | { readonly type: "PREVIEW_DECISION"; readonly opened: boolean }
+  | { readonly type: "PREVIEW_DECISION_FAILED"; readonly message: string }
   | { readonly type: "REFRESHED" }
+  | { readonly type: "REFRESH_FAILED"; readonly message: string }
   | { readonly type: "RETRY" }
   | { readonly type: "RESET" };
 

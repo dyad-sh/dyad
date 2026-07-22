@@ -61,7 +61,12 @@ export function transition(
         case "submit": {
           const streamId = state.lastStreamId + 1;
           return {
-            state: { type: "starting", streamId, request: event.request },
+            state: {
+              type: "starting",
+              streamId,
+              request: event.request,
+              targetAppId: null,
+            },
             commands: [
               { type: "start-stream", streamId, request: event.request },
             ],
@@ -73,6 +78,7 @@ export function transition(
           return { state, commands: [{ type: "dispatch-next-queued" }] };
         case "cancel":
         case "registered":
+        case "stream-context":
         case "chunk-received":
         case "stream-ended":
         case "stream-errored":
@@ -101,6 +107,7 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               registered: false,
+              targetAppId: state.targetAppId,
             },
             commands: [{ type: "request-abort" }],
           };
@@ -110,7 +117,17 @@ export function transition(
               type: "streaming",
               streamId: state.streamId,
               request: state.request,
+              targetAppId: state.targetAppId,
             },
+            commands: [],
+          };
+        case "stream-context":
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
+          if (event.targetAppId === state.targetAppId) {
+            return ignore(state, "already-registered");
+          }
+          return {
+            state: { ...state, targetAppId: event.targetAppId },
             commands: [],
           };
         case "chunk-received":
@@ -122,6 +139,7 @@ export function transition(
               type: "streaming",
               streamId: state.streamId,
               request: state.request,
+              targetAppId: state.targetAppId,
             },
             commands: [],
           };
@@ -133,12 +151,14 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
+              targetAppId: state.targetAppId,
             },
             commands: [
               {
                 type: "run-end-side-effects",
                 streamId: state.streamId,
                 request: state.request,
+                targetAppId: state.targetAppId,
                 response: event.response,
               },
             ],
@@ -156,6 +176,7 @@ export function transition(
                 type: "run-error-side-effects",
                 streamId: state.streamId,
                 request: state.request,
+                targetAppId: state.targetAppId,
                 error: event.error,
                 warningMessages: event.warningMessages,
               },
@@ -183,6 +204,7 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               registered: true,
+              targetAppId: state.targetAppId,
             },
             commands: [{ type: "request-abort" }],
           };
@@ -194,12 +216,14 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
+              targetAppId: state.targetAppId,
             },
             commands: [
               {
                 type: "run-end-side-effects",
                 streamId: state.streamId,
                 request: state.request,
+                targetAppId: state.targetAppId,
                 response: event.response,
               },
             ],
@@ -217,6 +241,7 @@ export function transition(
                 type: "run-error-side-effects",
                 streamId: state.streamId,
                 request: state.request,
+                targetAppId: state.targetAppId,
                 error: event.error,
                 warningMessages: event.warningMessages,
               },
@@ -224,6 +249,15 @@ export function transition(
           };
         case "registered":
           return ignore(state, "already-registered");
+        case "stream-context":
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
+          if (event.targetAppId === state.targetAppId) {
+            return ignore(state, "already-registered");
+          }
+          return {
+            state: { ...state, targetAppId: event.targetAppId },
+            commands: [],
+          };
         case "chunk-received":
           return ignore(
             state,
@@ -267,12 +301,14 @@ export function transition(
               streamId: state.streamId,
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
+              targetAppId: state.targetAppId,
             },
             commands: [
               {
                 type: "run-end-side-effects",
                 streamId: state.streamId,
                 request: state.request,
+                targetAppId: state.targetAppId,
                 response: event.response,
               },
             ],
@@ -291,6 +327,7 @@ export function transition(
                 type: "run-error-side-effects",
                 streamId: state.streamId,
                 request: state.request,
+                targetAppId: state.targetAppId,
                 error: event.error,
                 warningMessages: event.warningMessages,
               },
@@ -298,6 +335,15 @@ export function transition(
           };
         case "cancel":
           return ignore(state, "already-cancelling");
+        case "stream-context":
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
+          if (event.targetAppId === state.targetAppId) {
+            return ignore(state, "already-registered");
+          }
+          return {
+            state: { ...state, targetAppId: event.targetAppId },
+            commands: [],
+          };
         case "chunk-received":
           return ignore(
             state,
@@ -335,6 +381,15 @@ export function transition(
           return ignore(state, "too-late-to-cancel");
         case "registered":
           return ignore(state, "already-registered");
+        case "stream-context":
+          if (isStale(state, event)) return ignore(state, "stale-stream-id");
+          if (event.targetAppId === state.targetAppId) {
+            return ignore(state, "already-registered");
+          }
+          return {
+            state: { ...state, targetAppId: event.targetAppId },
+            commands: [],
+          };
         case "chunk-received":
         case "stream-ended":
         case "stream-errored":
@@ -353,7 +408,12 @@ export function transition(
         case "submit": {
           const streamId = state.lastStreamId + 1;
           return {
-            state: { type: "starting", streamId, request: event.request },
+            state: {
+              type: "starting",
+              streamId,
+              request: event.request,
+              targetAppId: null,
+            },
             commands: [
               { type: "start-stream", streamId, request: event.request },
             ],
@@ -365,6 +425,7 @@ export function transition(
           return { state, commands: [{ type: "dispatch-next-queued" }] };
         case "cancel":
         case "registered":
+        case "stream-context":
         case "chunk-received":
         case "stream-ended":
         case "stream-errored":

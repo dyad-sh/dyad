@@ -27,19 +27,31 @@ function endResponse(wasCancelled?: boolean) {
 
 const STATE_FACTORIES: Record<StreamState["type"], () => StreamState> = {
   idle: () => ({ type: "idle", lastStreamId: 3 }),
-  starting: () => ({ type: "starting", streamId: 4, request: makeRequest() }),
-  streaming: () => ({ type: "streaming", streamId: 4, request: makeRequest() }),
+  starting: () => ({
+    type: "starting",
+    streamId: 4,
+    request: makeRequest(),
+    targetAppId: null,
+  }),
+  streaming: () => ({
+    type: "streaming",
+    streamId: 4,
+    request: makeRequest(),
+    targetAppId: null,
+  }),
   cancelling: () => ({
     type: "cancelling",
     streamId: 4,
     request: makeRequest(),
     registered: false,
+    targetAppId: null,
   }),
   finalizing: () => ({
     type: "finalizing",
     streamId: 4,
     request: makeRequest(),
     wasCancelled: false,
+    targetAppId: null,
   }),
   errored: () => ({ type: "errored", lastStreamId: 4, error: "boom" }),
 };
@@ -51,6 +63,8 @@ function eventVariants(): StreamEvent[] {
     { type: "submit", request: makeRequest({ prompt: "queued" }) },
     { type: "cancel" },
     { type: "registered" },
+    { type: "stream-context", streamId: 4, targetAppId: 9 },
+    { type: "stream-context", streamId: 999, targetAppId: 9 },
     { type: "chunk-received", streamId: 4 },
     { type: "chunk-received", streamId: 999 },
     { type: "stream-ended", streamId: 4, response: endResponse() },
@@ -250,6 +264,58 @@ describe("happy path", () => {
     });
     expect(result.state).toEqual({ type: "idle", lastStreamId: 1 });
     expect(result.commands).toEqual([{ type: "dispatch-next-queued" }]);
+  });
+
+  it("retains resolved stream context across registration and terminal commands", () => {
+    let result = step(initialStreamState(), {
+      type: "submit",
+      request: makeRequest(),
+    });
+    result = step(result.state, {
+      type: "stream-context",
+      streamId: 1,
+      targetAppId: 23,
+    });
+    expect(result.state).toMatchObject({
+      type: "starting",
+      targetAppId: 23,
+    });
+
+    result = step(result.state, { type: "registered" });
+    expect(result.state).toMatchObject({
+      type: "streaming",
+      targetAppId: 23,
+    });
+
+    result = step(result.state, {
+      type: "stream-ended",
+      streamId: 1,
+      response: endResponse(),
+    });
+    expect(result.commands[0]).toMatchObject({
+      type: "run-end-side-effects",
+      targetAppId: 23,
+    });
+  });
+
+  it("accepts stream context after registration and rejects stale context", () => {
+    const streaming = STATE_FACTORIES.streaming();
+    const stale = step(streaming, {
+      type: "stream-context",
+      streamId: 999,
+      targetAppId: 23,
+    });
+    expect(stale.ignoredReason).toBe("stale-stream-id");
+
+    const current = step(streaming, {
+      type: "stream-context",
+      streamId: 4,
+      targetAppId: 23,
+    });
+    expect(current.state).toMatchObject({
+      type: "streaming",
+      targetAppId: 23,
+    });
   });
 
   it("promotes starting -> streaming on the first chunk when the registration event was missed", () => {

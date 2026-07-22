@@ -17,8 +17,10 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => ({ id: CHAT_ID }),
 }));
 
-vi.mock("@/chat_stream/registry", () => ({
-  ensureController: () => ({ send: mocks.controllerSend }),
+vi.mock("@/chat_stream/ChatStreamProvider", () => ({
+  useChatStreamManager: () => ({
+    ensure: () => ({ send: mocks.controllerSend }),
+  }),
 }));
 
 function makeWrapper() {

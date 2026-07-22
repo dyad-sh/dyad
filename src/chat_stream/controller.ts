@@ -32,6 +32,8 @@ export interface ChatStreamController {
   isSettled(): boolean;
   /** True while any React subscriber is attached. */
   hasSubscribers(): boolean;
+  /** Number of active snapshot subscribers, including owner subscriptions. */
+  subscriberCount(): number;
   /** Permanently stop this controller and release renderer transport state. */
   dispose(): void;
 }
@@ -73,6 +75,7 @@ export function createChatStreamController(
     send,
     isSettled: () => !draining && commandQueue.length === 0,
     hasSubscribers: () => store.subscriberCount() > 0,
+    subscriberCount: () => store.subscriberCount(),
     dispose,
   };
 
@@ -174,6 +177,7 @@ export function createChatStreamController(
             chatId,
             streamId: command.streamId,
             request: command.request,
+            targetAppId: command.targetAppId,
             response: command.response,
           });
         } catch {
@@ -190,6 +194,7 @@ export function createChatStreamController(
             chatId,
             streamId: command.streamId,
             request: command.request,
+            targetAppId: command.targetAppId,
             error: command.error,
             warningMessages: command.warningMessages,
           }),

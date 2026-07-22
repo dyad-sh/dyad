@@ -70,7 +70,11 @@ import type { RendererEvent } from "./electron_mock";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   attachmentsAtom,
+  chatErrorByIdAtom,
   chatInputValuesByIdAtom,
+  isStreamingByIdAtom,
+  queuePausedByIdAtom,
+  queuedMessagesByIdAtom,
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
@@ -90,20 +94,8 @@ import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider
 import { AppRunManager } from "@/app_run/manager";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
-import { ensureController as ensureChatStreamController } from "@/chat_stream/registry";
-
-const planHandoffChatStream = {
-  submit: (request: {
-    chatId: number;
-    prompt: string;
-    selectedComponents: [];
-    requestedChatMode: "local-agent";
-  }) =>
-    ensureChatStreamController(request.chatId).send({
-      type: "submit",
-      request,
-    }),
-};
+import { ChatStreamManager } from "@/chat_stream/manager";
+import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -297,6 +289,10 @@ export interface HybridChatHarness extends ChatFlowHarness {
   /** Seed/read a chat's transient plan-acceptance routing choice. */
   setPlanAcceptInNewChat: (chatId: number, value: boolean) => void;
   getPlanAcceptInNewChat: (chatId: number) => boolean | undefined;
+
+  /** Seed/read the four transient maps owned by ChatStreamManager. */
+  seedChatStreamResidue: (chatId: number) => void;
+  hasChatStreamResidue: (chatId: number) => boolean;
 
   /** Drive a Base UI popover/menu trigger in happy-dom. */
   openPopover: (trigger: HTMLElement) => Promise<void>;
@@ -505,9 +501,11 @@ function encodeSearch(search: Record<string, unknown>): string {
 function HybridAppEventWiring({
   store,
   queryClient,
+  chatStreamManager,
 }: {
   store: JotaiStore;
   queryClient: QueryClient;
+  chatStreamManager: ChatStreamManager;
 }) {
   useEffect(
     () =>
@@ -515,8 +513,9 @@ function HybridAppEventWiring({
         ipcClient: ipc,
         store,
         queryClient,
+        chatStreamManager,
       }),
-    [queryClient, store],
+    [chatStreamManager, queryClient, store],
   );
   return null;
 }
@@ -603,6 +602,7 @@ export async function setupHybridChatHarness(
 
     let activeStore: JotaiStore | undefined;
     const queryClients: QueryClient[] = [];
+    const chatStreamManagers: ChatStreamManager[] = [];
     const assertNoMissingChannels = options.assertNoMissingChannels ?? true;
 
     const getActiveStore = (): JotaiStore => {
@@ -641,10 +641,25 @@ export async function setupHybridChatHarness(
       const appId = opts.appId ?? nodeHarness.appId;
       const route = opts.route ?? "/chat";
       const store = createStore();
+      const chatStreamManager = new ChatStreamManager(store);
+      chatStreamManagers.push(chatStreamManager);
       activeStore = store;
 
       store.set(selectedAppIdAtom, appId);
       store.set(selectedChatIdAtom, route === "/chat" ? chatId : null);
+
+      const planHandoffChatStream = {
+        submit: (request: {
+          chatId: number;
+          prompt: string;
+          selectedComponents: [];
+          requestedChatMode: "local-agent";
+        }) =>
+          chatStreamManager.ensure(request.chatId).send({
+            type: "submit",
+            request,
+          }),
+      };
 
       const RootComponent = () => (
         <PlanHandoffProvider chatStream={planHandoffChatStream}>
@@ -878,24 +893,27 @@ export async function setupHybridChatHarness(
       const result = render(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
-            <AppRunProvider manager={appRunManager}>
-              <VersionPreviewProvider manager={versionPreviewManager}>
-                <ThemeProvider>
-                  <DeepLinkProvider>
-                    <SidebarProvider defaultOpen={false}>
-                      {opts.wireAppEvents !== false && (
-                        <HybridAppEventWiring
-                          store={store}
-                          queryClient={queryClient}
-                        />
-                      )}
-                      <RouterProvider router={router as never} />
-                      <Toaster richColors expand duration={500} />
-                    </SidebarProvider>
-                  </DeepLinkProvider>
-                </ThemeProvider>
-              </VersionPreviewProvider>
-            </AppRunProvider>
+            <ChatStreamProvider manager={chatStreamManager}>
+              <AppRunProvider manager={appRunManager}>
+                <VersionPreviewProvider manager={versionPreviewManager}>
+                  <ThemeProvider>
+                    <DeepLinkProvider>
+                      <SidebarProvider defaultOpen={false}>
+                        {opts.wireAppEvents !== false && (
+                          <HybridAppEventWiring
+                            store={store}
+                            queryClient={queryClient}
+                            chatStreamManager={chatStreamManager}
+                          />
+                        )}
+                        <RouterProvider router={router as never} />
+                        <Toaster richColors expand duration={500} />
+                      </SidebarProvider>
+                    </DeepLinkProvider>
+                  </ThemeProvider>
+                </VersionPreviewProvider>
+              </AppRunProvider>
+            </ChatStreamProvider>
           </Provider>
         </QueryClientProvider>,
       );
@@ -923,6 +941,26 @@ export async function setupHybridChatHarness(
 
     const getPlanAcceptInNewChat = (chatId: number) =>
       getActiveStore().get(planAcceptInNewChatByChatIdAtom).get(chatId);
+
+    const seedChatStreamResidue = (chatId: number) => {
+      const store = getActiveStore();
+      act(() => {
+        store.set(queuedMessagesByIdAtom, new Map([[chatId, []]]));
+        store.set(queuePausedByIdAtom, new Map([[chatId, true]]));
+        store.set(chatErrorByIdAtom, new Map([[chatId, "seeded"]]));
+        store.set(isStreamingByIdAtom, new Map([[chatId, false]]));
+      });
+    };
+
+    const hasChatStreamResidue = (chatId: number) => {
+      const store = getActiveStore();
+      return [
+        store.get(queuedMessagesByIdAtom),
+        store.get(queuePausedByIdAtom),
+        store.get(chatErrorByIdAtom),
+        store.get(isStreamingByIdAtom),
+      ].some((entries) => entries.has(chatId));
+    };
 
     const setChatAttachments = (attachments: ChatAttachmentSeed[]) => {
       const store = getActiveStore();
@@ -1417,6 +1455,9 @@ export async function setupHybridChatHarness(
         for (const qc of queryClients) {
           qc.clear();
         }
+        for (const manager of chatStreamManagers) {
+          manager.dispose();
+        }
         activeStore = undefined;
         activeRouter = undefined;
         bridge.uninstall();
@@ -1468,6 +1509,8 @@ export async function setupHybridChatHarness(
       setSelectedAppId,
       setPlanAcceptInNewChat,
       getPlanAcceptInNewChat,
+      seedChatStreamResidue,
+      hasChatStreamResidue,
       openPopover,
       clickMenuItem,
       findDialog,

@@ -4,7 +4,7 @@ import { ThemeProvider } from "../contexts/ThemeContext";
 import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useRunApp, useAppOutputSubscription } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -30,22 +30,25 @@ import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
-import { ensureController as ensureChatStreamController } from "@/chat_stream/registry";
-
-const planHandoffChatStream = {
-  submit: (request: {
-    chatId: number;
-    prompt: string;
-    selectedComponents: [];
-    requestedChatMode: "local-agent";
-  }) =>
-    ensureChatStreamController(request.chatId).send({
-      type: "submit",
-      request,
-    }),
-};
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const chatStreamManager = useChatStreamManager();
+  const planHandoffChatStream = useMemo(
+    () => ({
+      submit: (request: {
+        chatId: number;
+        prompt: string;
+        selectedComponents: [];
+        requestedChatMode: "local-agent";
+      }) =>
+        chatStreamManager.ensure(request.chatId).send({
+          type: "submit",
+          request,
+        }),
+    }),
+    [chatStreamManager],
+  );
   return (
     <AppRunProvider>
       <PlanHandoffProvider chatStream={planHandoffChatStream}>

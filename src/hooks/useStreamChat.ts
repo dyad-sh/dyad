@@ -10,7 +10,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import type { Chat } from "@/ipc/types";
-import { ensureController } from "@/chat_stream/registry";
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { StreamSettledResult } from "@/chat_stream/state";
 import { isStreamActive } from "@/chat_stream/transition";
 import { showError } from "@/lib/toast";
@@ -42,6 +42,7 @@ export function useStreamChat({
   );
   const queuePausedById = useAtomValue(queuePausedByIdAtom);
   const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
+  const chatStreamManager = useChatStreamManager();
 
   let chatId: number | undefined;
   if (hasChatId) {
@@ -89,7 +90,7 @@ export function useStreamChat({
       // stream immediately; chats with an active stream get the submission
       // queued (never dropped, even in the render lag window where the
       // `isStreaming` projection hasn't caught up yet).
-      ensureController(chatId).send({
+      chatStreamManager.ensure(chatId).send({
         type: "submit",
         request: {
           prompt,
@@ -103,12 +104,12 @@ export function useStreamChat({
         },
       });
     },
-    [],
+    [chatStreamManager],
   );
 
   const cancelStream = useCallback(() => {
     if (chatId === undefined) return;
-    const controller = ensureController(chatId);
+    const controller = chatStreamManager.ensure(chatId);
     if (isStreamActive(controller.getSnapshot())) {
       controller.send({ type: "cancel" });
       return;
@@ -122,7 +123,7 @@ export function useStreamChat({
       next.set(chatId, false);
       return next;
     });
-  }, [chatId, setIsStreamingById]);
+  }, [chatId, chatStreamManager, setIsStreamingById]);
 
   // Memoize queue management functions to prevent unnecessary re-renders
   // in components that depend on these functions (e.g., restore effect)
@@ -144,10 +145,10 @@ export function useStreamChat({
       // dispatch. Poke it after the synchronous atom update so the newly
       // appended item is not left without a driver. Active machines ignore
       // the poke and drain normally when they finalize.
-      ensureController(chatId).send({ type: "queue-poked" });
+      chatStreamManager.ensure(chatId).send({ type: "queue-poked" });
       return true;
     },
-    [chatId, setQueuedMessagesById],
+    [chatId, chatStreamManager, setQueuedMessagesById],
   );
 
   const updateQueuedMessage = useCallback(
@@ -278,7 +279,7 @@ export function useStreamChat({
       // Poke the machine: if it's idle (or errored) it emits a
       // dispatch-next-queued command; if a stream is active the poke is
       // ignored and the queue drains on the next finalize.
-      ensureController(chatId).send({ type: "queue-poked" });
-    }, [chatId, setQueuePausedById]),
+      chatStreamManager.ensure(chatId).send({ type: "queue-poked" });
+    }, [chatId, chatStreamManager, setQueuePausedById]),
   };
 }

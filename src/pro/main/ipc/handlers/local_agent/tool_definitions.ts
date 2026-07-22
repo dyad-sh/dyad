@@ -34,6 +34,7 @@ import { runTestsTool } from "./tools/run_tests";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import { exploreCodeTool } from "./tools/explore_code";
+import { exploreChatHistoryTool } from "./tools/explore_chat_history";
 import { searchChatsTool } from "./tools/search_chats";
 import { readChatTool } from "./tools/read_chat";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
@@ -109,6 +110,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   grepTool,
   codeSearchTool,
   exploreCodeTool,
+  exploreChatHistoryTool,
   searchChatsTool,
   readChatTool,
   getSupabaseProjectInfoTool,
@@ -529,6 +531,17 @@ export function shouldIncludeTool(
     return false;
   }
   if (options.freeModelMode && tool.usesEngineEndpoint) {
+    return false;
+  }
+  // search_chats is superseded by the explore_chat_history sub-agent wherever
+  // the explorer is present (Pro): broad recall routes through the explorer
+  // and targeted drill-down through read_chat. When the explorer is filtered
+  // out (non-Pro, free-model mode), direct search remains available so chat
+  // history stays reachable.
+  if (
+    tool.name === "search_chats" &&
+    shouldIncludeTool(exploreChatHistoryTool, ctx, options)
+  ) {
     return false;
   }
   // Skip app blueprint tools when the feature is disabled.

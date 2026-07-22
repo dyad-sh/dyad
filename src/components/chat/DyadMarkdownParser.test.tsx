@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as parserModule from "@/lib/streamingMessageParser";
@@ -27,6 +28,12 @@ vi.mock("react-markdown", () => ({
 
 vi.mock("../preview_panel/FileEditor", () => ({
   FileEditor: () => null,
+}));
+
+vi.mock("./CodeHighlight", () => ({
+  CodeHighlight: ({ children }: { children: ReactNode }) => (
+    <pre>{children}</pre>
+  ),
 }));
 
 vi.mock("@/hooks/useStreamChat", () => ({
@@ -103,6 +110,29 @@ describe("DyadMarkdownParser dyad-command", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/Unsupported:/)).toBeNull();
   });
+});
+
+describe("DyadMarkdownParser dyad-explore-chat-history", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it.each(["partial", "no_match"])(
+    "keeps a persisted %s report expanded",
+    (outcome) => {
+      render(
+        <DyadMarkdownParser
+          content={`<dyad-explore-chat-history query="auth" chats="1" evidence="2" outcome="${outcome}">Historical evidence</dyad-explore-chat-history>`}
+        />,
+      );
+
+      expect(
+        screen
+          .getByTestId("dyad-explore-chat-history")
+          .getAttribute("aria-expanded"),
+      ).toBe("true");
+    },
+  );
 });
 
 describe("DyadMarkdownParser dyad-git", () => {

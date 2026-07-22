@@ -79,6 +79,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-generate-test",
   "dyad-search-chats",
   "dyad-read-chat",
+  "dyad-explore-chat-history",
 ];
 const DYAD_CUSTOM_TAG_SET = new Set(DYAD_CUSTOM_TAG_NAMES);
 

@@ -120,6 +120,19 @@
     "chatNumber": "聊天 #{{chatId}}",
     "messagesRange": "消息 {{range}}"
   },
+  "exploreChatHistory": {
+    "badge": "历史记录",
+    "title": "探索聊天历史",
+    "chatCount_one": "{{count}} 个聊天",
+    "chatCount_other": "{{count}} 个聊天",
+    "evidenceCount_one": "{{count}} 条证据",
+    "evidenceCount_other": "{{count}} 条证据",
+    "noRelevantHistory": "没有相关历史记录",
+    "partial": "部分结果",
+    "exploring": "正在探索...",
+    "didNotFinish": "未完成",
+    "failed": "失败"
+  },
   "git": {
     "checkingChanges": "正在检查项目更改",
     "checkedChanges": "已检查项目更改",

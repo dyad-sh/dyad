@@ -17,6 +17,8 @@ export interface ModelOption {
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
 export const GPT_5_5_MODEL_NAME = "gpt-5.5";
+export const GPT_5_6_LUNA_MODEL_NAME = "gpt-5.6-luna";
+export const GPT_5_6_SOL_MODEL_NAME = "gpt-5.6-sol";
 export const SONNET_4_6 = "claude-sonnet-4-6";
 export const OPUS_4_6 = "claude-opus-4-6";
 export const OPUS_4_8 = "claude-opus-4-8";
@@ -28,6 +30,23 @@ export const GPT_5_NANO = "gpt-5-nano";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
+    {
+      name: GPT_5_6_LUNA_MODEL_NAME,
+      displayName: "GPT 5.6 Luna",
+      description:
+        "Fast agentic coding model used by Dyad Explorer and Implementer",
+      contextWindow: 372_000,
+      temperature: 1,
+      dollarSigns: 6,
+    },
+    {
+      name: GPT_5_6_SOL_MODEL_NAME,
+      displayName: "GPT 5.6 Sol",
+      description: "Frontier agentic coding model used by Dyad Reviewer",
+      contextWindow: 372_000,
+      temperature: 1,
+      dollarSigns: 6,
+    },
     {
       name: GPT_5_5_MODEL_NAME,
       displayName: "GPT 5.5",

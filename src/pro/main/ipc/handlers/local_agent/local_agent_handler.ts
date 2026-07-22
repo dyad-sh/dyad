@@ -68,6 +68,12 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { deleteAppBlueprintForChat } from "@/ipc/handlers/app_blueprint_handlers";
+import {
+  cancelSubagent,
+  endRootFinalization,
+  isAcceptableImplementerJoinStatus,
+  waitForSubagentsAndBeginFinalization,
+} from "./subagents/subagent_manager";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -317,10 +323,10 @@ function injectReferencedAppsReminder(
   options: { codeExplorerAvailable: boolean },
 ): void {
   const list = referencedApps.map(({ appName }) => `\`${appName}\``).join(", ");
-  const searchTool = options.codeExplorerAvailable
-    ? "`explore_code`"
-    : "`code_search`";
-  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, ${searchTool}); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+  const explorerGuidance = options.codeExplorerAvailable
+    ? " You may assign an Explorer to inspect a referenced app; name that app explicitly in the assignment, and the child must pass `app_name` to its read tools."
+    : "";
+  const reminder = `\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${list}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`, \`code_search\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.${explorerGuidance}\n</system-reminder>`;
 
   for (let i = messageHistory.length - 1; i >= 0; i--) {
     const msg = messageHistory[i];
@@ -663,6 +669,9 @@ export async function handleLocalAgentStream(
   // Snapshot of todos persisted by a previous turn. Declared outside the try so
   // the cancellation handler in `catch` can roll back to this pre-turn state.
   let persistedTodos: Todo[] = [];
+  const spawnedSubagentThreadIds: string[] = [];
+  const spawnedImplementerThreadIds: string[] = [];
+  let rootFinalizationActive = false;
 
   try {
     // Get model client
@@ -711,12 +720,21 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       sharedServerModulePaths: [],
       pendingFunctionDeploys: [],
+      spawnedSubagentThreadIds,
+      spawnedImplementerThreadIds,
       todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
       testingEnabled: Boolean(chat.app.testingEnabled),
       testRunAttempts: new Map(),
       isDyadPro: isDyadProEnabled(settings),
+      canUseExplorerSubagent:
+        isDyadProEnabled(settings) && settings.enableExplorerSubagent !== false,
+      canUseImplementerSubagent:
+        isDyadProEnabled(settings) &&
+        settings.enableImplementerSubagent === true &&
+        !readOnly &&
+        !planModeOnly,
       freeModelMode: effectiveFreeModelMode,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
@@ -742,6 +760,12 @@ export async function handleLocalAgentStream(
         toolDescription?: string | null;
         inputPreview?: string | null;
         metadata?: SqlConsentMetadata | null;
+        abortSignal?: AbortSignal;
+        subagent?: {
+          threadId: string;
+          persona: "explorer" | "implementer";
+          taskName: string;
+        };
       }) => {
         return requireAgentToolConsent(event, {
           chatId: chat.id,
@@ -749,7 +773,8 @@ export async function handleLocalAgentStream(
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
           metadata: params.metadata,
-          abortSignal: abortController.signal,
+          subagent: params.subagent,
+          abortSignal: params.abortSignal ?? abortController.signal,
         });
       },
       appendUserMessage: (content: UserMessageContentPart[]) => {
@@ -887,7 +912,7 @@ export async function handleLocalAgentStream(
     // so the system prompt stays static and cacheable.
     if (referencedApps.length > 0) {
       injectReferencedAppsReminder(messageHistory, referencedApps, {
-        codeExplorerAvailable: agentTools.explore_code != undefined,
+        codeExplorerAvailable: agentTools.spawn_agent != undefined,
       });
     }
 
@@ -1099,7 +1124,7 @@ export async function handleLocalAgentStream(
                       referencedApps,
                       {
                         codeExplorerAvailable:
-                          agentTools.explore_code != undefined,
+                          agentTools.spawn_agent != undefined,
                       },
                     );
                   }
@@ -1620,6 +1645,33 @@ export async function handleLocalAgentStream(
       );
     }
 
+    const implementerThreadIds = ctx.spawnedImplementerThreadIds ?? [];
+    if (abortController.signal.aborted) {
+      await Promise.allSettled(
+        spawnedSubagentThreadIds.map((threadId) =>
+          cancelSubagent(ctx.chatId, threadId),
+        ),
+      );
+    } else if (!readOnly && !planModeOnly) {
+      const implementers = await waitForSubagentsAndBeginFinalization(
+        ctx.chatId,
+        implementerThreadIds,
+        ctx.appId,
+        abortController.signal,
+      );
+      rootFinalizationActive = true;
+      const unsuccessful = implementers.filter(
+        (thread) => !isAcceptableImplementerJoinStatus(thread.status),
+      );
+      if (unsuccessful.length > 0) {
+        throw new Error(
+          `Implementer sub-agent did not complete successfully: ${unsuccessful
+            .map((thread) => `${thread.taskName} (${thread.status})`)
+            .join(", ")}`,
+        );
+      }
+    }
+
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
       await db
@@ -1784,8 +1836,16 @@ export async function handleLocalAgentStream(
       pausePromptQueue: hitStepLimit || undefined,
     } satisfies ChatResponseEnd);
 
+    if (rootFinalizationActive) {
+      await endRootFinalization(chat.app.id);
+      rootFinalizationActive = false;
+    }
     return true; // Success
   } catch (error) {
+    if (rootFinalizationActive) {
+      await endRootFinalization(chat.app.id);
+      rootFinalizationActive = false;
+    }
     // Clean up any pending consent/questionnaire/integration requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingLocalAgentInputsForChat(req.chatId);
@@ -1796,6 +1856,15 @@ export async function handleLocalAgentStream(
     if (abortController.signal.aborted) {
       deleteAppBlueprintForChat(req.chatId);
     }
+
+    // A terminal root failure must not leave child work running after the UI
+    // reports that the owning turn has ended. This is especially important for
+    // Implementers, which may still hold the mutation lease and edit files.
+    await Promise.allSettled(
+      spawnedSubagentThreadIds.map((threadId) =>
+        cancelSubagent(req.chatId, threadId),
+      ),
+    );
 
     if (abortController.signal.aborted) {
       // Handle cancellation

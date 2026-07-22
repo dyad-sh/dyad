@@ -15,6 +15,13 @@
  */
 
 export const queryKeys = {
+  subagents: {
+    all: ["subagents"] as const,
+    byChat: ({ chatId }: { chatId: number }) => ["subagents", chatId] as const,
+    messages: ({ chatId, threadId }: { chatId: number; threadId: string }) =>
+      ["subagents", chatId, "messages", threadId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // System
   // ─────────────────────────────────────────────────────────────────────────────
@@ -422,6 +429,7 @@ export type QueryKeyOf<T> = T extends readonly unknown[]
 
 /** All possible query keys (useful for typing queryClient operations) */
 export type AppQueryKey =
+  | QueryKeyOf<(typeof queryKeys.subagents)[keyof typeof queryKeys.subagents]>
   | QueryKeyOf<(typeof queryKeys.system)[keyof typeof queryKeys.system]>
   | QueryKeyOf<(typeof queryKeys.settings)[keyof typeof queryKeys.settings]>
   | QueryKeyOf<(typeof queryKeys.apps)[keyof typeof queryKeys.apps]>

@@ -58,6 +58,9 @@ export function useChatStreamRuntime(): void {
       queryClient,
       getSettings: () => settingsRef.current,
       getPosthog: () => posthogRef.current ?? null,
+      submitRequest: (request) => {
+        ensureController(request.chatId).send({ type: "submit", request });
+      },
     });
   }, [store, queryClient]);
 

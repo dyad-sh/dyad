@@ -166,6 +166,10 @@ export type {
   AgentTodo,
   AgentToolConsentRequestPayload,
   AgentToolConsentDecision,
+  SubagentPersona,
+  SubagentStatus,
+  SubagentThreadSummary,
+  SubagentMessage,
   AgentToolConsentResponseParams,
   AgentTodosUpdatePayload,
   AgentProblemsUpdatePayload,
@@ -173,6 +177,7 @@ export type {
   Problem,
   ProblemReport,
 } from "./agent";
+export { isSubagentAcceptingMessages } from "./agent";
 
 // GitHub types
 export type {

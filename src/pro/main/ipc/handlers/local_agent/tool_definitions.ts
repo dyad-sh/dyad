@@ -37,6 +37,15 @@ import { exploreCodeTool } from "./tools/explore_code";
 import { exploreChatHistoryTool } from "./tools/explore_chat_history";
 import { searchChatsTool } from "./tools/search_chats";
 import { readChatTool } from "./tools/read_chat";
+import {
+  cancelAgentTool,
+  compilerExploreTool,
+  followupTaskTool,
+  listAgentsTool,
+  sendMessageTool,
+  spawnAgentTool,
+  waitAgentsTool,
+} from "./tools/subagent_tools";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
@@ -73,6 +82,10 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 import { getNeonClientCode } from "@/neon_admin/neon_context";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ExecuteAddDependencyError } from "@/ipc/processors/executeAddDependency";
+import {
+  assertMutationLease,
+  withMutationAdmission,
+} from "./subagents/mutation_lease";
 
 function getToolErrorDisplayDetails(error: unknown): string {
   if (error instanceof ExecuteAddDependencyError) {
@@ -113,6 +126,13 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   exploreChatHistoryTool,
   searchChatsTool,
   readChatTool,
+  compilerExploreTool,
+  spawnAgentTool,
+  listAgentsTool,
+  waitAgentsTool,
+  cancelAgentTool,
+  sendMessageTool,
+  followupTaskTool,
   getSupabaseProjectInfoTool,
   getNeonProjectInfoTool,
   getDatabaseTableSchemaTool,
@@ -294,6 +314,11 @@ export async function requireAgentToolConsent(
     inputPreview?: string | null;
     metadata?: SqlConsentMetadata | null;
     abortSignal?: AbortSignal;
+    subagent?: {
+      threadId: string;
+      persona: "explorer" | "implementer";
+      taskName: string;
+    };
   },
 ): Promise<boolean> {
   const current = getAgentToolConsent(params.toolName);
@@ -323,11 +348,16 @@ export async function requireAgentToolConsent(
     ...rendererParams,
   });
 
-  const response = await waitForAgentToolConsent(
-    requestId,
-    params.chatId,
-    abortSignal,
-  );
+  let response: Awaited<ReturnType<typeof waitForAgentToolConsent>>;
+  try {
+    response = await waitForAgentToolConsent(
+      requestId,
+      params.chatId,
+      abortSignal,
+    );
+  } finally {
+    (event.sender as any).send("agent-tool:consent-resolved", { requestId });
+  }
 
   if (response === "accept-always") {
     setAgentToolConsent(params.toolName, "always");
@@ -533,6 +563,9 @@ export function shouldIncludeTool(
   if (options.freeModelMode && tool.usesEngineEndpoint) {
     return false;
   }
+  if (tool.subagentOnly && !ctx.isDyadPro) {
+    return false;
+  }
   // search_chats is superseded by the explore_chat_history sub-agent wherever
   // the explorer is present (Pro): broad recall routes through the explorer
   // and targeted drill-down through read_chat. When the explorer is filtered
@@ -580,54 +613,66 @@ export function buildAgentToolSet(
 
     toolSet[tool.name] = {
       description: tool.description,
-      inputSchema: tool.inputSchema,
+      inputSchema: tool.getInputSchema?.(ctx) ?? tool.inputSchema,
       execute: async (args: any) => {
         try {
-          // Guard against state-modifying tools running before the app
-          // blueprint approval is resolved. `write_app_blueprint` owns the
-          // approval gate; blueprint tools themselves are allowed through so
-          // the flow can progress to approval. Skip entirely when the
-          // blueprint feature is disabled — otherwise a plan left over from
-          // before the toggle would permanently block the agent.
-          //
-          // When the feature is enabled, also block if NO plan exists yet —
-          // the prompt instructs the model to call write_app_blueprint first,
-          // but the prompt isn't an enforcement boundary. Without this check,
-          // a model that skips write_app_blueprint can still call e.g.
-          // write_file and bypass the required blueprint approval flow.
-          if (
+          const mutationRequiresAdmission =
             toolModifiesState(tool, ctx) &&
-            !APP_BLUEPRINT_TOOLS.has(tool.name) &&
-            !PLANNING_SPECIFIC_TOOLS.has(tool.name) &&
-            !CAPABILITY_GATED_BLUEPRINT_TOOLS.has(tool.name)
-          ) {
-            assertAppBlueprintApproved({
-              toolName: tool.name,
-              chatId: ctx.chatId,
-              enabled: options.enableAppBlueprint !== false,
-            });
-          }
+            tool.requiresMutationLease !== false;
+          const invoke = async () => {
+            if (mutationRequiresAdmission) {
+              assertMutationLease(ctx);
+            }
+            // Guard against state-modifying tools running before the app
+            // blueprint approval is resolved. `write_app_blueprint` owns the
+            // approval gate; blueprint tools themselves are allowed through so
+            // the flow can progress to approval. Skip entirely when the
+            // blueprint feature is disabled — otherwise a plan left over from
+            // before the toggle would permanently block the agent.
+            //
+            // When the feature is enabled, also block if NO plan exists yet —
+            // the prompt instructs the model to call write_app_blueprint first,
+            // but the prompt isn't an enforcement boundary. Without this check,
+            // a model that skips write_app_blueprint can still call e.g.
+            // write_file and bypass the required blueprint approval flow.
+            if (
+              toolModifiesState(tool, ctx) &&
+              !APP_BLUEPRINT_TOOLS.has(tool.name) &&
+              !PLANNING_SPECIFIC_TOOLS.has(tool.name) &&
+              !CAPABILITY_GATED_BLUEPRINT_TOOLS.has(tool.name)
+            ) {
+              assertAppBlueprintApproved({
+                toolName: tool.name,
+                chatId: ctx.chatId,
+                enabled: options.enableAppBlueprint !== false,
+              });
+            }
 
-          const processedArgs = await processArgPlaceholders(args, ctx);
+            const processedArgs = await processArgPlaceholders(args, ctx);
 
-          // Check consent before executing the tool
-          await requireToolConsentOrThrow(tool, processedArgs, ctx);
+            // Check consent before executing the tool
+            await requireToolConsentOrThrow(tool, processedArgs, ctx);
 
-          // Track file edit tool usage before execution to capture all attempts
-          // (including failures) for retry/fallback telemetry
-          trackFileEditTool(ctx, tool.name, processedArgs);
-          const result = await tool.execute(processedArgs, ctx);
+            // Track file edit tool usage before execution to capture all attempts
+            // (including failures) for retry/fallback telemetry
+            trackFileEditTool(ctx, tool.name, processedArgs);
+            const result = await tool.execute(processedArgs, ctx);
 
-          // Only completed mutations unblock run_tests. Failed tool calls are
-          // still present in fileEditTracker for retry/fallback telemetry, but
-          // must not masquerade as a code change.
-          trackAppMutation(
-            ctx,
-            tool.name,
-            shouldTrackToolMutation(tool, processedArgs, result, ctx),
-          );
+            // Only completed mutations unblock run_tests. Failed tool calls are
+            // still present in fileEditTracker for retry/fallback telemetry, but
+            // must not masquerade as a code change.
+            trackAppMutation(
+              ctx,
+              tool.name,
+              shouldTrackToolMutation(tool, processedArgs, result, ctx),
+            );
 
-          return convertToolResultForAiSdk(result);
+            return convertToolResultForAiSdk(result);
+          };
+
+          return mutationRequiresAdmission
+            ? await withMutationAdmission(ctx.appId, invoke)
+            : await invoke();
         } catch (error) {
           const errorMessage = getToolErrorSummary(error);
           const errorDetails = getToolErrorDisplayDetails(error);

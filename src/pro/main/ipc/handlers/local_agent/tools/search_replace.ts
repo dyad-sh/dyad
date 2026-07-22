@@ -20,6 +20,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 import { withLock, getFileWriteKey } from "@/ipc/utils/lock_utils";
+import { assertImplementerPathAllowed } from "../subagents/mutation_lease";
 
 const logger = log.scope("search_replace");
 
@@ -93,6 +94,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
   },
 
   execute: async (args, ctx: AgentContext) => {
+    assertImplementerPathAllowed(ctx, args.file_path);
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
       throw new DyadError(
@@ -111,6 +113,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     if (isSharedServerModule(operationPath)) {
       ctx.isSharedModulesChanged = true;
       ctx.sharedServerModulePaths.push(operationPath);
+      ctx.onSharedServerModuleChange?.(operationPath);
     }
 
     await withLock(getFileWriteKey(fullFilePath), async () => {
@@ -155,7 +158,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     if (ctx.supabaseProjectId && isServerFunction(operationPath)) {
       try {
         const functionName = extractFunctionNameFromPath(operationPath);
-        if (!ctx.isSharedModulesChanged) {
+        if (ctx.allowDeploySideEffects === false) {
+          ctx.pendingFunctionDeploys.push(functionName);
+          ctx.onDeferredFunctionDeploy?.(functionName);
+        } else if (!ctx.isSharedModulesChanged) {
           await deploySupabaseFunction({
             supabaseProjectId: ctx.supabaseProjectId,
             functionName,

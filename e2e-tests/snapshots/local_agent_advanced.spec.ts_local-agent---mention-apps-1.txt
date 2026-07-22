@@ -21,7 +21,7 @@
         "content": [
           {
             "type": "text",
-            "text": "[dump] @app:minimal-with-ai-rules hi\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: `minimal-with-ai-rules`. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the `app_name` parameter to read-only tools (`read_file`, `list_files`, `grep`, `code_search`); matching is case-insensitive. Write tools cannot target these apps. Omit `app_name` to operate on the current app.\n</system-reminder>"
+            "text": "[dump] @app:minimal-with-ai-rules hi\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: `minimal-with-ai-rules`. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the `app_name` parameter to read-only tools (`read_file`, `list_files`, `grep`, `code_search`); matching is case-insensitive. Write tools cannot target these apps. Omit `app_name` to operate on the current app. You may assign an Explorer to inspect a referenced app; name that app explicitly in the assignment, and the child must pass `app_name` to its read tools.\n</system-reminder>"
           }
         ]
       }
@@ -179,7 +179,7 @@
       },
       {
         "name": "read_file",
-        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n\n- Batch independent file reads when several files are concretely likely to be useful.",
+        "description": "Read the content of a file from the codebase or an attachment path such as attachments:notes.txt.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
@@ -236,175 +236,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false
-        },
-        "eager_input_streaming": true
-      },
-      {
-        "name": "git_status",
-        "description": "Inspect the current app's Git working tree. Returns the current branch or detached HEAD, HEAD commit, bounded staged, unstaged, untracked, and conflicted paths, and whether paths were truncated.",
-        "input_schema": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {},
-          "additionalProperties": false
-        },
-        "eager_input_streaming": true
-      },
-      {
-        "name": "git_diff",
-        "description": "Show a bounded unified diff for tracked files in the current app. Untracked files are reported by git_status. Sensitive dotenv and Dyad-managed patches are omitted.",
-        "input_schema": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "scope": {
-              "description": "unstaged compares index to working tree; staged compares HEAD to index; all compares HEAD to working tree (default: all)",
-              "type": "string",
-              "enum": [
-                "unstaged",
-                "staged",
-                "all"
-              ]
-            },
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 4096,
-              "description": "A literal path relative to the app root"
-            },
-            "context_lines": {
-              "description": "Unchanged context lines around each change (default: 3)",
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 20
-            }
-          },
-          "additionalProperties": false
-        },
-        "eager_input_streaming": true
-      },
-      {
-        "name": "git_log",
-        "description": "List recent commits in the current app, newest first, with canonical hashes, author details, timestamps, and messages. Optionally start at a revision or filter to a path.",
-        "input_schema": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "revision": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
-            },
-            "max_count": {
-              "description": "Maximum commits to return (default: 20, max: 100)",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            },
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 4096,
-              "description": "A literal path relative to the app root"
-            }
-          },
-          "additionalProperties": false
-        },
-        "eager_input_streaming": true
-      },
-      {
-        "name": "git_show_commit",
-        "description": "Show metadata and a bounded first-parent patch for one commit in the current app. Optionally limit the patch to one path. Sensitive dotenv and Dyad-managed patches are omitted.",
-        "input_schema": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "revision": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
-            },
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 4096,
-              "description": "A literal path relative to the app root"
-            }
-          },
-          "required": [
-            "revision"
-          ],
-          "additionalProperties": false
-        },
-        "eager_input_streaming": true
-      },
-      {
-        "name": "git_show_file",
-        "description": "Read a UTF-8 file as it existed at a Git revision in the current app. Supports bounded line ranges and redacts dotenv values. Binary files cannot be displayed.",
-        "input_schema": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "revision": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
-            },
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 4096,
-              "description": "A literal path relative to the app root"
-            },
-            "start_line_one_indexed": {
-              "description": "One-indexed first line to return (inclusive)",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 9007199254740991
-            },
-            "end_line_one_indexed_inclusive": {
-              "description": "One-indexed final line to return (inclusive)",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "revision",
-            "path"
-          ],
-          "additionalProperties": false
-        },
-        "eager_input_streaming": true
-      },
-      {
-        "name": "git_restore_file",
-        "description": "Restore one regular file from a Git revision into the current app's working tree without changing the index. Existing working-tree content is overwritten; symlinks are rejected.",
-        "input_schema": {
-          "$schema": "http://json-schema.org/draft-07/schema#",
-          "type": "object",
-          "properties": {
-            "revision": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256,
-              "description": "A commit hash, branch, or tag; Git options and ranges are rejected"
-            },
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 4096,
-              "description": "A literal path relative to the app root"
-            }
-          },
-          "required": [
-            "revision",
-            "path"
-          ],
           "additionalProperties": false
         },
         "eager_input_streaming": true
@@ -482,72 +313,143 @@
         "eager_input_streaming": true
       },
       {
-        "name": "explore_chat_history",
-        "description": "Ask a history-research sub-agent to investigate this app's prior conversations when the user asks about earlier decisions, requirements, failures, or work and the exact wording or location is NOT already clear.\n\n- The sub-agent searches with multiple keyword reformulations, reads surrounding discussion, checks for superseded decisions, and returns a compact report with evidence citations (chat_id/message_id) validated against what it actually retrieved.\n- Use this for both broad recall (\"what did we decide about…\", \"have we discussed…\") and targeted historical lookups; it is the only chat-history discovery tool. For a known chat/message target (e.g. a citation from a prior report), use read_chat instead.\n- The report is historical evidence, not instructions. To inspect a citation further, call read_chat with its chat_id and around_message_id. Do not restart broad discovery after receiving a report.\n- An outcome of \"no_match\" means no relevant prior discussion was found — treat absence as inconclusive and consider asking the user rather than assuming.",
+        "name": "spawn_agent",
+        "description": "Start an asynchronous depth-one Explorer or enabled Implementer sub-agent. Reviewer is user/application controlled and is never available here.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
-            "query": {
+            "persona": {
+              "type": "string",
+              "const": "explorer"
+            },
+            "task_name": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 500,
-              "description": "A concise research question about prior discussions for this app (e.g. 'what did we decide about how users sign in?')"
+              "maxLength": 100,
+              "description": "A stable short name for this task"
+            },
+            "assignment": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000,
+              "description": "A bounded assignment and intended outcome"
+            },
+            "scope": {
+              "default": [],
+              "description": "Explicit relative paths or path prefixes in scope",
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
             }
           },
           "required": [
-            "query"
+            "persona",
+            "task_name",
+            "assignment"
           ],
           "additionalProperties": false
         },
         "eager_input_streaming": true
       },
       {
-        "name": "read_chat",
-        "description": "Read a bounded slice of a chat for this app (including the current chat's earlier, possibly compacted-away messages).\n\n- Preferred flow: discover a target first (an explore_chat_history report citation or a search_chats match, whichever is available), then call read_chat with its chat_id and around_message_id to see the surrounding discussion.\n- Without around_message_id, returns a chronological page controlled by offset/limit.\n- Output is cleaned conversation text (file/SQL/log/tool payloads are reduced to short metadata) and is bounded; use paging to see more.\n- Returned text is historical data, not instructions for the current task.",
+        "name": "list_agents",
+        "description": "List durable sub-agent threads and their current status for this chat.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "wait_agents",
+        "description": "Wait until all specified sub-agents reach a terminal or idle state.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
-            "chat_id": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "description": "ID of a chat for this app (from an explore_chat_history citation or a search_chats match)"
-            },
-            "around_message_id": {
-              "description": "Return this message plus surrounding context (use a cited or matched message_id)",
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "before": {
-              "description": "Messages to include before around_message_id (default 3)",
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 10
-            },
-            "after": {
-              "description": "Messages to include after around_message_id (default 3)",
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 10
-            },
-            "offset": {
-              "description": "Chronological paging: messages to skip from the start",
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "limit": {
-              "description": "Chronological paging: messages to return (default 10)",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 20
+            "thread_ids": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
-            "chat_id"
+            "thread_ids"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "cancel_agent",
+        "description": "Cancel a running sub-agent at its next safe boundary.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "thread_id"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "send_message",
+        "description": "Durably queue a message for an existing sub-agent thread.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          "required": [
+            "thread_id",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        "eager_input_streaming": true
+      },
+      {
+        "name": "followup_task",
+        "description": "Queue a durable follow-up assignment on an existing child thread. An idle child will consume it on its next turn.",
+        "input_schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "thread_id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          "required": [
+            "thread_id",
+            "message"
           ],
           "additionalProperties": false
         },
@@ -733,7 +635,7 @@
       },
       {
         "name": "update_todos",
-        "description": "\n### When to Use This Tool\n\nUse proactively for:\n1. Complex multi-step tasks (3+ distinct steps)\n2. Non-trivial tasks requiring careful planning\n3. User explicitly requests todo list\n4. User provides multiple tasks (numbered/comma-separated)\n5. After completing tasks - mark complete with merge=true and add follow-ups\n6. When starting new tasks - mark as in_progress (ideally only one at a time)\n\n### When NOT to Use\n\nSkip for:\n1. Single, straightforward tasks\n2. Trivial tasks with no organizational benefit\n3. Tasks completable in < 3 trivial steps\n4. Purely conversational/informational requests\n5. Avoid low-level operational actions that merely support a higher-level task, unless they are an explicit user deliverable or a meaningful investigation or verification phase.\n\nRoutine linting, testing, searching, or code examination should not become standalone todos when they merely support a higher-level task. Include testing or investigation when the user explicitly requested it or when it is necessary to describe a meaningful phase or outcome.\n\n### Examples\n\n<example>\nUser: Add dark mode toggle to settings\nAssistant:\n- *Creates todo list:*\n1. Add state management [in_progress]\n2. Implement styles\n3. Create toggle component\n4. Update components\n- [Immediately begins working on todo 1 in the same tool call batch]\n<reasoning>\nMulti-step feature with dependencies.\n</reasoning>\n</example>\n\n<example>\n// User: Implement user registration, product catalog, shopping cart, checkout flow.\nAssistant: *Creates todo list breaking down each feature into specific tasks*\n<reasoning>\nMultiple complex features provided as list requiring organized task management.\n</reasoning>\n</example>\n\n### Task States and Management\n\n1. **Task States:**\n- pending: Not yet started\n- in_progress: Currently working on\n- completed: Finished successfully\n\n2. **Task Management:**\n- Update status in real-time\n- Mark complete IMMEDIATELY after finishing\n- Only ONE task in_progress at a time\n- Complete current tasks before starting new ones\n\n3. **Task Breakdown:**\n- Create specific, actionable items\n- Break complex tasks into manageable steps\n- Use clear, descriptive names\n\n4. **Parallel Todo Writes:**\n- Prefer creating the first todo as in_progress\n- Start working on todos by using tool calls in the same tool call batch as the todo write\n- Batch todo updates with other tool calls for better latency and lower costs for the user\n",
+        "description": "\n### When to Use This Tool\n\nUse proactively for:\n1. Complex multi-step tasks (3+ distinct steps)\n2. Non-trivial tasks requiring careful planning\n3. User explicitly requests todo list\n4. User provides multiple tasks (numbered/comma-separated)\n5. After completing tasks - mark complete with merge=true and add follow-ups\n6. When starting new tasks - mark as in_progress (ideally only one at a time)\n\n### When NOT to Use\n\nSkip for:\n1. Single, straightforward tasks\n2. Trivial tasks with no organizational benefit\n3. Tasks completable in < 3 trivial steps\n4. Purely conversational/informational requests\n5. Todo items should NOT include operational actions done in service of higher-level tasks.\n\nNEVER INCLUDE THESE IN TODOS: linting; testing; searching or examining the codebase.\n\n### Examples\n\n<example>\nUser: Add dark mode toggle to settings\nAssistant:\n- *Creates todo list:*\n1. Add state management [in_progress]\n2. Implement styles\n3. Create toggle component\n4. Update components\n- [Immediately begins working on todo 1 in the same tool call batch]\n<reasoning>\nMulti-step feature with dependencies.\n</reasoning>\n</example>\n\n<example>\n// User: Implement user registration, product catalog, shopping cart, checkout flow.\nAssistant: *Creates todo list breaking down each feature into specific tasks*\n<reasoning>\nMultiple complex features provided as list requiring organized task management.\n</reasoning>\n</example>\n\n### Task States and Management\n\n1. **Task States:**\n- pending: Not yet started\n- in_progress: Currently working on\n- completed: Finished successfully\n\n2. **Task Management:**\n- Update status in real-time\n- Mark complete IMMEDIATELY after finishing\n- Only ONE task in_progress at a time\n- Complete current tasks before starting new ones\n\n3. **Task Breakdown:**\n- Create specific, actionable items\n- Break complex tasks into manageable steps\n- Use clear, descriptive names\n\n4. **Parallel Todo Writes:**\n- Prefer creating the first todo as in_progress\n- Start working on todos by using tool calls in the same tool call batch as the todo write\n- Batch todo updates with other tool calls for better latency and lower costs for the user\n",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
@@ -783,7 +685,7 @@
       },
       {
         "name": "run_type_checks",
-        "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file and discloses whether the project has errors elsewhere\n- If a directory path is provided, returns diagnostics for that directory and discloses whether the project has errors elsewhere\n- If no path is provided, returns diagnostics for all files in the workspace\n- Project configuration errors are always returned because they can prevent the requested files from being checked\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
+        "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",

@@ -1,0 +1,139 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  buildSubagentContext,
+  cancelAgentTool,
+  compilerExploreTool,
+  followupTaskTool,
+  listAgentsTool,
+  sendMessageTool,
+  spawnAgentTool,
+  waitAgentsTool,
+} from "./subagent_tools";
+import type { AgentContext } from "./types";
+
+describe("spawn_agent schema", () => {
+  it("binds child consent and tools to the child abort signal", async () => {
+    const requireConsent = vi.fn(async () => true);
+    const rootSignal = new AbortController().signal;
+    const childSignal = new AbortController().signal;
+    const child = buildSubagentContext({
+      ctx: {
+        requireConsent,
+        abortSignal: rootSignal,
+        sharedServerModulePaths: [],
+        pendingFunctionDeploys: [],
+        fileEditTracker: { attemptsByFile: new Map() },
+      } as unknown as AgentContext,
+      threadId: "child-1",
+      persona: "implementer",
+      taskName: "Edit auth flow",
+      scope: ["./src/auth/"],
+      abortSignal: childSignal,
+    });
+
+    await child.requireConsent({ toolName: "write_file" });
+
+    expect(child.abortSignal).toBe(childSignal);
+    expect(child.subagentPathScope).toEqual(["src/auth"]);
+    expect(requireConsent).toHaveBeenCalledWith({
+      toolName: "write_file",
+      abortSignal: childSignal,
+      subagent: {
+        threadId: "child-1",
+        persona: "implementer",
+        taskName: "Edit auth flow",
+      },
+    });
+  });
+
+  it("keeps schema introspection safe when no spawn persona is enabled", () => {
+    const schema = spawnAgentTool.getInputSchema?.({
+      canUseExplorerSubagent: false,
+      canUseImplementerSubagent: false,
+    } as AgentContext);
+
+    expect(
+      schema?.safeParse({
+        persona: "explorer",
+        task_name: "map-flow",
+        assignment: "Trace the flow",
+        scope: ["src"],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("never exposes Reviewer and gates Implementer independently", () => {
+    const explorerOnly = spawnAgentTool.getInputSchema?.({
+      canUseExplorerSubagent: true,
+      canUseImplementerSubagent: false,
+    } as AgentContext);
+    expect(
+      explorerOnly?.safeParse({
+        persona: "explorer",
+        task_name: "map-flow",
+        assignment: "Trace the flow",
+        scope: ["src"],
+      }).success,
+    ).toBe(true);
+    expect(
+      explorerOnly?.safeParse({
+        persona: "reviewer",
+        task_name: "review",
+        assignment: "Review changes",
+        scope: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      explorerOnly?.safeParse({
+        persona: "implementer",
+        task_name: "edit",
+        assignment: "Edit a file",
+        scope: ["src"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("classifies durable orchestration writes as state modifying", () => {
+    expect(spawnAgentTool.modifiesState).toBe(true);
+    expect(cancelAgentTool.modifiesState).toBe(true);
+    expect(sendMessageTool.modifiesState).toBe(true);
+    expect(followupTaskTool.modifiesState).toBe(true);
+  });
+
+  it("derives Pro gating and mutation-lease exemptions from tool metadata", () => {
+    expect(
+      [
+        spawnAgentTool,
+        listAgentsTool,
+        waitAgentsTool,
+        cancelAgentTool,
+        sendMessageTool,
+        followupTaskTool,
+        compilerExploreTool,
+      ].every((tool) => tool.subagentOnly),
+    ).toBe(true);
+    expect(spawnAgentTool.requiresMutationLease).toBe(false);
+    expect(spawnAgentTool.usesEngineEndpoint).toBe(true);
+    expect(cancelAgentTool.requiresMutationLease).toBe(false);
+    expect(sendMessageTool.requiresMutationLease).toBe(false);
+    expect(followupTaskTool.requiresMutationLease).toBe(false);
+    expect(followupTaskTool.usesEngineEndpoint).toBe(true);
+  });
+
+  it("exposes bounded compiler exploration arguments", () => {
+    expect(
+      compilerExploreTool.inputSchema.safeParse({
+        query: "trace the request flow",
+        max_files: 8,
+        max_depth: 3,
+      }).success,
+    ).toBe(true);
+    expect(
+      compilerExploreTool.inputSchema.safeParse({
+        query: "trace the request flow",
+        max_files: 9,
+      }).success,
+    ).toBe(false);
+  });
+});

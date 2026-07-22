@@ -10,21 +10,42 @@ import {
   getDefaultConsent,
   type AgentToolName,
 } from "./tool_definitions";
-import { createLoggedHandler } from "@/ipc/handlers/safe_handle";
+import { createLoggedTypedHandler } from "@/ipc/handlers/base";
 import log from "electron-log";
 import type {
   AgentTool,
   SetAgentToolConsentParams,
   AgentToolConsentResponseParams,
 } from "@/ipc/types";
+import { agentContracts } from "@/ipc/types/agent";
+import { isDyadProEnabled } from "@/lib/schemas";
+import { readSettings } from "@/main/settings";
+import {
+  buildFixFindingsPrompt,
+  cancelSubagent,
+  followupSubagent,
+  getSubagentMessages,
+  listSubagents,
+  recoverInterruptedSubagents,
+  runAutoReviewBarrier,
+  sendSubagentMessage,
+  setSubagentEventTarget,
+  skipReviewAutoFix,
+  startReview,
+} from "./subagents/subagent_manager";
 
 const logger = log.scope("agent_tool_handlers");
-const handle = createLoggedHandler(logger);
+const handle = createLoggedTypedHandler(logger);
 export function registerAgentToolHandlers() {
+  void recoverInterruptedSubagents().catch((error) =>
+    logger.error("Failed to reconcile interrupted sub-agents", error),
+  );
   // Get list of available tools with their consent settings
-  handle("agent-tool:get-tools", async (): Promise<AgentTool[]> => {
+  handle(agentContracts.getTools, async (): Promise<AgentTool[]> => {
     const consents = getAllAgentToolConsents();
-    return TOOL_DEFINITIONS.map((tool) => ({
+    return TOOL_DEFINITIONS.filter(
+      (tool) => isDyadProEnabled(readSettings()) || !tool.subagentOnly,
+    ).map((tool) => ({
       name: tool.name,
       description: tool.description,
       isAllowedByDefault: getDefaultConsent(tool.name) === "always",
@@ -34,18 +55,75 @@ export function registerAgentToolHandlers() {
 
   // Set consent for a single tool
   handle(
-    "agent-tool:set-consent",
+    agentContracts.setConsent,
     async (_event, params: SetAgentToolConsentParams) => {
       setAgentToolConsent(params.toolName as AgentToolName, params.consent);
-      return { success: true };
     },
   );
 
   // Handle consent response from renderer
   handle(
-    "agent-tool:consent-response",
+    agentContracts.respondToConsent,
     async (_event, params: AgentToolConsentResponseParams) => {
       resolveAgentToolConsent(params.requestId, params.decision);
     },
   );
+
+  handle(agentContracts.listSubagents, async (event, { chatId }) => {
+    setSubagentEventTarget(event.sender);
+    return listSubagents(chatId);
+  });
+  handle(
+    agentContracts.getSubagentMessages,
+    async (event, { chatId, threadId }) => {
+      setSubagentEventTarget(event.sender);
+      return getSubagentMessages(chatId, threadId);
+    },
+  );
+  handle(
+    agentContracts.sendSubagentMessage,
+    async (event, { chatId, threadId, message }) => {
+      setSubagentEventTarget(event.sender);
+      await sendSubagentMessage(chatId, threadId, message);
+    },
+  );
+  handle(
+    agentContracts.followupSubagent,
+    async (event, { chatId, threadId, message }) => {
+      setSubagentEventTarget(event.sender);
+      return followupSubagent(chatId, threadId, message);
+    },
+  );
+  handle(agentContracts.startReview, async (event, params) => {
+    setSubagentEventTarget(event.sender);
+    return startReview({ ...params, invocationSource: "review_button" });
+  });
+  handle(agentContracts.startAutoReview, async (event, params) => {
+    setSubagentEventTarget(event.sender);
+    return startReview({ ...params, invocationSource: "auto_review" });
+  });
+  handle(agentContracts.runAutoReviewBarrier, async (event, params) => {
+    setSubagentEventTarget(event.sender);
+    return runAutoReviewBarrier(params);
+  });
+  handle(
+    agentContracts.fixReviewFindings,
+    async (event, { chatId, threadId }) => {
+      setSubagentEventTarget(event.sender);
+      return {
+        prompt: await buildFixFindingsPrompt(chatId, threadId, "fix_button"),
+      };
+    },
+  );
+  handle(
+    agentContracts.skipReviewAutoFix,
+    async (event, { chatId, threadId }) => {
+      setSubagentEventTarget(event.sender);
+      await skipReviewAutoFix(chatId, threadId);
+    },
+  );
+  handle(agentContracts.cancelSubagent, async (event, { chatId, threadId }) => {
+    setSubagentEventTarget(event.sender);
+    await cancelSubagent(chatId, threadId);
+  });
 }

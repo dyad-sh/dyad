@@ -15,6 +15,29 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("AgentConsentBanner", () => {
+  it("attributes Implementer consent to the child task", () => {
+    render(
+      <AgentConsentBanner
+        consent={{
+          kind: "agent",
+          requestId: "request",
+          chatId: 1,
+          toolName: "write_file",
+          subagent: {
+            threadId: "thread-1",
+            persona: "implementer",
+            taskName: "Update auth flow",
+          },
+        }}
+        onDecision={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Requested by implementer/)).toBeTruthy();
+    expect(screen.getByText("Update auth flow")).toBeTruthy();
+  });
+
   it("shows schema mutation metadata when present", () => {
     render(
       <AgentConsentBanner

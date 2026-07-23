@@ -44,6 +44,10 @@ export function useSwitchedToMainBranch() {
       // already there) and leaves version-diff mode. The machine is per-app, so
       // this is correctly scoped even if the user has since switched apps.
       previewManager.send(appId, { type: "CLOSE" });
+      // Prefix invalidation: `branches.current` is `["currentBranch", appId]`,
+      // which also covers `branches.tip` (`[..., "tip", branch]`), so the
+      // writable-branch tip cached by `useWritableVersionTip` is refreshed here
+      // too — the re-attach moved the tip by staging a new version on the branch.
       await queryClient.invalidateQueries({
         queryKey: queryKeys.branches.current({ appId }),
       });

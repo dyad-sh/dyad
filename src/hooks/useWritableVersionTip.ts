@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import type { PreviewState } from "@/version_preview/state";
 
@@ -59,7 +60,7 @@ export function useWritableVersionTip({
   const writableBranch = originBranch ?? currentBranch;
 
   const { data } = useQuery({
-    queryKey: ["branch-tip", appId, writableBranch],
+    queryKey: queryKeys.branches.tip({ appId, branch: writableBranch }),
     queryFn: () =>
       ipc.version.getBranchTip({ appId: appId!, branch: writableBranch! }),
     enabled: enabled && appId != null && writableBranch != null,

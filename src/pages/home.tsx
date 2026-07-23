@@ -25,7 +25,6 @@ import {
   isFreeProBuildModeCombination,
 } from "@/lib/freeProModel";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
-import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { RefreshCw, Zap } from "lucide-react";
 import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
@@ -54,10 +53,9 @@ export default function HomePage() {
   const hasConfiguredAiProvider =
     !isLoadingLanguageModelProviders && isAnyProviderSetup();
   const { quotaStatus } = useFreeAgentQuota();
-  const initialChatMode = useInitialChatMode();
   const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
     if (!settings) {
-      return initialChatMode;
+      return undefined;
     }
 
     return getHomeDefaultChatMode(
@@ -65,7 +63,7 @@ export default function HomePage() {
       envVars,
       quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
     );
-  }, [envVars, initialChatMode, quotaStatus, settings]);
+  }, [envVars, quotaStatus, settings]);
 
   const posthog = usePostHog();
 

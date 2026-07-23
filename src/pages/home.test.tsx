@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   effectiveDefaultChatMode: "build",
   hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
-  initialChatMode: "build",
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: false,
   isSettingsLoading: false,
@@ -73,9 +72,6 @@ vi.mock("@/hooks/useSettings", () => ({
 vi.mock("@/hooks/useFreeAgentQuota", () => ({
   useFreeAgentQuota: () => ({ quotaStatus: undefined }),
 }));
-vi.mock("@/hooks/useInitialChatMode", () => ({
-  useInitialChatMode: () => mocks.initialChatMode,
-}));
 vi.mock("@/lib/schemas", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/schemas")>()),
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
@@ -120,7 +116,6 @@ describe("HomePage first-prompt projection", () => {
     mocks.effectiveDefaultChatMode = "build";
     mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
-    mocks.initialChatMode = "build";
     mocks.isAnyProviderSetup = false;
     mocks.isLoadingLanguageModelProviders = false;
     mocks.isSettingsLoading = false;

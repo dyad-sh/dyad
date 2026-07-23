@@ -421,9 +421,24 @@ export function createProductionChatStreamCommands(
     },
 
     requestAbort({ chatId }) {
-      void ipc.chat.cancelStream(chatId).catch((err) => {
-        console.error(`[CHAT] Failed to request abort for ${chatId}:`, err);
-      });
+      void ipc.chat
+        .cancelStream(chatId)
+        .then(() => {
+          const { store } = deps();
+          // Main resolves the cancel invoke only after the handler has stopped
+          // writing. Reconcile then so transient compaction progress cannot
+          // survive cancellation; the shared helper skips the write if a new
+          // stream has already started.
+          syncChatFromDb(
+            chatId,
+            makeSetMessagesById(store),
+            "[CHAT] onCancel",
+            store,
+          );
+        })
+        .catch((err) => {
+          console.error(`[CHAT] Failed to request abort for ${chatId}:`, err);
+        });
     },
 
     releaseTransport({ chatId, streamId }) {

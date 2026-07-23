@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createStore } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 
 import { createProductionChatStreamCommands } from "../commands";
@@ -100,5 +101,59 @@ describe("chat stream command adapter instances", () => {
     });
 
     expect(onAccepted).toHaveBeenCalledOnce();
+  });
+
+  it("replaces transient content after the cancelled handler unwinds", async () => {
+    let resolveCancellation!: (cancelled: boolean) => void;
+    const cancellation = new Promise<boolean>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    vi.spyOn(ipc.chat, "cancelStream").mockReturnValue(cancellation);
+    vi.spyOn(ipc.chatStream, "release").mockImplementation(() => {});
+
+    const transientMessage = {
+      id: 1,
+      chatId: 9,
+      role: "assistant" as const,
+      content:
+        '<dyad-compaction title="Compacting conversation">partial</dyad-compaction>',
+    };
+    const persistedMessage = {
+      ...transientMessage,
+      content: "Response cancelled by user.",
+    };
+    const getChat = vi.spyOn(ipc.chat, "getChat").mockResolvedValue({
+      id: 9,
+      messages: [persistedMessage],
+    } as never);
+    const deps = {
+      store: createStore(),
+      queryClient: new QueryClient(),
+      getSettings: () => undefined,
+      getPosthog: () => null,
+    };
+    deps.store.set(
+      chatMessagesByIdAtom,
+      new Map([[9, [transientMessage as never]]]),
+    );
+    const commands = createProductionChatStreamCommands(() => deps);
+
+    commands.requestAbort({ chatId: 9 });
+    await commands.runEndSideEffects({
+      chatId: 9,
+      streamId: 1,
+      request: { chatId: 9, appId: 4, prompt: "cancel me" },
+      targetAppId: 4,
+      response: { chatId: 9, updatedFiles: false, wasCancelled: true },
+    });
+    expect(getChat).not.toHaveBeenCalled();
+
+    resolveCancellation(true);
+    await vi.waitFor(() => expect(getChat).toHaveBeenCalledWith(9));
+    await vi.waitFor(() =>
+      expect(deps.store.get(chatMessagesByIdAtom).get(9)).toEqual([
+        persistedMessage,
+      ]),
+    );
   });
 });

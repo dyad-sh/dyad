@@ -80,6 +80,8 @@ export interface MainModelState {
   chatWaiters: Readonly<Record<number, readonly number[]>>;
   appWaiters: Readonly<Record<number, readonly number[]>>;
   pendingCompactionChats: readonly number[];
+  compactionSummaryChats: readonly number[];
+  compactionCompleteBroadcastChats: readonly number[];
   quit: boolean;
 }
 
@@ -112,7 +114,11 @@ export type MainModelEvent =
       hasResponse?: boolean;
     }
   | { type: "compaction-started"; invocationId: number }
-  | { type: "compaction-finished"; invocationId: number }
+  | {
+      type: "compaction-finished";
+      invocationId: number;
+      outcome: "completed" | "aborted";
+    }
   | { type: "handler-unwound"; invocationId: number }
   | { type: "quit" };
 
@@ -162,6 +168,8 @@ export const initialMainModelState: MainModelState = {
   chatWaiters: {},
   appWaiters: {},
   pendingCompactionChats: [],
+  compactionSummaryChats: [],
+  compactionCompleteBroadcastChats: [],
   quit: false,
 };
 
@@ -619,7 +627,27 @@ export function transitionMainModel(
       )
         return { state, commands: [] };
       return {
-        state: replaceStream(state, { ...stream, awaitPoint: "llm" }),
+        state: {
+          ...replaceStream(state, { ...stream, awaitPoint: "llm" }),
+          pendingCompactionChats:
+            event.outcome === "aborted"
+              ? state.pendingCompactionChats
+              : state.pendingCompactionChats.filter(
+                  (chatId) => chatId !== stream.chatId,
+                ),
+          compactionSummaryChats:
+            event.outcome === "aborted"
+              ? state.compactionSummaryChats
+              : state.compactionSummaryChats.includes(stream.chatId)
+                ? state.compactionSummaryChats
+                : [...state.compactionSummaryChats, stream.chatId],
+          compactionCompleteBroadcastChats:
+            event.outcome === "aborted"
+              ? state.compactionCompleteBroadcastChats
+              : state.compactionCompleteBroadcastChats.includes(stream.chatId)
+                ? state.compactionCompleteBroadcastChats
+                : [...state.compactionCompleteBroadcastChats, stream.chatId],
+        },
         commands: [],
       };
     }

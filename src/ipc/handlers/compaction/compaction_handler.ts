@@ -132,8 +132,19 @@ export async function performCompaction(
   onSummaryChunk?: (accumulatedText: string) => void,
   options?: {
     createdAtStrategy?: "before-latest-user" | "now";
+    abortSignal?: AbortSignal;
   },
 ): Promise<CompactionResult> {
+  const abortSignal = options?.abortSignal;
+  const abortedResult = (): CompactionResult => ({
+    success: false,
+    error: "Compaction aborted",
+  });
+
+  if (abortSignal?.aborted) {
+    return abortedResult();
+  }
+
   const settings = readSettings();
 
   try {
@@ -207,6 +218,7 @@ export async function performCompaction(
       system: COMPACTION_SYSTEM_PROMPT,
       messages: summaryMessages,
       maxRetries: 2,
+      abortSignal,
     });
 
     // Read .textStream now (not lazily) so the SDK's tee runs
@@ -218,8 +230,15 @@ export async function performCompaction(
     // Stream summary text to the frontend as it generates
     let summary = "";
     for await (const chunk of textStream) {
+      if (abortSignal?.aborted) {
+        return abortedResult();
+      }
       summary += chunk;
       onSummaryChunk?.(summary);
+    }
+
+    if (abortSignal?.aborted) {
+      return abortedResult();
     }
 
     // Create the compaction indicator message
@@ -286,6 +305,10 @@ Note: This file may be large. Read only the sections you need or use grep to sea
       backupPath,
     };
   } catch (error) {
+    if (abortSignal?.aborted) {
+      return abortedResult();
+    }
+
     logger.error(`Compaction failed for chat ${chatId}:`, error);
 
     // Clear pending flag to prevent infinite retry loops

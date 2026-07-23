@@ -345,6 +345,7 @@ import {
 } from "@/pro/main/ipc/handlers/local_agent/processors/file_operations";
 import { MCP_RESULT_MAX_BYTES } from "@/ipc/utils/mcp_result_sanitizer";
 import type { AiMessagesJsonV6 } from "@/db/schema";
+import { getModelClient } from "@/ipc/utils/get_model_client";
 
 // ============================================================================
 // Tests
@@ -1221,6 +1222,41 @@ describe("handleLocalAgentStream", () => {
       // Assert
       expect(mockPerformCompaction).not.toHaveBeenCalled();
     });
+
+    it("unwinds immediately when initial compaction is aborted", async () => {
+      const { event } = createFakeEvent();
+      const abortController = new AbortController();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockIsChatPendingCompaction.mockResolvedValue(true);
+      mockPerformCompaction.mockImplementation(async () => {
+        abortController.abort();
+        return { success: false, error: "Compaction aborted" };
+      });
+
+      await expect(
+        handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "test" },
+          abortController,
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        ),
+      ).resolves.toBe(false);
+
+      expect(getModelClient).not.toHaveBeenCalled();
+      expect(streamText).not.toHaveBeenCalled();
+      expect(
+        dbOperations.updates.some(
+          (update) =>
+            typeof update.data.content === "string" &&
+            update.data.content.includes("Response cancelled by user"),
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("Mid-turn compaction", () => {
@@ -1531,7 +1567,10 @@ describe("handleLocalAgentStream", () => {
         "/mock/apps/test-app-path",
         dyadRequestId,
         expect.any(Function),
-        { createdAtStrategy: "now" },
+        {
+          createdAtStrategy: "now",
+          abortSignal: expect.any(AbortSignal),
+        },
       );
       expect(secondStepPreparedMessages).toBeDefined();
 

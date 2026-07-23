@@ -63,7 +63,11 @@ const explorationEvents: MainModelEvent[] = [
   { type: "llm-settled", invocationId: 1, outcome: "errored" },
   { type: "llm-settled", invocationId: 1, outcome: "aborted" },
   { type: "compaction-started", invocationId: 1 },
-  { type: "compaction-finished", invocationId: 1 },
+  {
+    type: "compaction-finished",
+    invocationId: 1,
+    outcome: "completed",
+  },
   { type: "handler-unwound", invocationId: 1 },
   { type: "quit" },
 ];
@@ -261,7 +265,7 @@ describe("main chat stream model", () => {
     }
   });
 
-  it("models cancel during compaction as legal and completion-covered", () => {
+  it("models cancel during compaction as aborting without persistence before completion resolves", () => {
     let state = advanceToStreaming();
     state = apply(state, { type: "compaction-started", invocationId: 1 });
     const cancelled = transitionMainModel(state, {
@@ -276,7 +280,11 @@ describe("main chat stream model", () => {
     state = apply(cancelled.state, {
       type: "compaction-finished",
       invocationId: 1,
+      outcome: "aborted",
     });
+    expect(state.pendingCompactionChats).toEqual([7]);
+    expect(state.compactionSummaryChats).toEqual([]);
+    expect(state.compactionCompleteBroadcastChats).toEqual([]);
     state = apply(state, {
       type: "llm-settled",
       invocationId: 1,

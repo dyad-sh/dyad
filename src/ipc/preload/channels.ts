@@ -73,6 +73,7 @@ const TEST_INVOKE_CHANNELS = [
   "test:simulateQuotaTimeElapsed",
   "test:set-node-mock",
   "test:set-needs-app-blueprint",
+  "test:set-neon-auth-fixture",
 ] as const;
 
 /**

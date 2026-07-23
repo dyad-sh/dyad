@@ -50,3 +50,50 @@ testSkipIfWindows(
     ).toBeVisible({ timeout: Timeout.LONG });
   },
 );
+
+testSkipIfWindows(
+  "signs in the isolated Neon test user inside the iframe before recording",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.importApp("recorder");
+
+    // Mark the imported fixture as an existing Neon Auth app without running
+    // the product's integration installer (which would rewrite this deliberately
+    // minimal fixture). The E2E build then provisions a deterministic branch
+    // and account while the fixture serves Better Auth-shaped endpoints locally.
+    const appName = await po.appManagement.getCurrentAppName();
+    await po.page.evaluate(async (name) => {
+      await (window as any).electron.ipcRenderer.invoke(
+        "test:set-neon-auth-fixture",
+        { appName: name },
+      );
+    }, appName);
+
+    await po.previewPanel.selectPreviewMode("tests");
+    await po.previewPanel.clickEnableTesting();
+    await po.previewPanel.selectPreviewMode("preview");
+    await po.clickRestart();
+    await po.previewPanel.expectPreviewIframeIsVisible();
+
+    const frame = po.previewPanel.getPreviewIframeElement().contentFrame();
+    await expect(frame.getByTestId("auth-state")).toHaveText("Signed out");
+
+    await po.page.getByTestId("preview-record-button").click();
+    await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
+      timeout: Timeout.EXTRA_LONG,
+    });
+    await expect(frame.getByTestId("auth-state")).toHaveText("Signed in", {
+      timeout: Timeout.LONG,
+    });
+    await expect
+      .poll(() =>
+        frame.locator("html").evaluate(() => window.location.pathname),
+      )
+      .toBe("/");
+
+    await po.page.getByTestId("preview-recording-cancel-button").click();
+    await expect(po.page.getByTestId("preview-recording-bar")).toBeHidden({
+      timeout: Timeout.LONG,
+    });
+  },
+);

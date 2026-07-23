@@ -1,18 +1,28 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // An interactive app for the test-recorder E2E: it exercises the recorder's
 // click / fill / check / select / navigate capture and its non-dyadId selector
 // strategies (this imported app has no component tagger).
 const App = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [count, setCount] = useState(0);
   const [name, setName] = useState("");
   const [subscribed, setSubscribed] = useState(false);
   const [color, setColor] = useState("red");
   const [route, setRoute] = useState("/");
 
+  useEffect(() => {
+    void fetch("/api/auth/get-session", { credentials: "include" })
+      .then((response) => response.json())
+      .then((session) => setIsAuthenticated(Boolean(session?.user)));
+  }, []);
+
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
       <h1>Recorder Test App</h1>
+      <p data-testid="auth-state">
+        {isAuthenticated ? "Signed in" : "Signed out"}
+      </p>
 
       <button onClick={() => setCount((c) => c + 1)}>Increment</button>
       <p data-testid="count">Count: {count}</p>

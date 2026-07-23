@@ -53,7 +53,12 @@ function toAppPath(raw: unknown): string | null {
  * are handled here so the Record UI stays thin. Meant to be mounted once inside
  * the preview panel.
  */
-export function useTestRecorder() {
+export function useTestRecorder({
+  reloadPreview,
+}: {
+  /** Remount the iframe so authentication always starts in a live document. */
+  reloadPreview: () => void;
+}) {
   const appId = useAtomValue(selectedAppIdAtom);
   const iframeEl = useAtomValue(previewIframeRefAtom);
   const recordingState = useAtomValue(currentRecordingStateAtom);
@@ -94,20 +99,6 @@ export function useTestRecorder() {
 
   const postToIframe = useCallback((message: unknown) => {
     iframeElRef.current?.contentWindow?.postMessage(message, "*");
-  }, []);
-
-  /**
-   * Force a fresh iframe load by re-setting its src attribute. Needed after
-   * recording:start: on the Neon path the dev server (and proxy) restarted
-   * underneath the iframe, which can leave it on a dead/error page with NO
-   * injected scripts listening — postMessage would go nowhere. A fresh load
-   * guarantees a live bootstrap (which announces itself, triggering the
-   * credential handshake) and reflects the cleared storage state.
-   */
-  const reloadPreview = useCallback(() => {
-    const el = iframeElRef.current;
-    const src = el?.getAttribute("src");
-    if (el && src) el.setAttribute("src", src);
   }, []);
 
   const patchState = useCallback(
@@ -443,3 +434,5 @@ export function useTestRecorder() {
     dismissSaved,
   };
 }
+
+export type TestRecorderController = ReturnType<typeof useTestRecorder>;

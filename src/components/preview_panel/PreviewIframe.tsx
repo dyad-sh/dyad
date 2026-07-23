@@ -81,7 +81,7 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
-import { useTestRecorder } from "@/hooks/useTestRecorder";
+import type { TestRecorderController } from "@/hooks/useTestRecorder";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DeviceMode } from "@/lib/schemas";
 import {
@@ -218,7 +218,13 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
 // Preview iframe component
-export const PreviewIframe = ({ loading }: { loading: boolean }) => {
+export const PreviewIframe = ({
+  loading,
+  recorder,
+}: {
+  loading: boolean;
+  recorder: TestRecorderController;
+}) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useAtomValue(currentAppUrlAtom);
@@ -256,6 +262,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const handleIframeRef = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      iframeRef.current = iframe;
+      setPreviewIframeRef(iframe);
+    },
+    [setPreviewIframeRef],
+  );
   const componentMessageHandlerRef = useRef<(event: MessageEvent) => void>(
     () => undefined,
   );
@@ -286,7 +299,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const canGoBack = selectCanGoBack(iframeState);
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
-  const recorder = useTestRecorder();
   const { app: loadedApp } = useLoadApp(selectedAppId);
   const [recordName, setRecordName] = useState("");
 
@@ -605,11 +617,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentComponentCoordinates(null);
     };
   }, [selectedAppId]);
-
-  // Update iframe ref atom
-  useEffect(() => {
-    setPreviewIframeRef(iframeRef.current);
-  }, [iframeRef.current, setPreviewIframeRef]);
 
   // Send pro mode status to iframe
   useEffect(() => {
@@ -1723,7 +1730,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   onLoad={() => {
                     onIframeLoaded();
                   }}
-                  ref={iframeRef}
+                  ref={handleIframeRef}
                   key={iframeState.iframeEpoch}
                   title={`Preview for App ${selectedAppId}`}
                   className="w-full h-full border-none bg-white dark:bg-gray-950"

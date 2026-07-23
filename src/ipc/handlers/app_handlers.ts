@@ -2090,6 +2090,24 @@ export function registerAppHandlers() {
         }
       },
     );
+    registerTrustedIpcHandler(
+      "test:set-neon-auth-fixture",
+      async (_event, { appName }: { appName: string }) => {
+        const result = await db
+          .update(apps)
+          .set({
+            neonProjectId: "test-project-id",
+            neonDevelopmentBranchId: "test-development-branch-id",
+            neonActiveBranchId: "test-development-branch-id",
+            neonDevelopmentAuthCookieSecret: "test-cookie-secret",
+          })
+          .where(eq(apps.name, appName))
+          .returning({ id: apps.id });
+        if (result.length === 0) {
+          throw new Error(`No app found for name=${appName}`);
+        }
+      },
+    );
   }
 
   // Start the garbage collection for idle apps

@@ -47,7 +47,7 @@
   const DEDUPE_MS = 50;
 
   const INTERACTIVE_SELECTOR =
-    'button, a, input, select, textarea, summary, ' +
+    "button, a, input, select, textarea, summary, " +
     '[role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
     '[role="tab"], [role="menuitem"], [role="switch"], [role="option"]';
 
@@ -80,9 +80,7 @@
   }
 
   function trustedOk(e) {
-    return (
-      e.isTrusted || window.__DYAD_RECORDER_ALLOW_UNTRUSTED__ === true
-    );
+    return e.isTrusted || window.__DYAD_RECORDER_ALLOW_UNTRUSTED__ === true;
   }
 
   function deepTarget(e) {
@@ -99,9 +97,7 @@
     const path = (e.composedPath && e.composedPath()) || [];
     return path.some(
       (node) =>
-        node &&
-        node.classList &&
-        node.classList.contains(OVERLAY_CLASS),
+        node && node.classList && node.classList.contains(OVERLAY_CLASS),
     );
   }
 
@@ -333,7 +329,8 @@
     if (role && name) candidates.push({ kind: "role", value: role, name });
 
     const placeholder = el.getAttribute && el.getAttribute("placeholder");
-    if (placeholder) candidates.push({ kind: "placeholder", value: placeholder });
+    if (placeholder)
+      candidates.push({ kind: "placeholder", value: placeholder });
 
     const label = labelForGetByLabel(el);
     if (label) candidates.push({ kind: "label", value: label });
@@ -453,7 +450,8 @@
       // the resulting `fill`, so don't also record it as a press.
       if (e.key === "Enter") {
         const t = deepTarget(e);
-        if (t && (t.tagName === "TEXTAREA" || t.isContentEditable)) return false;
+        if (t && (t.tagName === "TEXTAREA" || t.isContentEditable))
+          return false;
       }
       return true;
     }
@@ -497,7 +495,11 @@
     if (t.tagName === "SELECT") return; // handled by `change`
     if (!isEditable(t)) return;
     const value = t.isContentEditable ? t.innerText : t.value;
-    emit({ kind: "fill", locator: selectorFor(t), value: value == null ? "" : value });
+    emit({
+      kind: "fill",
+      locator: selectorFor(t),
+      value: value == null ? "" : value,
+    });
   }
 
   function onChange(e) {

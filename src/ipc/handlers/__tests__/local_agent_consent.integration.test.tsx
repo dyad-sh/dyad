@@ -346,6 +346,7 @@ describe("local-agent consent banner (integration)", () => {
     // store; no legacy event is replayed, so only getPending can restore this.
     firstRenderer.unmount();
     harness.mount({ chatId });
+    const streamEnd = harness.waitForNextStreamEnd(chatId);
     fireEvent.click(
       await screen.findByRole(
         "button",
@@ -354,7 +355,7 @@ describe("local-agent consent banner (integration)", () => {
       ),
     );
 
-    await harness.waitForStreamEnd(chatId);
+    await streamEnd;
     await waitFor(() =>
       expect(readSettings().agentToolConsents?.add_dependency).toBe("always"),
     );

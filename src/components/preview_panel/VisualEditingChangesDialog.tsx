@@ -23,6 +23,7 @@ export function VisualEditingChangesDialog({
   const [allResponsesReceived, setAllResponsesReceived] = useState(false);
   const expectedResponsesRef = useRef<Set<string>>(new Set());
   const isWaitingForResponses = useRef(false);
+  const isApplyingChanges = useRef(false);
 
   // Listen for text content responses
   useEffect(() => {
@@ -52,7 +53,8 @@ export function VisualEditingChangesDialog({
 
   // Execute when all responses are received
   useEffect(() => {
-    if (allResponsesReceived && isSaving) {
+    if (allResponsesReceived && isSaving && !isApplyingChanges.current) {
+      isApplyingChanges.current = true;
       const applyChanges = async () => {
         try {
           const changesToSave = Array.from(pendingChanges.values());
@@ -82,6 +84,7 @@ export function VisualEditingChangesDialog({
           setIsSaving(false);
           setAllResponsesReceived(false);
           isWaitingForResponses.current = false;
+          isApplyingChanges.current = false;
         }
       };
 

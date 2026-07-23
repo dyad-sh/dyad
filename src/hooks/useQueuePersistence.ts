@@ -18,26 +18,24 @@ export function findRestorableQueueItems(
   existing: QueuedMessageItem[],
 ): QueuedMessageItem[] {
   const seenIds = new Set(existing.map((item) => item.id));
-  const seenUserInputRequestIds = new Set(
-    existing.flatMap((item) =>
-      item.userInputRequestId ? [item.userInputRequestId] : [],
-    ),
-  );
 
   return persisted.filter((item) => {
-    if (
-      seenIds.has(item.id) ||
-      (item.userInputRequestId !== undefined &&
-        seenUserInputRequestIds.has(item.userInputRequestId))
-    ) {
+    // Machine-owned follow-ups depend on an in-memory main-process request and
+    // renderer acceptance callbacks. A live registry re-enqueues them through
+    // the user-input projection; restoring the serialized shell after a full
+    // restart would create an immutable orphan.
+    if (item.userInputRequestId !== undefined || seenIds.has(item.id)) {
       return false;
     }
     seenIds.add(item.id);
-    if (item.userInputRequestId) {
-      seenUserInputRequestIds.add(item.userInputRequestId);
-    }
     return true;
   });
+}
+
+export function getPersistableQueueItems(
+  items: QueuedMessageItem[],
+): QueuedMessageItem[] {
+  return items.filter((item) => item.userInputRequestId === undefined);
 }
 
 /**
@@ -110,8 +108,7 @@ export function useQueuePersistence() {
       for (const [chatIdStr, items] of Object.entries(persisted)) {
         const chatId = Number(chatIdStr);
         if (!Number.isFinite(chatId) || items.length === 0) continue;
-        map.set(
-          chatId,
+        const restorableItems = findRestorableQueueItems(
           items.map((item) => ({
             id: item.id,
             prompt: item.prompt,
@@ -122,7 +119,11 @@ export function useQueuePersistence() {
             requestedChatMode: item.requestedChatMode,
             userInputRequestId: item.userInputRequestId,
           })),
+          [],
         );
+        if (restorableItems.length > 0) {
+          map.set(chatId, restorableItems);
+        }
       }
 
       if (map.size > 0) {
@@ -281,7 +282,9 @@ async function warmEncodedItemCache(
 ): Promise<void> {
   try {
     await Promise.all(
-      [...queue.values()].flat().map((item) => encodeQueuedItem(item, cache)),
+      [...queue.values()]
+        .flatMap(getPersistableQueueItems)
+        .map((item) => encodeQueuedItem(item, cache)),
     );
   } catch (error) {
     console.error("[QUEUE] Failed to pre-encode queued attachments:", error);
@@ -295,9 +298,10 @@ async function persistQueue(
   try {
     const persisted: PersistedQueue = {};
     for (const [chatId, items] of queuedMessagesById) {
-      if (items.length === 0) continue;
+      const persistableItems = getPersistableQueueItems(items);
+      if (persistableItems.length === 0) continue;
       persisted[String(chatId)] = await Promise.all(
-        items.map((item) => encodeQueuedItem(item, cache)),
+        persistableItems.map((item) => encodeQueuedItem(item, cache)),
       );
     }
     // Fire-and-forget: main serializes the write and never replies, so this is

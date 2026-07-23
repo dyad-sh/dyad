@@ -352,6 +352,42 @@ describe("user-input renderer projection", () => {
     stop();
   });
 
+  it("keeps a questionnaire visible and marks it responding until settlement", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    let resolveRespond!: () => void;
+    fake.respond.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveRespond = resolve;
+      }),
+    );
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+    });
+    const stop = adapter.start();
+    fake.sendRequested(questionnaireDescriptor("questionnaire-responding"));
+
+    const response = adapter.respond("questionnaire-responding", {
+      kind: "questionnaire",
+      answers: { framework: "Vue" },
+    });
+
+    expect(store.get(pendingQuestionnaireAtom).get(7)).toMatchObject({
+      requestId: "questionnaire-responding",
+      isResponding: true,
+    });
+
+    fake.sendSettled({
+      requestId: "questionnaire-responding",
+      outcome: "human",
+    });
+    resolveRespond();
+    await expect(response).resolves.toBe(true);
+    expect(store.get(pendingQuestionnaireAtom).has(7)).toBe(false);
+    stop();
+  });
+
   it("clears a questionnaire on main timeout and rejects a stale submit without confirmation", async () => {
     const store = createStore();
     const fake = createFakeIpc();

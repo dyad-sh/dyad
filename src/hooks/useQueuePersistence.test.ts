@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { QueuedMessageItem } from "@/atoms/chatAtoms";
-import { findRestorableQueueItems } from "./useQueuePersistence";
+import {
+  findRestorableQueueItems,
+  getPersistableQueueItems,
+} from "./useQueuePersistence";
 
 function queuedItem(
   id: string,
@@ -15,25 +18,29 @@ function queuedItem(
 }
 
 describe("findRestorableQueueItems", () => {
-  it("deduplicates a continuation by its durable request id", () => {
-    const existing = [queuedItem("live", "integration:1")];
+  it("drops machine-owned continuations during hydration", () => {
     const persisted = [
       queuedItem("persisted", "integration:1"),
       queuedItem("ordinary"),
     ];
 
-    expect(findRestorableQueueItems(persisted, existing)).toEqual([
-      persisted[1],
-    ]);
+    expect(findRestorableQueueItems(persisted, [])).toEqual([persisted[1]]);
   });
 
-  it("deduplicates repeated persisted entries in the same hydration", () => {
-    const first = queuedItem("first", "integration:1");
+  it("deduplicates ordinary prompts by queue item id", () => {
+    const existing = queuedItem("existing");
+    expect(findRestorableQueueItems([existing], [existing])).toEqual([]);
+  });
+});
+
+describe("getPersistableQueueItems", () => {
+  it("serializes ordinary prompts but not machine-owned continuations", () => {
+    const ordinary = queuedItem("ordinary");
     expect(
-      findRestorableQueueItems(
-        [first, queuedItem("second", "integration:1")],
-        [],
-      ),
-    ).toEqual([first]);
+      getPersistableQueueItems([
+        queuedItem("machine", "integration:1"),
+        ordinary,
+      ]),
+    ).toEqual([ordinary]);
   });
 });

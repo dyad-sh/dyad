@@ -36,6 +36,7 @@ interface PendingQuestionnaire {
   chatId: number;
   requestId: string;
   questions: UserInputQuestionPayload[];
+  isResponding: boolean;
 }
 
 export const pendingQuestionnaireAtom = atom<Map<number, PendingQuestionnaire>>(
@@ -46,11 +47,11 @@ export const pendingQuestionnaireAtom = atom<Map<number, PendingQuestionnaire>>(
       if (request.status === "settled") continue;
       const descriptor = request.descriptor;
       if (descriptor.kind !== "questionnaire") continue;
-      if (respondingRequestIds.has(descriptor.requestId)) continue;
       questionnaires.set(descriptor.chatId, {
         chatId: descriptor.chatId,
         requestId: descriptor.requestId,
         questions: descriptor.questions,
+        isResponding: respondingRequestIds.has(descriptor.requestId),
       });
     }
     return questionnaires;

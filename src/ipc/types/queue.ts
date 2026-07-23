@@ -32,6 +32,8 @@ export const PersistedQueuedMessageSchema = z.object({
   appId: z.number().int().positive().optional(),
   // `null` is an intentional skip-cache sentinel, distinct from omission.
   requestedChatMode: ChatModeSchema.nullable().optional(),
+  // Read-only backward compatibility: renderer hydration discards legacy
+  // machine-owned entries and no longer writes this owner-only marker.
   userInputRequestId: z.string().optional(),
 });
 

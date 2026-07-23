@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  LoaderCircle,
   X,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -183,7 +184,10 @@ export function QuestionnaireInput() {
   };
 
   return (
-    <div className="border-b border-border bg-muted/30">
+    <div
+      className="border-b border-border bg-muted/30"
+      aria-busy={questionnaire.isResponding}
+    >
       <div className="flex items-center">
         <button
           type="button"
@@ -215,6 +219,12 @@ export function QuestionnaireInput() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+            {questionnaire.isResponding && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                Submitting...
+              </span>
+            )}
             <span className="text-xs text-muted-foreground tabular-nums">
               {currentIndex + 1} of {questionnaire.questions.length}
             </span>
@@ -231,13 +241,17 @@ export function QuestionnaireInput() {
           size="icon"
           className="h-7 w-7 text-muted-foreground flex-shrink-0 mr-1.5"
           aria-label="Dismiss questionnaire"
+          disabled={questionnaire.isResponding}
         >
           <X size={14} />
         </Button>
       </div>
 
       {isExpanded && (
-        <div className="px-3 pb-3">
+        <fieldset
+          className="min-w-0 px-3 pb-3 disabled:opacity-60"
+          disabled={questionnaire.isResponding}
+        >
           {/* Current question input */}
           <div className="space-y-3">
             <div className="space-y-2">
@@ -430,7 +444,7 @@ export function QuestionnaireInput() {
               </Button>
             </div>
           </div>
-        </div>
+        </fieldset>
       )}
     </div>
   );

@@ -31,6 +31,9 @@ events that may arrive after an operation has been superseded.
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.
+- Do not persist machine-generated queue entries when their authority or
+  acceptance callbacks are memory-only. Let the live authoritative registry
+  rehydrate and re-enqueue them; a full restart must not restore orphan shells.
 - `observeTransition` runs before a controller commits its next snapshot. If
   an observer callback can re-enter the machine (for example, by submitting a
   follow-up turn), defer that callback until the committed state is visible.

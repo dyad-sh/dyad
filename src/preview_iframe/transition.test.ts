@@ -25,6 +25,7 @@ const EVENTS: readonly PreviewIframeEvent[] = [
   },
   { type: "GO_BACK" },
   { type: "GO_FORWARD" },
+  { type: "RUNTIME_RESTARTED" },
   { type: "RELOAD_REQUESTED" },
   { type: "IFRAME_REPLACED", reason: "external" },
   { type: "IFRAME_LOADED" },
@@ -91,6 +92,39 @@ describe("preview iframe transition", () => {
     });
     expect(disabledToggle.state).toBe(reloaded.state);
     expect(disabledToggle.ignoredReason).toBe("picker-not-ready");
+  });
+
+  it("returns to the fresh app root after a runtime restart", () => {
+    let state = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_URL_CHANGED",
+      url: URL,
+    }).state;
+    state = transition(state, {
+      type: "NAVIGATED_IN_APP",
+      kind: "pushState",
+      url: `${URL}/about`,
+    }).state;
+
+    const restarted = transition(state, { type: "RUNTIME_RESTARTED" });
+    expect(restarted.state).toMatchObject({
+      history: [],
+      position: 0,
+      currentUrl: null,
+      preservedUrl: null,
+      selectorReady: false,
+      picking: false,
+    });
+
+    const ready = transition(restarted.state, {
+      type: "APP_URL_CHANGED",
+      url: URL,
+    });
+    expect(ready.state).toMatchObject({
+      history: [URL],
+      position: 0,
+      currentUrl: URL,
+      preservedUrl: URL,
+    });
   });
 
   it("deactivates an active picker and ignores repeated deactivation", () => {

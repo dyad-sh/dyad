@@ -40,6 +40,7 @@ export type PreviewIframeEvent =
     }
   | { type: "GO_BACK" }
   | { type: "GO_FORWARD" }
+  | { type: "RUNTIME_RESTARTED" }
   | { type: "RELOAD_REQUESTED" }
   | { type: "IFRAME_REPLACED"; reason: "external" }
   | { type: "IFRAME_LOADED" }
@@ -71,6 +72,7 @@ export type PreviewIframeIgnoreReason =
   | "already-current-url"
   | "empty-url"
   | "history-boundary"
+  | "already-runtime-reset"
   | "picker-not-ready"
   | "picker-already-inactive"
   | "already-selector-ready"

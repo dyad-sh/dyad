@@ -117,6 +117,26 @@ export function transition(
         [navigateCommand(currentUrl, "forward")],
       );
     }
+    case "RUNTIME_RESTARTED":
+      if (
+        state.history.length === 0 &&
+        state.position === 0 &&
+        state.currentUrl === null &&
+        state.preservedUrl === null &&
+        !state.selectorReady &&
+        !state.picking
+      ) {
+        return ignore(state, "already-runtime-reset");
+      }
+      return applied({
+        ...state,
+        history: [],
+        position: 0,
+        currentUrl: null,
+        preservedUrl: null,
+        selectorReady: false,
+        picking: false,
+      });
     case "RELOAD_REQUESTED":
       return applied(
         {

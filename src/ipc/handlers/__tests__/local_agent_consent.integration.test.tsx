@@ -329,9 +329,10 @@ describe("local-agent consent banner (integration)", () => {
     const firstRenderer = harness.mount({ chatId });
     await harness.selectChatMode("local-agent");
 
-    const { send } = await harness.typeInChat("tc=local-agent/add-dependency", {
-      chatId,
-    });
+    const { send } = await harness.typeInChat(
+      "tc=local-agent/add-dependency-invalid",
+      { chatId },
+    );
     send();
     await screen.findByRole(
       "button",

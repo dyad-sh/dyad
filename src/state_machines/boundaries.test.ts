@@ -151,7 +151,9 @@ describe("state-machine boundaries", () => {
           .readFileSync(filePath, "utf8")
           .includes("setImageGenerationJobsProjectionAtom"),
       )
-      .map((filePath) => path.relative(SOURCE_ROOT, filePath));
+      .map((filePath) =>
+        path.relative(SOURCE_ROOT, filePath).split(path.sep).join("/"),
+      );
 
     expect(writers).toEqual(["image_generation/ImageGenerationProvider.tsx"]);
   });

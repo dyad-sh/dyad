@@ -130,6 +130,11 @@ For app features that fetch `api.dyad.sh` directly, add a test-only env override
 
 If an E2E CI shard fails before Playwright starts with `[ERR_PNPM_IGNORED_BUILDS]` during `cd scaffold && pnpm install` or `cd nextjs-template && pnpm install`, check the workflow pnpm version first. `pnpm@latest` can change build-script policy between major versions; pin the workflow pnpm version or explicitly update the build-script policy instead of debugging test code.
 
+Cross-platform E2E helpers must not pass POSIX-quoted scripts such as
+`node -e '...'` through `execSync`; Windows `cmd.exe` treats the single quotes
+as data and can report `Unterminated string constant`. Use
+`execFileSync(process.execPath, ["-e", script])` so the script is one argument.
+
 ## Sandbox-related Electron launch failures
 
 Packaged Electron E2E runs may fail inside the Codex sandbox before any test logic executes, with Playwright reporting `electron.launch: Process failed to launch!` and the Electron process exiting with `SIGABRT`.

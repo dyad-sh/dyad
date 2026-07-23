@@ -90,11 +90,12 @@ export function ChatModeSelector() {
   useEffect(() => {
     if (
       settings &&
+      storedChatMode === "build" &&
       isFreeProBuildModeCombination(settings.selectedModel, selectedMode)
     ) {
       void setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE).catch(() => {});
     }
-  }, [selectedMode, setChatMode, settings]);
+  }, [selectedMode, setChatMode, settings, storedChatMode]);
 
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;

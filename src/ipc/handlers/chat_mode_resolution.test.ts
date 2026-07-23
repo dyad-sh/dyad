@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { UserSettings } from "@/lib/schemas";
-import { resolveChatModeForTurn } from "./chat_mode_resolution";
+import {
+  assertChatModeCompatibleWithModel,
+  resolveChatModeForTurn,
+} from "./chat_mode_resolution";
 
 function makeFreeProSettings(
   overrides: Partial<UserSettings> = {},
@@ -35,5 +38,13 @@ describe("resolveChatModeForTurn", () => {
         settings: makeFreeProSettings(),
       }),
     ).resolves.toMatchObject({ mode: "build" });
+  });
+
+  it("rejects an explicit Free Pro Build request before acceptance", () => {
+    expect(() =>
+      assertChatModeCompatibleWithModel(makeFreeProSettings(), "build"),
+    ).toThrow(
+      "Dyad Free is not available in Build mode. Switch to Agent, Ask, or Plan mode, or choose a paid model.",
+    );
   });
 });

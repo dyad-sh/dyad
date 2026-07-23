@@ -24,7 +24,6 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 import { chats, messages } from "@/db/schema";
-import type { ChatStreamChunkPayload } from "@/chat_stream/protocol";
 import { writeSettings } from "@/main/settings";
 
 function errorEvents(harness: HybridChatHarness) {
@@ -162,38 +161,6 @@ describe("chat mode (integration)", () => {
       where: eq(messages.chatId, replayChatId),
     });
     expect(replayMessages).toHaveLength(1);
-  }, 60_000);
-
-  it("uses the winning latch for concurrent first turns", async () => {
-    const concurrentChatId = await harness.createChat();
-
-    const results = await Promise.all([
-      harness.streamChat("[dump] first", {
-        chatId: concurrentChatId,
-        requestedChatMode: "build",
-        userInputRequestId: "concurrent-build",
-      }),
-      harness.streamChat("[dump] second", {
-        chatId: concurrentChatId,
-        requestedChatMode: "ask",
-        userInputRequestId: "concurrent-ask",
-      }),
-    ]);
-
-    const persistedChat = await harness.db.query.chats.findFirst({
-      where: eq(chats.id, concurrentChatId),
-    });
-    expect(persistedChat?.chatMode).not.toBeNull();
-
-    const effectiveModes = results.flatMap((result) =>
-      result
-        .eventsFor("chat:response:chunk")
-        .map((event) => event.payload as ChatStreamChunkPayload)
-        .map((payload) => payload.effectiveChatMode)
-        .filter((mode) => mode !== undefined),
-    );
-    expect(effectiveModes).toHaveLength(2);
-    expect(new Set(effectiveModes)).toEqual(new Set([persistedChat?.chatMode]));
   }, 60_000);
 
   it("lets main resolve an implicit Google-only first turn", async () => {

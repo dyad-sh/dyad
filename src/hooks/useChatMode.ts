@@ -13,6 +13,7 @@ import {
   getUnavailableChatModeReason,
   type ChatModeFallbackReason,
 } from "@/lib/chatMode";
+import { getFreeProCompatibleChatMode } from "@/lib/freeProModel";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
 import { useFreeAgentQuota } from "./useFreeAgentQuota";
@@ -44,7 +45,10 @@ export function useChatMode(chatId: number | null | undefined) {
 
   const freeAgentQuotaAvailable = isQuotaLoading ? undefined : !isQuotaExceeded;
   const effectiveDefaultMode = settings
-    ? getEffectiveDefaultChatMode(settings, envVars, freeAgentQuotaAvailable)
+    ? getFreeProCompatibleChatMode(
+        settings.selectedModel,
+        getEffectiveDefaultChatMode(settings, envVars, freeAgentQuotaAvailable),
+      )
     : "build";
 
   const storedChatMode = chatQuery.data?.chatMode ?? null;

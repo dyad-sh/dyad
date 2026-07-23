@@ -122,12 +122,12 @@ import {
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import { isFreeProModel } from "@/lib/freeProModel";
 import {
-  FREE_PRO_BUILD_MODE_ERROR,
-  isFreeProBuildModeCombination,
-  isFreeProModel,
-} from "@/lib/freeProModel";
-import { resolveChatModeForTurn } from "./chat_mode_resolution";
+  assertChatModeCompatibleWithModel,
+  resolveChatModeForTurn,
+} from "./chat_mode_resolution";
+import { acceptChatTurn } from "./chat_turn_acceptance";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -1071,73 +1071,21 @@ ${componentSnippet}
         storedChatMode: chat.chatMode,
         requestedChatMode: req.requestedChatMode,
       });
+      assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
 
       // Accept the user message and latch an implicit chat's first mode in one
       // synchronous transaction. This keeps the durable idempotency marker and
       // the mode latch atomic. The conditional update also arbitrates
       // concurrent first turns; a loser reloads and uses the winner below.
-      const acceptedTurn = db.transaction((tx) => {
-        const insertedUserMessage = tx
-          .insert(messages)
-          .values({
-            chatId: req.chatId,
-            role: "user",
-            content:
-              implementPlanDisplayPrompt ??
-              displayUserPrompt ??
-              defaultAiUserPrompt,
-            userInputRequestId: req.userInputRequestId,
-          })
-          .onConflictDoNothing({
-            target: [messages.chatId, messages.userInputRequestId],
-          })
-          .returning({ id: messages.id })
-          .get();
-
-        if (!insertedUserMessage) {
-          // Repair chats accepted before first-turn latching became atomic.
-          tx.update(chats)
-            .set({ chatMode: selectedChatMode })
-            .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)))
-            .run();
-          return { userMessageId: null, authoritativeChatMode: null };
-        }
-
-        if (chat.chatMode !== null) {
-          return {
-            userMessageId: insertedUserMessage.id,
-            authoritativeChatMode: null,
-          };
-        }
-
-        const latchedChat = tx
-          .update(chats)
-          .set({ chatMode: selectedChatMode })
-          .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)))
-          .returning({ chatMode: chats.chatMode })
-          .get();
-        if (latchedChat) {
-          return {
-            userMessageId: insertedUserMessage.id,
-            authoritativeChatMode: latchedChat.chatMode,
-          };
-        }
-
-        const winningChat = tx
-          .select({ chatMode: chats.chatMode })
-          .from(chats)
-          .where(eq(chats.id, req.chatId))
-          .get();
-        if (!winningChat) {
-          throw new DyadError(
-            `Chat not found: ${req.chatId}`,
-            DyadErrorKind.NotFound,
-          );
-        }
-        return {
-          userMessageId: insertedUserMessage.id,
-          authoritativeChatMode: winningChat.chatMode,
-        };
+      const acceptedTurn = acceptChatTurn(db, {
+        chatId: req.chatId,
+        storedChatMode: chat.chatMode,
+        selectedChatMode,
+        content:
+          implementPlanDisplayPrompt ??
+          displayUserPrompt ??
+          defaultAiUserPrompt,
+        userInputRequestId: req.userInputRequestId,
       });
 
       if (acceptedTurn.userMessageId === null) {
@@ -1171,6 +1119,7 @@ ${componentSnippet}
           mode: selectedChatMode,
           fallbackReason: chatModeFallbackReason,
         } = authoritativeResolution);
+        assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
       }
 
       const userMessageId = acceptedTurn.userMessageId;
@@ -1185,14 +1134,6 @@ ${componentSnippet}
         ...storedSettings,
         selectedChatMode,
       };
-      if (
-        isFreeProBuildModeCombination(settings.selectedModel, selectedChatMode)
-      ) {
-        throw new DyadError(
-          FREE_PRO_BUILD_MODE_ERROR,
-          DyadErrorKind.Precondition,
-        );
-      }
       const freeModelMode = isFreeProModel(settings.selectedModel);
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),

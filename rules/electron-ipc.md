@@ -69,6 +69,10 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
   in one synchronous SQLite transaction, duplicate replay must repair legacy
   null rows, and a concurrent conditional-update loser must use the stored
   winner before choosing prompts or tools.
+- Run synchronous precondition checks that can reject a chat turn before its
+  idempotency insert, implicit-mode latch, and renderer acceptance event.
+  Otherwise a rejected request leaves durable state and replays as accepted
+  even though no model turn ran.
 - If a legacy UI path appends directly to `queuedMessagesByIdAtom` instead of submitting through the machine, poke the chat controller immediately after the synchronous atom write. The render that chose the queue path may be stale after finalization's one automatic dispatch, otherwise leaving the new item without a driver.
 - **Never gate global-state cleanup in `onEnd`/`onError` on a local `isMountedRef`.** Stream callbacks outlive the component that started them. If the user navigates away mid-stream, an unmount-guarded `onEnd` skips `setIsStreamingByIdAtom(false)` and `syncChatFromDb`, leaving the chat permanently `isStreaming=true` — `ChatPanel.fetchChatMessages` then skips IPC fetches forever and only a page refresh recovers. Always run global Jotai state writes and DB syncs unconditionally; only guard UI-only side effects (toasts, console logs, local React state) on mount. See `src/chat_stream/commands.ts` for the no-guard pattern.
 

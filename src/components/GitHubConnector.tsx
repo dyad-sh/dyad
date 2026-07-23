@@ -91,6 +91,7 @@ function ConnectedGitHubConnector({
   const {
     banner,
     isOperationInFlight,
+    canRequestSync,
     isSyncing,
     conflicts,
     rebaseAction,
@@ -105,12 +106,12 @@ function ConnectedGitHubConnector({
     () => send({ type: "CONFLICTS", files: [] }),
     [send],
   );
-  const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
+  const { resolveFilesWithAI, isResolving } = useResolveMergeConflictsWithAI({
     appId,
     conflicts,
     onStartResolving: clearResolvedConflicts,
   });
-  useRegisterGithubConflictResolution(appId, resolveWithAI);
+  useRegisterGithubConflictResolution(appId, resolveFilesWithAI);
 
   const isDisconnecting = runningOperation?.type === "disconnect";
   const isCancellingSync =
@@ -145,7 +146,7 @@ function ConnectedGitHubConnector({
               op: { type: "push", mode: "normal" },
             })
           }
-          disabled={isRebaseActionPending}
+          disabled={!canRequestSync}
         >
           {isSyncing ? (
             <>
@@ -462,6 +463,8 @@ export function UnconnectedGitHubConnector({
   const isCreatingRepo = projection.runningOperation?.type === "connect-repo";
   const createRepoError =
     projection.banner?.kind === "error" ? projection.banner.message : null;
+  const createRepoSuccess =
+    projection.banner?.kind === "success" ? projection.banner.message : null;
 
   // Assume org is the authenticated user for now (could add org input later)
   const githubOrg = ""; // Use empty string for now (GitHub API will default to the authenticated user)
@@ -980,6 +983,9 @@ export function UnconnectedGitHubConnector({
 
           {createRepoError && (
             <p className="text-red-600 mt-2">{createRepoError}</p>
+          )}
+          {createRepoSuccess && (
+            <p className="text-green-600 mt-2">{createRepoSuccess}</p>
           )}
         </div>
       </div>

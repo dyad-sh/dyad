@@ -111,7 +111,7 @@ function operationSucceeded(
       state: {
         type: "running",
         op: state.next,
-        banner: null,
+        banner: successBanner(op),
       },
       commands: [...mutationCommands, { type: "run-op", op: state.next }],
     };
@@ -155,10 +155,14 @@ function operationFailed(
     return ignore(state, "stale-op");
   }
 
+  const failureMessage =
+    state.banner?.kind === "success"
+      ? `${state.banner.message} The follow-up operation failed: ${failure.message}`
+      : failure.message;
   const banner: GithubOpsBanner = {
     kind: "error",
     ...(failure.code ? { code: failure.code } : {}),
-    message: failure.message,
+    message: failureMessage,
   };
 
   if (failure.code === "REBASE_IN_PROGRESS") {
@@ -537,7 +541,7 @@ function successBanner(op: GithubOperation): GithubOpsBanner | null {
     case "rebase":
       return {
         kind: "success",
-        message: "Rebase and push completed successfully.",
+        message: "Rebase completed successfully.",
       };
     case "rebase-continue":
       return {
@@ -573,8 +577,15 @@ function successBanner(op: GithubOperation): GithubOpsBanner | null {
         kind: "success",
         message: `Renamed '${op.oldBranch}' to '${op.newBranch}'`,
       };
-    case "disconnect":
     case "connect-repo":
+      return {
+        kind: "success",
+        message:
+          op.mode === "create"
+            ? "Repository created and linked successfully."
+            : "Connected to repository successfully.",
+      };
+    case "disconnect":
       return null;
     default:
       return assertNever(op);

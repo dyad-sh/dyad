@@ -37,4 +37,21 @@ describe("projectGithubOps", () => {
       expect(projection.abortOperation).toBe("rebase-abort");
     },
   );
+
+  it("disables primary sync outside idle", () => {
+    expect(projectGithubOps(INITIAL_GITHUB_OPS_STATE).canRequestSync).toBe(
+      true,
+    );
+    expect(
+      projectGithubOps({
+        type: "conflicted",
+        files: ["src/conflicted.ts"],
+        origin: { type: "reconcile" },
+        banner: null,
+      }).canRequestSync,
+    ).toBe(false);
+    expect(
+      projectGithubOps({ type: "rebase-paused", banner: null }).canRequestSync,
+    ).toBe(false);
+  });
 });

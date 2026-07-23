@@ -149,4 +149,26 @@ describe("useResolveMergeConflictsWithAI", () => {
     expect(mocks.showError).toHaveBeenCalledExactlyOnceWith("create failed");
     expect(mocks.controllerSend).not.toHaveBeenCalled();
   });
+
+  it("uses conflicts supplied by the machine runner instead of the render closure", async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () =>
+        useResolveMergeConflictsWithAI({
+          appId: APP_ID,
+          conflicts: [],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    await act(async () => {
+      await result.current.resolveFilesWithAI(["src/from-machine.ts"]);
+    });
+
+    const event = mocks.controllerSend.mock.calls[0][0] as StreamEvent;
+    expect(event.type === "submit" && event.request.prompt).toContain(
+      "- src/from-machine.ts",
+    );
+    expect(mocks.showError).not.toHaveBeenCalled();
+  });
 });

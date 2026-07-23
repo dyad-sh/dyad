@@ -4,6 +4,7 @@ export interface GithubOpsProjection {
   readonly state: GithubOpsState;
   readonly banner: GithubOpsBanner | null;
   readonly isOperationInFlight: boolean;
+  readonly canRequestSync: boolean;
   readonly isSyncing: boolean;
   readonly conflicts: readonly string[];
   readonly rebaseInProgress: boolean;
@@ -28,6 +29,7 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
     state,
     banner: state.banner,
     isOperationInFlight: state.type === "running",
+    canRequestSync: state.type === "idle",
     isSyncing:
       state.type === "running" &&
       (state.op.type === "push" || state.op.type === "rebase"),

@@ -260,4 +260,60 @@ describe("github_ops transition", () => {
       },
     ]);
   });
+
+  it("preserves connect success context when the automatic push fails", () => {
+    const connect: GithubOperation = {
+      type: "connect-repo",
+      mode: "create",
+      org: "",
+      repo: "demo",
+      thenAutoPush: true,
+    };
+    const runningConnect = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: connect,
+    }).state;
+    const runningPush = transition(runningConnect, {
+      type: "OP_SUCCEEDED",
+      op: connect,
+    }).state;
+
+    expect(runningPush).toMatchObject({
+      type: "running",
+      op: { type: "push", mode: "normal" },
+      banner: { kind: "success" },
+    });
+
+    const failedPush = transition(runningPush, {
+      type: "OP_FAILED",
+      op: { type: "push", mode: "normal" },
+      failure: { kind: "unknown", message: "push rejected" },
+    });
+    expect(failedPush.state.banner).toMatchObject({
+      kind: "error",
+      message: expect.stringContaining("created and linked"),
+    });
+    expect(failedPush.state.banner?.message).toContain("push rejected");
+  });
+
+  it("reports rebase success only after its composite push completes", () => {
+    const rebase: GithubOperation = { type: "rebase" };
+    const runningRebase = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: rebase,
+    }).state;
+    const runningPush = transition(runningRebase, {
+      type: "OP_SUCCEEDED",
+      op: rebase,
+    }).state;
+    const completed = transition(runningPush, {
+      type: "OP_SUCCEEDED",
+      op: { type: "push", mode: "normal" },
+    });
+
+    expect(runningPush.banner?.message).toBe("Rebase completed successfully.");
+    expect(completed.state.banner?.message).toBe(
+      "Successfully pushed to GitHub!",
+    );
+  });
 });

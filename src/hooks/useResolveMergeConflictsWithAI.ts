@@ -11,7 +11,7 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
-  conflicts: string[];
+  conflicts: readonly string[];
   onStartResolving?: () => void;
 }
 
@@ -33,83 +33,90 @@ export function useResolveMergeConflictsWithAI({
   const { refreshApp } = useLoadApp(appId);
   const chatStreamManager = useChatStreamManager();
 
-  const resolveWithAI = useCallback(async () => {
-    if (!appId) {
-      showError("App ID is required");
-      return;
-    }
-    if (conflicts.length === 0) {
-      showError("No conflicts to resolve");
-      return;
-    }
-    if (isResolvingRef.current) {
-      return;
-    }
+  const resolveFilesWithAI = useCallback(
+    async (requestedConflicts: readonly string[]) => {
+      if (!appId) {
+        showError("App ID is required");
+        return;
+      }
+      if (requestedConflicts.length === 0) {
+        showError("No conflicts to resolve");
+        return;
+      }
+      if (isResolvingRef.current) {
+        return;
+      }
 
-    isResolvingRef.current = true;
-    setIsResolving(true);
+      isResolvingRef.current = true;
+      setIsResolving(true);
 
-    try {
-      // Create a new chat for conflict resolution
-      const newChatId = await ipc.chat.createChat({
-        appId,
-        initialChatMode: "build",
-      });
-      // Clear conflicts state after successful chat creation
-      onStartResolving?.();
+      try {
+        // Create a new chat for conflict resolution
+        const newChatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode: "build",
+        });
+        // Clear conflicts state after successful chat creation
+        onStartResolving?.();
 
-      // Build the prompt for resolving all conflicts
-      const fileList = conflicts.map((f) => `- ${f}`).join("\n");
-      const prompt = `Please resolve the Git merge conflicts in the following file${conflicts.length > 1 ? "s" : ""}:
+        // Build the prompt for resolving all conflicts
+        const fileList = requestedConflicts.map((f) => `- ${f}`).join("\n");
+        const prompt = `Please resolve the Git merge conflicts in the following file${requestedConflicts.length > 1 ? "s" : ""}:
 
 ${fileList}
 
 For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choose the best resolution that preserves the intended functionality from both sides. Remove all conflict markers and provide the complete resolved file content.`;
 
-      // Set up the chat state and navigate
-      setSelectedChatId(newChatId);
-      setSelectedAppId(appId);
+        // Set up the chat state and navigate
+        setSelectedChatId(newChatId);
+        setSelectedAppId(appId);
 
-      // Navigate to the chat page
-      navigate({
-        to: "/chat",
-        search: { id: newChatId },
-      });
+        // Navigate to the chat page
+        navigate({
+          to: "/chat",
+          search: { id: newChatId },
+        });
 
-      chatStreamManager.ensure(newChatId).send({
-        type: "submit",
-        request: {
-          chatId: newChatId,
-          prompt,
-          appId,
-          onSettled: () => {
-            isResolvingRef.current = false;
-            setIsResolving(false);
-            invalidateChats();
-            void refreshApp();
+        chatStreamManager.ensure(newChatId).send({
+          type: "submit",
+          request: {
+            chatId: newChatId,
+            prompt,
+            appId,
+            onSettled: () => {
+              isResolvingRef.current = false;
+              setIsResolving(false);
+              invalidateChats();
+              void refreshApp();
+            },
           },
-        },
-      });
-    } catch (error: unknown) {
-      showError(
-        error instanceof Error
-          ? error.message
-          : "Failed to start conflict resolution",
-      );
-      isResolvingRef.current = false;
-      setIsResolving(false);
-    }
-  }, [
-    appId,
-    conflicts,
-    onStartResolving,
-    setSelectedChatId,
-    setSelectedAppId,
-    navigate,
-    invalidateChats,
-    refreshApp,
-    chatStreamManager,
-  ]);
+        });
+      } catch (error: unknown) {
+        showError(
+          error instanceof Error
+            ? error.message
+            : "Failed to start conflict resolution",
+        );
+        isResolvingRef.current = false;
+        setIsResolving(false);
+      }
+    },
+    [
+      appId,
+      onStartResolving,
+      setSelectedChatId,
+      setSelectedAppId,
+      navigate,
+      invalidateChats,
+      refreshApp,
+      chatStreamManager,
+    ],
+  );
 
-  return { resolveWithAI, isResolving };
+  const resolveWithAI = useCallback(
+    () => resolveFilesWithAI(conflicts),
+    [conflicts, resolveFilesWithAI],
+  );
+
+  return { resolveWithAI, resolveFilesWithAI, isResolving };
 }

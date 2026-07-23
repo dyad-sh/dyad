@@ -557,7 +557,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                   folderName=""
                   settings={settings}
                   refreshSettings={refreshSettings}
-                  handleRepoSetupComplete={() => undefined}
                   expanded={false}
                 />
               ) : (

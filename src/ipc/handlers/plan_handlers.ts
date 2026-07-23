@@ -7,7 +7,6 @@ import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { planContracts } from "../types/plan";
-import { questionnaireResolver } from "../../pro/main/ipc/handlers/local_agent/userInputResolvers";
 import { buildFrontmatter, validatePlanId, parsePlanFile } from "./planUtils";
 import {
   normalizePlanStatus,
@@ -192,11 +191,4 @@ export function registerPlanHandlers() {
     }
     logger.info("Deleted plan:", planId);
   });
-
-  createTypedHandler(
-    planContracts.respondToQuestionnaire,
-    async (_, params) => {
-      questionnaireResolver.resolve(params.requestId, params.answers);
-    },
-  );
 }

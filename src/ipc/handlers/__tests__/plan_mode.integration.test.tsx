@@ -335,9 +335,12 @@ describe("plan mode (integration)", () => {
     await harness.waitForStreamEnd(app.chatId);
 
     expect(
-      harness.bridge.lastInvoke("plan:questionnaire-response")?.args[0],
+      harness.bridge.lastInvoke("user-input:respond")?.args[0],
     ).toMatchObject({
-      answers: { framework: "Vue" },
+      response: {
+        kind: "questionnaire",
+        answers: { framework: "Vue" },
+      },
     });
     expect(errorEvents()).toHaveLength(0);
   }, 60_000);

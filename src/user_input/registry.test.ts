@@ -24,7 +24,7 @@ function setup() {
 
 describe("user-input registry", () => {
   it("uses its injected clock as the only deadline source", async () => {
-    const { registry, clock } = setup();
+    const { registry, clock, broadcast } = setup();
     const requestId = registry.request({
       kind: "agent-consent",
       chatId: 1,
@@ -38,6 +38,10 @@ describe("user-input registry", () => {
     clock.advanceBy(300_000);
     await expect(park).resolves.toBeNull();
     expect(registry.getPending()).toEqual([]);
+    expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
+      requestId,
+      outcome: "timed-out",
+    });
   });
 
   it("sweeps a consent and questionnaire in one chat", async () => {
@@ -183,6 +187,66 @@ describe("user-input registry", () => {
     await expect(registry.followUpDispatched(requestId)).rejects.toMatchObject({
       kind: "not_found",
     });
+  });
+
+  it("never makes an armed continuation due after the chat is swept", async () => {
+    const { registry, broadcast } = setup();
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 8,
+      provider: "neon",
+      classifier: "none",
+      followUpPrompt: "Continue. I have completed the neon integration.",
+    });
+    await registry.respond(requestId, {
+      kind: "integration",
+      provider: "neon",
+      completed: true,
+    });
+
+    registry.sweepChat(8);
+    registry.streamFinished(8);
+
+    expect(registry.getPending()).toEqual([]);
+    expect(
+      broadcast.mock.calls.filter(
+        ([channel]) => channel === "user-input:follow-up-due",
+      ),
+    ).toHaveLength(0);
+    expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
+      requestId,
+      outcome: "swept",
+    });
+  });
+
+  it("settles an incomplete integration response without arming a follow-up", async () => {
+    const { registry, broadcast } = setup();
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 12,
+      classifier: "none",
+      followUpPrompt: "Continue. I have completed the database integration.",
+    });
+    const park = registry.park(requestId);
+
+    await registry.respond(requestId, {
+      kind: "integration",
+      provider: null,
+      completed: false,
+    });
+
+    await expect(park).resolves.toEqual({
+      kind: "integration",
+      provider: null,
+      completed: false,
+    });
+    expect(registry.getPending()).toEqual([]);
+    registry.streamFinished(12);
+    expect(
+      broadcast.mock.calls.some(
+        ([channel]) => channel === "user-input:follow-up-due",
+      ),
+    ).toBe(false);
   });
 
   it("dispose aborts all live parks and clears deadlines", async () => {

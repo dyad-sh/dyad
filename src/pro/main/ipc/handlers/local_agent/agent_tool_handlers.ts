@@ -11,13 +11,7 @@ import {
 } from "./tool_definitions";
 import { createLoggedHandler } from "@/ipc/handlers/safe_handle";
 import log from "electron-log";
-import type {
-  AgentTool,
-  SetAgentToolConsentParams,
-  AgentToolConsentResponseParams,
-} from "@/ipc/types";
-import { userInputRegistry } from "@/user_input/main";
-import { isDyadError, DyadErrorKind } from "@/errors/dyad_error";
+import type { AgentTool, SetAgentToolConsentParams } from "@/ipc/types";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);
@@ -39,22 +33,6 @@ export function registerAgentToolHandlers() {
     async (_event, params: SetAgentToolConsentParams) => {
       setAgentToolConsent(params.toolName as AgentToolName, params.consent);
       return { success: true };
-    },
-  );
-
-  // Handle consent response from renderer
-  handle(
-    "agent-tool:consent-response",
-    async (_event, params: AgentToolConsentResponseParams) => {
-      try {
-        await userInputRegistry.respond(params.requestId, {
-          kind: "agent-consent",
-          decision: params.decision,
-        });
-      } catch (error) {
-        if (isDyadError(error) && error.kind === DyadErrorKind.NotFound) return;
-        throw error;
-      }
     },
   );
 }

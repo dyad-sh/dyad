@@ -8,7 +8,11 @@ import {
 export function registerUserInputHandlers(): void {
   createTypedHandler(userInputContracts.respond, async (event, input) => {
     rememberUserInputSubscriber(event.sender);
-    await userInputRegistry.respond(input.requestId, input.response);
+    if (input.response.kind === "follow-up-dispatched") {
+      await userInputRegistry.followUpDispatched(input.requestId);
+    } else {
+      await userInputRegistry.respond(input.requestId, input.response);
+    }
   });
   createTypedHandler(userInputContracts.getPending, async (event) => {
     rememberUserInputSubscriber(event.sender);

@@ -251,6 +251,7 @@ export function createProductionChatStreamCommands(
           : queryClient.getQueryData<Chat>(queryKeys.chats.detail({ chatId }));
 
       const setMessagesById = makeSetMessagesById(store);
+      let userInputAccepted = request.userInputRequestId === undefined;
       ipc.chatStream.start(
         {
           chatId,
@@ -265,6 +266,7 @@ export function createProductionChatStreamCommands(
               : (request.requestedChatMode ??
                 cachedChat?.chatMode ??
                 undefined),
+          userInputRequestId: request.userInputRequestId,
         },
         {
           onChunk: (chunk) => {
@@ -276,7 +278,17 @@ export function createProductionChatStreamCommands(
               chunkSeq,
               effectiveChatMode,
               chatModeFallbackReason,
+              acceptedUserInputRequestId,
             } = chunk;
+
+            if (
+              request.userInputRequestId &&
+              acceptedUserInputRequestId === request.userInputRequestId &&
+              !userInputAccepted
+            ) {
+              userInputAccepted = true;
+              request.onAccepted?.();
+            }
 
             emit({ type: "chunk-received", streamId });
 
@@ -336,9 +348,17 @@ export function createProductionChatStreamCommands(
             }
           },
           onEnd: (response) => {
+            if (!userInputAccepted) {
+              request.onAcceptanceError?.(
+                new Error("Follow-up stream ended before durable acceptance"),
+              );
+            }
             emit({ type: "stream-ended", streamId, response });
           },
           onError: ({ error, warningMessages }) => {
+            if (!userInputAccepted) {
+              request.onAcceptanceError?.(new Error(error));
+            }
             emit({ type: "stream-errored", streamId, error, warningMessages });
           },
         },
@@ -363,10 +383,28 @@ export function createProductionChatStreamCommands(
         redo: request.redo,
         appId: request.appId,
         requestedChatMode: request.requestedChatMode,
+        userInputRequestId: request.userInputRequestId,
+        onAccepted: request.onAccepted,
+        onAcceptanceError: request.onAcceptanceError,
       };
       store.set(queuedMessagesByIdAtom, (prev) => {
         const next = new Map(prev);
         const existing = prev.get(chatId) ?? [];
+        if (request.userInputRequestId) {
+          const duplicateIndex = existing.findIndex(
+            (item) => item.userInputRequestId === request.userInputRequestId,
+          );
+          if (duplicateIndex >= 0) {
+            const updated = [...existing];
+            updated[duplicateIndex] = {
+              ...updated[duplicateIndex],
+              onAccepted: request.onAccepted,
+              onAcceptanceError: request.onAcceptanceError,
+            };
+            next.set(chatId, updated);
+            return next;
+          }
+        }
         next.set(chatId, [...existing, newItem]);
         return next;
       });
@@ -541,6 +579,7 @@ export function createProductionChatStreamCommands(
         showWarningMessage(warningMessage, targetAppId);
       }
       console.error(`[CHAT] Stream error for ${chatId}:`, error);
+      request.onAcceptanceError?.(new Error(error));
       store.set(chatErrorByIdAtom, (prev) => {
         const next = new Map(prev);
         next.set(chatId, error);
@@ -612,6 +651,9 @@ export function createProductionChatStreamCommands(
             messageToSend.requestedChatMode !== undefined
               ? messageToSend.requestedChatMode
               : chatMode,
+          userInputRequestId: messageToSend.userInputRequestId,
+          onAccepted: messageToSend.onAccepted,
+          onAcceptanceError: messageToSend.onAcceptanceError,
         },
       });
     },

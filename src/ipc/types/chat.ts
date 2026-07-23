@@ -143,6 +143,7 @@ export const ChatStreamParamsSchema = z
     attachments: ChatAttachmentsSchema.optional(),
     selectedComponents: z.array(ComponentSelectionSchema).optional(),
     requestedChatMode: ChatModeSchema.optional(),
+    userInputRequestId: z.string().optional(),
   })
   .superRefine((params, context) => {
     const validation = validateSerializedChatAttachments(
@@ -226,6 +227,7 @@ export const ChatResponseChunkSchema = z.object({
   chunkSeq: z.number().int().nonnegative().finite().optional(),
   effectiveChatMode: ChatModeSchema.optional(),
   chatModeFallbackReason: z.literal("quota-exhausted").optional(),
+  acceptedUserInputRequestId: z.string().optional(),
 });
 
 export type ChatResponseChunk = z.infer<typeof ChatResponseChunkSchema>;

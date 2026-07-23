@@ -2,8 +2,10 @@
  * User-input round-trip machine domain types.
  *
  * The main-process registry is authoritative. Renderer state is a projection.
- * This machine has no machine dependencies; callers reach it through the
- * registry API. Concurrency is first-applied-wins for every terminal event.
+ * The pure core has no machine dependencies; callers reach it through the
+ * registry API. The renderer projection has one documented dependency edge:
+ * user_input -> chat_stream facade, injected at the composition root.
+ * Concurrency is first-applied-wins for every terminal event.
  */
 
 export type ConsentDecision = "accept-once" | "accept-always" | "decline";
@@ -13,6 +15,15 @@ interface DescriptorBase {
   chatId: number;
   deadlineAt: number;
   followUpPrompt?: string;
+}
+
+export interface UserInputQuestion {
+  id: string;
+  type: "text" | "radio" | "checkbox";
+  question: string;
+  options?: string[];
+  required?: boolean;
+  placeholder?: string;
 }
 
 export type UserInputDescriptor =
@@ -35,7 +46,7 @@ export type UserInputDescriptor =
     })
   | (DescriptorBase & {
       kind: "questionnaire";
-      questions: unknown[];
+      questions: UserInputQuestion[];
       classifier: "none";
     })
   | (DescriptorBase & {

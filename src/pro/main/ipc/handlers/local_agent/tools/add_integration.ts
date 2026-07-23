@@ -1,9 +1,7 @@
 import { z } from "zod";
-import crypto from "node:crypto";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { safeSend } from "@/ipc/utils/safe_sender";
-import { integrationResolver } from "../userInputResolvers";
+import { userInputRegistry } from "@/user_input/main";
 
 const logger = log.scope("add_integration");
 
@@ -40,27 +38,27 @@ export const addIntegrationTool: ToolDefinition<
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const requestId = `integration:${crypto.randomUUID()}`;
     const provider =
       args.provider && args.provider !== "none" ? args.provider : undefined;
+    const requestId = userInputRegistry.request({
+      kind: "integration",
+      chatId: ctx.chatId,
+      provider,
+      classifier: "none",
+      followUpPrompt: `Continue. I have completed the ${provider ?? "database"} integration.`,
+    });
 
     logger.log(
       `Presenting integration setup (provider: ${provider ?? "user-choice"}), requestId: ${requestId}`,
     );
 
-    safeSend(ctx.event.sender, "integration:prompt", {
-      chatId: ctx.chatId,
-      requestId,
-      provider,
-    });
+    const result = await userInputRegistry.park(requestId, ctx.abortSignal);
 
-    const result = await integrationResolver.wait(
-      requestId,
-      ctx.chatId,
-      ctx.abortSignal,
-    );
-
-    if (!result) {
+    if (
+      result?.kind !== "integration" ||
+      !result.completed ||
+      !result.provider
+    ) {
       return "The user dismissed the integration setup without completing it. Ask them how they'd like to proceed.";
     }
 

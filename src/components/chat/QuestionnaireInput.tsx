@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import {
-  pendingQuestionnaireAtom,
-  questionnaireSubmittedChatIdsAtom,
-} from "@/atoms/planAtoms";
-import { planClient } from "@/ipc/types/plan";
+import { useAtomValue, useStore } from "jotai";
+import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,17 +14,18 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  LoaderCircle,
   X,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { getUserInputProjectionAdapter } from "@/user_input/projection";
 
 const MAX_DISPLAYED_OPTIONS = 3;
 
 export function QuestionnaireInput() {
-  const [questionnaireMap, setQuestionnaireMap] = useAtom(
-    pendingQuestionnaireAtom,
-  );
-  const setSubmittedChatIds = useSetAtom(questionnaireSubmittedChatIdsAtom);
+  const store = useStore();
+  const userInputProjection = getUserInputProjectionAdapter({ store });
+  const questionnaireMap = useAtomValue(pendingQuestionnaireAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const questionnaire =
     chatId != null ? questionnaireMap.get(chatId) : undefined;
@@ -69,40 +66,13 @@ export function QuestionnaireInput() {
     questionnaire?.questions?.length,
   ]);
 
-  const clearQuestionnaire = () => {
-    if (chatId == null) return;
-    setQuestionnaireMap((prev) => {
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
-  };
-
-  const handleDismiss = () => {
+  const handleDismiss = async () => {
     if (!questionnaire) return;
-    planClient.respondToQuestionnaire({
-      requestId: questionnaire.requestId,
+    await userInputProjection.respond(questionnaire.requestId, {
+      kind: "questionnaire",
       answers: null,
     });
-    clearQuestionnaire();
   };
-
-  // Auto-dismiss after 5 minutes to match the backend timeout
-  useEffect(() => {
-    if (!questionnaire) return;
-    const timeout = setTimeout(
-      () => {
-        planClient.respondToQuestionnaire({
-          requestId: questionnaire.requestId,
-          answers: null,
-        });
-        clearQuestionnaire();
-      },
-      5 * 60 * 1000,
-    );
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [questionnaire?.requestId, chatId]);
 
   if (!questionnaire) return null;
 
@@ -184,7 +154,7 @@ export function QuestionnaireInput() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!questionnaire || chatId == null) return;
 
     const answers: Record<string, string> = {};
@@ -192,25 +162,10 @@ export function QuestionnaireInput() {
       answers[q.id] = getFinalResponse(q.id);
     }
 
-    planClient.respondToQuestionnaire({
-      requestId: questionnaire.requestId,
+    await userInputProjection.respond(questionnaire.requestId, {
+      kind: "questionnaire",
       answers,
     });
-
-    clearQuestionnaire();
-
-    // Show brief confirmation in message list
-    setSubmittedChatIds((prev) => new Map([...prev, [chatId, "visible"]]));
-    setTimeout(() => {
-      setSubmittedChatIds((prev) => new Map([...prev, [chatId, "fading"]]));
-      setTimeout(() => {
-        setSubmittedChatIds((prev) => {
-          const next = new Map(prev);
-          next.delete(chatId);
-          return next;
-        });
-      }, 300);
-    }, 1700);
   };
 
   // Helper to determine if Next button should be disabled
@@ -229,7 +184,10 @@ export function QuestionnaireInput() {
   };
 
   return (
-    <div className="border-b border-border bg-muted/30">
+    <div
+      className="border-b border-border bg-muted/30"
+      aria-busy={questionnaire.isResponding}
+    >
       <div className="flex items-center">
         <button
           type="button"
@@ -261,6 +219,12 @@ export function QuestionnaireInput() {
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+            {questionnaire.isResponding && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                Submitting...
+              </span>
+            )}
             <span className="text-xs text-muted-foreground tabular-nums">
               {currentIndex + 1} of {questionnaire.questions.length}
             </span>
@@ -277,13 +241,17 @@ export function QuestionnaireInput() {
           size="icon"
           className="h-7 w-7 text-muted-foreground flex-shrink-0 mr-1.5"
           aria-label="Dismiss questionnaire"
+          disabled={questionnaire.isResponding}
         >
           <X size={14} />
         </Button>
       </div>
 
       {isExpanded && (
-        <div className="px-3 pb-3">
+        <fieldset
+          className="min-w-0 px-3 pb-3 disabled:opacity-60"
+          disabled={questionnaire.isResponding}
+        >
           {/* Current question input */}
           <div className="space-y-3">
             <div className="space-y-2">
@@ -476,7 +444,7 @@ export function QuestionnaireInput() {
               </Button>
             </div>
           </div>
-        </div>
+        </fieldset>
       )}
     </div>
   );

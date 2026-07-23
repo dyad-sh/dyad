@@ -24,7 +24,7 @@ import {
   connectionFlowContracts,
   connectionFlowEvents,
 } from "../types/connection_flow";
-import { mcpContracts, mcpEvents } from "../types/mcp";
+import { mcpContracts } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
 import { supabaseContracts } from "../types/supabase";
 import { neonContracts } from "../types/neon";
@@ -46,7 +46,6 @@ import { miscContracts, miscEvents } from "../types/misc";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import { freeModelQuotaContracts } from "../types/free_model_quota";
 import { planEvents, planContracts } from "../types/plan";
-import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";
@@ -117,7 +116,6 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(freeAgentQuotaContracts),
   ...getInvokeChannels(freeModelQuotaContracts),
   ...getInvokeChannels(planContracts),
-  ...getInvokeChannels(integrationContracts),
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
@@ -160,11 +158,9 @@ export const VALID_RECEIVE_CHANNELS = [
   // Event channels
   ...getReceiveChannels(agentEvents),
   ...getReceiveChannels(connectionFlowEvents),
-  ...getReceiveChannels(mcpEvents),
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
-  ...getReceiveChannels(integrationEvents),
   ...getReceiveChannels(appBlueprintEvents),
   ...getReceiveChannels(testsEvents),
   ...getReceiveChannels(userInputEvents),

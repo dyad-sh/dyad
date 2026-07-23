@@ -46,6 +46,8 @@ function QueuedMessageItemRow({
   onMoveUp,
   onMoveDown,
 }: QueuedMessageItemRowProps) {
+  const isMachineFollowUp = Boolean(message.userInputRequestId);
+
   return (
     <li className="flex items-center gap-2 text-sm py-1.5 px-2 bg-muted/50 rounded group">
       {/* Message preview */}
@@ -58,14 +60,16 @@ function QueuedMessageItemRow({
 
       {/* Action buttons - visible on hover */}
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="p-1 hover:bg-muted rounded cursor-pointer"
-          title="Edit"
-        >
-          <Pencil size={14} className="text-muted-foreground" />
-        </button>
+        {!isMachineFollowUp && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="p-1 hover:bg-muted rounded cursor-pointer"
+            title="Edit"
+          >
+            <Pencil size={14} className="text-muted-foreground" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onMoveUp}
@@ -90,14 +94,16 @@ function QueuedMessageItemRow({
         >
           <ArrowDown size={14} className="text-muted-foreground" />
         </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="p-1 hover:bg-muted rounded cursor-pointer"
-          title="Delete"
-        >
-          <Trash2 size={14} className="text-red-500" />
-        </button>
+        {!isMachineFollowUp && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="p-1 hover:bg-muted rounded cursor-pointer"
+            title="Delete"
+          >
+            <Trash2 size={14} className="text-red-500" />
+          </button>
+        )}
       </div>
     </li>
   );

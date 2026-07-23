@@ -3,8 +3,6 @@ import type { createStore } from "jotai";
 
 import { agentTodosByChatIdAtom } from "@/atoms/chatAtoms";
 import type { ChatStreamManager } from "@/chat_stream/manager";
-import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
-import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
 import { ipc as defaultIpc, type TelemetryEventPayload } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
@@ -30,8 +28,36 @@ export function registerRendererIpcListeners({
 }: RegisterRendererIpcListenersOptions): () => void {
   const unsubscribes: Array<() => void> = [];
 
+  const userInputChatStream = {
+    submit: ({
+      requestId,
+      ...request
+    }: {
+      requestId: string;
+      chatId: number;
+      prompt: string;
+      selectedComponents: [];
+      requestedChatMode: "local-agent";
+    }) =>
+      new Promise<void>((resolve, reject) => {
+        chatStreamManager.ensure(request.chatId).send({
+          type: "submit",
+          request: {
+            ...request,
+            userInputRequestId: requestId,
+            onAccepted: resolve,
+            onAcceptanceError: reject,
+          },
+        });
+      }),
+  };
+
   unsubscribes.push(
-    getUserInputProjectionAdapter({ store, ipcClient }).start(),
+    getUserInputProjectionAdapter({
+      store,
+      ipcClient,
+      chatStream: userInputChatStream,
+    }).start(),
   );
 
   unsubscribes.push(
@@ -71,23 +97,6 @@ export function registerRendererIpcListeners({
       // registered the AbortController for this chat's stream (drives the
       // starting -> streaming transition and cancel reconciliation).
       chatStreamManager.notifyStreamRegistered(chatId, streamId);
-    }),
-  );
-
-  unsubscribes.push(
-    ipcClient.events.misc.onChatStreamEnd(({ chatId }) => {
-      store.set(pendingQuestionnaireAtom, (prev) => {
-        if (!prev.has(chatId)) return prev;
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-      store.set(pendingIntegrationAtom, (prev) => {
-        if (!prev.has(chatId)) return prev;
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
     }),
   );
 

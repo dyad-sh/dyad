@@ -575,6 +575,7 @@ export function registerChatStreamHandlers() {
   // the module-level stream-tracking maps don't outlive their renderer.
   // (Guarded: `app` is undefined when this module is imported in unit tests.)
   app?.on?.("before-quit", () => {
+    userInputRegistry.dispose();
     for (const controllers of activeStreams.values()) {
       controllers.forEach(({ abortController }) => abortController.abort());
     }
@@ -603,6 +604,7 @@ export function registerChatStreamHandlers() {
     const abortController = new AbortController();
     let trackedStream: TrackedStream | undefined;
     let finishedNaturally = false;
+    let replayedAcceptedFollowUp = false;
     // Expose a promise that resolves once this handler fully unwinds (see the
     // `finally` block) so `cancelStream` can await in-flight tool/file writes.
     let resolveCompletion: () => void = () => {};
@@ -1070,9 +1072,37 @@ ${componentSnippet}
             implementPlanDisplayPrompt ??
             displayUserPrompt ??
             defaultAiUserPrompt,
+          userInputRequestId: req.userInputRequestId,
+        })
+        .onConflictDoNothing({
+          target: [messages.chatId, messages.userInputRequestId],
         })
         .returning({ id: messages.id });
+      if (!insertedUserMessage) {
+        // A renderer replayed a continuation after main had already accepted
+        // the same durable idempotency key. Confirm acceptance without
+        // inserting another user message or starting another model turn.
+        replayedAcceptedFollowUp = true;
+        safeSend(event.sender, "chat:response:chunk", {
+          chatId: req.chatId,
+          streamId: req.streamId,
+          acceptedUserInputRequestId: req.userInputRequestId,
+        } satisfies ChatStreamChunkPayload);
+        safeSend(event.sender, "chat:response:end", {
+          chatId: req.chatId,
+          streamId: req.streamId,
+          updatedFiles: false,
+        } satisfies ChatStreamEndPayload);
+        return req.chatId;
+      }
       const userMessageId = insertedUserMessage.id;
+      if (req.userInputRequestId) {
+        safeSend(event.sender, "chat:response:chunk", {
+          chatId: req.chatId,
+          streamId: req.streamId,
+          acceptedUserInputRequestId: req.userInputRequestId,
+        } satisfies ChatStreamChunkPayload);
+      }
       const {
         settings: storedSettings,
         mode: selectedChatMode,
@@ -2273,12 +2303,14 @@ This conversation includes one or more image attachments. When the user uploads 
           chatId: req.chatId,
         } satisfies ChatStreamTransportEndPayload);
       }
-      if (finishedNaturally) {
-        userInputRegistry.streamFinished(req.chatId);
-      } else if (!activeStreams.has(req.chatId)) {
-        // Errors and cancellation sweep pending user inputs; only successful
-        // natural completion can arm a follow-up dispatch.
-        userInputRegistry.sweepChat(req.chatId);
+      if (!replayedAcceptedFollowUp) {
+        if (finishedNaturally) {
+          userInputRegistry.streamFinished(req.chatId);
+        } else if (!activeStreams.has(req.chatId)) {
+          // Errors and cancellation sweep pending user inputs; only successful
+          // natural completion can arm a follow-up dispatch.
+          userInputRegistry.sweepChat(req.chatId);
+        }
       }
 
       // Signal any awaiting `cancelStream` call that all writes have settled,

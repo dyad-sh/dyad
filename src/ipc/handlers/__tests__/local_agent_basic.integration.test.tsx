@@ -179,11 +179,12 @@ describe("local-agent basic flows (integration)", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Submit" })).toBeNull(),
     );
-    const responseInvoke = harness.bridge.lastInvoke(
-      "plan:questionnaire-response",
-    );
+    const responseInvoke = harness.bridge.lastInvoke("user-input:respond");
     expect(responseInvoke?.args[0]).toMatchObject({
-      answers: { framework: "Vue" },
+      response: {
+        kind: "questionnaire",
+        answers: { framework: "Vue" },
+      },
     });
     expect(errorEvents()).toHaveLength(0);
   }, 60_000);

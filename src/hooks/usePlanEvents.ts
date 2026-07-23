@@ -3,14 +3,12 @@ import { useSetAtom } from "jotai";
 import {
   planAcceptInNewChatByChatIdAtom,
   planStateAtom,
-  pendingQuestionnaireAtom,
 } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import {
   planEventClient,
   type PlanUpdatePayload,
   type PlanExitPayload,
-  type PlanQuestionnairePayload,
 } from "@/ipc/types/plan";
 import { usePlanHandoff } from "@/plan_handoff/usePlanHandoff";
 
@@ -18,15 +16,13 @@ import { usePlanHandoff } from "@/plan_handoff/usePlanHandoff";
  * Hook to handle plan mode IPC events.
  * Should be called at the app root level to listen for plan events.
  *
- * `plan:update` and `plan:questionnaire` are handled inline; `plan:exit`
- * (accept plan → implement) is delegated to the plan-handoff state machine
- * in `src/plan_handoff/`.
+ * `plan:update` is handled inline; `plan:exit` (accept plan → implement) is
+ * delegated to the plan-handoff state machine in `src/plan_handoff/`.
  */
 export function usePlanEvents() {
   const setPlanState = useSetAtom(planStateAtom);
   const setPlanAcceptInNewChat = useSetAtom(planAcceptInNewChatByChatIdAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const { acceptPlan } = usePlanHandoff();
 
   useEffect(() => {
@@ -69,27 +65,9 @@ export function usePlanEvents() {
       },
     );
 
-    // Handle questionnaire events - set pending questionnaire for in-app display
-    const unsubscribeQuestionnaire = planEventClient.onQuestionnaire(
-      (payload: PlanQuestionnairePayload) => {
-        setPendingQuestionnaire((prev) => {
-          const next = new Map(prev);
-          next.set(payload.chatId, payload);
-          return next;
-        });
-      },
-    );
-
     return () => {
       unsubscribeUpdate();
       unsubscribeExit();
-      unsubscribeQuestionnaire();
     };
-  }, [
-    setPlanState,
-    setPlanAcceptInNewChat,
-    setPreviewMode,
-    setPendingQuestionnaire,
-    acceptPlan,
-  ]);
+  }, [setPlanState, setPlanAcceptInNewChat, setPreviewMode, acceptPlan]);
 }

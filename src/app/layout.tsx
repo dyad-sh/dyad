@@ -21,7 +21,6 @@ import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useChatStreamRuntime } from "@/hooks/useChatStream";
 import { useQueuePersistence } from "@/hooks/useQueuePersistence";
-import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
@@ -108,11 +107,6 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   // Persist queued messages to disk and hydrate them on startup, so queued
   // prompts survive app restarts / crashes.
   useQueuePersistence();
-
-  // Auto-send integration continuation messages and clean up stale integration
-  // state at the root level — keeps the dispatch alive even if the in-chat
-  // card unmounts (e.g. virtualized scroll-out).
-  useIntegrationContinuation();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;

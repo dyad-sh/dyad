@@ -2,9 +2,12 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
+import {
+  integrationProviderSelectionAtom,
+  pendingIntegrationAtom,
+} from "@/atoms/integrationAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useNeon } from "@/hooks/useNeon";
 import { useIntegrationContinue } from "@/hooks/useIntegrationContinue";
@@ -35,8 +38,9 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { t } = useTranslation("home");
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
-  const [pendingIntegrationMap, setPendingIntegrationMap] = useAtom(
-    pendingIntegrationAtom,
+  const pendingIntegrationMap = useAtomValue(pendingIntegrationAtom);
+  const setIntegrationProviderSelection = useSetAtom(
+    integrationProviderSelectionAtom,
   );
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -167,15 +171,13 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const handleNextClick = () => {
     if (!effectiveSelectedProvider || chatId == null || !pendingIntegration)
       return;
-    // Persist the chosen provider on the pending integration so the Configure
-    // panel knows which connector to render. The tool may have left provider
-    // unset when it allowed the user to pick.
-    setPendingIntegrationMap((prev) => {
-      const existing = prev.get(chatId);
-      if (!existing) return prev;
-      if (existing.provider === effectiveSelectedProvider) return prev;
+    // Share the UI choice with the Configure panel without mutating the
+    // main-authoritative request projection.
+    setIntegrationProviderSelection((prev) => {
+      if (prev.get(pendingIntegration.requestId) === effectiveSelectedProvider)
+        return prev;
       const next = new Map(prev);
-      next.set(chatId, { ...existing, provider: effectiveSelectedProvider });
+      next.set(pendingIntegration.requestId, effectiveSelectedProvider);
       return next;
     });
     // Surface the right-sidebar Configure tab where the integration setup now lives.
@@ -197,12 +199,11 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     // panel collapses and the radios reopen with no preselection. (The
     // tool-locked provider, if any, is still preserved via `requestedProvider`
     // and continues to constrain `availableProviders`.)
-    if (chatId != null) {
-      setPendingIntegrationMap((prev) => {
-        const existing = prev.get(chatId);
-        if (!existing || existing.provider === undefined) return prev;
+    if (pendingIntegration) {
+      setIntegrationProviderSelection((prev) => {
+        if (!prev.has(pendingIntegration.requestId)) return prev;
         const next = new Map(prev);
-        next.set(chatId, { ...existing, provider: undefined });
+        next.delete(pendingIntegration.requestId);
         return next;
       });
     }

@@ -141,18 +141,32 @@ export function transition(
       const persist: UserInputCommand[] = isAlways(event.response)
         ? [{ type: "persist-always", descriptor, response: event.response }]
         : [];
-      if (descriptor.followUpPrompt) {
+      if (
+        descriptor.kind === "integration" &&
+        event.response.kind === "integration" &&
+        event.response.completed &&
+        event.response.provider
+      ) {
+        const followUpPrompt = `Continue. I have completed the ${event.response.provider} integration.`;
         return applied(
           {
             status: "armed",
-            descriptor: descriptor as UserInputDescriptor & {
+            descriptor: {
+              ...descriptor,
+              followUpPrompt,
+            } as UserInputDescriptor & {
               followUpPrompt: string;
             },
-            followUpPrompt: descriptor.followUpPrompt,
+            followUpPrompt,
           },
           [
             ...persist,
             { type: "cancel-deadline", requestId: descriptor.requestId },
+            {
+              type: "broadcast-armed",
+              descriptor,
+              followUpPrompt,
+            },
             {
               type: "resolve-park",
               requestId: descriptor.requestId,

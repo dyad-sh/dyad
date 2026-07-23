@@ -13,6 +13,31 @@ import { showInfo } from "@/lib/toast";
 
 const PERSIST_DEBOUNCE_MS = 400;
 
+export function findRestorableQueueItems(
+  persisted: QueuedMessageItem[],
+  existing: QueuedMessageItem[],
+): QueuedMessageItem[] {
+  const seenIds = new Set(existing.map((item) => item.id));
+
+  return persisted.filter((item) => {
+    // Machine-owned follow-ups depend on an in-memory main-process request and
+    // renderer acceptance callbacks. A live registry re-enqueues them through
+    // the user-input projection; restoring the serialized shell after a full
+    // restart would create an immutable orphan.
+    if (item.userInputRequestId !== undefined || seenIds.has(item.id)) {
+      return false;
+    }
+    seenIds.add(item.id);
+    return true;
+  });
+}
+
+export function getPersistableQueueItems(
+  items: QueuedMessageItem[],
+): QueuedMessageItem[] {
+  return items.filter((item) => item.userInputRequestId === undefined);
+}
+
 /**
  * Root-level hook that persists the in-memory queued-prompt state to disk and
  * hydrates it back on startup, so queued prompts survive app restarts / crashes.
@@ -83,8 +108,7 @@ export function useQueuePersistence() {
       for (const [chatIdStr, items] of Object.entries(persisted)) {
         const chatId = Number(chatIdStr);
         if (!Number.isFinite(chatId) || items.length === 0) continue;
-        map.set(
-          chatId,
+        const restorableItems = findRestorableQueueItems(
           items.map((item) => ({
             id: item.id,
             prompt: item.prompt,
@@ -93,8 +117,13 @@ export function useQueuePersistence() {
             redo: item.redo,
             appId: item.appId,
             requestedChatMode: item.requestedChatMode,
+            userInputRequestId: item.userInputRequestId,
           })),
+          [],
         );
+        if (restorableItems.length > 0) {
+          map.set(chatId, restorableItems);
+        }
       }
 
       if (map.size > 0) {
@@ -115,12 +144,11 @@ export function useQueuePersistence() {
             continue;
           }
           // The user queued prompts for this chat while hydration was in
-          // flight: keep both, persisted (older) items first, deduplicated
-          // by id so a double hydration can't duplicate entries.
-          const existingIds = new Set(existing.map((item) => item.id));
-          const restoredItems = items.filter(
-            (item) => !existingIds.has(item.id),
-          );
+          // flight: keep both, persisted (older) items first. Queue item IDs
+          // prevent ordinary double hydration; the durable user-input request
+          // ID also collapses a continuation independently enqueued while
+          // hydration was in flight.
+          const restoredItems = findRestorableQueueItems(items, existing);
           if (restoredItems.length > 0) {
             merged.set(chatId, [...restoredItems, ...existing]);
             restoredChatIds.add(chatId);
@@ -242,6 +270,7 @@ async function encodeQueuedItem(
     redo: item.redo,
     appId: item.appId,
     requestedChatMode: item.requestedChatMode,
+    userInputRequestId: item.userInputRequestId,
   };
   cache.set(item, encoded);
   return encoded;
@@ -253,7 +282,9 @@ async function warmEncodedItemCache(
 ): Promise<void> {
   try {
     await Promise.all(
-      [...queue.values()].flat().map((item) => encodeQueuedItem(item, cache)),
+      [...queue.values()]
+        .flatMap(getPersistableQueueItems)
+        .map((item) => encodeQueuedItem(item, cache)),
     );
   } catch (error) {
     console.error("[QUEUE] Failed to pre-encode queued attachments:", error);
@@ -267,9 +298,10 @@ async function persistQueue(
   try {
     const persisted: PersistedQueue = {};
     for (const [chatId, items] of queuedMessagesById) {
-      if (items.length === 0) continue;
+      const persistableItems = getPersistableQueueItems(items);
+      if (persistableItems.length === 0) continue;
       persisted[String(chatId)] = await Promise.all(
-        items.map((item) => encodeQueuedItem(item, cache)),
+        persistableItems.map((item) => encodeQueuedItem(item, cache)),
       );
     }
     // Fire-and-forget: main serializes the write and never replies, so this is

@@ -1,23 +1,20 @@
 import { useEffect, useRef } from "react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAtomValue } from "jotai";
 import { useSettings } from "./useSettings";
-import { pendingIntegrationAtom } from "@/atoms/integrationAtoms";
+import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  integrationEventClient,
-  type IntegrationPromptPayload,
-} from "@/ipc/types/integration";
+import { ipc } from "@/ipc/types";
 import { showUserInputNotification } from "@/lib/userInputNotification";
 
 /**
- * Listens for `integration:prompt` events emitted by the add_integration agent
- * tool and stores the pending request keyed by chatId. Should be called once
- * at the app root.
+ * Shows integration notifications from the generic user-input protocol and
+ * clears UI-only provider choices when the request settles.
  */
 export function useIntegrationEvents() {
-  const setPendingIntegration = useSetAtom(pendingIntegrationAtom);
+  const setIntegrationProviderSelection = useSetAtom(
+    integrationProviderSelectionAtom,
+  );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const queryClient = useQueryClient();
   const { settings } = useSettings();
@@ -28,14 +25,9 @@ export function useIntegrationEvents() {
   settingsRef.current = settings;
 
   useEffect(() => {
-    const unsubscribe = integrationEventClient.onPrompt(
-      (payload: IntegrationPromptPayload) => {
-        setPendingIntegration((prev) => {
-          const next = new Map(prev);
-          next.set(payload.chatId, payload);
-          return next;
-        });
-
+    const unsubscribeRequested = ipc.events.userInput.onRequested(
+      (descriptor) => {
+        if (descriptor.kind !== "integration") return;
         showUserInputNotification({
           appId: selectedAppIdRef.current,
           queryClient,
@@ -45,6 +37,19 @@ export function useIntegrationEvents() {
         });
       },
     );
-    return () => unsubscribe();
-  }, [setPendingIntegration, queryClient]);
+    const unsubscribeSettled = ipc.events.userInput.onSettled(
+      ({ requestId }) => {
+        setIntegrationProviderSelection((prev) => {
+          if (!prev.has(requestId)) return prev;
+          const next = new Map(prev);
+          next.delete(requestId);
+          return next;
+        });
+      },
+    );
+    return () => {
+      unsubscribeRequested();
+      unsubscribeSettled();
+    };
+  }, [setIntegrationProviderSelection, queryClient]);
 }

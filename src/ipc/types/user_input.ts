@@ -17,6 +17,24 @@ const DescriptorBaseSchema = z.object({
   deadlineAt: z.number(),
   followUpPrompt: z.string().optional(),
 });
+export const UserInputQuestionSchema = z
+  .object({
+    id: z.string(),
+    type: z.enum(["text", "radio", "checkbox"]),
+    question: z.string(),
+    options: z.array(z.string()).min(1).optional(),
+    required: z.boolean().optional(),
+    placeholder: z.string().optional(),
+  })
+  .refine(
+    (question) =>
+      question.type === "text" ||
+      (question.options && question.options.length >= 1),
+    {
+      message: "options are required for radio and checkbox questions",
+      path: ["options"],
+    },
+  );
 export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   DescriptorBaseSchema.extend({
     kind: z.literal("mcp-consent"),
@@ -37,7 +55,7 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   }),
   DescriptorBaseSchema.extend({
     kind: z.literal("questionnaire"),
-    questions: z.array(z.unknown()),
+    questions: z.array(UserInputQuestionSchema),
     classifier: z.literal("none"),
   }),
   DescriptorBaseSchema.extend({
@@ -63,6 +81,7 @@ export const UserInputResponseSchema = z.discriminatedUnion("kind", [
     provider: z.enum(["supabase", "neon"]).nullable(),
     completed: z.boolean(),
   }),
+  z.object({ kind: z.literal("follow-up-dispatched") }),
 ]);
 
 const PendingSnapshotSchema = z.object({
@@ -103,6 +122,13 @@ export const userInputEvents = {
     channel: "user-input:requested",
     payload: UserInputDescriptorSchema,
   }),
+  armed: defineEvent({
+    channel: "user-input:armed",
+    payload: z.object({
+      requestId: z.string(),
+      followUpPrompt: z.string(),
+    }),
+  }),
   classified: defineEvent({
     channel: "user-input:classified",
     payload: z.object({ requestId: z.string(), reason: z.string().optional() }),
@@ -129,3 +155,4 @@ export type UserInputDescriptorPayload = z.infer<
 >;
 export type UserInputResponsePayload = z.infer<typeof UserInputResponseSchema>;
 export type PendingUserInputPayload = z.infer<typeof PendingSnapshotSchema>;
+export type UserInputQuestionPayload = z.infer<typeof UserInputQuestionSchema>;

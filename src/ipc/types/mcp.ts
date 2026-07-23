@@ -1,11 +1,6 @@
 import { z } from "zod";
 import { McpCatalogEntrySchema } from "./mcp_catalog";
-import {
-  defineContract,
-  defineEvent,
-  createClient,
-  createEventClient,
-} from "../contracts/core";
+import { defineContract, createClient } from "../contracts/core";
 
 // Arbitrary loopback port for the OAuth callback listener -- not from
 // the OAuth or MCP specs. Must stay stable: users pre-registering an
@@ -153,51 +148,6 @@ export type SetMcpToolConsentParams = z.infer<
   typeof SetMcpToolConsentParamsSchema
 >;
 
-export const McpConsentRequestSchema = z.object({
-  requestId: z.string(),
-  serverId: z.number(),
-  serverName: z.string(),
-  toolName: z.string(),
-  toolDescription: z.string().nullable().optional(),
-  inputPreview: z.string().nullable().optional(),
-  chatId: z.number(),
-  // Classifier's reason for asking (agent mode, Pro). Shown in the prompt.
-  reason: z.string().nullable().optional(),
-  // True while the auto-approve classifier is still deciding; the prompt shows
-  // a spinner and the user can decide manually or wait.
-  classifierPending: z.boolean().optional(),
-});
-
-export type McpConsentRequestPayload = z.infer<typeof McpConsentRequestSchema>;
-
-// The classifier auto-approved; dismiss the pending prompt.
-export const McpConsentResolvedSchema = z.object({ requestId: z.string() });
-
-// The classifier finished and wants review; drop the spinner and show why. The
-// chat/tool identity lets the notification hook raise the OS notification only
-// now that we know the user is actually needed.
-export const McpConsentClassifiedSchema = z.object({
-  requestId: z.string(),
-  reason: z.string().nullable().optional(),
-  chatId: z.number(),
-  toolName: z.string(),
-  serverName: z.string().nullable().optional(),
-});
-
-export const McpConsentDecisionEnum = z.enum([
-  "accept-once",
-  "accept-always",
-  "decline",
-]);
-export type McpConsentDecision = z.infer<typeof McpConsentDecisionEnum>;
-
-export const McpConsentResponseSchema = z.object({
-  requestId: z.string(),
-  decision: McpConsentDecisionEnum,
-});
-
-export type McpConsentResponseParams = z.infer<typeof McpConsentResponseSchema>;
-
 // =============================================================================
 // MCP Contracts
 // =============================================================================
@@ -273,12 +223,6 @@ export const mcpContracts = {
     output: McpToolConsentRecordSchema,
   }),
 
-  respondToConsent: defineContract({
-    channel: "mcp:tool-consent-response",
-    input: McpConsentResponseSchema,
-    output: z.void(),
-  }),
-
   startOAuth: defineContract({
     channel: "mcp:start-oauth",
     input: z.object({
@@ -327,27 +271,7 @@ export const mcpContracts = {
 } as const;
 
 // =============================================================================
-// MCP Event Contracts
-// =============================================================================
-
-export const mcpEvents = {
-  consentRequest: defineEvent({
-    channel: "mcp:tool-consent-request",
-    payload: McpConsentRequestSchema,
-  }),
-  consentResolved: defineEvent({
-    channel: "mcp:tool-consent-resolved",
-    payload: McpConsentResolvedSchema,
-  }),
-  consentClassified: defineEvent({
-    channel: "mcp:tool-consent-classified",
-    payload: McpConsentClassifiedSchema,
-  }),
-} as const;
-
-// =============================================================================
 // MCP Clients
 // =============================================================================
 
 export const mcpClient = createClient(mcpContracts);
-export const mcpEventClient = createEventClient(mcpEvents);

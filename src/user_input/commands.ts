@@ -8,6 +8,11 @@ import type {
 export type UserInputCommand =
   | { type: "broadcast-requested"; descriptor: UserInputDescriptor }
   | {
+      type: "broadcast-armed";
+      descriptor: UserInputDescriptor;
+      followUpPrompt: string;
+    }
+  | {
       type: "broadcast-classified";
       descriptor: UserInputDescriptor;
       reason?: string;
@@ -52,16 +57,13 @@ export function createUserInputCommandRunner(deps: {
       switch (command.type) {
         case "broadcast-requested": {
           deps.broadcast("user-input:requested", command.descriptor);
-          const descriptor = command.descriptor;
-          if (descriptor.kind === "mcp-consent") {
-            deps.broadcast("mcp:tool-consent-request", {
-              ...descriptor,
-              classifierPending:
-                descriptor.classifier === "racing" || undefined,
-            });
-          } else if (descriptor.kind === "agent-consent") {
-            deps.broadcast("agent-tool:consent-request", descriptor);
-          }
+          return;
+        }
+        case "broadcast-armed": {
+          deps.broadcast("user-input:armed", {
+            requestId: command.descriptor.requestId,
+            followUpPrompt: command.followUpPrompt,
+          });
           return;
         }
         case "broadcast-classified": {
@@ -69,15 +71,6 @@ export function createUserInputCommandRunner(deps: {
             requestId: command.descriptor.requestId,
             reason: command.reason,
           });
-          if (command.descriptor.kind === "mcp-consent") {
-            deps.broadcast("mcp:tool-consent-classified", {
-              requestId: command.descriptor.requestId,
-              reason: command.reason,
-              chatId: command.descriptor.chatId,
-              toolName: command.descriptor.toolName,
-              serverName: command.descriptor.serverName,
-            });
-          }
           return;
         }
         case "broadcast-settled": {
@@ -85,15 +78,6 @@ export function createUserInputCommandRunner(deps: {
             requestId: command.descriptor.requestId,
             outcome: command.outcome,
           });
-          if (command.descriptor.kind === "mcp-consent") {
-            deps.broadcast("mcp:tool-consent-resolved", {
-              requestId: command.descriptor.requestId,
-            });
-          } else if (command.descriptor.kind === "agent-consent") {
-            deps.broadcast("agent-tool:consent-resolved", {
-              requestId: command.descriptor.requestId,
-            });
-          }
           return;
         }
         case "broadcast-follow-up-due":

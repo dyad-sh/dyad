@@ -19,7 +19,10 @@ vi.mock("electron-log", () => ({
 
 import { gitListFilesNative, gitLog } from "@/ipc/utils/git_utils";
 import {
+  classifyGitOperationError,
   ensureGitLineEndingPolicy,
+  GitConflictError,
+  GIT_ERROR_CODES,
   gitStageToRevert,
   getGitUncommittedFiles,
   getGitUncommittedFilesWithStatus,
@@ -28,6 +31,37 @@ import {
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
+
+describe("coded git errors", () => {
+  it.each([
+    [
+      "Updates were rejected (non-fast-forward)",
+      [GIT_ERROR_CODES.NON_FAST_FORWARD],
+      GIT_ERROR_CODES.NON_FAST_FORWARD,
+    ],
+    [
+      "Need to specify how to reconcile divergent branches",
+      [GIT_ERROR_CODES.DIVERGENT_BRANCHES],
+      GIT_ERROR_CODES.DIVERGENT_BRANCHES,
+    ],
+    [
+      "Your local changes would be overwritten by checkout",
+      [GIT_ERROR_CODES.UNCOMMITTED_CHANGES],
+      GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
+    ],
+  ] as const)("classifies %s", (message, expectedCodes, expectedCode) => {
+    expect(
+      classifyGitOperationError(new Error(message), expectedCodes),
+    ).toMatchObject({ name: "GitStateError", code: expectedCode });
+  });
+
+  it("codes merge conflicts while retaining the compatibility name", () => {
+    expect(GitConflictError("Merge conflict detected")).toMatchObject({
+      name: "GitConflictError",
+      code: GIT_ERROR_CODES.MERGE_CONFLICT,
+    });
+  });
+});
 
 async function commitAll(repoDir: string, message: string): Promise<void> {
   await runGit(repoDir, ["add", "-A"]);

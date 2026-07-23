@@ -512,7 +512,17 @@ export async function gitCheckout({
   path,
   ref,
 }: GitCheckoutParams): Promise<void> {
-  await execOrThrow(["checkout", ref], path, `Failed to checkout ref '${ref}'`);
+  try {
+    await execOrThrow(
+      ["checkout", ref],
+      path,
+      `Failed to checkout ref '${ref}'`,
+    );
+  } catch (error) {
+    throw classifyGitOperationError(error, [
+      GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
+    ]);
+  }
   return;
 }
 
@@ -1305,14 +1315,15 @@ export async function gitPush({
     });
     if (result.exitCode !== 0) {
       const errorMsg = result.stderr.toString() || result.stdout.toString();
-      throw new DyadError(
-        `Git push failed: ${errorMsg}`,
-        DyadErrorKind.Conflict,
+      throw classifyGitOperationError(
+        new DyadError(`Git push failed: ${errorMsg}`, DyadErrorKind.Conflict),
+        [GIT_ERROR_CODES.NON_FAST_FORWARD, GIT_ERROR_CODES.DIVERGENT_BRANCHES],
       );
     }
     return;
   } catch (error: any) {
     logger.error("Error during git push:", error);
+    if (typeof error?.code === "string") throw error;
     throw new DyadError(
       `Git push failed: ${error.message}`,
       DyadErrorKind.Conflict,
@@ -2326,8 +2337,104 @@ export async function gitFetch({
   );
 }
 
+export const GIT_ERROR_CODES = {
+  MERGE_IN_PROGRESS: "MERGE_IN_PROGRESS",
+  REBASE_IN_PROGRESS: "REBASE_IN_PROGRESS",
+  MERGE_CONFLICT: "MERGE_CONFLICT",
+  NON_FAST_FORWARD: "NON_FAST_FORWARD",
+  DIVERGENT_BRANCHES: "DIVERGENT_BRANCHES",
+  UNCOMMITTED_CHANGES: "UNCOMMITTED_CHANGES",
+} as const;
+
+type GitErrorCode = (typeof GIT_ERROR_CODES)[keyof typeof GIT_ERROR_CODES];
+
+class CodedGitError extends DyadError {
+  readonly code: GitErrorCode;
+
+  constructor(
+    message: string,
+    code: GitErrorCode,
+    kind: DyadErrorKind,
+    name: string,
+  ) {
+    super(message, kind);
+    this.name = name;
+    this.code = code;
+  }
+}
+
+function getGitErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function matchesUncommittedChanges(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("local changes") ||
+    normalized.includes("would be overwritten") ||
+    normalized.includes("please commit or stash") ||
+    normalized.includes("working tree has uncommitted changes")
+  );
+}
+
+/** Convert native git output into the stable codes consumed across IPC. */
+export function classifyGitOperationError(
+  error: unknown,
+  expectedCodes: readonly GitErrorCode[],
+): Error {
+  if (
+    error instanceof Error &&
+    typeof (error as Error & { code?: unknown }).code === "string"
+  ) {
+    return error;
+  }
+
+  const message = getGitErrorMessage(error);
+  const normalized = message.toLowerCase();
+
+  if (
+    expectedCodes.includes(GIT_ERROR_CODES.UNCOMMITTED_CHANGES) &&
+    matchesUncommittedChanges(message)
+  ) {
+    return new CodedGitError(
+      message,
+      GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
+      DyadErrorKind.Conflict,
+      "GitStateError",
+    );
+  }
+  if (
+    expectedCodes.includes(GIT_ERROR_CODES.NON_FAST_FORWARD) &&
+    (normalized.includes("non-fast-forward") ||
+      normalized.includes("fetch first") ||
+      normalized.includes("tip of your current branch is behind"))
+  ) {
+    return new CodedGitError(
+      message,
+      GIT_ERROR_CODES.NON_FAST_FORWARD,
+      DyadErrorKind.Conflict,
+      "GitStateError",
+    );
+  }
+  if (
+    expectedCodes.includes(GIT_ERROR_CODES.DIVERGENT_BRANCHES) &&
+    normalized.includes("divergent branches")
+  ) {
+    return new CodedGitError(
+      message,
+      GIT_ERROR_CODES.DIVERGENT_BRANCHES,
+      DyadErrorKind.Conflict,
+      "GitStateError",
+    );
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
+
 /** Merge/pull conflicts — `name` kept for UI checks (e.g. GitHubConnector). */
 class GitConflictErrorImpl extends DyadError {
+  readonly code = GIT_ERROR_CODES.MERGE_CONFLICT;
+
   constructor(message: string) {
     super(message, DyadErrorKind.Conflict);
     this.name = "GitConflictError";
@@ -2339,24 +2446,31 @@ export function GitConflictError(message: string): Error {
 }
 
 /** Blocked git operation due to repo state (merge/rebase in progress, etc.). */
-class GitStateErrorImpl extends DyadError {
-  readonly code: string;
-  constructor(message: string, code: string) {
-    super(message, DyadErrorKind.Precondition);
-    this.name = "GitStateError";
-    this.code = code;
-  }
+export function GitStateError(message: string, code: GitErrorCode): Error {
+  return new CodedGitError(
+    message,
+    code,
+    DyadErrorKind.Precondition,
+    "GitStateError",
+  );
 }
 
-export function GitStateError(message: string, code: string): Error {
-  return new GitStateErrorImpl(message, code);
+/** Native git's missing-ref variants, centralized for pull callers. */
+export function isMissingRemoteBranchError(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = candidate?.code;
+  const message =
+    typeof candidate?.message === "string" ? candidate.message : "";
+  return (
+    code === "MissingRefError" ||
+    (code === "NotFoundError" &&
+      (message.includes("remote ref") || message.includes("remote branch"))) ||
+    message.includes("couldn't find remote ref") ||
+    // Legacy empty-remote failure retained until all supported Git versions
+    // return a stable missing-ref message.
+    message.includes("Cannot read properties of null")
+  );
 }
-
-// Error codes for git state errors
-export const GIT_ERROR_CODES = {
-  MERGE_IN_PROGRESS: "MERGE_IN_PROGRESS",
-  REBASE_IN_PROGRESS: "REBASE_IN_PROGRESS",
-} as const;
 
 function hasGitConflictState({ path }: GitBaseParams): boolean {
   return isGitMergeOrRebaseInProgress({ path });
@@ -2387,7 +2501,9 @@ export async function gitPull({
         `Merge conflict detected during pull. Please resolve conflicts before proceeding.`,
       );
     }
-    throw error;
+    throw classifyGitOperationError(error, [
+      GIT_ERROR_CODES.DIVERGENT_BRANCHES,
+    ]);
   }
   return;
 }
@@ -2408,7 +2524,9 @@ export async function gitMerge({
         `Merge conflict detected during merge. Please resolve conflicts before proceeding.`,
       );
     }
-    throw error;
+    throw classifyGitOperationError(error, [
+      GIT_ERROR_CODES.UNCOMMITTED_CHANGES,
+    ]);
   }
   return;
 }

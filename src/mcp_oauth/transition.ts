@@ -62,7 +62,6 @@ export function transition(
       case "idle":
       case "connected":
       case "failed":
-      case "superseded":
       case "timedOut":
         return advance({ status: "binding", ...next });
       case "superseding":

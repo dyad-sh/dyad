@@ -32,7 +32,6 @@ export type McpOAuthState =
     }
   | ({ status: "connected" } & McpOAuthFlowIdentity)
   | ({ status: "failed"; message: string } & McpOAuthFlowIdentity)
-  | ({ status: "superseded" } & McpOAuthFlowIdentity)
   | ({ status: "timedOut" } & McpOAuthFlowIdentity);
 
 export const IDLE_MCP_OAUTH_STATE: McpOAuthState = { status: "idle" };
@@ -69,7 +68,6 @@ export function identityOf(state: McpOAuthState): McpOAuthFlowIdentity | null {
     case "exchanging":
     case "connected":
     case "failed":
-    case "superseded":
     case "timedOut":
       return state;
     default: {
@@ -83,7 +81,6 @@ export function isTerminalMcpOAuthState(state: McpOAuthState): boolean {
   return (
     state.status === "connected" ||
     state.status === "failed" ||
-    state.status === "superseded" ||
     state.status === "timedOut"
   );
 }

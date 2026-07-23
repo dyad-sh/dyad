@@ -10,13 +10,19 @@ const NULL_APP_ID = -1;
 export function usePreviewIframeController(appId: number | null) {
   const manager = usePreviewIframeManager();
   const state = useKeyedController(manager, appId ?? NULL_APP_ID);
+  const send = useSendPreviewIframeEvent(appId);
+  return { state: appId === null ? INITIAL_PREVIEW_IFRAME_STATE : state, send };
+}
+
+export function useSendPreviewIframeEvent(appId: number | null) {
+  const manager = usePreviewIframeManager();
   const send = useCallback(
     (event: PreviewIframeEvent) => {
       if (appId !== null) manager.send(appId, event);
     },
     [appId, manager],
   );
-  return { state: appId === null ? INITIAL_PREVIEW_IFRAME_STATE : state, send };
+  return send;
 }
 
 export function usePreviewIframe(input: {

@@ -116,7 +116,7 @@ import {
   getUserInputProjectionAdapter,
   respondingRequestIdsAtom,
 } from "@/user_input/projection";
-import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
+import { useSendPreviewIframeEvent } from "@/preview_iframe/usePreviewIframe";
 
 const showTokenBarAtom = atom(false);
 
@@ -193,7 +193,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
-  const { send: sendPreviewIframeEvent } = usePreviewIframeController(appId);
+  const sendPreviewIframeEvent = useSendPreviewIframeEvent(appId);
   const store = useStore();
   const userInputProjection = getUserInputProjectionAdapter({ store });
   const pendingToolConsents = useAtomValue(pendingToolConsentsAtom);

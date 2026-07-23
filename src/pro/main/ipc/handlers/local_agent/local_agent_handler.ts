@@ -147,6 +147,7 @@ const MAX_ERROR_RESPONSE_BODY_DEPTH = 5;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
+const TOOL_ERROR_STATUS_MAX_CHARS = 4_000;
 
 const RETRYABLE_STREAM_ERROR_STATUS_CODES = new Set([
   408, 429, 500, 502, 503, 504,
@@ -201,6 +202,18 @@ function cleanupStreamingEntry(id: string): void {
 
 function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
+}
+
+function buildPreExecutionToolErrorStatus(
+  toolName: string,
+  error: unknown,
+): string {
+  const fullMessage = getErrorMessage(error);
+  const message =
+    fullMessage.length > TOOL_ERROR_STATUS_MAX_CHARS
+      ? `${fullMessage.slice(0, TOOL_ERROR_STATUS_MAX_CHARS)}…[truncated]`
+      : fullMessage;
+  return `<dyad-status title="${escapeXmlAttr(`Tool "${toolName}" failed`)}" state="error">\n${escapeXmlContent(message)}\n</dyad-status>`;
 }
 
 function appendGitContext(
@@ -457,6 +470,7 @@ export async function handleLocalAgentStream(
     settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
+  let streamingPreviewToolCallId: string | null = null;
   // Tracks what was last sent to the renderer for the placeholder
   // assistant message so we can emit only the tail diff. Updated by both
   // streaming-patch sends and full-messages-replacement sends so that the
@@ -494,6 +508,21 @@ export async function handleLocalAgentStream(
       streamId: req.streamId,
       streamingPreview: { content },
     });
+  };
+  const commitToolXml = (finalXml: string, toolCallId?: string) => {
+    const xmlChunk = `${finalXml}\n`;
+    fullResponse += xmlChunk;
+    const shouldClearPreview =
+      toolCallId === undefined || streamingPreviewToolCallId === toolCallId;
+    if (shouldClearPreview) {
+      streamingPreview = "";
+      streamingPreviewToolCallId = null;
+    }
+    updateResponseInDb(placeholderMessageId, fullResponse);
+    sendChunk(fullResponse);
+    if (shouldClearPreview) {
+      sendPreview("");
+    }
   };
   let postMidTurnCompactionStartStep: number | null = null;
 
@@ -729,13 +758,7 @@ export async function handleLocalAgentStream(
       },
       onXmlComplete: (finalXml: string) => {
         // Commit final XML to fullResponse and clear the preview overlay.
-        const xmlChunk = `${finalXml}\n`;
-        fullResponse += xmlChunk;
-        streamingPreview = "";
-        updateResponseInDb(placeholderMessageId, fullResponse);
-        sendChunk(fullResponse);
-        // Empty preview = renderer clears its overlay atom for this chat.
-        sendPreview("");
+        commitToolXml(finalXml);
       },
       requireConsent: async (params: {
         toolName: string;
@@ -995,6 +1018,10 @@ export async function handleLocalAgentStream(
         const sanitizedAttemptMessages =
           sanitizeToolCallTranscript(attemptMessages);
         const attemptToolInputIds = new Set<string>();
+        const invalidToolCallIds = new Set<string>();
+        const rejectedToolCallIds = new Set<string>();
+        const validatedToolCallIds = new Set<string>();
+        const completedToolXmlByCallId = new Map<string, string>();
         const cleanupAttemptToolStreamingEntries = () => {
           for (const toolCallId of attemptToolInputIds) {
             cleanupStreamingEntry(toolCallId);
@@ -1276,6 +1303,7 @@ export async function handleLocalAgentStream(
               }
 
               let chunk = "";
+              let clearStreamingPreviewAfterChunk = false;
 
               // Handle thinking block transitions
               if (
@@ -1355,6 +1383,7 @@ export async function handleLocalAgentStream(
                       );
                       const xml = toolDef.buildXml(argsPartial, false);
                       if (xml) {
+                        streamingPreviewToolCallId = part.id;
                         ctx.onXmlStream(xml);
                       }
                     }
@@ -1363,7 +1392,8 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-input-end": {
-                  // Build final XML and persist
+                  // Prepare final XML, but do not persist it until the SDK's
+                  // matching tool-call confirms that schema validation passed.
                   const entry = getOrCreateStreamingEntry(part.id);
                   if (entry) {
                     const toolDef = registeredToolNames.has(entry.toolName)
@@ -1375,7 +1405,11 @@ export async function handleLocalAgentStream(
                       );
                       const xml = toolDef.buildXml(argsPartial, true);
                       if (xml) {
-                        ctx.onXmlComplete(xml);
+                        if (validatedToolCallIds.delete(part.id)) {
+                          commitToolXml(xml, part.id);
+                        } else if (!rejectedToolCallIds.has(part.id)) {
+                          completedToolXmlByCallId.set(part.id, xml);
+                        }
                       }
                     }
                   }
@@ -1385,6 +1419,26 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-call":
+                  // AI SDK keeps the original validation exception on the
+                  // invalid tool-call part, but stringifies it before the
+                  // following tool-error part. Remember the call identity so
+                  // the string-valued error can still be classified as a
+                  // pre-execution failure.
+                  if ("invalid" in part && part.invalid === true) {
+                    invalidToolCallIds.add(part.toolCallId);
+                    rejectedToolCallIds.add(part.toolCallId);
+                    completedToolXmlByCallId.delete(part.toolCallId);
+                  } else {
+                    const completedXml = completedToolXmlByCallId.get(
+                      part.toolCallId,
+                    );
+                    if (completedXml) {
+                      completedToolXmlByCallId.delete(part.toolCallId);
+                      commitToolXml(completedXml, part.toolCallId);
+                    } else {
+                      validatedToolCallIds.add(part.toolCallId);
+                    }
+                  }
                   if (isAttachmentAccessToolCall(part.toolName, part.input)) {
                     usedAttachmentAccessTool = true;
                   }
@@ -1396,12 +1450,36 @@ export async function handleLocalAgentStream(
                   maybeCaptureRetryReplayEvent(retryReplayEvents, part);
                   // Tool results are already handled by the execute callback
                   break;
+
+                case "tool-error":
+                  // Schema validation and unknown-tool errors happen before a
+                  // tool's execute callback, so the callback cannot replace
+                  // its pending XML preview with a completed card. Persist a
+                  // visible terminal state and clear the sidecar only after
+                  // that status has reached the renderer. Execution errors
+                  // are excluded because buildAgentToolSet already renders
+                  // those as dyad-output cards.
+                  if (invalidToolCallIds.delete(part.toolCallId)) {
+                    chunk += `${buildPreExecutionToolErrorStatus(
+                      part.toolName,
+                      part.error,
+                    )}\n`;
+                    clearStreamingPreviewAfterChunk =
+                      streamingPreviewToolCallId === part.toolCallId;
+                  }
+                  break;
               }
 
               if (chunk) {
                 fullResponse += chunk;
                 await updateResponseInDb(placeholderMessageId, fullResponse);
                 sendChunk(fullResponse);
+              }
+
+              if (clearStreamingPreviewAfterChunk) {
+                streamingPreview = "";
+                streamingPreviewToolCallId = null;
+                sendPreview("");
               }
 
               if (modelRefused) {
@@ -1826,6 +1904,7 @@ export async function handleLocalAgentStream(
     if (streamingPreview.length > 0) {
       sendPreview("");
       streamingPreview = "";
+      streamingPreviewToolCallId = null;
     }
   }
 }

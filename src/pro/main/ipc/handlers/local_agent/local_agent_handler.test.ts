@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import { streamText, type ModelMessage } from "ai";
+import { InvalidToolInputError, streamText, type ModelMessage } from "ai";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -280,7 +280,25 @@ vi.mock("@/ipc/utils/mcp_consent", () => ({
 }));
 
 vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
-  TOOL_DEFINITIONS: [],
+  TOOL_DEFINITIONS: [
+    {
+      name: "read_chat",
+      buildXml: (args: { chat_id?: number }, isComplete: boolean) =>
+        args.chat_id && !isComplete
+          ? `<dyad-read-chat chat-id="${args.chat_id}" state="pending">Reading chat...</dyad-read-chat>`
+          : undefined,
+    },
+    {
+      name: "write_file",
+      buildXml: (
+        args: { path?: string; content?: string },
+        isComplete: boolean,
+      ) => {
+        if (!args.path) return undefined;
+        return `<dyad-write path="${args.path}">${args.content ?? ""}${isComplete ? "</dyad-write>" : ""}`;
+      },
+    },
+  ],
   buildAgentToolSet: vi.fn(() => ({})),
   shouldIncludeTool: vi.fn(() => false),
   requireAgentToolConsent: vi.fn(async () => true),
@@ -2230,6 +2248,331 @@ describe("handleLocalAgentStream", () => {
       const thinkEndIndex = finalContent.indexOf("</think>");
       const answerIndex = finalContent.indexOf("Answer");
       expect(thinkEndIndex).toBeLessThan(answerIndex);
+    });
+  });
+
+  describe("Stream processing - pre-execution tool errors", () => {
+    it("does not persist a completed tool card before validation succeeds", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ write_file: {} });
+      const invalidInput = { path: "src/App.tsx" };
+      const validationMessage = "content is required";
+      let completedCardPersistedBeforeValidation: boolean | undefined;
+
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-write-file",
+            toolName: "write_file",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-write-file",
+            delta: JSON.stringify(invalidInput),
+          };
+          yield { type: "tool-input-end", id: "call-write-file" };
+          completedCardPersistedBeforeValidation = dbOperations.updates.some(
+            (update) =>
+              typeof update.data.content === "string" &&
+              update.data.content.includes("<dyad-write"),
+          );
+          yield {
+            type: "tool-call",
+            toolCallId: "call-write-file",
+            toolName: "write_file",
+            input: invalidInput,
+            invalid: true,
+            dynamic: true,
+            error: new InvalidToolInputError({
+              toolName: "write_file",
+              toolInput: JSON.stringify(invalidInput),
+              cause: new Error(validationMessage),
+            }),
+          };
+          yield {
+            type: "tool-error",
+            toolCallId: "call-write-file",
+            toolName: "write_file",
+            input: invalidInput,
+            error: validationMessage,
+            dynamic: true,
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "update the app" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(completedCardPersistedBeforeValidation).toBe(false);
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")?.data
+        .content as string;
+      expect(finalContent).not.toContain("<dyad-write");
+      expect(finalContent).toContain(
+        '<dyad-status title="Tool &quot;write_file&quot; failed" state="error">',
+      );
+      expect(finalContent).toContain(validationMessage);
+    });
+
+    it("persists a completed tool card after validation succeeds", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ write_file: {} });
+      const validInput = {
+        path: "src/App.tsx",
+        content: "export default function App() {}",
+      };
+      let completedCardPersistedBeforeValidation: boolean | undefined;
+
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-write-file",
+            toolName: "write_file",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-write-file",
+            delta: JSON.stringify(validInput),
+          };
+          yield { type: "tool-input-end", id: "call-write-file" };
+          completedCardPersistedBeforeValidation = dbOperations.updates.some(
+            (update) =>
+              typeof update.data.content === "string" &&
+              update.data.content.includes("<dyad-write"),
+          );
+          yield {
+            type: "tool-call",
+            toolCallId: "call-write-file",
+            toolName: "write_file",
+            input: validInput,
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "update the app" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(completedCardPersistedBeforeValidation).toBe(false);
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")?.data
+        .content as string;
+      expect(finalContent).toContain(
+        '<dyad-write path="src/App.tsx">export default function App() {}</dyad-write>',
+      );
+      expect(finalContent.match(/<dyad-write/g)).toHaveLength(1);
+    });
+
+    it("replaces an invalid tool preview with a persistent error status", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ read_chat: {} });
+
+      const invalidInput = {
+        chat_id: 703,
+        before: 6,
+        after: 3,
+      };
+      const validationMessage = "before/after require around_message_id";
+      const validationError = new InvalidToolInputError({
+        toolName: "read_chat",
+        toolInput: JSON.stringify(invalidInput),
+        cause: new Error(validationMessage),
+      });
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-read-chat",
+            toolName: "read_chat",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-read-chat",
+            delta: JSON.stringify(invalidInput),
+          };
+          yield { type: "tool-input-end", id: "call-read-chat" };
+          // This is the event shape emitted by AI SDK before its matching
+          // tool-error: the exception lives on an invalid dynamic tool-call.
+          yield {
+            type: "tool-call",
+            toolCallId: "call-read-chat",
+            toolName: "read_chat",
+            input: invalidInput,
+            invalid: true,
+            dynamic: true,
+            error: validationError,
+          };
+          yield {
+            type: "tool-error",
+            toolCallId: "call-read-chat",
+            toolName: "read_chat",
+            input: invalidInput,
+            // AI SDK stringifies the exception before emitting tool-error.
+            error: validationMessage,
+            dynamic: true,
+          };
+          yield {
+            type: "text-delta",
+            text: "I could not inspect that citation.",
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "recall our recent work" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const chunks = getMessagesByChannel("chat:response:chunk");
+      const previewChunks = chunks.filter(
+        (message) => (message.args[0] as any).streamingPreview !== undefined,
+      );
+      const pendingPreview = previewChunks.find(
+        (message) => (message.args[0] as any).streamingPreview.content !== "",
+      );
+      expect(
+        (pendingPreview!.args[0] as any).streamingPreview.content,
+      ).toContain(
+        '<dyad-read-chat chat-id="703" state="pending">Reading chat...',
+      );
+      expect(
+        (previewChunks.at(-1)!.args[0] as any).streamingPreview.content,
+      ).toBe("");
+
+      const statusChunkIndex = chunks.findIndex((message) =>
+        (message.args[0] as any).streamingPatch?.content?.includes(
+          '<dyad-status title="Tool &quot;read_chat&quot; failed" state="error">',
+        ),
+      );
+      const clearPreviewIndex = chunks.findIndex(
+        (message) => (message.args[0] as any).streamingPreview?.content === "",
+      );
+      expect(statusChunkIndex).toBeGreaterThanOrEqual(0);
+      expect(clearPreviewIndex).toBeGreaterThan(statusChunkIndex);
+
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")?.data
+        .content as string;
+      expect(finalContent).toContain(
+        '<dyad-status title="Tool &quot;read_chat&quot; failed" state="error">',
+      );
+      expect(finalContent).toContain(validationMessage);
+      expect(finalContent).toContain("</dyad-status>");
+      expect(finalContent).toContain("I could not inspect that citation.");
+    });
+
+    it("does not clear another tool call's active preview", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ read_chat: {} });
+      let previewClearedBeforeStreamEnd: boolean | undefined;
+
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-read-chat",
+            toolName: "read_chat",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-read-chat",
+            delta: JSON.stringify({ chat_id: 703 }),
+          };
+          yield {
+            type: "tool-call",
+            toolCallId: "call-unknown",
+            toolName: "unknown_tool",
+            input: {},
+            invalid: true,
+            dynamic: true,
+            error: new Error("Unknown tool"),
+          };
+          yield {
+            type: "tool-error",
+            toolCallId: "call-unknown",
+            toolName: "unknown_tool",
+            input: {},
+            error: "Unknown tool",
+            dynamic: true,
+          };
+          previewClearedBeforeStreamEnd = getMessagesByChannel(
+            "chat:response:chunk",
+          ).some(
+            (message) =>
+              (message.args[0] as any).streamingPreview?.content === "",
+          );
+          yield { type: "text-delta", text: "Continuing." };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "inspect chat" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(previewClearedBeforeStreamEnd).toBe(false);
+      const chunks = getMessagesByChannel("chat:response:chunk");
+      expect(
+        chunks.some((message) =>
+          (message.args[0] as any).streamingPatch?.content?.includes(
+            'title="Tool &quot;unknown_tool&quot; failed"',
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        chunks.some(
+          (message) =>
+            (message.args[0] as any).streamingPreview?.content === "",
+        ),
+      ).toBe(true);
     });
   });
 

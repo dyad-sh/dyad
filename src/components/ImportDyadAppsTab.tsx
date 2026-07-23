@@ -21,7 +21,7 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
   const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings } = useSettings();
   const isAuthenticated = !!settings?.githubAccessToken;
-  const { repos, loading, error, refetch } = useDyadGithubRepos({
+  const { repos, loading, error, refetch, markImported } = useDyadGithubRepos({
     enabled: isOpen && isAuthenticated,
   });
   const { refreshApps } = useLoadApps();
@@ -91,6 +91,11 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
     setIsImporting(true);
     let imported = 0;
     let failed = 0;
+    // Component-tagger upgrade can fail even when the clone itself succeeds; the
+    // single-repo path surfaces this, so bulk import must too rather than
+    // silently reporting a clean success.
+    let autoUpgradeWarnings = 0;
+    const importedFullNames: string[] = [];
     try {
       for (const repo of importableRepos) {
         if (!selected.has(repo.full_name)) continue;
@@ -110,6 +115,10 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
             });
           } else {
             imported++;
+            importedFullNames.push(repo.full_name);
+            if (result.autoUpgradeWarning) {
+              autoUpgradeWarnings++;
+            }
             setStatus(repo.full_name, { state: "done" });
           }
         } catch (error: unknown) {
@@ -132,9 +141,20 @@ export function ImportDyadAppsTab({ isOpen }: { isOpen: boolean }) {
       } else if (imported > 0) {
         showSuccess(t("home:bulkImportComplete", { count: imported }));
       }
+      if (autoUpgradeWarnings > 0) {
+        showWarning(
+          t("home:bulkImportAutoUpgradeWarning", {
+            count: autoUpgradeWarnings,
+          }),
+        );
+      }
     } finally {
       setIsImporting(false);
-      refetch();
+      // Flag the just-imported repos as imported in the cache directly instead
+      // of a refetch: a refetch re-runs the expensive discovery scan and would
+      // briefly re-offer these repos, allowing a duplicate clone on a second
+      // click before the fresh list lands.
+      markImported(importedFullNames);
     }
   };
 

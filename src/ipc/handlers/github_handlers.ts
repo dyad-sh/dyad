@@ -1463,7 +1463,7 @@ async function resolveAvailableAppName(baseName: string): Promise<string> {
   // per suffix forever. Mirrors the shared folder-resolution cap; exhaustion is
   // reported as an explicit Conflict rather than looping indefinitely.
   // See rules/app-naming.md.
-  for (let suffix = 2; suffix <= MAX_COLLISION_SUFFIX_ATTEMPTS + 1; suffix++) {
+  for (let suffix = 2; suffix <= MAX_COLLISION_SUFFIX_ATTEMPTS; suffix++) {
     const candidate = `${baseName}-${suffix}`;
     if (!(await isTaken(candidate))) {
       return candidate;

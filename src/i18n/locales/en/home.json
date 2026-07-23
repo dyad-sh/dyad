@@ -57,6 +57,8 @@
   "bulkImportComplete_one": "Imported {{count}} app",
   "bulkImportComplete_other": "Imported {{count}} apps",
   "bulkImportCompleteWithErrors": "Imported {{imported}} app(s), {{failed}} failed",
+  "bulkImportAutoUpgradeWarning_one": "{{count}} app imported but its automatic component tagger upgrade failed. You can manually upgrade it from app settings.",
+  "bulkImportAutoUpgradeWarning_other": "{{count}} apps imported but their automatic component tagger upgrade failed. You can manually upgrade them from app settings.",
   "bulkImportBackgroundHint": "You can close this — importing continues in the background.",
   "createNewApp": "Create New App",
   "createAppUsingTemplate": "Create a new app using the {{template}} template.",

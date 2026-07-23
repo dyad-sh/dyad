@@ -56,6 +56,7 @@ import {
 import { appCollectionContracts } from "../types/app_collections";
 import { terminalContracts } from "../types/terminal";
 import { testsContracts, testsEvents } from "../types/tests";
+import { recordingContracts, recordingEvents } from "../types/recording";
 import { queueContracts, queueSendContracts } from "../types/queue";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { firstPromptSendContracts } from "../types/first_prompt";
@@ -124,6 +125,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(appCollectionContracts),
   ...getInvokeChannels(terminalContracts),
   ...getInvokeChannels(testsContracts),
+  ...getInvokeChannels(recordingContracts),
   ...getInvokeChannels(queueContracts),
   ...getInvokeChannels(userInputContracts),
 
@@ -166,6 +168,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(appBlueprintEvents),
   ...getReceiveChannels(testsEvents),
   ...getReceiveChannels(userInputEvents),
+  ...getReceiveChannels(recordingEvents),
 ] as const;
 
 // =============================================================================

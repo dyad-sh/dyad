@@ -15,7 +15,7 @@ import {
   renderSchemaSql,
 } from "ts-pg-schema-diff";
 
-async function getPublishableKey({
+export async function getPublishableKey({
   projectId,
   organizationSlug,
 }: {

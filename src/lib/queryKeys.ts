@@ -115,9 +115,11 @@ export const queryKeys = {
   },
 
   branches: {
-    all: ["currentBranch"] as const,
+    all: ["branches"] as const,
     current: ({ appId }: { appId: number | null }) =>
-      ["currentBranch", appId] as const,
+      ["branches", "current", appId] as const,
+    inventory: ({ appId }: { appId: number }) =>
+      ["branches", "inventory", appId] as const,
   },
 
   uncommittedFiles: {

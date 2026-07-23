@@ -69,7 +69,6 @@ interface LinkedGitHubRepo {
 interface ConnectedGitHubConnectorProps {
   appId: number;
   app: any;
-  refreshApp: () => void;
 }
 
 export interface UnconnectedGitHubConnectorProps {
@@ -84,7 +83,6 @@ export interface UnconnectedGitHubConnectorProps {
 function ConnectedGitHubConnector({
   appId,
   app,
-  refreshApp,
 }: ConnectedGitHubConnectorProps) {
   const [showForceDialog, setShowForceDialog] = useState(false);
   const { projection, send } = useGithubOps(appId);
@@ -98,7 +96,6 @@ function ConnectedGitHubConnector({
     showForcePush,
     showRebaseAndSync,
     showRebaseRecoveryOptions,
-    abortOperation,
     runningOperation,
   } = projection;
 
@@ -114,9 +111,6 @@ function ConnectedGitHubConnector({
   useRegisterGithubConflictResolution(appId, resolveFilesWithAI);
 
   const isDisconnecting = runningOperation?.type === "disconnect";
-  const isCancellingSync =
-    runningOperation?.type === "merge-abort" ||
-    runningOperation?.type === "rebase-abort";
   const isRebaseActionPending = isOperationInFlight || !!rebaseAction;
 
   return (
@@ -135,9 +129,7 @@ function ConnectedGitHubConnector({
       >
         {app.githubOrg}/{app.githubRepo}
       </a>
-      {app.githubBranch && (
-        <GithubBranchManager appId={appId} onBranchChange={refreshApp} />
-      )}
+      {app.githubBranch && <GithubBranchManager appId={appId} />}
       <div className="mt-2 flex gap-2">
         <Button
           onClick={() =>
@@ -299,21 +291,9 @@ function ConnectedGitHubConnector({
           <div className="flex gap-2">
             <Button
               onClick={() => send({ type: "RESOLVE_WITH_AI_STARTED" })}
-              disabled={isCancellingSync || isResolving}
+              disabled={isResolving}
             >
               {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                send({
-                  type: "OP_REQUESTED",
-                  op: { type: abortOperation },
-                })
-              }
-              disabled={isCancellingSync || isResolving}
-            >
-              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
             </Button>
           </div>
         </div>
@@ -998,7 +978,7 @@ export function GitHubConnector({
   folderName,
   expanded,
 }: GitHubConnectorProps) {
-  const { app, refreshApp } = useLoadApp(appId);
+  const { app } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
   const linkedRepo =
     app?.githubOrg && app?.githubRepo
@@ -1006,18 +986,8 @@ export function GitHubConnector({
       : undefined;
   const hasGitHubCredentials = !!settings?.githubAccessToken;
 
-  const refreshAppData = useCallback(() => {
-    void refreshApp();
-  }, [refreshApp]);
-
   if (linkedRepo && hasGitHubCredentials && appId) {
-    return (
-      <ConnectedGitHubConnector
-        appId={appId}
-        app={app}
-        refreshApp={refreshAppData}
-      />
-    );
+    return <ConnectedGitHubConnector appId={appId} app={app} />;
   } else {
     return (
       <UnconnectedGitHubConnector

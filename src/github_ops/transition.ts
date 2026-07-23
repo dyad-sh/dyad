@@ -54,7 +54,9 @@ function requestOperation(
     case "running":
       return ignore(state, "op-in-flight");
     case "conflicted":
-      return op.type === "merge-abort" || op.type === "rebase-abort"
+      return op.type === "merge-abort" ||
+        op.type === "rebase-abort" ||
+        op.type === "switch"
         ? beginOperation(state, op)
         : ignore(state, "blocked-by-conflicts");
     case "rebase-paused":
@@ -120,18 +122,7 @@ function operationSucceeded(
   const banner = successBanner(op);
   return {
     state: { type: "idle", banner },
-    commands: [
-      ...mutationCommands,
-      ...(banner
-        ? [
-            {
-              type: "notify" as const,
-              kind: banner.kind,
-              message: banner.message,
-            },
-          ]
-        : []),
-    ],
+    commands: mutationCommands,
   };
 }
 

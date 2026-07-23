@@ -14,6 +14,18 @@ export interface GithubOpsProjection {
   readonly showRebaseRecoveryOptions: boolean;
   readonly abortOperation: "merge-abort" | "rebase-abort";
   readonly runningOperation: GithubOperation | null;
+  readonly isCreatingBranch: boolean;
+  readonly isSwitchingBranch: boolean;
+  readonly isDeletingBranch: boolean;
+  readonly isRenamingBranch: boolean;
+  readonly isMergingBranch: boolean;
+  readonly isPulling: boolean;
+  readonly isCancellingSync: boolean;
+  readonly switchBlocked: {
+    readonly target: string;
+    readonly blockingOp: "merge" | "rebase";
+    readonly hasConflicts: boolean;
+  } | null;
 }
 
 const EMPTY_CONFLICTS: readonly string[] = [];
@@ -61,6 +73,23 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
         ? "rebase-abort"
         : "merge-abort",
     runningOperation,
+    isCreatingBranch: runningOperation?.type === "create-branch",
+    isSwitchingBranch: runningOperation?.type === "switch",
+    isDeletingBranch: runningOperation?.type === "delete-branch",
+    isRenamingBranch: runningOperation?.type === "rename-branch",
+    isMergingBranch: runningOperation?.type === "merge",
+    isPulling: runningOperation?.type === "pull",
+    isCancellingSync:
+      runningOperation?.type === "merge-abort" ||
+      runningOperation?.type === "rebase-abort",
+    switchBlocked:
+      state.type === "switch-blocked"
+        ? {
+            target: state.target,
+            blockingOp: state.blockingOp,
+            hasConflicts: state.hasConflicts,
+          }
+        : null,
   };
   projectionCache.set(state, projection);
   return projection;

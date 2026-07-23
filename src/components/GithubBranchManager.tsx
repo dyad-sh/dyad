@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertCircle,
   ChevronsDownUp,
@@ -47,7 +47,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -75,6 +74,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
     abortOperation,
     canRequestBranchMutation,
     canRequestBranchSwitch,
+    completedOperation,
     conflicts,
     isCancellingSync,
     isCreatingBranch,
@@ -99,6 +99,26 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
   const [branchToMerge, setBranchToMerge] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  useEffect(() => {
+    switch (completedOperation) {
+      case "create-branch":
+        setNewBranchName("");
+        setSourceBranch("");
+        setShowCreateDialog(false);
+        break;
+      case "rename-branch":
+        setBranchToRename(null);
+        setRenameBranchName("");
+        break;
+      case "merge":
+        setBranchToMerge(null);
+        break;
+      case "delete-branch":
+        setBranchToDelete(null);
+        break;
+    }
+  }, [completedOperation]);
+
   const handleCreateBranch = () => {
     const name = newBranchName.trim();
     if (!name) return;
@@ -111,9 +131,6 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
         thenSwitch: true,
       },
     });
-    setNewBranchName("");
-    setSourceBranch("");
-    setShowCreateDialog(false);
   };
 
   const handleRenameBranch = () => {
@@ -127,8 +144,6 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
         newBranch: newName,
       },
     });
-    setBranchToRename(null);
-    setRenameBranchName("");
   };
 
   const handleMergeBranch = () => {
@@ -137,7 +152,6 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
       type: "OP_REQUESTED",
       op: { type: "merge", branch: branchToMerge },
     });
-    setBranchToMerge(null);
   };
 
   const handleDeleteBranch = () => {
@@ -146,7 +160,6 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
       type: "OP_REQUESTED",
       op: { type: "delete-branch", branch: branchToDelete },
     });
-    setBranchToDelete(null);
   };
 
   return (
@@ -381,12 +394,13 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             <AlertDialogCancel disabled={!canRequestBranchMutation}>
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction
+            <Button
               onClick={handleDeleteBranch}
               disabled={!canRequestBranchMutation}
+              variant="destructive"
             >
               {isDeletingBranch ? "Deleting..." : "Delete Branch"}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

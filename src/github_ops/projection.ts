@@ -3,6 +3,7 @@ import type { GithubOperation, GithubOpsBanner, GithubOpsState } from "./state";
 export interface GithubOpsProjection {
   readonly state: GithubOpsState;
   readonly banner: GithubOpsBanner | null;
+  readonly completedOperation: GithubOperation["type"] | null;
   readonly isOperationInFlight: boolean;
   readonly canRequestSync: boolean;
   readonly isSyncing: boolean;
@@ -42,6 +43,10 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
   const projection: GithubOpsProjection = {
     state,
     banner: state.banner,
+    completedOperation:
+      state.banner?.kind === "success"
+        ? (state.banner.completedOperation ?? null)
+        : null,
     isOperationInFlight: state.type === "running",
     canRequestSync: state.type === "idle",
     isSyncing:

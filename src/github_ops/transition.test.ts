@@ -477,6 +477,7 @@ describe("github_ops transition", () => {
     expect(completed.state.banner?.message).toBe(
       "Pulled latest changes from remote",
     );
+    expect(completed.state.banner?.completedOperation).toBe("pull");
     expect(completed.commands).toEqual([
       { type: "invalidate-branches" },
       { type: "refresh-app" },

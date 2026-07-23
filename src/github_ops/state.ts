@@ -60,6 +60,7 @@ export type GithubOperationFailure = {
 export type GithubOpsBanner = {
   kind: "success" | "error" | "info";
   code?: string;
+  completedOperation?: GithubOperation["type"];
   message: string;
 };
 

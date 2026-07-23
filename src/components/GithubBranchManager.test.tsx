@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectGithubOps } from "@/github_ops/projection";
 import type { GithubOpsState } from "@/github_ops/state";
@@ -133,6 +133,57 @@ describe("GithubBranchManager machine projection", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
+  });
+
+  it("preserves create input on failure and closes only after success", async () => {
+    const view = render(<GithubBranchManager appId={1} />);
+
+    fireEvent.click(screen.getByTestId("branch-actions-menu-trigger"));
+    fireEvent.click(screen.getByTestId("create-branch-trigger"));
+    fireEvent.change(screen.getByTestId("new-branch-name-input"), {
+      target: { value: "feature/preserved" },
+    });
+    fireEvent.click(screen.getByTestId("create-branch-submit-button"));
+
+    mocks.state = {
+      type: "running",
+      op: {
+        type: "create-branch",
+        name: "feature/preserved",
+        thenSwitch: true,
+      },
+      next: { type: "switch", branch: "feature/preserved" },
+      banner: null,
+    };
+    view.rerender(<GithubBranchManager appId={1} />);
+    expect(screen.getByTestId("create-branch-submit-button").textContent).toBe(
+      "Creating...",
+    );
+
+    mocks.state = {
+      type: "idle",
+      banner: {
+        kind: "error",
+        message: "Branch already exists",
+      },
+    };
+    view.rerender(<GithubBranchManager appId={1} />);
+    expect(
+      (screen.getByTestId("new-branch-name-input") as HTMLInputElement).value,
+    ).toBe("feature/preserved");
+
+    mocks.state = {
+      type: "idle",
+      banner: {
+        kind: "success",
+        completedOperation: "create-branch",
+        message: "Branch created",
+      },
+    };
+    view.rerender(<GithubBranchManager appId={1} />);
+    await waitFor(() =>
+      expect(screen.queryByTestId("new-branch-name-input")).toBeNull(),
+    );
   });
 
   it("removes all conflict UI once abort-and-switch is running", () => {

@@ -23,6 +23,19 @@ describe("projectGithubOps", () => {
     expect(projection.showForcePush).toBe(false);
   });
 
+  it("projects typed successful operation completion", () => {
+    expect(
+      projectGithubOps({
+        type: "idle",
+        banner: {
+          kind: "success",
+          completedOperation: "rename-branch",
+          message: "Renamed branch",
+        },
+      }).completedOperation,
+    ).toBe("rename-branch");
+  });
+
   it.each(["rebase", "rebase-continue", "rebase-abort"] as const)(
     "uses rebase recovery for %s conflict provenance",
     (type) => {

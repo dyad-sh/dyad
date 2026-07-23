@@ -584,6 +584,11 @@ function completionCommands(op: GithubOperation): GithubOpsCommand[] {
 }
 
 function successBanner(op: GithubOperation): GithubOpsBanner | null {
+  const banner = successBannerContent(op);
+  return banner ? { ...banner, completedOperation: op.type } : null;
+}
+
+function successBannerContent(op: GithubOperation): GithubOpsBanner | null {
   switch (op.type) {
     case "push":
       return {

@@ -45,6 +45,7 @@ describe("app lifecycle tools", () => {
     expect(restartApp).toHaveBeenCalledWith(ctx.event, {
       appId: 42,
       removeNodeModules: false,
+      recreateSandbox: false,
       clearRuntimeLogs: true,
     });
     expect(waitForAppReady).toHaveBeenCalledWith(42, undefined);
@@ -82,6 +83,7 @@ describe("app lifecycle tools", () => {
     expect(restartApp).toHaveBeenCalledWith(ctx.event, {
       appId: 42,
       removeNodeModules: true,
+      recreateSandbox: true,
       clearRuntimeLogs: true,
     });
     expect(waitForAppReady).toHaveBeenCalledWith(42, undefined);

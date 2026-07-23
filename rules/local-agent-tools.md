@@ -21,6 +21,9 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
   report tool success until the preview proxy is ready. The restart IPC call
   can settle after spawning the process but before the development server is
   usable.
+- Keep lifecycle tool semantics consistent across host, Docker, and cloud
+  runtimes. In particular, a tool that claims to rebuild or reinstall
+  dependencies must not take an in-place cloud restart shortcut.
 
 ## User-visible tool output
 

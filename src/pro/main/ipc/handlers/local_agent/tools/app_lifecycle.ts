@@ -34,6 +34,7 @@ async function executeLifecycle({
     await restartApp(ctx.event, {
       appId: ctx.appId,
       removeNodeModules: operation === "rebuild",
+      recreateSandbox: operation === "rebuild",
       clearRuntimeLogs: true,
     });
     await waitForAppReady(ctx.appId, ctx.abortSignal);

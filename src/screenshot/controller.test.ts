@@ -89,7 +89,10 @@ describe("screenshot controller", () => {
     controller.send({ type: "IFRAME_LOADED" });
     controller.send({ type: "SELECTOR_READY" });
     controller.send({ type: "CAPTURE_REQUESTED", source: "commit" });
-    controller.send({ type: "SETTLE_ELAPSED" });
+    controller.send({
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:current",
+    });
     controller.send({
       type: "COMMIT_RESOLVED",
       hash: "abc123",
@@ -110,5 +113,54 @@ describe("screenshot controller", () => {
     expect(ignored).toHaveBeenLastCalledWith(
       expect.objectContaining({ reason: "stale-request" }),
     );
+  });
+
+  it("recovers when an active command throws synchronously", () => {
+    const runner = {
+      execute: vi.fn((_appId, command) => {
+        if (command.type === "schedule-settle") {
+          throw new Error("clock unavailable");
+        }
+      }),
+      disposeKey: vi.fn(),
+    };
+    const controller = new ScreenshotController(7, runner);
+
+    controller.send({ type: "IFRAME_LOADED" });
+    controller.send({ type: "SELECTOR_READY" });
+    controller.send({ type: "CAPTURE_REQUESTED", source: "commit" });
+
+    expect(controller.getSnapshot().status).toBe("idle");
+  });
+
+  it("preserves queued work when posting throws synchronously", () => {
+    const runner = {
+      execute: vi.fn((_appId, command) => {
+        if (command.type === "post-capture-request") {
+          throw new Error("iframe unavailable");
+        }
+      }),
+      disposeKey: vi.fn(),
+    };
+    const controller = new ScreenshotController(7, runner);
+
+    controller.send({ type: "IFRAME_LOADED" });
+    controller.send({ type: "SELECTOR_READY" });
+    controller.send({ type: "CAPTURE_REQUESTED", source: "commit" });
+    controller.send({
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:current",
+    });
+    controller.send({ type: "CAPTURE_REQUESTED", source: "stream" });
+    controller.send({
+      type: "COMMIT_RESOLVED",
+      hash: "abc123",
+      requestId: "capture:current",
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "settling",
+      source: "stream",
+    });
   });
 });

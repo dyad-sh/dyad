@@ -39,6 +39,7 @@ export type ScreenshotState =
   | (ScreenshotContext & {
       readonly status: "resolvingCommit";
       readonly source: ScreenshotCaptureSource;
+      readonly requestId: string;
     })
   | (ScreenshotContext & {
       readonly status: "awaitingResponse";
@@ -68,7 +69,7 @@ export type ScreenshotEvent =
     }
   | { readonly type: "SELECTOR_READY" }
   | { readonly type: "IFRAME_LOADED" }
-  | { readonly type: "SETTLE_ELAPSED" }
+  | { readonly type: "SETTLE_ELAPSED"; readonly requestId: string }
   | {
       readonly type: "COMMIT_RESOLVED";
       readonly hash: string;
@@ -82,12 +83,15 @@ export type ScreenshotEvent =
     }
   | { readonly type: "APP_HIDDEN" }
   | { readonly type: "SAVED" }
-  | { readonly type: "SAVE_FAILED" };
+  | { readonly type: "SAVE_FAILED"; readonly requestId?: string };
 
 export type ScreenshotCommand =
   | { readonly type: "schedule-settle" }
   | { readonly type: "cancel-settle" }
-  | { readonly type: "resolve-commit-hash" }
+  | {
+      readonly type: "resolve-commit-hash";
+      readonly requestId: string;
+    }
   | {
       readonly type: "post-capture-request";
       readonly requestId: string;

@@ -271,12 +271,25 @@ export function transition(
       if (state.status !== "settling") {
         return ignore(state, "capture-not-active");
       }
-      return transitionTo({ ...state, status: "resolvingCommit" }, [
-        { type: "resolve-commit-hash" },
-      ]);
+      return transitionTo(
+        {
+          ...state,
+          status: "resolvingCommit",
+          requestId: event.requestId,
+        },
+        [
+          {
+            type: "resolve-commit-hash",
+            requestId: event.requestId,
+          },
+        ],
+      );
     case "COMMIT_RESOLVED":
-      if (state.status !== "resolvingCommit") {
-        return ignore(state, "capture-not-active");
+      if (
+        state.status !== "resolvingCommit" ||
+        event.requestId !== state.requestId
+      ) {
+        return ignore(state, "stale-request");
       }
       return transitionTo(
         {
@@ -319,7 +332,20 @@ export function transition(
         ? finishCapture(state)
         : ignore(state, "not-saving");
     case "SAVE_FAILED":
-      return state.status === "resolvingCommit" || state.status === "saving"
+      if (event.requestId !== undefined) {
+        if (
+          (state.status !== "resolvingCommit" &&
+            state.status !== "awaitingResponse") ||
+          event.requestId !== state.requestId
+        ) {
+          return ignore(state, "stale-request");
+        }
+        return finishCapture(state);
+      }
+      return state.status === "settling" ||
+        state.status === "resolvingCommit" ||
+        state.status === "awaitingResponse" ||
+        state.status === "saving"
         ? finishCapture(state)
         : ignore(state, "capture-not-active");
     default:

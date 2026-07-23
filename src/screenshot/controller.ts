@@ -55,6 +55,7 @@ export class ScreenshotController {
             `Screenshot command execution failed for app ${this.appId}:`,
             error,
           );
+          this.send({ type: "SAVE_FAILED" });
         }
       }
     };

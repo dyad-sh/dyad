@@ -27,7 +27,12 @@ const STATES: readonly ScreenshotState[] = [
     source: "stream",
   },
   { ...READY, status: "settling", source: "commit" },
-  { ...READY, status: "resolvingCommit", source: "stream" },
+  {
+    ...READY,
+    status: "resolvingCommit",
+    source: "stream",
+    requestId: "capture:1",
+  },
   {
     ...READY,
     status: "awaitingResponse",
@@ -49,7 +54,7 @@ const EVENTS: readonly ScreenshotEvent[] = [
   { type: "CAPTURE_REQUESTED", source: "stream" },
   { type: "SELECTOR_READY" },
   { type: "IFRAME_LOADED" },
-  { type: "SETTLE_ELAPSED" },
+  { type: "SETTLE_ELAPSED", requestId: "capture:1" },
   { type: "COMMIT_RESOLVED", hash: "abc123", requestId: "capture:1" },
   {
     type: "RESPONSE",
@@ -157,7 +162,10 @@ describe("screenshot transition", () => {
     expect(ready.state.status).toBe("settling");
     expect(ready.commands).toEqual([{ type: "schedule-settle" }]);
 
-    const resolving = transition(ready.state, { type: "SETTLE_ELAPSED" });
+    const resolving = transition(ready.state, {
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:resumed",
+    });
     const awaiting = transition(resolving.state, {
       type: "COMMIT_RESOLVED",
       hash: "abc123",
@@ -171,6 +179,36 @@ describe("screenshot transition", () => {
     });
     const saved = transition(saving.state, { type: "SAVED" });
     expect(saved.state.status).toBe("idle");
+  });
+
+  it("ignores commit resolution from a superseded attempt", () => {
+    const settling = STATES[3];
+    const first = transition(settling, {
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:first",
+    });
+    const hidden = transition(first.state, { type: "APP_HIDDEN" });
+    const loaded = transition(hidden.state, { type: "IFRAME_LOADED" });
+    const ready = transition(loaded.state, { type: "SELECTOR_READY" });
+    const second = transition(ready.state, {
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:second",
+    });
+
+    const staleSuccess = transition(second.state, {
+      type: "COMMIT_RESOLVED",
+      hash: "stale",
+      requestId: "capture:first",
+    });
+    expect(staleSuccess.state).toBe(second.state);
+    expect(staleSuccess.ignoredReason).toBe("stale-request");
+
+    const staleFailure = transition(second.state, {
+      type: "SAVE_FAILED",
+      requestId: "capture:first",
+    });
+    expect(staleFailure.state).toBe(second.state);
+    expect(staleFailure.ignoredReason).toBe("stale-request");
   });
 
   it("runs the fallback screenshot probe only once per app controller", () => {

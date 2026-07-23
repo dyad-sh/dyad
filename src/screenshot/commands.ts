@@ -45,7 +45,10 @@ export function createScreenshotCommandAdapter(options: {
             appId,
             options.clock.schedule(() => {
               settleTimers.delete(appId);
-              emit({ type: "SETTLE_ELAPSED" });
+              emit({
+                type: "SETTLE_ELAPSED",
+                requestId: options.idSource.next("screenshot-capture"),
+              });
             }, SCREENSHOT_SETTLE_DELAY_MS),
           );
           return;
@@ -56,13 +59,16 @@ export function createScreenshotCommandAdapter(options: {
           void ipc.app.getCurrentCommitHash({ appId }).then(
             ({ commitHash }) => {
               if (!commitHash) {
-                emit({ type: "SAVE_FAILED" });
+                emit({
+                  type: "SAVE_FAILED",
+                  requestId: command.requestId,
+                });
                 return;
               }
               emit({
                 type: "COMMIT_RESOLVED",
                 hash: commitHash,
-                requestId: options.idSource.next("screenshot-capture"),
+                requestId: command.requestId,
               });
             },
             (error) => {
@@ -70,7 +76,10 @@ export function createScreenshotCommandAdapter(options: {
                 "Failed to resolve commit hash for screenshot",
                 error,
               );
-              emit({ type: "SAVE_FAILED" });
+              emit({
+                type: "SAVE_FAILED",
+                requestId: command.requestId,
+              });
             },
           );
           return;

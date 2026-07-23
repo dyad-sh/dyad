@@ -160,6 +160,8 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 
 For a single body field, `-F body=@path/to/body.md` is simpler than `--input`: it posts the raw file contents as that field with no JSON escaping needed. Note the hook blocks the _command line_, not the payload — a heredoc or `-f body="..."` with backticks/parens trips it, `@file` never does.
 
+That `-F body=@...` form is specific to `gh api`. For a top-level PR comment, use `gh pr comment <number> --body-file path/to/body.md`; `gh pr comment -F body=@...` treats the value as a filename and fails with `no such file or directory`.
+
 `jq` is not installed in this environment — use `gh`'s built-in `--jq` flag for JSON extraction, or a Python script for larger parsing (see the sandbox note in `AGENTS.md`: inline `python3 -c` is blocked and scripts must live under `.claude/`).
 
 ## Adding labels to PRs

@@ -87,10 +87,6 @@ export const dismissedPackageManagerWarningAppIdsAtom = atom<Set<number>>(
   new Set<number>(),
 );
 
-// Stores the current preview URL to preserve route across HMR-induced remounts.
-// This tracks the current iframe route per app, not the app's base URL.
-export const previewCurrentUrlAtom = atom<Map<number, string>>(new Map());
-
 export const currentPreviewRunStateAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
   return appId === null
@@ -360,11 +356,6 @@ export const clearPreviewRuntimeForAppAtom = atom(
       return next;
     });
     set(consoleEntriesByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.delete(appId);
-      return next;
-    });
-    set(previewCurrentUrlAtom, (prev) => {
       const next = new Map(prev);
       next.delete(appId);
       return next;

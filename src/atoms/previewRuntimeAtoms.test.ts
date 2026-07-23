@@ -12,7 +12,6 @@ import {
   currentPreviewErrorAtom,
   currentPreviewLoadingAtom,
   dismissPackageManagerWarningsAtom,
-  previewCurrentUrlAtom,
   previewRunStateByAppIdAtom,
   setAppUrlForAppAtom,
   setPackageManagerWarningForAppAtom,
@@ -193,10 +192,6 @@ describe("preview runtime atoms", () => {
         mode: "host",
       },
     });
-    store.set(
-      previewCurrentUrlAtom,
-      new Map([[1, "http://localhost:3000/foo"]]),
-    );
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 1,
       warning: {
@@ -227,7 +222,6 @@ describe("preview runtime atoms", () => {
     expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
-    expect(store.get(previewCurrentUrlAtom).has(1)).toBe(false);
     expect(store.get(consoleEntriesByAppIdAtom).has(1)).toBe(false);
     expect(store.get(consoleEntriesByAppIdAtom).has(2)).toBe(true);
   });

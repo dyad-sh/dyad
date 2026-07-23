@@ -12,6 +12,7 @@ const MACHINE_DIRECTORIES = [
   "image_generation",
   "mcp_oauth",
   "plan_handoff",
+  "preview_iframe",
   "version_preview",
   "voice_to_text",
   "user_input",

@@ -3,8 +3,6 @@ import { atom } from "jotai";
 
 export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
 
-export const isPickingComponentAtom = atom<boolean>(false);
-
 export const visualEditingSelectedComponentAtom =
   atom<ComponentSelection | null>(null);
 
@@ -18,8 +16,6 @@ export const currentComponentCoordinatesAtom = atom<{
 export const previewIframeRefAtom = atom<HTMLIFrameElement | null>(null);
 
 export const annotatorModeAtom = atom<boolean>(false);
-
-export const isRestoringQueuedSelectionAtom = atom<boolean>(false);
 
 export const screenshotDataUrlAtom = atom<string | null>(null);
 export const pendingVisualChangesAtom = atom<Map<string, VisualEditingChange>>(

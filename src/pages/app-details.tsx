@@ -10,6 +10,7 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { clearPreviewRuntimeForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { useVersionPreviewManager } from "@/hooks/useVersionPreview";
 import { useAppRunManager } from "@/app_run/AppRunProvider";
+import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useChats } from "@/hooks/useChats";
@@ -101,6 +102,7 @@ function UnavailableIntegrationCard({
 export default function AppDetailsPage() {
   const versionPreviewManager = useVersionPreviewManager();
   const appRunManager = useAppRunManager();
+  const previewIframeManager = usePreviewIframeManager();
   const navigate = useNavigate();
   const search = useSearch({ from: "/app-details" as const });
   const appId = search.appId ? Number(search.appId) : null;
@@ -200,6 +202,7 @@ export default function AppDetailsPage() {
       versionPreviewManager.disposeApp(appId);
       clearPreviewRuntimeForApp(appId);
       appRunManager.disposeKey(appId);
+      previewIframeManager.disposeKey(appId);
       setSelectedAppId(null);
       setSelectedChatId(null);
       await refreshApps();

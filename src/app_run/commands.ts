@@ -5,7 +5,6 @@ import {
   appendConsoleEntriesForAppAtom,
   bumpPreviewReloadTokenForAppAtom,
   clearPackageManagerWarningForAppAtom,
-  previewCurrentUrlAtom,
   setAppUrlForAppAtom,
   setConsoleEntriesForAppAtom,
   setPreviewAppExitForAppAtom,
@@ -96,11 +95,6 @@ export function createIpcRunCommandExecutor(
       store.set(setAppUrlForAppAtom, { appId, appUrl: EMPTY_APP_URL });
 
       if (operation !== "run") {
-        store.set(previewCurrentUrlAtom, (prev) => {
-          const next = new Map(prev);
-          next.delete(appId);
-          return next;
-        });
         await ipc.misc.clearLogs({ appId });
         store.set(setConsoleEntriesForAppAtom, { appId, entries: [] });
       }

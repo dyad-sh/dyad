@@ -69,12 +69,10 @@ import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
 import {
   selectedComponentsPreviewAtom,
-  isPickingComponentAtom,
   previewIframeRefAtom,
   visualEditingSelectedComponentAtom,
   currentComponentCoordinatesAtom,
   pendingVisualChangesAtom,
-  isRestoringQueuedSelectionAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { LexicalChatInput } from "./LexicalChatInput";
@@ -118,6 +116,7 @@ import {
   getUserInputProjectionAdapter,
   respondingRequestIdsAtom,
 } from "@/user_input/projection";
+import { useSendPreviewIframeEvent } from "@/preview_iframe/usePreviewIframe";
 
 const showTokenBarAtom = atom(false);
 
@@ -186,7 +185,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );
-  const setIsPickingComponent = useSetAtom(isPickingComponentAtom);
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
   const setVisualEditingSelectedComponent = useSetAtom(
     visualEditingSelectedComponentAtom,
@@ -195,9 +193,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
-  const setIsRestoringQueuedSelection = useSetAtom(
-    isRestoringQueuedSelectionAtom,
-  );
+  const sendPreviewIframeEvent = useSendPreviewIframeEvent(appId);
   const store = useStore();
   const userInputProjection = getUserInputProjectionAdapter({ store });
   const pendingToolConsents = useAtomValue(pendingToolConsentsAtom);
@@ -394,7 +390,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const clearComposerAfterSubmit = useCallback(() => {
     setInputValue("");
     setSelectedComponents([]);
-    setIsPickingComponent(false);
+    sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
     setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
@@ -406,7 +402,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [
     setInputValue,
     setSelectedComponents,
-    setIsPickingComponent,
+    sendPreviewIframeEvent,
     setVisualEditingSelectedComponent,
     previewIframeRef,
   ]);
@@ -474,8 +470,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setInputValue(msg.prompt);
       // Restore attachments and selected components from the queued message
       replaceAttachments(msg.attachments ?? []);
-      setIsRestoringQueuedSelection(true);
       setSelectedComponents(msg.selectedComponents ?? []);
+      sendPreviewIframeEvent({ type: "SELECTION_RESTORE_QUEUED" });
       // Reset visual editing target to avoid stale toolbar state
       setVisualEditingSelectedComponent(null);
       // Set editing mode
@@ -491,7 +487,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       replaceAttachments,
       setSelectedComponents,
       setVisualEditingSelectedComponent,
-      setIsRestoringQueuedSelection,
+      sendPreviewIframeEvent,
       updateQueuedMessage,
     ],
   );
@@ -880,7 +876,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onReset={() => {
                 // Exit component selection mode and visual editing
                 setSelectedComponents([]);
-                setIsPickingComponent(false);
+                sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
                 setVisualEditingSelectedComponent(null);
                 setCurrentComponentCoordinates(null);
                 setPendingVisualChanges(new Map());

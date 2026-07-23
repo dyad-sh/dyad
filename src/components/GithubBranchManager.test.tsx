@@ -186,6 +186,32 @@ describe("GithubBranchManager machine projection", () => {
     );
   });
 
+  it("closes the merge dialog when conflict recovery takes over", async () => {
+    const view = render(<GithubBranchManager appId={1} />);
+
+    fireEvent.click(screen.getByTestId("branches-header"));
+    fireEvent.click(screen.getByTestId("branch-actions-feature"));
+    fireEvent.click(screen.getByTestId("merge-branch-menu-item"));
+    expect(screen.getByTestId("merge-branch-submit-button")).toBeDefined();
+
+    mocks.state = {
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: {
+        kind: "error",
+        code: "MERGE_CONFLICT",
+        message: "Merge conflicts detected",
+      },
+    };
+    view.rerender(<GithubBranchManager appId={1} />);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("merge-branch-submit-button")).toBeNull(),
+    );
+    expect(screen.getByTestId("branch-conflict-status")).toBeDefined();
+  });
+
   it("removes all conflict UI once abort-and-switch is running", () => {
     mocks.state = {
       type: "switch-blocked",

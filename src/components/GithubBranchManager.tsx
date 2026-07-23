@@ -100,6 +100,10 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
+    if (conflicts.length > 0) {
+      setBranchToMerge(null);
+    }
+
     switch (completedOperation) {
       case "create-branch":
         setNewBranchName("");
@@ -117,7 +121,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
         setBranchToDelete(null);
         break;
     }
-  }, [completedOperation]);
+  }, [completedOperation, conflicts]);
 
   const handleCreateBranch = () => {
     const name = newBranchName.trim();

@@ -13,6 +13,15 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.
 
+## App lifecycle tools
+
+- Tools that start or restart the app preview must keep the renderer's
+  `AppRunManager` as the lifecycle authority. Send lifecycle start and
+  settlement events with a stable request ID through `app:output`, and do not
+  report tool success until the preview proxy is ready. The restart IPC call
+  can settle after spawning the process but before the development server is
+  usable.
+
 ## User-visible tool output
 
 - AI SDK tool input validation can fail before the tool's `execute` callback runs. The SDK marks the preceding `tool-call` as `invalid` but stringifies its exception before emitting `tool-error`, so correlate by call ID rather than testing the later error's class. Treat `tool-input-end` as provisional: do not persist `buildXml(..., true)` until the matching `tool-call` validates, or an invalid mutation can leave a false-success card. If the call owns an XML preview, clear it only after a persistent terminal status reaches the renderer; never clear a parallel call's preview or duplicate errors thrown by `execute`, which the tool wrapper already renders.

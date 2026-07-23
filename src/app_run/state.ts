@@ -103,6 +103,13 @@ export type RunEvent =
       options: RestartOptions;
     }
   | { type: "REBUILD"; appId: number; runId: number; startedAt: number }
+  | {
+      type: "EXTERNAL_RESTART";
+      appId: number;
+      runId: number;
+      startedAt: number;
+      operation: "restart" | "rebuild";
+    }
   | { type: "STOP"; appId: number; runId: number; startedAt: number }
   // IPC completions, tagged with the runId of the operation they belong to.
   | { type: "RUN_IPC_RESOLVED"; runId: number }
@@ -137,6 +144,11 @@ export type RunCommand =
       operation: RunOperation;
       startedAt: number;
       options: RestartOptions;
+    }
+  | {
+      type: "prepareExternalStart";
+      appId: number;
+      operation: "restart" | "rebuild";
     }
   /** Call the stop IPC; report settlement via STOP_IPC_RESOLVED / _FAILED. */
   | { type: "stop"; appId: number; runId: number }

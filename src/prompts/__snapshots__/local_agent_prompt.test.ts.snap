@@ -32,7 +32,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -222,7 +222,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -399,7 +399,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -558,7 +558,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -735,7 +735,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -994,7 +994,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -1171,7 +1171,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>
@@ -1317,7 +1317,7 @@ Use \`rebuild_app\` only when:
 
 Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
 
-Prefer the least expensive action: hot reload, then restart, then rebuild. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
 </app_lifecycle>
 
 <general_guidelines>

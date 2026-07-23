@@ -802,6 +802,10 @@ export async function handleLocalAgentStream(
         usedAttachmentAccessTool = true;
       },
       abortSignal: abortController.signal,
+      rebuildAppToolAvailable:
+        !readOnly &&
+        !planModeOnly &&
+        settings.agentToolConsents?.["rebuild_app"] !== "never",
     };
 
     // Read-only mode includes only read-only tools (MCP tools are skipped since

@@ -654,6 +654,8 @@ export const constructSystemPrompt = ({
   codeExplorerAvailable,
   historyExplorerAvailable,
   testingEnabled,
+  restartAppToolAvailable,
+  rebuildAppToolAvailable,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan";
@@ -695,6 +697,8 @@ export const constructSystemPrompt = ({
    * test-writing and `run_tests` guidance (see `constructLocalAgentPrompt`).
    */
   testingEnabled?: boolean;
+  restartAppToolAvailable?: boolean;
+  rebuildAppToolAvailable?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
@@ -711,6 +715,8 @@ export const constructSystemPrompt = ({
       codeExplorerAvailable,
       historyExplorerAvailable,
       testingEnabled,
+      restartAppToolAvailable,
+      rebuildAppToolAvailable,
     });
   }
 

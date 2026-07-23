@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearLogs } from "@/lib/log_store";
-import { restartApp } from "@/ipc/services/restart_app";
+import { restartApp, waitForAppReady } from "@/ipc/services/restart_app";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import { rebuildAppTool, restartAppTool } from "./app_lifecycle";
 import type { AgentContext } from "./types";
 
-vi.mock("@/lib/log_store", () => ({
-  clearLogs: vi.fn(),
-}));
-
 vi.mock("@/ipc/services/restart_app", () => ({
   restartApp: vi.fn(),
+  waitForAppReady: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/safe_sender", () => ({
+  safeSend: vi.fn(),
 }));
 
 describe("app lifecycle tools", () => {
@@ -24,6 +25,7 @@ describe("app lifecycle tools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(restartApp).mockResolvedValue(undefined);
+    vi.mocked(waitForAppReady).mockResolvedValue(undefined);
   });
 
   it("declares restart as an auto-approved runtime mutation", () => {
@@ -40,8 +42,21 @@ describe("app lifecycle tools", () => {
       "The app restarted successfully.",
     );
 
-    expect(clearLogs).toHaveBeenCalledWith(42);
-    expect(restartApp).toHaveBeenCalledWith(ctx.event, { appId: 42 });
+    expect(restartApp).toHaveBeenCalledWith(ctx.event, {
+      appId: 42,
+      removeNodeModules: false,
+      clearRuntimeLogs: true,
+    });
+    expect(waitForAppReady).toHaveBeenCalledWith(42, undefined);
+    expect(safeSend).toHaveBeenCalledWith(
+      undefined,
+      "app:output",
+      expect.objectContaining({
+        type: "agent-lifecycle-succeeded",
+        appId: 42,
+        lifecycleOperation: "restart",
+      }),
+    );
     expect(ctx.onXmlStream).toHaveBeenCalledWith(
       '<dyad-status title="Restarting app"></dyad-status>',
     );
@@ -64,11 +79,12 @@ describe("app lifecycle tools", () => {
       "The app rebuilt and restarted successfully.",
     );
 
-    expect(clearLogs).toHaveBeenCalledWith(42);
     expect(restartApp).toHaveBeenCalledWith(ctx.event, {
       appId: 42,
       removeNodeModules: true,
+      clearRuntimeLogs: true,
     });
+    expect(waitForAppReady).toHaveBeenCalledWith(42, undefined);
     expect(ctx.onXmlStream).toHaveBeenCalledWith(
       '<dyad-status title="Rebuilding app"></dyad-status>',
     );

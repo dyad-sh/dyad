@@ -423,6 +423,9 @@ export const AppOutputSchema = z.object({
     "sync-error",
     "sync-recovered",
     "app-exit",
+    "agent-lifecycle-started",
+    "agent-lifecycle-succeeded",
+    "agent-lifecycle-failed",
   ]),
   message: z.string(),
   appId: z.number(),
@@ -430,6 +433,8 @@ export const AppOutputSchema = z.object({
   timestamp: z.number().optional(),
   exitCode: z.number().nullable().optional(),
   signal: z.string().nullable().optional(),
+  lifecycleRequestId: z.string().optional(),
+  lifecycleOperation: z.enum(["restart", "rebuild"]).optional(),
 });
 
 export type AppOutput = z.infer<typeof AppOutputSchema>;

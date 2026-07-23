@@ -8,6 +8,7 @@ import {
 import { createIpcRunCommandExecutor, type JotaiStore } from "./commands";
 import {
   AppRunController,
+  type ExternalRunOperationInput,
   type RunOperationInput,
   type RunProducerInput,
 } from "./controller";
@@ -69,6 +70,18 @@ export class AppRunManager {
 
   send(appId: number, input: RunProducerInput): void {
     this.host.ensure(appId).send(input);
+  }
+
+  beginExternal(appId: number, input: ExternalRunOperationInput): void {
+    this.host.ensure(appId).beginExternal(input);
+  }
+
+  settleExternal(
+    appId: number,
+    requestId: string,
+    error?: { message: string },
+  ): void {
+    this.host.get(appId)?.settleExternal(requestId, error);
   }
 
   disposeKey = (appId: number): void => {

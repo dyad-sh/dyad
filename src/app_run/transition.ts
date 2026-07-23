@@ -100,6 +100,25 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         ],
       };
 
+    case "EXTERNAL_RESTART":
+      return {
+        state: {
+          type: "starting",
+          appId: event.appId,
+          runId: event.runId,
+          operation: event.operation,
+          startedAt: event.startedAt,
+          pendingUrl: null,
+        },
+        commands: [
+          {
+            type: "prepareExternalStart",
+            appId: event.appId,
+            operation: event.operation,
+          },
+        ],
+      };
+
     case "STOP":
       return {
         state: {

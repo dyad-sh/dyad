@@ -139,6 +139,17 @@ describe("local_agent_prompt", () => {
     expect(prompt).not.toContain("rebuild_app");
   });
 
+  it("omits lifecycle tools that are unavailable", () => {
+    const prompt = constructLocalAgentPrompt(undefined, undefined, {
+      restartAppToolAvailable: false,
+      rebuildAppToolAvailable: false,
+    });
+
+    expect(prompt).not.toContain("<app_lifecycle>");
+    expect(prompt).not.toContain("restart_app");
+    expect(prompt).not.toContain("rebuild_app");
+  });
+
   it("agent mode system prompt with app blueprint disabled", () => {
     const prompt = constructLocalAgentPrompt(undefined, undefined, {
       enableAppBlueprint: false,

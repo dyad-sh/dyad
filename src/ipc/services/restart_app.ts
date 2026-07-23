@@ -1,6 +1,5 @@
 import type { IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
-import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
@@ -9,6 +8,7 @@ import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
+import { clearLogs } from "@/lib/log_store";
 import { getDyadAppPath } from "@/paths/paths";
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -31,6 +31,7 @@ export interface RestartAppOptions {
   appId: number;
   removeNodeModules?: boolean;
   recreateSandbox?: boolean;
+  clearRuntimeLogs?: boolean;
 }
 
 /**
@@ -44,6 +45,7 @@ export async function restartApp(
     appId,
     removeNodeModules = false,
     recreateSandbox = false,
+    clearRuntimeLogs = false,
   }: RestartAppOptions,
 ): Promise<void> {
   logger.log(`Restarting app ${appId}`);
@@ -68,13 +70,17 @@ export async function restartApp(
       ) {
         logger.log(`Restarting cloud sandbox app ${appId} in place`);
 
+        appInfo.cloudLogAbortController?.abort();
         const restartResult = await restartCloudSandbox(appInfo.cloudSandboxId);
         appInfo.cloudPreviewUrl = restartResult.previewUrl;
         appInfo.cloudPreviewAuthToken = restartResult.previewAuthToken;
         appInfo.lastViewedAt = Date.now();
 
-        appInfo.cloudLogAbortController?.abort();
         appInfo.cloudLogAbortController = new AbortController();
+
+        if (clearRuntimeLogs) {
+          clearLogs(appId);
+        }
 
         await ensureProxyForRunningApp({
           appId,
@@ -114,15 +120,11 @@ export async function restartApp(
         logger.log(
           `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
         );
-        if (fs.existsSync(nodeModulesPath)) {
-          await fsPromises.rm(nodeModulesPath, {
-            recursive: true,
-            force: true,
-          });
-          logger.log(`Successfully removed node_modules for app ${appId}`);
-        } else {
-          logger.log(`No node_modules directory found for app ${appId}`);
-        }
+        await fsPromises.rm(nodeModulesPath, {
+          recursive: true,
+          force: true,
+        });
+        logger.log(`Removed node_modules for app ${appId}, if present`);
 
         if (runtimeMode === "docker") {
           logger.log(
@@ -146,6 +148,10 @@ export async function restartApp(
         `Executing app ${appId} in path ${app.path} after restart request`,
       );
 
+      if (clearRuntimeLogs) {
+        clearLogs(appId);
+      }
+
       await executeApp({
         appPath,
         appId,
@@ -159,4 +165,53 @@ export async function restartApp(
       throw error;
     }
   });
+}
+
+const APP_READY_TIMEOUT_MS = 2 * 60 * 1_000;
+const APP_READY_POLL_MS = 100;
+
+async function delayUntilPollOrAbort(abortSignal?: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timeout);
+      abortSignal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timeout = setTimeout(finish, APP_READY_POLL_MS);
+    abortSignal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+export async function waitForAppReady(
+  appId: number,
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < APP_READY_TIMEOUT_MS) {
+    if (abortSignal?.aborted) {
+      throw new DyadError(
+        "App restart was cancelled",
+        DyadErrorKind.UserCancelled,
+      );
+    }
+
+    const appInfo = runningApps.get(appId);
+    if (!appInfo) {
+      throw new DyadError(
+        "The app process exited before the preview became ready",
+        DyadErrorKind.External,
+      );
+    }
+    if (appInfo.proxyUrl) {
+      return;
+    }
+
+    await delayUntilPollOrAbort(abortSignal);
+  }
+
+  throw new DyadError(
+    "Timed out waiting for the app preview to become ready",
+    DyadErrorKind.External,
+  );
 }

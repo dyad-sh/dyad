@@ -142,6 +142,20 @@ export function createIpcRunCommandExecutor(
         case "start":
           await executeStart(command, emit);
           return;
+        case "prepareExternalStart":
+          store.set(setPreviewAppExitForAppAtom, {
+            appId: command.appId,
+            exit: null,
+          });
+          store.set(setAppUrlForAppAtom, {
+            appId: command.appId,
+            appUrl: EMPTY_APP_URL,
+          });
+          store.set(setConsoleEntriesForAppAtom, {
+            appId: command.appId,
+            entries: [],
+          });
+          return;
         case "stop":
           // Mirrors executeStart: a synchronous throw from the IPC surface
           // must still settle the operation, otherwise the machine would be

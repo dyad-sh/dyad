@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 
-import { clearLogs } from "@/lib/log_store";
-import { restartApp } from "@/ipc/services/restart_app";
+import { restartApp, waitForAppReady } from "@/ipc/services/restart_app";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import type { AgentContext, ToolDefinition } from "./types";
 
 const appLifecycleSchema = z.object({});
@@ -9,6 +10,50 @@ const appLifecycleSchema = z.object({});
 function buildLifecycleXml(title: string, state?: "finished"): string {
   const stateAttr = state ? ` state="${state}"` : "";
   return `<dyad-status title="${title}"${stateAttr}></dyad-status>`;
+}
+
+async function executeLifecycle({
+  ctx,
+  operation,
+}: {
+  ctx: AgentContext;
+  operation: "restart" | "rebuild";
+}): Promise<void> {
+  const lifecycleRequestId = randomUUID();
+  const startedAt = Date.now();
+  safeSend(ctx.event.sender, "app:output", {
+    type: "agent-lifecycle-started",
+    message: `${operation === "rebuild" ? "Rebuilding" : "Restarting"} app`,
+    appId: ctx.appId,
+    timestamp: startedAt,
+    lifecycleRequestId,
+    lifecycleOperation: operation,
+  });
+
+  try {
+    await restartApp(ctx.event, {
+      appId: ctx.appId,
+      removeNodeModules: operation === "rebuild",
+      clearRuntimeLogs: true,
+    });
+    await waitForAppReady(ctx.appId, ctx.abortSignal);
+    safeSend(ctx.event.sender, "app:output", {
+      type: "agent-lifecycle-succeeded",
+      message: `App ${operation} succeeded`,
+      appId: ctx.appId,
+      lifecycleRequestId,
+      lifecycleOperation: operation,
+    });
+  } catch (error) {
+    safeSend(ctx.event.sender, "app:output", {
+      type: "agent-lifecycle-failed",
+      message: error instanceof Error ? error.message : String(error),
+      appId: ctx.appId,
+      lifecycleRequestId,
+      lifecycleOperation: operation,
+    });
+    throw error;
+  }
 }
 
 export const restartAppTool: ToolDefinition<
@@ -28,8 +73,7 @@ export const restartAppTool: ToolDefinition<
 
   execute: async (_args, ctx: AgentContext) => {
     ctx.onXmlStream(buildLifecycleXml("Restarting app"));
-    clearLogs(ctx.appId);
-    await restartApp(ctx.event, { appId: ctx.appId });
+    await executeLifecycle({ ctx, operation: "restart" });
     ctx.onXmlComplete(buildLifecycleXml("App restarted", "finished"));
     return "The app restarted successfully.";
   },
@@ -53,11 +97,7 @@ export const rebuildAppTool: ToolDefinition<
 
   execute: async (_args, ctx: AgentContext) => {
     ctx.onXmlStream(buildLifecycleXml("Rebuilding app"));
-    clearLogs(ctx.appId);
-    await restartApp(ctx.event, {
-      appId: ctx.appId,
-      removeNodeModules: true,
-    });
+    await executeLifecycle({ ctx, operation: "rebuild" });
     ctx.onXmlComplete(buildLifecycleXml("App rebuilt", "finished"));
     return "The app rebuilt and restarted successfully.";
   },

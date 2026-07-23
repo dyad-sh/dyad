@@ -107,6 +107,34 @@ export function useAppOutputSubscription() {
 
   const processAppOutput = useCallback(
     (output: AppOutput) => {
+      if (
+        output.type === "agent-lifecycle-started" &&
+        output.lifecycleRequestId &&
+        output.lifecycleOperation
+      ) {
+        manager.beginExternal(output.appId, {
+          requestId: output.lifecycleRequestId,
+          operation: output.lifecycleOperation,
+          startedAt: output.timestamp ?? Date.now(),
+        });
+        return null;
+      }
+
+      if (
+        (output.type === "agent-lifecycle-succeeded" ||
+          output.type === "agent-lifecycle-failed") &&
+        output.lifecycleRequestId
+      ) {
+        manager.settleExternal(
+          output.appId,
+          output.lifecycleRequestId,
+          output.type === "agent-lifecycle-failed"
+            ? { message: output.message }
+            : undefined,
+        );
+        return null;
+      }
+
       if (output.type === "input-requested") {
         if (selectedAppIdRef.current !== output.appId) {
           return null;

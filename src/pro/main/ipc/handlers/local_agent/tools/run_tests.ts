@@ -401,7 +401,11 @@ async function attachFailureArtifacts(
   const rel = path.isAbsolute(shot.screenshotPath)
     ? path.relative(ctx.appPath, shot.screenshotPath)
     : shot.screenshotPath;
-  const errorContext = path.join(path.dirname(rel), "error-context.md");
+  const errorContext = path
+    .join(path.dirname(rel), "error-context.md")
+    .split(path.sep)
+    .join("/");
+  const screenshotPath = rel.split(path.sep).join("/");
   const dataUrl = await readTestScreenshotDataUrl(
     ctx.appPath,
     shot.screenshotPath,
@@ -419,8 +423,8 @@ async function attachFailureArtifacts(
   // (missing/oversized/escaping file), and the model would otherwise burn a
   // turn looking for an attachment that never arrives.
   const screenshotLine = dataUrl
-    ? `\n- Screenshot: ${rel} (attached to the next message as an image)`
-    : `\n- Screenshot: ${rel} (could NOT be attached as an image — rely on the page snapshot instead)`;
+    ? `\n- Screenshot: ${screenshotPath} (attached to the next message as an image)`
+    : `\n- Screenshot: ${screenshotPath} (could NOT be attached as an image — rely on the page snapshot instead)`;
   return `\nArtifacts from THIS run (other test-results directories are stale — do not read them):\n- Page snapshot: ${errorContext}  ← read this first with read_file; it shows what was actually on the page${screenshotLine}`;
 }
 

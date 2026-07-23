@@ -272,7 +272,7 @@ describe("getGitUncommittedFiles", () => {
       "generated",
     );
     await fs.promises.writeFile(
-      path.join(repoDir, ".dyad", "foo -> bar"),
+      path.join(repoDir, ".dyad", "foo [bar]"),
       "generated",
     );
     await fs.promises.writeFile(path.join(repoDir, "src.ts"), "user change");
@@ -403,7 +403,7 @@ describe("gitStageToRevert", () => {
       "generated",
     );
     await fs.promises.writeFile(
-      path.join(repo.repoDir, ".dyad", "foo -> bar"),
+      path.join(repo.repoDir, ".dyad", "foo [bar]"),
       "generated",
     );
     await fs.promises.writeFile(

@@ -259,12 +259,25 @@ export class AppManagement {
     const startTime = Date.now();
     let lastOutput = "";
 
-    const checkCommand = `node -e 'const pkg=require("./package.json");const{execSync}=require("child_process");try{const prodResult=JSON.parse(execSync("pnpm list --json --depth=0",{encoding:"utf8"}));const devResult=JSON.parse(execSync("pnpm list --json --depth=0 --dev",{encoding:"utf8"}));const installed={...(prodResult[0]||{}).dependencies||{},...(devResult[0]||{}).devDependencies||{}};const expected=Object.keys({...pkg.dependencies||{},...pkg.devDependencies||{}});const missing=expected.filter(dep=>!installed[dep]);console.log(missing.length?"MISSING: "+missing.join(", "):"All dependencies installed")}catch(e){console.log("Error:",e.message)}'`;
+    const checkScript = [
+      'const pkg = require("./package.json");',
+      'const { execSync } = require("child_process");',
+      "try {",
+      'const prodResult = JSON.parse(execSync("pnpm list --json --depth=0", { encoding: "utf8" }));',
+      'const devResult = JSON.parse(execSync("pnpm list --json --depth=0 --dev", { encoding: "utf8" }));',
+      "const installed = { ...(prodResult[0] || {}).dependencies, ...(devResult[0] || {}).devDependencies };",
+      "const expected = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });",
+      "const missing = expected.filter((dependency) => !installed[dependency]);",
+      'console.log(missing.length ? `MISSING: ${missing.join(", ")}` : "All dependencies installed");',
+      "} catch (error) {",
+      'console.log("Error:", error instanceof Error ? error.message : String(error));',
+      "}",
+    ].join("");
 
     while (Date.now() - startTime < maxDurationMs) {
       try {
         console.log(`Checking installed dependencies in ${appPath}...`);
-        const stdout = execSync(checkCommand, {
+        const stdout = execFileSync(process.execPath, ["-e", checkScript], {
           cwd: appPath,
           stdio: "pipe",
           encoding: "utf8",

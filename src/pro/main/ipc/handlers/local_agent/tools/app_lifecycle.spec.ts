@@ -86,7 +86,9 @@ describe("app lifecycle tools", () => {
       recreateSandbox: true,
       clearRuntimeLogs: true,
     });
-    expect(waitForAppReady).toHaveBeenCalledWith(42, undefined);
+    expect(waitForAppReady).toHaveBeenCalledWith(42, {
+      timeoutMs: 10 * 60 * 1_000,
+    });
     expect(ctx.onXmlStream).toHaveBeenCalledWith(
       '<dyad-status title="Rebuilding app"></dyad-status>',
     );
@@ -100,5 +102,22 @@ describe("app lifecycle tools", () => {
     expect(restartAppTool.buildXml?.({}, true)).toBeUndefined();
     expect(rebuildAppTool.buildXml?.({}, false)).toContain("Rebuilding app");
     expect(rebuildAppTool.buildXml?.({}, true)).toBeUndefined();
+  });
+
+  it("does not start a lifecycle mutation after the turn is cancelled", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+    const cancelledCtx = {
+      ...ctx,
+      abortSignal: abortController.signal,
+    } as AgentContext;
+
+    await expect(restartAppTool.execute({}, cancelledCtx)).rejects.toThrow(
+      "cancelled before it started",
+    );
+
+    expect(restartApp).not.toHaveBeenCalled();
+    expect(waitForAppReady).not.toHaveBeenCalled();
+    expect(ctx.onXmlStream).not.toHaveBeenCalled();
   });
 });

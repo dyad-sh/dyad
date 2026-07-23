@@ -1,15 +1,26 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { restartApp, waitForAppReady } from "@/ipc/services/restart_app";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import type { AgentContext, ToolDefinition } from "./types";
 
 const appLifecycleSchema = z.object({});
+const REBUILD_READY_TIMEOUT_MS = 10 * 60 * 1_000;
 
 function buildLifecycleXml(title: string, state?: "finished"): string {
   const stateAttr = state ? ` state="${state}"` : "";
   return `<dyad-status title="${title}"${stateAttr}></dyad-status>`;
+}
+
+function assertLifecycleCanStart(ctx: AgentContext): void {
+  if (ctx.abortSignal?.aborted) {
+    throw new DyadError(
+      "The app lifecycle operation was cancelled before it started",
+      DyadErrorKind.UserCancelled,
+    );
+  }
 }
 
 async function executeLifecycle({
@@ -37,7 +48,12 @@ async function executeLifecycle({
       recreateSandbox: operation === "rebuild",
       clearRuntimeLogs: true,
     });
-    await waitForAppReady(ctx.appId, ctx.abortSignal);
+    await waitForAppReady(
+      ctx.appId,
+      operation === "rebuild"
+        ? { timeoutMs: REBUILD_READY_TIMEOUT_MS }
+        : undefined,
+    );
     safeSend(ctx.event.sender, "app:output", {
       type: "agent-lifecycle-succeeded",
       message: `App ${operation} succeeded`,
@@ -73,6 +89,7 @@ export const restartAppTool: ToolDefinition<
     isComplete ? undefined : buildLifecycleXml("Restarting app"),
 
   execute: async (_args, ctx: AgentContext) => {
+    assertLifecycleCanStart(ctx);
     ctx.onXmlStream(buildLifecycleXml("Restarting app"));
     await executeLifecycle({ ctx, operation: "restart" });
     ctx.onXmlComplete(buildLifecycleXml("App restarted", "finished"));
@@ -97,6 +114,7 @@ export const rebuildAppTool: ToolDefinition<
     isComplete ? undefined : buildLifecycleXml("Rebuilding app"),
 
   execute: async (_args, ctx: AgentContext) => {
+    assertLifecycleCanStart(ctx);
     ctx.onXmlStream(buildLifecycleXml("Rebuilding app"));
     await executeLifecycle({ ctx, operation: "rebuild" });
     ctx.onXmlComplete(buildLifecycleXml("App rebuilt", "finished"));

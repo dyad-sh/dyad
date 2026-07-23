@@ -167,35 +167,22 @@ export async function restartApp(
   });
 }
 
-const APP_READY_TIMEOUT_MS = 2 * 60 * 1_000;
+const DEFAULT_APP_READY_TIMEOUT_MS = 2 * 60 * 1_000;
 const APP_READY_POLL_MS = 100;
 
-async function delayUntilPollOrAbort(abortSignal?: AbortSignal): Promise<void> {
+async function delayUntilNextReadyPoll(): Promise<void> {
   await new Promise<void>((resolve) => {
-    const finish = () => {
-      clearTimeout(timeout);
-      abortSignal?.removeEventListener("abort", finish);
-      resolve();
-    };
-    const timeout = setTimeout(finish, APP_READY_POLL_MS);
-    abortSignal?.addEventListener("abort", finish, { once: true });
+    setTimeout(resolve, APP_READY_POLL_MS);
   });
 }
 
 export async function waitForAppReady(
   appId: number,
-  abortSignal?: AbortSignal,
+  { timeoutMs = DEFAULT_APP_READY_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<void> {
   const startedAt = Date.now();
 
-  while (Date.now() - startedAt < APP_READY_TIMEOUT_MS) {
-    if (abortSignal?.aborted) {
-      throw new DyadError(
-        "App restart was cancelled",
-        DyadErrorKind.UserCancelled,
-      );
-    }
-
+  while (Date.now() - startedAt < timeoutMs) {
     const appInfo = runningApps.get(appId);
     if (!appInfo) {
       throw new DyadError(
@@ -207,7 +194,7 @@ export async function waitForAppReady(
       return;
     }
 
-    await delayUntilPollOrAbort(abortSignal);
+    await delayUntilNextReadyPoll();
   }
 
   throw new DyadError(

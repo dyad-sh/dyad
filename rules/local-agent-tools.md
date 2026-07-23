@@ -24,6 +24,11 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - Keep lifecycle tool semantics consistent across host, Docker, and cloud
   runtimes. In particular, a tool that claims to rebuild or reinstall
   dependencies must not take an in-place cloud restart shortcut.
+- Only honor turn cancellation before a destructive lifecycle mutation starts.
+  Once restart or rebuild has begun, wait for the real outcome instead of
+  reporting cancellation while teardown or dependency installation continues
+  in the background. Allow rebuild readiness substantially more time than an
+  ordinary restart because it includes a fresh dependency install.
 
 ## User-visible tool output
 

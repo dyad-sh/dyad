@@ -40,10 +40,17 @@ const logger = log.scope("compaction_handler");
 
 export interface CompactionResult {
   success: boolean;
+  aborted?: boolean;
+  skipped?: boolean;
   summary?: string;
   backupPath?: string;
   error?: string;
 }
+
+// The DB flag is the durable "owed a compaction" record and is only cleared
+// after success. This in-memory guard prevents duplicate work within this
+// process without sacrificing retry-on-failure or abort-retains-mark semantics.
+const compactionChatsInFlight = new Set<number>();
 
 /**
  * Mark a chat as needing compaction before the next message.
@@ -138,6 +145,7 @@ export async function performCompaction(
   const abortSignal = options?.abortSignal;
   const abortedResult = (): CompactionResult => ({
     success: false,
+    aborted: true,
     error: "Compaction aborted",
   });
 
@@ -145,9 +153,16 @@ export async function performCompaction(
     return abortedResult();
   }
 
-  const settings = readSettings();
+  // Check and acquire in one synchronous frame, before the first await in the
+  // compaction path. A concurrent loser skips silently while the winner owns
+  // the durable pending mark.
+  if (compactionChatsInFlight.has(chatId)) {
+    return { success: false, skipped: true };
+  }
+  compactionChatsInFlight.add(chatId);
 
   try {
+    const settings = readSettings();
     logger.info(`Starting compaction for chat ${chatId}`);
 
     // Load all messages for the chat
@@ -311,13 +326,12 @@ Note: This file may be large. Read only the sections you need or use grep to sea
 
     logger.error(`Compaction failed for chat ${chatId}:`, error);
 
-    // Clear pending flag to prevent infinite retry loops
-    await clearPendingCompaction(chatId);
-
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    compactionChatsInFlight.delete(chatId);
   }
 }
 

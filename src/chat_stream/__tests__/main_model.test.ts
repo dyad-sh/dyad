@@ -427,13 +427,48 @@ describe("main chat stream model", () => {
     ).toEqual([7, 8]);
   });
 
-  it("documents two concurrent streams observing pendingCompaction=true", () => {
+  it("single-flights two concurrent streams observing pendingCompaction=true", () => {
+    let state = advanceToStreaming();
+    state = advanceToStreaming(state, 2);
+    state = apply(state, { type: "compaction-started", invocationId: 1 });
+    const loser = transitionMainModel(state, {
+      type: "compaction-started",
+      invocationId: 2,
+    });
+    expect(loser.state).toBe(state);
+    expect(loser.commands).toEqual([]);
+    expect(loser.ignoredReason).toBe("compaction-already-active");
+    state = loser.state;
+    expect(state.streams[1].awaitPoint).toBe("compaction");
+    expect(state.streams[2].awaitPoint).toBe("llm");
+    expect(state.activeCompactionChats).toEqual([7]);
+    expect(state.pendingCompactionChats).toEqual([7]);
+    state = apply(state, {
+      type: "compaction-finished",
+      invocationId: 1,
+      outcome: "completed",
+    });
+    expect(state.activeCompactionChats).toEqual([]);
+    expect(state.pendingCompactionChats).toEqual([]);
+    expect(state.compactionSummaryChats).toEqual([7]);
+    expect(state.compactionCompleteBroadcastChats).toEqual([7]);
+  });
+
+  it("releases an aborted compaction flight while retaining its pending mark", () => {
     let state = advanceToStreaming();
     state = advanceToStreaming(state, 2);
     state = apply(state, { type: "compaction-started", invocationId: 1 });
     state = apply(state, { type: "compaction-started", invocationId: 2 });
-    expect(state.streams[1].awaitPoint).toBe("compaction");
-    expect(state.streams[2].awaitPoint).toBe("compaction");
+    state = apply(state, {
+      type: "compaction-finished",
+      invocationId: 1,
+      outcome: "aborted",
+    });
+    expect(state.activeCompactionChats).toEqual([]);
     expect(state.pendingCompactionChats).toEqual([7]);
+
+    state = apply(state, { type: "compaction-started", invocationId: 2 });
+    expect(state.streams[2].awaitPoint).toBe("compaction");
+    expect(state.activeCompactionChats).toEqual([7]);
   });
 });

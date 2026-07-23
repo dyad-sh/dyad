@@ -1224,14 +1224,18 @@ describe("handleLocalAgentStream", () => {
     });
 
     it("unwinds immediately when initial compaction is aborted", async () => {
-      const { event } = createFakeEvent();
+      const { event, getMessagesByChannel } = createFakeEvent();
       const abortController = new AbortController();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
       mockIsChatPendingCompaction.mockResolvedValue(true);
       mockPerformCompaction.mockImplementation(async () => {
         abortController.abort();
-        return { success: false, error: "Compaction aborted" };
+        return {
+          success: false,
+          aborted: true,
+          error: "Compaction aborted",
+        };
       });
 
       await expect(
@@ -1249,6 +1253,7 @@ describe("handleLocalAgentStream", () => {
 
       expect(getModelClient).not.toHaveBeenCalled();
       expect(streamText).not.toHaveBeenCalled();
+      expect(getMessagesByChannel("agent-tool:todos-update")).toEqual([]);
       expect(
         dbOperations.updates.some(
           (update) =>

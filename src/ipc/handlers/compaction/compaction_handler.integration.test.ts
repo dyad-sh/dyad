@@ -130,6 +130,7 @@ describe("performCompaction", () => {
 
     expect(result).toEqual({
       success: false,
+      aborted: true,
       error: "Compaction aborted",
     });
     expect(mockStreamText).toHaveBeenCalledWith(
@@ -159,6 +160,7 @@ describe("performCompaction", () => {
 
     expect(result).toEqual({
       success: false,
+      aborted: true,
       error: "Compaction aborted",
     });
     expect(mockStreamText).not.toHaveBeenCalled();
@@ -205,5 +207,177 @@ describe("performCompaction", () => {
         backupPath: ".dyad/chats/1/compaction-test.md",
       },
     );
+  });
+
+  it("single-flights concurrent compaction attempts for one chat", async () => {
+    let releaseSummary!: () => void;
+    const summaryGate = new Promise<void>((resolve) => {
+      releaseSummary = resolve;
+    });
+    mockStreamText.mockReturnValue({
+      textStream: {
+        async *[Symbol.asyncIterator]() {
+          await summaryGate;
+          yield "Only summary";
+        },
+      },
+    });
+
+    const winner = performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "winner-request",
+    );
+    await vi.waitFor(() => expect(mockStreamText).toHaveBeenCalledOnce());
+
+    await expect(
+      performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "loser-request",
+      ),
+    ).resolves.toEqual({ success: false, skipped: true });
+
+    releaseSummary();
+    await expect(winner).resolves.toMatchObject({
+      success: true,
+      summary: "Only summary",
+    });
+    await expect(loadSummaryMessages()).resolves.toHaveLength(1);
+    await expect(loadChat()).resolves.toMatchObject({
+      pendingCompaction: false,
+    });
+    expect(mockSafeSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a third attempt after the winner aborts and retains the pending mark", async () => {
+    const controller = new AbortController();
+    let releaseAbortedSummary!: () => void;
+    const abortedSummaryGate = new Promise<void>((resolve) => {
+      releaseAbortedSummary = resolve;
+    });
+    mockStreamText.mockReturnValueOnce({
+      textStream: {
+        async *[Symbol.asyncIterator]() {
+          yield "partial";
+          await abortedSummaryGate;
+          yield "ignored";
+        },
+      },
+    });
+
+    const winner = performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "winner-request",
+      () => controller.abort(),
+      { abortSignal: controller.signal },
+    );
+    await vi.waitFor(() => expect(controller.signal.aborted).toBe(true));
+
+    await expect(
+      performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "loser-request",
+      ),
+    ).resolves.toEqual({ success: false, skipped: true });
+
+    releaseAbortedSummary();
+    await expect(winner).resolves.toEqual({
+      success: false,
+      aborted: true,
+      error: "Compaction aborted",
+    });
+    await expect(loadSummaryMessages()).resolves.toEqual([]);
+    await expect(loadChat()).resolves.toMatchObject({
+      pendingCompaction: true,
+    });
+
+    mockStreamText.mockReturnValueOnce({
+      textStream: textStream(["Retried summary"]),
+    });
+    await expect(
+      performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "third-request",
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      summary: "Retried summary",
+    });
+    await expect(loadSummaryMessages()).resolves.toHaveLength(1);
+    await expect(loadChat()).resolves.toMatchObject({
+      pendingCompaction: false,
+    });
+    expect(mockSafeSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a third attempt after the winner fails and retains the pending mark", async () => {
+    let rejectSummary!: () => void;
+    const summaryFailureGate = new Promise<void>((resolve) => {
+      rejectSummary = resolve;
+    });
+    mockStreamText.mockReturnValueOnce({
+      textStream: {
+        async *[Symbol.asyncIterator]() {
+          await summaryFailureGate;
+          yield await Promise.reject(new Error("provider failed"));
+        },
+      },
+    });
+
+    const winner = performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "winner-request",
+    );
+    await vi.waitFor(() => expect(mockStreamText).toHaveBeenCalledOnce());
+
+    await expect(
+      performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "loser-request",
+      ),
+    ).resolves.toEqual({ success: false, skipped: true });
+
+    rejectSummary();
+    await expect(winner).resolves.toEqual({
+      success: false,
+      error: "provider failed",
+    });
+    await expect(loadSummaryMessages()).resolves.toEqual([]);
+    await expect(loadChat()).resolves.toMatchObject({
+      pendingCompaction: true,
+    });
+
+    mockStreamText.mockReturnValueOnce({
+      textStream: textStream(["Retried summary"]),
+    });
+    await expect(
+      performCompaction(
+        { sender: {} } as never,
+        chatId,
+        "/tmp/test-app",
+        "third-request",
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      summary: "Retried summary",
+    });
+    await expect(loadSummaryMessages()).resolves.toHaveLength(1);
+    await expect(loadChat()).resolves.toMatchObject({
+      pendingCompaction: false,
+    });
+    expect(mockSafeSend).toHaveBeenCalledTimes(1);
   });
 });

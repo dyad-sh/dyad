@@ -631,6 +631,12 @@ export async function handleLocalAgentStream(
         abortSignal: abortController.signal,
       },
     );
+    if (compactionResult.skipped) {
+      return false;
+    }
+    if (compactionResult.aborted) {
+      return false;
+    }
     if (!compactionResult.success) {
       logger.warn(
         `Compaction failed for chat ${req.chatId}: ${compactionResult.error}`,
@@ -672,11 +678,6 @@ export async function handleLocalAgentStream(
     return compactionResult.success;
   };
 
-  // Snapshot of todos persisted by a previous turn. Declared before initial
-  // compaction so an abort there can use the normal cancellation cleanup
-  // without continuing into model or tool setup.
-  let persistedTodos: Todo[] = [];
-
   // Check if compaction is pending and enabled before processing the message
   await maybePerformPendingCompaction();
 
@@ -687,7 +688,6 @@ export async function handleLocalAgentStream(
         content: appendCancelledResponseNotice(fullResponse ?? ""),
       })
       .where(eq(messages.id, placeholderMessageId));
-    await clearTodosOnCancel(event, appPath, chat.id, persistedTodos);
     return false;
   }
 
@@ -700,6 +700,9 @@ export async function handleLocalAgentStream(
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
   const warningMessages: string[] = [];
+  // Snapshot of todos persisted by a previous turn. Declared outside the try so
+  // the cancellation handler in `catch` can roll back to this pre-turn state.
+  let persistedTodos: Todo[] = [];
 
   try {
     // Get model client

@@ -50,6 +50,7 @@ import {
   registerConnectionFlowProvider,
   runOAuthReturnExchange,
 } from "./connection_flow_handlers";
+import { MAX_COLLISION_SUFFIX_ATTEMPTS } from "../utils/app_name_resolution";
 
 const logger = log.scope("github_handlers");
 
@@ -607,6 +608,31 @@ async function addDyadTopicToRepo({
   }
 }
 
+type DyadRepoInfo = { name: string; full_name: string; private: boolean };
+
+/**
+ * Normalizes a raw GitHub repo object (any-typed JSON) into a validated
+ * RepoInfo, coercing `private` to a boolean and returning null for items
+ * missing a usable `name`/`full_name`. Guards against one malformed item
+ * (Enterprise variants, proxies, partial responses) failing the whole
+ * listDyadRepos output validation and leaving the user with no list at all.
+ */
+function toDyadRepoInfo(repo: any): DyadRepoInfo | null {
+  if (
+    typeof repo?.full_name !== "string" ||
+    repo.full_name.length === 0 ||
+    typeof repo?.name !== "string" ||
+    repo.name.length === 0
+  ) {
+    return null;
+  }
+  return {
+    name: repo.name,
+    full_name: repo.full_name,
+    private: Boolean(repo.private),
+  };
+}
+
 // --- GitHub List Dyad Repos Handler ---
 /**
  * Lists the user's GitHub repos that were created by Dyad, so they can be
@@ -626,7 +652,7 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
       Accept: "application/vnd.github+json",
     };
 
-    type RepoInfo = { name: string; full_name: string; private: boolean };
+    type RepoInfo = DyadRepoInfo;
     const dyadRepos = new Map<string, RepoInfo>();
 
     // 1) Repos explicitly tagged with the "dyad" topic.
@@ -647,11 +673,10 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
         if (searchRes.ok) {
           const data = (await searchRes.json()) as { items?: any[] };
           for (const repo of data.items ?? []) {
-            dyadRepos.set(repo.full_name, {
-              name: repo.name,
-              full_name: repo.full_name,
-              private: repo.private,
-            });
+            const info = toDyadRepoInfo(repo);
+            if (info) {
+              dyadRepos.set(info.full_name, info);
+            }
           }
         }
       }
@@ -698,11 +723,10 @@ async function handleListDyadGithubRepos(): Promise<DyadGithubRepo[]> {
               { headers },
             );
             if (res.ok) {
-              dyadRepos.set(repo.full_name, {
-                name: repo.name,
-                full_name: repo.full_name,
-                private: repo.private,
-              });
+              const info = toDyadRepoInfo(repo);
+              if (info) {
+                dyadRepos.set(info.full_name, info);
+              }
             } else if (res.status !== 404) {
               rateLimited = true;
               logger.warn(
@@ -1434,12 +1458,21 @@ async function resolveAvailableAppName(baseName: string): Promise<string> {
   if (!(await isTaken(baseName))) {
     return baseName;
   }
-  for (let suffix = 2; ; suffix++) {
+  // Bound the probing so a pathological app directory (e.g. `repo`, `repo-2`,
+  // … all occupied) can't leave a bulk import hung issuing one query + FS probe
+  // per suffix forever. Mirrors the shared folder-resolution cap; exhaustion is
+  // reported as an explicit Conflict rather than looping indefinitely.
+  // See rules/app-naming.md.
+  for (let suffix = 2; suffix <= MAX_COLLISION_SUFFIX_ATTEMPTS + 1; suffix++) {
     const candidate = `${baseName}-${suffix}`;
     if (!(await isTaken(candidate))) {
       return candidate;
     }
   }
+  throw new DyadError(
+    `Could not find an available app name for "${baseName}" after ${MAX_COLLISION_SUFFIX_ATTEMPTS} attempts.`,
+    DyadErrorKind.Conflict,
+  );
 }
 
 async function handleCloneRepoFromUrl(

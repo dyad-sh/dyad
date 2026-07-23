@@ -8,7 +8,7 @@ import { appFolderNameWithSuffix } from "@/shared/app_names";
 // Bound collision probing so a pathological database/filesystem state cannot
 // keep a user action running indefinitely. Hitting this production-safety cap
 // is reported as an explicit Conflict rather than silently choosing a folder.
-const MAX_COLLISION_SUFFIX_ATTEMPTS = 1000;
+export const MAX_COLLISION_SUFFIX_ATTEMPTS = 1000;
 
 /**
  * Resolves a display name to one not taken by another app, appending a

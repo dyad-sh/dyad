@@ -56,7 +56,7 @@
   "importSelected": "Importar seleccionados ({{count}})",
   "bulkImportComplete_one": "Se importó {{count}} aplicación",
   "bulkImportComplete_other": "Se importaron {{count}} aplicaciones",
-  "bulkImportCompleteWithErrors": "Se importaron {{imported}} aplicación(es), {{failed}} fallaron",
+  "bulkImportCompleteWithErrors": "Importada(s) {{imported}} aplicación(es), {{failed}} con error(es)",
   "bulkImportBackgroundHint": "Puedes cerrar esto: la importación continúa en segundo plano.",
   "createNewApp": "Crear Nueva Aplicación",
   "createAppUsingTemplate": "Crear una nueva aplicación usando la plantilla {{template}}.",

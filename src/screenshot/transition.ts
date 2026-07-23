@@ -39,12 +39,16 @@ function waitForIframe(
   state: ScreenshotState,
   source: ScreenshotCaptureSource,
 ): Result {
-  return transitionTo({
-    ...state,
-    status: state.iframeLoaded ? "waitingSelectorReady" : "pending",
-    source,
-    queuedSource: null,
-  });
+  const iframeLoaded = state.iframeLoaded;
+  return transitionTo(
+    {
+      ...state,
+      status: iframeLoaded ? "waitingSelectorReady" : "pending",
+      source,
+      queuedSource: null,
+    },
+    iframeLoaded ? [{ type: "schedule-settle" }] : [],
+  );
 }
 
 function finishCapture(state: ScreenshotState): Result {
@@ -73,7 +77,6 @@ function captureRequested(
         ? startSettling(state, source)
         : waitForIframe(state, source);
     case "pending":
-    case "waitingSelectorReady":
       if (
         !state.selectorReady &&
         state.source === source &&
@@ -84,6 +87,11 @@ function captureRequested(
       return state.selectorReady
         ? startSettling(state, source)
         : waitForIframe(state, source);
+    case "waitingSelectorReady":
+      if (state.source === source) {
+        return ignore(state, "request-already-current");
+      }
+      return transitionTo({ ...state, source });
     case "settling":
       if (state.source === source) {
         return ignore(state, "request-already-current");
@@ -113,12 +121,17 @@ function iframeLoaded(state: ScreenshotState): Result {
         selectorReady: false,
       });
     case "pending":
+      return transitionTo(
+        {
+          ...state,
+          status: "waitingSelectorReady",
+          iframeLoaded: true,
+          selectorReady: false,
+        },
+        [{ type: "schedule-settle" }],
+      );
     case "waitingSelectorReady":
-      if (
-        state.status === "waitingSelectorReady" &&
-        state.iframeLoaded &&
-        !state.selectorReady
-      ) {
+      if (state.iframeLoaded && !state.selectorReady) {
         return ignore(state, "already-loaded");
       }
       return transitionTo({
@@ -177,11 +190,17 @@ function selectorReady(state: ScreenshotState): Result {
         state.fallbackChecked ? [] : [{ type: "check-existing-screenshots" }],
       );
     case "pending":
-    case "waitingSelectorReady":
       return startSettling(
         { ...state, iframeLoaded: true, selectorReady: true },
         state.source,
       );
+    case "waitingSelectorReady":
+      return transitionTo({
+        ...state,
+        status: "settling",
+        iframeLoaded: true,
+        selectorReady: true,
+      });
     case "settling":
     case "resolvingCommit":
     case "awaitingResponse":
@@ -209,12 +228,7 @@ function appHidden(state: ScreenshotState): Result {
         selectorReady: false,
       });
     case "pending":
-    case "waitingSelectorReady":
-      if (
-        state.status === "pending" &&
-        !state.iframeLoaded &&
-        !state.selectorReady
-      ) {
+      if (!state.iframeLoaded && !state.selectorReady) {
         return ignore(state, "already-hidden");
       }
       return transitionTo({
@@ -223,6 +237,16 @@ function appHidden(state: ScreenshotState): Result {
         iframeLoaded: false,
         selectorReady: false,
       });
+    case "waitingSelectorReady":
+      return transitionTo(
+        {
+          ...state,
+          status: "pending",
+          iframeLoaded: false,
+          selectorReady: false,
+        },
+        [{ type: "cancel-settle" }],
+      );
     case "settling":
       return transitionTo(
         {
@@ -268,7 +292,10 @@ export function transition(
     case "APP_HIDDEN":
       return appHidden(state);
     case "SETTLE_ELAPSED":
-      if (state.status !== "settling") {
+      if (
+        state.status !== "waitingSelectorReady" &&
+        state.status !== "settling"
+      ) {
         return ignore(state, "capture-not-active");
       }
       return transitionTo(

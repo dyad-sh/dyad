@@ -158,9 +158,10 @@ describe("screenshot transition", () => {
     expect(hidden.commands).toEqual([{ type: "cancel-settle" }]);
 
     const loaded = transition(hidden.state, { type: "IFRAME_LOADED" });
+    expect(loaded.commands).toEqual([{ type: "schedule-settle" }]);
     const ready = transition(loaded.state, { type: "SELECTOR_READY" });
     expect(ready.state.status).toBe("settling");
-    expect(ready.commands).toEqual([{ type: "schedule-settle" }]);
+    expect(ready.commands).toEqual([]);
 
     const resolving = transition(ready.state, {
       type: "SETTLE_ELAPSED",
@@ -179,6 +180,31 @@ describe("screenshot transition", () => {
     });
     const saved = transition(saving.state, { type: "SAVED" });
     expect(saved.state.status).toBe("idle");
+  });
+
+  it("captures after the settle window when the iframe has no tagged selector", () => {
+    const pending = transition(INITIAL_SCREENSHOT_STATE, {
+      type: "CAPTURE_REQUESTED",
+      source: "commit",
+    });
+    const loaded = transition(pending.state, { type: "IFRAME_LOADED" });
+    expect(loaded.state.status).toBe("waitingSelectorReady");
+    expect(loaded.commands).toEqual([{ type: "schedule-settle" }]);
+
+    const elapsed = transition(loaded.state, {
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:untagged",
+    });
+    expect(elapsed.state).toMatchObject({
+      status: "resolvingCommit",
+      requestId: "capture:untagged",
+    });
+    expect(elapsed.commands).toEqual([
+      {
+        type: "resolve-commit-hash",
+        requestId: "capture:untagged",
+      },
+    ]);
   });
 
   it("ignores commit resolution from a superseded attempt", () => {

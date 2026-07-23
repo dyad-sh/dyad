@@ -56,6 +56,33 @@ describe("screenshot controller", () => {
     });
   });
 
+  it("settles an untagged iframe without waiting forever for selector readiness", async () => {
+    const clock = createFakeClock();
+    const adapter = createScreenshotCommandAdapter({
+      clock,
+      idSource: createSequentialIdSource(),
+      queryClient: {
+        invalidateQueries: vi.fn(() => Promise.resolve()),
+      } as unknown as QueryClient,
+    });
+    const postMessage = vi.fn();
+    adapter.attach(7, postMessage);
+    const controller = new ScreenshotController(7, adapter);
+
+    controller.send({ type: "CAPTURE_REQUESTED", source: "commit" });
+    controller.send({ type: "IFRAME_LOADED" });
+    expect(controller.getSnapshot().status).toBe("waitingSelectorReady");
+
+    clock.advanceBy(3_000);
+
+    await vi.waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith({
+        type: "dyad-take-screenshot",
+        requestId: "screenshot-capture:1",
+      });
+    });
+  });
+
   it("drops routed responses after the app controller is disposed", () => {
     const ignored = vi.fn();
     const runner = {

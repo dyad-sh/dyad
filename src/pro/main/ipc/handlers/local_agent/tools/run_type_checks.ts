@@ -176,7 +176,7 @@ export const runTypeChecksTool: ToolDefinition<
       const result = await getTypeCheckPreconditionGuidance({
         kind: preconditionKind,
         appPath: ctx.appPath,
-        includeAgentInstructions: true,
+        agentInstructionMode: "local-agent-tool",
       });
 
       safeSend(ctx.event.sender, "agent-tool:problems-update", {

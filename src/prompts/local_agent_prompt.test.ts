@@ -19,6 +19,20 @@ describe("local_agent_prompt", () => {
     expect(prompt).toContain(
       "Add targeted runtime logs only when runtime evidence is needed",
     );
+    expect(prompt).toContain("<app_lifecycle>");
+    expect(prompt).toContain(
+      "Rely on hot reload for ordinary source, styling, and asset edits",
+    );
+    expect(prompt).toContain(
+      "A rebuild already includes a restart, so never call both for the same reason",
+    );
+    expect(prompt).not.toContain(
+      '<dyad-command type="restart"></dyad-command>',
+    );
+    expect(prompt).not.toContain(
+      '<dyad-command type="rebuild"></dyad-command>',
+    );
+    expect(prompt).toContain('<dyad-command type="refresh"></dyad-command>');
   });
 
   it("agent mode system prompt with code explorer available", () => {
@@ -120,6 +134,9 @@ describe("local_agent_prompt", () => {
     });
     expect(prompt).toMatchSnapshot();
     expectGitContextGuidance(prompt);
+    expect(prompt).not.toContain("<app_lifecycle>");
+    expect(prompt).not.toContain("restart_app");
+    expect(prompt).not.toContain("rebuild_app");
   });
 
   it("agent mode system prompt with app blueprint disabled", () => {

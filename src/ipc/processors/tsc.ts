@@ -93,11 +93,11 @@ async function packageJsonDeclaresTypeScript(
 export async function getTypeCheckPreconditionGuidance({
   kind,
   appPath,
-  includeAgentInstructions,
+  agentInstructionMode,
 }: {
   kind: TypeCheckPreconditionKind;
   appPath: string;
-  includeAgentInstructions?: boolean;
+  agentInstructionMode?: "dyad-command" | "local-agent-tool";
 }): Promise<string> {
   if (kind === "tsconfig-not-found") {
     return "Type checking could not run: TypeScript is installed but no tsconfig was found (expected `tsconfig.app.json` or `tsconfig.json`). You can create a suitable tsconfig for this project and retry.";
@@ -106,14 +106,18 @@ export async function getTypeCheckPreconditionGuidance({
   const declaresTypeScript = await packageJsonDeclaresTypeScript(appPath);
 
   if (declaresTypeScript) {
-    if (!includeAgentInstructions) {
+    if (!agentInstructionMode) {
       return "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Install dependencies, then retry.";
+    }
+
+    if (agentInstructionMode === "local-agent-tool") {
+      return "Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Call `rebuild_app` to reinstall dependencies, then retry `run_type_checks`.";
     }
 
     return 'Type checking could not run: TypeScript is listed in package.json but is not installed (node_modules is missing or incomplete). Tell the user to use Rebuild to reinstall dependencies, include `<dyad-command type="rebuild"></dyad-command>` so they can accept with one click, then retry `run_type_checks`.';
   }
 
-  return includeAgentInstructions
+  return agentInstructionMode
     ? 'Type checking is unavailable: this project does not use TypeScript (no `typescript` entry in package.json). Do not call `run_type_checks` again in this conversation. Verify your changes by reading the files instead. At the end of your reply, recommend that the user add TypeScript to the project so you can automatically catch and fix type errors, and include `<dyad-command type="add-typescript"></dyad-command>` so they can accept with one click.'
     : "Type checking is unavailable: this project does not use TypeScript (no `typescript` entry in package.json). Add TypeScript to enable type checking.";
 }

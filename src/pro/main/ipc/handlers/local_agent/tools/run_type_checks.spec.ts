@@ -85,7 +85,7 @@ describe("runTypeChecksTool precondition guidance", () => {
     };
   }
 
-  it("tells the agent to ask the user to rebuild when TypeScript is declared but missing", async () => {
+  it("tells the agent to rebuild when TypeScript is declared but missing", async () => {
     const appPath = await makeApp({
       devDependencies: { typescript: "^5.0.0" },
     });
@@ -101,8 +101,8 @@ describe("runTypeChecksTool precondition guidance", () => {
 
     expect(result).toMatch(/^Type checking could not run/);
     expect(result).toContain("TypeScript is listed in package.json");
-    expect(result).toContain("use Rebuild");
-    expect(result).toContain('<dyad-command type="rebuild">');
+    expect(result).toContain("Call `rebuild_app`");
+    expect(result).not.toContain('<dyad-command type="rebuild">');
     expect(result).not.toContain("add_dependency");
     expect(result).toContain("retry `run_type_checks`");
     expect(safeSend).toHaveBeenCalledWith(
@@ -116,9 +116,7 @@ describe("runTypeChecksTool precondition guidance", () => {
     expect(expectWarningOutput(ctx)).toContain(
       "TypeScript is listed in package.json",
     );
-    expect(expectWarningOutput(ctx)).toContain(
-      '&lt;dyad-command type="rebuild"',
-    );
+    expect(expectWarningOutput(ctx)).toContain("Call `rebuild_app`");
   });
 
   it("tells the agent not to retry and to suggest adding TypeScript for plain JavaScript projects", async () => {

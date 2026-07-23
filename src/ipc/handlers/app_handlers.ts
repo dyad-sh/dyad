@@ -37,7 +37,6 @@ import {
   processCounter,
   removeAppIfCurrentProcess,
   stopAppByInfo,
-  removeDockerVolumesForApp,
   setCurrentlySelectedAppId,
   startAppGarbageCollection,
 } from "../utils/process_manager";
@@ -57,8 +56,8 @@ import {
   executeApp,
   formatCloudSandboxError,
   registerCloudSandboxSyncUpdateListener,
-  startCloudSandboxLogStream,
 } from "../services/app_runtime_service";
+import { restartApp } from "../services/restart_app";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 
 /**
@@ -101,7 +100,6 @@ import {
   getCloudSandboxStatus,
   queueCloudSandboxSnapshotSync,
   reconcileCloudSandboxes,
-  restartCloudSandbox,
 } from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
@@ -957,130 +955,7 @@ export function registerAppHandlers() {
     },
   );
 
-  createTypedHandler(appContracts.restartApp, async (event, params) => {
-    const { appId, removeNodeModules, recreateSandbox } = params;
-    logger.log(`Restarting app ${appId}`);
-    return withLock(appId, async () => {
-      try {
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-
-        const appPath = getDyadAppPath(app.path);
-
-        // First stop the app if it's running
-        const appInfo = runningApps.get(appId);
-        if (
-          appInfo &&
-          appInfo.mode === "cloud" &&
-          appInfo.cloudSandboxId &&
-          !recreateSandbox
-        ) {
-          logger.log(`Restarting cloud sandbox app ${appId} in place`);
-
-          const restartResult = await restartCloudSandbox(
-            appInfo.cloudSandboxId,
-          );
-          appInfo.cloudPreviewUrl = restartResult.previewUrl;
-          appInfo.cloudPreviewAuthToken = restartResult.previewAuthToken;
-          appInfo.lastViewedAt = Date.now();
-
-          appInfo.cloudLogAbortController?.abort();
-          appInfo.cloudLogAbortController = new AbortController();
-
-          await ensureProxyForRunningApp({
-            appId,
-            event,
-            originalUrl: restartResult.previewUrl,
-            mode: "cloud",
-          });
-
-          startCloudSandboxLogStream({
-            appId,
-            appPath,
-            event,
-            sandboxId: appInfo.cloudSandboxId,
-            cloudLogAbortController: appInfo.cloudLogAbortController,
-          });
-          return;
-        }
-
-        if (appInfo) {
-          const { processId } = appInfo;
-          logger.log(
-            `Stopping app ${appId} (processId ${processId}) before restart`,
-          );
-          await stopAppByInfo(appId, appInfo);
-        } else {
-          logger.log(`App ${appId} not running. Proceeding to start.`);
-        }
-
-        // There may have been a previous run that left a process on this port.
-        await cleanUpPort(getAppPort(appId));
-
-        // Remove node_modules if requested
-        if (removeNodeModules) {
-          const settings = readSettings();
-          const runtimeMode = settings.runtimeMode2 ?? "host";
-
-          const nodeModulesPath = path.join(appPath, "node_modules");
-          logger.log(
-            `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
-          );
-          if (fs.existsSync(nodeModulesPath)) {
-            await fsPromises.rm(nodeModulesPath, {
-              recursive: true,
-              force: true,
-            });
-            logger.log(`Successfully removed node_modules for app ${appId}`);
-          } else {
-            logger.log(`No node_modules directory found for app ${appId}`);
-          }
-
-          // If running in Docker mode, also remove container volumes so deps reinstall freshly
-          if (runtimeMode === "docker") {
-            logger.log(
-              `Docker mode detected for app ${appId}. Removing Docker volumes dyad-pnpm-${appId}...`,
-            );
-            try {
-              await removeDockerVolumesForApp(appId);
-              logger.log(
-                `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
-              );
-            } catch (e) {
-              // Best-effort cleanup; log and continue
-              logger.warn(
-                `Failed to remove Docker volumes for app ${appId}. Continuing: ${e}`,
-              );
-            }
-          }
-        }
-
-        logger.debug(
-          `Executing app ${appId} in path ${app.path} after restart request`,
-        ); // Adjusted log
-
-        await executeApp({
-          appPath,
-          appId,
-          event,
-          isNeon: !!app.neonProjectId,
-          installCommand: app.installCommand,
-          startCommand: app.startCommand,
-        }); // This will handle starting either mode
-
-        return;
-      } catch (error) {
-        logger.error(`Error restarting app ${appId}:`, error);
-        console.error(error);
-        throw error;
-      }
-    });
-  });
+  createTypedHandler(appContracts.restartApp, restartApp);
 
   createTypedHandler(appContracts.editAppFile, async (_, params) => {
     let { appId, filePath, content } = params;

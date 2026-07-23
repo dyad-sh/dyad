@@ -34,6 +34,7 @@ import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { runTestsTool } from "./tools/run_tests";
+import { rebuildAppTool, restartAppTool } from "./tools/app_lifecycle";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
 import { exploreCodeTool } from "./tools/explore_code";
@@ -130,6 +131,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   updateTodosTool,
   runTypeChecksTool,
   runTestsTool,
+  restartAppTool,
+  rebuildAppTool,
   readGuideTool,
   executeSandboxScriptTool,
   searchMcpToolsTool,

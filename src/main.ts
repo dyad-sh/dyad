@@ -330,8 +330,9 @@ if (process.defaultApp) {
 
 export async function onReady() {
   // Linux: claim the dyad:// scheme for this build (best-effort, see module).
-  // setAsDefaultProtocolClient above is unreliable on Linux.
-  void registerDyadProtocolLinux();
+  // setAsDefaultProtocolClient above is unreliable on Linux. Pass this instance's
+  // userData so a browser-launched deep link forwards here, not a second window.
+  void registerDyadProtocolLinux(app.getPath("userData"));
 
   // React DevTools extension loading is intentionally disabled. In Electron it
   // can spam startup logs with:

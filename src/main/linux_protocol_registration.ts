@@ -22,6 +22,18 @@ interface ExecInputs {
   argv: string[];
   // process.env.APPIMAGE: stable path to the .AppImage, set by the runtime.
   appImagePath: string | undefined;
+  // process.env.NODE_ENV: "development" for `npm start`. The dev instance keys
+  // its userData (and thus its single-instance lock) off this, so a relaunched
+  // handler must carry the same value to reach the running dev instance rather
+  // than the default userData a packaged install uses. See computeExecCommand.
+  nodeEnv: string | undefined;
+  // Absolute userData dir the running dev instance is using (app.getPath).
+  // In dev, getUserDataPath() falls back to path.resolve("./userData"), i.e.
+  // relative to the CWD. The OS launches the deep-link handler from a different
+  // CWD than `npm start` did, so without pinning this the relaunch computes a
+  // different userData, grabs a different single-instance lock, and opens a
+  // second dev window instead of forwarding. Baked in via DYAD_DEV_USER_DATA_DIR.
+  devUserDataDir: string | undefined;
 }
 
 interface ExecCommand {
@@ -41,7 +53,8 @@ function quote(value: string): string {
 // The Exec target differs per packaging format. Pure so it can be unit-tested
 // without touching the real environment.
 export function computeExecCommand(inputs: ExecInputs): ExecCommand {
-  const { defaultApp, execPath, argv, appImagePath } = inputs;
+  const { defaultApp, execPath, argv, appImagePath, nodeEnv, devUserDataDir } =
+    inputs;
 
   // AppImage: process.execPath points at the ephemeral /tmp/.mount_* extract
   // that changes every launch, so it must not be used. appImagePath (from
@@ -56,8 +69,39 @@ export function computeExecCommand(inputs: ExecInputs): ExecCommand {
   // Dev / unpackaged: electron binary plus the app entry script.
   if (defaultApp && argv.length >= 2) {
     const script = path.resolve(argv[1]);
+    // When the OS opens a dyad:// link it launches this Exec line as a fresh
+    // process. To forward the deep link into the *running* dev instance it must
+    // land on the same single-instance lock, which is keyed off the dev
+    // userData. main.ts only selects that userData when NODE_ENV ===
+    // "development", and getUserDataPath() then resolves "./userData" relative
+    // to the CWD. A bare `electron .` launch (a) omits NODE_ENV, defaulting to
+    // ~/.config/dyad — the userData a packaged install uses — and (b) runs from
+    // the launcher's CWD, not the project root, so even with NODE_ENV set the
+    // relative path points elsewhere. Either way it grabs a different lock and
+    // opens a second window instead of forwarding. Pin both: NODE_ENV via `env`,
+    // and the exact absolute userData via DYAD_DEV_USER_DATA_DIR. `-u
+    // ELECTRON_RUN_AS_NODE` guards the rare case where the launching environment
+    // has it set, which would run electron as plain node.
+    const envAssignments =
+      nodeEnv === "development"
+        ? [
+            "env",
+            "-u",
+            "ELECTRON_RUN_AS_NODE",
+            `NODE_ENV=${nodeEnv}`,
+            // Quote the whole VAR=value token, not just the value: the Desktop
+            // Entry spec only recognizes an argument as quoted when it *begins*
+            // with `"`, so a mid-argument quote (VAR="/a b") can be mis-split by
+            // a strict parser. env(1) receives VAR=value as one argv element.
+            ...(devUserDataDir
+              ? [quote(`DYAD_DEV_USER_DATA_DIR=${devUserDataDir}`)]
+              : []),
+          ]
+        : [];
+    const envPrefix =
+      envAssignments.length > 0 ? `${envAssignments.join(" ")} ` : "";
     return {
-      exec: `${quote(execPath)} ${quote(script)} %u`,
+      exec: `${envPrefix}${quote(execPath)} ${quote(script)} %u`,
       tryExec: execPath,
     };
   }
@@ -93,7 +137,13 @@ export function buildDesktopFile(command: ExecCommand): string {
 // every startup so the handler always points at the build the user launched last.
 // The file goes under ~/.local/share (this user only), so it won't clash with
 // a deb/rpm system install.
-export async function registerDyadProtocolLinux(): Promise<void> {
+// `devUserDataDir` should be the running instance's app.getPath("userData"); it
+// is baked into the dev handler so a browser-launched deep link forwards into
+// this instance regardless of the launcher's working directory. Callers in the
+// main process pass it; it's ignored outside dev.
+export async function registerDyadProtocolLinux(
+  devUserDataDir?: string,
+): Promise<void> {
   if (process.platform !== "linux") {
     return;
   }
@@ -108,6 +158,8 @@ export async function registerDyadProtocolLinux(): Promise<void> {
       execPath: process.execPath,
       argv: process.argv,
       appImagePath: process.env.APPIMAGE,
+      nodeEnv: process.env.NODE_ENV,
+      devUserDataDir,
     });
 
     // Honor XDG_DATA_HOME so the file lands where the desktop environment

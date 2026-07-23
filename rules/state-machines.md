@@ -60,6 +60,9 @@ Background and before/after examples of why this pattern exists:
 - Controllers are disposable and their owner must call `dispose()` on provider
   unmount or entity deletion. Renderer controller collections belong to a
   provider-owned `KeyedControllerHost`; never keep them in module globals.
+- When registering a manager method as a disposal callback, wrap it in a stable
+  closure or bind it if it reads `this`; passing a bare prototype method loses
+  its receiver when the registry invokes it.
 - Renderer providers must bind manager startup and disposal with the shared
   `useManagerLifecycle` hook; it preserves managers across React StrictMode
   effect replay while still disposing managers that are genuinely replaced.

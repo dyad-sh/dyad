@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -23,6 +24,10 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   const [manager] = useState(
     () => new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
   );
+  const disposeApp = useCallback(
+    (appId: number) => manager.disposeKey(appId),
+    [manager],
+  );
   const handledRestartStartedAt = useRef(new Map<number, number>());
 
   useEffect(() => {
@@ -45,7 +50,7 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   }, [manager, runStates]);
 
   useManagerLifecycle(manager);
-  useRegisterEntityDisposer("app", manager.disposeKey);
+  useRegisterEntityDisposer("app", disposeApp);
   return (
     <PreviewIframeContext.Provider value={manager}>
       {children}

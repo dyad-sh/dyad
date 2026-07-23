@@ -61,10 +61,7 @@ states.
 In Dyad, a machine is a plain TypeScript function. No library:
 
 ```ts
-function transition(
-  state: State,
-  event: Event,
-): { state: State; commands: Command[] };
+function transition(state: State, event: Event): { state: State; commands: Command[] }
 ```
 
 It takes the current state and an event, and returns the next state plus a
@@ -90,7 +87,7 @@ time. The pattern went like this:
    and check it before applying results.
 4. Two things race on startup. So you add `setTimeout(..., 100)` to "let
    state settle".
-5. A feature needs to react to streaming _ending_. There's no event for
+5. A feature needs to react to streaming *ending*. There's no event for
    that, so you save the previous value and diff it against the current one
    every render.
 
@@ -193,16 +190,12 @@ long async function, with a sleep in the middle:
 // src/hooks/usePlanEvents.ts (before)
 await ipc.chat.cancelStream(payload.chatId);
 
-setPlanState((prev) => {
-  /* add chatId to transitioningChatIds */
-});
+setPlanState((prev) => { /* add chatId to transitioningChatIds */ });
 
 // Pause so the user can see the "Plan accepted" confirmation
 await new Promise((resolve) => setTimeout(resolve, 2500));
 
-setPlanState((prev) => {
-  /* remove chatId from transitioningChatIds */
-});
+setPlanState((prev) => { /* remove chatId from transitioningChatIds */ });
 
 // Read latest values from refs to avoid stale closure
 const currentState = planStateRef.current;
@@ -283,7 +276,7 @@ stateDiagram-v2
     exchangingToken --> connected: token saved
 ```
 
-Second, where a reply _can_ carry an id back — GitHub's device flow polls
+Second, where a reply *can* carry an id back — GitHub's device flow polls
 in a chain, and each poll knows which attempt started it — it must, and a
 result from an old attempt is ignored:
 

@@ -134,12 +134,15 @@ function iframeLoaded(state: ScreenshotState): Result {
       if (state.iframeLoaded && !state.selectorReady) {
         return ignore(state, "already-loaded");
       }
-      return transitionTo({
-        ...state,
-        status: "waitingSelectorReady",
-        iframeLoaded: true,
-        selectorReady: false,
-      });
+      return transitionTo(
+        {
+          ...state,
+          status: "waitingSelectorReady",
+          iframeLoaded: true,
+          selectorReady: false,
+        },
+        [{ type: "schedule-settle" }],
+      );
     case "settling":
       return transitionTo(
         {
@@ -148,18 +151,21 @@ function iframeLoaded(state: ScreenshotState): Result {
           iframeLoaded: true,
           selectorReady: false,
         },
-        [{ type: "cancel-settle" }],
+        [{ type: "schedule-settle" }],
       );
     case "resolvingCommit":
     case "awaitingResponse":
-      return transitionTo({
-        ...state,
-        status: "waitingSelectorReady",
-        source: state.queuedSource ?? state.source,
-        queuedSource: null,
-        iframeLoaded: true,
-        selectorReady: false,
-      });
+      return transitionTo(
+        {
+          ...state,
+          status: "waitingSelectorReady",
+          source: state.queuedSource ?? state.source,
+          queuedSource: null,
+          iframeLoaded: true,
+          selectorReady: false,
+        },
+        [{ type: "schedule-settle" }],
+      );
     case "saving":
       if (state.iframeLoaded && !state.selectorReady) {
         return ignore(state, "already-loaded");

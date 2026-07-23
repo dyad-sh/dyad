@@ -207,6 +207,32 @@ describe("screenshot transition", () => {
     ]);
   });
 
+  it.each([
+    ["settling", STATES[3]],
+    ["resolving commit", STATES[4]],
+    ["awaiting response", STATES[5]],
+  ] as const)(
+    "restarts the settle window when the iframe reloads while %s",
+    (_description, active) => {
+      const reloaded = transition(active, { type: "IFRAME_LOADED" });
+      expect(reloaded.state).toMatchObject({
+        status: "waitingSelectorReady",
+        iframeLoaded: true,
+        selectorReady: false,
+      });
+      expect(reloaded.commands).toEqual([{ type: "schedule-settle" }]);
+
+      const elapsed = transition(reloaded.state, {
+        type: "SETTLE_ELAPSED",
+        requestId: "capture:reloaded",
+      });
+      expect(elapsed.state).toMatchObject({
+        status: "resolvingCommit",
+        requestId: "capture:reloaded",
+      });
+    },
+  );
+
   it("ignores commit resolution from a superseded attempt", () => {
     const settling = STATES[3];
     const first = transition(settling, {

@@ -409,6 +409,14 @@ export type {
   PendingUserInputPayload,
 } from "./user_input";
 
+// Recording types
+export type {
+  RecordingAuth,
+  StartRecordingResult,
+  RecordingSetupProgressPayload,
+  RecordingEndedPayload,
+} from "./recording";
+
 // App blueprint types
 export type {
   AppBlueprintVisual,

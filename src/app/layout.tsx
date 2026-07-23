@@ -34,9 +34,17 @@ import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
+import {
+  FirstPromptProvider,
+  type FirstPromptChatStream,
+} from "@/first_prompt/FirstPromptProvider";
+import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import { useStreamChat } from "@/hooks/useStreamChat";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const chatStreamManager = useChatStreamManager();
+  const { streamMessage } = useStreamChat({ hasChatId: false });
+  const { settings } = useSettings();
   const planHandoffChatStream = useMemo(
     () => ({
       submit: (request: {
@@ -52,12 +60,29 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     }),
     [chatStreamManager],
   );
+  const firstPromptChatStream = useMemo<FirstPromptChatStream>(
+    () => ({
+      submit: (request) =>
+        streamMessage({
+          ...request,
+          attachments: [...request.attachments],
+        }),
+    }),
+    [streamMessage],
+  );
   return (
     <AppRunProvider>
       <ImageGenerationProvider>
-        <PlanHandoffProvider chatStream={planHandoffChatStream}>
-          <RootLayoutContent>{children}</RootLayoutContent>
-        </PlanHandoffProvider>
+        <FirstPromptProvider
+          chatStream={firstPromptChatStream}
+          clock={systemClock}
+          idSource={uuidIdSource}
+          settleDelayMs={settings?.isTestMode ? 0 : 2_000}
+        >
+          <PlanHandoffProvider chatStream={planHandoffChatStream}>
+            <RootLayoutContent>{children}</RootLayoutContent>
+          </PlanHandoffProvider>
+        </FirstPromptProvider>
       </ImageGenerationProvider>
     </AppRunProvider>
   );

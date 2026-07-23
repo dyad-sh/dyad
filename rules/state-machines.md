@@ -46,6 +46,17 @@ Background and before/after examples of why this pattern exists:
 - Command runners convert expected failures into events. A runner throw is a
   programming error: log it and keep the service usable; never wedge a queue or
   silently rewrite state.
+- When a resume event can come from a global watcher as well as explicit UI
+  senders, validate the captured payload in the transition. Caller-only guards
+  can be bypassed after navigation or another asynchronous detour.
+- When several adapters enrich the same resume event with derived data, use one
+  shared resolver. Divergent raw/effective values make event races observable.
+- A machine-owned watchdog timer needs an explicit cancel command on every
+  transition that leaves the watched state, plus disposal cleanup.
+- When a multi-step side effect can fail partway through, retain the exact
+  completed/next step in the failure state. Retrying from the start can repeat
+  non-idempotent external work or deterministically fail on an existing-resource
+  guard even when the owning entity is correctly reused.
 - Controllers are disposable and their owner must call `dispose()` on provider
   unmount or entity deletion. Renderer controller collections belong to a
   provider-owned `KeyedControllerHost`; never keep them in module globals.
@@ -55,6 +66,10 @@ Background and before/after examples of why this pattern exists:
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.
+- When that external state is created in the main process, renderer disposal
+  cannot rely on reply-based IPC cleanup. Mint an operation ID before creation,
+  send teardown cancellation one-way, and retain a main-owned cancellation
+  tombstone so late creation completion performs the cleanup.
 - Before keying a cross-entity registry by a generation counter, verify the
   counter's scope. If generations restart per entity, use a composite key or a
   separate invocation ID and test two entities with the same generation.
@@ -67,6 +82,11 @@ in parallel, which events may be dropped as stale, and which must never be
 dropped. Main-process machines should use an explicitly constructed registry
 with injected timers, IDs, and broadcasts; renderer machines use the shared
 keyed host.
+
+When independent async operations should overlap but both gate progress, start
+both through commands and model their completion as separate events joined by
+explicit state flags or substates. A serial command queue must not accidentally
+turn prior `Promise.all`-style behavior into additive latency.
 
 New machines must inject `Clock` and `IdSource` from `src/state_machines/clock.ts`
 when they schedule timers, read wall time, or mint operation identities. Use
@@ -94,6 +114,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   context after reload must recover it from the hydrated projection. Buffer
   identity-only events that can arrive before hydration completes instead of
   assuming the consumer observed an earlier, self-contained event.
+- If retries may replace an input payload, carry operation facts established
+  by earlier transitions (such as create-vs-update) explicitly in state. Do not
+  re-derive UI or analytics semantics from the replacement payload.
 
 ## Persistence and hydration
 

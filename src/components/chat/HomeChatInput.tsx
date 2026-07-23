@@ -23,7 +23,6 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
@@ -40,10 +39,11 @@ import { ipc } from "@/ipc/types";
 
 export function HomeChatInput({
   onSubmit,
+  disabled = false,
 }: {
   onSubmit: (options?: HomeSubmitOptions) => boolean | Promise<boolean>;
+  disabled?: boolean;
 }) {
-  const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const [selectedApp, setSelectedApp] = useAtom(homeSelectedAppAtom);
   const { settings } = useSettings();
@@ -56,9 +56,10 @@ export function HomeChatInput({
 
   const handleTranscription = useCallback(
     (text: string) => {
+      if (disabled) return;
       setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
     },
-    [setInputValue],
+    [disabled, setInputValue],
   );
 
   const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
@@ -96,7 +97,6 @@ export function HomeChatInput({
     handleDragOver,
     handleDragLeave,
     handleDrop,
-    clearAttachments,
     handlePaste,
     confirmPendingFiles,
     cancelPendingFiles,
@@ -115,6 +115,7 @@ export function HomeChatInput({
     if (
       (!inputValue.trim() && attachments.length === 0) ||
       isStreaming ||
+      disabled ||
       pendingFiles
     ) {
       return;
@@ -134,13 +135,8 @@ export function HomeChatInput({
       return;
     }
 
-    // Clear attachments and selected app as part of submission process
-    clearAttachments();
-    setSelectedApp(null);
-    posthog.capture("chat:home_submit", {
-      chatMode: settings?.selectedChatMode,
-      existingApp: !!selectedApp,
-    });
+    // The first-prompt saga owns clearing the snapshotted editing buffer and
+    // recording submission analytics at the actual prompt-dispatch commit.
   };
 
   if (!settings) {
@@ -151,11 +147,14 @@ export function HomeChatInput({
     <>
       <div className="p-4" data-testid="home-chat-input-container">
         <div
+          aria-disabled={disabled}
+          inert={disabled}
           className={cn(
             "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
             "hover:border-primary/30",
             "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
             isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
+            disabled && "pointer-events-none opacity-70",
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -184,7 +183,7 @@ export function HomeChatInput({
               onSubmit={handleCustomSubmit}
               onPaste={handlePaste}
               placeholder={placeholder}
-              disabled={isStreaming}
+              disabled={isStreaming || disabled}
               excludeCurrentApp={false}
               disableSendButton={false}
               messageHistory={[]}
@@ -197,7 +196,7 @@ export function HomeChatInput({
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isTranscribing}
+                      disabled={disabled || isTranscribing}
                       aria-label={
                         isRecording
                           ? "Stop recording"
@@ -238,6 +237,7 @@ export function HomeChatInput({
                       onClick={() =>
                         ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
+                      disabled={disabled}
                       aria-label="Voice to text (Pro)"
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
                     />
@@ -272,7 +272,10 @@ export function HomeChatInput({
                   render={
                     <button
                       onClick={handleCustomSubmit}
-                      disabled={!inputValue.trim() && attachments.length === 0}
+                      disabled={
+                        disabled ||
+                        (!inputValue.trim() && attachments.length === 0)
+                      }
                       aria-label="Send message"
                       className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
                     />
@@ -292,7 +295,10 @@ export function HomeChatInput({
                   <TooltipTrigger
                     render={
                       <button
-                        onClick={() => setAppSearchOpen(true)}
+                        onClick={() => {
+                          if (!disabled) setAppSearchOpen(true);
+                        }}
+                        disabled={disabled}
                         className={cn(
                           "cursor-pointer px-2 py-1 ml-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1",
                           selectedApp
@@ -310,6 +316,7 @@ export function HomeChatInput({
                     {selectedApp && (
                       <button
                         type="button"
+                        disabled={disabled}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedApp(null);

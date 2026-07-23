@@ -7,7 +7,8 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAtomValue } from "jotai";
-import { pendingFirstPromptAtom } from "@/atoms/chatAtoms";
+import { firstPromptSagaAtom } from "@/first_prompt/projection";
+import { useFirstPromptProviderResume } from "@/first_prompt/FirstPromptProvider";
 import { ipc, type ProviderApiKeyValidationProvider } from "@/ipc/types";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -128,7 +129,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [awaitingKeyFromWebsite, setAwaitingKeyFromWebsite] = useState(false);
   const [highlightPasteButton, setHighlightPasteButton] = useState(false);
   const queryClient = useQueryClient();
-  const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
+  const { hasArmedPayload } = useAtomValue(firstPromptSagaAtom);
+  const resumeFirstPrompt = useFirstPromptProviderResume();
 
   // Use fetched data (or defaults for Dyad)
   const providerDisplayName = isDyad
@@ -262,8 +264,11 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
-      if (isFirstProviderSetup && shouldResumeFirstPrompt) {
-        navigate({ to: "/", search: {}, replace: true });
+      if (isFirstProviderSetup && hasArmedPayload) {
+        const nextSettings = settings
+          ? ({ ...settings, ...settingsUpdate } as UserSettings)
+          : undefined;
+        resumeFirstPrompt(nextSettings);
       } else if (isFirstProviderSetup) {
         setShowStartBuildingBanner(true);
       }

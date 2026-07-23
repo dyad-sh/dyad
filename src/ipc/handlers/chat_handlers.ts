@@ -19,6 +19,7 @@ import {
   toRendererMessage,
 } from "../utils/renderer_chat_message";
 import { createChatForApp } from "../utils/chat_creation_utils";
+import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
 
 const logger = log.scope("chat_handlers");
 
@@ -52,13 +53,41 @@ async function mutateChatAfterDrainingStreams({
 }
 
 export function registerChatHandlers() {
-  createTypedHandler(chatContracts.createChat, async (_, input) => {
-    const { appId, initialChatMode } =
+  createTypedHandler(chatContracts.createChat, async (event, input) => {
+    const { appId, initialChatMode, firstPromptCreationOperationId } =
       typeof input === "number"
-        ? { appId: input, initialChatMode: undefined }
+        ? {
+            appId: input,
+            initialChatMode: undefined,
+            firstPromptCreationOperationId: undefined,
+          }
         : input;
 
-    return createChatForApp({ appId, initialChatMode });
+    if (firstPromptCreationOperationId) {
+      firstPromptCreationRegistry.track(
+        firstPromptCreationOperationId,
+        event.sender,
+      );
+    }
+    let chatId: number | undefined;
+    try {
+      chatId = await createChatForApp({ appId, initialChatMode });
+      return chatId;
+    } finally {
+      if (firstPromptCreationOperationId) {
+        if (chatId === undefined) {
+          firstPromptCreationRegistry.commit(firstPromptCreationOperationId);
+        } else {
+          const createdChatId = chatId;
+          await firstPromptCreationRegistry.complete(
+            firstPromptCreationOperationId,
+            async () => {
+              await db.delete(chats).where(eq(chats.id, createdChatId));
+            },
+          );
+        }
+      }
+    }
   });
 
   createTypedHandler(chatContracts.getChat, async (_, chatId) => {

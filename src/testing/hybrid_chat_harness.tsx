@@ -99,7 +99,13 @@ import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationManager } from "@/image_generation/manager";
+import { FirstPromptProvider } from "@/first_prompt/FirstPromptProvider";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import {
+  createFakeClock,
+  createSequentialIdSource,
+  type FakeClock,
+} from "@/state_machines/testing";
 import { PlanPanel } from "@/components/preview_panel/PlanPanel";
 import { SecurityPanel } from "@/components/preview_panel/SecurityPanel";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -280,6 +286,9 @@ export interface HybridChatHarness extends ChatFlowHarness {
    * scaffolding as `mount()`, backed by the real IPC handlers.
    */
   mountSurface: (opts?: MountSurfaceOptions) => RenderResult;
+
+  /** Advance the deterministic clock owned by the latest mounted first-prompt provider. */
+  advanceFirstPromptClock: (delayMs: number) => void;
 
   /** The most recently mounted private router. */
   router: () => HybridRouter;
@@ -619,6 +628,7 @@ export async function setupHybridChatHarness(
     };
 
     let activeRouter: HybridRouter | undefined;
+    let activeFirstPromptClock: FakeClock | undefined;
     const mcpHttpProcesses = new Set<ChildProcessWithoutNullStreams>();
     const fakeStdioServerPath = path.join(
       process.cwd(),
@@ -640,14 +650,29 @@ export async function setupHybridChatHarness(
       return activeRouter;
     };
 
+    const advanceFirstPromptClock = (delayMs: number): void => {
+      const clock = activeFirstPromptClock;
+      if (!clock) {
+        throw new Error(
+          "setupHybridChatHarness.mountSurface() must be called before advancing the first-prompt clock",
+        );
+      }
+      act(() => {
+        clock.advanceBy(delayMs);
+      });
+    };
+
     const mountSurface = (opts: MountSurfaceOptions = {}): RenderResult => {
       const chatId = opts.chatId ?? nodeHarness.chatId;
       const appId = opts.appId ?? nodeHarness.appId;
       const route = opts.route ?? "/chat";
       const store = createStore();
       const chatStreamManager = new ChatStreamManager(store);
+      const firstPromptClock = createFakeClock();
+      const firstPromptIdSource = createSequentialIdSource();
       chatStreamManagers.push(chatStreamManager);
       activeStore = store;
+      activeFirstPromptClock = firstPromptClock;
 
       store.set(selectedAppIdAtom, appId);
       store.set(selectedChatIdAtom, route === "/chat" ? chatId : null);
@@ -664,19 +689,45 @@ export async function setupHybridChatHarness(
             request,
           }),
       };
+      const firstPromptChatStream = {
+        submit: (request: {
+          prompt: string;
+          chatId: number;
+          appId: number;
+          attachments: readonly FileAttachment[];
+          requestedChatMode?: "build" | "ask" | "local-agent" | "plan";
+        }) =>
+          chatStreamManager.ensure(request.chatId).send({
+            type: "submit",
+            request: {
+              ...request,
+              attachments: [...request.attachments],
+              selectedComponents: [],
+            },
+          }),
+      };
 
       const RootComponent = () => (
-        <PlanHandoffProvider chatStream={planHandoffChatStream}>
-          <div data-testid="hybrid-surface-root">
-            {opts.wireAppEvents !== false && <HybridAppShellHooks />}
-            {opts.withTitleBar && <TitleBar />}
-            {opts.withAppList && <AppList show />}
-            {opts.withChatList && <ChatList show />}
-            {opts.withPrivacyBanner && <PrivacyBanner />}
-            {opts.withSubscriptionStatusBanner && <SubscriptionStatusBanner />}
-            <Outlet />
-          </div>
-        </PlanHandoffProvider>
+        <FirstPromptProvider
+          chatStream={firstPromptChatStream}
+          clock={firstPromptClock}
+          idSource={firstPromptIdSource}
+          settleDelayMs={0}
+        >
+          <PlanHandoffProvider chatStream={planHandoffChatStream}>
+            <div data-testid="hybrid-surface-root">
+              {opts.wireAppEvents !== false && <HybridAppShellHooks />}
+              {opts.withTitleBar && <TitleBar />}
+              {opts.withAppList && <AppList show />}
+              {opts.withChatList && <ChatList show />}
+              {opts.withPrivacyBanner && <PrivacyBanner />}
+              {opts.withSubscriptionStatusBanner && (
+                <SubscriptionStatusBanner />
+              )}
+              <Outlet />
+            </div>
+          </PlanHandoffProvider>
+        </FirstPromptProvider>
       );
 
       // Private route tree: the harness uses the same route paths/search
@@ -1515,6 +1566,7 @@ export async function setupHybridChatHarness(
       bridge,
       mount,
       mountSurface,
+      advanceFirstPromptClock,
       router: getActiveRouter,
       currentLocation: () => getActiveRouter().state.location,
       setSelectedAppId,

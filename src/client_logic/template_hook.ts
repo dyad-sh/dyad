@@ -1,7 +1,18 @@
 import { ipc } from "@/ipc/types";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { getAppPort } from "../../shared/ports";
 
 import { v4 as uuidv4 } from "uuid";
+
+function isAlreadyLinkedNeonProjectError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { kind?: unknown }).kind === DyadErrorKind.Precondition &&
+    (error as { message?: unknown }).message ===
+      "This app already has a Neon project linked. Disconnect it first."
+  );
+}
 
 export async function neonTemplateHook({
   appId,
@@ -11,18 +22,30 @@ export async function neonTemplateHook({
   appName: string;
 }) {
   console.log("Creating Neon project");
-  const neonProject = await ipc.neon.createProject({
-    name: appName,
-    appId: appId,
-  });
+  let connectionString: string;
+  try {
+    const neonProject = await ipc.neon.createProject({
+      name: appName,
+      appId: appId,
+    });
+    connectionString = neonProject.connectionString;
+    console.log("Neon project created", neonProject);
+  } catch (error) {
+    if (!isAlreadyLinkedNeonProjectError(error)) throw error;
+    const branchEnvVars = await ipc.neon.getBranchEnvVars({
+      appId,
+      branchType: "development",
+    });
+    connectionString = branchEnvVars.databaseUrl;
+    console.log("Resuming setup for existing Neon project");
+  }
 
-  console.log("Neon project created", neonProject);
   await ipc.misc.setAppEnvVars({
     appId: appId,
     envVars: [
       {
         key: "POSTGRES_URL",
-        value: neonProject.connectionString,
+        value: connectionString,
       },
       {
         key: "PAYLOAD_SECRET",

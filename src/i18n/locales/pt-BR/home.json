@@ -6,6 +6,7 @@
   "moreIdeas": "Mais ideias",
   "buildMeA": "Crie para mim um(a) {{label}}",
   "failedCreateApp": "Falha ao criar o app. {{error}}",
+  "failedFinishSetup": "Falha ao concluir a configuração do app. {{error}}",
   "whatsNew": "O que há de novo na v{{version}}?",
   "releaseNotesTitle": "Notas de lançamento da v{{version}}",
   "importApp": "Importar App",

@@ -87,4 +87,22 @@ describe("hybrid chat harness guards", () => {
     });
     await nextHarness.dispose();
   }, 60_000);
+
+  it("provides a deterministic clock for first-prompt timer transitions", async () => {
+    const harness = await setupHybridChatHarness({
+      electronMock: h,
+      settings: { isTestMode: true },
+    });
+
+    try {
+      expect(() => harness.advanceFirstPromptClock(1)).toThrow(
+        "mountSurface() must be called",
+      );
+
+      harness.mountSurface({ route: "/settings" });
+      expect(() => harness.advanceFirstPromptClock(60_000)).not.toThrow();
+    } finally {
+      await harness.dispose();
+    }
+  }, 60_000);
 });

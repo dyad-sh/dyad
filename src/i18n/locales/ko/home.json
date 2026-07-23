@@ -7,6 +7,7 @@
   "buildMeA": "{{label}} 만들어줘",
   "failedCreateApp": "앱 생성 실패. {{error}}",
   "failedCreateChat": "채팅 생성 실패. {{error}}",
+  "failedFinishSetup": "앱 설정을 완료하지 못했습니다. {{error}}",
   "startingChat": "새 채팅 시작",
   "creatingNewChat": "기존 앱에 새 채팅을 만드는 중입니다.",
   "whatsNew": "v{{version}}의 새로운 기능은?",

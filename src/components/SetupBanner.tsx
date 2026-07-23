@@ -8,7 +8,7 @@ import {
   Play,
   Settings,
 } from "lucide-react";
-import { pendingFirstPromptAtom } from "@/atoms/chatAtoms";
+import { firstPromptSagaAtom } from "@/first_prompt/projection";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
@@ -38,7 +38,8 @@ export function SetupBanner({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const hasPendingPrompt = useAtomValue(pendingFirstPromptAtom);
+  const { hasArmedPayload: hasPendingPrompt } =
+    useAtomValue(firstPromptSagaAtom);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
 

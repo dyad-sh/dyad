@@ -36,6 +36,20 @@ export function useManagerLifecycle(manager: DisposableManager): void {
   }, [manager]);
 }
 
+/**
+ * Disposes a renderer-owned manager before document teardown. React effect
+ * cleanup is not guaranteed when Electron reloads or destroys the renderer.
+ */
+export function useManagerPagehideDisposal(manager: DisposableManager): void {
+  useEffect(() => {
+    const dispose = (event: PageTransitionEvent) => {
+      if (!event.persisted) manager.dispose();
+    };
+    window.addEventListener("pagehide", dispose);
+    return () => window.removeEventListener("pagehide", dispose);
+  }, [manager]);
+}
+
 export interface KeyedSnapshotSource<K, Snapshot> {
   subscribeKey(key: K, listener: () => void): () => void;
   getSnapshot(key: K): Snapshot;

@@ -1,43 +1,25 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import {
   attachmentsAtom,
   hasManuallySelectedChatModeAtom,
   homeChatInputValueAtom,
   homeSelectedAppAtom,
-  pendingFirstPromptAtom,
 } from "../atoms/chatAtoms";
-import { ipc } from "@/ipc/types";
-import { generateCuteAppName } from "@/lib/utils";
-import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
-import { SetupBanner } from "@/components/SetupBanner";
-import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useStreamChat } from "@/hooks/useStreamChat";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
 
 import { ImportAppButton } from "@/components/ImportAppButton";
-import { showError } from "@/lib/toast";
-import { invalidateAppQuery } from "@/hooks/useLoadApp";
-import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queryKeys";
-import { useSelectChat } from "@/hooks/useSelectChat";
 import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
 
 import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
-import { NEON_TEMPLATE_IDS } from "@/shared/templates";
-import { neonTemplateHook } from "@/client_logic/template_hook";
-import {
-  getEffectiveDefaultChatMode,
-  hasDyadProKey,
-  type ChatMode,
-} from "@/lib/schemas";
+import { hasDyadProKey, type ChatMode } from "@/lib/schemas";
 import {
   FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
   isFreeProBuildModeCombination,
@@ -45,15 +27,10 @@ import {
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { RefreshCw, Zap } from "lucide-react";
+import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
+import { firstPromptSagaAtom } from "@/first_prompt/projection";
+import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -64,14 +41,12 @@ export interface HomeSubmitOptions {
 export default function HomePage() {
   const { t } = useTranslation("home");
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
-  const [pendingSelectedApp, setPendingSelectedApp] =
-    useAtom(homeSelectedAppAtom);
-  const [pendingAttachments, setPendingAttachments] = useAtom(attachmentsAtom);
-  const shouldResumeFirstPrompt = useAtomValue(pendingFirstPromptAtom);
-  const setShouldResumeFirstPrompt = useSetAtom(pendingFirstPromptAtom);
+  const selectedApp = useAtomValue(homeSelectedAppAtom);
+  const attachments = useAtomValue(attachmentsAtom);
+  const firstPromptSaga = useAtomValue(firstPromptSagaAtom);
+  const sendFirstPrompt = useFirstPromptSend();
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
-  const { refreshApps } = useLoadApps();
   const {
     settings,
     updateSettings,
@@ -90,35 +65,10 @@ export default function HomePage() {
       return initialChatMode;
     }
 
-    const effectiveDefaultChatMode = getEffectiveDefaultChatMode(
-      settings,
-      envVars,
-      !isQuotaExceeded,
-    );
-    if (
-      isFreeProBuildModeCombination(
-        settings.selectedModel,
-        effectiveDefaultChatMode,
-      )
-    ) {
-      return FREE_PRO_MODEL_FALLBACK_CHAT_MODE;
-    }
-    return effectiveDefaultChatMode;
+    return getHomeDefaultChatMode(settings, envVars, !isQuotaExceeded);
   }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
 
-  const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
-  const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
-  const { selectChat } = useSelectChat();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAiSetupDialogOpen, setIsAiSetupDialogOpen] = useState(false);
-  const [
-    shouldOpenAiSetupDialogWhenProvidersLoad,
-    setShouldOpenAiSetupDialogWhenProvidersLoad,
-  ] = useState(false);
-  const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
-  const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
-  const queryClient = useQueryClient();
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
@@ -175,48 +125,6 @@ export default function HomePage() {
     hasManuallySelectedChatMode,
   ]);
 
-  const openAiSetupDialog = useCallback(() => {
-    posthog.capture("home:ai-setup-dialog-open");
-    if (inputValue.trim() || pendingAttachments.length > 0) {
-      setShouldResumeFirstPrompt(true);
-    }
-    setIsAiSetupDialogOpen(true);
-  }, [
-    inputValue,
-    pendingAttachments.length,
-    posthog,
-    setShouldResumeFirstPrompt,
-  ]);
-
-  const handleAiSetupDialogOpenChange = useCallback(
-    (open: boolean) => {
-      setIsAiSetupDialogOpen(open);
-      if (!open) {
-        setShouldResumeFirstPrompt(false);
-      }
-    },
-    [setShouldResumeFirstPrompt],
-  );
-
-  useEffect(() => {
-    if (
-      !shouldOpenAiSetupDialogWhenProvidersLoad ||
-      isLoadingLanguageModelProviders
-    ) {
-      return;
-    }
-
-    setShouldOpenAiSetupDialogWhenProvidersLoad(false);
-    if (!isAnyProviderSetup()) {
-      openAiSetupDialog();
-    }
-  }, [
-    isAnyProviderSetup,
-    isLoadingLanguageModelProviders,
-    openAiSetupDialog,
-    shouldOpenAiSetupDialogWhenProvidersLoad,
-  ]);
-
   // Honor a manually picked mode (e.g. "plan") on submit; otherwise fall back
   // to the effective default so it still tracks provider/quota state. Apply the
   // Free Pro fallback for an invalid build-mode + free-pro-model combination.
@@ -235,184 +143,35 @@ export default function HomePage() {
   }, [settings, homeInitialChatMode, hasManuallySelectedChatMode]);
 
   const handleSubmit = useCallback(
-    async (options?: HomeSubmitOptions) => {
-      const attachments = options?.attachments || [];
-      const selectedApp = options?.selectedApp;
-
-      if (!inputValue.trim() && attachments.length === 0) return false;
-
-      if (!isAnyProviderSetup()) {
-        if (isLoadingLanguageModelProviders) {
-          if (inputValue.trim() || attachments.length > 0) {
-            setShouldResumeFirstPrompt(true);
-          }
-          setShouldOpenAiSetupDialogWhenProvidersLoad(true);
-          return false;
-        }
-
-        openAiSetupDialog();
-        return false;
-      }
-
-      try {
-        setLoadingMode(selectedApp ? "existing" : "new");
-        setIsLoading(true);
-
-        let chatId: number;
-        let appId: number;
-        if (selectedApp) {
-          // Existing app flow: create a new chat in the selected app
-          chatId = await ipc.chat.createChat({
-            appId: selectedApp.id,
-            initialChatMode: homeSubmitChatMode,
-          });
-          appId = selectedApp.id;
-        } else {
-          // New app flow (default behavior)
-          const result = await ipc.app.createApp({
-            name: generateCuteAppName(),
-            initialChatMode: homeSubmitChatMode,
-          });
-          chatId = result.chatId;
-          appId = result.app.id;
-
-          if (
-            settings?.selectedTemplateId &&
-            NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
-          ) {
-            await neonTemplateHook({
-              appId: result.app.id,
-              appName: result.app.name,
-            });
-          }
-
-          // Apply selected theme to the new app (if one is set)
-          if (settings?.selectedThemeId) {
-            await ipc.template.setAppTheme({
-              appId: result.app.id,
-              themeId: settings.selectedThemeId || null,
-            });
-          }
-        }
-
-        const openedPreviewSetupPromise = openPreviewIfSetupRequired(appId);
-
-        // Stream the message with attachments
-        streamMessage({
+    (options?: HomeSubmitOptions) => {
+      const submittedAttachments = options?.attachments ?? [];
+      if (!inputValue.trim() && submittedAttachments.length === 0) return false;
+      return sendFirstPrompt({
+        type: "SUBMIT",
+        payload: {
           prompt: inputValue,
-          chatId,
-          appId,
-          attachments,
-          requestedChatMode: homeSubmitChatMode,
-        });
-        // The prompt is committed once streamMessage is dispatched; clearing
-        // must happen before the awaits below so a rejection can't leave the
-        // already-sent prompt in the box to be resubmitted.
-        setInputValue("");
-        await new Promise((resolve) =>
-          setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
-        );
-        const openedPreviewSetup = await openedPreviewSetupPromise;
-
-        if (!openedPreviewSetup) {
-          setIsPreviewOpen(false);
-        }
-        await refreshApps();
-        await invalidateAppQuery(queryClient, { appId });
-        // Invalidate chats so ChatTabs picks up the new chat immediately.
-        await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-        posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
-        // Select newly created first chat so it appears first in tabs.
-        selectChat({ chatId, appId });
-        return true;
-      } catch (error) {
-        console.error("Failed to create chat:", error);
-        showError(
-          t(selectedApp ? "failedCreateChat" : "failedCreateApp", {
-            error: (error as any).toString(),
-          }),
-        );
-        setIsLoading(false);
-        return false;
-      }
+          attachments: submittedAttachments,
+          selectedApp: options?.selectedApp,
+          chatMode: homeSubmitChatMode,
+          isChatModeExplicit: hasManuallySelectedChatMode,
+        },
+      });
     },
     [
-      inputValue,
+      hasManuallySelectedChatMode,
       homeSubmitChatMode,
-      isAnyProviderSetup,
-      isLoadingLanguageModelProviders,
-      navigate,
-      openAiSetupDialog,
-      openPreviewIfSetupRequired,
-      posthog,
-      queryClient,
-      refreshApps,
-      selectChat,
-      setInputValue,
-      setIsPreviewOpen,
-      setShouldResumeFirstPrompt,
-      settings,
-      streamMessage,
-      t,
+      inputValue,
+      sendFirstPrompt,
     ],
   );
 
-  const hasAttemptedAutoResumeRef = useRef(false);
-  useEffect(() => {
-    if (!shouldResumeFirstPrompt) {
-      hasAttemptedAutoResumeRef.current = false;
-    }
-  }, [shouldResumeFirstPrompt]);
-
-  useEffect(() => {
-    if (
-      !shouldResumeFirstPrompt ||
-      isLoadingLanguageModelProviders ||
-      !isAnyProviderSetup() ||
-      (!inputValue.trim() && pendingAttachments.length === 0) ||
-      isLoading ||
-      hasAttemptedAutoResumeRef.current
-    ) {
-      return;
-    }
-
-    hasAttemptedAutoResumeRef.current = true;
-    setIsAiSetupDialogOpen(false);
-    navigate({ to: "/", search: {}, replace: true });
-
-    void (async () => {
-      const didSubmit = await handleSubmit({
-        attachments: pendingAttachments,
-        selectedApp: pendingSelectedApp ?? undefined,
-      });
-      // Clear the pending flag even on failure: handleSubmit already surfaces
-      // an error toast and the user can retry manually from the input. Leaving
-      // the flag set would auto-submit whatever is in the input the next time
-      // this page mounts with a provider configured.
-      setShouldResumeFirstPrompt(false);
-      if (didSubmit) {
-        setPendingAttachments([]);
-        setPendingSelectedApp(null);
-      }
-      // Intentionally do not re-arm on failure: handleSubmit already surfaces
-      // an error toast, and re-arming would re-fire this effect immediately
-      // (inputValue and shouldResumeFirstPrompt are still set), causing an
-      // infinite retry loop. The user can retry manually from the input.
-    })();
-  }, [
-    handleSubmit,
-    inputValue,
-    isAnyProviderSetup,
-    isLoading,
-    isLoadingLanguageModelProviders,
-    navigate,
-    pendingAttachments,
-    pendingSelectedApp,
-    setPendingAttachments,
-    setPendingSelectedApp,
-    setShouldResumeFirstPrompt,
-    shouldResumeFirstPrompt,
-  ]);
+  const isLoading = [
+    "creating",
+    "postCreate",
+    "dispatching",
+    "navigating",
+  ].includes(firstPromptSaga.phase);
+  const isCheckingProviders = firstPromptSaga.phase === "checkingProviders";
 
   // Loading overlay for app creation
   if (isLoading) {
@@ -425,10 +184,12 @@ export default function HomePage() {
             <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
           </div>
           <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-            {loadingMode === "existing" ? t("startingChat") : t("buildingApp")}
+            {firstPromptSaga.isExistingAppSubmission
+              ? t("startingChat")
+              : t("buildingApp")}
           </h2>
           <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
-            {loadingMode === "existing" ? (
+            {firstPromptSaga.isExistingAppSubmission ? (
               t("creatingNewChat")
             ) : (
               <>
@@ -462,7 +223,10 @@ export default function HomePage() {
               />
             </div>
           </div>
-          <HomeChatInput onSubmit={handleSubmit} />
+          <HomeChatInput
+            onSubmit={handleSubmit}
+            disabled={isCheckingProviders}
+          />
 
           {!isSettingsLoading &&
             !isLoadingLanguageModelProviders &&
@@ -472,7 +236,16 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     posthog.capture("home:setup-pill:click");
-                    openAiSetupDialog();
+                    sendFirstPrompt({
+                      type: "ARM_FOR_SETUP",
+                      payload: {
+                        prompt: inputValue,
+                        attachments,
+                        selectedApp: selectedApp ?? undefined,
+                        chatMode: homeSubmitChatMode,
+                        isChatModeExplicit: hasManuallySelectedChatMode,
+                      },
+                    });
                   }}
                   className={
                     hasConfiguredAiProvider
@@ -493,8 +266,9 @@ export default function HomePage() {
               <button
                 type="button"
                 key={item.label}
+                disabled={isCheckingProviders}
                 onClick={() => setInputValue(item.prompt)}
-                className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50"
               >
                 <span aria-hidden="true" className="[&_svg]:size-4">
                   {item.icon}
@@ -504,8 +278,9 @@ export default function HomePage() {
             ))}
             <button
               type="button"
+              disabled={isCheckingProviders}
               onClick={() => setRandomPrompts(getRandomPrompts())}
-              className="group flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+              className="group flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50"
             >
               <RefreshCw className="size-4 transition-transform duration-200 group-hover:rotate-[-25deg]" />
               {t("moreIdeas")}
@@ -515,26 +290,6 @@ export default function HomePage() {
         <PrivacyBanner />
       </div>
       <FeaturedAppShowcase />
-      <Dialog
-        open={isAiSetupDialogOpen}
-        onOpenChange={handleAiSetupDialogOpenChange}
-      >
-        <DialogContent className="p-0 sm:max-w-2xl">
-          <DialogHeader className="sr-only">
-            <DialogTitle>
-              {hasConfiguredAiProvider
-                ? "Manage AI setup"
-                : "You're almost ready to build"}
-            </DialogTitle>
-            <DialogDescription>
-              {hasConfiguredAiProvider
-                ? "Change how Dyad accesses AI."
-                : "Choose how Dyad should access AI before generating your app."}
-            </DialogDescription>
-          </DialogHeader>
-          <SetupBanner variant="dialog" forceShow />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

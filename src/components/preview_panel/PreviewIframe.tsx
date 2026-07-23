@@ -1594,6 +1594,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   isolated data
                 </span>
               )}
+              {recorder.isolation &&
+                recorder.isolation.mode !== "none" &&
+                recorder.auth?.mode === "none" && (
+                  <span
+                    className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                    data-testid="preview-recording-signed-out-badge"
+                  >
+                    signed out
+                  </span>
+                )}
               <input
                 value={recordName}
                 onChange={(e) => setRecordName(e.target.value)}

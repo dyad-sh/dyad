@@ -70,7 +70,9 @@ export function useTestRecorder() {
   const stateRef = useRef(recordingState);
   const entriesRef = useRef(entries);
   const appIdRef = useRef(appId);
-  const authReadyRef = useRef<((data: { ok?: boolean }) => void) | null>(null);
+  const authReadyRef = useRef<
+    ((data: { ok?: boolean; error?: string }) => void) | null
+  >(null);
   // The auth to (re)send while we're waiting for the in-iframe sign-in; set for
   // the duration of `authenticate` so a bootstrap that (re)loads mid-flow can be
   // handed the credentials as soon as it announces itself.
@@ -92,6 +94,20 @@ export function useTestRecorder() {
 
   const postToIframe = useCallback((message: unknown) => {
     iframeElRef.current?.contentWindow?.postMessage(message, "*");
+  }, []);
+
+  /**
+   * Force a fresh iframe load by re-setting its src attribute. Needed after
+   * recording:start: on the Neon path the dev server (and proxy) restarted
+   * underneath the iframe, which can leave it on a dead/error page with NO
+   * injected scripts listening — postMessage would go nowhere. A fresh load
+   * guarantees a live bootstrap (which announces itself, triggering the
+   * credential handshake) and reflects the cleared storage state.
+   */
+  const reloadPreview = useCallback(() => {
+    const el = iframeElRef.current;
+    const src = el?.getAttribute("src");
+    if (el && src) el.setAttribute("src", src);
   }, []);
 
   const patchState = useCallback(
@@ -143,7 +159,10 @@ export function useTestRecorder() {
           break;
         }
         case "dyad-auth-ready": {
-          authReadyRef.current?.({ ok: Boolean(data.ok) });
+          authReadyRef.current?.({
+            ok: Boolean(data.ok),
+            error: typeof data.error === "string" ? data.error : undefined,
+          });
           break;
         }
         case "pushState":
@@ -184,6 +203,17 @@ export function useTestRecorder() {
     return unsub;
   }, [patchState]);
 
+  // (Re)activate the in-page recorder whenever we're in the recording phase.
+  // The activate posted inside startRecording can be lost if the iframe is
+  // mid-load (fresh load after auth / dev-server restart); this effect plus the
+  // re-arm on `dyad-recorder-initialized` make activation reliable. The client
+  // treats repeat activations as no-ops.
+  useEffect(() => {
+    if (recordingState.phase === "recording") {
+      postToIframe({ type: "activate-dyad-recorder" });
+    }
+  }, [recordingState.phase, postToIframe]);
+
   // Surface isolation/sign-in setup progress.
   useEffect(() => {
     const unsub = ipc.events.recording.onSetupProgress(
@@ -199,25 +229,30 @@ export function useTestRecorder() {
 
   const authenticate = useCallback(
     (auth: RecordingAuth) =>
-      new Promise<boolean>((resolve) => {
+      new Promise<{ ok: boolean; error?: string }>((resolve) => {
         let done = false;
-        const finish = (ok: boolean) => {
+        const finish = (ok: boolean, error?: string) => {
           if (done) return;
           done = true;
           pendingAuthRef.current = null;
           authReadyRef.current = null;
           clearTimeout(timer);
-          resolve(ok);
+          resolve({ ok, error });
         };
-        const timer = setTimeout(() => finish(false), AUTH_READY_TIMEOUT_MS);
-        // Keep the creds available so a bootstrap that (re)announces itself
-        // mid-flow gets them; also send immediately for the common case where
-        // the bootstrap is already listening.
+        const timer = setTimeout(
+          () => finish(false, "timed out waiting for the preview to sign in"),
+          AUTH_READY_TIMEOUT_MS,
+        );
+        // Register the creds FIRST so the fresh load's bootstrap announce
+        // triggers a (re)send, then force that fresh load. Also post directly
+        // for the case where the current page is alive and listening.
         pendingAuthRef.current = auth;
-        authReadyRef.current = (result) => finish(Boolean(result.ok));
+        authReadyRef.current = (result) =>
+          finish(Boolean(result.ok), result.error);
+        reloadPreview();
         postToIframe({ type: "dyad-auth-login", auth });
       }),
-    [postToIframe],
+    [postToIframe, reloadPreview],
   );
 
   const startRecording = useCallback(async () => {
@@ -265,18 +300,24 @@ export function useTestRecorder() {
         phase: "authenticating",
         progress: "Signing in the test user…",
       }));
-      const ok = await authenticate(auth);
-      if (!ok) {
+      const signIn = await authenticate(auth);
+      if (!signIn.ok) {
         // Sign-in failed: record unauthenticated (and don't emit signIn), so
         // the flow degrades gracefully instead of dead-ending.
         auth = { mode: "none" };
         patchState(targetAppId, (prev) => ({
           ...prev,
           auth,
-          warning:
-            "Couldn't sign in automatically — recording without authentication.",
+          warning: `Couldn't sign in automatically${
+            signIn.error ? ` (${signIn.error})` : ""
+          } — recording without authentication.`,
         }));
       }
+    } else {
+      // No auth to establish, but still start from a fresh load so the preview
+      // reflects the isolated database and the cleared storage (and, after a
+      // Neon restart, isn't stuck on a dead page).
+      reloadPreview();
     }
 
     postToIframe({ type: "activate-dyad-recorder" });
@@ -385,6 +426,7 @@ export function useTestRecorder() {
   return {
     phase: recordingState.phase,
     isolation: recordingState.isolation,
+    auth: recordingState.auth,
     warning: recordingState.warning,
     progress: recordingState.progress,
     error: recordingState.error,

@@ -22,4 +22,19 @@ describe("projectGithubOps", () => {
     expect(projection.showRebaseAndSync).toBe(true);
     expect(projection.showForcePush).toBe(false);
   });
+
+  it.each(["rebase", "rebase-continue", "rebase-abort"] as const)(
+    "uses rebase recovery for %s conflict provenance",
+    (type) => {
+      const projection = projectGithubOps({
+        type: "conflicted",
+        files: ["src/conflicted.ts"],
+        origin: { type },
+        banner: null,
+      });
+
+      expect(projection.rebaseInProgress).toBe(true);
+      expect(projection.abortOperation).toBe("rebase-abort");
+    },
+  );
 });

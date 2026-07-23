@@ -123,7 +123,7 @@ export type GithubOpsEvent =
 export type GithubOpsCommand =
   | { type: "run-op"; op: GithubOperation }
   | { type: "probe-git-state" }
-  | { type: "probe-conflicts" }
+  | { type: "probe-conflicts"; settleOnError?: boolean }
   | { type: "invalidate-branches" }
   | { type: "refresh-app" }
   | {

@@ -25,6 +25,8 @@ export class GithubOpsCommandRunner {
     number,
     ConflictResolutionRunner
   >();
+  private readonly gitStateProbeGenerations = new Map<number, number>();
+  private readonly conflictProbeGenerations = new Map<number, number>();
 
   constructor(private readonly queryClient: QueryClient) {}
 
@@ -47,6 +49,7 @@ export class GithubOpsCommandRunner {
   ): void {
     switch (command.type) {
       case "run-op":
+        this.invalidateProbes(appId);
         void runOperation(appId, command.op).then(
           () => emit({ type: "OP_SUCCEEDED", op: command.op }),
           (error) =>
@@ -58,23 +61,75 @@ export class GithubOpsCommandRunner {
         );
         return;
       case "probe-git-state":
-        void ipc.github.getGitState({ appId }).then(
-          (state) => emit({ type: "GIT_STATE", ...state }),
-          (error) => {
-            showError(errorMessage(error, "Failed to inspect Git state"));
-          },
-        );
+        {
+          const generation = this.nextGeneration(
+            this.gitStateProbeGenerations,
+            appId,
+          );
+          void ipc.github.getGitState({ appId }).then(
+            (state) => {
+              if (
+                this.isCurrentGeneration(
+                  this.gitStateProbeGenerations,
+                  appId,
+                  generation,
+                )
+              ) {
+                emit({ type: "GIT_STATE", ...state });
+              }
+            },
+            (error) => {
+              if (
+                this.isCurrentGeneration(
+                  this.gitStateProbeGenerations,
+                  appId,
+                  generation,
+                )
+              ) {
+                showError(errorMessage(error, "Failed to inspect Git state"));
+              }
+            },
+          );
+        }
         return;
       case "probe-conflicts":
-        void ipc.github.getConflicts({ appId }).then(
-          (files) => emit({ type: "CONFLICTS", files }),
-          (error) => {
-            showError(errorMessage(error, "Failed to inspect Git conflicts"));
-            // A failed probe must still settle a coded failure that is waiting
-            // for conflict data; the original operation banner remains.
-            emit({ type: "CONFLICTS", files: [] });
-          },
-        );
+        {
+          const generation = this.nextGeneration(
+            this.conflictProbeGenerations,
+            appId,
+          );
+          void ipc.github.getConflicts({ appId }).then(
+            (files) => {
+              if (
+                this.isCurrentGeneration(
+                  this.conflictProbeGenerations,
+                  appId,
+                  generation,
+                )
+              ) {
+                emit({ type: "CONFLICTS", files });
+              }
+            },
+            (error) => {
+              if (
+                !this.isCurrentGeneration(
+                  this.conflictProbeGenerations,
+                  appId,
+                  generation,
+                )
+              ) {
+                return;
+              }
+              showError(errorMessage(error, "Failed to inspect Git conflicts"));
+              // Only the probe attached to a coded operation failure must
+              // settle the machine. Reconcile failures preserve confirmed
+              // conflict state instead of fabricating an empty result.
+              if (command.settleOnError) {
+                emit({ type: "CONFLICTS", files: [] });
+              }
+            },
+          );
+        }
         return;
       case "invalidate-branches":
         void this.queryClient.invalidateQueries({
@@ -110,6 +165,41 @@ export class GithubOpsCommandRunner {
       default:
         return assertNever(command);
     }
+  }
+
+  disposeKey(appId: number): void {
+    this.invalidateProbes(appId);
+    this.gitStateProbeGenerations.delete(appId);
+    this.conflictProbeGenerations.delete(appId);
+    this.conflictResolutionRunners.delete(appId);
+  }
+
+  dispose(): void {
+    this.gitStateProbeGenerations.clear();
+    this.conflictProbeGenerations.clear();
+    this.conflictResolutionRunners.clear();
+  }
+
+  private invalidateProbes(appId: number): void {
+    this.nextGeneration(this.gitStateProbeGenerations, appId);
+    this.nextGeneration(this.conflictProbeGenerations, appId);
+  }
+
+  private nextGeneration(
+    generations: Map<number, number>,
+    appId: number,
+  ): number {
+    const generation = (generations.get(appId) ?? 0) + 1;
+    generations.set(appId, generation);
+    return generation;
+  }
+
+  private isCurrentGeneration(
+    generations: Map<number, number>,
+    appId: number,
+    generation: number,
+  ): boolean {
+    return generations.get(appId) === generation;
   }
 }
 

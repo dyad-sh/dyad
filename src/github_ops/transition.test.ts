@@ -158,4 +158,106 @@ describe("github_ops transition", () => {
     expect(result.state).toBe(running);
     expect(result.ignoredReason).toBe("op-in-flight");
   });
+
+  it("sequences reconciliation so rebase provenance reaches conflicts", () => {
+    const reconcile = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "RECONCILE_REQUESTED",
+    });
+    expect(reconcile.commands).toEqual([{ type: "probe-git-state" }]);
+
+    const gitState = transition(reconcile.state, {
+      type: "GIT_STATE",
+      mergeInProgress: false,
+      rebaseInProgress: true,
+    });
+    expect(gitState.state.type).toBe("rebase-paused");
+    expect(gitState.commands).toEqual([{ type: "probe-conflicts" }]);
+
+    const conflicts = transition(gitState.state, {
+      type: "CONFLICTS",
+      files: ["src/conflicted.ts"],
+    });
+    expect(conflicts.state).toMatchObject({
+      type: "conflicted",
+      origin: { type: "rebase" },
+    });
+  });
+
+  it("updates reconciled conflict provenance when git reports a rebase", () => {
+    const conflicted: GithubOpsState = {
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "reconcile" },
+      banner: null,
+    };
+
+    const result = transition(conflicted, {
+      type: "GIT_STATE",
+      mergeInProgress: false,
+      rebaseInProgress: true,
+    });
+
+    expect(result.state).toEqual({
+      ...conflicted,
+      origin: { type: "rebase" },
+    });
+    expect(result.commands).toEqual([{ type: "probe-conflicts" }]);
+  });
+
+  it.each([
+    { type: "rebase" },
+    { type: "rebase-continue" },
+    { type: "rebase-abort" },
+  ] satisfies readonly GithubOperation[])(
+    "reconciles recovery after an uncoded $type failure",
+    (op) => {
+      const running = transition(INITIAL_GITHUB_OPS_STATE, {
+        type: "OP_REQUESTED",
+        op,
+      }).state;
+      const failed = transition(running, {
+        type: "OP_FAILED",
+        op,
+        failure: { kind: "unknown", message: "git failed" },
+      });
+
+      expect(failed.state).toMatchObject({
+        type: "idle",
+        banner: { kind: "error", message: "git failed" },
+      });
+      expect(failed.commands).toEqual([
+        { type: "notify", kind: "error", message: "git failed" },
+        { type: "probe-git-state" },
+      ]);
+
+      const reconciled = transition(failed.state, {
+        type: "GIT_STATE",
+        mergeInProgress: false,
+        rebaseInProgress: true,
+      });
+      expect(reconciled.state.type).toBe("rebase-paused");
+      expect(reconciled.commands).toEqual([{ type: "probe-conflicts" }]);
+    },
+  );
+
+  it("retains conflicts until AI conflict resolution has actually started", () => {
+    const conflicted: GithubOpsState = {
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: null,
+    };
+
+    const started = transition(conflicted, {
+      type: "RESOLVE_WITH_AI_STARTED",
+    });
+
+    expect(started.state).toBe(conflicted);
+    expect(started.commands).toEqual([
+      {
+        type: "start-conflict-resolution",
+        files: conflicted.files,
+      },
+    ]);
+  });
 });

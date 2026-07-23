@@ -101,9 +101,14 @@ function ConnectedGitHubConnector({
     runningOperation,
   } = projection;
 
+  const clearResolvedConflicts = useCallback(
+    () => send({ type: "CONFLICTS", files: [] }),
+    [send],
+  );
   const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
     appId,
     conflicts,
+    onStartResolving: clearResolvedConflicts,
   });
   useRegisterGithubConflictResolution(appId, resolveWithAI);
 

@@ -51,9 +51,11 @@ export class GithubOpsManager {
 
   disposeKey = (appId: number): void => {
     this.host.disposeKey(appId);
+    this.runner.disposeKey(appId);
   };
 
   dispose(): void {
     this.host.dispose();
+    this.runner.dispose();
   }
 }

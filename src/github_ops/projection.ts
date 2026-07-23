@@ -35,7 +35,7 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
     rebaseInProgress:
       state.type === "rebase-paused" ||
       (state.type === "switch-blocked" && state.blockingOp === "rebase") ||
-      (state.type === "conflicted" && state.origin.type === "rebase"),
+      (state.type === "conflicted" && isRebaseFamily(state.origin.type)),
     rebaseAction:
       state.type !== "running"
         ? null
@@ -55,11 +55,17 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
     showRebaseRecoveryOptions: state.type === "rebase-paused",
     abortOperation:
       state.type === "rebase-paused" ||
-      (state.type === "conflicted" && state.origin.type === "rebase")
+      (state.type === "conflicted" && isRebaseFamily(state.origin.type))
         ? "rebase-abort"
         : "merge-abort",
     runningOperation,
   };
   projectionCache.set(state, projection);
   return projection;
+}
+
+function isRebaseFamily(type: GithubOperation["type"] | "reconcile"): boolean {
+  return (
+    type === "rebase" || type === "rebase-continue" || type === "rebase-abort"
+  );
 }

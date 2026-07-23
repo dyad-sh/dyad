@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-
-import { BUILD_SYSTEM_PREFIX } from "@/prompts/system_prompt";
+import {
+  BUILD_SYSTEM_PREFIX,
+  getSystemPromptForChatMode,
+} from "@/prompts/system_prompt";
 
 describe("build system prompt", () => {
   it("uses context-sensitive component placement and error handling", () => {
@@ -18,6 +20,20 @@ describe("build system prompt", () => {
     );
     expect(BUILD_SYSTEM_PREFIX).not.toContain(
       "Don't catch errors with try/catch blocks unless specifically requested",
+    );
+  });
+
+  it("distinguishes constraint-preserving refreshes from explicit upgrades", () => {
+    const prompt = getSystemPromptForChatMode({
+      chatMode: "build",
+      enableTurboEditsV2: false,
+    });
+
+    expect(prompt).toContain(
+      "Use a bare package name to install it, or to refresh an existing dependency only within its current package.json constraint.",
+    );
+    expect(prompt).toContain(
+      "Use package@latest only when intentionally upgrading to the latest release, including a new major version.",
     );
   });
 });

@@ -286,11 +286,11 @@ describe("local-agent consent banner (integration)", () => {
     ]);
 
     // Approval let execution proceed into executeAddDependency, which failed on
-    // the invalid package name — proving the tool ran past the gate rather than
+    // the invalid package spec — proving the tool ran past the gate rather than
     // being blocked. The turn then continued to its final text.
     const content = await lastAssistantContent(chatId);
     expect(content).toContain('<dyad-output type="error"');
-    expect(content).toContain("Invalid npm package name");
+    expect(content).toContain("Invalid npm package spec");
     expect(content).toContain("Dependency step finished.");
   }, 60_000);
 

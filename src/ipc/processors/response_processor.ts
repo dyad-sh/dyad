@@ -234,6 +234,7 @@ export async function processFullResponseActions(
     const dyadWriteTags = getDyadWriteTags(fullResponse);
     const dyadRenameTags = getDyadRenameTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
+    let installedOrUpdatedDependencyPackages: string[] = [];
     const hasDbProvider =
       chatWithApp.app.supabaseProjectId || chatWithApp.app.neonProjectId;
     const dyadExecuteSqlQueries = hasDbProvider
@@ -345,11 +346,16 @@ export async function processFullResponseActions(
           appPath,
         });
         warningMessages.push(...addDependencyResult.warningMessages);
+        installedOrUpdatedDependencyPackages = dyadAddDependencyPackages;
       } catch (error) {
         if (error instanceof ExecuteAddDependencyError) {
           warningMessages.push(...error.warningMessages);
+          installedOrUpdatedDependencyPackages = error.completedPackages;
           errors.push({
-            message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}. ${error.displaySummary}`,
+            message:
+              error.completedPackages.length > 0
+                ? `Partially installed or updated dependencies: ${error.completedPackages.join(", ")}. ${error.displaySummary}`
+                : `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}. ${error.displaySummary}`,
             error: error.displayDetails,
           });
         } else {
@@ -359,14 +365,16 @@ export async function processFullResponseActions(
           });
         }
       }
-      writtenFiles.push("package.json");
-      const pnpmFilename = "pnpm-lock.yaml";
-      if (fs.existsSync(safeJoin(appPath, pnpmFilename))) {
-        writtenFiles.push(pnpmFilename);
-      }
-      const packageLockFilename = "package-lock.json";
-      if (fs.existsSync(safeJoin(appPath, packageLockFilename))) {
-        writtenFiles.push(packageLockFilename);
+      if (installedOrUpdatedDependencyPackages.length > 0) {
+        writtenFiles.push("package.json");
+        const pnpmFilename = "pnpm-lock.yaml";
+        if (fs.existsSync(safeJoin(appPath, pnpmFilename))) {
+          writtenFiles.push(pnpmFilename);
+        }
+        const packageLockFilename = "package-lock.json";
+        if (fs.existsSync(safeJoin(appPath, packageLockFilename))) {
+          writtenFiles.push(packageLockFilename);
+        }
       }
     }
 
@@ -721,9 +729,9 @@ export async function processFullResponseActions(
         changes.push(`renamed ${renamedFiles.length} file(s)`);
       if (deletedFiles.length > 0)
         changes.push(`deleted ${deletedFiles.length} file(s)`);
-      if (dyadAddDependencyPackages.length > 0)
+      if (installedOrUpdatedDependencyPackages.length > 0)
         changes.push(
-          `added ${dyadAddDependencyPackages.join(", ")} package(s)`,
+          `installed or updated ${installedOrUpdatedDependencyPackages.join(", ")} package(s)`,
         );
       if (dyadExecuteSqlQueries.length > 0)
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);

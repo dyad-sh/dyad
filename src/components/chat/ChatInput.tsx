@@ -22,6 +22,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { getNpmPackagePageUrl } from "./npmPackageUrl";
 
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
@@ -1483,9 +1484,7 @@ function ChatInputActions({
                       key={index}
                       className="flex items-center space-x-2"
                       onClick={() => {
-                        ipc.system.openExternalUrl(
-                          `https://www.npmjs.com/package/${pkg}`,
-                        );
+                        ipc.system.openExternalUrl(getNpmPackagePageUrl(pkg));
                       }}
                     >
                       <Package

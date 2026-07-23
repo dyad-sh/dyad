@@ -22,6 +22,7 @@ vi.mock("@/ipc/utils/pty_command_runner", async () => {
 import {
   buildPtyInvocation,
   buildAddDependencyCommand,
+  buildUpdateDependencyCommand,
   detectPreferredPackageManager,
   DYAD_ALLOW_BUILDS_CACHE_TTL_MS,
   ensurePnpmAllowBuildsConfigured,
@@ -1184,6 +1185,92 @@ describe("buildAddDependencyCommand", () => {
     (manager, useSfw, expected) => {
       expect(
         buildAddDependencyCommand(["nitro"], manager, useSfw, { dev: true }),
+      ).toEqual(expected);
+    },
+  );
+
+  it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
+    [
+      "pnpm",
+      false,
+      {
+        command: "pnpm",
+        args: [
+          "--config.pm-on-fail=ignore",
+          "--config.confirmModulesPurge=false",
+          "--config.strictDepBuilds=false",
+          "add",
+          "--ignore-workspace-root-check",
+          "--save-exact",
+          "react@19.1.0",
+        ],
+      },
+    ],
+    [
+      "npm",
+      true,
+      {
+        command: "npx",
+        args: [
+          "--prefer-offline",
+          "--yes",
+          "sfw@2.0.4",
+          "npm",
+          "install",
+          "--legacy-peer-deps",
+          "--save-exact",
+          "react@19.1.0",
+        ],
+      },
+    ],
+  ])("saves exact versions for %s with sfw=%s", (manager, useSfw, expected) => {
+    expect(
+      buildAddDependencyCommand(["react@19.1.0"], manager, useSfw, {
+        saveExact: true,
+      }),
+    ).toEqual(expected);
+  });
+});
+
+describe("buildUpdateDependencyCommand", () => {
+  it.each<[PackageManager, boolean, { command: string; args: string[] }]>([
+    [
+      "pnpm",
+      false,
+      {
+        command: "pnpm",
+        args: [
+          "--config.pm-on-fail=ignore",
+          "--config.confirmModulesPurge=false",
+          "--config.strictDepBuilds=false",
+          "update",
+          "react",
+          "zod",
+        ],
+      },
+    ],
+    [
+      "npm",
+      true,
+      {
+        command: "npx",
+        args: [
+          "--prefer-offline",
+          "--yes",
+          "sfw@2.0.4",
+          "npm",
+          "update",
+          "--legacy-peer-deps",
+          "react",
+          "zod",
+        ],
+      },
+    ],
+  ])(
+    "builds a constraint-preserving update for %s with sfw=%s",
+    (manager, useSfw, expected) => {
+      expect(
+        buildUpdateDependencyCommand(["react", "zod"], manager, useSfw),
       ).toEqual(expected);
     },
   );

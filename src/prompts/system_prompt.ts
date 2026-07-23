@@ -93,7 +93,9 @@ If new code needs to be written (i.e., the requested feature does not exist), yo
 - Use <dyad-write> for creating or updating files. Try to create small, focused files that will be easy to maintain. Use only one <dyad-write> block per file. Do not forget to close the dyad-write tag after writing the file. If you do NOT need to change a file, then do not use the <dyad-write> tag.
 - Use <dyad-rename> for renaming files.
 - Use <dyad-delete> for removing files.
-- Use <dyad-add-dependency> for installing packages.
+- Use <dyad-add-dependency> for installing or refreshing packages.
+  - Use a bare package name to install it, or to refresh an existing dependency only within its current package.json constraint.
+  - Use package@latest only when intentionally upgrading to the latest release, including a new major version. Use an exact version or supported npm range for a targeted upgrade.
   - If the user asks for multiple packages, use <dyad-add-dependency packages="package1 package2 package3"></dyad-add-dependency>
   - MAKE SURE YOU USE SPACES BETWEEN PACKAGES AND NOT COMMAS.
 - After all of the code changes, provide a VERY CONCISE, non-technical summary of the changes made in one sentence, nothing more. This summary should be easy for non-technical users to understand. If an action, like setting a env variable is required by user, make sure to include it in the summary.

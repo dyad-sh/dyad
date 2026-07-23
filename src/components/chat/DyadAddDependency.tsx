@@ -13,6 +13,7 @@ import {
   DyadExpandIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
+import { getNpmPackagePageUrl } from "./npmPackageUrl";
 
 interface DyadAddDependencyProps {
   children?: ReactNode;
@@ -58,9 +59,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
                 key={p}
                 onClick={(e) => {
                   e.stopPropagation();
-                  ipc.system.openExternalUrl(
-                    `https://www.npmjs.com/package/${p}`,
-                  );
+                  ipc.system.openExternalUrl(getNpmPackagePageUrl(p));
                 }}
               >
                 {p}

@@ -1,12 +1,15 @@
 import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Message } from "@/ipc/types";
 import { readEffectiveSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
+  buildUpdateDependencyCommand,
   commitPnpmAllowBuildsConfigIfChanged,
   ensureSocketFirewallInstalled,
   getCommandExecutionDisplayDetails,
@@ -30,12 +33,14 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildPackagesAttrPattern(packages: string[]): string {
-  const rawPackages = packages.join(" ");
-  const escapedPackages = escapeXmlAttr(rawPackages);
+export function buildPackagesAttrPattern(packages: string[]): string {
+  const rawPackages = packages.map(escapeRegExp).join("\\s+");
+  const escapedPackages = packages
+    .map((packageSpec) => escapeRegExp(escapeXmlAttr(packageSpec)))
+    .join("\\s+");
   const packageVariants = new Set([rawPackages, escapedPackages]);
 
-  return Array.from(packageVariants).map(escapeRegExp).join("|");
+  return `\\s*(?:${Array.from(packageVariants).join("|")})\\s*`;
 }
 
 export interface ExecuteAddDependencyResult {
@@ -43,7 +48,152 @@ export interface ExecuteAddDependencyResult {
   warningMessages: string[];
 }
 
-const NPM_PACKAGE_NAME_PATTERN = /^(@[a-z0-9-_.]+\/)?[a-z0-9-_.]+$/;
+const NPM_PACKAGE_NAME_SEGMENT = "[a-z0-9][a-z0-9-_.]*";
+const NPM_PACKAGE_NAME_PATTERN = new RegExp(
+  `^(?:@${NPM_PACKAGE_NAME_SEGMENT}/)?${NPM_PACKAGE_NAME_SEGMENT}$`,
+);
+const SEMVER_IDENTIFIER = "[0-9A-Za-z-]+";
+const EXACT_VERSION_PATTERN = new RegExp(
+  `^\\d+\\.\\d+\\.\\d+(?:-${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*)?(?:\\+${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*)?$`,
+);
+const PARTIAL_VERSION_PATTERN =
+  /^(?:[xX*]|\d+|\d+\.(?:\d+|[xX*])|\d+\.(?:\d+|[xX*])\.[xX*])$/;
+const RANGE_VERSION_PATTERN = new RegExp(
+  `^[~^](?:\\d+|\\d+\\.\\d+|\\d+\\.\\d+\\.\\d+(?:-${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*)?(?:\\+${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*)?)$`,
+);
+const DIST_TAG_PATTERN = /^[a-z][a-z0-9._-]*$/i;
+const LOCAL_TARBALL_NAME_PATTERN = /\.(?:tgz|tar(?:\.gz)?)$/i;
+const INSTALLED_DEPENDENCY_SECTIONS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+] as const;
+
+interface ParsedPackageSpec {
+  name: string;
+  raw: string;
+  selector: string | undefined;
+  exact: boolean;
+}
+
+function parsePackageSpec(raw: string): ParsedPackageSpec | null {
+  let name = raw;
+  let selector: string | undefined;
+
+  if (raw.startsWith("@")) {
+    const slashIndex = raw.indexOf("/");
+    if (slashIndex === -1) {
+      return null;
+    }
+    const selectorIndex = raw.indexOf("@", slashIndex);
+    if (selectorIndex !== -1) {
+      name = raw.slice(0, selectorIndex);
+      selector = raw.slice(selectorIndex + 1);
+    }
+  } else {
+    const selectorIndex = raw.indexOf("@");
+    if (selectorIndex !== -1) {
+      name = raw.slice(0, selectorIndex);
+      selector = raw.slice(selectorIndex + 1);
+    }
+  }
+
+  if (
+    name.startsWith("-") ||
+    !NPM_PACKAGE_NAME_PATTERN.test(name) ||
+    (!name.startsWith("@") &&
+      selector === undefined &&
+      LOCAL_TARBALL_NAME_PATTERN.test(name))
+  ) {
+    return null;
+  }
+
+  if (
+    selector !== undefined &&
+    !EXACT_VERSION_PATTERN.test(selector) &&
+    !PARTIAL_VERSION_PATTERN.test(selector) &&
+    !RANGE_VERSION_PATTERN.test(selector) &&
+    !DIST_TAG_PATTERN.test(selector)
+  ) {
+    return null;
+  }
+
+  return {
+    name,
+    raw,
+    selector,
+    exact: selector !== undefined && EXACT_VERSION_PATTERN.test(selector),
+  };
+}
+
+function parsePackageSpecs(packages: string[]): ParsedPackageSpec[] {
+  if (packages.length === 0) {
+    throw new DyadError(
+      "At least one npm package is required",
+      DyadErrorKind.Validation,
+    );
+  }
+
+  const parsedSpecs: ParsedPackageSpec[] = [];
+  const seenNames = new Set<string>();
+  for (const raw of packages) {
+    const parsed = parsePackageSpec(raw);
+    if (!parsed) {
+      throw new DyadError(
+        `Invalid npm package spec: ${raw}`,
+        DyadErrorKind.Validation,
+      );
+    }
+    if (seenNames.has(parsed.name)) {
+      throw new DyadError(
+        `Duplicate npm package: ${parsed.name}`,
+        DyadErrorKind.Validation,
+      );
+    }
+    seenNames.add(parsed.name);
+    parsedSpecs.push(parsed);
+  }
+  return parsedSpecs;
+}
+
+async function readInstalledDependencyNames(
+  appPath: string,
+): Promise<Set<string>> {
+  let packageJsonText: string;
+  try {
+    packageJsonText = await readFile(
+      path.join(appPath, "package.json"),
+      "utf8",
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return new Set();
+    }
+    throw error;
+  }
+
+  let packageJson: Record<string, unknown>;
+  try {
+    packageJson = JSON.parse(packageJsonText) as Record<string, unknown>;
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new DyadError(
+      `Cannot install dependencies because package.json contains invalid JSON: ${details}`,
+      DyadErrorKind.Validation,
+    );
+  }
+  const installedNames = new Set<string>();
+  for (const sectionName of INSTALLED_DEPENDENCY_SECTIONS) {
+    const section = packageJson[sectionName];
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      continue;
+    }
+    for (const packageName of Object.keys(section)) {
+      installedNames.add(packageName);
+    }
+  }
+  return installedNames;
+}
 
 const DISPLAY_SUMMARY_PATTERNS = [
   /\bblocked\b/i,
@@ -117,13 +267,19 @@ export class ExecuteAddDependencyError extends Error {
   originalError: unknown;
   displayDetails: string;
   displaySummary: string;
+  completedPackages: string[];
+  installResults: string;
 
   constructor({
     error,
     warningMessages,
+    completedPackages = [],
+    installResults = "",
   }: {
     error: unknown;
     warningMessages: string[];
+    completedPackages?: string[];
+    installResults?: string;
   }) {
     const message = error instanceof Error ? error.message : String(error);
     const commandDisplayDetails = getCommandExecutionDisplayDetails(error);
@@ -135,8 +291,14 @@ export class ExecuteAddDependencyError extends Error {
     this.name = "ExecuteAddDependencyError";
     this.warningMessages = warningMessages;
     this.originalError = error;
-    this.displayDetails = displayDetails;
+    const partialSuccessDetails =
+      completedPackages.length > 0
+        ? `Installed or updated ${completedPackages.join(", ")} before a later dependency command failed.${installResults ? `\n\n${installResults}` : ""}\n\n`
+        : "";
+    this.displayDetails = partialSuccessDetails + displayDetails;
     this.displaySummary = getDisplaySummary(displayDetails) ?? message;
+    this.completedPackages = completedPackages;
+    this.installResults = installResults;
   }
 }
 
@@ -210,18 +372,33 @@ export async function installPackages({
   appPath: string;
   dev?: boolean;
 }): Promise<ExecuteAddDependencyResult> {
-  const invalidPackage = packages.find(
-    (pkg) => !NPM_PACKAGE_NAME_PATTERN.test(pkg),
-  );
-  if (invalidPackage) {
+  let parsedSpecs: ParsedPackageSpec[];
+  let installedDependencyNames: Set<string>;
+  try {
+    parsedSpecs = parsePackageSpecs(packages);
+    installedDependencyNames = await readInstalledDependencyNames(appPath);
+  } catch (error) {
     throw new ExecuteAddDependencyError({
-      error: new DyadError(
-        `Invalid npm package name: ${invalidPackage}`,
-        DyadErrorKind.Validation,
-      ),
+      error,
       warningMessages: [],
     });
   }
+  const updatePackages = parsedSpecs
+    .filter(
+      ({ name, selector }) =>
+        selector === undefined && installedDependencyNames.has(name),
+    )
+    .map(({ name }) => name);
+  const exactPackages = parsedSpecs
+    .filter(({ exact }) => exact)
+    .map(({ raw }) => raw);
+  const packagesToInstall = parsedSpecs
+    .filter(
+      ({ name, selector, exact }) =>
+        !exact &&
+        (selector !== undefined || !installedDependencyNames.has(name)),
+    )
+    .map(({ raw }) => raw);
 
   const settings = await readEffectiveSettings();
   const warningMessages: string[] = [];
@@ -259,20 +436,67 @@ export async function installPackages({
     packageManager === "pnpm"
       ? (await commitPnpmAllowBuildsConfigIfChanged(appPath)).promotedPackages
       : [];
-  const { succeeded, installResults, lastError } =
-    await runAddDependencyCommand(
-      buildAddDependencyCommand(packages, packageManager, useSocketFirewall, {
-        dev,
-      }),
-      appPath,
-    );
 
-  if (!succeeded && lastError) {
-    throw new ExecuteAddDependencyError({
-      error: lastError,
-      warningMessages,
-    });
+  const commands = [
+    ...(packagesToInstall.length > 0
+      ? [
+          {
+            invocation: buildAddDependencyCommand(
+              packagesToInstall,
+              packageManager,
+              useSocketFirewall,
+              { dev },
+            ),
+            packages: packagesToInstall,
+          },
+        ]
+      : []),
+    ...(exactPackages.length > 0
+      ? [
+          {
+            invocation: buildAddDependencyCommand(
+              exactPackages,
+              packageManager,
+              useSocketFirewall,
+              { dev, saveExact: true },
+            ),
+            packages: exactPackages,
+          },
+        ]
+      : []),
+    ...(updatePackages.length > 0
+      ? [
+          {
+            invocation: buildUpdateDependencyCommand(
+              updatePackages,
+              packageManager,
+              useSocketFirewall,
+            ),
+            packages: updatePackages,
+          },
+        ]
+      : []),
+  ];
+
+  const commandResults: string[] = [];
+  const completedPackages: string[] = [];
+  for (const command of commands) {
+    const { succeeded, installResults, lastError } =
+      await runAddDependencyCommand(command.invocation, appPath);
+    if (!succeeded && lastError) {
+      throw new ExecuteAddDependencyError({
+        error: lastError,
+        warningMessages,
+        completedPackages,
+        installResults: commandResults.join("\n"),
+      });
+    }
+    completedPackages.push(...command.packages);
+    if (installResults) {
+      commandResults.push(installResults);
+    }
   }
+  const installResults = commandResults.join("\n");
 
   await rebuildPromotedPnpmBuilds(appPath, promotedPackages);
 

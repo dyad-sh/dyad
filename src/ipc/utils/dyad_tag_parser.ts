@@ -143,7 +143,7 @@ export function getDyadAddDependencyTags(fullResponse: string): string[] {
   let match;
   const packages: string[] = [];
   while ((match = dyadAddDependencyRegex.exec(fullResponse)) !== null) {
-    packages.push(...unescapeXmlAttr(match[1]).split(" "));
+    packages.push(...unescapeXmlAttr(match[1]).trim().split(/\s+/));
   }
   return packages;
 }

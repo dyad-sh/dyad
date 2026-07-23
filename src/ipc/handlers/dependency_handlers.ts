@@ -2,7 +2,10 @@ import { db } from "../../db";
 import { messages, apps, chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
-import { executeAddDependency } from "../processors/executeAddDependency";
+import {
+  buildPackagesAttrPattern,
+  executeAddDependency,
+} from "../processors/executeAddDependency";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -46,9 +49,9 @@ export function registerDependencyHandlers() {
       const message = [...foundMessages]
         .reverse()
         .find((m) =>
-          m.content.includes(
-            `<dyad-add-dependency packages="${packages.join(" ")}">`,
-          ),
+          new RegExp(
+            `<dyad-add-dependency packages="(?:${buildPackagesAttrPattern(packages)})">`,
+          ).test(m.content),
         );
 
       if (!message) {

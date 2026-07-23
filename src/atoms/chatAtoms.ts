@@ -168,7 +168,11 @@ export const closedTabHistoryAtom = atom<ClosedTabRecord[]>([]);
 const MAX_CLOSED_TAB_HISTORY = 10;
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 
-function dedupeValidChatIds(chatIds: number[], validChatIds: Set<number>) {
+function dedupeValidChatIds(
+  chatIds: number[],
+  validChatIds: Set<number>,
+  limit = MAX_RECENT_VIEWED_CHAT_IDS,
+) {
   const deduped: number[] = [];
   const seen = new Set<number>();
 
@@ -178,7 +182,7 @@ function dedupeValidChatIds(chatIds: number[], validChatIds: Set<number>) {
     }
     seen.add(chatId);
     deduped.push(chatId);
-    if (deduped.length >= MAX_RECENT_VIEWED_CHAT_IDS) {
+    if (deduped.length >= limit) {
       break;
     }
   }
@@ -193,16 +197,67 @@ export const hydrateChatTabSessionAtom = atom(
     const session = isChatTabSession(storedSession)
       ? storedSession
       : EMPTY_CHAT_TAB_SESSION;
-    const openChatIds = dedupeValidChatIds(session.openChatIds, validChatIds);
+    const currentSelectedChatId = get(selectedChatIdAtom);
+    const selectedChatIdOpenedBeforeHydration =
+      currentSelectedChatId !== null && validChatIds.has(currentSelectedChatId)
+        ? currentSelectedChatId
+        : null;
+    const currentOpenChatIds = dedupeValidChatIds(
+      [
+        ...get(recentViewedChatIdsAtom),
+        ...get(sessionOpenedChatIdsAtom),
+        ...(selectedChatIdOpenedBeforeHydration === null
+          ? []
+          : [selectedChatIdOpenedBeforeHydration]),
+      ],
+      validChatIds,
+    );
+    if (
+      selectedChatIdOpenedBeforeHydration !== null &&
+      !currentOpenChatIds.includes(selectedChatIdOpenedBeforeHydration)
+    ) {
+      currentOpenChatIds.pop();
+      currentOpenChatIds.push(selectedChatIdOpenedBeforeHydration);
+    }
+    const currentOpenChatIdSet = new Set(currentOpenChatIds);
+    const openChatIds = dedupeValidChatIds(
+      [...session.openChatIds, ...currentOpenChatIds],
+      validChatIds,
+      Number.POSITIVE_INFINITY,
+    );
+    // Stored order remains first, but live tabs have priority at the cap:
+    // evict stored-only tail entries before dropping anything opened during
+    // this startup window.
+    for (
+      let index = openChatIds.length - 1;
+      openChatIds.length > MAX_RECENT_VIEWED_CHAT_IDS && index >= 0;
+      index -= 1
+    ) {
+      if (!currentOpenChatIdSet.has(openChatIds[index])) {
+        openChatIds.splice(index, 1);
+      }
+    }
+    while (openChatIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
+      const removableIndex = openChatIds.findIndex(
+        (chatId) => chatId !== selectedChatIdOpenedBeforeHydration,
+      );
+      if (removableIndex < 0) break;
+      openChatIds.splice(removableIndex, 1);
+    }
+    const openChatIdSet = new Set(openChatIds);
     const closedChatIds = dedupeValidChatIds(
-      session.closedChatIds,
+      [...session.closedChatIds, ...get(closedChatIdsAtom)].filter(
+        (chatId) =>
+          !openChatIdSet.has(chatId) && !currentOpenChatIdSet.has(chatId),
+      ),
       validChatIds,
     );
     const selectedChatId =
-      session.selectedChatId !== null &&
+      selectedChatIdOpenedBeforeHydration ??
+      (session.selectedChatId !== null &&
       openChatIds.includes(session.selectedChatId)
         ? session.selectedChatId
-        : null;
+        : null);
 
     set(recentViewedChatIdsAtom, openChatIds);
     set(sessionOpenedChatIdsAtom, new Set(openChatIds));

@@ -270,7 +270,15 @@
         "parameters": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
-          "properties": {},
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "One sentence explaining why the current Git working-tree state needs to be inspected."
+            }
+          },
+          "required": [
+            "reason"
+          ],
           "additionalProperties": false
         }
       },

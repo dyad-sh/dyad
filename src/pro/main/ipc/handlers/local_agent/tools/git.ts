@@ -130,7 +130,13 @@ function getCommitSubject(content: string): string | undefined {
   return subject?.slice(0, 160);
 }
 
-const gitStatusSchema = z.object({});
+const gitStatusSchema = z.object({
+  reason: z
+    .string()
+    .describe(
+      "One sentence explaining why the current Git working-tree state needs to be inspected.",
+    ),
+});
 
 export const gitStatusTool: ToolDefinition<z.infer<typeof gitStatusSchema>> = {
   name: "git_status",

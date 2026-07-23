@@ -106,6 +106,15 @@ import {
 } from "../tool_definitions";
 
 describe("local-agent Git tool definitions", () => {
+  it("requires a reason for git status inspection", () => {
+    expect(gitStatusTool.inputSchema.safeParse({}).success).toBe(false);
+    expect(
+      gitStatusTool.inputSchema.safeParse({
+        reason: "Check whether the requested edits changed the working tree.",
+      }).success,
+    ).toBe(true);
+  });
+
   it("marks only restore as state-changing", () => {
     expect(gitStatusTool.modifiesState).toBeFalsy();
     expect(gitDiffTool.modifiesState).toBeFalsy();
@@ -256,7 +265,10 @@ describe("local-agent Git tool definitions", () => {
       onXmlComplete: vi.fn(),
     } as unknown as AgentContext;
 
-    await gitStatusTool.execute({}, ctx);
+    await gitStatusTool.execute(
+      { reason: "Inspect the current working-tree state." },
+      ctx,
+    );
     await gitDiffTool.execute({ scope: "all" }, ctx);
     await gitLogTool.execute({ max_count: 2 }, ctx);
     await gitShowCommitTool.execute({ revision: "HEAD" }, ctx);

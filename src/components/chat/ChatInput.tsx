@@ -143,6 +143,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     selectedMode: chatMode,
     effectiveMode,
+    storedChatMode,
     isLoading: isChatModeLoading,
   } = useChatMode(chatId);
   const appId = useAtomValue(selectedAppIdAtom);
@@ -633,7 +634,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
-      requestedChatMode: isChatModeLoading ? null : chatMode,
+      requestedChatMode: isChatModeLoading ? null : storedChatMode,
     });
     clearAttachments();
     posthog.capture("chat:submit", { chatMode });

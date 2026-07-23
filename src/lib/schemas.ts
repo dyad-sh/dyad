@@ -563,6 +563,7 @@ export function getEffectiveDefaultChatMode(
 
   if (isPro) return "local-agent";
   if (freeAgentQuotaAvailable === false) return "build";
+  if (settings.defaultChatMode === "local-agent") return "local-agent";
   if (hasGoogleProviderSetup && !hasNonGoogleProviderSetup) return "build";
   return "local-agent";
 }

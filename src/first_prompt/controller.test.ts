@@ -5,6 +5,7 @@ import {
 } from "@/state_machines/testing";
 import {
   createFirstPromptCommandRunner,
+  getRequestedChatModeForFirstPrompt,
   type FirstPromptDeps,
 } from "./commands";
 import { FirstPromptController } from "./controller";
@@ -80,6 +81,17 @@ function createHarness() {
 
 describe("FirstPromptController", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("only forwards explicit chat modes to main", () => {
+    expect(getRequestedChatModeForFirstPrompt(payload)).toBeNull();
+    expect(
+      getRequestedChatModeForFirstPrompt({
+        ...payload,
+        chatMode: "local-agent",
+        isChatModeExplicit: true,
+      }),
+    ).toBe("local-agent");
+  });
 
   for (const failingStep of ["neon", "theme"] as const) {
     it(`${failingStep} failure retries post-create with the existing app`, async () => {

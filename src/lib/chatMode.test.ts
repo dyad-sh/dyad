@@ -222,7 +222,7 @@ describe("chat mode resolution", () => {
     expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
   });
 
-  it("does not honor a local-agent default for Google/Gemini", () => {
+  it("honors an explicit local-agent default for Google/Gemini", () => {
     const settings = makeSettings({
       defaultChatMode: "local-agent",
       providerSettings: {
@@ -230,7 +230,11 @@ describe("chat mode resolution", () => {
       },
     });
 
-    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
+    expect(getEffectiveDefaultChatMode(settings, {}, undefined)).toBe(
+      "local-agent",
+    );
+    expect(getEffectiveDefaultChatMode(settings, {}, false)).toBe("build");
   });
 
   it("does not treat unknown quota as exhausted", () => {

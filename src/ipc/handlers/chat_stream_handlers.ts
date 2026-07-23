@@ -1063,25 +1063,88 @@ ${componentSnippet}
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
-      const [insertedUserMessage] = await db
-        .insert(messages)
-        .values({
-          chatId: req.chatId,
-          role: "user",
-          content:
-            implementPlanDisplayPrompt ??
-            displayUserPrompt ??
-            defaultAiUserPrompt,
-          userInputRequestId: req.userInputRequestId,
-        })
-        .onConflictDoNothing({
-          target: [messages.chatId, messages.userInputRequestId],
-        })
-        .returning({ id: messages.id });
-      if (!insertedUserMessage) {
+      let {
+        settings: storedSettings,
+        mode: selectedChatMode,
+        fallbackReason: chatModeFallbackReason,
+      } = await resolveChatModeForTurn({
+        storedChatMode: chat.chatMode,
+        requestedChatMode: req.requestedChatMode,
+      });
+
+      // Accept the user message and latch an implicit chat's first mode in one
+      // synchronous transaction. This keeps the durable idempotency marker and
+      // the mode latch atomic. The conditional update also arbitrates
+      // concurrent first turns; a loser reloads and uses the winner below.
+      const acceptedTurn = db.transaction((tx) => {
+        const insertedUserMessage = tx
+          .insert(messages)
+          .values({
+            chatId: req.chatId,
+            role: "user",
+            content:
+              implementPlanDisplayPrompt ??
+              displayUserPrompt ??
+              defaultAiUserPrompt,
+            userInputRequestId: req.userInputRequestId,
+          })
+          .onConflictDoNothing({
+            target: [messages.chatId, messages.userInputRequestId],
+          })
+          .returning({ id: messages.id })
+          .get();
+
+        if (!insertedUserMessage) {
+          // Repair chats accepted before first-turn latching became atomic.
+          tx.update(chats)
+            .set({ chatMode: selectedChatMode })
+            .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)))
+            .run();
+          return { userMessageId: null, authoritativeChatMode: null };
+        }
+
+        if (chat.chatMode !== null) {
+          return {
+            userMessageId: insertedUserMessage.id,
+            authoritativeChatMode: null,
+          };
+        }
+
+        const latchedChat = tx
+          .update(chats)
+          .set({ chatMode: selectedChatMode })
+          .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)))
+          .returning({ chatMode: chats.chatMode })
+          .get();
+        if (latchedChat) {
+          return {
+            userMessageId: insertedUserMessage.id,
+            authoritativeChatMode: latchedChat.chatMode,
+          };
+        }
+
+        const winningChat = tx
+          .select({ chatMode: chats.chatMode })
+          .from(chats)
+          .where(eq(chats.id, req.chatId))
+          .get();
+        if (!winningChat) {
+          throw new DyadError(
+            `Chat not found: ${req.chatId}`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        return {
+          userMessageId: insertedUserMessage.id,
+          authoritativeChatMode: winningChat.chatMode,
+        };
+      });
+
+      if (acceptedTurn.userMessageId === null) {
         // A renderer replayed a continuation after main had already accepted
         // the same durable idempotency key. Confirm acceptance without
-        // inserting another user message or starting another model turn.
+        // inserting another user message or starting another model turn. The
+        // transaction above also repairs a still-null first-turn mode.
         replayedAcceptedFollowUp = true;
         safeSend(event.sender, "chat:response:chunk", {
           chatId: req.chatId,
@@ -1095,27 +1158,28 @@ ${componentSnippet}
         } satisfies ChatStreamEndPayload);
         return req.chatId;
       }
-      const userMessageId = insertedUserMessage.id;
+
+      if (
+        acceptedTurn.authoritativeChatMode !== null &&
+        acceptedTurn.authoritativeChatMode !== selectedChatMode
+      ) {
+        const authoritativeResolution = await resolveChatModeForTurn({
+          storedChatMode: acceptedTurn.authoritativeChatMode,
+        });
+        ({
+          settings: storedSettings,
+          mode: selectedChatMode,
+          fallbackReason: chatModeFallbackReason,
+        } = authoritativeResolution);
+      }
+
+      const userMessageId = acceptedTurn.userMessageId;
       if (req.userInputRequestId) {
         safeSend(event.sender, "chat:response:chunk", {
           chatId: req.chatId,
           streamId: req.streamId,
           acceptedUserInputRequestId: req.userInputRequestId,
         } satisfies ChatStreamChunkPayload);
-      }
-      const {
-        settings: storedSettings,
-        mode: selectedChatMode,
-        fallbackReason: chatModeFallbackReason,
-      } = await resolveChatModeForTurn({
-        storedChatMode: chat.chatMode,
-        requestedChatMode: req.requestedChatMode,
-      });
-      if (chat.chatMode === null) {
-        await db
-          .update(chats)
-          .set({ chatMode: selectedChatMode })
-          .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)));
       }
       const settings = {
         ...storedSettings,

@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAtomValue } from "jotai";
+import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
 import { ipc, type Chat } from "@/ipc/types";
 import type { ChatSummary } from "@/lib/schemas";
 import {
@@ -29,6 +31,9 @@ export function useChatMode(chatId: number | null | undefined) {
   const queryClient = useQueryClient();
   const { settings, envVars, updateSettings } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const hasManuallySelectedChatMode = useAtomValue(
+    hasManuallySelectedChatModeAtom,
+  );
   const activeChatId = chatId ?? null;
 
   const chatQuery = useQuery({
@@ -45,7 +50,9 @@ export function useChatMode(chatId: number | null | undefined) {
   const storedChatMode = chatQuery.data?.chatMode ?? null;
   const selectedMode = activeChatId
     ? (storedChatMode ?? effectiveDefaultMode)
-    : (settings?.selectedChatMode ?? "build");
+    : hasManuallySelectedChatMode
+      ? (settings?.selectedChatMode ?? effectiveDefaultMode)
+      : effectiveDefaultMode;
 
   const fallbackReason = useMemo<ChatModeFallbackReason | undefined>(() => {
     if (!settings || !activeChatId || !storedChatMode) {

@@ -112,6 +112,27 @@ describe("default chat mode selector (integration)", () => {
     );
   });
 
+  it("honors an explicit Agent default for Google-only users", async () => {
+    writeSettings({
+      enableDyadPro: false,
+      providerSettings: {
+        google: { apiKey: { value: "google-key" } },
+      },
+      selectedChatMode: "local-agent",
+      defaultChatMode: "local-agent",
+    });
+
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+
+    const selector = await screen.findByTestId("chat-mode-selector");
+    await waitFor(() =>
+      expect(selector.getAttribute("aria-label")).toBe(
+        "Chat mode: Basic Agent",
+      ),
+    );
+  });
+
   it("stores automatic chats as implicit and explicit overrides as latched", async () => {
     const implicitChatId = await ipc.chat.createChat({
       appId: harness.appId,

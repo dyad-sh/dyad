@@ -55,6 +55,16 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 - Terminal stream callbacks may synchronously start a replacement stream with the same key. Cleanup after `onEnd`/`onError` (including invoke rejection) must delete the entry only when the map still points to the generation that ended; an unconditional keyed delete can orphan the replacement stream.
 - By default the entry is removed when the end/error event arrives (`autoRelease: true`). Pass `{ autoRelease: false }` to keep receiving events after a terminal event, and call `release(key, streamId)` when done — the chat stream machine uses this to keep entry ownership with its controller until finalization side effects complete (`release` with a stale `streamId` is a no-op).
 - Chat streams: do NOT call `ipc.chatStream.start` or guard against duplicate streams outside `src/chat_stream/commands.ts`. The per-chat state machine is the single source of truth for the lifecycle; submit through `useStreamChat().streamMessage` or `ChatStreamManager.ensure(chatId).send({ type: "submit", ... })`, and it serializes/queues by construction.
+- A null chat mode means the automatic default is still implicit. Renderer
+  submissions must preserve that distinction with the existing null
+  `requestedChatMode` sentinel instead of sending the computed display mode as
+  an explicit override; otherwise main cannot apply the latest provider/quota
+  state before the first turn.
+- Keep durable first-turn acceptance atomic with latching an implicit chat
+  mode. The idempotent user-message insert and conditional mode update belong
+  in one synchronous SQLite transaction, duplicate replay must repair legacy
+  null rows, and a concurrent conditional-update loser must use the stored
+  winner before choosing prompts or tools.
 - If a legacy UI path appends directly to `queuedMessagesByIdAtom` instead of submitting through the machine, poke the chat controller immediately after the synchronous atom write. The render that chose the queue path may be stale after finalization's one automatic dispatch, otherwise leaving the new item without a driver.
 - **Never gate global-state cleanup in `onEnd`/`onError` on a local `isMountedRef`.** Stream callbacks outlive the component that started them. If the user navigates away mid-stream, an unmount-guarded `onEnd` skips `setIsStreamingByIdAtom(false)` and `syncChatFromDb`, leaving the chat permanently `isStreaming=true` — `ChatPanel.fetchChatMessages` then skips IPC fetches forever and only a page refresh recovers. Always run global Jotai state writes and DB syncs unconditionally; only guard UI-only side effects (toasts, console logs, local React state) on mount. See `src/chat_stream/commands.ts` for the no-guard pattern.
 

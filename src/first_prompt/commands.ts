@@ -9,6 +9,12 @@ import type { FirstPromptCommandRunner } from "./controller";
 
 export const PROVIDER_CHECK_TIMEOUT_MS = 10_000;
 
+export function getRequestedChatModeForFirstPrompt(
+  payload: FirstPromptPayload,
+): FirstPromptPayload["chatMode"] | null {
+  return payload.isChatModeExplicit ? payload.chatMode : null;
+}
+
 export interface CreatedFirstPromptApp {
   readonly appId: number;
   readonly appName: string;

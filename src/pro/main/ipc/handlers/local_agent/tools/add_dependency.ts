@@ -10,14 +10,20 @@ import {
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const addDependencySchema = z.object({
-  packages: z.array(z.string()).describe("Array of package names to install"),
+  packages: z
+    .array(z.string())
+    .min(1)
+    .describe(
+      "npm package names or registry version specs. Use a bare name (for example, pkg) to install it or refresh an existing dependency within its current package.json constraint. Use pkg@latest only to intentionally upgrade to the latest release, including a new major. Exact versions, caret/tilde ranges, partial/x ranges, prereleases, and dist-tags are supported.",
+    ),
 });
 
 export const addDependencyTool: ToolDefinition<
   z.infer<typeof addDependencySchema>
 > = {
   name: "add_dependency",
-  description: "Install npm packages",
+  description:
+    "Install or refresh npm packages. A bare package preserves an existing version constraint; use package@latest to explicitly upgrade it.",
   inputSchema: addDependencySchema,
   defaultConsent: "ask",
   modifiesState: true,
@@ -25,7 +31,7 @@ export const addDependencyTool: ToolDefinition<
   getConsentPreview: (args) => `Install ${args.packages.join(", ")}`,
 
   shouldTrackMutation: (_args, result) =>
-    result.startsWith("Successfully installed"),
+    result.startsWith("Successfully installed or updated"),
 
   buildXml: (args, _isComplete) => {
     if (!args.packages || args.packages.length === 0) return undefined;
@@ -64,6 +70,6 @@ export const addDependencyTool: ToolDefinition<
       throw error;
     }
 
-    return `Successfully installed ${args.packages.join(", ")}`;
+    return `Successfully installed or updated ${args.packages.join(", ")}`;
   },
 };

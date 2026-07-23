@@ -1264,9 +1264,9 @@ export function buildAddDependencyCommand(
   packages: string[],
   packageManager: PackageManager,
   useSocketFirewall: boolean,
-  options: { dev?: boolean } = {},
+  options: { dev?: boolean; saveExact?: boolean } = {},
 ): { command: string; args: string[] } {
-  const { dev = false } = options;
+  const { dev = false, saveExact = false } = options;
   const packageManagerArgs =
     packageManager === "pnpm"
       ? [
@@ -1274,15 +1274,46 @@ export function buildAddDependencyCommand(
           "add",
           "--ignore-workspace-root-check",
           ...(dev ? ["-D"] : []),
+          ...(saveExact ? ["--save-exact"] : []),
           ...packages,
         ]
       : [
           "install",
           "--legacy-peer-deps",
           ...(dev ? ["--save-dev"] : []),
+          ...(saveExact ? ["--save-exact"] : []),
           ...packages,
         ];
 
+  return wrapPackageManagerCommand(
+    packageManager,
+    packageManagerArgs,
+    useSocketFirewall,
+  );
+}
+
+export function buildUpdateDependencyCommand(
+  packages: string[],
+  packageManager: PackageManager,
+  useSocketFirewall: boolean,
+): { command: string; args: string[] } {
+  const packageManagerArgs =
+    packageManager === "pnpm"
+      ? [...PNPM_INSTALL_POLICY_ARGS, "update", ...packages]
+      : ["update", "--legacy-peer-deps", ...packages];
+
+  return wrapPackageManagerCommand(
+    packageManager,
+    packageManagerArgs,
+    useSocketFirewall,
+  );
+}
+
+function wrapPackageManagerCommand(
+  packageManager: PackageManager,
+  packageManagerArgs: string[],
+  useSocketFirewall: boolean,
+): { command: string; args: string[] } {
   if (useSocketFirewall) {
     return {
       // Use a pinned npx package so sfw stays reproducible and avoids global path issues on Windows.

@@ -272,6 +272,13 @@ describe("getDyadAddDependencyTags", () => {
     );
     expect(result).toEqual(["pkg1", "pkg2", "pkg3"]);
   });
+
+  it("preserves scoped version specs and ignores extra whitespace", () => {
+    const result = getDyadAddDependencyTags(
+      `<dyad-add-dependency packages="  foo@latest   @scope/bar@^2.0.0 "></dyad-add-dependency>`,
+    );
+    expect(result).toEqual(["foo@latest", "@scope/bar@^2.0.0"]);
+  });
 });
 describe("getDyadWriteTags", () => {
   it("should return an empty array when no dyad-write tags are found", () => {

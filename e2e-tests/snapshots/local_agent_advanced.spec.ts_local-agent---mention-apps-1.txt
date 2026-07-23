@@ -157,17 +157,18 @@
       },
       {
         "name": "add_dependency",
-        "description": "Install npm packages",
+        "description": "Install or refresh npm packages. A bare package preserves an existing version constraint; use package@latest to explicitly upgrade it.",
         "input_schema": {
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "packages": {
+              "minItems": 1,
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "description": "Array of package names to install"
+              "description": "npm package names or registry version specs. Use a bare name (for example, pkg) to install it or refresh an existing dependency within its current package.json constraint. Use pkg@latest only to intentionally upgrade to the latest release, including a new major. Exact versions, caret/tilde ranges, partial/x ranges, prereleases, and dist-tags are supported."
             }
           },
           "required": [

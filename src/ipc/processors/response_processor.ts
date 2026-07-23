@@ -723,7 +723,7 @@ export async function processFullResponseActions(
         changes.push(`deleted ${deletedFiles.length} file(s)`);
       if (dyadAddDependencyPackages.length > 0)
         changes.push(
-          `added ${dyadAddDependencyPackages.join(", ")} package(s)`,
+          `installed or updated ${dyadAddDependencyPackages.join(", ")} package(s)`,
         );
       if (dyadExecuteSqlQueries.length > 0)
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);

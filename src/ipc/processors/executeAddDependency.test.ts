@@ -549,21 +549,129 @@ describe("executeAddDependency", () => {
     }
   });
 
-  it("rejects invalid npm package specs before invoking the shell", async () => {
-    await expect(
-      executeAddDependency({
-        packages: ["react@^18.0.0"],
+  it("installs new packages, saves exact pins, and refreshes existing constraints in separate groups", async () => {
+    const appPath = await mkdtemp(path.join(os.tmpdir(), "dyad-add-dep-"));
+    try {
+      await writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify({
+          packageManager: "npm@10.8.2",
+          dependencies: { react: "^18.0.0" },
+          devDependencies: { typescript: "~5.7.0" },
+          optionalDependencies: { sharp: "^0.33.0" },
+          peerDependencies: { vite: "^6.0.0" },
+        }),
+      );
+      await writeFile(path.join(appPath, "package-lock.json"), "{}");
+      ensureSocketFirewallInstalledMock.mockResolvedValue({
+        available: false,
+      });
+      runCommandMock
+        .mockResolvedValueOnce({ stdout: "installed ranges", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "installed exact", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "updated existing", stderr: "" });
+
+      const packages = [
+        "vite",
+        "@tanstack/react-query@^5.0.0",
+        "zod@4.0.0",
+        "react",
+        "typescript",
+        "sharp",
+      ];
+      const result = await executeAddDependency({
+        packages,
         message: {
           id: 1,
-          content:
-            '<dyad-add-dependency packages="react@^18.0.0"></dyad-add-dependency>',
+          content: `<dyad-add-dependency packages="${packages.join(" ")}"></dyad-add-dependency>`,
+        } as any,
+        appPath,
+      });
+
+      expect(runCommandMock).toHaveBeenNthCalledWith(
+        1,
+        "npm",
+        [
+          "install",
+          "--legacy-peer-deps",
+          "vite",
+          "@tanstack/react-query@^5.0.0",
+        ],
+        expect.objectContaining({ cwd: appPath }),
+      );
+      expect(runCommandMock).toHaveBeenNthCalledWith(
+        2,
+        "npm",
+        ["install", "--legacy-peer-deps", "--save-exact", "zod@4.0.0"],
+        expect.objectContaining({ cwd: appPath }),
+      );
+      expect(runCommandMock).toHaveBeenNthCalledWith(
+        3,
+        "npm",
+        ["update", "--legacy-peer-deps", "react", "typescript", "sharp"],
+        expect.objectContaining({ cwd: appPath }),
+      );
+      expect(result.installResults).toBe(
+        "installed ranges\ninstalled exact\nupdated existing",
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    "react@latest",
+    "react@next",
+    "react@19",
+    "react@19.1",
+    "react@19.x",
+    "react@^19.0.0",
+    "react@~19.1",
+    "react@19.0.0-rc.1",
+    "@scope/pkg@^2.0.0",
+  ])("accepts registry package spec %s", async (packageSpec) => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+    });
+    runCommandMock.mockResolvedValueOnce({ stdout: "installed", stderr: "" });
+
+    await executeAddDependency({
+      packages: [packageSpec],
+      message: {
+        id: 1,
+        content: `<dyad-add-dependency packages="${packageSpec}"></dyad-add-dependency>`,
+      } as any,
+      appPath: "/tmp/app",
+    });
+
+    expect(runCommandMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["empty input", []],
+    ["empty package", [""]],
+    ["option", ["--force"]],
+    ["current directory", ["."]],
+    ["underscore-prefixed name", ["_private"]],
+    ["compound range", ["react@>=18 <20"]],
+    ["range union", ["react@^18||^19"]],
+    ["alias", ["foo@npm:bar@1"]],
+    ["workspace", ["foo@workspace:*"]],
+    ["local path", ["../foo"]],
+    ["URL", ["https://example.com/foo.tgz"]],
+    ["GitHub shorthand", ["owner/repo"]],
+    ["duplicate package", ["react", "react@latest"]],
+  ])("rejects %s before invoking the shell", async (_label, packages) => {
+    await expect(
+      executeAddDependency({
+        packages,
+        message: {
+          id: 1,
+          content: `<dyad-add-dependency packages="${packages.join(" ")}"></dyad-add-dependency>`,
         } as any,
         appPath: "/tmp/app",
       }),
-    ).rejects.toMatchObject({
-      displaySummary: "Invalid npm package name: react@^18.0.0",
-      warningMessages: [],
-    });
+    ).rejects.toBeInstanceOf(ExecuteAddDependencyError);
 
     expect(runCommandMock).not.toHaveBeenCalled();
   });

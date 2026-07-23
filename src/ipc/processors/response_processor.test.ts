@@ -118,7 +118,7 @@ vi.mock("./executeAddDependency", async () => {
 });
 
 import { db } from "../../db";
-import { gitAdd, hasStagedChanges } from "../utils/git_utils";
+import { gitAdd, gitCommit, hasStagedChanges } from "../utils/git_utils";
 import { processFullResponseActions } from "./response_processor";
 import { resolveSelfAlias } from "../utils/path_test_utils";
 
@@ -281,6 +281,28 @@ describe("processFullResponseActions add dependency errors", () => {
     expect(result).toMatchObject({
       error: "Error: git add failed",
       warningMessages: [SOCKET_FIREWALL_WARNING_MESSAGE],
+    });
+  });
+
+  it("describes legacy dependency commits as installs or updates", async () => {
+    executeAddDependencyMock.mockResolvedValue({
+      installResults: "updated",
+      warningMessages: [],
+    });
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+
+    await processFullResponseActions(
+      '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(gitCommit).toHaveBeenCalledWith({
+      path: "/mock/apps/test-app",
+      message: "[dyad] wrote 1 file(s), installed or updated react package(s)",
     });
   });
 

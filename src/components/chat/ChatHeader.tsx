@@ -33,7 +33,6 @@ import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
-import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +60,6 @@ export function ChatHeader({
   const { invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
   const { isStreaming } = useStreamChat();
-  const initialChatMode = useInitialChatMode();
   const isAnyCheckoutVersionInProgress = useAtomValue(
     isAnyCheckoutVersionInProgressAtom,
   );
@@ -99,10 +97,7 @@ export function ChatHeader({
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const chatId = await ipc.chat.createChat({
-          appId,
-          initialChatMode,
-        });
+        const chatId = await ipc.chat.createChat({ appId });
         await invalidateChats();
         selectChat({ chatId, appId });
       } catch (error) {

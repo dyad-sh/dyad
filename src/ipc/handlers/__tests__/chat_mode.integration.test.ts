@@ -16,12 +16,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { screen, waitFor } from "@testing-library/react";
+import { eq } from "drizzle-orm";
 
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { chats, messages } from "@/db/schema";
+import { writeSettings } from "@/main/settings";
 
 function errorEvents(harness: HybridChatHarness) {
   return harness.bridge.sentEvents.filter(
@@ -77,6 +80,10 @@ describe("chat mode (integration)", () => {
     expect(messages[0].content).toBe("[dump] hi");
     expect(messages[1].role).toBe("assistant");
     expect(messages[1].content).toContain("[[dyad-dump-path=");
+    const latchedChat = await harness.db.query.chats.findFirst({
+      where: (chats, { eq }) => eq(chats.id, harness.chatId),
+    });
+    expect(latchedChat?.chatMode).toBe("build");
   }, 60_000);
 
   it("ask mode omits codebase context and does not apply changes", async () => {
@@ -126,5 +133,56 @@ describe("chat mode (integration)", () => {
     // only the dump-path marker (no dyad-write), so build mode above committed
     // nothing either — only the fixture init commit exists.
     expect(harness.gitLog()).toHaveLength(1);
+  }, 60_000);
+
+  it("repairs a null mode when an accepted first turn is replayed", async () => {
+    const replayChatId = await harness.createChat();
+    const userInputRequestId = "accepted-first-turn";
+    await harness.db.insert(messages).values({
+      chatId: replayChatId,
+      role: "user",
+      content: "already accepted",
+      userInputRequestId,
+    });
+
+    const result = await harness.streamChat("already accepted", {
+      chatId: replayChatId,
+      requestedChatMode: "ask",
+      userInputRequestId,
+    });
+
+    expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+    expect(result.eventsFor("chat:response:end")).toHaveLength(1);
+    const repairedChat = await harness.db.query.chats.findFirst({
+      where: eq(chats.id, replayChatId),
+    });
+    expect(repairedChat?.chatMode).toBe("ask");
+    const replayMessages = await harness.db.query.messages.findMany({
+      where: eq(messages.chatId, replayChatId),
+    });
+    expect(replayMessages).toHaveLength(1);
+  }, 60_000);
+
+  it("lets main resolve an implicit Google-only first turn", async () => {
+    writeSettings({
+      enableDyadPro: false,
+      providerSettings: {
+        google: { apiKey: { value: "google-key" } },
+      },
+      selectedChatMode: "local-agent",
+      defaultChatMode: undefined,
+    });
+    const implicitChatId = await harness.createChat();
+
+    const result = await harness.streamChat("[dump] google implicit", {
+      chatId: implicitChatId,
+      userInputRequestId: "google-implicit",
+    });
+
+    expect(result.eventsFor("chat:response:error")).toHaveLength(0);
+    const latchedChat = await harness.db.query.chats.findFirst({
+      where: eq(chats.id, implicitChatId),
+    });
+    expect(latchedChat?.chatMode).toBe("build");
   }, 60_000);
 });

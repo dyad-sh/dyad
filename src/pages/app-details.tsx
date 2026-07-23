@@ -68,7 +68,6 @@ import { useAppCollections } from "@/hooks/useAppCollections";
 import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectionDialog";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
-import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 function UnavailableIntegrationCard({
   provider,
@@ -154,7 +153,6 @@ export default function AppDetailsPage() {
   const providerFilter = search.provider;
   const { chats, loading: chatsLoading, invalidateChats } = useChats(appId);
   const { selectChat } = useSelectChat();
-  const initialChatMode = useInitialChatMode();
 
   const { data: screenshotsData } = useQuery({
     queryKey: queryKeys.apps.screenshots({ appId }),
@@ -392,10 +390,7 @@ export default function AppDetailsPage() {
         return;
       }
 
-      const chatId = await ipc.chat.createChat({
-        appId,
-        initialChatMode,
-      });
+      const chatId = await ipc.chat.createChat({ appId });
       await invalidateChats();
       selectChat({ chatId, appId });
     } catch (error) {

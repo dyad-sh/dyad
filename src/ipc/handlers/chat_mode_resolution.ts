@@ -1,5 +1,4 @@
 import {
-  getEffectiveDefaultChatMode,
   isDyadProEnabled,
   type ChatMode,
   type UserSettings,
@@ -9,12 +8,27 @@ import {
   resolveChatMode,
   type ChatModeResolution,
 } from "@/lib/chatMode";
+import {
+  FREE_PRO_BUILD_MODE_ERROR,
+  getFreeProCompatibleChatMode,
+  isFreeProBuildModeCombination,
+} from "@/lib/freeProModel";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
 import { getEnvVar } from "@/ipc/utils/read_env";
 import { getFreeAgentQuotaStatus } from "./free_agent_quota_handlers";
 
 export { normalizeStoredChatMode };
+
+export function assertChatModeCompatibleWithModel(
+  settings: UserSettings,
+  chatMode: ChatMode,
+): void {
+  if (isFreeProBuildModeCombination(settings.selectedModel, chatMode)) {
+    throw new DyadError(FREE_PRO_BUILD_MODE_ERROR, DyadErrorKind.Precondition);
+  }
+}
 
 export async function resolveChatModeForTurn({
   storedChatMode,
@@ -33,40 +47,27 @@ export async function resolveChatModeForTurn({
     normalizedChatMode,
   );
 
+  const resolution = resolveChatMode({
+    storedChatMode: modeForTurn,
+    settings,
+    envVars,
+    freeAgentQuotaAvailable,
+  });
+
   return {
-    ...resolveChatMode({
-      storedChatMode: modeForTurn,
-      settings,
-      envVars,
-      freeAgentQuotaAvailable,
-    }),
+    ...resolution,
+    mode:
+      normalizedChatMode === null
+        ? getFreeProCompatibleChatMode(settings.selectedModel, resolution.mode)
+        : resolution.mode,
     settings,
   };
 }
 
 export async function getInitialChatModeForNewChat(
   initialChatMode?: ChatMode,
-): Promise<ChatMode> {
-  if (initialChatMode) {
-    return initialChatMode;
-  }
-
-  const settings = readSettings();
-  if (settings.selectedChatMode) {
-    return settings.selectedChatMode;
-  }
-
-  const envVars = getChatModeEnvVars();
-  const freeAgentQuotaAvailable = await getFreeAgentQuotaAvailableIfNeeded(
-    settings,
-    null,
-  );
-
-  return getEffectiveDefaultChatMode(
-    settings,
-    envVars,
-    freeAgentQuotaAvailable,
-  );
+): Promise<ChatMode | null> {
+  return initialChatMode ?? null;
 }
 
 function getChatModeEnvVars(): Record<string, string | undefined> {

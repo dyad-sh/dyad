@@ -110,7 +110,6 @@ import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { useChatMode } from "@/hooks/useChatMode";
-import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import {
   getUserInputProjectionAdapter,
@@ -144,9 +143,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     selectedMode: chatMode,
     effectiveMode,
+    storedChatMode,
     isLoading: isChatModeLoading,
   } = useChatMode(chatId);
-  const initialChatMode = useInitialChatMode();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -635,7 +634,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
-      requestedChatMode: isChatModeLoading ? null : chatMode,
+      requestedChatMode: isChatModeLoading ? null : storedChatMode,
     });
     clearAttachments();
     posthog.capture("chat:submit", { chatMode });
@@ -665,10 +664,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const newChatId = await ipc.chat.createChat({
-          appId,
-          initialChatMode,
-        });
+        const newChatId = await ipc.chat.createChat({ appId });
         setSelectedChatId(newChatId);
         navigate({
           to: "/chat",

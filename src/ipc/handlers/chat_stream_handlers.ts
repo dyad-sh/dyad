@@ -122,12 +122,12 @@ import {
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import { isFreeProModel } from "@/lib/freeProModel";
 import {
-  FREE_PRO_BUILD_MODE_ERROR,
-  isFreeProBuildModeCombination,
-  isFreeProModel,
-} from "@/lib/freeProModel";
-import { resolveChatModeForTurn } from "./chat_mode_resolution";
+  assertChatModeCompatibleWithModel,
+  resolveChatModeForTurn,
+} from "./chat_mode_resolution";
+import { acceptChatTurn } from "./chat_turn_acceptance";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -1063,25 +1063,36 @@ ${componentSnippet}
       const defaultAiUserPrompt =
         userPrompt + (attachmentInfo ? attachmentInfo : "");
 
-      const [insertedUserMessage] = await db
-        .insert(messages)
-        .values({
-          chatId: req.chatId,
-          role: "user",
-          content:
-            implementPlanDisplayPrompt ??
-            displayUserPrompt ??
-            defaultAiUserPrompt,
-          userInputRequestId: req.userInputRequestId,
-        })
-        .onConflictDoNothing({
-          target: [messages.chatId, messages.userInputRequestId],
-        })
-        .returning({ id: messages.id });
-      if (!insertedUserMessage) {
+      let {
+        settings: storedSettings,
+        mode: selectedChatMode,
+        fallbackReason: chatModeFallbackReason,
+      } = await resolveChatModeForTurn({
+        storedChatMode: chat.chatMode,
+        requestedChatMode: req.requestedChatMode,
+      });
+      assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+
+      // Accept the user message and latch an implicit chat's first mode in one
+      // synchronous transaction. This keeps the durable idempotency marker and
+      // the mode latch atomic. The conditional update also arbitrates
+      // concurrent first turns; a loser reloads and uses the winner below.
+      const acceptedTurn = acceptChatTurn(db, {
+        chatId: req.chatId,
+        storedChatMode: chat.chatMode,
+        selectedChatMode,
+        content:
+          implementPlanDisplayPrompt ??
+          displayUserPrompt ??
+          defaultAiUserPrompt,
+        userInputRequestId: req.userInputRequestId,
+      });
+
+      if (acceptedTurn.userMessageId === null) {
         // A renderer replayed a continuation after main had already accepted
         // the same durable idempotency key. Confirm acceptance without
-        // inserting another user message or starting another model turn.
+        // inserting another user message or starting another model turn. The
+        // transaction above also repairs a still-null first-turn mode.
         replayedAcceptedFollowUp = true;
         safeSend(event.sender, "chat:response:chunk", {
           chatId: req.chatId,
@@ -1095,7 +1106,23 @@ ${componentSnippet}
         } satisfies ChatStreamEndPayload);
         return req.chatId;
       }
-      const userMessageId = insertedUserMessage.id;
+
+      if (
+        acceptedTurn.authoritativeChatMode !== null &&
+        acceptedTurn.authoritativeChatMode !== selectedChatMode
+      ) {
+        const authoritativeResolution = await resolveChatModeForTurn({
+          storedChatMode: acceptedTurn.authoritativeChatMode,
+        });
+        ({
+          settings: storedSettings,
+          mode: selectedChatMode,
+          fallbackReason: chatModeFallbackReason,
+        } = authoritativeResolution);
+        assertChatModeCompatibleWithModel(storedSettings, selectedChatMode);
+      }
+
+      const userMessageId = acceptedTurn.userMessageId;
       if (req.userInputRequestId) {
         safeSend(event.sender, "chat:response:chunk", {
           chatId: req.chatId,
@@ -1103,26 +1130,10 @@ ${componentSnippet}
           acceptedUserInputRequestId: req.userInputRequestId,
         } satisfies ChatStreamChunkPayload);
       }
-      const {
-        settings: storedSettings,
-        mode: selectedChatMode,
-        fallbackReason: chatModeFallbackReason,
-      } = await resolveChatModeForTurn({
-        storedChatMode: chat.chatMode,
-        requestedChatMode: req.requestedChatMode,
-      });
       const settings = {
         ...storedSettings,
         selectedChatMode,
       };
-      if (
-        isFreeProBuildModeCombination(settings.selectedModel, selectedChatMode)
-      ) {
-        throw new DyadError(
-          FREE_PRO_BUILD_MODE_ERROR,
-          DyadErrorKind.Precondition,
-        );
-      }
       const freeModelMode = isFreeProModel(settings.selectedModel);
       const hasImageAttachments = storedAttachments.some((attachment) =>
         attachment.mimeType.startsWith("image/"),

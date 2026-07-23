@@ -48,6 +48,7 @@ import {
 import { SetupBanner } from "@/components/SetupBanner";
 import {
   createFirstPromptCommandRunner,
+  getRequestedChatModeForFirstPrompt,
   type FirstPromptDeps,
 } from "./commands";
 import { FirstPromptController } from "./controller";
@@ -66,7 +67,7 @@ export interface FirstPromptChatStream {
     chatId: number;
     appId: number;
     attachments: FirstPromptPayload["attachments"];
-    requestedChatMode?: FirstPromptPayload["chatMode"];
+    requestedChatMode?: FirstPromptPayload["chatMode"] | null;
   }): void;
 }
 
@@ -162,7 +163,7 @@ export function FirstPromptProvider({
         chatId,
         appId,
         attachments: payload.attachments,
-        requestedChatMode: payload.chatMode,
+        requestedChatMode: getRequestedChatModeForFirstPrompt(payload),
       });
       posthog.capture("home:chat-submit", {
         existingApp: payload.selectedApp !== undefined,

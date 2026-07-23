@@ -55,6 +55,24 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 - Terminal stream callbacks may synchronously start a replacement stream with the same key. Cleanup after `onEnd`/`onError` (including invoke rejection) must delete the entry only when the map still points to the generation that ended; an unconditional keyed delete can orphan the replacement stream.
 - By default the entry is removed when the end/error event arrives (`autoRelease: true`). Pass `{ autoRelease: false }` to keep receiving events after a terminal event, and call `release(key, streamId)` when done — the chat stream machine uses this to keep entry ownership with its controller until finalization side effects complete (`release` with a stale `streamId` is a no-op).
 - Chat streams: do NOT call `ipc.chatStream.start` or guard against duplicate streams outside `src/chat_stream/commands.ts`. The per-chat state machine is the single source of truth for the lifecycle; submit through `useStreamChat().streamMessage` or `ChatStreamManager.ensure(chatId).send({ type: "submit", ... })`, and it serializes/queues by construction.
+- A null chat mode means the automatic default is still implicit. Renderer
+  submissions must preserve that distinction with the existing null
+  `requestedChatMode` sentinel instead of sending the computed display mode as
+  an explicit override; otherwise main cannot apply the latest provider/quota
+  state before the first turn.
+- Apply model/mode compatibility rules in the authoritative main-process
+  resolution as well as renderer previews. Share the normalization helper so
+  an automatic mode cannot be displayed as valid and then latched as an
+  incompatible mode when provider or quota state changes.
+- Keep durable first-turn acceptance atomic with latching an implicit chat
+  mode. The idempotent user-message insert and conditional mode update belong
+  in one synchronous SQLite transaction, duplicate replay must repair legacy
+  null rows, and a concurrent conditional-update loser must use the stored
+  winner before choosing prompts or tools.
+- Run synchronous precondition checks that can reject a chat turn before its
+  idempotency insert, implicit-mode latch, and renderer acceptance event.
+  Otherwise a rejected request leaves durable state and replays as accepted
+  even though no model turn ran.
 - If a legacy UI path appends directly to `queuedMessagesByIdAtom` instead of submitting through the machine, poke the chat controller immediately after the synchronous atom write. The render that chose the queue path may be stale after finalization's one automatic dispatch, otherwise leaving the new item without a driver.
 - **Never gate global-state cleanup in `onEnd`/`onError` on a local `isMountedRef`.** Stream callbacks outlive the component that started them. If the user navigates away mid-stream, an unmount-guarded `onEnd` skips `setIsStreamingByIdAtom(false)` and `syncChatFromDb`, leaving the chat permanently `isStreaming=true` — `ChatPanel.fetchChatMessages` then skips IPC fetches forever and only a page refresh recovers. Always run global Jotai state writes and DB syncs unconditionally; only guard UI-only side effects (toasts, console logs, local React state) on mount. See `src/chat_stream/commands.ts` for the no-guard pattern.
 
@@ -180,6 +198,11 @@ When creating hooks/components that call IPC handlers:
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.
 - Synchronize TanStack Query data with any global state (like Jotai atoms) via `useEffect` only if required.
+- Root-mounted effects that automatically persist settings must depend on
+  stable derived values rather than hook-returned callback identities. Set an
+  in-flight ref before invoking the mutation to survive Strict Mode effect
+  replay and mutation-state rerenders, and handle the returned promise so
+  transient write failures do not become unhandled rejections.
 - Treat `queryClient.getQueryData(...)` as an optional cache peek. When a
   mutation post-effect must inspect IPC-backed data to decide correctness-critical
   work (such as restarting a runtime), use `fetchQuery`/`ensureQueryData` with
@@ -191,6 +214,10 @@ When creating hooks/components that call IPC handlers:
 
 `src/testing/handler_test_harness.ts` (`setupHandlerTestHarness` + `harness.invokeHandler("channel", input)`) gives you a real in-memory DB and works even for heavyweight modules: `registerAppHandlers` loads in vitest with just `vi.mock("electron")` plus module mocks for `@/paths/paths` (point `getDyadAppPath` at a temp dir), `@/ipc/services/git_service`, `createFromTemplate`, `gitignoreUtils`, and `chat_mode_resolution`.
 
+- Preserve async helper contracts used by IPC handlers unless every caller and
+  test mock is migrated together. A still-async mock consumed without `await`
+  can pass a `Promise` into a database binding and fail far from the changed
+  helper.
 - Only handlers registered via `createTypedHandler` land in the harness registry. Handlers registered with `createLoggedHandler`/`handle(...)` (e.g. `import_handlers.ts`) must be captured through the mocked `ipcMain.handle` — and their return value is an IPC envelope shaped `{ ok, value, error }` (NOT `{ success, data }`), so unwrap accordingly.
 - Tests that invoke a captured `ipcMain.handle` listener run through the production trust facade. Call `configureTrustedRenderer(...)` and pass an event whose `senderFrame` matches `sender.mainFrame`; an empty `{}` event now fails with `Renderer trust policy is not configured` before the tested handler runs.
 

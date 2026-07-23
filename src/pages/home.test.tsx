@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "./home";
 
@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   effectiveDefaultChatMode: "build",
   hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
-  initialChatMode: "build",
   isAnyProviderSetup: false,
   isLoadingLanguageModelProviders: false,
   isSettingsLoading: false,
@@ -71,10 +70,7 @@ vi.mock("@/hooks/useSettings", () => ({
   }),
 }));
 vi.mock("@/hooks/useFreeAgentQuota", () => ({
-  useFreeAgentQuota: () => ({ isLoading: false, isQuotaExceeded: false }),
-}));
-vi.mock("@/hooks/useInitialChatMode", () => ({
-  useInitialChatMode: () => mocks.initialChatMode,
+  useFreeAgentQuota: () => ({ quotaStatus: undefined }),
 }));
 vi.mock("@/lib/schemas", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/schemas")>()),
@@ -120,7 +116,6 @@ describe("HomePage first-prompt projection", () => {
     mocks.effectiveDefaultChatMode = "build";
     mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
-    mocks.initialChatMode = "build";
     mocks.isAnyProviderSetup = false;
     mocks.isLoadingLanguageModelProviders = false;
     mocks.isSettingsLoading = false;
@@ -210,14 +205,19 @@ describe("HomePage first-prompt projection", () => {
     expect(screen.queryByText("buildingApp")).toBeNull();
   });
 
-  it("keeps the effective default chat-mode synchronization", async () => {
+  it("submits the optimistic effective mode without persisting it", () => {
     mocks.effectiveDefaultChatMode = "local-agent";
     render(<HomePage />);
 
-    await waitFor(() =>
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        selectedChatMode: "local-agent",
+    fireEvent.click(screen.getByRole("button", { name: "Submit home prompt" }));
+
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "SUBMIT",
+      payload: expect.objectContaining({
+        chatMode: "local-agent",
+        isChatModeExplicit: false,
       }),
-    );
+    });
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 });

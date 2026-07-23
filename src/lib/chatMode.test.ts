@@ -132,6 +132,49 @@ describe("chat mode resolution", () => {
     expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
   });
 
+  it("keeps the Google-only fallback while quota is unresolved", () => {
+    const settings = makeSettings({
+      providerSettings: {
+        google: { apiKey: { value: "test-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, undefined)).toBe("build");
+  });
+
+  it("optimistically defaults to basic agent without a provider", () => {
+    expect(getEffectiveDefaultChatMode(makeSettings(), {}, undefined)).toBe(
+      "local-agent",
+    );
+  });
+
+  it("falls back to build only after quota exhaustion is confirmed", () => {
+    expect(getEffectiveDefaultChatMode(makeSettings(), {}, false)).toBe(
+      "build",
+    );
+  });
+
+  it("uses basic agent when Google and an eligible provider are configured", () => {
+    const settings = makeSettings({
+      providerSettings: {
+        google: { apiKey: { value: "google-key" } },
+        openrouter: { apiKey: { value: "openrouter-key" } },
+      },
+    });
+
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
+  });
+
+  it("preserves an explicit build default", () => {
+    expect(
+      getEffectiveDefaultChatMode(
+        makeSettings({ defaultChatMode: "build" }),
+        {},
+        undefined,
+      ),
+    ).toBe("build");
+  });
+
   it("auto-defaults to basic agent for a non-Google provider", () => {
     const settings = makeSettings({
       providerSettings: {
@@ -179,7 +222,7 @@ describe("chat mode resolution", () => {
     expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
   });
 
-  it("does not honor a local-agent default for Google/Gemini", () => {
+  it("honors an explicit local-agent default for Google/Gemini", () => {
     const settings = makeSettings({
       defaultChatMode: "local-agent",
       providerSettings: {
@@ -187,7 +230,11 @@ describe("chat mode resolution", () => {
       },
     });
 
-    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("build");
+    expect(getEffectiveDefaultChatMode(settings, {}, true)).toBe("local-agent");
+    expect(getEffectiveDefaultChatMode(settings, {}, undefined)).toBe(
+      "local-agent",
+    );
+    expect(getEffectiveDefaultChatMode(settings, {}, false)).toBe("build");
   });
 
   it("does not treat unknown quota as exhausted", () => {

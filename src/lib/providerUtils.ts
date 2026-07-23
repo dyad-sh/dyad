@@ -103,3 +103,10 @@ export function isNonGoogleProviderSetup(
       !excludedProviders.has(provider) && isProviderSetup(provider, options),
   );
 }
+
+export function isGoogleProviderSetup(
+  settings: UserSettings,
+  envVars: Record<string, string | undefined>,
+): boolean {
+  return isProviderSetup("google", { settings, envVars });
+}

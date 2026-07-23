@@ -22,7 +22,7 @@ import { parseRecorderAction } from "@/lib/test_recorder/types";
 import type { RecordingAuth } from "@/ipc/types";
 import { normalizeTestPath } from "@/ipc/utils/normalize_test_path";
 
-const AUTH_READY_TIMEOUT_MS = 20_000;
+const AUTH_READY_TIMEOUT_MS = 30_000;
 const FIXTURE_PATH = "tests/fixtures/test-user.ts";
 
 function slugify(name: string): string {
@@ -71,6 +71,10 @@ export function useTestRecorder() {
   const entriesRef = useRef(entries);
   const appIdRef = useRef(appId);
   const authReadyRef = useRef<((data: { ok?: boolean }) => void) | null>(null);
+  // The auth to (re)send while we're waiting for the in-iframe sign-in; set for
+  // the duration of `authenticate` so a bootstrap that (re)loads mid-flow can be
+  // handed the credentials as soon as it announces itself.
+  const pendingAuthRef = useRef<RecordingAuth | null>(null);
 
   useEffect(() => {
     iframeElRef.current = iframeEl;
@@ -123,6 +127,18 @@ export function useTestRecorder() {
           // Re-arm after a dev-server restart / HMR reload swapped the iframe.
           if (phaseRef.current === "recording") {
             postToIframe({ type: "activate-dyad-recorder" });
+          }
+          break;
+        }
+        case "dyad-auth-bootstrap-ready": {
+          // The (possibly reloaded/restarted) bootstrap is listening — hand it
+          // the credentials. This closes the race where our first send lands in
+          // the gap during a dev-server restart and would otherwise be lost.
+          if (pendingAuthRef.current) {
+            postToIframe({
+              type: "dyad-auth-login",
+              auth: pendingAuthRef.current,
+            });
           }
           break;
         }
@@ -188,11 +204,16 @@ export function useTestRecorder() {
         const finish = (ok: boolean) => {
           if (done) return;
           done = true;
+          pendingAuthRef.current = null;
           authReadyRef.current = null;
           clearTimeout(timer);
           resolve(ok);
         };
         const timer = setTimeout(() => finish(false), AUTH_READY_TIMEOUT_MS);
+        // Keep the creds available so a bootstrap that (re)announces itself
+        // mid-flow gets them; also send immediately for the common case where
+        // the bootstrap is already listening.
+        pendingAuthRef.current = auth;
         authReadyRef.current = (result) => finish(Boolean(result.ok));
         postToIframe({ type: "dyad-auth-login", auth });
       }),

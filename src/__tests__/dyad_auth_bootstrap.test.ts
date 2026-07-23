@@ -37,6 +37,7 @@ function setup({
     pending ? { __dyad_auth_pending__: JSON.stringify(pending) } : {},
   );
   const reload = vi.fn();
+  const replace = vi.fn();
   const fetchMock = vi.fn(
     fetchImpl ?? (async () => ({ ok: true, json: async () => ({}) })),
   );
@@ -61,7 +62,7 @@ function setup({
     document,
     localStorage,
     sessionStorage,
-    location: { reload },
+    location: { reload, replace },
     fetch: fetchMock,
     URL,
     console: { debug() {}, warn() {}, error() {}, log() {} },
@@ -71,6 +72,7 @@ function setup({
     posts,
     parent,
     reload,
+    replace,
     fetchMock,
     localStorage,
     sessionStorage,
@@ -83,7 +85,7 @@ function setup({
 }
 
 describe("dyad auth bootstrap", () => {
-  it("seeds the supabase session into localStorage and reloads", async () => {
+  it("seeds the supabase session into localStorage and lands on the homepage", async () => {
     const h = setup();
     h.fetchMock.mockResolvedValue({
       ok: true,
@@ -102,7 +104,7 @@ describe("dyad auth bootstrap", () => {
       anonKey: "anon-key",
     });
 
-    await vi.waitFor(() => expect(h.reload).toHaveBeenCalled());
+    await vi.waitFor(() => expect(h.replace).toHaveBeenCalledWith("/"));
     expect(h.fetchMock).toHaveBeenCalledWith(
       "https://ref123.supabase.co/auth/v1/token?grant_type=password",
       expect.objectContaining({
@@ -120,7 +122,7 @@ describe("dyad auth bootstrap", () => {
     });
   });
 
-  it("signs in via the app's own Better Auth endpoint and reloads (Neon)", async () => {
+  it("signs in via the app's own Better Auth endpoint and lands on the homepage (Neon)", async () => {
     const h = setup();
     h.fetchMock.mockResolvedValue({ ok: true });
 
@@ -130,14 +132,21 @@ describe("dyad auth bootstrap", () => {
       password: "pw",
     });
 
-    await vi.waitFor(() => expect(h.reload).toHaveBeenCalled());
+    await vi.waitFor(() => expect(h.replace).toHaveBeenCalledWith("/"));
     expect(h.fetchMock).toHaveBeenCalledWith(
       "/api/auth/sign-in/email",
       expect.objectContaining({ method: "POST", credentials: "include" }),
     );
   });
 
-  it("reports failure (and does not reload) when sign-in fails", async () => {
+  it("announces bootstrap-ready on a fresh (pre-login) load", () => {
+    const h = setup();
+    expect(h.posts.some((p) => p.type === "dyad-auth-bootstrap-ready")).toBe(
+      true,
+    );
+  });
+
+  it("reports failure (and does not navigate) when sign-in fails", async () => {
     const h = setup();
     h.fetchMock.mockResolvedValue({ ok: false, status: 401 });
 
@@ -152,7 +161,7 @@ describe("dyad auth bootstrap", () => {
         h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === false),
       ).toBe(true),
     );
-    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.replace).not.toHaveBeenCalled();
   });
 
   it("verifies a pending supabase session on load and reports ready", async () => {

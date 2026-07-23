@@ -66,7 +66,19 @@
     );
   }
 
+  // After signing in, land on the app's homepage ("/") so recording starts
+  // from the same place the generated test replays from (goto("/")). This also
+  // avoids getting stuck on a "/login" route that would re-render after a bare
+  // reload. Once signed in, guard so a second login message can't double-run.
+  let loggingIn = false;
+
+  function goHome() {
+    location.replace("/");
+  }
+
   async function login(auth) {
+    if (loggingIn) return;
+    loggingIn = true;
     try {
       if (auth.mode === "neon-better-auth") {
         await neonSignIn(auth);
@@ -74,7 +86,7 @@
           PENDING_KEY,
           JSON.stringify({ mode: auth.mode }),
         );
-        location.reload();
+        goHome();
         return;
       }
       if (auth.mode === "supabase-password") {
@@ -83,12 +95,13 @@
           PENDING_KEY,
           JSON.stringify({ mode: auth.mode, ref: projectRef(auth.projectUrl) }),
         );
-        location.reload();
+        goHome();
         return;
       }
       // Unknown/none: nothing to do, report ready.
       post(true);
     } catch (error) {
+      loggingIn = false;
       post(false, error && error.message ? error.message : String(error));
     }
   }
@@ -138,7 +151,14 @@
     } catch {
       pending = null;
     }
-    if (!pending) return;
+    if (!pending) {
+      // Fresh (pre-login) load: tell the parent we're ready to receive
+      // credentials. The parent (re)sends `dyad-auth-login` in response, so the
+      // handshake can't race a dev-server restart / reload that briefly leaves
+      // no bootstrap listening.
+      window.parent.postMessage({ type: "dyad-auth-bootstrap-ready" }, "*");
+      return;
+    }
     sessionStorage.removeItem(PENDING_KEY);
     verifyPending(pending);
   }

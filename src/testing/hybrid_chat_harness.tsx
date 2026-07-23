@@ -113,6 +113,7 @@ import { createImageGenerationCommandRunner } from "@/image_generation/commands"
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationManager } from "@/image_generation/manager";
 import { FirstPromptProvider } from "@/first_prompt/FirstPromptProvider";
+import { GithubOpsProvider } from "@/github_ops/GithubOpsProvider";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import {
   createFakeClock,
@@ -986,27 +987,29 @@ export async function setupHybridChatHarness(
               <HybridEntityDisposalWiring store={store} />
               <ChatStreamProvider manager={chatStreamManager}>
                 <AppRunProvider manager={appRunManager}>
-                  <ImageGenerationProvider manager={imageGenerationManager}>
-                    <VersionPreviewProvider manager={versionPreviewManager}>
-                      <PreviewIframeProvider>
-                        <ThemeProvider>
-                          <DeepLinkProvider>
-                            <SidebarProvider defaultOpen={false}>
-                              {opts.wireAppEvents !== false && (
-                                <HybridAppEventWiring
-                                  store={store}
-                                  queryClient={queryClient}
-                                  chatStreamManager={chatStreamManager}
-                                />
-                              )}
-                              <RouterProvider router={router as never} />
-                              <Toaster richColors expand duration={500} />
-                            </SidebarProvider>
-                          </DeepLinkProvider>
-                        </ThemeProvider>
-                      </PreviewIframeProvider>
-                    </VersionPreviewProvider>
-                  </ImageGenerationProvider>
+                  <GithubOpsProvider>
+                    <ImageGenerationProvider manager={imageGenerationManager}>
+                      <VersionPreviewProvider manager={versionPreviewManager}>
+                        <PreviewIframeProvider>
+                          <ThemeProvider>
+                            <DeepLinkProvider>
+                              <SidebarProvider defaultOpen={false}>
+                                {opts.wireAppEvents !== false && (
+                                  <HybridAppEventWiring
+                                    store={store}
+                                    queryClient={queryClient}
+                                    chatStreamManager={chatStreamManager}
+                                  />
+                                )}
+                                <RouterProvider router={router as never} />
+                                <Toaster richColors expand duration={500} />
+                              </SidebarProvider>
+                            </DeepLinkProvider>
+                          </ThemeProvider>
+                        </PreviewIframeProvider>
+                      </VersionPreviewProvider>
+                    </ImageGenerationProvider>
+                  </GithubOpsProvider>
                 </AppRunProvider>
               </ChatStreamProvider>
             </EntityDisposalProvider>

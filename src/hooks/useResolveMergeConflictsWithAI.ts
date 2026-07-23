@@ -11,7 +11,7 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
-  conflicts: string[];
+  conflicts: readonly string[];
   onStartResolving?: () => void;
 }
 

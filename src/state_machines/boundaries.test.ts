@@ -9,6 +9,7 @@ const MACHINE_DIRECTORIES = [
   "chat_stream",
   "connection_flow",
   "first_prompt",
+  "github_ops",
   "image_generation",
   "mcp_oauth",
   "plan_handoff",

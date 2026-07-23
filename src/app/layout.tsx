@@ -38,6 +38,7 @@ import {
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
+import { GithubOpsProvider } from "@/github_ops/GithubOpsProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const chatStreamManager = useChatStreamManager();
@@ -70,18 +71,20 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   );
   return (
     <AppRunProvider>
-      <ImageGenerationProvider>
-        <FirstPromptProvider
-          chatStream={firstPromptChatStream}
-          clock={systemClock}
-          idSource={uuidIdSource}
-          settleDelayMs={settings?.isTestMode ? 0 : 2_000}
-        >
-          <PlanHandoffProvider chatStream={planHandoffChatStream}>
-            <RootLayoutContent>{children}</RootLayoutContent>
-          </PlanHandoffProvider>
-        </FirstPromptProvider>
-      </ImageGenerationProvider>
+      <GithubOpsProvider>
+        <ImageGenerationProvider>
+          <FirstPromptProvider
+            chatStream={firstPromptChatStream}
+            clock={systemClock}
+            idSource={uuidIdSource}
+            settleDelayMs={settings?.isTestMode ? 0 : 2_000}
+          >
+            <PlanHandoffProvider chatStream={planHandoffChatStream}>
+              <RootLayoutContent>{children}</RootLayoutContent>
+            </PlanHandoffProvider>
+          </FirstPromptProvider>
+        </ImageGenerationProvider>
+      </GithubOpsProvider>
     </AppRunProvider>
   );
 }

@@ -3,6 +3,9 @@
 Use an explicit state machine when a workflow has async races, queued work, or
 events that may arrive after an operation has been superseded.
 
+Background and before/after examples of why this pattern exists:
+[docs/why-state-machines.md](../docs/why-state-machines.md).
+
 ## Required structure
 
 - Keep domain types in `state.ts`, the pure total function in `transition.ts`,

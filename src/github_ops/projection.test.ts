@@ -23,6 +23,19 @@ describe("projectGithubOps", () => {
     expect(projection.showForcePush).toBe(false);
   });
 
+  it("projects typed successful operation completion", () => {
+    expect(
+      projectGithubOps({
+        type: "idle",
+        banner: {
+          kind: "success",
+          completedOperation: "rename-branch",
+          message: "Renamed branch",
+        },
+      }).completedOperation,
+    ).toBe("rename-branch");
+  });
+
   it.each(["rebase", "rebase-continue", "rebase-abort"] as const)(
     "uses rebase recovery for %s conflict provenance",
     (type) => {
@@ -53,5 +66,23 @@ describe("projectGithubOps", () => {
     expect(
       projectGithubOps({ type: "rebase-paused", banner: null }).canRequestSync,
     ).toBe(false);
+  });
+
+  it("separates recovery switching from idle-only branch mutations", () => {
+    const conflicted = projectGithubOps({
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: null,
+    });
+    const rebasePaused = projectGithubOps({
+      type: "rebase-paused",
+      banner: null,
+    });
+
+    expect(conflicted.canRequestBranchSwitch).toBe(true);
+    expect(rebasePaused.canRequestBranchSwitch).toBe(true);
+    expect(conflicted.canRequestBranchMutation).toBe(false);
+    expect(rebasePaused.canRequestBranchMutation).toBe(false);
   });
 });

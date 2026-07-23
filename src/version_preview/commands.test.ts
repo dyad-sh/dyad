@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import type { VersionCommandResult } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 import { createVersionPreviewRuntime } from "./commands";
 
 const {
@@ -104,6 +105,24 @@ describe("createVersionPreviewRuntime", () => {
       branch: "main",
     });
     expect(store.get(activeCheckoutCounterAtom)).toBe(0);
+  });
+
+  it("invalidates current and inventory branches for the affected app", async () => {
+    const { queryClient, runtime } = setup();
+    const current = queryKeys.branches.current({ appId: 7 });
+    const inventory = queryKeys.branches.inventory({ appId: 7 });
+    const otherInventory = queryKeys.branches.inventory({ appId: 8 });
+    queryClient.setQueryData(current, { branch: "main" });
+    queryClient.setQueryData(inventory, { branches: ["main"] });
+    queryClient.setQueryData(otherInventory, { branches: ["main"] });
+
+    await runtime.commands.checkoutVersion({ appId: 7, versionId: "abc" });
+
+    expect(queryClient.getQueryState(current)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(inventory)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(otherInventory)?.isInvalidated).toBe(
+      false,
+    );
   });
 
   it("applies authoritative chat, navigation, notification, and restart metadata", async () => {

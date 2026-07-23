@@ -117,6 +117,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Prefer derived selectors for values computable from the snapshot. Do not add
   generation counters or mirrored booleans beside a machine-owned identity or
   lifecycle state.
+- When local form or dialog state dispatches a machine-owned mutation, preserve
+  the user's input while the operation runs and after failure. Clear or close
+  it only from typed successful-completion state; dispatch itself is not proof
+  that the mutation succeeded.
 - When an epoch keys a mounted resource, capture props such as an iframe `src`
   from the epoch-changing snapshot. Do not let later same-epoch state updates
   rewrite identity-defining DOM attributes and trigger an implicit reload.

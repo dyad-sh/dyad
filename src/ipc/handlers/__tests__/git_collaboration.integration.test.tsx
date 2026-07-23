@@ -255,6 +255,11 @@ describe("Git collaboration actions (integration)", () => {
       { name: "Resolve merge conflicts with AI" },
       { timeout: 15_000 },
     );
+    expect(
+      screen.getAllByText(
+        `1 file with merge conflicts: ${conflict.conflictFile}`,
+      ),
+    ).toHaveLength(1);
     return conflict;
   }
 

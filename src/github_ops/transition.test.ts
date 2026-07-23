@@ -284,6 +284,129 @@ describe("github_ops transition", () => {
     ]);
   });
 
+  it("atomically clears conflicted UI when abort-and-switch begins", () => {
+    const merge = { type: "merge", branch: "feature" } as const;
+    const switchBranch = { type: "switch", branch: "release" } as const;
+    const runningMerge = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: merge,
+    }).state;
+    const probingConflicts = transition(runningMerge, {
+      type: "OP_FAILED",
+      op: merge,
+      failure: {
+        kind: "conflict",
+        code: "MERGE_CONFLICT",
+        message: "merge failed",
+      },
+    }).state;
+    const conflicted = transition(probingConflicts, {
+      type: "CONFLICTS",
+      files: ["src/conflicted.ts"],
+    }).state;
+    const runningSwitch = transition(conflicted, {
+      type: "OP_REQUESTED",
+      op: switchBranch,
+    }).state;
+    const blocked = transition(runningSwitch, {
+      type: "OP_FAILED",
+      op: switchBranch,
+      failure: {
+        kind: "conflict",
+        code: "MERGE_IN_PROGRESS",
+        message: "merge still in progress",
+      },
+    }).state;
+    const confirmed = transition(blocked, {
+      type: "ABORT_AND_SWITCH_CONFIRMED",
+    });
+
+    expect(conflicted).toMatchObject({
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+    });
+    expect(blocked).toMatchObject({
+      type: "switch-blocked",
+      target: "release",
+      blockingOp: "merge",
+    });
+    expect(confirmed.state).toEqual({
+      type: "running",
+      op: { type: "merge-abort" },
+      next: switchBranch,
+      banner: null,
+    });
+    expect(confirmed.state).not.toHaveProperty("files");
+  });
+
+  it("restores conflicts when abort-and-switch is dismissed", () => {
+    const conflicted: GithubOpsState = {
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: null,
+    };
+    const switchBranch = {
+      type: "switch",
+      branch: "release",
+    } as const;
+    const running = transition(conflicted, {
+      type: "OP_REQUESTED",
+      op: switchBranch,
+    }).state;
+    const blocked = transition(running, {
+      type: "OP_FAILED",
+      op: switchBranch,
+      failure: {
+        kind: "conflict",
+        code: "MERGE_IN_PROGRESS",
+        message: "merge still in progress",
+      },
+    }).state;
+    const dismissed = transition(blocked, { type: "BLOCKED_DISMISSED" });
+
+    expect(dismissed.state).toMatchObject({
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+    });
+  });
+
+  it("offers abort-and-switch from a paused rebase", () => {
+    const switchBranch = {
+      type: "switch",
+      branch: "release",
+    } as const;
+    const running = transition(
+      { type: "rebase-paused", banner: null },
+      { type: "OP_REQUESTED", op: switchBranch },
+    ).state;
+    const blocked = transition(running, {
+      type: "OP_FAILED",
+      op: switchBranch,
+      failure: {
+        kind: "conflict",
+        code: "REBASE_IN_PROGRESS",
+        message: "rebase still in progress",
+      },
+    }).state;
+
+    expect(running).toMatchObject({
+      type: "running",
+      op: switchBranch,
+      blockedSwitchResume: { type: "rebase-paused" },
+    });
+    expect(blocked).toMatchObject({
+      type: "switch-blocked",
+      target: "release",
+      blockingOp: "rebase",
+      resume: { type: "rebase-paused" },
+    });
+    expect(
+      transition(blocked, { type: "BLOCKED_DISMISSED" }).state,
+    ).toMatchObject({ type: "rebase-paused" });
+  });
+
   it("preserves connect success context when the automatic push fails", () => {
     const connect: GithubOperation = {
       type: "connect-repo",
@@ -338,5 +461,26 @@ describe("github_ops transition", () => {
     expect(completed.state.banner?.message).toBe(
       "Successfully pushed to GitHub!",
     );
+  });
+
+  it("renders operation success through the banner without a duplicate toast", () => {
+    const pull = { type: "pull" } as const;
+    const running = transition(INITIAL_GITHUB_OPS_STATE, {
+      type: "OP_REQUESTED",
+      op: pull,
+    }).state;
+    const completed = transition(running, {
+      type: "OP_SUCCEEDED",
+      op: pull,
+    });
+
+    expect(completed.state.banner?.message).toBe(
+      "Pulled latest changes from remote",
+    );
+    expect(completed.state.banner?.completedOperation).toBe("pull");
+    expect(completed.commands).toEqual([
+      { type: "invalidate-branches" },
+      { type: "refresh-app" },
+    ]);
   });
 });

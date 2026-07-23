@@ -133,7 +133,7 @@ export class GithubOpsCommandRunner {
         return;
       case "invalidate-branches":
         void this.queryClient.invalidateQueries({
-          queryKey: queryKeys.branches.current({ appId }),
+          queryKey: queryKeys.branches.byApp({ appId }),
         });
         return;
       case "refresh-app":

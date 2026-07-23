@@ -153,6 +153,11 @@ change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or
 ending the test.
 
+When a hybrid surface can temporarily return to a loading state during query
+invalidation, await the exact control with `findByRole` before interacting.
+Finding separate page text first does not guarantee a later `getByRole` is
+synchronous or race-free.
+
 When a renderer action awaits IPC post-effects that can outlive the first
 observable DOM or database update, call `await harness.bridge.settleInFlight()`
 before ending the test. Otherwise provider teardown can dispose the owning state

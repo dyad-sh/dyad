@@ -144,6 +144,8 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   transitions do not create value-equal snapshots.
 - Use fake command runners. Tests must get isolation from constructed owners,
   never from a module-global reset helper.
+- Normalize discovered file paths to `/` before asserting literal repository
+  paths; `path.relative()` returns `\` on Windows CI.
 - `driveTransitionMatrix` remains available for hand-enumerated totality
   tests; new machines may instead use `exploreReachableStates` when a finite
   event generator can discover the reachable graph. Existing bespoke suites

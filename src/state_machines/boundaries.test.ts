@@ -68,6 +68,10 @@ function importsIn(filePath: string): string[] {
   return importsFromSource(fs.readFileSync(filePath, "utf8"));
 }
 
+function toPortablePath(filePath: string): string {
+  return filePath.split(path.win32.sep).join(path.posix.sep);
+}
+
 function isWithin(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
   return (
@@ -77,6 +81,12 @@ function isWithin(root: string, candidate: string): boolean {
 }
 
 describe("state-machine boundaries", () => {
+  it("normalizes Windows paths used in boundary assertions", () => {
+    expect(toPortablePath("first_prompt\\FirstPromptProvider.tsx")).toBe(
+      "first_prompt/FirstPromptProvider.tsx",
+    );
+  });
+
   it("keeps the shared kernel independent from domain and platform modules", () => {
     const kernelFiles = productionFiles(
       path.join(SOURCE_ROOT, "state_machines"),
@@ -156,9 +166,7 @@ describe("state-machine boundaries", () => {
           .readFileSync(filePath, "utf8")
           .includes("setImageGenerationJobsProjectionAtom"),
       )
-      .map((filePath) =>
-        path.relative(SOURCE_ROOT, filePath).split(path.sep).join("/"),
-      );
+      .map((filePath) => toPortablePath(path.relative(SOURCE_ROOT, filePath)));
 
     expect(writers).toEqual(["image_generation/ImageGenerationProvider.tsx"]);
   });
@@ -175,7 +183,7 @@ describe("state-machine boundaries", () => {
           .readFileSync(filePath, "utf8")
           .includes("firstPromptSagaProjectionWriteAtom"),
       )
-      .map((filePath) => path.relative(SOURCE_ROOT, filePath));
+      .map((filePath) => toPortablePath(path.relative(SOURCE_ROOT, filePath)));
 
     expect(writers).toEqual(["first_prompt/FirstPromptProvider.tsx"]);
   });

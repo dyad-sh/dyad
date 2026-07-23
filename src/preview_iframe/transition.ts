@@ -187,19 +187,16 @@ export function transition(
     }
     case "PICKER_DEACTIVATED":
       if (!state.picking) return ignore(state, "picker-already-inactive");
-      return applied(
-        { ...state, picking: false },
-        [
-          {
-            type: "post-to-iframe",
-            message: { type: "cleanup-all-text-editing" },
-          },
-          {
-            type: "post-to-iframe",
-            message: { type: "deactivate-dyad-component-selector" },
-          },
-        ],
-      );
+      return applied({ ...state, picking: false }, [
+        {
+          type: "post-to-iframe",
+          message: { type: "cleanup-all-text-editing" },
+        },
+        {
+          type: "post-to-iframe",
+          message: { type: "deactivate-dyad-component-selector" },
+        },
+      ]);
     case "SELECTION_RESTORE_QUEUED":
       if (state.restoreQueued) {
         return ignore(state, "restore-already-queued");

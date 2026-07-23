@@ -3,10 +3,7 @@ import {
   type ChatMode,
   type UserSettings,
 } from "./schemas";
-import {
-  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
-  isFreeProBuildModeCombination,
-} from "./freeProModel";
+import { getFreeProCompatibleChatMode } from "./freeProModel";
 
 export function getHomeDefaultChatMode(
   settings: UserSettings,
@@ -18,7 +15,5 @@ export function getHomeDefaultChatMode(
     envVars,
     freeAgentQuotaAvailable,
   );
-  return isFreeProBuildModeCombination(settings.selectedModel, effectiveDefault)
-    ? FREE_PRO_MODEL_FALLBACK_CHAT_MODE
-    : effectiveDefault;
+  return getFreeProCompatibleChatMode(settings.selectedModel, effectiveDefault);
 }

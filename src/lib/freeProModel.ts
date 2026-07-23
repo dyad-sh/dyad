@@ -27,3 +27,12 @@ export function isFreeProBuildModeCombination(
 ) {
   return isFreeProModel(model) && chatMode === "build";
 }
+
+export function getFreeProCompatibleChatMode(
+  model: Pick<LargeLanguageModel, "provider" | "name"> | null | undefined,
+  chatMode: ChatMode,
+): ChatMode {
+  return isFreeProBuildModeCombination(model, chatMode)
+    ? FREE_PRO_MODEL_FALLBACK_CHAT_MODE
+    : chatMode;
+}

@@ -60,6 +60,10 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
   `requestedChatMode` sentinel instead of sending the computed display mode as
   an explicit override; otherwise main cannot apply the latest provider/quota
   state before the first turn.
+- Apply model/mode compatibility rules in the authoritative main-process
+  resolution as well as renderer previews. Share the normalization helper so
+  an automatic mode cannot be displayed as valid and then latched as an
+  incompatible mode when provider or quota state changes.
 - Keep durable first-turn acceptance atomic with latching an implicit chat
   mode. The idempotent user-message insert and conditional mode update belong
   in one synchronous SQLite transaction, duplicate replay must repair legacy
@@ -190,6 +194,11 @@ When creating hooks/components that call IPC handlers:
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.
 - Synchronize TanStack Query data with any global state (like Jotai atoms) via `useEffect` only if required.
+- Root-mounted effects that automatically persist settings must depend on
+  stable derived values rather than hook-returned callback identities. Set an
+  in-flight ref before invoking the mutation to survive Strict Mode effect
+  replay and mutation-state rerenders, and handle the returned promise so
+  transient write failures do not become unhandled rejections.
 - Treat `queryClient.getQueryData(...)` as an optional cache peek. When a
   mutation post-effect must inspect IPC-backed data to decide correctness-critical
   work (such as restarting a runtime), use `fetchQuery`/`ensureQueryData` with

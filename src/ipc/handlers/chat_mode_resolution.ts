@@ -8,6 +8,7 @@ import {
   resolveChatMode,
   type ChatModeResolution,
 } from "@/lib/chatMode";
+import { getFreeProCompatibleChatMode } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
 import { getEnvVar } from "@/ipc/utils/read_env";
@@ -32,13 +33,19 @@ export async function resolveChatModeForTurn({
     normalizedChatMode,
   );
 
+  const resolution = resolveChatMode({
+    storedChatMode: modeForTurn,
+    settings,
+    envVars,
+    freeAgentQuotaAvailable,
+  });
+
   return {
-    ...resolveChatMode({
-      storedChatMode: modeForTurn,
-      settings,
-      envVars,
-      freeAgentQuotaAvailable,
-    }),
+    ...resolution,
+    mode:
+      normalizedChatMode === null
+        ? getFreeProCompatibleChatMode(settings.selectedModel, resolution.mode)
+        : resolution.mode,
     settings,
   };
 }

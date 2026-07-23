@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import type { PropsWithChildren } from "react";
+import { StrictMode, type PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
@@ -50,11 +50,15 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   } as UserSettings;
 }
 
-function makeWrapper(manuallySelected = false) {
+function makeWrapper(
+  manuallySelected = false,
+  { strict = false }: { strict?: boolean } = {},
+) {
   const store = createStore();
   store.set(hasManuallySelectedChatModeAtom, manuallySelected);
   return function Wrapper({ children }: PropsWithChildren) {
-    return <Provider store={store}>{children}</Provider>;
+    const content = <Provider store={store}>{children}</Provider>;
+    return strict ? <StrictMode>{content}</StrictMode> : content;
   };
 }
 
@@ -76,6 +80,42 @@ describe("useSyncDefaultChatMode", () => {
         selectedChatMode: "local-agent",
       }),
     );
+  });
+
+  it("does not duplicate an in-flight update during Strict Mode rerenders", async () => {
+    let resolveUpdate: (() => void) | undefined;
+    mocks.updateSettings.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    const { rerender } = renderHook(() => useSyncDefaultChatMode(), {
+      wrapper: makeWrapper(false, { strict: true }),
+    });
+
+    await waitFor(() => expect(mocks.updateSettings).toHaveBeenCalledTimes(1));
+    rerender();
+    expect(mocks.updateSettings).toHaveBeenCalledTimes(1);
+
+    resolveUpdate?.();
+  });
+
+  it("handles a failed settings update", async () => {
+    const error = new Error("write failed");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.updateSettings.mockRejectedValue(error);
+
+    renderHook(() => useSyncDefaultChatMode(), { wrapper: makeWrapper() });
+
+    await waitFor(() =>
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to sync the default chat mode",
+        error,
+      ),
+    );
+    warnSpy.mockRestore();
   });
 
   it("does not persist Agent while quota is unresolved", () => {

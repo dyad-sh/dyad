@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAtomValue } from "jotai";
 
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
@@ -13,9 +13,11 @@ export function useSyncDefaultChatMode(): void {
   const { quotaStatus } = useFreeAgentQuota();
   const { isAnyProviderSetup, isLoading: providersLoading } =
     useLanguageModelProviders();
+  const hasConfiguredProvider = !providersLoading && isAnyProviderSetup();
   const hasManuallySelectedChatMode = useAtomValue(
     hasManuallySelectedChatModeAtom,
   );
+  const updateInFlightRef = useRef(false);
 
   useEffect(() => {
     if (
@@ -28,9 +30,12 @@ export function useSyncDefaultChatMode(): void {
     }
 
     const isPro = isDyadProEnabled(settings);
-    const hasConfiguredProvider = isAnyProviderSetup();
     const hasResolvedQuota = isPro || quotaStatus !== undefined;
-    if (!hasConfiguredProvider || !hasResolvedQuota) {
+    if (
+      !hasConfiguredProvider ||
+      !hasResolvedQuota ||
+      updateInFlightRef.current
+    ) {
       return;
     }
 
@@ -40,12 +45,19 @@ export function useSyncDefaultChatMode(): void {
       quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
     );
     if (effectiveDefault === "local-agent") {
-      void updateSettings({ selectedChatMode: effectiveDefault });
+      updateInFlightRef.current = true;
+      void updateSettings({ selectedChatMode: effectiveDefault })
+        .catch((error: unknown) => {
+          console.warn("Failed to sync the default chat mode", error);
+        })
+        .finally(() => {
+          updateInFlightRef.current = false;
+        });
     }
   }, [
     envVars,
+    hasConfiguredProvider,
     hasManuallySelectedChatMode,
-    isAnyProviderSetup,
     providersLoading,
     quotaStatus,
     settings,

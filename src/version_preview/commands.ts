@@ -41,6 +41,9 @@ export function createVersionPreviewRuntime({
 
   async function invalidateGitQueries(appId: number) {
     await Promise.all([
+      // Prefix invalidation: `branches.current` (`["currentBranch", appId]`)
+      // also covers `branches.tip` (`[..., "tip", branch]`), keeping the
+      // writable-branch tip fresh after a checkout/return moves it.
       queryClient.invalidateQueries({
         queryKey: queryKeys.branches.current({ appId }),
       }),

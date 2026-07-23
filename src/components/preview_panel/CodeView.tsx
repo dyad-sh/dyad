@@ -2,14 +2,30 @@ import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { useEffect, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { RefreshCw, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
+import {
+  RefreshCw,
+  Maximize2,
+  Minimize2,
+  ArrowLeft,
+  Pencil,
+  Save,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { useAtomValue, useSetAtom } from "jotai";
-import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import {
+  selectedFileAtom,
+  stagedDiffFileAtom,
+  diffEditModeAtom,
+  diffDirtyAtom,
+  diffSavingAtom,
+  diffContentEditableAtom,
+  diffSaveRequestAtom,
+} from "@/atoms/viewAtoms";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -18,10 +34,12 @@ import { CommitMenu } from "./CommitMenu";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { diffVersionIdForState } from "@/version_preview/state";
+import { useWritableVersionTip } from "@/hooks/useWritableVersionTip";
 
 interface App {
   id?: number;
   files?: string[];
+  neonProjectId?: string | null;
 }
 
 export interface CodeViewProps {
@@ -41,6 +59,82 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const { hasUncommittedFiles } = useUncommittedFiles(app?.id ?? null);
+
+  const isEditingDiff = useAtomValue(diffEditModeAtom);
+  const diffDirty = useAtomValue(diffDirtyAtom);
+  const diffSaving = useAtomValue(diffSavingAtom);
+  const diffContentEditable = useAtomValue(diffContentEditableAtom);
+  const setIsEditingDiff = useSetAtom(diffEditModeAtom);
+  const setDiffDirty = useSetAtom(diffDirtyAtom);
+  const setDiffSaving = useSetAtom(diffSavingAtom);
+  const setDiffContentEditable = useSetAtom(diffContentEditableAtom);
+  const setDiffSaveRequest = useSetAtom(diffSaveRequestAtom);
+
+  const isVersionDiffMode = selectedVersionId != null && app?.id != null;
+  const isStagedDiffMode =
+    stagedDiffFile != null && app?.id != null && !isVersionDiffMode;
+  const inDiffMode = isVersionDiffMode || isStagedDiffMode;
+
+  // The branch (and its tip commit) a version-diff edit would be written to.
+  // Editing a version diff is only allowed when the version being shown *is*
+  // the writable branch tip, so that saving lands as a new version on top of
+  // the branch rather than on a detached historical commit.
+  const { writableBranch, writableTipOid } = useWritableVersionTip({
+    appId: app?.id ?? null,
+    previewState,
+    enabled: isVersionDiffMode,
+  });
+
+  const baseCanEditDiff =
+    isStagedDiffMode ||
+    (isVersionDiffMode &&
+      writableTipOid != null &&
+      selectedVersionId === writableTipOid);
+  const canEditDiff = baseCanEditDiff && diffContentEditable;
+
+  const toggleDiffEditing = () => {
+    if (!canEditDiff) {
+      return;
+    }
+    if (isEditingDiff) {
+      // Leaving edit mode discards any in-editor edits that weren't saved.
+      setIsEditingDiff(false);
+      setDiffDirty(false);
+      setDiffSaving(false);
+    } else {
+      setIsEditingDiff(true);
+    }
+  };
+
+  // Reset edit-in-diff state whenever we leave diff mode by any path (the back
+  // button, closing the version diff, switching apps) or the current diff stops
+  // being editable, and on unmount, so it never leaks into a later diff.
+  useEffect(() => {
+    if (!inDiffMode || !canEditDiff) {
+      setIsEditingDiff(false);
+      setDiffDirty(false);
+      setDiffSaving(false);
+    }
+    if (!inDiffMode) {
+      setDiffContentEditable(true);
+    }
+  }, [
+    inDiffMode,
+    canEditDiff,
+    setIsEditingDiff,
+    setDiffDirty,
+    setDiffSaving,
+    setDiffContentEditable,
+  ]);
+  useEffect(
+    () => () => {
+      setIsEditingDiff(false);
+      setDiffDirty(false);
+      setDiffSaving(false);
+      setDiffContentEditable(true);
+    },
+    [setIsEditingDiff, setDiffDirty, setDiffSaving, setDiffContentEditable],
+  );
 
   // Exits version-diff mode (entered via the version history pane or the chat's
   // modified-files card) and returns to the live file tree. Without this the
@@ -81,10 +175,6 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
       </div>
     );
   }
-
-  const isVersionDiffMode = selectedVersionId != null && app.id != null;
-  const isStagedDiffMode =
-    stagedDiffFile != null && app.id != null && !isVersionDiffMode;
 
   // The version diff view is driven by the selected commit, not the current
   // working-tree files, so it must render even when the checkout has no files
@@ -161,6 +251,55 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                 : `${app.files?.length ?? 0} ${t("preview.files")}`}
           </div>
           <div className="flex-1" />
+          {canEditDiff && (
+            <>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={toggleDiffEditing}
+                      aria-pressed={isEditingDiff}
+                      aria-label={
+                        isEditingDiff
+                          ? t("preview.stopEditing")
+                          : t("preview.editFile")
+                      }
+                      data-testid="diff-edit-toggle"
+                      className={cn(
+                        "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700",
+                        isEditingDiff && "bg-gray-200 dark:bg-gray-700",
+                      )}
+                    />
+                  }
+                >
+                  <Pencil size={16} />
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isEditingDiff
+                    ? t("preview.stopEditing")
+                    : t("preview.editFile")}
+                </TooltipContent>
+              </Tooltip>
+              {isEditingDiff && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={() => setDiffSaveRequest((n) => n + 1)}
+                        disabled={!diffDirty || diffSaving}
+                        aria-label={t("preview.saveChanges")}
+                        data-testid="diff-save-button"
+                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    }
+                  >
+                    <Save size={16} />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("preview.saveChanges")}</TooltipContent>
+                </Tooltip>
+              )}
+            </>
+          )}
           {app.id != null && <CommitMenu appId={app.id} />}
           <Tooltip>
             <TooltipTrigger
@@ -183,9 +322,22 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
 
         {/* Content */}
         {isVersionDiffMode ? (
-          <VersionDiffView appId={app.id!} versionId={selectedVersionId} />
+          <VersionDiffView
+            appId={app.id!}
+            versionId={selectedVersionId}
+            writableBranchName={
+              canEditDiff ? (writableBranch ?? undefined) : undefined
+            }
+            expectedBranchTipOid={
+              canEditDiff ? (writableTipOid ?? undefined) : undefined
+            }
+            restartOnSwitchedToMainBranch={!!app.neonProjectId}
+          />
         ) : isStagedDiffMode ? (
-          <StagedDiffView appId={app.id!} />
+          <StagedDiffView
+            appId={app.id!}
+            restartOnSwitchedToMainBranch={!!app.neonProjectId}
+          />
         ) : (
           <PanelGroup
             direction="horizontal"

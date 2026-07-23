@@ -42,6 +42,7 @@ import { showSuccess, showWarning, toast } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import { useSwitchedToMainBranch } from "@/hooks/useSwitchedToMainBranch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -816,6 +817,7 @@ export const SecurityPanel = () => {
   const queryClient = useQueryClient();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { data, isLoading, error, refetch } = useSecurityReview(selectedAppId);
+  const handleSwitchedToMainBranch = useSwitchedToMainBranch();
   const [isRunningReview, setIsRunningReview] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsFinding, setDetailsFinding] =
@@ -869,11 +871,13 @@ export const SecurityPanel = () => {
 
     try {
       setIsSaving(true);
-      const { warning } = await ipc.app.editAppFile({
+      const result = await ipc.app.editAppFile({
         appId: selectedAppId,
         filePath: "SECURITY_RULES.md",
         content: rulesContent,
       });
+      const { warning } = result;
+      await handleSwitchedToMainBranch(selectedAppId, result);
       await queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId: selectedAppId }),
       });

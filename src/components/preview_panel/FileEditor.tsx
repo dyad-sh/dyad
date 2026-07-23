@@ -17,6 +17,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
+import { useSwitchedToMainBranch } from "@/hooks/useSwitchedToMainBranch";
 import { enqueueFileSave, getFileSaveQueueKey } from "./fileSaveQueue";
 
 interface FileEditorProps {
@@ -143,6 +144,7 @@ export const FileEditor = ({
   const [value, setValue] = useState<string | undefined>(undefined);
   const [displayUnsavedChanges, setDisplayUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const handleSwitchedToMainBranch = useSwitchedToMainBranch();
   // Use refs for values that need to be current in event handlers
   const originalValueRef = useRef<string | undefined>(undefined);
   const editorRef = useRef<any>(null);
@@ -266,7 +268,12 @@ export const FileEditor = ({
         setIsSaving(true);
       }
 
-      const { warning } = await enqueueFileSave(saveQueueKey, performSave);
+      const result = await enqueueFileSave(saveQueueKey, performSave);
+      const { warning } = result;
+      // If the edit was made while a historical version was checked out, the
+      // backend re-attached to a branch; refresh branch/version state and restart
+      // the app to match.
+      await handleSwitchedToMainBranch(saveAppId, result);
       queryClient.setQueryData(
         queryKeys.appFiles.content({
           appId: saveAppId,

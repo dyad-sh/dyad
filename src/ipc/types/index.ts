@@ -262,6 +262,7 @@ export type {
 export type {
   Version,
   BranchResult,
+  BranchTipResult,
   RevertVersionParams,
   RevertVersionResponse,
   VersionChangedFile,

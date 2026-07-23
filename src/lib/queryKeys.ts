@@ -118,6 +118,10 @@ export const queryKeys = {
     all: ["currentBranch"] as const,
     current: ({ appId }: { appId: number | null }) =>
       ["currentBranch", appId] as const,
+    // Nested under the `current` prefix so any `branches.current` invalidation
+    // (checkout, switch-to-main, commit/revert) also freshens the cached tip.
+    tip: ({ appId, branch }: { appId: number | null; branch: string | null }) =>
+      ["currentBranch", appId, "tip", branch] as const,
   },
 
   uncommittedFiles: {

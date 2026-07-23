@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
 import { ChatModeSchema } from "../../lib/schemas";
+import { safeBranchNameSchema } from "./branch_name";
 
 // =============================================================================
 // App Schemas
@@ -224,17 +225,52 @@ export const CreateCloudSandboxShareLinkResultSchema = z.object({
 /**
  * Schema for edit app file params.
  */
-export const EditAppFileParamsSchema = z.object({
-  appId: z.number(),
-  filePath: z.string(),
-  content: z.string(),
-});
+export const EditAppFileParamsSchema = z
+  .object({
+    appId: z.number(),
+    filePath: z.string(),
+    content: z.string(),
+    // Handed to `gitCheckout` as a bare ref when re-attaching a detached HEAD,
+    // so it uses the shared branch-name guards (no option injection, no full
+    // ref / revision expression that would detach HEAD or check out the wrong
+    // object instead of a branch).
+    targetBranchName: safeBranchNameSchema.optional(),
+    expectedBranchTipOid: z
+      .string()
+      .regex(/^[a-f0-9]{40,64}$/i, "expectedBranchTipOid must be a commit SHA")
+      .optional(),
+    // The content the diff editor was showing as the current file state when
+    // the edit began (the committed blob for a version diff). The handler
+    // compares it against the on-disk file under the lock and rejects the save
+    // if they differ, so a version-diff save can't silently clobber uncommitted
+    // working-tree edits it never showed. Only sent for version-diff saves.
+    expectedFileContent: z.string().optional(),
+  })
+  // The optimistic branch-tip concurrency check in the handler only runs when
+  // both fields are present, so enforce them together: providing one without
+  // the other would silently bypass the guard and let a save land on a branch
+  // whose tip has moved since the diff was opened.
+  .refine(
+    (params) =>
+      (params.targetBranchName == null) ===
+      (params.expectedBranchTipOid == null),
+    {
+      message:
+        "targetBranchName and expectedBranchTipOid must be provided together",
+      path: ["expectedBranchTipOid"],
+    },
+  );
 
 /**
  * Schema for edit app file result.
  */
 export const EditAppFileResultSchema = z.object({
   warning: z.string().optional(),
+  // True when the edit was made while a historical version was checked out
+  // (detached HEAD) and the app was re-attached to the writable branch so the
+  // edit lands as a new version on top of it. The renderer uses this to refresh
+  // branch/version state and restart the app.
+  switchedToMainBranch: z.boolean().optional(),
 });
 
 /**

@@ -304,6 +304,7 @@ export async function setupChatFlowHarness(
         name: options.model?.apiName ?? "test-model",
       },
       selectedChatMode: options.chatMode ?? "build",
+      defaultChatMode: options.chatMode ?? "build",
       autoApproveChanges: options.autoApprove ?? true,
       hasRunBefore: true,
       ...options.settings,

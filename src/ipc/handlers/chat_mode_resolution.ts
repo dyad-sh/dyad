@@ -1,5 +1,4 @@
 import {
-  getEffectiveDefaultChatMode,
   isDyadProEnabled,
   type ChatMode,
   type UserSettings,
@@ -46,27 +45,8 @@ export async function resolveChatModeForTurn({
 
 export async function getInitialChatModeForNewChat(
   initialChatMode?: ChatMode,
-): Promise<ChatMode> {
-  if (initialChatMode) {
-    return initialChatMode;
-  }
-
-  const settings = readSettings();
-  if (settings.selectedChatMode) {
-    return settings.selectedChatMode;
-  }
-
-  const envVars = getChatModeEnvVars();
-  const freeAgentQuotaAvailable = await getFreeAgentQuotaAvailableIfNeeded(
-    settings,
-    null,
-  );
-
-  return getEffectiveDefaultChatMode(
-    settings,
-    envVars,
-    freeAgentQuotaAvailable,
-  );
+): Promise<ChatMode | null> {
+  return initialChatMode ?? null;
 }
 
 function getChatModeEnvVars(): Record<string, string | undefined> {

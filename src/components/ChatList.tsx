@@ -28,7 +28,6 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 import { ipc } from "@/ipc/types";
 import { showError, showSuccess } from "@/lib/toast";
-import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -77,7 +76,6 @@ export function ChatList({
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
-  const initialChatMode = useInitialChatMode();
   const entityDisposal = useEntityDisposal();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
@@ -215,10 +213,7 @@ export function ChatList({
     if (selectedAppId) {
       try {
         // Create a new chat with an empty title for now
-        const chatId = await ipc.chat.createChat({
-          appId: selectedAppId,
-          initialChatMode,
-        });
+        const chatId = await ipc.chat.createChat({ appId: selectedAppId });
 
         // Refresh the chat list first so the new chat is in the cache
         // before selectChat adds it to the tab bar

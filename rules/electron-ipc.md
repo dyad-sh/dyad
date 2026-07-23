@@ -191,6 +191,10 @@ When creating hooks/components that call IPC handlers:
 
 `src/testing/handler_test_harness.ts` (`setupHandlerTestHarness` + `harness.invokeHandler("channel", input)`) gives you a real in-memory DB and works even for heavyweight modules: `registerAppHandlers` loads in vitest with just `vi.mock("electron")` plus module mocks for `@/paths/paths` (point `getDyadAppPath` at a temp dir), `@/ipc/services/git_service`, `createFromTemplate`, `gitignoreUtils`, and `chat_mode_resolution`.
 
+- Preserve async helper contracts used by IPC handlers unless every caller and
+  test mock is migrated together. A still-async mock consumed without `await`
+  can pass a `Promise` into a database binding and fail far from the changed
+  helper.
 - Only handlers registered via `createTypedHandler` land in the harness registry. Handlers registered with `createLoggedHandler`/`handle(...)` (e.g. `import_handlers.ts`) must be captured through the mocked `ipcMain.handle` — and their return value is an IPC envelope shaped `{ ok, value, error }` (NOT `{ success, data }`), so unwrap accordingly.
 - Tests that invoke a captured `ipcMain.handle` listener run through the production trust facade. Call `configureTrustedRenderer(...)` and pass an event whose `senderFrame` matches `sender.mainFrame`; an empty `{}` event now fails with `Renderer trust policy is not configured` before the tested handler runs.
 

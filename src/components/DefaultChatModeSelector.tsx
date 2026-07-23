@@ -20,7 +20,7 @@ import {
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings, envVars } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { quotaStatus } = useFreeAgentQuota();
   const { t } = useTranslation("settings");
 
   useEffect(() => {
@@ -41,15 +41,16 @@ export function DefaultChatModeSelector() {
 
   const isProEnabled = isDyadProEnabled(settings);
   const isDyadFreeSelected = isFreeProModel(settings.selectedModel);
-  // Wait for quota status to load before determining effective default
-  const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
+  const freeAgentQuotaAvailable = quotaStatus
+    ? !quotaStatus.isQuotaExceeded
+    : undefined;
   const effectiveDefault = getEffectiveDefaultChatMode(
     settings,
     envVars,
     freeAgentQuotaAvailable,
   );
-  // Show Basic Agent option if user is Pro OR if they have free quota available
-  const showBasicAgentOption = isProEnabled || freeAgentQuotaAvailable;
+  const showBasicAgentOption =
+    isProEnabled || freeAgentQuotaAvailable !== false;
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
     if (isFreeProBuildModeCombination(settings.selectedModel, value)) {

@@ -166,7 +166,7 @@ describe("FirstPromptController", () => {
 
     expect(harness.deps.createApp).toHaveBeenCalledWith(
       "first-prompt-create-app:1",
-      "local-agent",
+      undefined,
     );
     expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
       appId: 1,
@@ -232,7 +232,7 @@ describe("FirstPromptController", () => {
     expect(harness.deps.createChat).toHaveBeenCalledWith(
       41,
       "first-prompt-create-chat:2",
-      "build",
+      undefined,
     );
     expect(harness.deps.commitCreation).toHaveBeenCalledWith(
       "first-prompt-create-app:1",
@@ -265,7 +265,7 @@ describe("FirstPromptController", () => {
     expect(harness.deps.createChat).toHaveBeenCalledWith(
       41,
       "first-prompt-create-chat:1",
-      "build",
+      undefined,
     );
     expect(harness.deps.submitPrompt).toHaveBeenCalledWith({
       appId: 41,
@@ -274,6 +274,27 @@ describe("FirstPromptController", () => {
         selectedApp: { id: 41, name: "Existing app" },
       }),
     });
+  });
+
+  it("persists an explicitly selected mode when creating a chat", async () => {
+    const harness = createHarness();
+    harness.controller.send({
+      type: "SUBMIT",
+      payload: {
+        ...payload,
+        chatMode: "local-agent",
+        isChatModeExplicit: true,
+        selectedApp: { id: 41, name: "Existing app" },
+      },
+    });
+    harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
+    await flushCommands();
+
+    expect(harness.deps.createChat).toHaveBeenCalledWith(
+      41,
+      "first-prompt-create-chat:1",
+      "local-agent",
+    );
   });
 
   it("uses the injected clock instead of waiting in real time", async () => {

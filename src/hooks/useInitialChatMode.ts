@@ -6,21 +6,17 @@ import { useSettings } from "./useSettings";
 
 export function useInitialChatMode(): ChatMode | undefined {
   const { settings, envVars } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { quotaStatus } = useFreeAgentQuota();
 
   return useMemo(() => {
     if (!settings) {
       return undefined;
     }
 
-    if (settings.selectedChatMode) {
-      return settings.selectedChatMode;
-    }
-
-    if (isQuotaLoading) {
-      return undefined;
-    }
-
-    return getEffectiveDefaultChatMode(settings, envVars, !isQuotaExceeded);
-  }, [envVars, isQuotaExceeded, isQuotaLoading, settings]);
+    return getEffectiveDefaultChatMode(
+      settings,
+      envVars,
+      quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
+    );
+  }, [envVars, quotaStatus, settings]);
 }

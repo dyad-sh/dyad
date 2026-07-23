@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "./home";
 
@@ -71,7 +71,7 @@ vi.mock("@/hooks/useSettings", () => ({
   }),
 }));
 vi.mock("@/hooks/useFreeAgentQuota", () => ({
-  useFreeAgentQuota: () => ({ isLoading: false, isQuotaExceeded: false }),
+  useFreeAgentQuota: () => ({ quotaStatus: undefined }),
 }));
 vi.mock("@/hooks/useInitialChatMode", () => ({
   useInitialChatMode: () => mocks.initialChatMode,
@@ -210,14 +210,19 @@ describe("HomePage first-prompt projection", () => {
     expect(screen.queryByText("buildingApp")).toBeNull();
   });
 
-  it("keeps the effective default chat-mode synchronization", async () => {
+  it("submits the optimistic effective mode without persisting it", () => {
     mocks.effectiveDefaultChatMode = "local-agent";
     render(<HomePage />);
 
-    await waitFor(() =>
-      expect(mocks.updateSettings).toHaveBeenCalledWith({
-        selectedChatMode: "local-agent",
+    fireEvent.click(screen.getByRole("button", { name: "Submit home prompt" }));
+
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "SUBMIT",
+      payload: expect.objectContaining({
+        chatMode: "local-agent",
+        isChatModeExplicit: false,
       }),
-    );
+    });
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 });

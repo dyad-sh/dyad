@@ -1111,6 +1111,12 @@ ${componentSnippet}
         storedChatMode: chat.chatMode,
         requestedChatMode: req.requestedChatMode,
       });
+      if (chat.chatMode === null) {
+        await db
+          .update(chats)
+          .set({ chatMode: selectedChatMode })
+          .where(and(eq(chats.id, req.chatId), isNull(chats.chatMode)));
+      }
       const settings = {
         ...storedSettings,
         selectedChatMode,

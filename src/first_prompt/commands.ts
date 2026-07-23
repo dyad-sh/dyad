@@ -109,7 +109,9 @@ export function createFirstPromptCommandRunner(options: {
           try {
             const result = await deps.createApp(
               operationId,
-              command.payload.chatMode,
+              command.payload.isChatModeExplicit
+                ? command.payload.chatMode
+                : undefined,
             );
             if (disposed) {
               deps.cancelCreation(operationId);
@@ -142,7 +144,9 @@ export function createFirstPromptCommandRunner(options: {
             const chatId = await deps.createChat(
               command.appId,
               operationId,
-              command.payload.chatMode,
+              command.payload.isChatModeExplicit
+                ? command.payload.chatMode
+                : undefined,
             );
             if (disposed) {
               deps.cancelCreation(operationId);

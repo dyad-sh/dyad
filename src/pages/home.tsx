@@ -47,26 +47,25 @@ export default function HomePage() {
   const sendFirstPrompt = useFirstPromptSend();
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
-  const {
-    settings,
-    updateSettings,
-    envVars,
-    loading: isSettingsLoading,
-  } = useSettings();
+  const { settings, envVars, loading: isSettingsLoading } = useSettings();
   const { isAnyProviderSetup, isLoading: isLoadingLanguageModelProviders } =
     useLanguageModelProviders();
   const hasDyadProApiKey = settings ? hasDyadProKey(settings) : false;
   const hasConfiguredAiProvider =
     !isLoadingLanguageModelProviders && isAnyProviderSetup();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { quotaStatus } = useFreeAgentQuota();
   const initialChatMode = useInitialChatMode();
   const homeInitialChatMode = useMemo<ChatMode | undefined>(() => {
-    if (!settings || isQuotaLoading) {
+    if (!settings) {
       return initialChatMode;
     }
 
-    return getHomeDefaultChatMode(settings, envVars, !isQuotaExceeded);
-  }, [envVars, initialChatMode, isQuotaExceeded, isQuotaLoading, settings]);
+    return getHomeDefaultChatMode(
+      settings,
+      envVars,
+      quotaStatus ? !quotaStatus.isQuotaExceeded : undefined,
+    );
+  }, [envVars, initialChatMode, quotaStatus, settings]);
 
   const posthog = usePostHog();
 
@@ -98,32 +97,9 @@ export default function HomePage() {
     }
   }, [appId, navigate]);
 
-  // Keep the selected chat mode synced to the effective default (which can
-  // change as quota/provider state loads) until the user explicitly picks a
-  // mode. Wait for quota status to load to avoid race condition where we
-  // default to Basic Agent before knowing if quota is actually exceeded.
   const hasManuallySelectedChatMode = useAtomValue(
     hasManuallySelectedChatModeAtom,
   );
-  useEffect(() => {
-    if (
-      !settings ||
-      !homeInitialChatMode ||
-      isQuotaLoading ||
-      hasManuallySelectedChatMode
-    ) {
-      return;
-    }
-    if (settings.selectedChatMode !== homeInitialChatMode) {
-      updateSettings({ selectedChatMode: homeInitialChatMode });
-    }
-  }, [
-    homeInitialChatMode,
-    settings,
-    updateSettings,
-    isQuotaLoading,
-    hasManuallySelectedChatMode,
-  ]);
 
   // Honor a manually picked mode (e.g. "plan") on submit; otherwise fall back
   // to the effective default so it still tracks provider/quota state. Apply the

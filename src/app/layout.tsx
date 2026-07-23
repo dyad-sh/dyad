@@ -40,6 +40,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
 import { GithubOpsProvider } from "@/github_ops/GithubOpsProvider";
 import { ScreenshotProvider } from "@/screenshot/ScreenshotProvider";
+import { useSyncDefaultChatMode } from "@/hooks/useSyncDefaultChatMode";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const chatStreamManager = useChatStreamManager();
@@ -100,6 +101,7 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
     selectedComponentsPreviewAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  useSyncDefaultChatMode();
 
   // Initialize plan events listener
   usePlanEvents();

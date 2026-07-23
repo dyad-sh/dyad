@@ -77,6 +77,10 @@ describe("chat mode (integration)", () => {
     expect(messages[0].content).toBe("[dump] hi");
     expect(messages[1].role).toBe("assistant");
     expect(messages[1].content).toContain("[[dyad-dump-path=");
+    const latchedChat = await harness.db.query.chats.findFirst({
+      where: (chats, { eq }) => eq(chats.id, harness.chatId),
+    });
+    expect(latchedChat?.chatMode).toBe("build");
   }, 60_000);
 
   it("ask mode omits codebase context and does not apply changes", async () => {

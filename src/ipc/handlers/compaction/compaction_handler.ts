@@ -40,10 +40,17 @@ const logger = log.scope("compaction_handler");
 
 export interface CompactionResult {
   success: boolean;
+  aborted?: boolean;
+  skipped?: boolean;
   summary?: string;
   backupPath?: string;
   error?: string;
 }
+
+// The DB flag is the durable "owed a compaction" record and is only cleared
+// after success. This in-memory guard prevents duplicate work within this
+// process without sacrificing retry-on-failure or abort-retains-mark semantics.
+const compactionChatsInFlight = new Set<number>();
 
 /**
  * Mark a chat as needing compaction before the next message.
@@ -132,11 +139,30 @@ export async function performCompaction(
   onSummaryChunk?: (accumulatedText: string) => void,
   options?: {
     createdAtStrategy?: "before-latest-user" | "now";
+    abortSignal?: AbortSignal;
   },
 ): Promise<CompactionResult> {
-  const settings = readSettings();
+  const abortSignal = options?.abortSignal;
+  const abortedResult = (): CompactionResult => ({
+    success: false,
+    aborted: true,
+    error: "Compaction aborted",
+  });
+
+  if (abortSignal?.aborted) {
+    return abortedResult();
+  }
+
+  // Check and acquire in one synchronous frame, before the first await in the
+  // compaction path. A concurrent loser skips silently while the winner owns
+  // the durable pending mark.
+  if (compactionChatsInFlight.has(chatId)) {
+    return { success: false, skipped: true };
+  }
+  compactionChatsInFlight.add(chatId);
 
   try {
+    const settings = readSettings();
     logger.info(`Starting compaction for chat ${chatId}`);
 
     // Load all messages for the chat
@@ -207,6 +233,7 @@ export async function performCompaction(
       system: COMPACTION_SYSTEM_PROMPT,
       messages: summaryMessages,
       maxRetries: 2,
+      abortSignal,
     });
 
     // Read .textStream now (not lazily) so the SDK's tee runs
@@ -218,8 +245,15 @@ export async function performCompaction(
     // Stream summary text to the frontend as it generates
     let summary = "";
     for await (const chunk of textStream) {
+      if (abortSignal?.aborted) {
+        return abortedResult();
+      }
       summary += chunk;
       onSummaryChunk?.(summary);
+    }
+
+    if (abortSignal?.aborted) {
+      return abortedResult();
     }
 
     // Create the compaction indicator message
@@ -286,15 +320,18 @@ Note: This file may be large. Read only the sections you need or use grep to sea
       backupPath,
     };
   } catch (error) {
-    logger.error(`Compaction failed for chat ${chatId}:`, error);
+    if (abortSignal?.aborted) {
+      return abortedResult();
+    }
 
-    // Clear pending flag to prevent infinite retry loops
-    await clearPendingCompaction(chatId);
+    logger.error(`Compaction failed for chat ${chatId}:`, error);
 
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    compactionChatsInFlight.delete(chatId);
   }
 }
 

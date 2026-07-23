@@ -11,6 +11,7 @@ import {
   CHAT_STREAM_INVARIANT_I3,
   CHAT_STREAM_INVARIANT_I4,
 } from "./protocol";
+import { ignore, type TransitionResult } from "@/state_machines/types";
 
 /**
  * Pure executable model of the imperative main-process chat stream engine.
@@ -34,6 +35,14 @@ import {
  * and completion resolves before it is untracked.
  * `quit-cleared` models before-quit clearing the tracking maps (lines 554-574),
  * not handler completion: the process is exiting, so no completion is resolved.
+ *
+ * Concurrency policy: independent streams and different chats may advance in
+ * parallel. Compaction is single-flight per chat; a concurrent same-chat
+ * `compaction-started` event is deliberately dropped rather than queued, and
+ * the durable pending mark allows a later observation to retry after the
+ * active flight releases. Admission, cancellation, and handler-unwind events
+ * for tracked invocations must not be dropped; events for missing or stale
+ * invocation phases are ignored.
  *
  * Unlike renderer machines this model returns emissions directly as commands:
  * it is a specification/test oracle, not a production command runner.
@@ -80,6 +89,9 @@ export interface MainModelState {
   chatWaiters: Readonly<Record<number, readonly number[]>>;
   appWaiters: Readonly<Record<number, readonly number[]>>;
   pendingCompactionChats: readonly number[];
+  activeCompactionChats: readonly number[];
+  compactionSummaryChats: readonly number[];
+  compactionCompleteBroadcastChats: readonly number[];
   quit: boolean;
 }
 
@@ -112,7 +124,11 @@ export type MainModelEvent =
       hasResponse?: boolean;
     }
   | { type: "compaction-started"; invocationId: number }
-  | { type: "compaction-finished"; invocationId: number }
+  | {
+      type: "compaction-finished";
+      invocationId: number;
+      outcome: "completed" | "aborted";
+    }
   | { type: "handler-unwound"; invocationId: number }
   | { type: "quit" };
 
@@ -150,10 +166,13 @@ export type MainModelEmission =
       origin: "finalizer";
     };
 
-export interface MainModelTransitionResult {
-  state: MainModelState;
-  commands: readonly MainModelEmission[];
-}
+export type MainModelIgnoreReason = "compaction-already-active";
+
+export type MainModelTransitionResult = TransitionResult<
+  MainModelState,
+  MainModelEmission,
+  MainModelIgnoreReason
+>;
 
 export const initialMainModelState: MainModelState = {
   streams: {},
@@ -162,6 +181,9 @@ export const initialMainModelState: MainModelState = {
   chatWaiters: {},
   appWaiters: {},
   pendingCompactionChats: [],
+  activeCompactionChats: [],
+  compactionSummaryChats: [],
+  compactionCompleteBroadcastChats: [],
   quit: false,
 };
 
@@ -598,9 +620,16 @@ export function transitionMainModel(
         stream.awaitPoint !== "llm"
       )
         return { state, commands: [] };
+      if (state.activeCompactionChats.includes(stream.chatId)) {
+        return ignore(state, "compaction-already-active");
+      }
       return {
         state: {
           ...replaceStream(state, { ...stream, awaitPoint: "compaction" }),
+          activeCompactionChats: [
+            ...state.activeCompactionChats,
+            stream.chatId,
+          ],
           pendingCompactionChats: state.pendingCompactionChats.includes(
             stream.chatId,
           )
@@ -619,7 +648,30 @@ export function transitionMainModel(
       )
         return { state, commands: [] };
       return {
-        state: replaceStream(state, { ...stream, awaitPoint: "llm" }),
+        state: {
+          ...replaceStream(state, { ...stream, awaitPoint: "llm" }),
+          activeCompactionChats: state.activeCompactionChats.filter(
+            (chatId) => chatId !== stream.chatId,
+          ),
+          pendingCompactionChats:
+            event.outcome === "aborted"
+              ? state.pendingCompactionChats
+              : state.pendingCompactionChats.filter(
+                  (chatId) => chatId !== stream.chatId,
+                ),
+          compactionSummaryChats:
+            event.outcome === "aborted"
+              ? state.compactionSummaryChats
+              : state.compactionSummaryChats.includes(stream.chatId)
+                ? state.compactionSummaryChats
+                : [...state.compactionSummaryChats, stream.chatId],
+          compactionCompleteBroadcastChats:
+            event.outcome === "aborted"
+              ? state.compactionCompleteBroadcastChats
+              : state.compactionCompleteBroadcastChats.includes(stream.chatId)
+                ? state.compactionCompleteBroadcastChats
+                : [...state.compactionCompleteBroadcastChats, stream.chatId],
+        },
         commands: [],
       };
     }

@@ -628,8 +628,15 @@ export async function handleLocalAgentStream(
         createdAtStrategy: options?.showOnTopOfCurrentResponse
           ? "now"
           : "before-latest-user",
+        abortSignal: abortController.signal,
       },
     );
+    if (compactionResult.skipped) {
+      return false;
+    }
+    if (compactionResult.aborted) {
+      return false;
+    }
     if (!compactionResult.success) {
       logger.warn(
         `Compaction failed for chat ${req.chatId}: ${compactionResult.error}`,
@@ -673,6 +680,16 @@ export async function handleLocalAgentStream(
 
   // Check if compaction is pending and enabled before processing the message
   await maybePerformPendingCompaction();
+
+  if (abortController.signal.aborted) {
+    await db
+      .update(messages)
+      .set({
+        content: appendCancelledResponseNotice(fullResponse ?? ""),
+      })
+      .where(eq(messages.id, placeholderMessageId));
+    return false;
+  }
 
   // Send initial message update. Routed through sendChunk so lastSentRef
   // stays in sync automatically (same as every other full-messages send).

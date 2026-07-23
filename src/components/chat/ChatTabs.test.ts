@@ -278,6 +278,115 @@ describe("chat tab session persistence", () => {
     expect(Array.from(store.get(closedChatIdsAtom))).toEqual([3]);
   });
 
+  it("keeps a chat opened before hydration and persists it next", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [1],
+      selectedChatId: 1,
+      closedChatIds: [],
+      updatedAt: 123,
+    });
+    store.set(recentViewedChatIdsAtom, [2]);
+    store.set(sessionOpenedChatIdsAtom, new Set([2]));
+    store.set(selectedChatIdAtom, 2);
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([1, 2]),
+    );
+
+    expect(restoredSession).toMatchObject({
+      openChatIds: [1, 2],
+      selectedChatId: 2,
+      closedChatIds: [],
+    });
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([1, 2]);
+    expect(Array.from(store.get(sessionOpenedChatIdsAtom))).toEqual([1, 2]);
+
+    store.set(persistChatTabSessionAtom);
+    expect(store.get(chatTabSessionStorageAtom)).toMatchObject({
+      openChatIds: [1, 2],
+      selectedChatId: 2,
+      closedChatIds: [],
+    });
+  });
+
+  it("preserves stored order before appending pre-hydration tabs", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [4, 2, 1],
+      selectedChatId: 2,
+      closedChatIds: [],
+      updatedAt: 123,
+    });
+    store.set(recentViewedChatIdsAtom, [3, 2]);
+    store.set(sessionOpenedChatIdsAtom, new Set([3, 2]));
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([1, 2, 3, 4]),
+    );
+
+    expect(restoredSession.openChatIds).toEqual([4, 2, 1, 3]);
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([4, 2, 1, 3]);
+  });
+
+  it("prioritizes all pre-hydration open tabs when stored tabs fill the cap", () => {
+    const store = createStore();
+    const storedOpenChatIds = Array.from(
+      { length: 100 },
+      (_, index) => index + 1,
+    );
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: storedOpenChatIds,
+      selectedChatId: 1,
+      closedChatIds: [101],
+      updatedAt: 123,
+    });
+    store.set(recentViewedChatIdsAtom, [101, 102]);
+    store.set(sessionOpenedChatIdsAtom, new Set([101, 102]));
+    store.set(selectedChatIdAtom, 102);
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([...storedOpenChatIds, 101, 102]),
+    );
+
+    expect(restoredSession.openChatIds).toEqual([
+      ...storedOpenChatIds.slice(0, 98),
+      101,
+      102,
+    ]);
+    expect(restoredSession.selectedChatId).toBe(102);
+    expect(restoredSession.closedChatIds).not.toContain(101);
+    expect(store.get(sessionOpenedChatIdsAtom).has(101)).toBe(true);
+  });
+
+  it("lets a pre-hydration reopen override a stale stored closure", () => {
+    const store = createStore();
+    store.set(chatTabSessionStorageAtom, {
+      openChatIds: [1],
+      selectedChatId: 1,
+      closedChatIds: [2],
+      updatedAt: 123,
+    });
+    store.set(recentViewedChatIdsAtom, [2]);
+    store.set(sessionOpenedChatIdsAtom, new Set([2]));
+    store.set(selectedChatIdAtom, 2);
+
+    const restoredSession = store.set(
+      hydrateChatTabSessionAtom,
+      new Set([1, 2]),
+    );
+
+    expect(restoredSession).toMatchObject({
+      openChatIds: [1, 2],
+      selectedChatId: 2,
+      closedChatIds: [],
+    });
+    expect(store.get(closedChatIdsAtom).has(2)).toBe(false);
+  });
+
   it("clears restored selection when the selected chat is no longer open", () => {
     const store = createStore();
     store.set(chatTabSessionStorageAtom, {

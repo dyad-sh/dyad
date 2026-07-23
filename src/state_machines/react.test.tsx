@@ -1,14 +1,19 @@
 import { StrictMode, type ReactNode } from "react";
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   useControllerSnapshot,
+  createMachineProvider,
+  EntityDisposalProvider,
+  useEntityDisposal,
   useKeyedController,
   useManagerLifecycle,
   useManagerPagehideDisposal,
   type KeyedSnapshotSource,
 } from "./react";
 import { SnapshotStore } from "./snapshot_store";
+import { EntityDisposalRegistry } from "./entity_disposal";
+import { registerAtomWriter, type AtomProjectionWriter } from "./projection";
 
 class Source implements KeyedSnapshotSource<number, number> {
   private values = new Map<number, number>();
@@ -79,6 +84,38 @@ describe("useManagerLifecycle", () => {
     expect(second.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it("releases a replaced manager before starting its replacement", async () => {
+    const store = { set: vi.fn() };
+    const atom = {};
+    const createManager = () => {
+      let writer: AtomProjectionWriter<number> | undefined;
+      return {
+        start: vi.fn(() => {
+          writer = registerAtomWriter(store, atom);
+        }),
+        stop: vi.fn(() => {
+          writer?.dispose();
+          writer = undefined;
+        }),
+        dispose: vi.fn(),
+      };
+    };
+    const first = createManager();
+    const second = createManager();
+    const hook = renderHook(({ manager }) => useManagerLifecycle(manager), {
+      initialProps: { manager: first },
+    });
+
+    expect(() => hook.rerender({ manager: second })).not.toThrow();
+    expect(first.stop).toHaveBeenCalledOnce();
+    expect(second.start).toHaveBeenCalledOnce();
+    await flushMicrotasks();
+    expect(first.dispose).toHaveBeenCalledOnce();
+
+    hook.unmount();
+    await flushMicrotasks();
+  });
+
   it("disposes a rapidly reclaimed manager only once", async () => {
     const first = { dispose: vi.fn() };
     const second = { dispose: vi.fn() };
@@ -122,6 +159,51 @@ describe("useManagerPagehideDisposal", () => {
 
     expect(manager.dispose).not.toHaveBeenCalled();
     hook.unmount();
+  });
+});
+
+describe("createMachineProvider", () => {
+  it("constructs an owned manager and accepts an injected manager", async () => {
+    const owned = { dispose: vi.fn() };
+    const injected = { dispose: vi.fn() };
+    const machine = createMachineProvider({
+      name: "Example",
+      useOwnedManager: () => owned,
+    });
+    function Consumer() {
+      return (
+        <span>{machine.useManager() === injected ? "injected" : "owned"}</span>
+      );
+    }
+
+    const view = render(
+      <machine.Provider manager={injected}>
+        <Consumer />
+      </machine.Provider>,
+    );
+    expect(screen.getByText("injected")).toBeTruthy();
+    view.unmount();
+    await flushMicrotasks();
+    expect(injected.dispose).toHaveBeenCalledOnce();
+
+    const ownedView = render(
+      <machine.Provider>
+        <Consumer />
+      </machine.Provider>,
+    );
+    expect(screen.getByText("owned")).toBeTruthy();
+    ownedView.unmount();
+    await flushMicrotasks();
+    expect(owned.dispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("EntityDisposalProvider", () => {
+  it("exposes one provider-owned registry", () => {
+    const { result } = renderHook(() => useEntityDisposal(), {
+      wrapper: EntityDisposalProvider,
+    });
+    expect(result.current).toBeInstanceOf(EntityDisposalRegistry);
   });
 });
 

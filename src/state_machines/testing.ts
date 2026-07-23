@@ -78,6 +78,21 @@ export function driveTransitionMatrix<State, Event, Command>(options: {
   return results;
 }
 
+/** Replays captured trace events through a pure transition function. */
+export function replayTrace<State, Event, Command>(options: {
+  initialState: State;
+  entries: readonly { event: Event; ignoredReason?: IgnoreReason }[];
+  transition: (state: State, event: Event) => TransitionResult<State, Command>;
+}): State {
+  return options.entries.reduce(
+    (state, entry) =>
+      entry.ignoredReason === undefined
+        ? options.transition(state, entry.event).state
+        : state,
+    options.initialState,
+  );
+}
+
 /**
  * Breadth-first exploration for machines whose reachable states can be
  * generated from a finite event set. State keys deliberately come from the

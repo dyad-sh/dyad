@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -8,7 +9,10 @@ import {
 } from "react";
 import { useAtomValue, useStore } from "jotai";
 import { previewRunStateByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
-import { useManagerLifecycle } from "@/state_machines/react";
+import {
+  useManagerLifecycle,
+  useRegisterEntityDisposer,
+} from "@/state_machines/react";
 import { createPreviewIframeCommandAdapter } from "./commands";
 import { PreviewIframeManager } from "./manager";
 
@@ -19,6 +23,10 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   const runStates = useAtomValue(previewRunStateByAppIdAtom);
   const [manager] = useState(
     () => new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
+  );
+  const disposeApp = useCallback(
+    (appId: number) => manager.disposeKey(appId),
+    [manager],
   );
   const handledRestartStartedAt = useRef(new Map<number, number>());
 
@@ -42,6 +50,7 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   }, [manager, runStates]);
 
   useManagerLifecycle(manager);
+  useRegisterEntityDisposer("app", disposeApp);
   return (
     <PreviewIframeContext.Provider value={manager}>
       {children}

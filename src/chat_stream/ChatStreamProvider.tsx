@@ -1,52 +1,29 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useStore } from "jotai";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  type PropsWithChildren,
-} from "react";
+  createMachineProvider,
+  useRegisterEntityDisposer,
+} from "@/state_machines/react";
+import { ChatStreamManager, type StreamFinishedEvent } from "./manager";
 
-import type { ChatStreamManager, StreamFinishedEvent } from "./manager";
-
-const ChatStreamContext = createContext<ChatStreamManager | null>(null);
-
-export function ChatStreamProvider({
-  manager,
-  children,
-}: PropsWithChildren<{ manager: ChatStreamManager }>) {
-  useManagerLifecycle(manager);
-
-  return (
-    <ChatStreamContext.Provider value={manager}>
-      {children}
-    </ChatStreamContext.Provider>
-  );
-}
-
-function useManagerLifecycle(manager: ChatStreamManager) {
-  const generation = useRef(0);
-
-  useEffect(() => {
-    const currentGeneration = ++generation.current;
-
-    return () => {
-      queueMicrotask(() => {
-        if (generation.current === currentGeneration) {
-          manager.dispose();
-        }
-      });
-    };
-  }, [manager]);
-}
-
-export function useChatStreamManager(): ChatStreamManager {
-  const manager = useContext(ChatStreamContext);
-  if (!manager) {
-    throw new Error("useChatStreamManager requires ChatStreamProvider");
-  }
+function useOwnedChatStreamManager(): ChatStreamManager {
+  const store = useStore();
+  const [manager] = useState(() => new ChatStreamManager(store));
   return manager;
 }
+
+function useChatStreamMount(manager: ChatStreamManager): void {
+  useRegisterEntityDisposer("chat", manager.disposeKey);
+}
+
+const chatStreamProvider = createMachineProvider({
+  name: "ChatStream",
+  useOwnedManager: useOwnedChatStreamManager,
+  useOnMount: useChatStreamMount,
+});
+
+export const ChatStreamProvider = chatStreamProvider.Provider;
+export const useChatStreamManager = chatStreamProvider.useManager;
 
 /** Subscribe to one-shot terminal stream events without mirroring them into state. */
 export function useStreamFinished(

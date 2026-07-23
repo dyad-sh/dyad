@@ -213,6 +213,8 @@ describe("app details actions (integration)", () => {
     const app = await createFixtureApp("delete-app");
 
     await mountAppDetails(app);
+    harness.seedAppRuntimeResidue(app.appId);
+    expect(harness.hasAppRuntimeResidue(app.appId)).toBe(true);
     await openMoreOptions();
     await harness.clickMenuItem("Delete");
     await harness.confirmDialog(
@@ -234,6 +236,7 @@ describe("app details actions (integration)", () => {
     await waitFor(() => {
       expect(harness.currentLocation().pathname).toBe("/");
     });
+    expect(harness.hasAppRuntimeResidue(app.appId)).toBe(false);
   }, 60_000);
 
   it("renames an app and its folder", async () => {

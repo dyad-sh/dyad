@@ -19,6 +19,7 @@ import type {
 } from "@/ipc/types/user_input";
 import { ipc as defaultIpc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import { registerAtomWriter } from "@/state_machines/projection";
 
 type UserInputOutcome =
   | "human"
@@ -148,6 +149,18 @@ export function getUserInputProjectionAdapter({
   const pendingResponses = new Map<string, UserInputResponsePayload>();
   const dispatchingFollowUps = new Set<string>();
   let activeChatStream = chatStream;
+  const requestsWriter = registerAtomWriter<
+    typeof store,
+    typeof writableUserInputRequestsAtom,
+    (
+      current: Map<string, ProjectedUserInputRequest>,
+    ) => Map<string, ProjectedUserInputRequest>
+  >(store, writableUserInputRequestsAtom);
+  const respondingWriter = registerAtomWriter<
+    typeof store,
+    typeof writableRespondingRequestIdsAtom,
+    (current: Set<string>) => Set<string>
+  >(store, writableRespondingRequestIdsAtom);
 
   const markChanged = (requestId: string): number => {
     const revision = (revisions.get(requestId) ?? 0) + 1;
@@ -160,11 +173,11 @@ export function getUserInputProjectionAdapter({
       current: UserInputRequests,
     ) => Map<string, ProjectedUserInputRequest>,
   ) => {
-    store.set(writableUserInputRequestsAtom, (current) => update(current));
+    requestsWriter.write((current) => update(current));
   };
 
   const removeResponding = (requestId: string) => {
-    store.set(writableRespondingRequestIdsAtom, (current) => {
+    respondingWriter.write((current) => {
       if (!current.has(requestId)) return current;
       const next = new Set<string>(current);
       next.delete(requestId);
@@ -470,7 +483,7 @@ export function getUserInputProjectionAdapter({
 
     async respond(requestId, response) {
       pendingResponses.set(requestId, response);
-      store.set(writableRespondingRequestIdsAtom, (current) => {
+      respondingWriter.write((current) => {
         const next = new Set<string>(current);
         next.add(requestId);
         return next;

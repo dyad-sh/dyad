@@ -51,7 +51,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { createStore, Provider } from "jotai";
-import React, { Suspense, lazy, useEffect } from "react";
+import React, { Suspense, lazy, useCallback, useEffect } from "react";
 import { Toaster } from "sonner";
 import { fetch as undiciFetch } from "undici";
 import { expect } from "vitest";
@@ -78,6 +78,14 @@ import {
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import {
+  clearPreviewRuntimeForAppAtom,
+  previewErrorByAppIdAtom,
+} from "@/atoms/previewRuntimeAtoms";
+import {
+  clearTestRuntimeForAppAtom,
+  testRunOutputByAppIdAtom,
+} from "@/atoms/testRuntimeAtoms";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
 import { useChatStreamRuntime } from "@/hooks/useChatStream";
@@ -97,6 +105,10 @@ import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamManager } from "@/chat_stream/manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
+import {
+  EntityDisposalProvider,
+  useRegisterEntityDisposer,
+} from "@/state_machines/react";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationManager } from "@/image_generation/manager";
@@ -307,6 +319,10 @@ export interface HybridChatHarness extends ChatFlowHarness {
   /** Seed/read the four transient maps owned by ChatStreamManager. */
   seedChatStreamResidue: (chatId: number) => void;
   hasChatStreamResidue: (chatId: number) => boolean;
+
+  /** Seed/read representative app-scoped preview and test runtime state. */
+  seedAppRuntimeResidue: (appId: number) => void;
+  hasAppRuntimeResidue: (appId: number) => boolean;
 
   /** Drive a Base UI popover/menu trigger in happy-dom. */
   openPopover: (trigger: HTMLElement) => Promise<void>;
@@ -531,6 +547,18 @@ function HybridAppEventWiring({
       }),
     [chatStreamManager, queryClient, store],
   );
+  return null;
+}
+
+function HybridEntityDisposalWiring({ store }: { store: JotaiStore }) {
+  const clearAppRuntime = useCallback(
+    (appId: number) => {
+      store.set(clearPreviewRuntimeForAppAtom, appId);
+      store.set(clearTestRuntimeForAppAtom, appId);
+    },
+    [store],
+  );
+  useRegisterEntityDisposer("app", clearAppRuntime);
   return null;
 }
 
@@ -954,31 +982,34 @@ export async function setupHybridChatHarness(
       const result = render(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
-            <ChatStreamProvider manager={chatStreamManager}>
-              <AppRunProvider manager={appRunManager}>
-                <ImageGenerationProvider manager={imageGenerationManager}>
-                  <VersionPreviewProvider manager={versionPreviewManager}>
-                    <PreviewIframeProvider>
-                      <ThemeProvider>
-                        <DeepLinkProvider>
-                          <SidebarProvider defaultOpen={false}>
-                            {opts.wireAppEvents !== false && (
-                              <HybridAppEventWiring
-                                store={store}
-                                queryClient={queryClient}
-                                chatStreamManager={chatStreamManager}
-                              />
-                            )}
-                            <RouterProvider router={router as never} />
-                            <Toaster richColors expand duration={500} />
-                          </SidebarProvider>
-                        </DeepLinkProvider>
-                      </ThemeProvider>
-                    </PreviewIframeProvider>
-                  </VersionPreviewProvider>
-                </ImageGenerationProvider>
-              </AppRunProvider>
-            </ChatStreamProvider>
+            <EntityDisposalProvider>
+              <HybridEntityDisposalWiring store={store} />
+              <ChatStreamProvider manager={chatStreamManager}>
+                <AppRunProvider manager={appRunManager}>
+                  <ImageGenerationProvider manager={imageGenerationManager}>
+                    <VersionPreviewProvider manager={versionPreviewManager}>
+                      <PreviewIframeProvider>
+                        <ThemeProvider>
+                          <DeepLinkProvider>
+                            <SidebarProvider defaultOpen={false}>
+                              {opts.wireAppEvents !== false && (
+                                <HybridAppEventWiring
+                                  store={store}
+                                  queryClient={queryClient}
+                                  chatStreamManager={chatStreamManager}
+                                />
+                              )}
+                              <RouterProvider router={router as never} />
+                              <Toaster richColors expand duration={500} />
+                            </SidebarProvider>
+                          </DeepLinkProvider>
+                        </ThemeProvider>
+                      </PreviewIframeProvider>
+                    </VersionPreviewProvider>
+                  </ImageGenerationProvider>
+                </AppRunProvider>
+              </ChatStreamProvider>
+            </EntityDisposalProvider>
           </Provider>
         </QueryClientProvider>,
       );
@@ -1025,6 +1056,25 @@ export async function setupHybridChatHarness(
         store.get(chatErrorByIdAtom),
         store.get(isStreamingByIdAtom),
       ].some((entries) => entries.has(chatId));
+    };
+
+    const seedAppRuntimeResidue = (appId: number) => {
+      const store = getActiveStore();
+      act(() => {
+        store.set(
+          previewErrorByAppIdAtom,
+          new Map([[appId, { message: "seeded", source: "preview-app" }]]),
+        );
+        store.set(testRunOutputByAppIdAtom, new Map([[appId, "seeded"]]));
+      });
+    };
+
+    const hasAppRuntimeResidue = (appId: number) => {
+      const store = getActiveStore();
+      return (
+        store.get(previewErrorByAppIdAtom).has(appId) ||
+        store.get(testRunOutputByAppIdAtom).has(appId)
+      );
     };
 
     const setChatAttachments = (attachments: ChatAttachmentSeed[]) => {
@@ -1577,6 +1627,8 @@ export async function setupHybridChatHarness(
       getPlanAcceptInNewChat,
       seedChatStreamResidue,
       hasChatStreamResidue,
+      seedAppRuntimeResidue,
+      hasAppRuntimeResidue,
       openPopover,
       clickMenuItem,
       findDialog,

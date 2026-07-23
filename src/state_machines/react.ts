@@ -1,9 +1,121 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentType,
+  type PropsWithChildren,
+} from "react";
+import { EntityDisposalRegistry, type EntityDisposer } from "./entity_disposal";
 import type { KeyedController } from "./keyed_host";
 
 export interface DisposableManager {
   start?(): void;
+  stop?(): void;
   dispose(): void;
+}
+
+type MachineProviderProps<M, OwnedProps extends object> = PropsWithChildren<
+  | ({ manager: M } & Partial<OwnedProps>)
+  | ({ manager?: undefined } & OwnedProps)
+>;
+
+export function createMachineProvider<
+  M extends DisposableManager,
+  OwnedProps extends object = object,
+>(options: {
+  name: string;
+  useOwnedManager: (props: OwnedProps) => M;
+  useOnMount?: (manager: M) => void;
+}): {
+  Provider: ComponentType<MachineProviderProps<M, OwnedProps>>;
+  useManager: () => M;
+} {
+  const ManagerContext = createContext<M | null>(null);
+  const useOwnedManager = options.useOwnedManager;
+  const useOnMount = options.useOnMount ?? (() => undefined);
+
+  function ManagerBoundary({
+    manager,
+    children,
+  }: PropsWithChildren<{ manager: M }>) {
+    useManagerLifecycle(manager);
+    useOnMount(manager);
+    return createElement(ManagerContext.Provider, { value: manager }, children);
+  }
+
+  function OwnedManagerBoundary({
+    ownedProps,
+    children,
+  }: PropsWithChildren<{ ownedProps: OwnedProps }>) {
+    const manager = useOwnedManager(ownedProps);
+    return createElement(ManagerBoundary, { manager }, children);
+  }
+
+  function Provider(props: MachineProviderProps<M, OwnedProps>) {
+    if (props.manager) {
+      return createElement(
+        ManagerBoundary,
+        { manager: props.manager },
+        props.children,
+      );
+    }
+    return createElement(
+      OwnedManagerBoundary,
+      { ownedProps: props as OwnedProps },
+      props.children,
+    );
+  }
+
+  function useManager(): M {
+    const manager = useContext(ManagerContext);
+    if (!manager) {
+      throw new Error(
+        `use${options.name}Manager requires ${options.name}Provider`,
+      );
+    }
+    return manager;
+  }
+
+  return { Provider, useManager };
+}
+
+const EntityDisposalContext = createContext<EntityDisposalRegistry | null>(
+  null,
+);
+
+export function EntityDisposalProvider({ children }: PropsWithChildren) {
+  const [registry] = useState(() => new EntityDisposalRegistry());
+  return createElement(
+    EntityDisposalContext.Provider,
+    { value: registry },
+    children,
+  );
+}
+
+export function useEntityDisposal(): EntityDisposalRegistry {
+  const registry = useContext(EntityDisposalContext);
+  if (!registry) {
+    throw new Error("useEntityDisposal requires EntityDisposalProvider");
+  }
+  return registry;
+}
+
+export function useRegisterEntityDisposer(
+  scope: "app" | "chat",
+  dispose: EntityDisposer,
+): void {
+  const registry = useContext(EntityDisposalContext);
+  useEffect(() => {
+    if (!registry) return;
+    return scope === "app"
+      ? registry.onAppDeleted(dispose)
+      : registry.onChatDeleted(dispose);
+  }, [dispose, registry, scope]);
 }
 
 /**
@@ -25,6 +137,7 @@ export function useManagerLifecycle(manager: DisposableManager): void {
     manager.start?.();
 
     return () => {
+      manager.stop?.();
       queueMicrotask(() => {
         const current = lifecycle.current;
         if (current.generations.get(manager) === generation) {

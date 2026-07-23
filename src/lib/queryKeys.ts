@@ -361,7 +361,15 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   github: {
     all: ["github"] as const,
-    repos: ["github", "repos"] as const,
+    // Scope repo listings by the connected account so switching GitHub
+    // accounts in the same session doesn't serve the previous account's
+    // cached repos (which could otherwise be imported before the cache
+    // expires). `account` is a stable per-account identity (the GitHub
+    // user's primary email); `null` when unauthenticated.
+    repos: (account?: string | null) =>
+      ["github", "repos", account ?? null] as const,
+    dyadRepos: (account?: string | null) =>
+      ["github", "dyad-repos", account ?? null] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

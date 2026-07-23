@@ -14,6 +14,15 @@ export const GitHubRepoSchema = z.object({
 
 export type GithubRepository = z.infer<typeof GitHubRepoSchema>;
 
+export const DyadGithubRepoSchema = z.object({
+  name: z.string(),
+  full_name: z.string(),
+  private: z.boolean(),
+  alreadyImported: z.boolean(),
+});
+
+export type DyadGithubRepo = z.infer<typeof DyadGithubRepoSchema>;
+
 export const GitHubBranchSchema = z.object({
   name: z.string(),
   commit: z.object({ sha: z.string() }),
@@ -109,6 +118,9 @@ export const CloneRepoParamsSchema = z.object({
   installCommand: z.string().optional(),
   startCommand: z.string().optional(),
   optimizeForDyad: z.boolean().optional(),
+  // When true, a name collision resolves to a deduplicated name (e.g. "foo-2")
+  // instead of failing. Used by bulk import where names are not user-chosen.
+  dedupeName: z.boolean().optional(),
 });
 
 export const CloneRepoResultSchema = z.union([
@@ -135,6 +147,12 @@ export const githubContracts = {
     channel: "github:list-repos",
     input: z.void(),
     output: z.array(GitHubRepoSchema),
+  }),
+
+  listDyadRepos: defineContract({
+    channel: "github:list-dyad-repos",
+    input: z.void(),
+    output: z.array(DyadGithubRepoSchema),
   }),
 
   getRepoBranches: defineContract({

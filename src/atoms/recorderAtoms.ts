@@ -16,7 +16,9 @@ export type RecordingPhase =
   | "starting"
   | "authenticating"
   | "recording"
-  | "saving";
+  | "saving"
+  // Spec written; offering the optional AI-assertion pass until dismissed.
+  | "saved";
 
 export interface RecordingState {
   phase: RecordingPhase;
@@ -30,6 +32,8 @@ export interface RecordingState {
   progress?: string;
   /** Fatal setup error (recording didn't start). */
   error?: string;
+  /** Path of the just-saved spec, while phase is "saved". */
+  savedSpecPath?: string;
   startedAt?: number;
 }
 

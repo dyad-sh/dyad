@@ -172,7 +172,16 @@ async function readInstalledDependencyNames(
     throw error;
   }
 
-  const packageJson = JSON.parse(packageJsonText) as Record<string, unknown>;
+  let packageJson: Record<string, unknown>;
+  try {
+    packageJson = JSON.parse(packageJsonText) as Record<string, unknown>;
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new DyadError(
+      `Cannot install dependencies because package.json contains invalid JSON: ${details}`,
+      DyadErrorKind.Validation,
+    );
+  }
   const installedNames = new Set<string>();
   for (const sectionName of INSTALLED_DEPENDENCY_SECTIONS) {
     const section = packageJson[sectionName];

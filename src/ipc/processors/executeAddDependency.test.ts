@@ -8,6 +8,7 @@ import {
   PNPM_INSTALL_POLICY_ARGS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   executeAddDependency,
   ExecuteAddDependencyError,
@@ -663,6 +664,40 @@ describe("executeAddDependency", () => {
       ).toContain(
         "Installed or updated vite before a later dependency command failed.",
       );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it("classifies malformed package.json as a validation error", async () => {
+    const appPath = await mkdtemp(path.join(os.tmpdir(), "dyad-add-dep-"));
+    try {
+      await writeFile(path.join(appPath, "package.json"), "{ invalid");
+
+      let caughtError: unknown;
+      try {
+        await executeAddDependency({
+          packages: ["react"],
+          message: {
+            id: 1,
+            content:
+              '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+          } as any,
+          appPath,
+        });
+      } catch (error) {
+        caughtError = error;
+      }
+
+      expect(caughtError).toMatchObject({
+        originalError: {
+          kind: DyadErrorKind.Validation,
+        },
+        displaySummary: expect.stringContaining(
+          "package.json contains invalid JSON",
+        ),
+      });
+      expect(runCommandMock).not.toHaveBeenCalled();
     } finally {
       await rm(appPath, { recursive: true, force: true });
     }

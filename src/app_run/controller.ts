@@ -34,6 +34,12 @@ export type RunProducerInput =
   | { type: "MANUAL_RELOAD" }
   | { type: "APP_EXIT"; exitCode: number | null; timestamp: number };
 
+export type ExternalRunOperationInput = {
+  requestId: string;
+  operation: "restart" | "rebuild";
+  startedAt: number;
+};
+
 /** Completion events that carry the runId of the operation they belong to. */
 const RUN_ID_TAGGED_EVENTS = new Set<RunEvent["type"]>([
   "RUN_IPC_RESOLVED",
@@ -67,6 +73,7 @@ export class AppRunController {
   private readonly store = new SnapshotStore<RunState>({ type: "idle" });
   private epoch = 0;
   private readonly waiters = new Map<number, () => void>();
+  private readonly externalRunIds = new Map<string, number>();
   private queue: Promise<void> = Promise.resolve();
   private pendingBatches = 0;
   private processing = false;
@@ -117,6 +124,37 @@ export class AppRunController {
       return;
     }
     this.process({ ...input, appId: this.options.appId });
+  }
+
+  beginExternal(input: ExternalRunOperationInput): void {
+    if (this.disposed) {
+      return;
+    }
+    const runId = ++this.epoch;
+    this.externalRunIds.set(input.requestId, runId);
+    this.process({
+      type: "EXTERNAL_RESTART",
+      appId: this.options.appId,
+      runId,
+      operation: input.operation,
+      startedAt: input.startedAt,
+    });
+  }
+
+  settleExternal(requestId: string, error?: { message: string }): void {
+    if (this.disposed) {
+      return;
+    }
+    const runId = this.externalRunIds.get(requestId);
+    if (runId === undefined) {
+      return;
+    }
+    this.externalRunIds.delete(requestId);
+    this.process(
+      error
+        ? { type: "RUN_IPC_FAILED", runId, error }
+        : { type: "RUN_IPC_RESOLVED", runId },
+    );
   }
 
   /**
@@ -192,6 +230,7 @@ export class AppRunController {
     this.pendingEvents.length = 0;
     for (const resolve of this.waiters.values()) resolve();
     this.waiters.clear();
+    this.externalRunIds.clear();
     this.store.dispose();
   }
 

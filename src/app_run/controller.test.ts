@@ -60,6 +60,42 @@ async function flushMicrotasks() {
 }
 
 describe("AppRunController", () => {
+  it("tracks an external restart through the current epoch without issuing start", async () => {
+    const executor = createFakeExecutor();
+    const controller = new AppRunController({ appId: APP_ID, executor });
+
+    controller.beginExternal({
+      requestId: "agent-restart-1",
+      operation: "restart",
+      startedAt: 100,
+    });
+    await flushMicrotasks();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      type: "starting",
+      operation: "restart",
+    });
+    expect(executor.executed).toEqual([
+      {
+        type: "prepareExternalStart",
+        appId: APP_ID,
+        operation: "restart",
+      },
+    ]);
+
+    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
+    controller.settleExternal("agent-restart-1");
+    await flushMicrotasks();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      type: "ready",
+      url: makeUrl(1),
+    });
+    expect(executor.executed.some((command) => command.type === "start")).toBe(
+      false,
+    );
+  });
+
   it("allocates a fresh runId per operation and drops stale completions", async () => {
     const executor = createFakeExecutor();
     const controller = new AppRunController({ appId: APP_ID, executor });

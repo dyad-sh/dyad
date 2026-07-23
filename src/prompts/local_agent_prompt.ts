@@ -16,19 +16,51 @@ You make efficient and effective changes to codebases while following best pract
 </role>`;
 
 const APP_COMMANDS_BLOCK = `<app_commands>
-Do *not* tell the user to run shell commands. Instead, they can do one of the following commands in the UI:
+Do *not* tell the user to run shell commands. To refresh the app preview page without restarting its development server, suggest the Refresh command:
 
-- **Rebuild**: This will rebuild the app from scratch. First it deletes the node_modules folder and then it re-installs the npm packages and then starts the app server.
-- **Restart**: This will restart the app server.
-- **Refresh**: This will refresh the app preview page.
-
-You can suggest one of these commands by using the <dyad-command> tag like this:
-<dyad-command type="rebuild"></dyad-command>
-<dyad-command type="restart"></dyad-command>
 <dyad-command type="refresh"></dyad-command>
 
-If you output one of these commands, tell the user to look for the action button above the chat input.
+If you output this command, tell the user to look for the action button above the chat input.
 </app_commands>`;
+
+function appLifecycleBlock({
+  restartAppToolAvailable,
+  rebuildAppToolAvailable,
+}: {
+  restartAppToolAvailable: boolean;
+  rebuildAppToolAvailable: boolean;
+}): string {
+  if (!restartAppToolAvailable && !rebuildAppToolAvailable) {
+    return "";
+  }
+
+  const restartGuidance = restartAppToolAvailable
+    ? `
+Use \`restart_app\` only when:
+- The user explicitly asks to restart.
+- The development server is stopped, unresponsive, or demonstrably stale.
+- A process-boundary change requires a fresh server process, such as development-server configuration, startup scripts, environment variables, or server initialization code.
+- Logs or tool output explicitly say a restart is required.
+`
+    : "";
+  const rebuildGuidance = rebuildAppToolAvailable
+    ? `
+Use \`rebuild_app\` only when:
+- The user explicitly asks for a rebuild.
+- \`node_modules\` is missing or incomplete.
+- Dependency installation, package resolution, the lockfile, or native package state is demonstrably broken or stale.
+- A diagnostic explicitly recommends reinstalling dependencies.
+
+Never rebuild for ordinary code errors, UI changes, configuration changes that only require restart, or as the first response to an unexplained failure.
+`
+    : "";
+
+  return `<app_lifecycle>
+Rely on hot reload for ordinary source, styling, and asset edits. Do not restart or rebuild merely because files changed or as a routine verification step.
+${restartGuidance}${rebuildGuidance}
+Prefer the least expensive available action. A rebuild already includes a restart, so never call both for the same reason. Finish related edits before calling either tool, call it at most once for the same unchanged cause, and do not retry a failed lifecycle call without inspecting its error or logs.
+</app_lifecycle>`;
+}
 
 // Guidelines shared across ALL modes (Pro, Basic, Ask)
 const COMMON_GUIDELINES = `- All text you output outside of tool use is displayed to the user. Output text to communicate with the user. You can use Github-flavored markdown for formatting.
@@ -361,16 +393,22 @@ function buildLocalAgentSystemPrompt({
   codeExplorerAvailable,
   historyExplorerAvailable,
   testingEnabled,
+  restartAppToolAvailable,
+  rebuildAppToolAvailable,
 }: {
   enableAppBlueprint: boolean;
   codeExplorerAvailable: boolean;
   historyExplorerAvailable: boolean;
   testingEnabled: boolean;
+  restartAppToolAvailable: boolean;
+  rebuildAppToolAvailable: boolean;
 }): string {
   return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
+
+${appLifecycleBlock({ restartAppToolAvailable, rebuildAppToolAvailable })}
 
 ${GENERAL_GUIDELINES_BLOCK}
 
@@ -398,11 +436,15 @@ ${AI_RULES_BLOCK}
 function buildLocalAgentBasicSystemPrompt(
   enableAppBlueprint: boolean,
   testingEnabled: boolean,
+  restartAppToolAvailable: boolean,
+  rebuildAppToolAvailable: boolean,
 ): string {
   return `
 ${ROLE_BLOCK}
 
 ${APP_COMMANDS_BLOCK}
+
+${appLifecycleBlock({ restartAppToolAvailable, rebuildAppToolAvailable })}
 
 ${GENERAL_GUIDELINES_BLOCK}
 
@@ -466,12 +508,16 @@ export function constructLocalAgentPrompt(
      * in every prompt.
      */
     testingEnabled?: boolean;
+    restartAppToolAvailable?: boolean;
+    rebuildAppToolAvailable?: boolean;
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
   const codeExplorerAvailable = !!options?.codeExplorerAvailable;
   const historyExplorerAvailable = !!options?.historyExplorerAvailable;
   const testingEnabled = !!options?.testingEnabled;
+  const restartAppToolAvailable = options?.restartAppToolAvailable !== false;
+  const rebuildAppToolAvailable = options?.rebuildAppToolAvailable !== false;
 
   // Select the appropriate base prompt
   let basePrompt: string;
@@ -481,6 +527,8 @@ export function constructLocalAgentPrompt(
     basePrompt = buildLocalAgentBasicSystemPrompt(
       enableAppBlueprint,
       testingEnabled,
+      restartAppToolAvailable,
+      rebuildAppToolAvailable,
     );
   } else {
     basePrompt = buildLocalAgentSystemPrompt({
@@ -488,6 +536,8 @@ export function constructLocalAgentPrompt(
       codeExplorerAvailable,
       historyExplorerAvailable,
       testingEnabled,
+      restartAppToolAvailable,
+      rebuildAppToolAvailable,
     });
   }
 

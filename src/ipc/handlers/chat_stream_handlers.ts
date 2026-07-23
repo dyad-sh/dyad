@@ -1427,6 +1427,10 @@ ${componentSnippet}
         const historyExplorerAvailable =
           isDyadProEnabled(settings) &&
           settings.agentToolConsents?.["explore_chat_history"] !== "never";
+        const restartAppToolAvailable =
+          settings.agentToolConsents?.["restart_app"] !== "never";
+        const rebuildAppToolAvailable =
+          settings.agentToolConsents?.["rebuild_app"] !== "never";
 
         // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
@@ -1443,6 +1447,8 @@ ${componentSnippet}
           codeExplorerAvailable,
           historyExplorerAvailable,
           testingEnabled: !!updatedChat.app?.testingEnabled,
+          restartAppToolAvailable,
+          rebuildAppToolAvailable,
         });
 
         // Add information about mentioned apps for build mode only.

@@ -88,6 +88,13 @@ function makeEventFixtures(runId: number): RunEvent[] {
       options: { removeNodeModules: true, recreateSandbox: true },
     },
     { type: "REBUILD", appId: APP_ID, runId: FRESH_RUN_ID, startedAt: 200 },
+    {
+      type: "EXTERNAL_RESTART",
+      appId: APP_ID,
+      runId: FRESH_RUN_ID,
+      startedAt: 200,
+      operation: "rebuild",
+    },
     { type: "STOP", appId: APP_ID, runId: FRESH_RUN_ID, startedAt: 200 },
     { type: "RUN_IPC_RESOLVED", runId },
     { type: "RUN_IPC_FAILED", runId, error: { message: "spawn failed" } },
@@ -111,7 +118,11 @@ const STATE_TYPES = new Set([
   "errored",
 ]);
 
-const MUTATING_COMMAND_TYPES = new Set(["start", "stop"]);
+const MUTATING_COMMAND_TYPES = new Set([
+  "start",
+  "stop",
+  "prepareExternalStart",
+]);
 
 const COMPLETION_EVENT_TYPES = new Set([
   "RUN_IPC_RESOLVED",
@@ -406,6 +417,40 @@ describe("transition scenarios", () => {
         operation: "restart",
         startedAt: 100,
         options: { removeNodeModules: true, recreateSandbox: true },
+      },
+    ]);
+  });
+
+  it("models an externally executed rebuild without issuing a second start", () => {
+    const result = transition(
+      {
+        type: "errored",
+        appId: APP_ID,
+        runId: CURRENT_RUN_ID,
+        error: { message: "old" },
+      },
+      {
+        type: "EXTERNAL_RESTART",
+        appId: APP_ID,
+        runId: FRESH_RUN_ID,
+        startedAt: 200,
+        operation: "rebuild",
+      },
+    );
+
+    expect(result.state).toEqual({
+      type: "starting",
+      appId: APP_ID,
+      runId: FRESH_RUN_ID,
+      operation: "rebuild",
+      startedAt: 200,
+      pendingUrl: null,
+    });
+    expect(result.commands).toEqual([
+      {
+        type: "prepareExternalStart",
+        appId: APP_ID,
+        operation: "rebuild",
       },
     ]);
   });

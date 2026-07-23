@@ -208,6 +208,8 @@ export interface AgentContext {
    * specs. Preflight/dev-server refusals do not increment this.
    */
   testRunCount?: number;
+  /** Whether rebuild_app is registered in this turn's effective tool set. */
+  rebuildAppToolAvailable?: boolean;
 }
 
 /** Per-spec fix-loop state for the `run_tests` tool, tracked across one turn. */

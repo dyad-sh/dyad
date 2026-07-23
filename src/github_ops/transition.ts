@@ -304,7 +304,7 @@ function gitStateReceived(
           : {
               type: "rebase-paused",
               banner:
-                state.banner ??
+                (state.banner?.kind === "error" ? state.banner : null) ??
                 ({
                   kind: "error",
                   code: "REBASE_IN_PROGRESS",

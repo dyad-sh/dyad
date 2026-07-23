@@ -204,6 +204,29 @@ describe("github_ops transition", () => {
     expect(result.commands).toEqual([{ type: "probe-conflicts" }]);
   });
 
+  it("replaces stale success context when reconciliation finds a paused rebase", () => {
+    const result = transition(
+      {
+        type: "idle",
+        banner: { kind: "success", message: "Successfully pushed to GitHub!" },
+      },
+      {
+        type: "GIT_STATE",
+        mergeInProgress: false,
+        rebaseInProgress: true,
+      },
+    );
+
+    expect(result.state).toMatchObject({
+      type: "rebase-paused",
+      banner: {
+        kind: "error",
+        code: "REBASE_IN_PROGRESS",
+      },
+    });
+    expect(result.commands).toEqual([{ type: "probe-conflicts" }]);
+  });
+
   it.each([
     { type: "rebase" },
     { type: "rebase-continue" },

@@ -43,12 +43,25 @@ export async function createNeonTestAccount({
   }
 
   const base = neonAuthBaseUrl.replace(/\/+$/, "");
+  const authUrl = new URL(base);
+  // Hosted Neon Auth requires both a non-null Origin and an absolute callback
+  // URL for this server-to-server signup. Use the auth service's own origin,
+  // which Better Auth trusts as its base origin.
+  const callbackURL = authUrl.href;
   const response = await fetchWithRetry(
     `${base}/sign-up/email`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Dyad Test User", email, password }),
+      headers: {
+        "Content-Type": "application/json",
+        Origin: authUrl.origin,
+      },
+      body: JSON.stringify({
+        name: "Dyad Test User",
+        email,
+        password,
+        callbackURL,
+      }),
     },
     `Create Neon test account for app ${appId}`,
   );

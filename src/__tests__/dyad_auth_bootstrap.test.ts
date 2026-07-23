@@ -21,23 +21,37 @@ function setup({
   readyState = "complete",
   pending = null as Record<string, unknown> | null,
   preLocal = {} as Record<string, string>,
+  pathname = "/",
   fetchImpl,
 }: {
   readyState?: string;
   pending?: Record<string, unknown> | null;
   preLocal?: Record<string, string>;
+  pathname?: string;
   fetchImpl?: (...args: any[]) => Promise<any>;
 } = {}) {
   const posts: any[] = [];
   const parent = { postMessage: (msg: any) => posts.push(msg) };
   let messageHandler: ((e: any) => void) | undefined;
+  const timers: Array<() => void> = [];
 
   const localStorage = makeStorage(preLocal);
   const sessionStorage = makeStorage(
     pending ? { __dyad_auth_pending__: JSON.stringify(pending) } : {},
   );
   const reload = vi.fn();
-  const replace = vi.fn();
+  let currentPathname = pathname;
+  const location = {
+    get href() {
+      return `http://localhost:42100${currentPathname}`;
+    },
+    get pathname() {
+      return currentPathname;
+    },
+    replace: vi.fn((target: string) => {
+      currentPathname = new URL(target, location.href).pathname;
+    }),
+  };
   const fetchMock = vi.fn(
     fetchImpl ?? (async () => ({ ok: true, json: async () => ({}) })),
   );
@@ -62,7 +76,11 @@ function setup({
     document,
     localStorage,
     sessionStorage,
-    location: { reload, replace },
+    location,
+    setTimeout: (callback: () => void) => {
+      timers.push(callback);
+      return timers.length;
+    },
     fetch: fetchMock,
     URL,
     console: { debug() {}, warn() {}, error() {}, log() {} },
@@ -72,10 +90,18 @@ function setup({
     posts,
     parent,
     reload,
-    replace,
+    replace: location.replace,
     fetchMock,
     localStorage,
     sessionStorage,
+    setPathname: (nextPathname: string) => {
+      currentPathname = nextPathname;
+    },
+    flushTimers: () => {
+      const pendingTimers = timers.splice(0);
+      for (const callback of pendingTimers) callback();
+    },
+    pendingTimerCount: () => timers.length,
     sendLogin: (auth: Record<string, unknown>) =>
       messageHandler?.({
         source: parent,
@@ -119,6 +145,7 @@ describe("dyad auth bootstrap", () => {
     ).toEqual({
       mode: "supabase-password",
       ref: "ref123",
+      homeRedirects: 0,
     });
   });
 
@@ -170,10 +197,21 @@ describe("dyad auth bootstrap", () => {
       preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
     });
 
-    await vi.waitFor(() =>
-      expect(
-        h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
-      ).toBe(true),
+    await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
+    ).toBe(false);
+
+    h.flushTimers();
+
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
+    ).toBe(true);
+    expect(h.posts).toContainEqual(
+      expect.objectContaining({
+        type: "replaceState",
+        payload: { newUrl: "http://localhost:42100/" },
+      }),
     );
     // The pending marker is consumed so a later reload doesn't re-verify.
     expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
@@ -188,14 +226,39 @@ describe("dyad auth bootstrap", () => {
       }),
     });
 
-    await vi.waitFor(() =>
-      expect(
-        h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
-      ).toBe(true),
-    );
+    await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
+    h.flushTimers();
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
+    ).toBe(true);
     expect(h.fetchMock).toHaveBeenCalledWith(
       "/api/auth/get-session",
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("returns to / when the app auth guard redirects during session startup", async () => {
+    const h = setup({
+      pending: { mode: "supabase-password", ref: "ref123" },
+      preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
+    });
+
+    await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
+    // Simulate a protected-route effect moving the iframe after the bootstrap
+    // has verified storage but before it acknowledges authentication.
+    h.setPathname("/login");
+    h.flushTimers();
+
+    expect(h.replace).toHaveBeenCalledWith("/");
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === true),
+    ).toBe(false);
+    expect(
+      JSON.parse(h.sessionStorage.getItem("__dyad_auth_pending__")!),
+    ).toEqual({
+      mode: "supabase-password",
+      ref: "ref123",
+      homeRedirects: 1,
+    });
   });
 });

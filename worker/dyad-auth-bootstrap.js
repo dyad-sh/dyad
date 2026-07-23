@@ -19,6 +19,8 @@
  */
 (() => {
   const PENDING_KEY = "__dyad_auth_pending__";
+  const HOME_SETTLE_DELAY_MS = 500;
+  const MAX_HOME_REDIRECTS = 3;
 
   function post(ok, error) {
     window.parent.postMessage({ type: "dyad-auth-ready", ok, error }, "*");
@@ -76,6 +78,65 @@
     location.replace("/");
   }
 
+  function clearPending() {
+    sessionStorage.removeItem(PENDING_KEY);
+  }
+
+  function failPending(error) {
+    clearPending();
+    post(false, error);
+  }
+
+  function redirectPendingHome(pending) {
+    const homeRedirects = Number.isInteger(pending.homeRedirects)
+      ? pending.homeRedirects
+      : 0;
+    if (homeRedirects >= MAX_HOME_REDIRECTS) {
+      failPending("the app kept redirecting away from / after sign-in");
+      return;
+    }
+    sessionStorage.setItem(
+      PENDING_KEY,
+      JSON.stringify({ ...pending, homeRedirects: homeRedirects + 1 }),
+    );
+    goHome();
+  }
+
+  /**
+   * Auth libraries commonly resolve their initial session asynchronously. A
+   * protected route can therefore redirect to /login shortly after the page
+   * has loaded, even though the session we just established is valid.
+   *
+   * Keep the pending marker until "/" remains stable for a short window. If
+   * the app's guard wins that race, load "/" once more now that its auth state
+   * is warm. Only then tell Dyad that recording can begin.
+   */
+  function settleAtHome(pending) {
+    if (location.pathname !== "/") {
+      redirectPendingHome(pending);
+      return;
+    }
+
+    setTimeout(() => {
+      if (location.pathname !== "/") {
+        redirectPendingHome(pending);
+        return;
+      }
+
+      clearPending();
+      // A document navigation does not pass through history.replaceState, so
+      // explicitly synchronize the preview toolbar's route with the iframe.
+      window.parent.postMessage(
+        {
+          type: "replaceState",
+          payload: { newUrl: location.href },
+        },
+        "*",
+      );
+      post(true);
+    }, HOME_SETTLE_DELAY_MS);
+  }
+
   async function login(auth) {
     if (loggingIn) return;
     loggingIn = true;
@@ -84,7 +145,7 @@
         await neonSignIn(auth);
         sessionStorage.setItem(
           PENDING_KEY,
-          JSON.stringify({ mode: auth.mode }),
+          JSON.stringify({ mode: auth.mode, homeRedirects: 0 }),
         );
         goHome();
         return;
@@ -93,7 +154,11 @@
         await supabaseSignIn(auth);
         sessionStorage.setItem(
           PENDING_KEY,
-          JSON.stringify({ mode: auth.mode, ref: projectRef(auth.projectUrl) }),
+          JSON.stringify({
+            mode: auth.mode,
+            ref: projectRef(auth.projectUrl),
+            homeRedirects: 0,
+          }),
         );
         goHome();
         return;
@@ -119,19 +184,27 @@
           data &&
           (data.user || (data.session && data.session.user))
         );
-        post(hasUser, hasUser ? undefined : "no session after sign-in");
+        if (!hasUser) {
+          failPending("no session after sign-in");
+          return;
+        }
+        settleAtHome(pending);
         return;
       }
       if (pending.mode === "supabase-password") {
         const ok = !!(
           pending.ref && localStorage.getItem(`sb-${pending.ref}-auth-token`)
         );
-        post(ok, ok ? undefined : "no session after sign-in");
+        if (!ok) {
+          failPending("no session after sign-in");
+          return;
+        }
+        settleAtHome(pending);
         return;
       }
-      post(true);
+      settleAtHome(pending);
     } catch (error) {
-      post(false, error && error.message ? error.message : String(error));
+      failPending(error && error.message ? error.message : String(error));
     }
   }
 
@@ -159,7 +232,6 @@
       window.parent.postMessage({ type: "dyad-auth-bootstrap-ready" }, "*");
       return;
     }
-    sessionStorage.removeItem(PENDING_KEY);
     verifyPending(pending);
   }
 

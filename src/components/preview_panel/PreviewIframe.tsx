@@ -36,6 +36,9 @@ import {
   Pen,
   MoreVertical,
   Trash2,
+  CircleDot,
+  Square,
+  Loader2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -77,7 +80,9 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
+import { useTestRecorder } from "@/hooks/useTestRecorder";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DeviceMode } from "@/lib/schemas";
 import {
   boundPreviewConsoleEntry,
@@ -281,6 +286,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const canGoBack = selectCanGoBack(iframeState);
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const recorder = useTestRecorder();
+  const { app: loadedApp } = useLoadApp(selectedAppId);
+  const [recordName, setRecordName] = useState("");
+
+  const handleRecordClick = () => {
+    if (recorder.phase !== "idle") return;
+    if (!loadedApp?.testingEnabled) {
+      showInfo(
+        "Enable testing for this app in the Tests panel before recording a test.",
+      );
+      return;
+    }
+    setRecordName("");
+    void recorder.startRecording();
+  };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
     null,
@@ -1168,6 +1188,48 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {annotatorMode ? "Annotator mode active" : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleRecordClick}
+                    aria-label={
+                      recorder.isRecording ? "Recording test" : "Record test"
+                    }
+                    aria-pressed={recorder.phase !== "idle"}
+                    className={cn(
+                      PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                      "rounded-none border-l border-border",
+                      recorder.phase !== "idle"
+                        ? "bg-red-500 text-white hover:bg-red-600 hover:text-white dark:bg-red-600 dark:hover:bg-red-700"
+                        : "text-red-700 hover:bg-red-100 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-900/50 dark:hover:text-red-200",
+                    )}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !appUrl ||
+                      isPicking ||
+                      annotatorMode ||
+                      recorder.isBusy
+                    }
+                    data-testid="preview-record-button"
+                  />
+                }
+              >
+                {recorder.isBusy ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : recorder.isRecording ? (
+                  <Square size={16} />
+                ) : (
+                  <CircleDot size={16} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {recorder.phase === "idle"
+                  ? "Record a test"
+                  : "Recording — use the bar below to stop"}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Browser navigation group */}
@@ -1491,6 +1553,70 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
+      )}
+
+      {recorder.phase !== "idle" && !annotatorMode && (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-red-200 bg-red-50 px-3 py-2 text-sm dark:border-red-900/50 dark:bg-red-950/30"
+          data-testid="preview-recording-bar"
+        >
+          {recorder.isRecording ? (
+            <>
+              <span className="flex items-center gap-1.5 font-medium text-red-700 dark:text-red-300">
+                <CircleDot size={14} className="animate-pulse" />
+                Recording
+              </span>
+              <span
+                className="text-muted-foreground"
+                data-testid="preview-recording-step-count"
+              >
+                {recorder.entryCount} step{recorder.entryCount === 1 ? "" : "s"}
+              </span>
+              {recorder.isolation && recorder.isolation.mode !== "none" && (
+                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  isolated data
+                </span>
+              )}
+              <input
+                value={recordName}
+                onChange={(e) => setRecordName(e.target.value)}
+                placeholder="Test name"
+                aria-label="Test name"
+                data-testid="preview-recording-name-input"
+                className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lighter) px-2 py-1 text-xs outline-none"
+              />
+              <button
+                onClick={() => void recorder.stopAndSave(recordName)}
+                data-testid="preview-recording-save-button"
+                className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
+              >
+                <Square size={12} /> Stop &amp; Save
+              </button>
+              <button
+                onClick={() => void recorder.cancelRecording()}
+                data-testid="preview-recording-cancel-button"
+                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />
+              {recorder.progress ??
+                (recorder.phase === "saving"
+                  ? "Saving the recorded test…"
+                  : recorder.phase === "authenticating"
+                    ? "Signing in the test user…"
+                    : "Setting up the recording session…")}
+            </span>
+          )}
+          {recorder.warning && (
+            <span className="w-full text-xs text-amber-600 dark:text-amber-400">
+              {recorder.warning}
+            </span>
+          )}
         </div>
       )}
 

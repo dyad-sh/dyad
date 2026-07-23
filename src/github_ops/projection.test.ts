@@ -54,4 +54,22 @@ describe("projectGithubOps", () => {
       projectGithubOps({ type: "rebase-paused", banner: null }).canRequestSync,
     ).toBe(false);
   });
+
+  it("separates recovery switching from idle-only branch mutations", () => {
+    const conflicted = projectGithubOps({
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: null,
+    });
+    const rebasePaused = projectGithubOps({
+      type: "rebase-paused",
+      banner: null,
+    });
+
+    expect(conflicted.canRequestBranchSwitch).toBe(true);
+    expect(rebasePaused.canRequestBranchSwitch).toBe(true);
+    expect(conflicted.canRequestBranchMutation).toBe(false);
+    expect(rebasePaused.canRequestBranchMutation).toBe(false);
+  });
 });

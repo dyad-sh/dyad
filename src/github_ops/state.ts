@@ -69,6 +69,13 @@ interface GithubOpsContext {
 
 export type ConflictOrigin = GithubOperation | { type: "reconcile" };
 export type BlockingOperation = "merge" | "rebase";
+export type BlockedSwitchResume =
+  | {
+      type: "conflicted";
+      files: readonly string[];
+      origin: ConflictOrigin;
+    }
+  | { type: "rebase-paused" };
 
 export type GithubOpsState =
   | ({ type: "idle" } & GithubOpsContext)
@@ -81,6 +88,7 @@ export type GithubOpsState =
        * machine knows whether it should enter `conflicted`.
        */
       awaitingConflicts?: boolean;
+      blockedSwitchResume?: BlockedSwitchResume;
     } & GithubOpsContext)
   | ({
       type: "conflicted";
@@ -93,6 +101,7 @@ export type GithubOpsState =
       target: string;
       blockingOp: BlockingOperation;
       hasConflicts: boolean;
+      resume?: BlockedSwitchResume;
     } & GithubOpsContext);
 
 export const INITIAL_GITHUB_OPS_STATE: GithubOpsState = {

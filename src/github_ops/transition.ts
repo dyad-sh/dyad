@@ -1,5 +1,6 @@
 import { ignore as ignoreTransition } from "@/state_machines/types";
 import type {
+  BlockedSwitchResume,
   BlockingOperation,
   ConflictOrigin,
   GithubOperation,
@@ -62,6 +63,7 @@ function requestOperation(
     case "rebase-paused":
       return op.type === "rebase-abort" ||
         op.type === "rebase-continue" ||
+        op.type === "switch" ||
         (op.type === "push" && op.mode === "lease")
         ? beginOperation(state, op)
         : ignore(state, "invalid-in-current-state");
@@ -77,11 +79,14 @@ function beginOperation(
   op: GithubOperation,
 ): GithubOpsTransitionResult {
   const next = compositeNext(op);
+  const blockedSwitchResume =
+    op.type === "switch" ? getBlockedSwitchResume(state) : undefined;
   return {
     state: {
       type: "running",
       op,
       ...(next ? { next } : {}),
+      ...(blockedSwitchResume ? { blockedSwitchResume } : {}),
       banner: clearsHistoryBanner(op) ? null : state.banner,
     },
     commands: [{ type: "run-op", op }],
@@ -158,14 +163,24 @@ function operationFailed(
 
   if (failure.code === "REBASE_IN_PROGRESS") {
     if (op.type === "switch") {
-      return blockedSwitch(op.branch, "rebase", banner);
+      return blockedSwitch(
+        op.branch,
+        "rebase",
+        banner,
+        state.blockedSwitchResume,
+      );
     }
     return changed({ type: "rebase-paused", banner });
   }
 
   if (failure.code === "MERGE_IN_PROGRESS") {
     if (op.type === "switch") {
-      return blockedSwitch(op.branch, "merge", banner);
+      return blockedSwitch(
+        op.branch,
+        "merge",
+        banner,
+        state.blockedSwitchResume,
+      );
     }
     return awaitConflicts(state, op, banner);
   }
@@ -236,10 +251,26 @@ function conflictsReceived(
       }
       return enterConflicted(files, state.op, true);
     }
-    case "switch-blocked":
-      return state.hasConflicts === files.length > 0
+    case "switch-blocked": {
+      const hasConflicts = files.length > 0;
+      const resume =
+        state.resume?.type === "conflicted"
+          ? hasConflicts
+            ? sameFiles(state.resume.files, files)
+              ? state.resume
+              : { ...state.resume, files }
+            : state.blockingOp === "rebase"
+              ? ({ type: "rebase-paused" } as const)
+              : undefined
+          : state.resume;
+      return state.hasConflicts === hasConflicts && state.resume === resume
         ? ignore(state, "no-change")
-        : changed({ ...state, hasConflicts: files.length > 0 });
+        : changed({
+            ...state,
+            hasConflicts,
+            ...(resume ? { resume } : { resume: undefined }),
+          });
+    }
     case "conflicted":
       if (files.length === 0) {
         return changed({ type: "idle", banner: state.banner });
@@ -319,7 +350,18 @@ function gitStateReceived(
 function dismissBlocked(state: GithubOpsState): GithubOpsTransitionResult {
   switch (state.type) {
     case "switch-blocked":
-      return changed({ type: "idle", banner: state.banner });
+      if (state.resume?.type === "conflicted") {
+        return changed({
+          type: "conflicted",
+          files: state.resume.files,
+          origin: state.resume.origin,
+          banner: state.banner,
+        });
+      }
+      return changed({
+        type: state.resume?.type === "rebase-paused" ? "rebase-paused" : "idle",
+        banner: state.banner,
+      });
     case "idle":
     case "running":
     case "conflicted":
@@ -455,6 +497,7 @@ function blockedSwitch(
   target: string,
   blockingOp: BlockingOperation,
   banner: GithubOpsBanner,
+  resume?: BlockedSwitchResume,
 ): GithubOpsTransitionResult {
   return {
     state: {
@@ -464,10 +507,32 @@ function blockedSwitch(
       // Pessimistic until the probe succeeds: a probe failure must not make
       // destructive abort-and-switch look conflict-free.
       hasConflicts: true,
+      ...(resume ? { resume } : {}),
       banner,
     },
     commands: [{ type: "probe-conflicts" }],
   };
+}
+
+function getBlockedSwitchResume(
+  state: GithubOpsState,
+): BlockedSwitchResume | undefined {
+  switch (state.type) {
+    case "conflicted":
+      return {
+        type: "conflicted",
+        files: state.files,
+        origin: state.origin,
+      };
+    case "rebase-paused":
+      return { type: "rebase-paused" };
+    case "idle":
+    case "running":
+    case "switch-blocked":
+      return undefined;
+    default:
+      return assertNever(state);
+  }
 }
 
 function compositeNext(op: GithubOperation): GithubOperation | undefined {

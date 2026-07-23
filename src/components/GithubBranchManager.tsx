@@ -73,6 +73,8 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
   const { projection, send } = useGithubOps(appId);
   const {
     abortOperation,
+    canRequestBranchMutation,
+    canRequestBranchSwitch,
     conflicts,
     isCancellingSync,
     isCreatingBranch,
@@ -160,7 +162,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
               });
             }
           }}
-          disabled={isOperationInFlight || isFetching}
+          disabled={!canRequestBranchSwitch || isFetching}
         >
           <SelectTrigger
             className="w-full"
@@ -195,7 +197,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
                   className={cn(
                     buttonVariants({ variant: "outline", size: "icon" }),
                   )}
-                  disabled={isOperationInFlight}
+                  disabled={!canRequestBranchMutation}
                   aria-label="Branch actions"
                   data-testid="branch-actions-menu-trigger"
                 />
@@ -208,7 +210,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={() => setShowCreateDialog(true)}
-              disabled={isOperationInFlight}
+              disabled={!canRequestBranchMutation}
               data-testid="create-branch-trigger"
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -216,7 +218,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => void refetch()}
-              disabled={isOperationInFlight || isFetching}
+              disabled={!canRequestBranchMutation || isFetching}
               data-testid="refresh-branches-button"
             >
               <RefreshCw
@@ -228,7 +230,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
               onClick={() =>
                 send({ type: "OP_REQUESTED", op: { type: "pull" } })
               }
-              disabled={isOperationInFlight}
+              disabled={!canRequestBranchMutation}
               data-testid="git-pull-button"
             >
               <GitPullRequestArrow
@@ -289,7 +291,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
               </Button>
               <Button
                 onClick={handleCreateBranch}
-                disabled={isOperationInFlight || !newBranchName.trim()}
+                disabled={!canRequestBranchMutation || !newBranchName.trim()}
                 data-testid="create-branch-submit-button"
               >
                 {isCreatingBranch ? "Creating..." : "Create Branch"}
@@ -327,7 +329,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             </Button>
             <Button
               onClick={handleRenameBranch}
-              disabled={isOperationInFlight || !renameBranchName.trim()}
+              disabled={!canRequestBranchMutation || !renameBranchName.trim()}
               data-testid="rename-branch-submit-button"
             >
               {isRenamingBranch ? "Renaming..." : "Rename"}
@@ -354,7 +356,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             </Button>
             <Button
               onClick={handleMergeBranch}
-              disabled={isOperationInFlight}
+              disabled={!canRequestBranchMutation}
               data-testid="merge-branch-submit-button"
             >
               {isMergingBranch ? "Merging..." : "Merge"}
@@ -376,12 +378,12 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isOperationInFlight}>
+            <AlertDialogCancel disabled={!canRequestBranchMutation}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteBranch}
-              disabled={isOperationInFlight}
+              disabled={!canRequestBranchMutation}
             >
               {isDeletingBranch ? "Deleting..." : "Delete Branch"}
             </AlertDialogAction>
@@ -537,7 +539,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
                         >
                           <DropdownMenuTrigger
                             className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-6 w-6"
-                            disabled={isOperationInFlight}
+                            disabled={!canRequestBranchMutation}
                             data-testid={`branch-actions-${branch}`}
                           >
                             <MoreHorizontal className="h-4 w-4" />
@@ -545,7 +547,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => setBranchToMerge(branch)}
-                              disabled={isOperationInFlight}
+                              disabled={!canRequestBranchMutation}
                               data-testid="merge-branch-menu-item"
                             >
                               <GitMerge className="mr-2 h-4 w-4" />
@@ -556,7 +558,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
                                 setBranchToRename(branch);
                                 setRenameBranchName(branch);
                               }}
-                              disabled={isOperationInFlight}
+                              disabled={!canRequestBranchMutation}
                               data-testid="rename-branch-menu-item"
                             >
                               <Edit2 className="mr-2 h-4 w-4" />
@@ -565,7 +567,7 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
                             <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => setBranchToDelete(branch)}
-                              disabled={isOperationInFlight}
+                              disabled={!canRequestBranchMutation}
                               data-testid="delete-branch-menu-item"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />

@@ -339,6 +339,74 @@ describe("github_ops transition", () => {
     expect(confirmed.state).not.toHaveProperty("files");
   });
 
+  it("restores conflicts when abort-and-switch is dismissed", () => {
+    const conflicted: GithubOpsState = {
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: null,
+    };
+    const switchBranch = {
+      type: "switch",
+      branch: "release",
+    } as const;
+    const running = transition(conflicted, {
+      type: "OP_REQUESTED",
+      op: switchBranch,
+    }).state;
+    const blocked = transition(running, {
+      type: "OP_FAILED",
+      op: switchBranch,
+      failure: {
+        kind: "conflict",
+        code: "MERGE_IN_PROGRESS",
+        message: "merge still in progress",
+      },
+    }).state;
+    const dismissed = transition(blocked, { type: "BLOCKED_DISMISSED" });
+
+    expect(dismissed.state).toMatchObject({
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "merge", branch: "feature" },
+    });
+  });
+
+  it("offers abort-and-switch from a paused rebase", () => {
+    const switchBranch = {
+      type: "switch",
+      branch: "release",
+    } as const;
+    const running = transition(
+      { type: "rebase-paused", banner: null },
+      { type: "OP_REQUESTED", op: switchBranch },
+    ).state;
+    const blocked = transition(running, {
+      type: "OP_FAILED",
+      op: switchBranch,
+      failure: {
+        kind: "conflict",
+        code: "REBASE_IN_PROGRESS",
+        message: "rebase still in progress",
+      },
+    }).state;
+
+    expect(running).toMatchObject({
+      type: "running",
+      op: switchBranch,
+      blockedSwitchResume: { type: "rebase-paused" },
+    });
+    expect(blocked).toMatchObject({
+      type: "switch-blocked",
+      target: "release",
+      blockingOp: "rebase",
+      resume: { type: "rebase-paused" },
+    });
+    expect(
+      transition(blocked, { type: "BLOCKED_DISMISSED" }).state,
+    ).toMatchObject({ type: "rebase-paused" });
+  });
+
   it("preserves connect success context when the automatic push fails", () => {
     const connect: GithubOperation = {
       type: "connect-repo",

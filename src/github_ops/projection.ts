@@ -21,6 +21,8 @@ export interface GithubOpsProjection {
   readonly isMergingBranch: boolean;
   readonly isPulling: boolean;
   readonly isCancellingSync: boolean;
+  readonly canRequestBranchMutation: boolean;
+  readonly canRequestBranchSwitch: boolean;
   readonly switchBlocked: {
     readonly target: string;
     readonly blockingOp: "merge" | "rebase";
@@ -82,6 +84,11 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
     isCancellingSync:
       runningOperation?.type === "merge-abort" ||
       runningOperation?.type === "rebase-abort",
+    canRequestBranchMutation: state.type === "idle",
+    canRequestBranchSwitch:
+      state.type === "idle" ||
+      state.type === "conflicted" ||
+      state.type === "rebase-paused",
     switchBlocked:
       state.type === "switch-blocked"
         ? {

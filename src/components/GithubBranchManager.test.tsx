@@ -108,6 +108,33 @@ describe("GithubBranchManager machine projection", () => {
     });
   });
 
+  it("keeps recovery switching available while disabling branch mutations", () => {
+    mocks.state = {
+      type: "conflicted",
+      files: ["src/a.ts"],
+      origin: { type: "merge", branch: "feature" },
+      banner: null,
+    };
+
+    render(<GithubBranchManager appId={1} />);
+
+    expect(
+      (screen.getByTestId("branch-select-trigger") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("branch-actions-menu-trigger") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Cancel sync",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
   it("removes all conflict UI once abort-and-switch is running", () => {
     mocks.state = {
       type: "switch-blocked",

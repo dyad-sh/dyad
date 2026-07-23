@@ -116,10 +116,12 @@ export const queryKeys = {
 
   branches: {
     all: ["branches"] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["branches", appId] as const,
     current: ({ appId }: { appId: number | null }) =>
-      ["branches", "current", appId] as const,
+      ["branches", appId, "current"] as const,
     inventory: ({ appId }: { appId: number }) =>
-      ["branches", "inventory", appId] as const,
+      ["branches", appId, "inventory"] as const,
   },
 
   uncommittedFiles: {

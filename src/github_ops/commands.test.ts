@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { queryKeys } from "@/lib/queryKeys";
 import type { GithubOpsEvent } from "./state";
 import { GithubOpsCommandRunner } from "./commands";
 
@@ -43,14 +44,13 @@ async function flushPromises(): Promise<void> {
 }
 
 function setup() {
-  const runner = new GithubOpsCommandRunner(
-    new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    }),
-  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const runner = new GithubOpsCommandRunner(queryClient);
   const events: GithubOpsEvent[] = [];
   const emit = (event: GithubOpsEvent) => events.push(event);
-  return { emit, events, runner };
+  return { emit, events, queryClient, runner };
 }
 
 describe("GithubOpsCommandRunner probes", () => {
@@ -119,5 +119,24 @@ describe("GithubOpsCommandRunner probes", () => {
     await flushPromises();
     expect(events).toEqual([{ type: "CONFLICTS", files: [] }]);
     expect(showErrorMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates current and inventory branches only for the affected app", async () => {
+    const { emit, queryClient, runner } = setup();
+    const current = queryKeys.branches.current({ appId: 7 });
+    const inventory = queryKeys.branches.inventory({ appId: 7 });
+    const otherInventory = queryKeys.branches.inventory({ appId: 8 });
+    queryClient.setQueryData(current, { branch: "main" });
+    queryClient.setQueryData(inventory, { branches: ["main"] });
+    queryClient.setQueryData(otherInventory, { branches: ["main"] });
+
+    runner.run(7, { type: "invalidate-branches" }, emit);
+    await flushPromises();
+
+    expect(queryClient.getQueryState(current)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(inventory)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(otherInventory)?.isInvalidated).toBe(
+      false,
+    );
   });
 });

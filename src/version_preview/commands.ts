@@ -42,7 +42,7 @@ export function createVersionPreviewRuntime({
   async function invalidateGitQueries(appId: number) {
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: queryKeys.branches.current({ appId }),
+        queryKey: queryKeys.branches.byApp({ appId }),
       }),
       queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId }),

@@ -41,7 +41,7 @@ export function useRenameBranch() {
     onSuccess: (_, variables) => {
       // Invalidate queries that depend on branch information
       queryClient.invalidateQueries({
-        queryKey: queryKeys.branches.current({ appId: variables.appId }),
+        queryKey: queryKeys.branches.byApp({ appId: variables.appId }),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId: variables.appId }),

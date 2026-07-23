@@ -78,8 +78,23 @@ const readChatArgsSchema = z.object({
 
 type ReadChatArgs = z.infer<typeof readChatArgsSchema>;
 
-const readChatSchema = readChatArgsSchema
-  .superRefine((args, issueCtx) => {
+const readChatSchema: z.ZodType<ReadChatArgs> = z.preprocess(
+  (input) => {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      return input;
+    }
+
+    const normalized = { ...(input as Record<string, unknown>) };
+    if (normalized.around_message_id !== undefined) {
+      // Discard paging-only fields before their standalone-mode constraints
+      // run. Models sometimes populate every optional field, including values
+      // outside the paging bounds, after selecting an around-message target.
+      delete normalized.offset;
+      delete normalized.limit;
+    }
+    return normalized;
+  },
+  readChatArgsSchema.superRefine((args, issueCtx) => {
     if (
       args.around_message_id === undefined &&
       (args.before !== undefined || args.after !== undefined)
@@ -89,21 +104,8 @@ const readChatSchema = readChatArgsSchema
         message: "before/after require around_message_id",
       });
     }
-  })
-  .transform((args): ReadChatArgs => {
-    if (args.around_message_id === undefined) {
-      return args;
-    }
-
-    // Models sometimes populate every optional paging field even after
-    // choosing an around-message lookup. The target message makes the intent
-    // unambiguous, so prefer that mode instead of rejecting the read and
-    // encouraging identical retries.
-    const normalized = { ...args };
-    delete normalized.offset;
-    delete normalized.limit;
-    return normalized;
-  });
+  }),
+);
 
 interface ChatRow {
   id: number;

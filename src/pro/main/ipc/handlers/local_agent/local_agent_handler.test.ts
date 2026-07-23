@@ -288,6 +288,16 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
           ? `<dyad-read-chat chat-id="${args.chat_id}" state="pending">Reading chat...</dyad-read-chat>`
           : undefined,
     },
+    {
+      name: "write_file",
+      buildXml: (
+        args: { path?: string; content?: string },
+        isComplete: boolean,
+      ) => {
+        if (!args.path) return undefined;
+        return `<dyad-write path="${args.path}">${args.content ?? ""}${isComplete ? "</dyad-write>" : ""}`;
+      },
+    },
   ],
   buildAgentToolSet: vi.fn(() => ({})),
   shouldIncludeTool: vi.fn(() => false),
@@ -2242,6 +2252,144 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Stream processing - pre-execution tool errors", () => {
+    it("does not persist a completed tool card before validation succeeds", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ write_file: {} });
+      const invalidInput = { path: "src/App.tsx" };
+      const validationMessage = "content is required";
+      let completedCardPersistedBeforeValidation: boolean | undefined;
+
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-write-file",
+            toolName: "write_file",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-write-file",
+            delta: JSON.stringify(invalidInput),
+          };
+          yield { type: "tool-input-end", id: "call-write-file" };
+          completedCardPersistedBeforeValidation = dbOperations.updates.some(
+            (update) =>
+              typeof update.data.content === "string" &&
+              update.data.content.includes("<dyad-write"),
+          );
+          yield {
+            type: "tool-call",
+            toolCallId: "call-write-file",
+            toolName: "write_file",
+            input: invalidInput,
+            invalid: true,
+            dynamic: true,
+            error: new InvalidToolInputError({
+              toolName: "write_file",
+              toolInput: JSON.stringify(invalidInput),
+              cause: new Error(validationMessage),
+            }),
+          };
+          yield {
+            type: "tool-error",
+            toolCallId: "call-write-file",
+            toolName: "write_file",
+            input: invalidInput,
+            error: validationMessage,
+            dynamic: true,
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "update the app" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(completedCardPersistedBeforeValidation).toBe(false);
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")?.data
+        .content as string;
+      expect(finalContent).not.toContain("<dyad-write");
+      expect(finalContent).toContain(
+        '<dyad-status title="Tool &quot;write_file&quot; failed" state="error">',
+      );
+      expect(finalContent).toContain(validationMessage);
+    });
+
+    it("persists a completed tool card after validation succeeds", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      vi.mocked(buildAgentToolSet).mockReturnValue({ write_file: {} });
+      const validInput = {
+        path: "src/App.tsx",
+        content: "export default function App() {}",
+      };
+      let completedCardPersistedBeforeValidation: boolean | undefined;
+
+      mockStreamTextImpl = () => ({
+        fullStream: (async function* () {
+          yield {
+            type: "tool-input-start",
+            id: "call-write-file",
+            toolName: "write_file",
+          };
+          yield {
+            type: "tool-input-delta",
+            id: "call-write-file",
+            delta: JSON.stringify(validInput),
+          };
+          yield { type: "tool-input-end", id: "call-write-file" };
+          completedCardPersistedBeforeValidation = dbOperations.updates.some(
+            (update) =>
+              typeof update.data.content === "string" &&
+              update.data.content.includes("<dyad-write"),
+          );
+          yield {
+            type: "tool-call",
+            toolCallId: "call-write-file",
+            toolName: "write_file",
+            input: validInput,
+          };
+        })(),
+        response: Promise.resolve({ messages: [] }),
+        steps: Promise.resolve([]),
+      });
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "update the app" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(completedCardPersistedBeforeValidation).toBe(false);
+      const finalContent = [...dbOperations.updates]
+        .reverse()
+        .find((update) => typeof update.data.content === "string")?.data
+        .content as string;
+      expect(finalContent).toContain(
+        '<dyad-write path="src/App.tsx">export default function App() {}</dyad-write>',
+      );
+      expect(finalContent.match(/<dyad-write/g)).toHaveLength(1);
+    });
+
     it("replaces an invalid tool preview with a persistent error status", async () => {
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });

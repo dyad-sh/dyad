@@ -41,6 +41,38 @@ describe("readChatTool schema", () => {
     });
   });
 
+  it("discards invalid pagination values before validating around-message mode", () => {
+    expect(
+      readChatTool.inputSchema.parse({
+        chat_id: 1,
+        around_message_id: 2,
+        offset: -100,
+        limit: 100,
+      }),
+    ).toEqual({ chat_id: 1, around_message_id: 2 });
+    expect(
+      readChatTool.inputSchema.parse({
+        chat_id: 1,
+        around_message_id: 2,
+        offset: "not a page offset",
+        limit: "not a page limit",
+      }),
+    ).toEqual({ chat_id: 1, around_message_id: 2 });
+  });
+
+  it("still validates fields used by the selected mode", () => {
+    expect(() =>
+      readChatTool.inputSchema.parse({ chat_id: 1, limit: 100 }),
+    ).toThrow();
+    expect(() =>
+      readChatTool.inputSchema.parse({
+        chat_id: 1,
+        around_message_id: 2,
+        before: 100,
+      }),
+    ).toThrow();
+  });
+
   it("rejects before/after without around_message_id", () => {
     expect(() =>
       readChatTool.inputSchema.parse({ chat_id: 1, before: 2 }),

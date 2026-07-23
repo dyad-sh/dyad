@@ -509,6 +509,21 @@ export async function handleLocalAgentStream(
       streamingPreview: { content },
     });
   };
+  const commitToolXml = (finalXml: string, toolCallId?: string) => {
+    const xmlChunk = `${finalXml}\n`;
+    fullResponse += xmlChunk;
+    const shouldClearPreview =
+      toolCallId === undefined || streamingPreviewToolCallId === toolCallId;
+    if (shouldClearPreview) {
+      streamingPreview = "";
+      streamingPreviewToolCallId = null;
+    }
+    updateResponseInDb(placeholderMessageId, fullResponse);
+    sendChunk(fullResponse);
+    if (shouldClearPreview) {
+      sendPreview("");
+    }
+  };
   let postMidTurnCompactionStartStep: number | null = null;
 
   const appendInlineCompactionToTurn = async (
@@ -743,14 +758,7 @@ export async function handleLocalAgentStream(
       },
       onXmlComplete: (finalXml: string) => {
         // Commit final XML to fullResponse and clear the preview overlay.
-        const xmlChunk = `${finalXml}\n`;
-        fullResponse += xmlChunk;
-        streamingPreview = "";
-        streamingPreviewToolCallId = null;
-        updateResponseInDb(placeholderMessageId, fullResponse);
-        sendChunk(fullResponse);
-        // Empty preview = renderer clears its overlay atom for this chat.
-        sendPreview("");
+        commitToolXml(finalXml);
       },
       requireConsent: async (params: {
         toolName: string;
@@ -1011,6 +1019,9 @@ export async function handleLocalAgentStream(
           sanitizeToolCallTranscript(attemptMessages);
         const attemptToolInputIds = new Set<string>();
         const invalidToolCallIds = new Set<string>();
+        const rejectedToolCallIds = new Set<string>();
+        const validatedToolCallIds = new Set<string>();
+        const completedToolXmlByCallId = new Map<string, string>();
         const cleanupAttemptToolStreamingEntries = () => {
           for (const toolCallId of attemptToolInputIds) {
             cleanupStreamingEntry(toolCallId);
@@ -1381,7 +1392,8 @@ export async function handleLocalAgentStream(
                 }
 
                 case "tool-input-end": {
-                  // Build final XML and persist
+                  // Prepare final XML, but do not persist it until the SDK's
+                  // matching tool-call confirms that schema validation passed.
                   const entry = getOrCreateStreamingEntry(part.id);
                   if (entry) {
                     const toolDef = registeredToolNames.has(entry.toolName)
@@ -1393,7 +1405,11 @@ export async function handleLocalAgentStream(
                       );
                       const xml = toolDef.buildXml(argsPartial, true);
                       if (xml) {
-                        ctx.onXmlComplete(xml);
+                        if (validatedToolCallIds.delete(part.id)) {
+                          commitToolXml(xml, part.id);
+                        } else if (!rejectedToolCallIds.has(part.id)) {
+                          completedToolXmlByCallId.set(part.id, xml);
+                        }
                       }
                     }
                   }
@@ -1410,6 +1426,18 @@ export async function handleLocalAgentStream(
                   // pre-execution failure.
                   if ("invalid" in part && part.invalid === true) {
                     invalidToolCallIds.add(part.toolCallId);
+                    rejectedToolCallIds.add(part.toolCallId);
+                    completedToolXmlByCallId.delete(part.toolCallId);
+                  } else {
+                    const completedXml = completedToolXmlByCallId.get(
+                      part.toolCallId,
+                    );
+                    if (completedXml) {
+                      completedToolXmlByCallId.delete(part.toolCallId);
+                      commitToolXml(completedXml, part.toolCallId);
+                    } else {
+                      validatedToolCallIds.add(part.toolCallId);
+                    }
                   }
                   if (isAttachmentAccessToolCall(part.toolName, part.input)) {
                     usedAttachmentAccessTool = true;

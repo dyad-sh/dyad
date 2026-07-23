@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { useKeyedController } from "@/state_machines/react";
-import { routePreviewIframeMessage } from "./commands";
+import {
+  routePreviewIframeMessage,
+  type PreviewSharedMachineEvent,
+} from "./commands";
 import { usePreviewIframeManager } from "./PreviewIframeProvider";
 import type { PreviewIframeEvent } from "./state";
 import { INITIAL_PREVIEW_IFRAME_STATE, selectIframeSrc } from "./state";
@@ -29,13 +32,19 @@ export function usePreviewIframe(input: {
   appId: number | null;
   appUrl: string | null;
   iframeRef: RefObject<HTMLIFrameElement | null>;
+  onSharedMachineEvent: (
+    event: PreviewSharedMachineEvent | { type: "IFRAME_LOADED" },
+  ) => void;
   onComponentMessage: (event: MessageEvent) => void;
 }) {
-  const { appId, appUrl, iframeRef, onComponentMessage } = input;
+  const { appId, appUrl, iframeRef, onSharedMachineEvent, onComponentMessage } =
+    input;
   const manager = usePreviewIframeManager();
   const { state, send } = usePreviewIframeController(appId);
   const componentHandlerRef = useRef(onComponentMessage);
   componentHandlerRef.current = onComponentMessage;
+  const sharedMachineHandlerRef = useRef(onSharedMachineEvent);
+  sharedMachineHandlerRef.current = onSharedMachineEvent;
 
   // The epoch is the iframe's identity boundary. Capture its source from the
   // same machine snapshot so SPA navigation updates history without asking
@@ -67,11 +76,24 @@ export function usePreviewIframe(input: {
         contentWindow: iframeRef.current?.contentWindow ?? null,
         appUrl,
         send,
+        onSharedMachineEvent: (message) =>
+          sharedMachineHandlerRef.current(message),
         onComponentMessage: (message) => componentHandlerRef.current(message),
       });
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [appUrl, iframeRef, send]);
 
-  return { state, send, iframeSrc };
+  const postMessage = useCallback(
+    (message: { type: "dyad-take-screenshot"; requestId: string }) => {
+      if (appId !== null) manager.commands.post(appId, message);
+    },
+    [appId, manager],
+  );
+  const onIframeLoaded = useCallback(() => {
+    send({ type: "IFRAME_LOADED" });
+    sharedMachineHandlerRef.current({ type: "IFRAME_LOADED" });
+  }, [send]);
+
+  return { state, send, iframeSrc, postMessage, onIframeLoaded };
 }

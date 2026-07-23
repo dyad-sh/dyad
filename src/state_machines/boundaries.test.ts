@@ -14,6 +14,7 @@ const MACHINE_DIRECTORIES = [
   "mcp_oauth",
   "plan_handoff",
   "preview_iframe",
+  "screenshot",
   "version_preview",
   "voice_to_text",
   "user_input",

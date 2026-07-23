@@ -39,6 +39,7 @@ import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
 import { GithubOpsProvider } from "@/github_ops/GithubOpsProvider";
+import { ScreenshotProvider } from "@/screenshot/ScreenshotProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const chatStreamManager = useChatStreamManager();
@@ -196,30 +197,32 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
     <>
       <VersionPreviewProvider>
         <PreviewIframeProvider>
-          <ThemeProvider>
-            <DeepLinkProvider>
-              <SidebarProvider defaultOpen={false}>
-                <TitleBar />
-                <AppSidebar />
-                <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
-                  <SubscriptionStatusBanner />
-                  <div
-                    id="layout-main-content-container"
-                    className="flex min-h-0 w-full flex-1 overflow-x-hidden"
-                  >
-                    {children}
+          <ScreenshotProvider>
+            <ThemeProvider>
+              <DeepLinkProvider>
+                <SidebarProvider defaultOpen={false}>
+                  <TitleBar />
+                  <AppSidebar />
+                  <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
+                    <SubscriptionStatusBanner />
+                    <div
+                      id="layout-main-content-container"
+                      className="flex min-h-0 w-full flex-1 overflow-x-hidden"
+                    >
+                      {children}
+                    </div>
                   </div>
-                </div>
-                <Toaster
-                  richColors
-                  expand
-                  duration={settings?.isTestMode ? 500 : undefined}
-                />
-                <ReleaseNotesDialog />
-                <ForceCloseDialog />
-              </SidebarProvider>
-            </DeepLinkProvider>
-          </ThemeProvider>
+                  <Toaster
+                    richColors
+                    expand
+                    duration={settings?.isTestMode ? 500 : undefined}
+                  />
+                  <ReleaseNotesDialog />
+                  <ForceCloseDialog />
+                </SidebarProvider>
+              </DeepLinkProvider>
+            </ThemeProvider>
+          </ScreenshotProvider>
         </PreviewIframeProvider>
       </VersionPreviewProvider>
     </>

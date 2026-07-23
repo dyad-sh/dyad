@@ -1,4 +1,5 @@
 import { ComponentSelection, VisualEditingChange } from "@/ipc/types";
+import type { ScreenshotCaptureSource } from "@/screenshot/state";
 import { atom } from "jotai";
 
 export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
@@ -22,5 +23,8 @@ export const pendingVisualChangesAtom = atom<Map<string, VisualEditingChange>>(
   new Map(),
 );
 
-// A screenshot can become pending for multiple background apps at once.
-export const pendingScreenshotAppIdsAtom = atom<Set<number>>(new Set<number>());
+// Producer-facing screenshot request inbox. The screenshot provider consumes
+// entries into per-app machines and clears them immediately.
+export const pendingScreenshotAppIdsAtom = atom<
+  Map<number, ScreenshotCaptureSource>
+>(new Map());

@@ -13,6 +13,7 @@ describe("preview iframe command adapter", () => {
   it("routes machine messages and leaves component routes claimable", () => {
     const contentWindow = { postMessage: vi.fn() };
     const send = vi.fn<(event: PreviewIframeEvent) => void>();
+    const onSharedMachineEvent = vi.fn();
     const onComponentMessage = vi.fn();
 
     routePreviewIframeMessage({
@@ -23,6 +24,7 @@ describe("preview iframe command adapter", () => {
       contentWindow,
       appUrl: "http://localhost:3000",
       send,
+      onSharedMachineEvent,
       onComponentMessage,
     });
     expect(send).toHaveBeenCalledWith({
@@ -41,21 +43,51 @@ describe("preview iframe command adapter", () => {
       contentWindow,
       appUrl: "http://localhost:3000",
       send,
+      onSharedMachineEvent,
       onComponentMessage,
     });
     expect(send).toHaveBeenCalledWith({ type: "SELECTOR_READY" });
+    expect(onSharedMachineEvent).toHaveBeenCalledWith({
+      type: "SELECTOR_READY",
+    });
     expect(onComponentMessage).toHaveBeenCalledWith(selectorMessage);
     expect(PREVIEW_IFRAME_MESSAGE_ROUTES).toEqual({
-      "dyad-component-selector-initialized": "machine-and-component",
-      "dyad-screenshot-response": "component",
+      "dyad-component-selector-initialized": "shared-and-component",
+      "dyad-screenshot-response": "shared-and-component",
       pushState: "machine",
       replaceState: "machine",
     });
+
+    const responseMessage = {
+      source: contentWindow,
+      data: {
+        type: "dyad-screenshot-response",
+        requestId: "capture:1",
+        success: true,
+        dataUrl: "data:image/png;base64,abc",
+      },
+    } as unknown as MessageEvent;
+    routePreviewIframeMessage({
+      event: responseMessage,
+      contentWindow,
+      appUrl: "http://localhost:3000",
+      send,
+      onSharedMachineEvent,
+      onComponentMessage,
+    });
+    expect(onSharedMachineEvent).toHaveBeenLastCalledWith({
+      type: "RESPONSE",
+      requestId: "capture:1",
+      ok: true,
+      dataUrl: "data:image/png;base64,abc",
+    });
+    expect(onComponentMessage).toHaveBeenLastCalledWith(responseMessage);
   });
 
   it("rejects iframe navigation outside the trusted app origin", () => {
     const contentWindow = { postMessage: vi.fn() };
     const send = vi.fn<(event: PreviewIframeEvent) => void>();
+    const onSharedMachineEvent = vi.fn();
     const onComponentMessage = vi.fn();
 
     for (const newUrl of ["https://untrusted.example/path", "http://["]) {
@@ -67,6 +99,7 @@ describe("preview iframe command adapter", () => {
         contentWindow,
         appUrl: "http://localhost:3000",
         send,
+        onSharedMachineEvent,
         onComponentMessage,
       });
     }

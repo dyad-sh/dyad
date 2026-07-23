@@ -12,6 +12,12 @@ export interface PreviewIframeTarget {
 
 export interface PreviewIframeCommandAdapter extends PreviewIframeCommandRunner {
   attach(appId: number, target: () => PreviewIframeTarget | null): () => void;
+  post(
+    appId: number,
+    message:
+      | Exclude<PreviewIframePostMessage, { type: "restore-overlays" }>
+      | { type: "dyad-take-screenshot"; requestId: string },
+  ): void;
 }
 
 export function createPreviewIframeCommandAdapter(
@@ -21,7 +27,9 @@ export function createPreviewIframeCommandAdapter(
 
   const post = (
     appId: number,
-    message: Exclude<PreviewIframePostMessage, { type: "restore-overlays" }>,
+    message:
+      | Exclude<PreviewIframePostMessage, { type: "restore-overlays" }>
+      | { type: "dyad-take-screenshot"; requestId: string },
   ) => targets.get(appId)?.()?.postMessage(message, "*");
 
   return {
@@ -63,6 +71,7 @@ export function createPreviewIframeCommandAdapter(
           return assertNever(command);
       }
     },
+    post,
   };
 }
 
@@ -81,25 +90,42 @@ export type PreviewIframeMachineMessageType =
 export const PREVIEW_IFRAME_MESSAGE_ROUTES: Readonly<
   Record<
     PreviewIframeMachineMessageType,
-    "machine" | "machine-and-component" | "component"
+    "machine" | "shared-and-component" | "component"
   >
 > = {
-  "dyad-component-selector-initialized": "machine-and-component",
-  // Shared by the existing commit-capture and annotator handlers. The next
-  // machine can claim this route here without adding another window listener.
-  "dyad-screenshot-response": "component",
+  "dyad-component-selector-initialized": "shared-and-component",
+  // The screenshot machine and annotator share this response. Correlation by
+  // requestId lets each owner ignore messages belonging to the other.
+  "dyad-screenshot-response": "shared-and-component",
   pushState: "machine",
   replaceState: "machine",
 };
+
+export type PreviewSharedMachineEvent =
+  | { type: "SELECTOR_READY" }
+  | {
+      type: "RESPONSE";
+      requestId: string;
+      ok: boolean;
+      dataUrl?: string;
+    };
 
 export function routePreviewIframeMessage(input: {
   event: MessageEvent;
   contentWindow: PreviewIframeTarget | null;
   appUrl: string | null;
   send: (event: PreviewIframeEvent) => void;
+  onSharedMachineEvent: (event: PreviewSharedMachineEvent) => void;
   onComponentMessage: (event: MessageEvent) => void;
 }): void {
-  const { event, contentWindow, appUrl, send, onComponentMessage } = input;
+  const {
+    event,
+    contentWindow,
+    appUrl,
+    send,
+    onSharedMachineEvent,
+    onComponentMessage,
+  } = input;
   if (event.source !== contentWindow) return;
   const type = event.data?.type as string | undefined;
   const route =
@@ -109,6 +135,19 @@ export function routePreviewIframeMessage(input: {
 
   if (type === "dyad-component-selector-initialized") {
     send({ type: "SELECTOR_READY" });
+    onSharedMachineEvent({ type: "SELECTOR_READY" });
+  } else if (type === "dyad-screenshot-response") {
+    const requestId = event.data?.requestId;
+    if (typeof requestId === "string") {
+      onSharedMachineEvent({
+        type: "RESPONSE",
+        requestId,
+        ok: event.data?.success === true,
+        ...(typeof event.data?.dataUrl === "string"
+          ? { dataUrl: event.data.dataUrl }
+          : {}),
+      });
+    }
   } else if (type === "pushState" || type === "replaceState") {
     const rawUrl = event.data?.payload?.newUrl;
     if (typeof rawUrl === "string" && rawUrl && appUrl) {

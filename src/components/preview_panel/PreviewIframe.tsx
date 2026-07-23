@@ -58,7 +58,6 @@ import {
   annotatorModeAtom,
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
-  pendingScreenshotAppIdsAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/types";
 import { mergePendingChange } from "@/ipc/types/visual-editing";
@@ -101,6 +100,10 @@ import {
 import { getPreviewToolbarActionVisibility } from "./previewToolbarLayout";
 import { usePreviewIframe } from "@/preview_iframe/usePreviewIframe";
 import { selectCanGoBack, selectCanGoForward } from "@/preview_iframe/state";
+import {
+  useScreenshot,
+  type ScreenshotAdapterEvent,
+} from "@/screenshot/useScreenshot";
 
 interface ErrorBannerProps {
   error:
@@ -206,7 +209,6 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   );
 };
 
-const SCREENSHOT_CAPTURE_DELAY_MS = 3_000;
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -239,7 +241,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
   const queryClient = useQueryClient();
-
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
@@ -253,15 +254,25 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const componentMessageHandlerRef = useRef<(event: MessageEvent) => void>(
     () => undefined,
   );
+  const screenshotAdapterHandlerRef = useRef<
+    (event: ScreenshotAdapterEvent) => void
+  >(() => undefined);
   const {
     state: iframeState,
     send: sendIframeEvent,
     iframeSrc,
+    postMessage: postPreviewMessage,
+    onIframeLoaded,
   } = usePreviewIframe({
     appId: selectedAppId,
     appUrl,
     iframeRef,
+    onSharedMachineEvent: (event) => screenshotAdapterHandlerRef.current(event),
     onComponentMessage: (event) => componentMessageHandlerRef.current(event),
+  });
+  screenshotAdapterHandlerRef.current = useScreenshot({
+    appId: selectedAppId,
+    postMessage: postPreviewMessage,
   });
   const navigationHistory = iframeState.history;
   const currentHistoryPosition = iframeState.position;
@@ -285,48 +296,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
-  const [pendingScreenshotAppIds, setPendingScreenshotAppIds] = useAtom(
-    pendingScreenshotAppIdsAtom,
-  );
-  const pendingScreenshotAppIdsRef = useRef<Set<number>>(new Set());
-  // Track the latest screenshot requests so stale responses from earlier reloads
-  // don't get mistaken for annotator screenshots.
-  const pendingCommitScreenshotRequestRef = useRef<{
-    appId: number;
-    requestId: string;
-    commitHash: string;
-  } | null>(null);
   const pendingAnnotatorScreenshotRequestIdRef = useRef<string | null>(null);
-  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Read the latest selected app inside the capture timeout so the bail-out
-  // check compares against the current selection, not a stale render closure.
-  const selectedAppIdRef = useRef<number | null>(selectedAppId);
-  // Track which apps have already had the on-load fallback attempted this
-  // session so the check doesn't re-run on every HMR/reload.
-  const fallbackAttemptedAppIdsRef = useRef<Set<number>>(new Set());
   const skipNextAddressBarBlurRef = useRef(false);
-
-  // Keep refs in sync so the message handler and timeout callbacks always read
-  // the latest values.
-  useEffect(() => {
-    pendingScreenshotAppIdsRef.current = pendingScreenshotAppIds;
-  }, [pendingScreenshotAppIds]);
-
-  const clearPendingScreenshot = useCallback(
-    (appId: number) => {
-      setPendingScreenshotAppIds((pending) => {
-        if (!pending.has(appId)) return pending;
-        const next = new Set(pending);
-        next.delete(appId);
-        return next;
-      });
-    },
-    [setPendingScreenshotAppIds],
-  );
-
-  useEffect(() => {
-    selectedAppIdRef.current = selectedAppId;
-  }, [selectedAppId]);
 
   useEffect(() => {
     isEditingAddressBarRef.current = isEditingAddressBar;
@@ -351,100 +322,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [currentAddressPath]);
 
-  // Drop any in-flight request state when the user switches apps so a stale
-  // guard from a replaced iframe doesn't block future captures.
   useEffect(() => {
-    pendingCommitScreenshotRequestRef.current = null;
     pendingAnnotatorScreenshotRequestIdRef.current = null;
     setAnnotatorMode(false);
     setScreenshotDataUrl(null);
-    if (captureTimeoutRef.current !== null) {
-      clearTimeout(captureTimeoutRef.current);
-      captureTimeoutRef.current = null;
-    }
   }, [selectedAppId]);
 
-  // Clean up pending screenshot timeout on unmount
   useEffect(() => {
     return () => {
       pendingAnnotatorScreenshotRequestIdRef.current = null;
       setAnnotatorMode(false);
       setScreenshotDataUrl(null);
-      if (captureTimeoutRef.current !== null) {
-        clearTimeout(captureTimeoutRef.current);
-        captureTimeoutRef.current = null;
-      }
     };
   }, []);
-
-  const captureScreenshot = (appId: number) => {
-    // If a capture is already scheduled, let it run — repeated triggers
-    // (HMR, onLoad, selector-initialized) shouldn't endlessly extend the wait.
-    if (captureTimeoutRef.current !== null) {
-      return;
-    }
-
-    // Wait for page animations to finish before capturing.
-    captureTimeoutRef.current = setTimeout(async () => {
-      captureTimeoutRef.current = null;
-      // Bail out if the user switched to a different app during the delay.
-      // Read from a ref so the comparison uses the current selection, not the
-      // render closure that scheduled this timeout.
-      if (selectedAppIdRef.current !== appId) {
-        // Keep this app pending; its remounted iframe will capture when the
-        // user returns instead of letting another app erase the request.
-        return;
-      }
-      // Re-read contentWindow inside the timeout to avoid stale references
-      // (e.g. if the iframe reloads or gets replaced during the delay).
-      const contentWindow = iframeRef.current?.contentWindow;
-      if (!contentWindow) {
-        clearPendingScreenshot(appId);
-        return;
-      }
-      // Resolve the commit hash at capture time so the saved screenshot
-      // corresponds to the current HEAD and not to a later commit that may
-      // land before the iframe responds with the image.
-      let commitHash: string | null = null;
-      try {
-        const result = await ipc.app.getCurrentCommitHash({ appId });
-        commitHash = result.commitHash;
-      } catch (err) {
-        console.warn("Failed to resolve commit hash for screenshot", err);
-      }
-      if (!commitHash) {
-        clearPendingScreenshot(appId);
-        return;
-      }
-      // The user may have switched apps while resolving the commit hash.
-      if (selectedAppIdRef.current !== appId) {
-        // Preserve the per-app request for the next time its iframe mounts.
-        return;
-      }
-      const requestId = crypto.randomUUID();
-      pendingCommitScreenshotRequestRef.current = {
-        appId,
-        requestId,
-        commitHash,
-      };
-      contentWindow.postMessage(
-        { type: "dyad-take-screenshot", requestId },
-        "*",
-      );
-    }, SCREENSHOT_CAPTURE_DELAY_MS);
-  };
-
-  const requestCommitScreenshot = () => {
-    if (
-      selectedAppId === null ||
-      !pendingScreenshotAppIdsRef.current.has(selectedAppId) ||
-      !iframeRef.current?.contentWindow
-    ) {
-      return;
-    }
-
-    captureScreenshot(selectedAppId);
-  };
 
   const requestAnnotatorScreenshot = () => {
     if (!iframeRef.current?.contentWindow) {
@@ -453,10 +343,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
     const requestId = crypto.randomUUID();
     pendingAnnotatorScreenshotRequestIdRef.current = requestId;
-    iframeRef.current.contentWindow.postMessage(
-      { type: "dyad-take-screenshot", requestId },
-      "*",
-    );
+    postPreviewMessage({ type: "dyad-take-screenshot", requestId });
   };
 
   // AST Analysis State
@@ -832,47 +719,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           { type: "dyad-pro-mode", enabled: isProMode },
           "*",
         );
-
-        // Take a screenshot if a commit just happened for this app.
-        // Read from ref to avoid stale closure issues.
-        if (
-          selectedAppId !== null &&
-          pendingScreenshotAppIdsRef.current.has(selectedAppId) &&
-          iframeRef.current?.contentWindow
-        ) {
-          requestCommitScreenshot();
-        } else if (
-          selectedAppId !== null &&
-          iframeRef.current?.contentWindow &&
-          captureTimeoutRef.current === null &&
-          pendingCommitScreenshotRequestRef.current === null &&
-          !fallbackAttemptedAppIdsRef.current.has(selectedAppId)
-        ) {
-          // No pending commit screenshot and no capture already in flight —
-          // check if the app already has a screenshot on disk. If not (e.g.
-          // iframe was still loading when earlier commits happened), capture
-          // one now. Only attempt once per app per session so repeated HMR
-          // reloads don't spam capture attempts for apps whose saves fail.
-          const appId = selectedAppId;
-          fallbackAttemptedAppIdsRef.current.add(appId);
-          ipc.app
-            .listAppScreenshots({ appId })
-            .then((result) => {
-              // Guard against app switches while this promise was in flight —
-              // otherwise the stale callback would occupy `captureTimeoutRef`
-              // for the old app and block the current app's commit-triggered
-              // captures.
-              if (selectedAppIdRef.current !== appId) {
-                return;
-              }
-              if (result.screenshots.length === 0) {
-                captureScreenshot(appId);
-              }
-            })
-            .catch(() => {
-              // Ignore — screenshot check is best-effort
-            });
-        }
         return;
       }
 
@@ -993,47 +839,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           typeof event.data.requestId === "string"
             ? event.data.requestId
             : null;
-        const pendingCommitScreenshotRequest =
-          pendingCommitScreenshotRequestRef.current;
-
-        if (
-          requestId !== null &&
-          pendingCommitScreenshotRequest !== null &&
-          requestId === pendingCommitScreenshotRequest.requestId
-        ) {
-          const appId = pendingCommitScreenshotRequest.appId;
-          const commitHash = pendingCommitScreenshotRequest.commitHash;
-          pendingCommitScreenshotRequestRef.current = null;
-          const clearPendingIfMatches = () => clearPendingScreenshot(appId);
-          if (event.data.success && event.data.dataUrl) {
-            console.debug("App screenshot taken for app", appId);
-            clearPendingIfMatches();
-            ipc.app
-              .saveAppScreenshot({
-                appId,
-                dataUrl: event.data.dataUrl,
-                commitHash,
-              })
-              .then(() =>
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.apps.screenshots({ appId }),
-                }),
-              )
-              .then(() =>
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.apps.thumbnails,
-                }),
-              )
-              .catch((err: unknown) => {
-                console.error("Failed to save app screenshot:", err);
-              });
-          } else {
-            console.warn("App screenshot capture failed for app", appId);
-            clearPendingIfMatches();
-          }
-          return;
-        }
-
         if (
           requestId !== null &&
           requestId === pendingAnnotatorScreenshotRequestIdRef.current
@@ -1122,7 +927,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setSelectedComponentsPreview,
       setVisualEditingSelectedComponent,
       queryClient,
-      clearPendingScreenshot,
     ],
   );
   componentMessageHandlerRef.current = handleComponentMessage;
@@ -1742,8 +1546,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
                   data-testid="preview-iframe-element"
                   onLoad={() => {
-                    sendIframeEvent({ type: "IFRAME_LOADED" });
-                    requestCommitScreenshot();
+                    onIframeLoaded();
                   }}
                   ref={iframeRef}
                   key={iframeState.iframeEpoch}

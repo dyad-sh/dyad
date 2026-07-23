@@ -495,8 +495,9 @@ export function createProductionChatStreamCommands(
           if (targetAppId !== null) {
             store.set(bumpPreviewReloadTokenForAppAtom, targetAppId);
             store.set(pendingScreenshotAppIdsAtom, (pending) => {
-              if (pending.has(targetAppId)) return pending;
-              return new Set(pending).add(targetAppId);
+              const next = new Map(pending);
+              next.set(targetAppId, "stream");
+              return next;
             });
           }
         }

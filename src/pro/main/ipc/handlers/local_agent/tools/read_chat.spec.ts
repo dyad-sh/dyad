@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { asSchema } from "ai";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readChatTool } from "./read_chat";
 import {
@@ -21,6 +22,53 @@ vi.mock("electron-log", () => ({
 describe("readChatTool schema", () => {
   it("allows chat reads without prompting by default", () => {
     expect(readChatTool.defaultConsent).toBe("always");
+  });
+
+  it("preserves its object shape in the provider-facing JSON Schema", async () => {
+    const providerSchema = await asSchema(readChatTool.inputSchema).jsonSchema;
+
+    expect(providerSchema).toMatchObject({
+      type: "object",
+      required: ["chat_id"],
+      additionalProperties: false,
+      properties: {
+        chat_id: {
+          type: "integer",
+          exclusiveMinimum: 0,
+        },
+        around_message_id: {
+          type: "integer",
+          exclusiveMinimum: 0,
+        },
+        before: {
+          type: "integer",
+          minimum: 0,
+          maximum: 10,
+        },
+        after: {
+          type: "integer",
+          minimum: 0,
+          maximum: 10,
+        },
+        offset: {
+          type: "integer",
+          minimum: 0,
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 20,
+        },
+      },
+    });
+    expect(Object.keys(providerSchema.properties ?? {})).toEqual([
+      "chat_id",
+      "around_message_id",
+      "before",
+      "after",
+      "offset",
+      "limit",
+    ]);
   });
 
   it("prefers around-message mode when pagination fields are also present", () => {

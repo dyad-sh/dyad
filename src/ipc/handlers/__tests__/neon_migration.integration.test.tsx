@@ -122,7 +122,7 @@ describe("Neon migration actions (integration)", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", {
+      await screen.findByRole("button", {
         name: /^Separate production database\b/,
       }),
     );

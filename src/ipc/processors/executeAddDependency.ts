@@ -33,12 +33,14 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildPackagesAttrPattern(packages: string[]): string {
-  const rawPackages = packages.join(" ");
-  const escapedPackages = escapeXmlAttr(rawPackages);
+export function buildPackagesAttrPattern(packages: string[]): string {
+  const rawPackages = packages.map(escapeRegExp).join("\\s+");
+  const escapedPackages = packages
+    .map((packageSpec) => escapeRegExp(escapeXmlAttr(packageSpec)))
+    .join("\\s+");
   const packageVariants = new Set([rawPackages, escapedPackages]);
 
-  return Array.from(packageVariants).map(escapeRegExp).join("|");
+  return `\\s*(?:${Array.from(packageVariants).join("|")})\\s*`;
 }
 
 export interface ExecuteAddDependencyResult {
@@ -60,6 +62,7 @@ const RANGE_VERSION_PATTERN = new RegExp(
   `^[~^](?:\\d+|\\d+\\.\\d+|\\d+\\.\\d+\\.\\d+(?:-${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*)?(?:\\+${SEMVER_IDENTIFIER}(?:\\.${SEMVER_IDENTIFIER})*)?)$`,
 );
 const DIST_TAG_PATTERN = /^[a-z][a-z0-9._-]*$/i;
+const LOCAL_TARBALL_NAME_PATTERN = /\.(?:tgz|tar(?:\.gz)?)$/i;
 const INSTALLED_DEPENDENCY_SECTIONS = [
   "dependencies",
   "devDependencies",
@@ -95,7 +98,13 @@ function parsePackageSpec(raw: string): ParsedPackageSpec | null {
     }
   }
 
-  if (name.startsWith("-") || !NPM_PACKAGE_NAME_PATTERN.test(name)) {
+  if (
+    name.startsWith("-") ||
+    !NPM_PACKAGE_NAME_PATTERN.test(name) ||
+    (!name.startsWith("@") &&
+      selector === undefined &&
+      LOCAL_TARBALL_NAME_PATTERN.test(name))
+  ) {
     return null;
   }
 
@@ -249,13 +258,19 @@ export class ExecuteAddDependencyError extends Error {
   originalError: unknown;
   displayDetails: string;
   displaySummary: string;
+  completedPackages: string[];
+  installResults: string;
 
   constructor({
     error,
     warningMessages,
+    completedPackages = [],
+    installResults = "",
   }: {
     error: unknown;
     warningMessages: string[];
+    completedPackages?: string[];
+    installResults?: string;
   }) {
     const message = error instanceof Error ? error.message : String(error);
     const commandDisplayDetails = getCommandExecutionDisplayDetails(error);
@@ -267,8 +282,14 @@ export class ExecuteAddDependencyError extends Error {
     this.name = "ExecuteAddDependencyError";
     this.warningMessages = warningMessages;
     this.originalError = error;
-    this.displayDetails = displayDetails;
+    const partialSuccessDetails =
+      completedPackages.length > 0
+        ? `Installed or updated ${completedPackages.join(", ")} before a later dependency command failed.${installResults ? `\n\n${installResults}` : ""}\n\n`
+        : "";
+    this.displayDetails = partialSuccessDetails + displayDetails;
     this.displaySummary = getDisplaySummary(displayDetails) ?? message;
+    this.completedPackages = completedPackages;
+    this.installResults = installResults;
   }
 }
 
@@ -410,45 +431,58 @@ export async function installPackages({
   const commands = [
     ...(packagesToInstall.length > 0
       ? [
-          buildAddDependencyCommand(
-            packagesToInstall,
-            packageManager,
-            useSocketFirewall,
-            { dev },
-          ),
+          {
+            invocation: buildAddDependencyCommand(
+              packagesToInstall,
+              packageManager,
+              useSocketFirewall,
+              { dev },
+            ),
+            packages: packagesToInstall,
+          },
         ]
       : []),
     ...(exactPackages.length > 0
       ? [
-          buildAddDependencyCommand(
-            exactPackages,
-            packageManager,
-            useSocketFirewall,
-            { dev, saveExact: true },
-          ),
+          {
+            invocation: buildAddDependencyCommand(
+              exactPackages,
+              packageManager,
+              useSocketFirewall,
+              { dev, saveExact: true },
+            ),
+            packages: exactPackages,
+          },
         ]
       : []),
     ...(updatePackages.length > 0
       ? [
-          buildUpdateDependencyCommand(
-            updatePackages,
-            packageManager,
-            useSocketFirewall,
-          ),
+          {
+            invocation: buildUpdateDependencyCommand(
+              updatePackages,
+              packageManager,
+              useSocketFirewall,
+            ),
+            packages: updatePackages,
+          },
         ]
       : []),
   ];
 
   const commandResults: string[] = [];
+  const completedPackages: string[] = [];
   for (const command of commands) {
     const { succeeded, installResults, lastError } =
-      await runAddDependencyCommand(command, appPath);
+      await runAddDependencyCommand(command.invocation, appPath);
     if (!succeeded && lastError) {
       throw new ExecuteAddDependencyError({
         error: lastError,
         warningMessages,
+        completedPackages,
+        installResults: commandResults.join("\n"),
       });
     }
+    completedPackages.push(...command.packages);
     if (installResults) {
       commandResults.push(installResults);
     }

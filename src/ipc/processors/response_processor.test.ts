@@ -306,6 +306,38 @@ describe("processFullResponseActions add dependency errors", () => {
     });
   });
 
+  it("commits only dependency groups completed before a later failure", async () => {
+    executeAddDependencyMock.mockRejectedValue(
+      new ExecuteAddDependencyError({
+        error: new Error("zod failed"),
+        warningMessages: [],
+        completedPackages: ["react"],
+        installResults: "updated react",
+      }),
+    );
+    vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
+
+    await processFullResponseActions(
+      '<dyad-add-dependency packages="react zod@999.0.0"></dyad-add-dependency>',
+      1,
+      {
+        chatSummary: undefined,
+        messageId: 1,
+      },
+    );
+
+    expect(gitCommit).toHaveBeenCalledWith({
+      path: "/mock/apps/test-app",
+      message: "[dyad] wrote 1 file(s), installed or updated react package(s)",
+    });
+    const contentUpdate = dbUpdates.find(
+      (update) => typeof update.content === "string",
+    );
+    expect(contentUpdate?.content).toContain(
+      'message="Partially installed or updated dependencies: react. zod failed"',
+    );
+  });
+
   it("queues delete tags for cloud sync even when the local path is already missing", async () => {
     vi.mocked(hasStagedChanges).mockResolvedValueOnce(true);
 

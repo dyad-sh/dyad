@@ -619,6 +619,55 @@ describe("executeAddDependency", () => {
     }
   });
 
+  it("reports completed package groups when a later command fails", async () => {
+    const appPath = await mkdtemp(path.join(os.tmpdir(), "dyad-add-dep-"));
+    try {
+      await writeFile(
+        path.join(appPath, "package.json"),
+        JSON.stringify({ packageManager: "npm@10.8.2" }),
+      );
+      ensureSocketFirewallInstalledMock.mockResolvedValue({
+        available: false,
+      });
+      runCommandMock
+        .mockResolvedValueOnce({ stdout: "installed vite", stderr: "" })
+        .mockRejectedValueOnce(
+          new CommandExecutionError({
+            message: "npm install failed",
+            stderr: "No matching version found",
+            exitCode: 1,
+          }),
+        );
+
+      let caughtError: unknown;
+      try {
+        await executeAddDependency({
+          packages: ["vite", "zod@999.0.0"],
+          message: {
+            id: 1,
+            content:
+              '<dyad-add-dependency packages="vite zod@999.0.0"></dyad-add-dependency>',
+          } as any,
+          appPath,
+        });
+      } catch (error) {
+        caughtError = error;
+      }
+
+      expect(caughtError).toMatchObject({
+        completedPackages: ["vite"],
+        installResults: "installed vite",
+      });
+      expect(
+        (caughtError as ExecuteAddDependencyError).displayDetails,
+      ).toContain(
+        "Installed or updated vite before a later dependency command failed.",
+      );
+    } finally {
+      await rm(appPath, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     "react@latest",
     "react@next",
@@ -659,6 +708,9 @@ describe("executeAddDependency", () => {
     ["workspace", ["foo@workspace:*"]],
     ["local path", ["../foo"]],
     ["URL", ["https://example.com/foo.tgz"]],
+    ["local tgz tarball", ["foo.tgz"]],
+    ["local tar archive", ["foo.tar"]],
+    ["local compressed tar archive", ["foo.tar.gz"]],
     ["GitHub shorthand", ["owner/repo"]],
     ["duplicate package", ["react", "react@latest"]],
   ])("rejects %s before invoking the shell", async (_label, packages) => {
@@ -699,6 +751,31 @@ describe("executeAddDependency", () => {
     expect(dbUpdateSetMock).toHaveBeenCalledWith({
       content:
         '<dyad-add-dependency packages="react-safe">installed &lt;react&gt;</dyad-add-dependency>',
+    });
+  });
+
+  it("updates legacy tags whose package list contains extra whitespace", async () => {
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+    });
+    runCommandMock.mockResolvedValueOnce({
+      stdout: "installed",
+      stderr: "",
+    });
+
+    await executeAddDependency({
+      packages: ["react@latest", "@scope/pkg@^2.0.0"],
+      message: {
+        id: 1,
+        content:
+          '<dyad-add-dependency packages="  react@latest   @scope/pkg@^2.0.0  "></dyad-add-dependency>',
+      } as any,
+      appPath: "/tmp/app",
+    });
+
+    expect(dbUpdateSetMock).toHaveBeenCalledWith({
+      content:
+        '<dyad-add-dependency packages="react@latest @scope/pkg@^2.0.0">installed</dyad-add-dependency>',
     });
   });
 

@@ -8,6 +8,7 @@ import {
   ExecuteAddDependencyError,
 } from "@/ipc/processors/executeAddDependency";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { trackAppMutation } from "./tool_invocation";
 
 const addDependencySchema = z.object({
   packages: z
@@ -28,7 +29,7 @@ export const addDependencyTool: ToolDefinition<
   defaultConsent: "ask",
   modifiesState: true,
 
-  getConsentPreview: (args) => `Install ${args.packages.join(", ")}`,
+  getConsentPreview: (args) => `Install or refresh ${args.packages.join(", ")}`,
 
   shouldTrackMutation: (_args, result) =>
     result.startsWith("Successfully installed or updated"),
@@ -66,6 +67,11 @@ export const addDependencyTool: ToolDefinition<
         for (const warningMessage of error.warningMessages) {
           ctx.onWarningMessage?.(warningMessage);
         }
+        trackAppMutation(
+          ctx,
+          "add_dependency",
+          error.completedPackages.length > 0,
+        );
       }
       throw error;
     }

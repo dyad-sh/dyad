@@ -301,6 +301,22 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setRecordName("");
     void recorder.startRecording();
   };
+
+  const handleEnhanceWithAI = (specPath: string) => {
+    if (!selectedChatId) {
+      showInfo("Open a chat to enhance the recorded test with AI.");
+      return;
+    }
+    streamMessage({
+      prompt:
+        `I recorded a Playwright test at \`${specPath}\`. Read it, keep the recorded ` +
+        `interactions and the \`signIn\` fixture usage intact, and add meaningful ` +
+        `assertions (\`expect(...)\`) after the key steps so the test verifies the ` +
+        `flow's outcomes. Rewrite the whole file.`,
+      chatId: selectedChatId,
+    });
+    recorder.dismissSaved();
+  };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
     null,
@@ -1210,7 +1226,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       !appUrl ||
                       isPicking ||
                       annotatorMode ||
-                      recorder.isBusy
+                      recorder.phase !== "idle"
                     }
                     data-testid="preview-record-button"
                   />
@@ -1599,6 +1615,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
               >
                 Cancel
+              </button>
+            </>
+          ) : recorder.phase === "saved" ? (
+            <>
+              <span className="min-w-0 truncate font-medium text-emerald-700 dark:text-emerald-300">
+                Saved {recorder.savedSpecPath}
+              </span>
+              <button
+                onClick={() =>
+                  recorder.savedSpecPath &&
+                  handleEnhanceWithAI(recorder.savedSpecPath)
+                }
+                data-testid="preview-recording-enhance-button"
+                className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+              >
+                <Sparkles size={12} /> Add assertions with AI
+              </button>
+              <button
+                onClick={() => recorder.dismissSaved()}
+                data-testid="preview-recording-done-button"
+                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Done
               </button>
             </>
           ) : (

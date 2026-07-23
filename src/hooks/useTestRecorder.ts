@@ -334,16 +334,23 @@ export function useTestRecorder() {
       queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
 
       clearEntries(targetAppId);
-      patchState(targetAppId, { phase: "idle" });
 
       if (saved) {
+        // Stay in a "saved" state so the UI can offer the AI-assertion pass.
+        patchState(targetAppId, { phase: "saved", savedSpecPath: specPath });
         showSuccess(`Saved ${specPath}`);
         return specPath;
       }
+      patchState(targetAppId, { phase: "idle" });
       return null;
     },
     [appId, clearEntries, ensureFixture, patchState, postToIframe, queryClient],
   );
+
+  const dismissSaved = useCallback(() => {
+    if (appId == null) return;
+    patchState(appId, { phase: "idle" });
+  }, [appId, patchState]);
 
   const cancelRecording = useCallback(async () => {
     const targetAppId = appId;
@@ -360,6 +367,7 @@ export function useTestRecorder() {
     warning: recordingState.warning,
     progress: recordingState.progress,
     error: recordingState.error,
+    savedSpecPath: recordingState.savedSpecPath,
     entryCount: entries.length,
     isRecording: recordingState.phase === "recording",
     isBusy:
@@ -369,5 +377,6 @@ export function useTestRecorder() {
     startRecording,
     stopAndSave,
     cancelRecording,
+    dismissSaved,
   };
 }

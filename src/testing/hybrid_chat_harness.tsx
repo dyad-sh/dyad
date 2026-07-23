@@ -100,6 +100,7 @@ import { createVersionPreviewRuntime } from "@/version_preview/commands";
 import { VersionPreviewManager } from "@/version_preview/manager";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
+import { ScreenshotProvider } from "@/screenshot/ScreenshotProvider";
 import { AppRunManager } from "@/app_run/manager";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
@@ -991,21 +992,23 @@ export async function setupHybridChatHarness(
                     <ImageGenerationProvider manager={imageGenerationManager}>
                       <VersionPreviewProvider manager={versionPreviewManager}>
                         <PreviewIframeProvider>
-                          <ThemeProvider>
-                            <DeepLinkProvider>
-                              <SidebarProvider defaultOpen={false}>
-                                {opts.wireAppEvents !== false && (
-                                  <HybridAppEventWiring
-                                    store={store}
-                                    queryClient={queryClient}
-                                    chatStreamManager={chatStreamManager}
-                                  />
-                                )}
-                                <RouterProvider router={router as never} />
-                                <Toaster richColors expand duration={500} />
-                              </SidebarProvider>
-                            </DeepLinkProvider>
-                          </ThemeProvider>
+                          <ScreenshotProvider>
+                            <ThemeProvider>
+                              <DeepLinkProvider>
+                                <SidebarProvider defaultOpen={false}>
+                                  {opts.wireAppEvents !== false && (
+                                    <HybridAppEventWiring
+                                      store={store}
+                                      queryClient={queryClient}
+                                      chatStreamManager={chatStreamManager}
+                                    />
+                                  )}
+                                  <RouterProvider router={router as never} />
+                                  <Toaster richColors expand duration={500} />
+                                </SidebarProvider>
+                              </DeepLinkProvider>
+                            </ThemeProvider>
+                          </ScreenshotProvider>
                         </PreviewIframeProvider>
                       </VersionPreviewProvider>
                     </ImageGenerationProvider>

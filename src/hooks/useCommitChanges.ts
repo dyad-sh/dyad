@@ -22,8 +22,9 @@ export function useCommitChanges() {
     onSuccess: (_, { appId }) => {
       showSuccess("Changes committed successfully");
       setPendingScreenshotAppIds((pending) => {
-        if (pending.has(appId)) return pending;
-        return new Set(pending).add(appId);
+        const next = new Map(pending);
+        next.set(appId, "commit");
+        return next;
       });
       // Invalidate uncommitted files query
       queryClient.invalidateQueries({
